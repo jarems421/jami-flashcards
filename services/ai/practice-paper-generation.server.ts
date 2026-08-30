@@ -52,6 +52,7 @@ import {
   normalizeStudyLevel,
 } from "@/lib/profile/study-level";
 import { createLogger } from "@/lib/observability/logger";
+import { sectionMarkIssues } from "@/lib/practice/exam-formats";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
@@ -321,7 +322,7 @@ Return JSON only in this shape:
   "sourceRefs":[${input.sourceRefs.map((reference) => `"${reference}"`).join(",")}]
 }
 
-Where the authoritative format profile lists sections, give every question a section naming the one it belongs to, emit each section's questions together in order, and make each section's marks sum exactly to the figure the profile gives that section. The paper's total is then the sum of those sections and must equal the profile's total exactly. Where the format has no sections, omit the field.
+Where the authoritative format profile lists sections, set every question's section to the identifier the profile gives that section -- the bare id before the bracketed title, so "A", not "Section A" and not the title --, emit each section's questions together in order, and make each section's marks sum exactly to the figure the profile gives that section. The paper's total is then the sum of those sections and must equal the profile's total exactly. Where the format has no sections, omit the field.
 
 sourceRefs must include only sources that materially informed the assessment profile, format, questions, marking guide, examiner insights, or grade guidance. For GCSE and A level, use the latest truly comparable official boundary as the main boundaries and add a historical median only from the same board, specification, tier/component and paper type across named years. Never mix incomparable papers. For university work, use the supplied rubric or otherwise give an estimated UK classification from percentage; do not invent institutional boundaries. Grade boundaries are official only when an authoritative source explicitly supplies them; otherwise label them estimated or return no boundaries. If status is needs_clarification, the paper fields may be empty arrays/strings, but all keys must still be present.`;
 }
@@ -399,8 +400,15 @@ export async function runPracticePaperGenerationRequest(
    * than a hope.
    */
   expectedTotalMarks?: number,
-  /** What each section is worth, where the format profile lists sections. */
-  expectedSectionMarks?: Map<string, number>
+  /**
+   * The sections the profile lists, so a draft can be held to each one.
+   *
+   * Carries the title as well as the id because a designer told to name the id
+   * does not always: one retry labelled its sections "Social influence" and
+   * "Memory" rather than A and B. Matching on either means a correctly built
+   * paper is not refunded over what it called its sections.
+   */
+  expectedSections?: readonly { id: string; title?: string; marks: number }[]
 ) {
   if (!isAnyAiProviderConfigured()) return failure("AI features are not configured", 503, "not_configured");
   const auth = trustedAuth ?? await authenticate(request);
@@ -840,17 +848,19 @@ export async function runPracticePaperGenerationRequest(
      * doing that silently inside a repair loop is how a run spends an hour
      * getting further from a correct answer.
      *
-     * What it keeps catching is a gap this check cannot close. A question
-     * carries id, label, prompt, marks and assets -- there is no section. So a
-     * profile stating "four sections of 24 marks" describes something the
-     * output format cannot express, and the designer answers with a flat list
-     * that nothing holds to those totals. Three attempts produced 80, 164 and
-     * 143 marks against 96; the last built five uneven blocks of 23, 42, 23,
-     * 35 and 41, every question labelled only "Question N".
+     * For a long time this caught a gap it could not close. A question carried
+     * id, label, prompt, marks and assets and no section, so a profile stating
+     * "four sections of 24 marks" described something the output format could
+     * not express, and the designer answered with a flat list that nothing held
+     * to those totals: ten drafts of the same 96-mark component came back at
+     * 80, 96, 97, 136, 143, 154, 164, 169, 177 and 178 marks.
      *
-     * Until a question can say which section it belongs to, this check is a
-     * guard rather than a fix: it stops a wrong paper cheaply instead of
-     * twenty calls later, and it will keep firing.
+     * A question can now name its section, and the section check below holds
+     * each one to its own total. The first draft under that schema did use the
+     * sections -- and sized them 43/41/41/43 against a required 24 each, because
+     * the format context listed section titles and marks but never the ids the
+     * check compares against. It was asked to make section A worth 24 marks
+     * without being told which section was A.
      */
     /**
      * One retry that tells the designer what it actually built.
@@ -875,10 +885,9 @@ export async function runPracticePaperGenerationRequest(
           `${systemInstruction}\nYour previous paper was worth ${draft.totalMarks} marks across ` +
           `${draft.questions.length} questions (${built}), and this component is worth exactly ` +
           `${expectedTotalMarks}. Rebuild it to total ${expectedTotalMarks} exactly. A question has no ` +
-          "section field, so the sections exist only as consecutive runs of questions in the order you " +
-          "return them: emit each section's questions together, in order, and make each section's marks " +
-          "sum to the figure the format profile gives it. Do not add sections beyond those the profile " +
-          "lists.",
+          "section field: set it to the bare identifier the profile gives that section, emit each " +
+          "section's questions together in order, and make each section's marks sum to the figure the " +
+          "profile gives it. Do not add sections beyond those the profile lists.",
         contents,
         temperature: 0.1,
         maxOutputTokens: 20_000,
@@ -904,17 +913,12 @@ export async function runPracticePaperGenerationRequest(
      * throughout, and a student practising a 24-mark section against 40 marks
      * of questions has been misled about the paper they will sit.
      */
-    if (expectedSectionMarks && expectedSectionMarks.size > 0) {
-      const built = new Map<string, number>();
-      for (const question of draft.questions) {
-        if (!question.section) continue;
-        built.set(question.section, (built.get(question.section) ?? 0) + question.marks);
-      }
-      const wrong = [...expectedSectionMarks.entries()]
-        .filter(([section, marks]) => (built.get(section) ?? 0) !== marks)
-        .map(([section, marks]) => ({ section, expected: marks, actual: built.get(section) ?? 0 }));
+    if (expectedSections && expectedSections.length > 0) {
+      const { wrong, built } = sectionMarkIssues(draft.questions, expectedSections);
       if (wrong.length > 0) {
-        log.warn("paper_design.section_mismatch", { sections: wrong });
+        // The sections it did build, so a naming mismatch is distinguishable
+        // from a marks mismatch in the log rather than by rerunning.
+        log.warn("paper_design.section_mismatch", { sections: wrong, built: [...built] });
         forgetGenerationCheckpoint({ pass: "paper_design", subject: sourceRefs });
         forgetGenerationCheckpoint({ pass: "paper_design_total_retry", subject: sourceRefs });
         await refund("paper_section_mismatch");
@@ -1370,8 +1374,8 @@ export async function runPracticePaperGenerationForBenchmark(input: {
   formatContext?: string;
   /** What the authoritative profile says the component is worth. */
   expectedTotalMarks?: number;
-  /** What each section is worth, where the profile lists sections. */
-  expectedSectionMarks?: Map<string, number>;
+  /** The sections the profile lists, matched by id or title. */
+  expectedSections?: readonly { id: string; title?: string; marks: number }[];
 }) {
   const request = new Request("http://jami.internal/paper-generation-benchmark", {
     method: "POST",
@@ -1387,7 +1391,7 @@ export async function runPracticePaperGenerationForBenchmark(input: {
     { sources: input.sources, studyContext: input.studyContext },
     (value) => { diagnostics = value; },
     input.expectedTotalMarks,
-    input.expectedSectionMarks
+    input.expectedSections
   );
   return { response, diagnostics };
 }

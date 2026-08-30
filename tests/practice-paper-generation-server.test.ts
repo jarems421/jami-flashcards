@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mapPracticePaperData } from "@/lib/practice/practice-papers";
+import { sectionKey, sectionMarkIssues } from "@/lib/practice/exam-formats";
 import {
   applyPracticePaperAuditRepairPatch,
   canonicalizeGeneratedMarkSchemeItems,
@@ -266,6 +267,10 @@ describe("a question that knows its section", () => {
     expect(paper([{ id: "q1", marks: 24 }]).questions[0].section).toBeUndefined();
   });
 
+  /**
+   * Through the helper generation actually uses. Summing the questions inline
+   * here would pass whatever the shipped check did.
+   */
   it("adds up a section from the questions that name it", () => {
     const built = paper([
       { id: "q1", section: "A", marks: 2 },
@@ -275,9 +280,128 @@ describe("a question that knows its section", () => {
     const totals = new Map<string, number>();
     for (const q of built.questions) {
       if (!q.section) continue;
-      totals.set(q.section, (totals.get(q.section) ?? 0) + q.marks);
+      const key = sectionKey(q.section);
+      totals.set(key, (totals.get(key) ?? 0) + q.marks);
     }
-    expect(totals.get("A")).toBe(6);
-    expect(totals.get("B")).toBe(6);
+    expect(totals.get("a")).toBe(6);
+    expect(totals.get("b")).toBe(6);
+  });
+
+  /**
+   * The designer is told to send the bare id, and the first draft that used
+   * sections at all still got their sizes wrong -- so the naming will not always
+   * be clean either. A paper built correctly must not be thrown away and
+   * refunded over the word "Section".
+   */
+  it("counts a section however the designer spelled it", () => {
+    const built = paper([
+      { id: "q1", section: "Section A", marks: 2 },
+      { id: "q2", section: "A.", marks: 4 },
+      { id: "q3", section: "a", marks: 6 },
+    ]);
+    const totals = new Map<string, number>();
+    for (const q of built.questions) {
+      if (!q.section) continue;
+      const key = sectionKey(q.section);
+      totals.set(key, (totals.get(key) ?? 0) + q.marks);
+    }
+    expect(totals.get("a")).toBe(12);
+    expect(totals.size).toBe(1);
+  });
+
+  /** A title the profile does not use is a real mismatch and must still fail. */
+  it("does not quietly fold a title into a section id", () => {
+    expect(sectionKey("Social influence")).not.toBe(sectionKey("A"));
+    expect(sectionKey("Sections")).toBe("sections");
+  });
+});
+
+/**
+ * The check that decides whether a draft is the paper the profile describes,
+ * exercised through the function generation actually calls. Every case below
+ * is a shape a real pilot run produced.
+ */
+describe("holding a draft to the sections the profile lists", () => {
+  const aqaPaper1 = [
+    { id: "A", title: "Social influence", marks: 24 },
+    { id: "B", title: "Memory", marks: 24 },
+    { id: "C", title: "Attachment", marks: 24 },
+    { id: "D", title: "Approaches in Psychology", marks: 24 },
+  ];
+  const evenly = (marks: number, sections: string[]) =>
+    sections.flatMap((section) => [
+      { section, marks: marks / 2 },
+      { section, marks: marks / 2 },
+    ]);
+
+  it("passes a paper whose sections each hit their figure", () => {
+    const { wrong } = sectionMarkIssues(evenly(24, ["A", "B", "C", "D"]), aqaPaper1);
+    expect(wrong).toEqual([]);
+  });
+
+  /** The first draft that used sections at all: even, and half as big again. */
+  it("rejects 43/41/41/43 against a required 24 each", () => {
+    const { wrong } = sectionMarkIssues(
+      [
+        { section: "A", marks: 43 },
+        { section: "B", marks: 41 },
+        { section: "C", marks: 41 },
+        { section: "D", marks: 43 },
+      ],
+      aqaPaper1
+    );
+    expect(wrong).toHaveLength(4);
+    expect(wrong[0]).toEqual({ section: "A", expected: 24, actual: 43 });
+  });
+
+  /**
+   * A retry labelled its sections "Social influence" and "Memory" rather than
+   * A and B. Refusing that paper would cost a run over a naming choice.
+   */
+  it("accepts sections named by title instead of id", () => {
+    const { wrong } = sectionMarkIssues(
+      evenly(24, ["Social influence", "Memory", "Attachment", "Approaches in Psychology"]),
+      aqaPaper1
+    );
+    expect(wrong).toEqual([]);
+  });
+
+  it("accepts a section however it is spelled", () => {
+    const { wrong } = sectionMarkIssues(
+      evenly(24, ["Section A", "b.", " C ", "section d"]),
+      aqaPaper1
+    );
+    expect(wrong).toEqual([]);
+  });
+
+  /**
+   * The case the paper total cannot catch: 96 marks overall, and no section
+   * the right size.
+   */
+  it("rejects a paper that is right overall and wrong throughout", () => {
+    const questions = [
+      { section: "A", marks: 12 },
+      { section: "B", marks: 12 },
+      { section: "C", marks: 36 },
+      { section: "D", marks: 36 },
+    ];
+    expect(questions.reduce((sum, q) => sum + q.marks, 0)).toBe(96);
+    expect(sectionMarkIssues(questions, aqaPaper1).wrong).toHaveLength(4);
+  });
+
+  /** A flat list naming no sections at all -- every earlier draft. */
+  it("rejects a draft that names no sections", () => {
+    const { wrong } = sectionMarkIssues([{ marks: 96 }], aqaPaper1);
+    expect(wrong.map((entry) => entry.actual)).toEqual([0, 0, 0, 0]);
+  });
+
+  /** What the log reports, so a naming fault reads differently from a sizing one. */
+  it("reports what it did build, not only what was missing", () => {
+    const { built } = sectionMarkIssues(
+      [{ section: "Section A", marks: 24 }, { section: "Quantitative", marks: 12 }],
+      aqaPaper1
+    );
+    expect(built.get("A")).toBe(24);
+    expect(built.get("Quantitative")).toBe(12);
   });
 });

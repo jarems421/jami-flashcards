@@ -292,13 +292,15 @@ async function executePaperGenerationBenchmarkCase(runId: string, caseId: string
     // calls later.
     expectedTotalMarks: profile.totalMarks,
     // And what each section is worth, so a paper cannot be right overall and
-    // wrong throughout. Sections are identified by their id, which is what the
-    // designer is asked to name on each question.
-    expectedSectionMarks: new Map(
-      profile.sections
-        .filter((section) => typeof section.marks === "number" && section.marks > 0)
-        .map((section) => [section.id, section.marks as number])
-    ),
+    // wrong throughout. The title travels with the id: the designer is asked
+    // for the id and has been observed answering with the title instead.
+    expectedSections: profile.sections
+      .filter((section) => typeof section.marks === "number" && section.marks > 0)
+      .map((section) => ({
+        id: section.id,
+        title: section.title,
+        marks: section.marks as number,
+      })),
   });
   const payload = await generated.response.json().catch(() => null) as
     | (PracticePaperGenerationResponse & { code?: string; error?: string })

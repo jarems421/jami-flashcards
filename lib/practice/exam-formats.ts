@@ -548,6 +548,59 @@ export function selectExamFormatVersion(
     )[0];
 }
 
+/**
+ * A section name reduced to what identifies it.
+ *
+ * Generation compares a question's section against the profile's section ids,
+ * and the designer is asked for the bare id. "Section A" and "A." are the same
+ * section, and refunding a structurally correct paper over the word "Section"
+ * costs a whole run for nothing. A title the profile does not use still fails,
+ * loudly and before any mark-scheme work is paid for.
+ */
+export const sectionKey = (value: string) =>
+  value.trim().toLowerCase().replace(/^section\s+/, "").replace(/[.:)\]]+$/, "").trim();
+
+export type ExpectedSection = { id: string; title?: string; marks: number };
+
+/**
+ * Which sections a draft got wrong, and by how much.
+ *
+ * The paper total alone lets a draft be right overall and wrong throughout: a
+ * student practising a 24-mark section against 40 marks of questions has been
+ * misled about the paper they will sit. Ten drafts of one 96-mark component
+ * came back at 80, 96, 97, 136, 143, 154, 164, 169, 177 and 178 marks, and the
+ * first to use sections at all sized them 43/41/41/43 against a required 24.
+ *
+ * A section is matched by id or by title, because the designer is asked for the
+ * id and does not always oblige -- one retry labelled its sections "Social
+ * influence" and "Memory". Throwing away a correctly built paper over what it
+ * called its sections costs exactly as much as accepting a wrong one.
+ */
+export function sectionMarkIssues(
+  questions: readonly { section?: string; marks: number }[],
+  sections: readonly ExpectedSection[]
+) {
+  const byName = new Map<string, string>();
+  for (const section of sections) {
+    byName.set(sectionKey(section.id), section.id);
+    if (section.title) byName.set(sectionKey(section.title), section.id);
+  }
+  const built = new Map<string, number>();
+  for (const question of questions) {
+    if (!question.section) continue;
+    const key = byName.get(sectionKey(question.section)) ?? question.section;
+    built.set(key, (built.get(key) ?? 0) + question.marks);
+  }
+  const wrong = sections
+    .filter((section) => (built.get(section.id) ?? 0) !== section.marks)
+    .map((section) => ({
+      section: section.id,
+      expected: section.marks,
+      actual: built.get(section.id) ?? 0,
+    }));
+  return { wrong, built };
+}
+
 export function practicePaperFormatContext(profile: ExamFormatProfileVersion) {
   return [
     `Verified format profile: ${profile.profileId}@${profile.version}`,
@@ -556,7 +609,7 @@ export function practicePaperFormatContext(profile: ExamFormatProfileVersion) {
     `Component: ${profile.componentTitle} (${profile.componentCode})${profile.tier ? `, ${profile.tier}` : ""}`,
     `Duration: ${profile.durationMinutes} minutes. Total marks: ${profile.totalMarks}.`,
     profile.calculatorPolicy ? `Calculator policy: ${profile.calculatorPolicy}.` : "",
-    profile.sections.length ? `Sections: ${profile.sections.map((section) => `${section.title}${section.marks ? ` (${section.marks} marks)` : ""}`).join("; ")}.` : "",
+    profile.sections.length ? `Sections: ${profile.sections.map((section) => `${section.id} (${section.title})${section.marks ? `, ${section.marks} marks` : ""}`).join("; ")}.` : "",
     profile.choiceRules.length ? `Choice rules: ${profile.choiceRules.join("; ")}.` : "",
     profile.requiredMaterials.length ? `Required candidate materials: ${profile.requiredMaterials.map((material) => material.title).join("; ")}.` : "",
     profile.assessmentObjectives.length ? `Assessment objectives: ${profile.assessmentObjectives.join("; ")}.` : "",
