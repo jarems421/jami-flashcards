@@ -256,6 +256,27 @@ describe("the sections as the designer reads them", () => {
   });
 
   /** Plenty of profiles list sections without a per-section breakdown. */
+  /**
+   * The strongest constraint the profile holds. "A 3+1+4+16" fixes the question
+   * count, the per-question marks and the section total in one line, and it sat
+   * unsent through every draft that came back at 121 to 178 marks.
+   */
+  it("passes on the tariff pattern the profile observed", () => {
+    const withTariffs = {
+      ...(profile as Record<string, unknown>),
+      tariffProgression: ["Observed June 2022 tariffs: A 3+1+4+16, B 2+2+4+16."],
+    } as never;
+    expect(practicePaperFormatContext(withTariffs)).toContain("A 3+1+4+16");
+  });
+
+  it("names the command words the component uses", () => {
+    const withWords = {
+      ...(profile as Record<string, unknown>),
+      commandWords: ["Outline", "Discuss"],
+    } as never;
+    expect(practicePaperFormatContext(withWords)).toContain("Outline, Discuss");
+  });
+
   it("says only what the profile knows", () => {
     const sparse = {
       ...(profile as Record<string, unknown>),
@@ -264,5 +285,7 @@ describe("the sections as the designer reads them", () => {
     const context = practicePaperFormatContext(sparse);
     expect(context).toContain("A (Social influence)");
     expect(context).not.toContain("marks across exactly");
+    expect(context).not.toContain("Tariff pattern:");
+    expect(context).not.toContain("Command words");
   });
 });

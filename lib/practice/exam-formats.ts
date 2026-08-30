@@ -610,6 +610,14 @@ export function practicePaperFormatContext(profile: ExamFormatProfileVersion) {
     `Duration: ${profile.durationMinutes} minutes. Total marks: ${profile.totalMarks}.`,
     profile.calculatorPolicy ? `Calculator policy: ${profile.calculatorPolicy}.` : "",
     profile.sections.length ? `Sections: ${profile.sections.map((section) => `${section.id} (${section.title})${section.marks ? `, ${section.marks} marks` : ""}${section.requiredQuestions ? ` across exactly ${section.requiredQuestions} questions` : ""}`).join("; ")}.` : "",
+    // The tariffs the profile actually observed on a real sitting. This is the
+    // strongest structural constraint the profile holds -- "A 3+1+4+16" fixes
+    // the question count, the per-question marks and the section total at once
+    // -- and it went unsaid while the designer guessed at all three, returning
+    // sections of 43, 38, 32 and 26 marks against a required 24.
+    profile.tariffProgression?.length ? `Tariff pattern: ${profile.tariffProgression.join(" ")}` : "",
+    profile.topicExpectations?.length ? `Topics: ${profile.topicExpectations.join("; ")}.` : "",
+    profile.commandWords?.length ? `Command words this component uses: ${profile.commandWords.join(", ")}.` : "",
     profile.choiceRules.length ? `Choice rules: ${profile.choiceRules.join("; ")}.` : "",
     profile.requiredMaterials.length ? `Required candidate materials: ${profile.requiredMaterials.map((material) => material.title).join("; ")}.` : "",
     profile.assessmentObjectives.length ? `Assessment objectives: ${profile.assessmentObjectives.join("; ")}.` : "",
