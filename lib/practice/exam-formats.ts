@@ -609,7 +609,7 @@ export function practicePaperFormatContext(profile: ExamFormatProfileVersion) {
     `Component: ${profile.componentTitle} (${profile.componentCode})${profile.tier ? `, ${profile.tier}` : ""}`,
     `Duration: ${profile.durationMinutes} minutes. Total marks: ${profile.totalMarks}.`,
     profile.calculatorPolicy ? `Calculator policy: ${profile.calculatorPolicy}.` : "",
-    profile.sections.length ? `Sections: ${profile.sections.map((section) => `${section.id} (${section.title})${section.marks ? `, ${section.marks} marks` : ""}`).join("; ")}.` : "",
+    profile.sections.length ? `Sections: ${profile.sections.map((section) => `${section.id} (${section.title})${section.marks ? `, ${section.marks} marks` : ""}${section.requiredQuestions ? ` across exactly ${section.requiredQuestions} questions` : ""}`).join("; ")}.` : "",
     profile.choiceRules.length ? `Choice rules: ${profile.choiceRules.join("; ")}.` : "",
     profile.requiredMaterials.length ? `Required candidate materials: ${profile.requiredMaterials.map((material) => material.title).join("; ")}.` : "",
     profile.assessmentObjectives.length ? `Assessment objectives: ${profile.assessmentObjectives.join("; ")}.` : "",

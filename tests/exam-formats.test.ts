@@ -4,6 +4,7 @@ import {
   findDistinctivePaperOverlap,
   isOfficialExamBoardUrl,
   normalizeExamFormatProfileVersion,
+  practicePaperFormatContext,
   practicePaperFormatIssues,
   selectExamFormatVersion,
 } from "@/lib/practice/exam-formats";
@@ -207,5 +208,61 @@ describe("a profile whose marks do not add up", () => {
     expect(
       withSections(96, [24, undefined])?.issues.some((entry) => entry.code === "conflicting_marks")
     ).toBe(false);
+  });
+});
+
+/**
+ * What the designer is actually told about the sections.
+ *
+ * This string is the whole constraint. When it listed section titles and marks
+ * but not the ids the check compares against, ten drafts of one 96-mark
+ * component came back at 80 to 178 marks, and the first to use sections at all
+ * split them 43/41/41/43 against a required 24. When it named the marks but not
+ * the question counts, the closest draft was 25/26/27/26.
+ */
+describe("the sections as the designer reads them", () => {
+  const profile = {
+    profileId: "aqa-a-level-psychology-7182-1",
+    version: "2026-verified-from-jun22",
+    boardLabel: "AQA",
+    qualificationLabel: "A-level",
+    subject: "Psychology",
+    specificationTitle: "A-level Psychology",
+    specificationCode: "7182",
+    componentTitle: "Paper 1",
+    componentCode: "7182/1",
+    durationMinutes: 120,
+    totalMarks: 96,
+    sections: [
+      { id: "A", title: "Social influence", marks: 24, requiredQuestions: 4 },
+      { id: "D", title: "Approaches", marks: 24, requiredQuestions: 6 },
+    ],
+    choiceRules: [],
+    requiredMaterials: [],
+    assessmentObjectives: [],
+  } as never;
+
+  it("binds each section's id, marks and question count together", () => {
+    expect(practicePaperFormatContext(profile)).toContain(
+      "A (Social influence), 24 marks across exactly 4 questions"
+    );
+  });
+
+  /** Section D carries a different count, so the figure has to travel per section. */
+  it("does not reuse one section's count for another", () => {
+    expect(practicePaperFormatContext(profile)).toContain(
+      "D (Approaches), 24 marks across exactly 6 questions"
+    );
+  });
+
+  /** Plenty of profiles list sections without a per-section breakdown. */
+  it("says only what the profile knows", () => {
+    const sparse = {
+      ...(profile as Record<string, unknown>),
+      sections: [{ id: "A", title: "Social influence" }],
+    } as never;
+    const context = practicePaperFormatContext(sparse);
+    expect(context).toContain("A (Social influence)");
+    expect(context).not.toContain("marks across exactly");
   });
 });
