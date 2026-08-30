@@ -230,9 +230,21 @@ export async function getExamFormatProfileVersion(profileId: string, version?: s
 export async function getActiveExamFormatProfileVersion(profileId: string) {
   const loaded = await loadProfileVersions(profileId);
   if (!loaded) return null;
-  return loaded.versions.find(
+  const pointed = loaded.versions.find(
     (candidate) => candidate.version === loaded.profile.activeVersion
   ) ?? null;
+  /**
+   * A retired version is not active, whatever the pointer says.
+   *
+   * Retiring a version used to do nothing here: this read the pointer and
+   * ignored status, so a profile withdrawn for carrying the wrong paper's
+   * content -- Paper 1 Section D stored as Approaches in Psychology, which is
+   * Paper 2 -- went on being handed to every new benchmark run. Withdrawing a
+   * bad profile has to take effect without also depending on whoever retires it
+   * remembering to move a second field.
+   */
+  if (pointed && pointed.status !== "retired") return pointed;
+  return selectExamFormatVersion(loaded.versions, new Date()) ?? null;
 }
 
 function sourceType(title: string, url: string): ExamFormatSourceReceipt["documentType"] {

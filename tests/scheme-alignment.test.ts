@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { schemeAlignmentIssues } from "@/lib/practice/scheme-alignment";
+import { markSchemeIssues } from "@/lib/ai/practice-paper-quality";
 
 /**
  * Whether a mark scheme is about its question.
@@ -250,5 +251,65 @@ describe("response type", () => {
   it("says nothing about the tariffs in between", () => {
     expect(check("Describe the working memory model.", 6, "additive"))
       .not.toContain("scheme_shape_mismatch");
+  });
+});
+
+/**
+ * The design pass carries a placeholder scheme, and alignment must not judge it.
+ *
+ * `withProvisionalMarkScheme` gives every question a point reading "Provisional
+ * credit allocation; replaced before release", which shares no terms with any
+ * question. With alignment on by default that reads as eighteen schemes written
+ * for the wrong questions, and a design of exactly the right shape -- 18
+ * questions, 96 marks, four sections of 24 -- was refused as "a short practice
+ * set" before a single mark scheme had been written.
+ */
+describe("the provisional scheme a design carries", () => {
+  const paper = {
+    status: "ready" as const,
+    title: "Paper",
+    instructions: [],
+    durationMinutes: 120,
+    totalMarks: 3,
+    questions: [
+      {
+        id: "q1",
+        label: "Question 1",
+        prompt: "Outline what is meant by internalisation as a type of conformity.",
+        marks: 3,
+        assets: [],
+      },
+    ],
+    choiceGroups: [],
+    companionDocuments: [],
+    markScheme: {
+      kind: "generated",
+      label: "Jami-generated marking guide",
+      notice: "This is not an official mark scheme.",
+      items: [
+        {
+          questionId: "q1",
+          marking: "additive",
+          maxMarks: 3,
+          answer: "Provisional; replaced before release.",
+          acceptableAlternatives: [],
+          commonMistakes: [],
+          points: [{
+            id: "q1.draft", marks: 3, code: "B",
+            text: "Provisional credit allocation; replaced before release.",
+            dep: [], ft: false, essentialTerms: [], allow: [], reject: [],
+          }],
+        },
+      ],
+    },
+  } as never;
+
+  it("says nothing about a placeholder by default", () => {
+    expect(markSchemeIssues(paper)).toEqual([]);
+  });
+
+  it("reports it once a caller asks for alignment", () => {
+    expect(markSchemeIssues(paper, { alignment: true }).map((i) => i.code))
+      .toContain("scheme_off_topic");
   });
 });

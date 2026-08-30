@@ -18,7 +18,20 @@ import { schemeAlignmentIssues } from "@/lib/practice/scheme-alignment";
  * same scheme.
  */
 export function markSchemeIssues(
-  paper: Extract<ParsedPracticePaperModelAnswer, { status: "ready" }>
+  paper: Extract<ParsedPracticePaperModelAnswer, { status: "ready" }>,
+  options: {
+    /**
+     * Also check that each scheme is about its question.
+     *
+     * Off by default because the design pass carries a placeholder scheme --
+     * every point reads "Provisional credit allocation; replaced before
+     * release" -- which shares no terms with any question and would be reported
+     * as eighteen schemes written for the wrong questions. A correct 96-mark
+     * design was refused as "a short practice set" exactly that way. Callers
+     * holding a real scheme pass true.
+     */
+    alignment?: boolean;
+  } = {}
 ): MarkSchemeIssue[] {
   const issues: MarkSchemeIssue[] = [];
   const schemes = new Map(paper.markScheme.items.map((item) => [item.questionId, item]));
@@ -45,7 +58,7 @@ export function markSchemeIssues(
     // Whether the scheme is about this question, not merely well-formed.
     // Everything above this line passed on a paper whose q5 asked what
     // interference is and whose q5 scheme answered STM encoding and capacity.
-    issues.push(...schemeAlignmentIssues(question, scheme));
+    if (options.alignment) issues.push(...schemeAlignmentIssues(question, scheme));
   }
   return issues;
 }

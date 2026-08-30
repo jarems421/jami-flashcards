@@ -1083,7 +1083,7 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
         draft.questions
       ),
     };
-    let schemeFaults = markSchemeIssues(schemeCandidate);
+    let schemeFaults = markSchemeIssues(schemeCandidate, { alignment: true });
     for (
       let repairRound = 1;
       repairRound <= 2 && schemeFaults.length > 0;
@@ -1146,7 +1146,7 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
           draft.questions
         ),
       };
-      schemeFaults = markSchemeIssues(schemeCandidate);
+      schemeFaults = markSchemeIssues(schemeCandidate, { alignment: true });
     }
     if (
       !schemeCandidate ||
