@@ -405,3 +405,46 @@ describe("holding a draft to the sections the profile lists", () => {
     expect(built.get("Quantitative")).toBe(12);
   });
 });
+
+/**
+ * Batching the paper the profile actually describes.
+ *
+ * The verified AQA Psychology Paper 1 profile records the June 2022 tariffs as
+ * A 3+1+4+16, B 2+2+4+16, C 2+2+4+16, D 6+3+2+1+4+8 -- eighteen questions, three
+ * of them 16-mark extended answers. No run has reached the mark-scheme stage
+ * with this shape, so what it partitions into is worth stating rather than
+ * discovering during a paid run.
+ */
+describe("batching the real Paper 1 shape", () => {
+  const paper1 = [3, 1, 4, 16, 2, 2, 4, 16, 2, 2, 4, 16, 6, 3, 2, 1, 4, 8].map(
+    (marks, index) => ({ id: `q${index + 1}`, marks })
+  );
+
+  it("gives every 16-mark extended question a batch of its own", () => {
+    const batches = partitionMarkSchemeQuestions(paper1);
+    for (const batch of batches) {
+      if (batch.some((question) => question.marks >= 12)) expect(batch).toHaveLength(1);
+    }
+    expect(batches.filter((batch) => batch[0].marks === 16)).toHaveLength(3);
+  });
+
+  it("keeps every question exactly once", () => {
+    const batches = partitionMarkSchemeQuestions(paper1);
+    expect(batches.flat().map((question) => question.id)).toEqual(
+      paper1.map((question) => question.id)
+    );
+  });
+
+  /** Twelve calls, each resumable from its checkpoint if the provider drops. */
+  it("costs twelve scheme calls", () => {
+    expect(partitionMarkSchemeQuestions(paper1)).toHaveLength(12);
+  });
+
+  /** No batch may exceed the marks cap, or the scheme truncates mid-answer. */
+  it("keeps a batch inside the marks cap", () => {
+    for (const batch of partitionMarkSchemeQuestions(paper1)) {
+      const marks = batch.reduce((sum, question) => sum + question.marks, 0);
+      if (batch.length > 1) expect(marks).toBeLessThanOrEqual(20);
+    }
+  });
+});
