@@ -130,6 +130,60 @@ export function schemeAlignmentIssues(
   }
 
   /**
+   * A scheme that credits what the question was supposed to name, when it named
+   * nothing.
+   *
+   * "Discuss resistance to social influence. [16 marks]" was marked against a
+   * scheme reading "a Level 4 response should discuss resistance through both
+   * explanations named in the stem". The stem names no explanations. A
+   * candidate who discusses two perfectly good ones the marker did not have in
+   * mind is capped, and a candidate who guesses right is not.
+   *
+   * Only fires where the question really is a bare instruction. A scheme
+   * referring to a scenario the question does spell out is doing its job.
+   */
+  const claimsStem = /named in the stem|in the stem|given in the question|stated in the question|named above|named in the question/i;
+  // Naming things looks like listing them. A bare instruction -- no list, no
+  // scenario, and few terms of its own -- names nothing, whatever the scheme
+  // says it named. Counting terms alone was not enough: "Discuss social support
+  // and locus of control as explanations of resistance to social influence"
+  // names both and still has only seven.
+  const namesSomething = /\band\b|,|:/.test(question.prompt) || asked.size >= 8;
+  if (claimsStem.test(prose) && !namesSomething) {
+    fail(
+      "scheme_assumes_unstated_stem",
+      "The scheme credits content it says the question names, and the question names none of it. " +
+        "Either name it in the question or stop requiring it."
+    );
+  }
+
+  /**
+   * The shape of the scheme against what the question asks for.
+   *
+   * An extended "discuss" needs levels: there is no list of points that makes a
+   * sixteen-mark argument creditable one tick at a time. A one-mark "identify"
+   * needs the opposite -- a banded scheme for a two-word answer gives a marker
+   * five descriptors to choose between for a fact that is either right or not.
+   */
+  const command = /\b(identify|name|state|define|outline|describe|discuss|evaluate)\b/i.exec(question.prompt);
+  const verb = command ? command[1].toLowerCase() : "";
+  const model = (item as { marking?: string }).marking;
+  if (["discuss", "evaluate"].includes(verb) && question.marks >= 10) {
+    if (model !== "banded" && model !== "weightedTraits") {
+      fail(
+        "scheme_shape_mismatch",
+        `A ${question.marks}-mark "${verb}" needs a banded or trait scheme; this one is ${model}.`
+      );
+    }
+  }
+  if (["identify", "name", "state"].includes(verb) && question.marks <= 2 && model === "banded") {
+    fail(
+      "scheme_shape_mismatch",
+      `A ${question.marks}-mark "${verb}" is right or wrong; a banded scheme cannot mark it.`
+    );
+  }
+
+  /**
    * Level numbers must rise with the marks they award.
    *
    * The published paper labelled its top band "Level 1" and its zero band

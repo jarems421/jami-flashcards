@@ -67,6 +67,16 @@ export type PracticePaperMarkPoint = {
   allow: string[];
   /** Explicitly not creditworthy. */
   reject: string[];
+  /**
+   * The assessment objective this mark is for, where the subject uses them.
+   *
+   * Separate from `code`, which is M/A/B -- method, accuracy, independent --
+   * and says how a mark behaves, not what it assesses. A psychology paper
+   * reporting its points as A and B says nothing about whether it is weighted
+   * correctly between knowledge, application and evaluation, and a paper whose
+   * AO balance cannot be computed cannot be checked against a specification.
+   */
+  assessmentObjective?: string;
   expected?: PracticePaperExpectedValue;
 };
 
@@ -76,6 +86,8 @@ export type PracticePaperMarkBand = {
   minMarks: number;
   maxMarks: number;
   descriptor: string;
+  /** The assessment objectives this band credits, where the subject uses them. */
+  assessmentObjectives?: string[];
 };
 
 export type PracticePaperMarkTrait = {
@@ -169,6 +181,27 @@ function expectedValue(value: unknown): PracticePaperExpectedValue | undefined {
   };
 }
 
+/**
+ * The assessment objectives a mark or band carries.
+ *
+ * Read from an explicit field where the model supplies one, and otherwise from
+ * the prose, which already says it: schemes come back written "AO1 (knowledge
+ * of the multi-store model): ..." and "AO2 only. The behaviour indicates ...".
+ * That text was there all along with nothing reading it, so a paper's AO
+ * balance could not be computed and could not be checked against a
+ * specification that states one.
+ */
+export function readAssessmentObjectives(...sources: unknown[]) {
+  const found = new Set<string>();
+  for (const source of sources) {
+    for (const value of Array.isArray(source) ? source : [source]) {
+      if (typeof value !== "string") continue;
+      for (const match of value.matchAll(/\bAO\s?([123])\b/gi)) found.add(`AO${match[1]}`);
+    }
+  }
+  return [...found].sort();
+}
+
 function normalizePoints(value: unknown, questionId: string, poolPoint: boolean) {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -190,6 +223,9 @@ function normalizePoints(value: unknown, questionId: string, poolPoint: boolean)
       essentialTerms: textList(candidate.essentialTerms, 8, 120),
       allow: textList(candidate.allow, 12, 200),
       reject: textList(candidate.reject, 12, 200),
+      ...(readAssessmentObjectives(candidate.assessmentObjective, candidate.ao, body)[0]
+        ? { assessmentObjective: readAssessmentObjectives(candidate.assessmentObjective, candidate.ao, body)[0] }
+        : {}),
       ...(expectedValue(candidate.expected)
         ? { expected: expectedValue(candidate.expected)! }
         : {}),
@@ -213,6 +249,9 @@ function normalizeBands(value: unknown, questionId: string, prefix = "L") {
     bands.push({
       id,
       label: text(candidate.label, 80) || `Level ${index + 1}`,
+      ...(readAssessmentObjectives(candidate.assessmentObjectives, candidate.ao, descriptor).length
+        ? { assessmentObjectives: readAssessmentObjectives(candidate.assessmentObjectives, candidate.ao, descriptor) }
+        : {}),
       minMarks,
       maxMarks: Math.max(minMarks, integer(candidate.maxMarks, minMarks)),
       descriptor,
@@ -587,4 +626,47 @@ export function meetsExpectedValue(
 ) {
   if (!Number.isFinite(candidate)) return false;
   return Math.abs(candidate - expected.value) <= expected.tolerance;
+}
+
+/**
+ * How a paper's marks divide between assessment objectives.
+ *
+ * A specification states its AO weightings, and until the schemes said which
+ * objective each mark was for there was nothing to compare them against: the
+ * paper reported its marks as A and B, which describe how a mark behaves, not
+ * what it assesses.
+ *
+ * Marks whose objective is unstated are counted as `unattributed` rather than
+ * spread across the others. A balance computed by guessing where the missing
+ * marks belong would look like a measurement and be an assumption.
+ */
+export function paperAssessmentObjectiveMarks(
+  items: readonly PracticePaperMarkSchemeItem[]
+) {
+  const totals = new Map<string, number>();
+  const add = (objective: string, marks: number) =>
+    totals.set(objective, (totals.get(objective) ?? 0) + marks);
+
+  for (const item of items) {
+    const record = item as unknown as Record<string, unknown>;
+    const points = (record.points as PracticePaperMarkPoint[]) ?? [];
+    if (points.length > 0) {
+      for (const point of points) {
+        add(point.assessmentObjective ?? "unattributed", point.marks);
+      }
+      continue;
+    }
+    // A banded question credits its objectives across the whole tariff rather
+    // than mark by mark, so its marks divide evenly between the objectives its
+    // bands name.
+    const bands = (record.bands as PracticePaperMarkBand[]) ?? [];
+    const objectives = [...new Set(bands.flatMap((band) => band.assessmentObjectives ?? []))];
+    if (objectives.length === 0) {
+      add("unattributed", item.maxMarks);
+      continue;
+    }
+    const each = item.maxMarks / objectives.length;
+    for (const objective of objectives) add(objective, each);
+  }
+  return Object.fromEntries([...totals.entries()].sort(([left], [right]) => left.localeCompare(right)));
 }

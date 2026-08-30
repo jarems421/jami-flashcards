@@ -965,6 +965,7 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
 - banded: include contiguous bands covering 0 through maxMarks exactly; do not add points.
 - weightedTraits: include at least two traits whose maxMarks sum exactly; each trait has contiguous bands from 0 through its own maximum.
 - competency: include explicit pass/merit/distinction competencies.
+- Where the format profile lists assessment objectives, give every point an assessmentObjective naming the one it credits ("AO1", "AO2" or "AO3"), and every band an assessmentObjectives array naming those it covers. code M/A/B says how a mark behaves; the assessment objective says what it assesses, and a paper cannot be checked against a specification's weighting without it.
 
     Use valid JSON only. Keep explanations concise enough for an examiner to apply consistently.`;
     const questionBatches = partitionMarkSchemeQuestions(draft.questions);

@@ -181,3 +181,74 @@ describe("level numbering", () => {
     ).not.toContain("bands_out_of_order");
   });
 });
+
+/**
+ * A scheme that credits what the question was supposed to name.
+ *
+ * The published paper asked "Discuss resistance to social influence. [16 marks]"
+ * and marked it against "both explanations named in the stem". The stem names
+ * none. A candidate who picks two good explanations the marker did not have in
+ * mind is capped for it.
+ */
+describe("a stem that names nothing", () => {
+  const check = (prompt: string, answer: string) =>
+    schemeAlignmentIssues(
+      { id: "q4", prompt, marks: 16 },
+      { questionId: "q4", maxMarks: 16, marking: "banded", answer, bands: [] } as never
+    ).map((issue) => issue.code);
+
+  it("flags a scheme requiring explanations the question never names", () => {
+    expect(
+      check(
+        "Discuss resistance to social influence.",
+        "A Level 4 response should discuss resistance through both explanations named in the stem."
+      )
+    ).toContain("scheme_assumes_unstated_stem");
+  });
+
+  it("accepts the same scheme once the question names them", () => {
+    expect(
+      check(
+        "Discuss social support and locus of control as explanations of resistance to social influence.",
+        "A top-band response should discuss both explanations named in the stem: social support and locus of control."
+      )
+    ).not.toContain("scheme_assumes_unstated_stem");
+  });
+});
+
+/** The scheme's shape against what the question asks a candidate to do. */
+describe("response type", () => {
+  const check = (prompt: string, marks: number, marking: string) =>
+    schemeAlignmentIssues(
+      { id: "q1", prompt, marks },
+      {
+        questionId: "q1",
+        maxMarks: marks,
+        marking,
+        answer: prompt.replace(/^w+/, "Award marks for"),
+        points: marking === "additive" ? [{ id: "1.1", marks, text: prompt, dep: [], ft: false }] : [],
+        bands: marking === "banded" ? [{ label: "Level 1", minMarks: 0, maxMarks: marks, descriptor: prompt }] : [],
+      } as never
+    ).map((issue) => issue.code);
+
+  it("refuses a tick list for a sixteen-mark discussion", () => {
+    expect(check("Discuss research into maternal deprivation.", 16, "additive"))
+      .toContain("scheme_shape_mismatch");
+  });
+
+  it("accepts levels for a sixteen-mark discussion", () => {
+    expect(check("Discuss research into maternal deprivation.", 16, "banded"))
+      .not.toContain("scheme_shape_mismatch");
+  });
+
+  it("refuses levels for a one-mark identify", () => {
+    expect(check("Identify the approach that emphasises unconscious drives.", 1, "banded"))
+      .toContain("scheme_shape_mismatch");
+  });
+
+  /** A six-mark "describe" is not an argument and not a fact; neither rule applies. */
+  it("says nothing about the tariffs in between", () => {
+    expect(check("Describe the working memory model.", 6, "additive"))
+      .not.toContain("scheme_shape_mismatch");
+  });
+});
