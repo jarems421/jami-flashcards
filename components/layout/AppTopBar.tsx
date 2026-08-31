@@ -1,12 +1,22 @@
 import Link from "next/link";
 import { type ReactNode } from "react";
-import { BrandMark } from "@/components/ui";
+import { BrandMark, ViewTabs, type ViewTabItem } from "@/components/ui";
 
 type AppTopBarProps = {
   title: string;
   backHref?: string;
   backLabel?: string;
   action?: ReactNode;
+  /**
+   * Other views of the surface this page is one view of.
+   *
+   * They belong to the header rather than to the page below it. Rendered as
+   * their own control they became a third bordered shell under the sidebar and
+   * this bar, all three carrying the same frame and the same two-line items,
+   * before a student reached any of their own work.
+   */
+  views?: ViewTabItem[];
+  viewsLabel?: string;
   className?: string;
 };
 
@@ -15,14 +25,23 @@ export default function AppTopBar({
   backHref,
   backLabel,
   action,
+  views,
+  viewsLabel,
   className = "",
 }: AppTopBarProps) {
+  // The tab row sits flush against the card's bottom edge, so its underline has
+  // an edge to sit on rather than floating above the padding.
+  const hasViews = Boolean(views && views.length > 0);
   return (
     <div
       className={className}
       style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.45rem)" }}
     >
-      <div className="app-topbar rounded-xl border-[1.5px] border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-3 py-3 shadow-topbar backdrop-blur-xl sm:rounded-2xl sm:px-4">
+      <div
+        className={`app-topbar overflow-hidden rounded-xl border-[1.5px] border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-3 pt-3 shadow-topbar backdrop-blur-xl sm:rounded-2xl sm:px-4 ${
+          hasViews ? "pb-0" : "pb-3"
+        }`}
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <BrandMark size="lg" />
@@ -56,6 +75,10 @@ export default function AppTopBar({
             )}
           </div>
         </div>
+
+        {views && hasViews ? (
+          <ViewTabs items={views} label={viewsLabel ?? `${title} views`} />
+        ) : null}
       </div>
     </div>
   );

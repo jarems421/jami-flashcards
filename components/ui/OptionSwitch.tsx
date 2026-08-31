@@ -12,7 +12,7 @@ export type OptionSwitchOption<Value extends string> = {
 /**
  * Picks one of two or three ways of doing the same thing.
  *
- * Distinct from `SegmentedControl`, which switches between *views* and is built
+ * Distinct from `ViewTabs`, which switches between *views* and is built
  * from links so each has its own address. This switches a *value* inside a
  * form, where there is no address to go to and the choice is not made until the
  * form is submitted.

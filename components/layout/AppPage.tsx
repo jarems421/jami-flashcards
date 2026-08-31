@@ -2,6 +2,7 @@
 
 import { type ReactNode } from "react";
 import AppTopBar from "@/components/layout/AppTopBar";
+import type { ViewTabItem } from "@/components/ui";
 
 type AppPageWidth = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "study";
 
@@ -10,6 +11,9 @@ type AppPageProps = {
   backHref?: string;
   backLabel?: string;
   action?: ReactNode;
+  /** Sibling views of this surface, shown along the bottom of the top bar. */
+  views?: ViewTabItem[];
+  viewsLabel?: string;
   children: ReactNode;
   width?: AppPageWidth;
   className?: string;
@@ -32,6 +36,8 @@ export default function AppPage({
   backHref,
   backLabel,
   action,
+  views,
+  viewsLabel,
   children,
   width = "xl",
   className = "",
@@ -52,6 +58,8 @@ export default function AppPage({
             backHref={backHref}
             backLabel={backLabel}
             action={action}
+            views={views}
+            viewsLabel={viewsLabel}
           />
         </div>
         <div className={contentClassName}>{children}</div>

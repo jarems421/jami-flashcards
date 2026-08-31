@@ -34,34 +34,34 @@ export default function FolderObjectCard({
   const preset = getObjectColorPreset(color);
   const content = (
     <div
-      className={`group mx-auto flex h-full ${compact ? "min-h-[6.4rem] max-w-[5.8rem] px-1.5 py-2" : "min-h-[8.75rem] max-w-[7.25rem] px-2 py-2.5"} w-full cursor-pointer flex-col items-center rounded-lg border text-center transition duration-fast active:scale-[0.985] ${
+      className={`group mx-auto flex h-full ${compact ? "min-h-[7.1rem] max-w-[6.5rem] px-1.5 py-2" : "min-h-[9.75rem] max-w-[8.35rem] px-2 py-2.5"} w-full cursor-pointer flex-col items-center rounded-lg border text-center transition duration-fast active:scale-[0.985] ${
         selected
           ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] shadow-e2"
           : "border-transparent bg-transparent hover:-translate-y-0.5 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]"
       } ${className}`}
     >
-      <div className={`relative mx-auto w-full ${compact ? "h-[4rem] max-w-[5rem]" : "h-[5.5rem] max-w-[6.7rem]"}`}>
+      <div className={`relative mx-auto w-full ${compact ? "h-[4.6rem] max-w-[5.75rem]" : "h-[6.45rem] max-w-[7.85rem]"}`}>
         <div
-          className={`absolute left-[13%] right-[10%] top-[13%] rounded-t-sm border border-black/10 ${compact ? "h-[2rem]" : "h-[2.8rem]"}`}
+          className={`absolute left-[13%] right-[10%] top-[13%] rounded-t-sm border border-black/10 ${compact ? "h-[2.3rem]" : "h-[3.3rem]"}`}
           style={{
             backgroundColor: preset.paper,
           }}
         />
         <div
-          className={`absolute left-[9%] top-[7%] w-[39%] rounded-t-sm border border-black/10 ${compact ? "h-[1.15rem]" : "h-[1.55rem]"}`}
+          className={`absolute left-[9%] top-[7%] w-[39%] rounded-t-sm border border-black/10 ${compact ? "h-[1.3rem]" : "h-[1.8rem]"}`}
           style={{
             backgroundColor: preset.light,
           }}
         />
         <div
-          className={`absolute inset-x-[3%] bottom-0 rounded-sm border border-black/15 transition-transform duration-fast group-hover:-rotate-[0.35deg] ${compact ? "h-[2.9rem]" : "h-[4rem]"}`}
+          className={`absolute inset-x-[3%] bottom-0 rounded-sm border border-black/15 transition-transform duration-fast group-hover:-rotate-[0.35deg] ${compact ? "h-[3.35rem]" : "h-[4.7rem]"}`}
           style={{
             backgroundColor: preset.base,
             boxShadow: "0 8px 16px rgba(5, 8, 18, 0.22)",
           }}
         >
           <div className="absolute inset-x-0 top-1/2 flex -translate-y-1/2 justify-center">
-            <ObjectIcon icon={icon} className={`${compact ? "h-5 w-5" : "h-6 w-6"} text-white/88`} />
+            <ObjectIcon icon={icon} className={`${compact ? "h-6 w-6" : "h-7 w-7"} text-white/88`} />
           </div>
         </div>
       </div>
