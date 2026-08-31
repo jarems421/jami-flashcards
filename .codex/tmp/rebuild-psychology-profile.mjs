@@ -72,7 +72,21 @@ const candidate = {
     "Every section closes with one extended question worth 8 or 16 marks, and carries no other question above 7.",
     "Which sections take the 16 and which take the 8 varies by sitting: in June 2022 and June 2023 sections A to C closed with 16 and D with 8; in November 2021 section A closed with 8 and section D with 16.",
     "Observed section tariffs. June 2022: 3+1+4+16, 2+2+4+16, 2+2+4+16, 6+3+2+1+4+8. June 2023: 2+6+16, 2+2+4+16, 4+4+16, 4+5+1+2+4+8. November 2021: 4+6+2+4+8, 4+4+16, 1+1+2+5+7+8, 2+2+4+16.",
-    "Build each section to 24 marks exactly, choosing a shape like one of those rather than copying a sequence.",
+    /**
+     * A sequence to copy, not a shape to imitate.
+     *
+     * Removing "exactly 4, 4, 4 and 6 questions" made this profile more
+     * truthful and the papers worse: three runs had produced 24/24/24/24 and
+     * the next produced 26/28/24/18. The counts were not true across sittings,
+     * and they were doing real work.
+     *
+     * The variation above is honest and stays. What the designer needs on top
+     * of it is something concrete to land on, which is the same finding as the
+     * maths paper: told to match a shape it computes and drifts, told to use a
+     * sequence it copies. Accuracy about the component and usefulness to the
+     * generator are not the same thing, and the profile has to carry both.
+     */
+    "Unless the request says otherwise, build section A as 3+1+4+16, B as 2+2+4+16, C as 2+2+4+16 and D as 6+3+2+1+4+8. That is one real sitting, each section totalling exactly 24. Do not resize a part to make the arithmetic work: every section must be exactly 24 marks.",
   ],
   confidence: "medium",
   knownIssues: [

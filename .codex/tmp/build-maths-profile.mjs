@@ -93,7 +93,22 @@ const candidate = {
     "Across four sittings the paper carries 33 to 37 mark-bearing parts, always summing to exactly 80.",
     "Every part is worth 1 to 5 marks. Across those four papers the sizes appear in roughly the ratio 1 mark 32%, 2 marks 25%, 3 marks 26%, 4 marks 14%, 5 marks 3%.",
     "Parts worth 4 or more marks sit in the last third: their mean position across the four papers is 0.64 to 0.79 of the way through.",
-    "Build a run of tariffs that sums to exactly 80 before writing any question. One real sitting ran " + TARIFFS.join("+") + " = 80; match that shape rather than that sequence.",
+    /**
+     * The sequence to use, not a shape to imitate.
+     *
+     * "Match that shape" left the designer computing: it returned 93 marks
+     * across 30 parts, and the retry 51 parts with marks missing entirely.
+     * Thirty-five numbers have to sum to exactly 80 and there is no section
+     * total to check against halfway, which is the arithmetic psychology never
+     * has to do -- four blocks of 24 with four questions each is a far smaller
+     * sum. What worked there was an explicit per-section sequence, and the
+     * whole-paper equivalent is this one.
+     *
+     * A tariff pattern is structure, not content: reusing it copies how the
+     * marks are laid out and none of the questions.
+     */
+    "Use exactly this tariff sequence, in this order, one mark-bearing part each: " +
+      TARIFFS.join(", ") + ". They sum to 80. Do not add, drop or resize a part.",
   ],
   commandWords: [
     "Work out", "Calculate", "Solve", "Simplify", "Expand", "Factorise",
