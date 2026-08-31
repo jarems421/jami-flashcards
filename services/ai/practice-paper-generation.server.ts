@@ -1084,6 +1084,18 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
       ),
     };
     let schemeFaults = markSchemeIssues(schemeCandidate, { alignment: true });
+    /**
+     * The repaired items, carried from one round to the next.
+     *
+     * This used to be reset to the batches' original output at the top of every
+     * round, so round two threw away everything round one had fixed and started
+     * again from the first draft, repairing only the faults round one had left.
+     * Two runs show it exactly: ten issues, then one, then nine; and nine, then
+     * two, then eight. The second round always ends near where the first began,
+     * because it is repairing the same scheme a second time rather than the
+     * scheme the first round produced.
+     */
+    let mergedItems: unknown[] = [...generatedItems];
     for (
       let repairRound = 1;
       repairRound <= 2 && schemeFaults.length > 0;
@@ -1100,7 +1112,6 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
       const repairQuestions = draft.questions.filter((question) =>
         affectedIds.size === 0 || affectedIds.has(question.id)
       );
-      let mergedItems = [...generatedItems];
       const repairBatches = partitionMarkSchemeQuestions(repairQuestions);
       for (let index = 0; index < repairBatches.length; index += 1) {
         const wave = repairBatches.slice(index, index + 1);
@@ -1167,6 +1178,24 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
 
     let finalPaper: ParsedPracticePaperModelAnswer = schemeCandidate;
     await updateInternalJobStage(uid, auth.internalJobId, "auditing");
+    /**
+     * The document the audit is about to judge.
+     *
+     * Every model response is captured and none of the inputs were, so when the
+     * auditor reported that seventeen of eighteen questions had no marking
+     * guidance, there was no way to tell whether it had hallucinated or had
+     * genuinely been handed a paper missing its schemes. Replaying the same
+     * model, provider, cap and JSON mode over the reconstructed paper found all
+     * three swapped schemes and invented nothing, which means the production
+     * failure was probably about what it was sent -- and that is the one thing
+     * that was not kept.
+     */
+    captureGenerationPass({
+      pass: "paper_audit_input",
+      role: "supervisor",
+      modelName: "n/a",
+      text: JSON.stringify(schemeCandidate),
+    });
     const auditPass = await runPass({
       name: "paper_audit",
       taskClass: "important",
