@@ -264,6 +264,22 @@ function generationPrompt(input: {
   const assetTypes = paperImagesEnabled
     ? '"table" | "graph" | "diagram" | "formula_sheet" | "source_extract" | "image" | "illustration"'
     : '"table" | "graph" | "diagram" | "formula_sheet" | "source_extract"';
+  /**
+   * How a diagram is drawn.
+   *
+   * A labelled figure has to be exact -- angles that sum, plotted points that
+   * match the table beside them, a scale that is true -- and those are stated,
+   * not imagined. An image model returns something that looks right and
+   * measures wrong, which nothing downstream can catch and no student can
+   * either. SVG writes the coordinates down.
+   */
+  const svgInstruction =
+    "A diagram asset's content may be SVG, and should be where the figure carries measurements: " +
+    "start at <svg>, give it a viewBox, and draw with path, line, polyline, polygon, rect, circle, " +
+    "ellipse and text only. No script, foreignObject, image, use, style, external references or " +
+    "event handlers -- they are stripped and the diagram falls back to its text description. Label " +
+    "every value a candidate needs with a <text> element, and give altText that states the same " +
+    "figure in words for a reader who cannot see it.";
   const rasterInstruction = paperImagesEnabled
     ? "Use image/illustration only for an original raster stimulus that cannot be expressed accurately as a table, graph or labelled text diagram, with no more than eight across the paper."
     : "Raster generation is unavailable. Every required visual must be represented completely as a table, graph or labelled text diagram.";
@@ -291,7 +307,8 @@ Use sources by authority, not equally:
 
 If the qualification/module, component, tier, or exam format is genuinely ambiguous and the ambiguity would materially change the paper, return status "needs_clarification" and ask exactly one concise question. Do not ask for information already supported by the sources or study-level default.
 
-Otherwise return status "ready". Generate original questions matching the inferred format; never copy a past-paper question. Add supporting material only when the assessment style calls for it: concise data tables, graph data, text-described diagrams, formula sheets, original source extracts, or genuinely necessary raster stimuli. ${rasterInstruction} Keep every asset self-contained and accessible. Keep wording concise and candidate-facing. Return an empty markScheme.items array because a separate pass builds the hidden marking guide after the paper is fixed.
+Otherwise return status "ready". Generate original questions matching the inferred format; never copy a past-paper question. Add supporting material only when the assessment style calls for it: concise data tables, graph data, text-described diagrams, formula sheets, original source extracts, or genuinely necessary raster stimuli. ${rasterInstruction}
+${svgInstruction} Keep every asset self-contained and accessible. Keep wording concise and candidate-facing. Return an empty markScheme.items array because a separate pass builds the hidden marking guide after the paper is fixed.
 
 Return JSON only in this shape:
 {

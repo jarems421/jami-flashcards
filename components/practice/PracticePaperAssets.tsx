@@ -1,4 +1,5 @@
 import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
+import { looksLikeSvg, sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 import { useEffect, useState } from "react";
 import { getStorageFileDownloadUrl } from "@/services/firebase/storage-files";
 
@@ -128,6 +129,36 @@ function Graph({ content, altText }: { content: string; altText: string }) {
   );
 }
 
+/**
+ * A diagram, drawn where it is drawable and described where it is not.
+ *
+ * The designer may answer with SVG, because a labelled figure has to be exact:
+ * angles that sum, points that match the table beside them, a scale that is
+ * true. Everything it sends goes through the sanitiser first, and anything that
+ * does not survive falls back to being read as text -- which is what every
+ * diagram did before, so the floor is unchanged.
+ */
+function DiagramAsset({ content, altText, title }: { content: string; altText?: string; title: string }) {
+  const drawn = looksLikeSvg(content) ? sanitizeSvgDiagram(content) : null;
+  if (drawn?.ok) {
+    return (
+      <div
+        role="img"
+        aria-label={altText || title}
+        className="mx-auto max-w-full overflow-x-auto rounded-lg bg-[var(--color-surface-page)] p-3 [&>svg]:mx-auto [&>svg]:h-auto [&>svg]:max-w-full"
+        // Sanitised above: rebuilt from an element and attribute allowlist,
+        // with no script, no foreignObject, no href and no event handlers.
+        dangerouslySetInnerHTML={{ __html: drawn.svg }}
+      />
+    );
+  }
+  return (
+    <div role="img" aria-label={altText || title} className="rounded-lg bg-[var(--color-glass-subtle)] p-3 text-center text-xs leading-6 whitespace-pre-wrap">
+      {content}
+    </div>
+  );
+}
+
 export default function PracticePaperAssets({ assets }: { assets: PracticePaperQuestionAsset[] }) {
   if (assets.length === 0) return null;
   return (
@@ -178,7 +209,7 @@ export default function PracticePaperAssets({ assets }: { assets: PracticePaperQ
             ) : asset.type === "graph" ? (
               <Graph content={asset.content} altText={asset.altText} />
             ) : asset.type === "diagram" ? (
-              <div role="img" aria-label={asset.altText || asset.title} className="rounded-lg bg-[var(--color-glass-subtle)] p-3 text-center text-xs leading-6 whitespace-pre-wrap">{asset.content}</div>
+              <DiagramAsset content={asset.content} altText={asset.altText} title={asset.title} />
             ) : (asset.type === "image" || asset.type === "illustration") && asset.storagePath ? (
               <PrivatePaperImage asset={asset} />
             ) : (
