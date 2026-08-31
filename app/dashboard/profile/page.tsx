@@ -267,77 +267,91 @@ export default function ProfilePage() {
       width="2xl"
       contentClassName="space-y-4 sm:space-y-6"
     >
-      <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)] lg:items-start">
-        <Card id="profile" tone="warm" padding="lg">
-          <SectionHeader
-            eyebrow="Profile"
-            title="How you appear in Jami"
-            description="Your photo and display name are separate from the details you use to sign in."
+      {/*
+        One column, ordered by what the settings are about: who you are, how
+        Jami looks and behaves, what it does, and finally the controls that end
+        a session or an account.
+
+        The identity row used to be a tall two-column grid whose left side held
+        only the photo, so a short photo column sat beside a much taller field
+        column and left a pool of dead space under the bubble. The photo and the
+        name it belongs to are now one centred row that ends where the photo
+        ends, and the field that was making the other column tall spans the card
+        underneath it.
+      */}
+      <Card id="profile" tone="warm" padding="lg">
+        <SectionHeader
+          eyebrow="Profile"
+          title="How you appear in Jami"
+          description="Your photo and display name are separate from the details you use to sign in."
+        />
+
+        <div className="mt-6 flex min-w-0 flex-col items-center gap-5 text-center sm:flex-row sm:items-center sm:gap-7 sm:text-left">
+          <ProfilePhotoEditor
+            userId={user.uid}
+            displayName={displayName}
+            fallbackPhotoURL={user.photoURL}
           />
-
-          <div className="mt-6 grid min-w-0 gap-6 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start">
-            <ProfilePhotoEditor
-              userId={user.uid}
-              displayName={displayName}
-              fallbackPhotoURL={user.photoURL}
-            />
-
-            <div className="min-w-0">
-              <div className="min-w-0 border-b border-[var(--color-border)] pb-5">
-                <div className="truncate text-xl font-medium text-text-primary">
-                  {displayName}
-                </div>
-                {user.email ? (
-                  <div className="mt-1 truncate text-sm text-text-muted">
-                    {user.email}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="mt-5 space-y-2">
-                <Input
-                  label="Name in Jami"
-                  value={usernameInput}
-                  onChange={(event) => {
-                    setUsernameInput(event.target.value);
-                    setUsernameSaved(false);
-                    if (usernameError) {
-                      setUsernameError(null);
-                    }
-                  }}
-                  maxLength={MAX_USERNAME_LENGTH}
-                  placeholder="How your name appears in Jami"
-                  disabled={loadingUsername || savingUsername}
-                />
-                <p className="text-xs leading-5 text-text-muted">
-                  Used around the app. Your sign-in details stay the same.
-                </p>
-                {usernameError ? (
-                  <p className="text-xs text-rose-200">{usernameError}</p>
-                ) : null}
-                {usernameSaved ? (
-                  <p className="text-xs text-emerald-200">Name saved.</p>
-                ) : null}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void handleSaveUsername()}
-                  disabled={loadingUsername || savingUsername}
-                  className="mt-1 w-full justify-center sm:w-auto"
-                >
-                  {savingUsername ? "Saving..." : "Save name"}
-                </Button>
-              </div>
+          <div className="min-w-0">
+            <div className="truncate text-2xl font-medium text-text-primary">
+              {displayName}
             </div>
+            {user.email ? (
+              <div className="mt-1.5 truncate text-sm text-text-muted">
+                {user.email}
+              </div>
+            ) : null}
           </div>
-        </Card>
-
-        <div className="min-w-0 space-y-4 sm:space-y-6">
-          <StudyLevelPreferenceCard userId={user.uid} />
-          <ThemePreferenceCard />
-          <HowJamiWorksCard />
         </div>
+
+        <div className="mt-7 border-t border-[var(--color-border)] pt-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <Input
+              label="Name in Jami"
+              value={usernameInput}
+              onChange={(event) => {
+                setUsernameInput(event.target.value);
+                setUsernameSaved(false);
+                if (usernameError) {
+                  setUsernameError(null);
+                }
+              }}
+              maxLength={MAX_USERNAME_LENGTH}
+              placeholder="How your name appears in Jami"
+              disabled={loadingUsername || savingUsername}
+              containerClassName="min-w-0 flex-1 sm:max-w-sm"
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void handleSaveUsername()}
+              disabled={loadingUsername || savingUsername}
+              className="w-full justify-center sm:w-auto"
+            >
+              {savingUsername ? "Saving..." : "Save name"}
+            </Button>
+          </div>
+          <p className="mt-2.5 text-xs leading-5 text-text-muted">
+            Used around the app. Your sign-in details stay the same.
+          </p>
+          {usernameError ? (
+            <p className="mt-1.5 text-xs text-rose-200">{usernameError}</p>
+          ) : null}
+          {usernameSaved ? (
+            <p className="mt-1.5 text-xs text-emerald-200">Name saved.</p>
+          ) : null}
+        </div>
+      </Card>
+
+      {/*
+        The only pair on the page. Both are small, self-contained choices of
+        roughly the same weight, so they sit level; everything below is a
+        full-width card, which keeps the rhythm predictable rather than
+        alternating between one and two columns down the page.
+      */}
+      <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2 lg:items-start">
+        <StudyLevelPreferenceCard userId={user.uid} />
+        <ThemePreferenceCard />
       </div>
 
       <TutorialAccountCard />
@@ -345,6 +359,8 @@ export default function ProfilePage() {
       <section id="reminders" aria-label="Study reminders">
         <NotificationSettingsCard userId={user.uid} />
       </section>
+
+      <HowJamiWorksCard />
 
       <Card id="account-actions" padding="lg">
         <SectionHeader

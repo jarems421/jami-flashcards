@@ -1,4 +1,4 @@
-/** Structurally what `SegmentedControl` renders, without reaching into it. */
+/** Structurally what `ViewTabs` renders, without reaching into it. */
 export type TutorView = {
   href: string;
   label: string;

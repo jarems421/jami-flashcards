@@ -68,10 +68,11 @@ import type { NotebookImageRef } from "@/lib/workspace/notebooks";
  * before it plausibly is. The last one lands well inside the 45s timeout.
  */
 const WAITING_LABELS: Array<{ text: string; after: number }> = [
-  { text: "Jami is thinking", after: 0 },
-  { text: "Cooking something up", after: 4_000 },
-  { text: "Still going", after: 9_000 },
-  { text: "Nearly there", after: 18_000 },
+  { text: "Jami is locking in", after: 0 },
+  { text: "Cooking", after: 4_000 },
+  { text: "Ok this one is actually hard", after: 9_000 },
+  { text: "Reading it again, properly this time", after: 18_000 },
+  { text: "Nearly there, promise", after: 28_000 },
 ];
 
 export type JamiAssistantQuickAction =
@@ -975,10 +976,10 @@ export default function JamiAssistantDrawer({
                       <span key={waitingLabel} className="ai-waiting-label inline-block">
                         {waitingLabel}
                       </span>
-                      <span className="inline-flex gap-1" aria-hidden="true">
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:120ms]" />
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:240ms]" />
+                      <span className="ai-thinking-dots" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
                       </span>
                     </span>
                   </div>

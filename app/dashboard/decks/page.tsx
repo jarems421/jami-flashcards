@@ -19,7 +19,7 @@ import { loadUserCards } from "@/services/study/cards";
 import { getDeckCardCounts, type DeckCounts } from "@/lib/study/deck-counts";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import AppPage from "@/components/layout/AppPage";
-import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, SegmentedControl, Skeleton, StatTile } from "@/components/ui";
+import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
 import { FLASHCARD_VIEWS, FLASHCARDS_TITLE } from "@/lib/app/flashcard-views";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
@@ -204,6 +204,8 @@ export default function DecksPage() {
       <Refreshable onRefresh={handleRefresh}>
         <AppPage
           title={FLASHCARDS_TITLE}
+          views={FLASHCARD_VIEWS}
+          viewsLabel="Flashcard views"
           backHref="/dashboard"
           backLabel="Today"
           width="2xl"
@@ -215,7 +217,6 @@ export default function DecksPage() {
           }
           contentClassName="space-y-4 sm:space-y-6"
         >
-          <SegmentedControl items={FLASHCARD_VIEWS} label="Flashcard views" />
           <FeedbackBanner
             type="error"
             message={loadError}
@@ -246,13 +247,14 @@ export default function DecksPage() {
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
         title={FLASHCARDS_TITLE}
+        views={FLASHCARD_VIEWS}
+        viewsLabel="Flashcard views"
         backHref="/dashboard"
         backLabel="Today"
         width="2xl"
         action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
         contentClassName="space-y-4 sm:space-y-6"
       >
-        <SegmentedControl items={FLASHCARD_VIEWS} label="Flashcard views" />
         {loadError ? (
           <FeedbackBanner
             type="error"

@@ -50,7 +50,7 @@ describe("decks and cards are one surface", () => {
 
   it("shows each view from the other, under one name", () => {
     for (const page of [decksPage, cardsPage]) {
-      expect(page).toContain("<SegmentedControl items={FLASHCARD_VIEWS}");
+      expect(page).toContain("views={FLASHCARD_VIEWS}");
       expect(page).toContain("FLASHCARDS_TITLE");
     }
     expect(FLASHCARDS_TITLE).toBe("Flashcards");

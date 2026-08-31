@@ -31,7 +31,7 @@ import SourceComposerDialog from "@/components/library/SourceComposerDialog";
 import SourceDetailsWorkflow from "@/components/library/SourceDetailsWorkflow";
 import SourceDraftWorkflow from "@/components/library/SourceDraftWorkflow";
 import SourceManagementDialogs from "@/components/library/SourceManagementDialogs";
-import { Button, EmptyState, FeedbackBanner, SegmentedControl, Skeleton } from "@/components/ui";
+import { Button, EmptyState, FeedbackBanner, Skeleton } from "@/components/ui";
 import {
   readSourcePanelLink,
   TUTOR_TITLE,
@@ -283,9 +283,14 @@ export default function LibraryPage() {
 
   if (loading && !hasSuccessfulLoad) {
     return (
-      <AppPage title={TUTOR_TITLE} backHref="/dashboard" backLabel="Today">
+      <AppPage
+        title={TUTOR_TITLE}
+        views={TUTOR_VIEWS}
+        viewsLabel="Tutor views"
+        backHref="/dashboard"
+        backLabel="Today"
+      >
         <div className="space-y-4">
-          <SegmentedControl items={TUTOR_VIEWS} label="Tutor views" />
           <Skeleton className="h-16" />
           <Skeleton className="h-80" />
         </div>
@@ -295,9 +300,14 @@ export default function LibraryPage() {
 
   if (loadFailed && !hasSuccessfulLoad) {
     return (
-      <AppPage title={TUTOR_TITLE} backHref="/dashboard" backLabel="Today">
+      <AppPage
+        title={TUTOR_TITLE}
+        views={TUTOR_VIEWS}
+        viewsLabel="Tutor views"
+        backHref="/dashboard"
+        backLabel="Today"
+      >
         <div className="space-y-4">
-          <SegmentedControl items={TUTOR_VIEWS} label="Tutor views" />
           {feedback ? (
             <FeedbackBanner
               type={feedback.type}
@@ -324,6 +334,8 @@ export default function LibraryPage() {
   return (
     <AppPage
       title={TUTOR_TITLE}
+      views={TUTOR_VIEWS}
+      viewsLabel="Tutor views"
       backHref="/dashboard"
       backLabel="Today"
       width="study"
@@ -334,8 +346,6 @@ export default function LibraryPage() {
       }
       contentClassName="space-y-4"
     >
-      <SegmentedControl items={TUTOR_VIEWS} label="Tutor views" />
-
       {feedback &&
       !composerOpen &&
       !management.renameOpen &&

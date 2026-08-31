@@ -1,4 +1,4 @@
-/** Structurally what `SegmentedControl` renders, declared without reaching
+/** Structurally what `ViewTabs` renders, declared without reaching
  * into the component layer. */
 export type FlashcardView = {
   href: string;

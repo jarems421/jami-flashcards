@@ -96,7 +96,7 @@ describe("the tutor owns the sidebar entry sources used to have", () => {
       "/dashboard/library",
     ]);
     for (const page of [tutorPage, libraryPage]) {
-      expect(page).toContain("<SegmentedControl items={TUTOR_VIEWS}");
+      expect(page).toContain("views={TUTOR_VIEWS}");
       expect(page).toContain("TUTOR_TITLE");
     }
     expect(TUTOR_TITLE).toBe("Tutor");

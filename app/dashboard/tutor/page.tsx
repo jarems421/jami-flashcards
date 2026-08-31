@@ -13,8 +13,7 @@ import {
   IconBubble,
   JamiTutorIcon,
   SectionHeader,
-  SegmentedControl,
-  Skeleton,
+    Skeleton,
 } from "@/components/ui";
 import { useFeedback } from "@/hooks/useFeedback";
 import {
@@ -144,13 +143,13 @@ export default function TutorPage() {
   return (
     <AppPage
       title={TUTOR_TITLE}
+      views={TUTOR_VIEWS}
+      viewsLabel="Tutor views"
       backHref="/dashboard"
       backLabel="Today"
       width="3xl"
       contentClassName="space-y-4 sm:space-y-6"
     >
-      <SegmentedControl items={TUTOR_VIEWS} label="Tutor views" />
-
       {feedback ? (
         <FeedbackBanner
           type={feedback.type}
