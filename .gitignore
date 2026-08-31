@@ -67,3 +67,12 @@ next-env.d.ts
 
 # Scratch space for one-off analysis scripts.
 scratch/
+
+# Run artefacts from paper-generation pilots. Reconstructed papers, validator
+# dumps and model comparisons: reproducible from the captures, large, and
+# rewritten by every run.
+/final-paper.json
+/align-issues.json
+/auditor-comparison.json
+/inspect-out.txt
+/.codex/checkpoints/
