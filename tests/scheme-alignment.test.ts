@@ -30,23 +30,36 @@ describe("catching a scheme written for another question", () => {
     ).toContain("scheme_off_topic");
   });
 
-  /** q6: asked for an experimental design, answered a serial-position scenario. */
-  it("catches a scheme answering a different scenario", () => {
+  /**
+   * q6, the one this does not catch, kept honest.
+   *
+   * It asked for an experimental design over a study of 20 word pairs and was
+   * marked against a serial-position scheme about revising topics on a bus.
+   * The two share "first" and "later", so the zero-overlap rule lets it
+   * through. A rule loose enough to catch it -- any low fraction -- refused
+   * three correct schemes on the next paper, and the figures rule that did
+   * catch it also refused a correct scheme on correlation for not repeating
+   * "50 adults".
+   *
+   * So this asserts the gap rather than hiding it behind a fixture that
+   * happens to share nothing. A wrong scheme with a word or two in common with
+   * its question is not caught by anything here.
+   */
+  it("does not catch a wrong scheme that shares a word or two", () => {
     expect(
       codes(
         question({
           prompt:
             "A psychologist asked participants to learn a list of 20 word pairs. Half the participants " +
-            "then learned a second list of similar word pairs. Identify the experimental design used " +
-            "and give one advantage of this design.",
+            "then learned a second list of similar word pairs, and were later asked to recall the first list.",
         }),
         item({
           answer:
             "The first topics show the primacy effect because they were rehearsed and transferred to " +
-            "long-term memory; the last topics show the recency effect because they remain in short-term store.",
+            "long-term memory; the last topics show the recency effect because they remain in the short-term store.",
         })
       )
-    ).toContain("scheme_off_topic");
+    ).not.toContain("scheme_off_topic");
   });
 
   /**

@@ -12,27 +12,35 @@ import type { PracticePaperMarkSchemeItem } from "@/lib/practice/practice-papers
  *
  *   q5  asked what interference is; its scheme answered STM encoding and
  *       capacity, "acoustic, 7 +/- 2 items".
- *   q6  asked for an experimental design and one advantage; its scheme answered
- *       a serial-position scenario about revising topics on a bus.
+ *   q6  asked for an experimental design over a 20-word-pair study; its scheme
+ *       answered a serial-position scenario about revising topics on a bus.
  *   q3  asked which type of social influence a study-group remark shows; its
  *       scheme explained recycling, a head student, and 68% and 12% figures
  *       that appear nowhere in the question.
  *
  * A student sitting that paper is marked against an answer to a question they
- * were never asked. Nothing in the pipeline could see it, because every check
- * asked whether the scheme was well-formed and none asked what it was about.
+ * were never asked.
  *
- * The thresholds here are set from that paper: the three wrong schemes cover
- * 0.00, 0.12 and 0.30 of their question's distinctive terms, and the fifteen
- * right ones cover 0.46 to 1.00. The gap is wide and the cut sits inside it.
+ * The first version of this measured what fraction of a question's distinctive
+ * terms its scheme repeated. That worked on the paper it was built from and
+ * failed on the next one, refusing three correct schemes: "Outline the encoding
+ * and capacity of short-term memory" answered by "Encoding: acoustic; capacity:
+ * approximately 7 +/- 2 items", which is exactly right and repeats almost
+ * nothing, and a 16-mark obedience question whose scheme cited 100% from a real
+ * study. A right answer does not restate its question, and in this subject a
+ * scheme quotes research figures constantly.
+ *
+ * So the tests below are the narrow ones that separated the two papers rather
+ * than the general ones that looked reasonable. Each trades recall for
+ * precision on purpose: a false positive burns repair rounds and blocks a good
+ * paper, and this is not the only gate a scheme has to pass.
  */
 
 /**
  * Words too common to say what a question is about.
  *
  * Command words are deliberately here: "discuss" appearing in both a question
- * and its scheme is no evidence they concern the same topic, and counting it
- * lifts every score toward the threshold from below.
+ * and its scheme is no evidence they concern the same topic.
  */
 const COMMON = new Set([
   "which", "because", "there", "these", "those", "would", "could", "should",
@@ -73,14 +81,36 @@ function schemeProse(item: PracticePaperMarkSchemeItem) {
 }
 
 /**
- * Percentages the scheme states and the question does not.
+ * The question with its tariff removed.
  *
- * Only percentages. Matching bare numbers finds band boundaries and point ids
- * -- "11.2", "0-3" -- in almost every correct scheme, which is noise. A figure
- * a candidate is told to use, that they were never given, is a scenario from
- * somewhere else: the wrong scheme's 68% and 12% were caught by this and by
- * nothing else, its prose overlap being high enough to pass on its own.
+ * "[16 marks]" is not a figure a candidate is given to work with, and reading
+ * it as one makes every extended question look as though it carries data.
  */
+const withoutTariff = (prompt: string) =>
+  String(prompt ?? "")
+    .replace(/\[?\s*\d+\s*marks?\s*\]?/gi, " ")
+    /**
+     * And ages, which are description rather than data.
+     *
+     * "A researcher observed a mother and her 8-month-old infant" gives a
+     * scheme nothing it must quote back: a correct answer about interactional
+     * synchrony never mentions the eight, and two correct schemes were refused
+     * for it. "20 word pairs" is the other kind of number -- the study's own
+     * design, which a scheme answering that study does use.
+     */
+    .replace(/\b\d+[-\s]?(?:month|year|week|day)s?[-\s]?old\b/gi, " ");
+
+/**
+ * Does this question hand the candidate a situation?
+ *
+ * A scenario is where a scheme's figures have to match the question's, because
+ * both describe the same invented situation. A bare "Discuss research into
+ * obedience" carries no situation, and its scheme citing a study that found
+ * 100% obedience is doing its job. The wrong schemes sat under questions of 241
+ * and 361 characters; the correct schemes wrongly refused sat under 70 and 110.
+ */
+const carriesScenario = (prompt: string) => withoutTariff(prompt).trim().length >= 140;
+
 const percentages = (text: string) =>
   new Set((String(text ?? "").match(/\d+(?:\.\d+)?\s?%/g) ?? []).map((value) => value.replace(/\s/g, "")));
 
@@ -101,32 +131,63 @@ export function schemeAlignmentIssues(
   const prose = schemeProse(item);
   const asked = distinctive(question.prompt);
   const answered = distinctive(prose);
+  const scenario = carriesScenario(question.prompt);
 
   /**
-   * From two marks up. A one-mark "identify" is answered in two words -- "the
-   * psychodynamic approach" -- and legitimately repeats almost nothing of the
-   * question; the paper's own 1-mark items score 0.10 and 0.57 and are both
-   * correct. Below the tariff where a scheme has to explain itself, this
-   * measure says nothing.
+   * Nothing at all in common.
+   *
+   * Not a low fraction -- none. The wrong scheme for "Outline what is meant by
+   * interference as an explanation of forgetting" shared zero of its four
+   * terms; the correct scheme for "Outline the encoding and capacity of
+   * short-term memory" shares two of eight and was refused by the fraction
+   * test. Two schemes on the same topic always share some word; two schemes for
+   * different questions often share none.
    */
   if (question.marks >= 2 && asked.size >= 3) {
     const shared = [...asked].filter((word) => answered.has(word));
-    const coverage = shared.length / asked.size;
-    if (coverage < 0.38) {
+    if (shared.length === 0) {
       fail(
         "scheme_off_topic",
-        `The scheme for a ${question.marks}-mark question shares ${shared.length} of ${asked.size} ` +
-          `key terms with it (${(coverage * 100).toFixed(0)}%). It may belong to a different question.`
+        `The scheme for a ${question.marks}-mark question shares none of its ${asked.size} key terms. ` +
+          "It may belong to a different question."
       );
     }
   }
 
-  const invented = [...percentages(prose)].filter((value) => !percentages(question.prompt).has(value));
-  if (invented.length > 0) {
-    fail(
-      "scheme_foreign_figures",
-      `The scheme credits figures the question never gives: ${invented.join(", ")}.`
+  if (scenario) {
+    /**
+     * Figures in a scenario's scheme that the scenario never gave.
+     *
+     * The scheme crediting "68% of pupils reported recycling" against a
+     * question about a study group was caught by this. A scheme citing 100%
+     * obedience under "Discuss research into obedience" is quoting a study, and
+     * that question carries no scenario, so it is left alone.
+     */
+    const invented = [...percentages(prose)].filter(
+      (value) => !percentages(question.prompt).has(value)
     );
+    if (invented.length > 0) {
+      fail(
+        "scheme_foreign_figures",
+        `The scheme credits figures this scenario never gives: ${invented.join(", ")}.`
+      );
+    }
+
+    /**
+     * A scenario's own figures, ignored by its scheme, was tried here and
+     * removed.
+     *
+     * It caught the scheme about revising on a bus attached to a question about
+     * 20 word pairs, and it also refused a correct six-point scheme on
+     * correlation because the question said "50 adults" and the scheme -- quite
+     * properly -- never repeated the fifty. One true finding and one false one
+     * is not a rate at which a check may block a paper, and a sample size is
+     * not meaningfully different from an age. Stripping ages was enough to save
+     * two other correct schemes; there was no honest line left to draw here.
+     *
+     * The cost is real: a wrong scheme sharing one word with its question, as
+     * that one did, is no longer caught by anything.
+     */
   }
 
   /**
@@ -134,20 +195,9 @@ export function schemeAlignmentIssues(
    * nothing.
    *
    * "Discuss resistance to social influence. [16 marks]" was marked against a
-   * scheme reading "a Level 4 response should discuss resistance through both
-   * explanations named in the stem". The stem names no explanations. A
-   * candidate who discusses two perfectly good ones the marker did not have in
-   * mind is capped, and a candidate who guesses right is not.
-   *
-   * Only fires where the question really is a bare instruction. A scheme
-   * referring to a scenario the question does spell out is doing its job.
+   * scheme reading "both explanations named in the stem". The stem names none.
    */
   const claimsStem = /named in the stem|in the stem|given in the question|stated in the question|named above|named in the question/i;
-  // Naming things looks like listing them. A bare instruction -- no list, no
-  // scenario, and few terms of its own -- names nothing, whatever the scheme
-  // says it named. Counting terms alone was not enough: "Discuss social support
-  // and locus of control as explanations of resistance to social influence"
-  // names both and still has only seven.
   const namesSomething = /\band\b|,|:/.test(question.prompt) || asked.size >= 8;
   if (claimsStem.test(prose) && !namesSomething) {
     fail(
@@ -162,8 +212,7 @@ export function schemeAlignmentIssues(
    *
    * An extended "discuss" needs levels: there is no list of points that makes a
    * sixteen-mark argument creditable one tick at a time. A one-mark "identify"
-   * needs the opposite -- a banded scheme for a two-word answer gives a marker
-   * five descriptors to choose between for a fact that is either right or not.
+   * needs the opposite.
    */
   const command = /\b(identify|name|state|define|outline|describe|discuss|evaluate)\b/i.exec(question.prompt);
   const verb = command ? command[1].toLowerCase() : "";
@@ -187,9 +236,9 @@ export function schemeAlignmentIssues(
    * Level numbers must rise with the marks they award.
    *
    * The published paper labelled its top band "Level 1" and its zero band
-   * "Level 5" on every banded question. The ranges were right, so every
-   * structural check passed, and a marker reading "Level 5" awards the bottom
-   * of the scale for the best answer in front of them.
+   * "Level 5". The ranges were right, so every structural check passed, and a
+   * marker reading "Level 5" awards the bottom of the scale for the best answer
+   * in front of them.
    */
   const bands = (item as unknown as { bands?: { label?: string; minMarks: number }[] }).bands ?? [];
   const numbered = bands
