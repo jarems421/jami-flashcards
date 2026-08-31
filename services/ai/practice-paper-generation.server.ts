@@ -16,6 +16,7 @@ import {
   type ParsedPracticePaperModelAnswer,
 } from "@/lib/ai/practice-paper-generation";
 import { captureGenerationPass } from "@/lib/ai/generation-capture";
+import { ASSET_ROUTING_INSTRUCTION, assetRoutingIssues } from "@/lib/practice/asset-routing";
 import {
   forgetGenerationCheckpoint,
   questionFingerprint,
@@ -242,6 +243,24 @@ async function loadStudyContext(uid: string, folderId: string) {
   };
 }
 
+/**
+ * Whether an image model may be asked for a picture at all.
+ *
+ * Five flags, because generating pictures of exam material sends a prompt to a
+ * third party and costs money per image. This was read inside the prompt
+ * builder alone, so the routing check could not see the same gate it was
+ * meant to enforce.
+ */
+function paperRasterEnabled() {
+  return (
+    process.env.AI_PAPER_IMAGES_ENABLED === "true" &&
+    process.env.GEMINI_ENABLED === "true" &&
+    process.env.GEMINI_PRIVACY_APPROVED === "true" &&
+    process.env.GEMINI_QUALITY_GATE_PASSED === "true" &&
+    process.env.GEMINI_KILL_SWITCH !== "true"
+  );
+}
+
 function generationPrompt(input: {
   request: ReturnType<typeof parsePracticePaperGenerationRequest> & {};
   studyContext: NonNullable<Awaited<ReturnType<typeof loadStudyContext>>>;
@@ -255,13 +274,7 @@ function generationPrompt(input: {
       : request.focus === "weak_areas"
         ? "Give extra weight to weak areas described by the student"
         : `Custom focus: ${request.focusDetail || "follow the student's request"}`;
-  const paperImagesEnabled =
-    process.env.AI_PAPER_IMAGES_ENABLED === "true" &&
-    process.env.GEMINI_ENABLED === "true" &&
-    process.env.GEMINI_PRIVACY_APPROVED === "true" &&
-    process.env.GEMINI_QUALITY_GATE_PASSED === "true" &&
-    process.env.GEMINI_KILL_SWITCH !== "true";
-  const assetTypes = paperImagesEnabled
+  const assetTypes = paperRasterEnabled()
     ? '"table" | "graph" | "diagram" | "formula_sheet" | "source_extract" | "image" | "illustration"'
     : '"table" | "graph" | "diagram" | "formula_sheet" | "source_extract"';
   /**
@@ -280,7 +293,7 @@ function generationPrompt(input: {
     "event handlers -- they are stripped and the diagram falls back to its text description. Label " +
     "every value a candidate needs with a <text> element, and give altText that states the same " +
     "figure in words for a reader who cannot see it.";
-  const rasterInstruction = paperImagesEnabled
+  const rasterInstruction = paperRasterEnabled()
     ? "Use image/illustration only for an original raster stimulus that cannot be expressed accurately as a table, graph or labelled text diagram, with no more than eight across the paper."
     : "Raster generation is unavailable. Every required visual must be represented completely as a table, graph or labelled text diagram.";
   return `Create one original, assessment-accurate complete exam sitting. This pass fixes the candidate-visible paper structure only; do not write answers or a detailed marking guide yet.
@@ -308,7 +321,7 @@ Use sources by authority, not equally:
 If the qualification/module, component, tier, or exam format is genuinely ambiguous and the ambiguity would materially change the paper, return status "needs_clarification" and ask exactly one concise question. Do not ask for information already supported by the sources or study-level default.
 
 Otherwise return status "ready". Generate original questions matching the inferred format; never copy a past-paper question. Add supporting material only when the assessment style calls for it: concise data tables, graph data, text-described diagrams, formula sheets, original source extracts, or genuinely necessary raster stimuli. ${rasterInstruction}
-${svgInstruction} Keep every asset self-contained and accessible. Keep wording concise and candidate-facing. Return an empty markScheme.items array because a separate pass builds the hidden marking guide after the paper is fixed.
+${svgInstruction} ${ASSET_ROUTING_INSTRUCTION} Keep every asset self-contained and accessible. Keep wording concise and candidate-facing. Return an empty markScheme.items array because a separate pass builds the hidden marking guide after the paper is fixed.
 
 Return JSON only in this shape:
 {
@@ -838,6 +851,35 @@ export async function runPracticePaperGenerationRequest(
         ),
       });
       return Response.json(response);
+    }
+
+    /**
+     * Every asset is the kind of thing it should be.
+     *
+     * Two generators fail in opposite directions: an image model returns a
+     * usable micrograph no drawing could achieve, and a triangle whose marked
+     * 47 degrees measures sixty. Nothing downstream reads a picture, so a
+     * measured figure sent to an image model reaches a candidate as a question
+     * that cannot be answered from what is in front of them. Checked here,
+     * before an image is paid for rather than after.
+     */
+    const routing = draft.questions.flatMap((question) =>
+      assetRoutingIssues(question, { rasterEnabled: paperRasterEnabled() })
+    );
+    if (routing.length > 0) {
+      log.warn("paper_design.asset_routing", {
+        issueCount: routing.length,
+        issueCodes: Array.from(new Set(routing.map((issue) => issue.code))),
+      });
+      forgetGenerationCheckpoint({ pass: "paper_design", subject: sourceRefs });
+      forgetGenerationCheckpoint({ pass: "paper_design_total_retry", subject: sourceRefs });
+      await refund("asset_routing");
+      return failure(
+        "Jami asked for the wrong kind of figure: " +
+          routing.slice(0, 3).map((issue) => issue.detail).join(" ") ,
+        422,
+        "asset_routing"
+      );
     }
 
     if (!isCompletePracticePaperCandidate(draft)) {
