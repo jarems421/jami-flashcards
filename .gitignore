@@ -76,3 +76,7 @@ scratch/
 /auditor-comparison.json
 /inspect-out.txt
 /.codex/checkpoints/
+
+# Local run logs from the dev server and the Firebase emulators.
+/emulators.log
+/next*.log
