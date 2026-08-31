@@ -25,7 +25,6 @@ import {
 import { createLogger } from "@/lib/observability/logger";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 
-const PROFILE_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 const CATALOGUE_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 import { measurePaperStructure, type MeasuredStructure } from "@/services/ai/paper-structure.server";
 
@@ -412,7 +411,22 @@ export async function researchExamFormatProfile(
   const now = options.now ?? Date.now();
   const existing = await loadProfileVersions(definition.profileId);
   const active = existing ? selectExamFormatVersion(existing.versions, new Date(now)) : undefined;
-  if (active && !options.force && now - active.retrievedAt < PROFILE_MAX_AGE_MS) return active;
+  /**
+   * Research runs when it is asked for, and not because a week has passed.
+   *
+   * This used to re-research anything older than seven days and repoint
+   * activeVersion at whatever came back. A profile built by reading four
+   * sittings would have been superseded by a thinner one a week later, without
+   * anybody asking for it and with the good version left in place but unused.
+   *
+   * There is a version of automatic refresh worth having -- specifications do
+   * change, and a profile can go stale in a way nobody notices. It is worth
+   * having once a refreshed profile is shown to be at least as good as the one
+   * it replaces, which is a comparison nothing here makes yet. Until then an
+   * explicit force is the only thing that overwrites a profile, and that is a
+   * button somebody presses.
+   */
+  if (active && !options.force) return active;
 
   let grounded = await generateGroundedResearch({
     sanitizedQuery: definition.officialQuery,
