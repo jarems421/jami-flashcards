@@ -3,6 +3,8 @@ export { default as Button } from "./Button";
 export { ButtonLink } from "./Button";
 export { default as Card } from "./Card";
 export { default as ConfirmDialog } from "./ConfirmDialog";
+export { default as ConstellationTrail } from "./ConstellationTrail";
+export { CONSTELLATION_TRAIL_LENGTH } from "./ConstellationTrail";
 export {
   Dialog,
   DialogBackdrop,
@@ -20,6 +22,11 @@ export { default as FeedbackBanner } from "./FeedbackBanner";
 export { default as IconBubble } from "./IconBubble";
 export { default as Input } from "./Input";
 export { default as JamiTutorIcon } from "./JamiTutorIcon";
+export {
+  NORTHERN_STAR_FACET_PATH,
+  NORTHERN_STAR_PATH,
+  northernStarTransform,
+} from "./NorthernStar";
 export { default as JamiSparklesIcon } from "./JamiSparklesIcon";
 export { default as PageHero } from "./PageHero";
 export { default as Textarea } from "./Textarea";

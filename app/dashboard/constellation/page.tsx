@@ -561,9 +561,11 @@ export default function ConstellationDashboardPage() {
                       key={star.id}
                       star={star}
                       label={
-                        goalsById[star.goalId]
-                          ? `Earned for a ${goalsById[star.goalId].targetCards}-card goal`
-                          : "Earned star"
+                        star.rewardKind === "onboarding"
+                          ? star.rewardLabel ?? "First study loop"
+                          : goalsById[star.goalId]
+                            ? `Earned for a ${goalsById[star.goalId].targetCards}-card goal`
+                            : "Earned star"
                       }
                       onDragStart={
                         canEditSelectedConstellation

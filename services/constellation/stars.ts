@@ -186,3 +186,101 @@ export async function saveStarPosition(
     "Save star position"
   );
 }
+
+export async function createOnboardingStarIfMissing(userId: string): Promise<
+  | { status: "awarded"; star: NormalizedStar }
+  | { status: "exists"; star: NormalizedStar }
+  | { status: "pending" }
+> {
+  const starsCollection = getStarsCollection(userId);
+  const starRef = doc(starsCollection, "onboarding-first-loop");
+  const existing = await withTimeout(
+    getDoc(starRef),
+    QUERY_MS,
+    "Load first-loop star"
+  );
+  if (existing.exists()) {
+    return {
+      status: "exists",
+      star: parseStarData(
+        existing.id,
+        existing.data() as Record<string, unknown>
+      ),
+    };
+  }
+
+  const activeConstellation = await getActiveOrCreateInitialConstellation(userId);
+  if (!activeConstellation || activeConstellation.starCount >= activeConstellation.maxStars) {
+    return { status: "pending" };
+  }
+
+  const constellationRef = doc(
+    db,
+    "users",
+    userId,
+    "constellations",
+    activeConstellation.id
+  );
+  const createdAt = Date.now();
+  const star = {
+    goalId: "",
+    constellationId: activeConstellation.id,
+    size: getStarRewardSize(1),
+    glow: 0.85,
+    color: "white",
+    presetId: "classic" as const,
+    rewardKind: "onboarding" as const,
+    rewardLabel: "First study loop",
+    position: {
+      x: 10 + Math.random() * 80,
+      y: 10 + Math.random() * 80,
+    },
+    createdAt,
+  };
+
+  const didCreate = await withTimeout(
+    runTransaction(db, async (transaction) => {
+      const [constellationSnapshot, starSnapshot] = await Promise.all([
+        transaction.get(constellationRef),
+        transaction.get(starRef),
+      ]);
+      if (!constellationSnapshot.exists() || starSnapshot.exists()) return false;
+      const data = constellationSnapshot.data() as Record<string, unknown>;
+      const currentCount =
+        typeof data[STAR_COUNT_FIELD] === "number"
+          ? (data[STAR_COUNT_FIELD] as number)
+          : activeConstellation.starCount;
+      const maxStars =
+        typeof data.maxStars === "number"
+          ? (data.maxStars as number)
+          : activeConstellation.maxStars;
+      if (currentCount >= maxStars) return false;
+      transaction.set(starRef, star);
+      transaction.update(constellationRef, {
+        [STAR_COUNT_FIELD]: currentCount + 1,
+      });
+      return true;
+    }),
+    CREATE_MS,
+    "Create first-loop star"
+  );
+
+  if (!didCreate) {
+    const after = await getDoc(starRef);
+    if (after.exists()) {
+      return {
+        status: "exists",
+        star: parseStarData(
+          after.id,
+          after.data() as Record<string, unknown>
+        ),
+      };
+    }
+    return { status: "pending" };
+  }
+
+  return {
+    status: "awarded",
+    star: parseStarData(starRef.id, star),
+  };
+}

@@ -22,6 +22,8 @@ export type Star = {
   position: StarPosition;
   createdAt: number;
   presetId?: StarPresetId;
+  rewardKind?: "goal" | "onboarding";
+  rewardLabel?: string;
 };
 
 export type NormalizedStar = Star & {
@@ -244,6 +246,8 @@ export function normalizeStar(star: {
   createdAt: number;
   position?: Partial<StarPosition>;
   presetId?: StarPresetId;
+  rewardKind?: "goal" | "onboarding";
+  rewardLabel?: string;
 }): NormalizedStar {
   const hasValidPosition =
     typeof star.position?.x === "number" &&
@@ -264,6 +268,8 @@ export function normalizeStar(star: {
     isLegacyStar: star.presetId === undefined,
     presetId:
       star.presetId ?? inferStarPresetIdFromLegacyValues(star.size, star.glow),
+    rewardKind: star.rewardKind ?? "goal",
+    rewardLabel: star.rewardLabel,
   };
 }
 
@@ -287,6 +293,11 @@ export function parseStarData(
     presetId:
       typeof data.presetId === "string"
         ? (data.presetId as StarPresetId)
+        : undefined,
+    rewardKind: data.rewardKind === "onboarding" ? "onboarding" : "goal",
+    rewardLabel:
+      typeof data.rewardLabel === "string"
+        ? data.rewardLabel.trim().slice(0, 120) || undefined
         : undefined,
   });
 }
