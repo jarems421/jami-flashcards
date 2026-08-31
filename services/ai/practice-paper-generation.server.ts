@@ -358,16 +358,34 @@ Where the authoritative format profile lists sections, set every question's sect
 sourceRefs must include only sources that materially informed the assessment profile, format, questions, marking guide, examiner insights, or grade guidance. For GCSE and A level, use the latest truly comparable official boundary as the main boundaries and add a historical median only from the same board, specification, tier/component and paper type across named years. Never mix incomparable papers. For university work, use the supplied rubric or otherwise give an estimated UK classification from percentage; do not invent institutional boundaries. Grade boundaries are official only when an authoritative source explicitly supplies them; otherwise label them estimated or return no boundaries. If status is needs_clarification, the paper fields may be empty arrays/strings, but all keys must still be present.`;
 }
 
-function parseJsonObject(value: string) {
+/**
+ * A model's response as an object, or an empty one when it is not.
+ *
+ * This threw. A mark-scheme batch came back as 33,000 characters of degenerate
+ * token soup -- " worldBopre child only () defaultULats minconfig tem
+ * recatingier static" -- twice on the same question, and the SyntaxError
+ * propagated out of the request and ended the paper. Ten batches were already
+ * banked and survived only because they were checkpointed.
+ *
+ * A batch that cannot be read is a case the pipeline already handles: it logs
+ * mark_scheme.batch_unreadable and retries it. Returning an empty object routes
+ * a collapsed response into that path instead of taking down the run around it,
+ * because one unusable answer should cost its own call and nothing else.
+ */
+export function parseJsonObject(value: string) {
   const normalized = value
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/, "");
   const start = normalized.indexOf("{");
   const end = normalized.lastIndexOf("}");
-  return JSON.parse(
+  try {
+    return JSON.parse(
     start >= 0 && end > start ? normalized.slice(start, end + 1) : normalized
-  ) as Record<string, unknown>;
+    ) as Record<string, unknown>;
+  } catch {
+    return {} as Record<string, unknown>;
+  }
 }
 
 function withProvisionalMarkScheme(value: string) {
