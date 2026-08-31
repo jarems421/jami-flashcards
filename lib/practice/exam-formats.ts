@@ -89,6 +89,8 @@ export type ExamFormatProfileVersion = {
   status: ExamFormatProfileStatus;
   verificationStatus: ExamFormatVerificationStatus;
   confidence: "low" | "medium" | "high";
+  /** Whether a person has read this profile against its sources. */
+  humanChecked?: boolean;
   issues: ExamFormatVerificationIssue[];
   sources: ExamFormatSourceReceipt[];
   effectiveFrom?: string;
@@ -430,7 +432,27 @@ export function normalizeExamFormatProfileVersion(
     formatSummary: text(raw.formatSummary, 1_500),
     status: raw.status === "announced" || raw.status === "retired" ? raw.status : "current",
     verificationStatus,
-    confidence: verificationStatus === "verified" ? "high" : verificationStatus === "conflicted" ? "low" : "medium",
+    ...(raw.humanChecked === true ? { humanChecked: true } : {}),
+    /**
+     * High confidence needs a person, not just a URL.
+     *
+     * This read "verified" the moment a specification and a paper were found
+     * and nothing contradicted arithmetically, and said nothing about whether
+     * the content was right. The AQA A-level Psychology profile named
+     * Approaches in Psychology as Paper 1 Section D -- which is Paper 2 -- and
+     * reported verified, high confidence, no issues, for as long as it stood.
+     * Its sources were real; nobody had read them.
+     *
+     * So structure passing its own arithmetic now earns medium, and only a
+     * recorded human check earns high. Every profile in the library drops to
+     * medium under this, which is the accurate reading of them.
+     */
+    confidence:
+      verificationStatus === "conflicted"
+        ? "low"
+        : verificationStatus === "verified" && raw.humanChecked === true
+          ? "high"
+          : "medium",
     issues,
     sources,
     effectiveFrom: text(raw.effectiveFrom, 40) || undefined,

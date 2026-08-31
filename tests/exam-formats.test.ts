@@ -46,11 +46,40 @@ describe("exam-format profiles", () => {
     expect(isOfficialExamBoardUrl("aqa", "https://www.ocr.org.uk/paper.pdf")).toBe(false);
   });
 
-  it("marks a structurally complete two-source profile as verified", () => {
+  /**
+   * Verified says its sources were found and its arithmetic closes. It does not
+   * say the content is right, and confidence must not pretend otherwise: the
+   * profile naming Approaches in Psychology as Paper 1 Section D -- which is
+   * Paper 2 -- reported verified, high confidence, no issues, with real sources
+   * nobody had read.
+   */
+  it("marks a structurally complete two-source profile as verified, at medium confidence", () => {
     const normalized = profile();
     expect(normalized?.verificationStatus).toBe("verified");
-    expect(normalized?.confidence).toBe("high");
+    expect(normalized?.confidence).toBe("medium");
     expect(buildPracticePaperBrief(normalized!).requiresConfirmation).toBe(false);
+  });
+
+  it("raises confidence to high only once a person has checked it", () => {
+    const checked = normalizeExamFormatProfileVersion(
+      { ...profile(), humanChecked: true } as never,
+      { profileId: "p1", board: "aqa", now: 1 }
+    );
+    expect(checked?.confidence).toBe("high");
+  });
+
+  /** A human tick cannot rescue a profile whose own figures disagree. */
+  it("does not let a human check override conflicting figures", () => {
+    const conflicted = normalizeExamFormatProfileVersion(
+      {
+        ...profile(),
+        humanChecked: true,
+        totalMarks: 96,
+        sections: [{ id: "A", title: "One", marks: 10 }, { id: "B", title: "Two", marks: 10 }],
+      } as never,
+      { profileId: "p1", board: "aqa", now: 1 }
+    );
+    expect(conflicted?.confidence).not.toBe("high");
   });
 
   it("keeps incomplete evidence visible as limited", () => {
