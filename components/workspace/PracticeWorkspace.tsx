@@ -213,7 +213,12 @@ export default function PracticeWorkspace() {
       action={
         <div className="flex items-center gap-2">
           <ButtonLink href="/dashboard/practice/new">New paper</ButtonLink>
-          <Button type="button" variant="secondary" onClick={() => setCreateFolderOpen(true)}>
+          <Button
+            type="button"
+            variant="secondary"
+            data-tutorial-target="create-folder"
+            onClick={() => setCreateFolderOpen(true)}
+          >
             Create folder
           </Button>
         </div>
@@ -347,9 +352,8 @@ export default function PracticeWorkspace() {
             ) : (
               <EmptyState
                 emoji="📓"
-                eyebrow="Ready when you are"
-                title="Your first notebook starts inside a folder"
-                description="Choose a subject folder, then create a blank notebook, working book, or paper notebook."
+                title="Create a folder, then open a notebook"
+                description="Your subject folder is where notebooks and the rest of your study material live."
                 variant="compact"
                 action={
                   firstFolderHref ? (
@@ -416,7 +420,7 @@ export default function PracticeWorkspace() {
               <EmptyState
                 emoji="📁"
                 title="Create your first study space"
-                description="Start with one broad subject. You can organise the details inside it later."
+                description="Start with one broad subject."
                 action={
                   <Button
                     type="button"

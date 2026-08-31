@@ -45,7 +45,10 @@ import {
   type NotebookBatchedPen,
   type NotebookPenPreviewBatch,
 } from "@/lib/workspace/notebook-pen-preview";
-import { dispatchPreciseNotebookPointerMove } from "@/lib/workspace/notebook-direct-ink-input";
+import {
+  dispatchPreciseNotebookPointerMove,
+  getJsDrawPointerReferenceElement,
+} from "@/lib/workspace/notebook-direct-ink-input";
 import { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
 import { shouldSuppressNotebookNativeInkPointer } from "@/lib/workspace/notebook-interaction-lock";
 import {
@@ -58,7 +61,9 @@ import {
   installNotebookNativeInkGuards,
   keepNotebookStraightenedLineAimable,
   relaxNotebookStraightenHold,
+  getNotebookInkPointerOrigins,
   positionNotebookEraserCursor,
+  type NotebookInkPointerOrigins,
   shouldContinueNotebookPrecisionGesture,
   shouldExpectNotebookCaptureLoss,
   shouldUseNotebookPrecisionGesture,
@@ -122,8 +127,7 @@ type ActivePrecisionEraserGesture = {
   gesture: NotebookPrecisionEraserGesture;
   lastSample: NotebookEraserPointerSample;
   pointerId: number;
-  surfaceLeft: number;
-  surfaceTop: number;
+  origins: NotebookInkPointerOrigins;
 };
 
 export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
@@ -159,10 +163,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const hostRef = useRef<HTMLDivElement | null>(null);
     const inkSurfaceRef = useRef<HTMLDivElement | null>(null);
     const eraserCursorRef = useRef<HTMLDivElement | null>(null);
-    const eraserSurfaceOffsetRef = useRef<{
-      left: number;
-      top: number;
-    } | null>(null);
+    const eraserOriginsRef = useRef<NotebookInkPointerOrigins | null>(null);
     const eraserCursorDiameterRef = useRef(
       getNotebookEraserCursorDiameter(eraserThickness)
     );
@@ -525,7 +526,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         }
         precisionEraserGestureRef.current?.gesture.cancel();
         precisionEraserGestureRef.current = null;
-        eraserSurfaceOffsetRef.current = null;
+        eraserOriginsRef.current = null;
         callbacksRef.current.onInteractionChange(false);
         historyListener?.remove();
         editor?.remove();
@@ -596,7 +597,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       scribbleSamplesRef.current = null;
       precisionEraserGestureRef.current?.gesture.cancel();
       precisionEraserGestureRef.current = null;
-      eraserSurfaceOffsetRef.current = null;
+      eraserOriginsRef.current = null;
       if (eraserCursorRef.current) {
         eraserCursorRef.current.style.opacity = "0";
       }
@@ -707,31 +708,29 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         continuing: continuesPrecisionGesture,
         precisionEraserSelected,
       });
-      let eraserSurfaceOffset: { left: number; top: number } | null = null;
+      const surface = event.currentTarget;
+      // js-draw measures its own events against a region inside this host, not
+      // against the surface the handlers sit on. See notebook-direct-ink-input.
+      const host = hostRef.current;
+      const inkRegion = getJsDrawPointerReferenceElement(host);
+      let eraserOrigins: NotebookInkPointerOrigins | null = null;
       if (activeTool === "eraser") {
         const activePrecisionGesture = precisionEraserGestureRef.current;
         if (type === "pointerdown") {
           // Refresh once at contact in case the page moved or the viewport
           // changed since Pencil hover entered the surface.
-          const rect = event.currentTarget.getBoundingClientRect();
-          eraserSurfaceOffset = { left: rect.left, top: rect.top };
-          eraserSurfaceOffsetRef.current = eraserSurfaceOffset;
-        } else if (
-          activePrecisionGesture?.pointerId === event.pointerId
-        ) {
-          eraserSurfaceOffset = {
-            left: activePrecisionGesture.surfaceLeft,
-            top: activePrecisionGesture.surfaceTop,
-          };
+          eraserOrigins = getNotebookInkPointerOrigins(surface, inkRegion);
+          eraserOriginsRef.current = eraserOrigins;
+        } else if (activePrecisionGesture?.pointerId === event.pointerId) {
+          eraserOrigins = activePrecisionGesture.origins;
         } else {
-          eraserSurfaceOffset = eraserSurfaceOffsetRef.current;
+          eraserOrigins = eraserOriginsRef.current;
         }
         // Pointer enter normally primes the cache. Keep this one-read fallback
         // for browsers that begin a captured Pencil stream without hover.
-        if (!eraserSurfaceOffset) {
-          const rect = event.currentTarget.getBoundingClientRect();
-          eraserSurfaceOffset = { left: rect.left, top: rect.top };
-          eraserSurfaceOffsetRef.current = eraserSurfaceOffset;
+        if (!eraserOrigins) {
+          eraserOrigins = getNotebookInkPointerOrigins(surface, inkRegion);
+          eraserOriginsRef.current = eraserOrigins;
         }
         // js-draw measures eraser thickness in screen pixels. Keep the DOM ring
         // in the same coordinate space so the visible boundary is authoritative.
@@ -747,13 +746,12 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             cursor,
             cursorDiameter,
             previousDiameter: eraserCursorDiameterRef.current,
-            surfaceLeft: eraserSurfaceOffset.left,
-            surfaceTop: eraserSurfaceOffset.top,
+            surfaceLeft: eraserOrigins.surface.left,
+            surfaceTop: eraserOrigins.surface.top,
           });
         }
       }
       if (!readyRef.current) return true;
-      const surface = event.currentTarget;
       const editor = editorRef.current;
       if (type === "pointerdown") {
         const jsDraw = jsDrawRef.current;
@@ -776,7 +774,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             pointerLifecycleRef.current?.begin(event.pointerId);
           if (pointerStart?.shouldCancelStaleGesture) {
             cancelEditorGesture();
-            eraserSurfaceOffsetRef.current = eraserSurfaceOffset;
+            eraserOriginsRef.current = eraserOrigins;
             if (eraserCursorRef.current && activeTool === "eraser") {
               eraserCursorRef.current.style.opacity = "1";
             }
@@ -887,10 +885,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         const plan = planNotebookScribbleErase({
           editor,
           jsDraw: pointerJsDraw,
-          getSurfaceOffset: () => {
-            const rect = surface.getBoundingClientRect();
-            return { left: rect.left, top: rect.top };
-          },
+          getSurfaceOffset: () =>
+            getNotebookInkPointerOrigins(surface, inkRegion).region,
           samples: scribbleTrack.samples,
           strokeWidth: penThickness,
         });
@@ -921,7 +917,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         if (precisionEraserActive) {
           if (
             type === "pointerdown" &&
-            eraserSurfaceOffset &&
+            eraserOrigins &&
             jsDrawRef.current
           ) {
             const sample = {
@@ -940,12 +936,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               gesture,
               lastSample: sample,
               pointerId: event.pointerId,
-              surfaceLeft: eraserSurfaceOffset.left,
-              surfaceTop: eraserSurfaceOffset.top,
+              origins: eraserOrigins,
             };
             gesture.begin({
-              x: sample.clientX - eraserSurfaceOffset.left,
-              y: sample.clientY - eraserSurfaceOffset.top,
+              x: sample.clientX - eraserOrigins.region.left,
+              y: sample.clientY - eraserOrigins.region.top,
             });
           } else {
             const activeGesture = precisionEraserGestureRef.current;
@@ -968,8 +963,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
                   );
                 activeGesture.gesture.moveBatch(
                   spatialSamples.map((sample) => ({
-                    x: sample.clientX - activeGesture.surfaceLeft,
-                    y: sample.clientY - activeGesture.surfaceTop,
+                    x: sample.clientX - activeGesture.origins.region.left,
+                    y: sample.clientY - activeGesture.origins.region.top,
                   }))
                 );
                 const latestSample = samples[samples.length - 1];
@@ -992,6 +987,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           type === "pointermove" &&
           (activeTool === "pen" || activeTool === "highlighter") &&
           pointerJsDraw &&
+          host &&
           /*
            * Only while this contact is actually down.
            *
@@ -1026,8 +1022,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               dispatchPreciseNotebookPointerMove({
                 editor,
                 event: sample,
+                host,
                 jsDraw: pointerJsDraw,
-                surface,
               });
             },
           });
@@ -1120,11 +1116,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           }}
           onPointerEnter={(event) => {
             if (activeTool !== "eraser") return;
-            const rect = event.currentTarget.getBoundingClientRect();
-            eraserSurfaceOffsetRef.current = {
-              left: rect.left,
-              top: rect.top,
-            };
+            eraserOriginsRef.current = getNotebookInkPointerOrigins(
+              event.currentTarget,
+              getJsDrawPointerReferenceElement(hostRef.current)
+            );
           }}
           onLostPointerCapture={(event) => {
             if (event.pointerType === "touch") {
@@ -1156,7 +1151,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               eraserCursorRef.current.style.opacity = "0";
             }
             if (!pointerLifecycleRef.current?.isInteracting) {
-              eraserSurfaceOffsetRef.current = null;
+              eraserOriginsRef.current = null;
             }
           }}
         />

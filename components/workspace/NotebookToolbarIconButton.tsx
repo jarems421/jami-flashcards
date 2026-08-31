@@ -148,6 +148,7 @@ export default function ToolbarIconButton({
   disabled = false,
   expanded,
   controls,
+  tutorialTarget,
   onClick,
   children,
 }: {
@@ -157,6 +158,7 @@ export default function ToolbarIconButton({
   disabled?: boolean;
   expanded?: boolean;
   controls?: string;
+  tutorialTarget?: string;
   onClick?: () => void;
   children?: ReactNode;
 }) {
@@ -169,6 +171,7 @@ export default function ToolbarIconButton({
       title={label}
       disabled={disabled}
       data-notebook-toolbar-action="true"
+      data-tutorial-target={tutorialTarget}
       // Selection is otherwise only visible in the class string; expose it so
       // tests and browser smokes can read state without matching on styling.
       data-active={active ? "true" : undefined}

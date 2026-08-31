@@ -187,6 +187,37 @@ export function shouldExpectNotebookCaptureLoss(
   return hadPointerCapture || type === "pointercancel";
 }
 
+/**
+ * The two origins an eraser pointer has to be measured from.
+ *
+ * They are the same element on a fitted page and different ones as soon as it
+ * is zoomed, which is why they cannot stay a single offset.
+ *
+ * `surface` places the cursor ring, a DOM element inside the ink surface, so it
+ * has to be measured from that surface. `region` feeds js-draw's
+ * `screenToCanvas`, which measures from js-draw's own rendering region -- and
+ * on a zoomed page the ink canvas is given only the visible slice of the sheet
+ * and positioned at that slice's origin. Measuring erase geometry from the
+ * full-sheet surface counted the slice offset twice and rubbed out ink a window
+ * away from the nib.
+ */
+export type NotebookInkPointerOrigins = {
+  surface: { left: number; top: number };
+  region: { left: number; top: number };
+};
+
+export function getNotebookInkPointerOrigins(
+  surface: HTMLElement,
+  region: HTMLElement | null
+): NotebookInkPointerOrigins {
+  const surfaceRect = surface.getBoundingClientRect();
+  const regionRect = region ? region.getBoundingClientRect() : surfaceRect;
+  return {
+    surface: { left: surfaceRect.left, top: surfaceRect.top },
+    region: { left: regionRect.left, top: regionRect.top },
+  };
+}
+
 export function positionNotebookEraserCursor(input: {
   clientX: number;
   clientY: number;

@@ -2472,7 +2472,7 @@ export default function NotebookEditorPage() {
             >
               <NotebookIcon name="back" />
             </Link>
-            <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div data-tutorial-target="save-work" className="flex min-w-0 flex-1 items-center gap-2">
               <div className="truncate text-sm font-semibold text-text-primary">{notebook.title}</div>
               <NotebookSaveIndicator status={saveStatus} onRetry={handleRetryPageSave} />
             </div>
@@ -2491,8 +2491,8 @@ export default function NotebookEditorPage() {
             />
             {!practicePaperTutorLocked ? (
               <ToolbarIconButton
-                label="Jami Tutor"
-                icon="ai"
+                label="Jami Tutor" icon="ai"
+                tutorialTarget="ask-tutor"
                 active={assistantOpen}
                 onClick={() => {
                   if (!assistantOpen && practicePaperStatus === "in_progress" && user?.uid && notebook) {

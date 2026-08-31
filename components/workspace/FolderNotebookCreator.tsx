@@ -224,7 +224,12 @@ export default function FolderNotebookCreator({
           <Button type="button" variant="secondary" disabled={creating} onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="button" disabled={creating} onClick={() => void create()}>
+          <Button
+            type="button"
+            data-testid="create-notebook-submit"
+            disabled={creating}
+            onClick={() => void create()}
+          >
             {creating
               ? uploadProgress !== null
                 ? `Adding pages ${uploadProgress}%`
