@@ -22,6 +22,7 @@ import {
   type DailyStudyActivity,
 } from "@/lib/study/activity";
 import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const QUERY_MS = 30_000;
 const UPDATE_MS = 30_000;
@@ -74,6 +75,7 @@ export async function recordStudyReview(
     "Record study activity"
   );
   invalidateDashboardData(userId);
+  reportTutorialAction("complete-review");
 }
 
 export async function loadStudyActivity(userId: string): Promise<DailyStudyActivity[]> {

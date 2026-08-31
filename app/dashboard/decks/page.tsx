@@ -319,6 +319,7 @@ export default function DecksPage() {
                 </div>
                 <Button
                   disabled={isCreatingDeck || !name.trim()}
+                  data-tutorial-target="create-deck"
                   onClick={() => void handleCreate()}
                   className="min-h-[2.9rem] w-full sm:w-auto sm:min-w-[10rem]"
                 >

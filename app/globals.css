@@ -1759,6 +1759,21 @@ body.constellation-background-enabled::before {
 
 /* Star reward moment: the overlay shown when a goal turns into a star. */
 
+/*
+ * The walkthrough's spotlight: a sharp ring around one control, and a dim over
+ * everything else made from the ring's own shadow. It is a hint, not a modal --
+ * the element is pointer-transparent and clears itself once the control has
+ * been pointed at.
+ */
+.tutorial-spotlight {
+  box-shadow: 0 0 0 9999px color-mix(in srgb, var(--app-background) 58%, transparent);
+  transition: opacity 220ms ease;
+}
+
+.tutorial-spotlight-leaving {
+  opacity: 0;
+}
+
 @keyframes star-reward-in {
   0% {
     opacity: 0;
@@ -1770,39 +1785,82 @@ body.constellation-background-enabled::before {
   }
 }
 
-@keyframes star-reward-bloom {
+/*
+ * The flight is split across two elements on purpose.
+ *
+ * A single translate moves in a straight line however it is eased, because
+ * both axes share one timing function. Running the horizontal and vertical
+ * halves on separate elements to different easings makes the star cover its
+ * width and its height at different rates, and a point doing that is
+ * travelling along a curve.
+ */
+@keyframes star-reward-arc-x {
   0% {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  45% {
-    opacity: 0.85;
-    transform: scale(1.06);
+    transform: translateX(-74px);
   }
   100% {
-    opacity: 0.5;
-    transform: scale(1);
+    transform: translateX(0);
   }
 }
 
-@keyframes star-reward-star-in {
+@keyframes star-reward-arc-y {
   0% {
     opacity: 0;
-    transform: scale(0.4) rotate(-14deg);
+    transform: translateY(54px) scale(0.34);
   }
-  60% {
+  20% {
     opacity: 1;
-    transform: scale(1.16) rotate(4deg);
   }
   100% {
     opacity: 1;
-    transform: scale(1) rotate(0deg);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes star-reward-draw {
+  0% {
+    stroke-dashoffset: 620;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/*
+ * Arriving and the one twinkle share a single timeline. Two animations on the
+ * same property do not blend -- the later one simply wins -- so the settle and
+ * the pass are keyframes of one movement rather than two that collide.
+ */
+@keyframes star-reward-resolve {
+  0%,
+  45% {
+    opacity: 0;
+  }
+  68% {
+    opacity: 1;
+  }
+  82% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes star-reward-constellation {
+  0%,
+  55% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0.68;
   }
 }
 
 .star-reward-overlay {
+  background: color-mix(in srgb, var(--app-background) 72%, transparent);
   animation: star-reward-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  transition: opacity 520ms ease, transform 520ms ease;
+  transition: opacity 300ms ease, transform 300ms ease;
 }
 
 .star-reward-overlay-leaving {
@@ -1814,8 +1872,8 @@ body.constellation-background-enabled::before {
   border-radius: var(--radius-2xl);
   border: 1px solid var(--color-border);
   /* Opaque base under the panel colour: the panel token is a few percent
-     translucent, which reads as depth over a scrim but lets the flashcard
-     behind it show straight through a celebration that has no scrim. */
+     translucent, and the scrim behind it is translucent too, so without this
+     the flashcard underneath shows faintly through the card as well. */
   background-color: var(--color-surface-base);
   background-image: linear-gradient(
     var(--color-surface-panel-strong),
@@ -1824,26 +1882,37 @@ body.constellation-background-enabled::before {
   box-shadow: var(--shadow-shell);
 }
 
-/* Sits behind the star so the glow reads on light themes as well as dark. */
-.star-reward-bloom {
-  position: absolute;
-  inset: -32% -22% auto -22%;
-  height: 92%;
-  border-radius: 999px;
-  background: radial-gradient(
-    circle at center,
-    rgba(255, 241, 194, 0.62) 0%,
-    rgba(255, 214, 130, 0.34) 26%,
-    rgba(203, 167, 255, 0.3) 50%,
-    rgba(203, 167, 255, 0) 76%
-  );
-  filter: blur(10px);
-  animation: star-reward-bloom 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+/*
+ * Timings are tight on purpose. An earlier pass spread the same sequence over
+ * twice as long, and for the first half-second the card was simply empty --
+ * the outline was a quarter drawn at a third of its final size, which is not
+ * yet anything to look at. The whole arrival now lands inside 1.3s of the
+ * three-second hold.
+ */
+.star-reward-arc {
+  animation: star-reward-arc-x 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .star-reward-star {
-  animation: star-reward-star-in 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: star-reward-arc-y 640ms cubic-bezier(0.5, 0, 0.2, 1) both;
   transform-origin: center;
+}
+
+.star-reward-trace {
+  stroke-dasharray: 620;
+  stroke-dashoffset: 620;
+  animation: star-reward-draw 500ms 60ms ease-out forwards;
+}
+
+.star-reward-core,
+.star-reward-cut {
+  opacity: 0;
+  animation: star-reward-resolve 1100ms 120ms ease-out forwards;
+}
+
+.star-reward-orbit {
+  opacity: 0;
+  animation: star-reward-constellation 820ms 160ms ease-out forwards;
 }
 
 .star-reward-copy {
@@ -1853,9 +1922,13 @@ body.constellation-background-enabled::before {
 
 @media (prefers-reduced-motion: reduce) {
   .star-reward-overlay,
-  .star-reward-bloom,
+  .star-reward-arc,
   .star-reward-star,
-  .star-reward-copy {
+  .star-reward-copy,
+  .star-reward-trace,
+  .star-reward-core,
+  .star-reward-cut,
+  .star-reward-orbit {
     animation: none;
   }
 
@@ -1865,6 +1938,23 @@ body.constellation-background-enabled::before {
 
   .star-reward-overlay-leaving {
     transform: none;
+  }
+
+  .star-reward-trace {
+    stroke-dashoffset: 0;
+  }
+
+  .star-reward-core,
+  .star-reward-cut {
+    opacity: 1;
+  }
+
+  .star-reward-orbit {
+    opacity: 0.5;
+  }
+
+  .tutorial-spotlight {
+    transition: none;
   }
 }
 

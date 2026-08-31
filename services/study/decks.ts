@@ -21,6 +21,7 @@ import {
   type DeckIconPresetId,
 } from "@/lib/study/deck-style";
 import type { Deck } from "@/lib/study/decks";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 import {
   addDoc,
   collection,
@@ -231,6 +232,7 @@ export const createDeck = async (
     "Create deck"
   );
   invalidateDeckCaches(normalizedUserId);
+  reportTutorialAction("create-deck", { deckId: docRef.id });
 
   return {
     id: docRef.id,
@@ -565,4 +567,3 @@ export const deleteDeck = async (
   );
   invalidateDeckData();
 };
-

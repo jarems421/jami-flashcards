@@ -1600,10 +1600,8 @@ export default function StudyPage() {
             <>
               {!hasCards ? (
                 <EmptyState
-                  emoji="Cards"
-                  eyebrow="Start here"
-                  title="Create a few cards first"
-                  description="Add cards to unlock review."
+                  title="Nothing to review yet"
+                  description="Create one card and it will appear here ready to learn."
                   action={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-[var(--color-text-inverse)] shadow-accent transition duration-fast hover:bg-accent-hover">Create cards</Link>}
                   secondaryAction={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-button-secondary transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Open decks</Link>}
                 />
@@ -1657,7 +1655,7 @@ export default function StudyPage() {
                     />
                   </div>
 
-                  <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
+                  <div data-tutorial-target="complete-review" className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
                     {hasCarryoverRequiredCards ? (
                       <Button
                         type="button"

@@ -27,6 +27,7 @@ import {
   saveAppThemePreference,
   type AppThemePreference,
 } from "@/lib/app/theme-preference";
+import { TutorialAccountCard } from "@/components/onboarding/TutorialProvider";
 
 function ThemePreferenceCard() {
   const [selectedTheme, setSelectedTheme] = useState<AppThemePreference>(() =>
@@ -338,6 +339,8 @@ export default function ProfilePage() {
           <HowJamiWorksCard />
         </div>
       </div>
+
+      <TutorialAccountCard />
 
       <section id="reminders" aria-label="Study reminders">
         <NotificationSettingsCard userId={user.uid} />

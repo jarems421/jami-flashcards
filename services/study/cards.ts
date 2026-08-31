@@ -26,6 +26,7 @@ import {
   type CardReviewUpdateCommand,
   type ImportedCardDraft,
 } from "@/lib/study/cards";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const LOAD_MS = 30_000;
 
@@ -319,6 +320,7 @@ export async function createCard(input: CreateCardInput): Promise<Card> {
   const write = buildNewCard(input, "", createdAt);
   const cardRef = await addDoc(cardsCollection, getCardWrite(write));
   invalidateDashboardData(input.userId);
+  reportTutorialAction("create-card", { deckId: input.deckId });
 
   return {
     ...write,
@@ -368,7 +370,10 @@ export async function createCardsInBatches(
       onProgress?.(createdCards.length, input.drafts.length);
     }
 
-    if (createdCards.length > 0) invalidateDashboardData(input.userId);
+    if (createdCards.length > 0) {
+      invalidateDashboardData(input.userId);
+      reportTutorialAction("create-card", { deckId: input.deckId });
+    }
     return createdCards;
   } catch (error) {
     if (createdCards.length > 0) invalidateDashboardData(input.userId);

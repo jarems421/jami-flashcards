@@ -24,6 +24,7 @@ import {
   type JamiAssistantThread,
 } from "@/lib/ai/jami-assistant-history";
 import { sendJamiAssistantMessage } from "@/services/ai/jami-assistant";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 import {
   createAssistantIllustration,
   insertAssistantIllustration,
@@ -601,6 +602,11 @@ export default function JamiAssistantDrawer({
             ? [...current.slice(0, -1), assistantMessage]
             : [...current, assistantMessage]
         );
+        if (context.surface === "notebook") {
+          reportTutorialAction("ask-tutor", {
+            notebookId: context.notebookId,
+          });
+        }
 
         const savedThread = response.savedThread;
         if (savedThread) {

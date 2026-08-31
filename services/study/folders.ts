@@ -35,6 +35,7 @@ import {
   normalizeStudyLevel,
   type StudyLevel,
 } from "@/lib/profile/study-level";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;
@@ -204,6 +205,8 @@ export async function createStudyFolder(
   );
   invalidateDashboardData(normalizedUserId);
   invalidateLegacyActiveRecords(normalizedUserId, FOLDERS_COLLECTION);
+
+  reportTutorialAction("create-folder", { folderId: docRef.id });
 
   return mapStudyFolderData(docRef.id, payload);
 }

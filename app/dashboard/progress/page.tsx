@@ -405,9 +405,8 @@ export default function ProgressPage() {
                       <div className="flex h-full items-center justify-center">
                         <EmptyState
                           variant="plain"
-                          emoji="Stats"
                           title="No reviews in this range"
-                          description="Accuracy will appear after you review some cards."
+                          description="Complete a review to start building this view."
                         />
                       </div>
                     )}
@@ -432,9 +431,8 @@ export default function ProgressPage() {
                       <div className="flex h-full items-center justify-center">
                         <EmptyState
                           variant="plain"
-                          emoji="Time"
                           title="No study time in this range"
-                          description="Completed sessions will build this chart."
+                          description="Complete a review to start building this view."
                         />
                       </div>
                     )}

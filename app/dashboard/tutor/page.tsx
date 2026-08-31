@@ -282,10 +282,8 @@ export default function TutorPage() {
             </Card>
           ) : (
             <EmptyState
-              emoji="Source"
-              eyebrow="Nothing to read yet"
-              title="Give Jami something to work from"
-              description="Save a page, a file, or your own notes, and Jami can explain them, quiz you, or draft study material from them."
+              title="Give Jami something useful to read"
+              description="Add a source, then ask from that material when you need help."
               action={
                 <ButtonLink href="/dashboard/library">Add a source</ButtonLink>
               }

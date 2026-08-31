@@ -98,6 +98,41 @@ describe("Firestore security rules", () => {
     await assertFails(getDoc(doc(guestDb, "users", ALICE)));
   });
 
+  it("keeps onboarding progress private and blocks demo writes", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const guestDb = testEnv.unauthenticatedContext().firestore();
+    const demoDb = testEnv
+      .authenticatedContext("demo-user", { demo: true })
+      .firestore();
+
+    const aliceProgress = doc(aliceDb, "users", ALICE, "onboarding", "release-1");
+    const demoProgress = doc(
+      demoDb,
+      "users",
+      "demo-user",
+      "onboarding",
+      "release-1"
+    );
+
+    await assertSucceeds(
+      setDoc(aliceProgress, { status: "active", completedMissionIds: [] })
+    );
+    await assertSucceeds(getDoc(aliceProgress));
+    await assertSucceeds(
+      updateDoc(aliceProgress, { completedMissionIds: ["create-folder"] })
+    );
+
+    await assertFails(
+      getDoc(doc(bobDb, "users", ALICE, "onboarding", "release-1"))
+    );
+    await assertFails(
+      getDoc(doc(guestDb, "users", ALICE, "onboarding", "release-1"))
+    );
+    await assertFails(setDoc(demoProgress, { status: "active" }));
+    await assertSucceeds(deleteDoc(aliceProgress));
+  });
+
   it("allows owners to read decks stored with either userId or legacy uid", async () => {
     await seedData();
 

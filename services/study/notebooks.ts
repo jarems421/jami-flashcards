@@ -64,6 +64,7 @@ import {
   splitNotebookPageForPersistence,
   type NotebookPageInkRecord,
 } from "@/lib/workspace/notebook-page-ink-split";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;
@@ -339,6 +340,11 @@ export async function createNotebook(
   );
   invalidateDashboardData(normalizedUserId);
   invalidateLegacyActiveRecords(normalizedUserId, NOTEBOOKS_COLLECTION);
+
+  reportTutorialAction("create-notebook", {
+    folderId: input.folderId,
+    notebookId: docRef.id,
+  });
 
   return mapNotebookData(docRef.id, payload);
 }
@@ -689,6 +695,12 @@ export async function updateNotebookPage(
     "Update notebook page"
   );
   invalidateDashboardData(normalizedUserId);
+  const hasSavedWork =
+    Boolean(input.typedContent?.trim()) ||
+    Boolean(input.textBlocks?.length) ||
+    Boolean(input.inkData?.svg?.trim()) ||
+    (input.status !== undefined && input.status !== "blank");
+  if (hasSavedWork) reportTutorialAction("save-work");
 }
 
 /**
@@ -843,6 +855,14 @@ export async function saveNotebookPageSnapshot(
   );
   invalidateDashboardData(normalizedUserId);
   invalidateLegacyActiveRecords(normalizedUserId, NOTEBOOKS_COLLECTION);
+  const hasSavedWork =
+    Boolean(snapshot.typedContent.trim()) ||
+    snapshot.textBlocks.length > 0 ||
+    Boolean(snapshot.inkData?.svg?.trim()) ||
+    snapshot.status !== "blank";
+  if (hasSavedWork) {
+    reportTutorialAction("save-work", { notebookId });
+  }
   return result;
 }
 

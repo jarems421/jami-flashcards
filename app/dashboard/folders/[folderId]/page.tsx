@@ -856,7 +856,12 @@ export default function FolderDetailPage() {
                 >
                   New practice paper
                 </ButtonLink>
-                <Button type="button" size="sm" onClick={openNotebookForm}>
+                <Button
+                  type="button"
+                  size="sm"
+                  data-tutorial-target="create-notebook"
+                  onClick={openNotebookForm}
+                >
                   Create notebook
                 </Button>
               </div>
@@ -914,7 +919,11 @@ export default function FolderDetailPage() {
                     title="No notebooks yet"
                     description="Create a notebook to start working in this folder."
                     action={
-                      <Button type="button" onClick={openNotebookForm}>
+                      <Button
+                        type="button"
+                        data-tutorial-target="create-notebook"
+                        onClick={openNotebookForm}
+                      >
                         Create notebook
                       </Button>
                     }

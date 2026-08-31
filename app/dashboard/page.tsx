@@ -29,6 +29,11 @@ import {
   loadDashboardSnapshot,
   type DashboardSnapshot,
 } from "@/services/dashboard/today";
+import {
+  TutorialResumeCard,
+  useTutorial,
+} from "@/components/onboarding/TutorialProvider";
+import { shouldInviteToTutorial } from "@/lib/onboarding/tutorial";
 
 const GETTING_STARTED_DISMISSED_KEY = "jami:getting-started-complete-dismissed";
 const GETTING_STARTED_OPEN_STORAGE_KEY = "jami:getting-started-open";
@@ -297,6 +302,7 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
 
 export default function DashboardHome() {
   const { user } = useUser();
+  const tutorial = useTutorial();
 
   const [decks, setDecks] = useState<Deck[]>([]);
   const [dueCards, setDueCards] = useState<StudyCard[]>([]);
@@ -528,6 +534,29 @@ export default function DashboardHome() {
    * your first study folder" is as much a next step as a review is.
    */
   const hasStudyMaterial = cards.length > 0 || notebooks.length > 0;
+  const isEmptyAccount = shouldInviteToTutorial({
+    isLoading,
+    sectionStates: {
+      decks: sectionStates.decks,
+      cards: sectionStates.cards,
+      activity: sectionStates.activity,
+      folders: sectionStates.folders,
+      notebooks: sectionStates.notebooks,
+    },
+    deckCount: decks.length,
+    cardCount: cards.length,
+    activityCount: studyActivity.length,
+    folderCount: studyFolders.length,
+    notebookCount: notebooks.length,
+  });
+
+  useEffect(() => {
+    if (isEmptyAccount && tutorial.canInvite) {
+      tutorial.invite();
+    }
+  }, [isEmptyAccount, tutorial]);
+  const walkthroughLeading =
+    tutorial.progress.status === "active" || tutorial.progress.status === "paused";
   const hasSecondaryCards =
     todayPlan.drafts.length > 0 ||
     todayPlan.weakTopics.length > 0 ||
@@ -654,9 +683,19 @@ export default function DashboardHome() {
           }
         />
 
+        <TutorialResumeCard />
+
         {!isLoading ? (
           <>
-            {!planUnavailable ? (
+            {/*
+              * Hidden only while the walkthrough is the live guidance on the
+              * page. Two sets of first steps at once is the clutter worth
+              * avoiding -- but a student who explored on their own, or who
+              * finished, keeps the checklist they had before, because it
+              * tracks what they have actually done rather than repeating the
+              * walkthrough.
+              */}
+            {!planUnavailable && !walkthroughLeading ? (
               <GettingStartedChecklist
                 items={gettingStartedItems}
                 isLoading={isLoading}

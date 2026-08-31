@@ -444,6 +444,7 @@ export default function CardCreationPanel({
           </details>
           <Button
             type="button"
+            data-tutorial-target="create-card"
             aria-keyshortcuts="Control+Enter Meta+Enter"
             disabled={addingSingleCard || !singleDeckId || !singleFront.trim() || !singleBack.trim()}
             onClick={() => void handleAddSingleCard()}
