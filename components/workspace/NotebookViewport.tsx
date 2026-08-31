@@ -131,7 +131,22 @@ function NotebookViewport({
     <div
       ref={frameRef}
       data-notebook-page-frame
-      className="absolute inset-x-0 bottom-[env(safe-area-inset-bottom,0px)] top-[env(safe-area-inset-bottom,0px)] isolate overflow-hidden"
+      /*
+       * The page fills its frame.
+       *
+       * This was inset by env(safe-area-inset-bottom) at the bottom, which left
+       * a strip below the page on any iPad with a home indicator that the sheet
+       * could not reach, and by the same value at the top, which is a different
+       * edge needing a different inset -- the header already handles the top, so
+       * that one only cost height. Together they took roughly 40 to 48px off the
+       * drawing surface.
+       *
+       * Nothing needs the frame to hold that space. The toolbar and the page
+       * navigation are positioned against --notebook-control-bottom-inset, which
+       * accounts for the safe area itself, so they stay clear of the indicator
+       * whatever the sheet does.
+       */
+      className="absolute inset-0 isolate overflow-hidden"
     >
       {overlay}
       {activeContent !== null && geometry.pageWidth > 0 ? (
