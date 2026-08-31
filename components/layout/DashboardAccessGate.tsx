@@ -13,6 +13,7 @@ import {
   saveSidebarHiddenPreference,
 } from "@/lib/app/sidebar-preference";
 import { forgetLastRoute, rememberLastRoute } from "@/lib/app/last-route";
+import TutorialProvider from "@/components/onboarding/TutorialProvider";
 
 function DashboardSpinner() {
   return (
@@ -38,19 +39,21 @@ function AuthenticatedDashboard({
 
   return (
     <UserProvider user={user}>
-      <div
-        data-dashboard-content
-        className={`pb-32 transition-[padding] duration-300 md:pb-0 ${
-          sidebarHidden ? "md:pl-0" : "md:pl-24 lg:pl-72"
-        }`}
-      >
-        <TopicMigrationGate>{children}</TopicMigrationGate>
-      </div>
-      <InAppNotice />
-      <TabBar
-        desktopHidden={sidebarHidden}
-        onDesktopHiddenChange={handleSidebarHiddenChange}
-      />
+      <TutorialProvider userId={user.uid}>
+        <div
+          data-dashboard-content
+          className={`pb-32 transition-[padding] duration-300 md:pb-0 ${
+            sidebarHidden ? "md:pl-0" : "md:pl-24 lg:pl-72"
+          }`}
+        >
+          <TopicMigrationGate>{children}</TopicMigrationGate>
+        </div>
+        <InAppNotice />
+        <TabBar
+          desktopHidden={sidebarHidden}
+          onDesktopHiddenChange={handleSidebarHiddenChange}
+        />
+      </TutorialProvider>
     </UserProvider>
   );
 }

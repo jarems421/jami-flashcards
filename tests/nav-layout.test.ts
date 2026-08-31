@@ -164,6 +164,16 @@ describe("the sidebar", () => {
     const icons = tabs.map((tab) => tab.icon);
     expect(new Set(icons).size).toBe(icons.length);
   });
+
+  it("keeps the complete desktop map but gives phones five stable destinations", () => {
+    expect(tabBar).toContain('label: "Today"');
+    expect(tabBar).toContain('label: "Practice"');
+    expect(tabBar).toContain('mobileLabel: "Cards"');
+    expect(tabBar).toContain("const mobilePrimaryHrefs");
+    expect(tabBar).toContain("More in Jami");
+    expect(tabBar).toContain("grid-cols-6");
+    expect(tabBar).not.toContain("snap-mandatory");
+  });
 });
 
 /**

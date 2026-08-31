@@ -96,10 +96,10 @@ export default function EmailVerificationBanner() {
       role="status"
       className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-warning/30 bg-warning-muted px-4 py-2.5 text-xs text-text-secondary"
     >
-      <p className="min-w-0 flex-1 leading-5">
+      <p className="min-w-0 basis-full flex-1 leading-5 sm:basis-auto">
         {notice ?? "Confirm your email address so you can get back in if you forget your password."}
       </p>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex w-full shrink-0 flex-wrap items-center gap-1.5 sm:w-auto">
         <Button
           type="button"
           variant="secondary"

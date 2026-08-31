@@ -29,6 +29,9 @@ vi.mock("next/navigation", () => ({
 // The authenticated tree pulls in the whole dashboard chrome; this suite is
 // about the gate in front of it.
 vi.mock("@/components/layout/TabBar", () => ({ default: () => null }));
+vi.mock("@/components/onboarding/TutorialProvider", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 vi.mock("@/components/layout/InAppNotice", () => ({ default: () => null }));
 vi.mock("@/components/topics/TopicMigrationGate", () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,

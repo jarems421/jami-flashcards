@@ -6,6 +6,12 @@ import { JamiTutorIcon } from "@/components/ui";
 import { usePathname } from "next/navigation";
 import { type TouchEvent, useEffect, useRef, useState } from "react";
 import { BrandMark, IconBubble } from "@/components/ui";
+import {
+  Dialog,
+  DialogBackdrop,
+  DialogPanel,
+  DialogTitle,
+} from "@/components/ui/Dialog";
 
 type TabGroup = "loop" | "support";
 
@@ -45,8 +51,8 @@ type Tab = {
 const tabs: Tab[] = [
   {
     href: "/dashboard",
-    label: "Home",
-    mobileLabel: "Home",
+    label: "Today",
+    mobileLabel: "Today",
     description: "Start point",
     group: "loop",
     icon: "M11.47 3.841a.75.75 0 011.06 0l8.69 8.69a.75.75 0 01-.53 1.28h-1.44v7.44a.75.75 0 01-.75.75h-3a.75.75 0 01-.75-.75v-4.5a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v4.5a.75.75 0 01-.75.75h-3a.75.75 0 01-.75-.75v-7.44H5.31a.75.75 0 01-.53-1.28l8.69-8.69z",
@@ -61,15 +67,25 @@ const tabs: Tab[] = [
   {
     href: "/dashboard/practice",
     owns: ["/dashboard/practise", "/dashboard/folders", "/dashboard/notebooks"],
-    label: "Folders",
+    label: "Practice",
     description: "Notebooks and papers",
     group: "loop",
     icon: "M3 6.75A2.75 2.75 0 015.75 4h4.44c.73 0 1.43.29 1.945.805l1.06 1.06c.235.235.553.367.884.367h4.171A2.75 2.75 0 0121 8.982v8.268A2.75 2.75 0 0118.25 20h-12.5A2.75 2.75 0 013 17.25V6.75z",
   },
   {
+    href: "/dashboard/tutor",
+    owns: ["/dashboard/library"],
+    iconComponent: JamiTutorIcon,
+    label: "Tutor",
+    description: "Ask Jami, review drafts",
+    group: "loop",
+    icon: "M12 2.5l1.25 3.75 3.75 1.25-3.75 1.25-1.25 3.75-1.25-3.75-3.75-1.25 3.75-1.25z M17.8 12l.85 2.35 2.35.85-2.35.85-.85 2.35-.85-2.35-2.35-.85 2.35-.85z M6 14.4l.55 1.65 1.65.55-1.65.55-.55 1.65-.55-1.65-1.65-.55 1.65-.55z",
+  },
+  {
     href: "/dashboard/decks",
     owns: ["/dashboard/cards"],
     label: "Flashcards",
+    mobileLabel: "Cards",
     description: "Decks and every card",
     group: "support",
     icon: "M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026-.383-1.178-1.47-2.026-2.75-2.026h-11A2.75 2.75 0 003.75 9.776zM2.25 12.75a2.75 2.75 0 012.75-2.75h14a2.75 2.75 0 012.75 2.75v6.5a2.75 2.75 0 01-2.75 2.75H5a2.75 2.75 0 01-2.75-2.75v-6.5zM6.5 7.25V5.5A2.75 2.75 0 019.25 2.75h5.5A2.75 2.75 0 0117.5 5.5v1.75",
@@ -80,15 +96,6 @@ const tabs: Tab[] = [
     description: "Connect study material",
     group: "support",
     icon: "M12 2.25c4.83 0 8.75 3.92 8.75 8.75S16.83 19.75 12 19.75c-.36 0-.72-.02-1.08-.07l-3.31 2.76a.75.75 0 01-1.23-.58v-3.1A8.72 8.72 0 013.25 11c0-4.83 3.92-8.75 8.75-8.75zm-3.5 6.1a.75.75 0 01.75-.75h5.5a.75.75 0 010 1.5h-5.5a.75.75 0 01-.75-.75zm0 4a.75.75 0 01.75-.75h4a.75.75 0 010 1.5h-4a.75.75 0 01-.75-.75z",
-  },
-  {
-    href: "/dashboard/tutor",
-    owns: ["/dashboard/library"],
-    iconComponent: JamiTutorIcon,
-    label: "Tutor",
-    description: "Ask Jami, review drafts",
-    group: "loop",
-    icon: "M12 2.5l1.25 3.75 3.75 1.25-3.75 1.25-1.25 3.75-1.25-3.75-3.75-1.25 3.75-1.25z M17.8 12l.85 2.35 2.35.85-2.35.85-.85 2.35-.85-2.35-2.35-.85 2.35-.85z M6 14.4l.55 1.65 1.65.55-1.65.55-.55 1.65-.55-1.65-1.65-.55 1.65-.55z",
   },
   {
     href: "/dashboard/goals",
@@ -141,6 +148,21 @@ const navGroups: { id: TabGroup; label: string; helper: string }[] = [
     helper: "Material, goals, rewards, progress",
   },
 ];
+
+const mobilePrimaryHrefs = [
+  "/dashboard",
+  "/dashboard/study",
+  "/dashboard/practice",
+  "/dashboard/tutor",
+  "/dashboard/decks",
+] as const;
+
+const mobilePrimaryTabs = mobilePrimaryHrefs.map(
+  (href) => tabs.find((tab) => tab.href === href)!
+);
+const mobileMoreTabs = tabs.filter(
+  (tab) => !mobilePrimaryHrefs.includes(tab.href as (typeof mobilePrimaryHrefs)[number])
+);
 
 function isActive(pathname: string, tab: Tab) {
   // Home is the only exact match; everything else owns its subtree.
@@ -223,7 +245,7 @@ function MobileNavItem({ tab, active }: { tab: Tab; active: boolean }) {
       aria-current={active ? "page" : undefined}
       data-agent-nav={tab.label}
       data-agent-route={tab.href}
-      className={`relative flex min-h-[3.25rem] min-w-[4.35rem] flex-shrink-0 snap-center flex-col items-center justify-center gap-1 rounded-lg px-2 text-2xs leading-tight transition duration-fast ease-spring ${
+      className={`relative flex min-h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-2xs leading-tight transition duration-fast ease-spring ${
         active
           ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-nav-active"
           : "text-text-muted active:text-text-primary"
@@ -237,6 +259,75 @@ function MobileNavItem({ tab, active }: { tab: Tab; active: boolean }) {
         {tab.mobileLabel ?? tab.label}
       </span>
     </Link>
+  );
+}
+
+function MoreIcon({ active }: { active: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={`h-5 w-5 ${active ? "opacity-100" : "opacity-75"}`}>
+      <circle cx="5" cy="12" r="1.75" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.75" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.75" fill="currentColor" />
+    </svg>
+  );
+}
+
+function MobileMoreSheet({
+  open,
+  pathname,
+  onClose,
+}: {
+  open: boolean;
+  pathname: string;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onDismiss={onClose}
+      className="fixed inset-0 flex items-end justify-center p-3 pb-[calc(env(safe-area-inset-bottom,0px)+5.9rem)] md:hidden"
+    >
+      <DialogBackdrop className="absolute inset-0 bg-[color-mix(in_srgb,var(--app-background)_62%,transparent)]" />
+      <DialogPanel className="app-nav relative w-full max-w-[31rem] rounded-2xl border-[1.5px] border-[var(--nav-shell-border)] p-4 shadow-nav-shell">
+        <div className="flex items-center justify-between gap-3">
+          <DialogTitle className="text-base font-semibold text-text-primary">
+            More in Jami
+          </DialogTitle>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close more navigation"
+            className="app-chip grid h-9 w-9 place-items-center rounded-md text-lg text-text-muted"
+          >
+            ×
+          </button>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {mobileMoreTabs.map((tab) => {
+            const active = isActive(pathname, tab);
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                onClick={onClose}
+                aria-current={active ? "page" : undefined}
+                className={`flex min-h-16 items-center gap-3 rounded-xl border p-3 transition ${
+                  active
+                    ? "border-[var(--nav-active-border)] bg-[var(--nav-active-bg)] text-[var(--nav-active-text)]"
+                    : "border-[var(--color-border)] bg-[var(--nav-hover-bg)] text-text-secondary"
+                }`}
+              >
+                <NavIcon tab={tab} active={active} />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold">{tab.label}</span>
+                  <span className="mt-0.5 block truncate text-2xs text-text-muted">{tab.description}</span>
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </DialogPanel>
+    </Dialog>
   );
 }
 
@@ -279,6 +370,8 @@ export default function TabBar({
   const sidebarSwipeHandledRef = useRef(false);
   const swipeHandledRef = useRef(false);
   const [mobileHidden, setMobileHidden] = useState(false);
+  const [mobileMorePathname, setMobileMorePathname] = useState<string | null>(null);
+  const mobileMoreOpen = mobileMorePathname === pathname;
 
   useEffect(() => {
     const nav = mobileNavRef.current;
@@ -322,6 +415,7 @@ export default function TabBar({
 
     if (deltaY > 26 && mostlyVertical) {
       swipeHandledRef.current = true;
+      setMobileMorePathname(null);
       setMobileHidden(true);
     }
   };
@@ -349,6 +443,7 @@ export default function TabBar({
     const mostlyVertical = Math.abs(deltaY) > Math.abs(deltaX) + 10;
 
     if (deltaY > 36 && mostlyVertical) {
+      setMobileMorePathname(null);
       setMobileHidden(true);
     }
   };
@@ -424,19 +519,46 @@ export default function TabBar({
 
   return (
     <>
+      <MobileMoreSheet
+        open={mobileMoreOpen}
+        pathname={pathname}
+        onClose={() => setMobileMorePathname(null)}
+      />
       <nav
         ref={mobileNavRef}
         aria-label="Primary"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className={`app-nav fixed left-3 right-3 z-30 mx-auto flex max-w-[31rem] snap-x snap-mandatory gap-1 overflow-x-auto rounded-xl border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-1.5 shadow-nav-shell backdrop-blur-xl scrollbar-hide transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
+        className={`app-nav fixed left-3 right-3 z-30 mx-auto grid max-w-[31rem] grid-cols-6 gap-1 rounded-xl border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-1.5 shadow-nav-shell backdrop-blur-xl transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
       >
-        {tabs.map((tab) => {
+        {mobilePrimaryTabs.map((tab) => {
           const active = isActive(pathname, tab);
           return <MobileNavItem key={tab.href} tab={tab} active={active} />;
         })}
+        <button
+          type="button"
+          aria-label={
+            mobileMoreTabs.some((tab) => isActive(pathname, tab))
+              ? "More navigation, current section"
+              : "More navigation"
+          }
+          aria-expanded={mobileMoreOpen}
+          onClick={() =>
+            setMobileMorePathname((openPathname) =>
+              openPathname === pathname ? null : pathname
+            )
+          }
+          className={`relative flex min-h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-2xs leading-tight transition duration-fast ${
+            mobileMoreOpen || mobileMoreTabs.some((tab) => isActive(pathname, tab))
+              ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-nav-active"
+              : "text-text-muted"
+          }`}
+        >
+          <MoreIcon active={mobileMoreOpen} />
+          <span className="font-medium">More</span>
+        </button>
       </nav>
 
       {mobileHidden ? (
