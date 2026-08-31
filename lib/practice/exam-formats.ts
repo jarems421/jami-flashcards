@@ -275,7 +275,7 @@ function normalizeMaterials(value: unknown): ExamFormatRequiredMaterial[] {
  * This is arithmetic rather than judgement, so it belongs here rather than in a
  * model's opinion, and it costs nothing to run before generation starts.
  */
-function markArithmeticIssues(input: {
+export function markArithmeticIssues(input: {
   totalMarks: number;
   sections: ExamFormatSection[];
   tariffProgression: string[];

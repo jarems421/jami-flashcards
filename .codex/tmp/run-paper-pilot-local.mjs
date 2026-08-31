@@ -77,6 +77,11 @@ async function remainingCredit() {
 
 const runIdIndex = process.argv.indexOf("--run-id");
 const requestedRunId = runIdIndex >= 0 ? process.argv[runIdIndex + 1] : undefined;
+// Which case to run, when the point is a particular subject rather than the
+// next unfinished one. The checks were calibrated on psychology and the
+// question is whether they survive a maths paper.
+const caseFilterIndex = process.argv.indexOf("--case");
+const caseFilter = caseFilterIndex >= 0 ? process.argv[caseFilterIndex + 1] : undefined;
 const maxCasesIndex = process.argv.indexOf("--max-cases");
 const maxCases = maxCasesIndex >= 0
   ? Math.max(1, Number.parseInt(process.argv[maxCasesIndex + 1] ?? "1", 10) || 1)
@@ -107,6 +112,7 @@ for (let index = 0; index < caseIds.length; index += 1) {
     break;
   }
   const caseId = caseIds[index];
+  if (caseFilter && !caseId.includes(caseFilter)) continue;
   const current = await service.getPaperGenerationBenchmarkRun(run.id);
   const currentCase = current?.cases.find((item) => item.id === caseId);
   if (currentCase?.status === "ready") continue;

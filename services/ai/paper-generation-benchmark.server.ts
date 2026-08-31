@@ -8,7 +8,7 @@ import {
   type GeneratedPracticePaper,
   type PracticePaperGenerationResponse,
 } from "@/lib/practice/practice-papers";
-import { practicePaperFormatContext } from "@/lib/practice/exam-formats";
+import { markArithmeticIssues, practicePaperFormatContext } from "@/lib/practice/exam-formats";
 import { buildStudyFolderPayload } from "@/lib/workspace/study-folders";
 import { buildNotebookPagePayload, buildNotebookPayload } from "@/lib/workspace/notebooks";
 import {
@@ -251,6 +251,31 @@ async function executePaperGenerationBenchmarkCase(runId: string, caseId: string
   if (!definition) throw new Error(`Unknown benchmark definition ${item.definitionId}.`);
   const profile = await getExamFormatProfileVersion(item.profileId, item.profileVersion);
   if (!profile) throw new Error(`Frozen profile ${item.profileId}@${item.profileVersion} is unavailable.`);
+  /**
+   * Refuse a profile that cannot describe the paper it is asking for, before
+   * paying for a single call.
+   *
+   * This check already existed and only ran when a profile was normalised, so
+   * profiles written before it sit in the library unflagged. The AQA GCSE
+   * Mathematics Higher profile states 80 marks with no sections and no tariff
+   * progression, and reads "high confidence": the designer is told the total
+   * and nothing about how to reach it, and returned 91. Psychology only works
+   * because its profile was repaired by hand with the tariffs off a real
+   * paper -- which is the difference between the two subjects, not the model.
+   */
+  const unusable = markArithmeticIssues(profile);
+  if (unusable.length > 0) {
+    const now = Date.now();
+    await caseRef(runId, caseId).update({
+      status: "failed",
+      failureCode: "profile_cannot_build_a_paper",
+      updatedAt: now,
+    });
+    throw new Error(
+      `${item.profileId}@${item.profileVersion} cannot build a paper: ` +
+        unusable.map((issue) => issue.message).join(" ")
+    );
+  }
   await caseRef(runId, caseId).update({ status: "running", updatedAt: Date.now() });
   await runRef(runId).update({ status: "running", activeCaseId: caseId, updatedAt: Date.now() });
   const source = syntheticSource({
@@ -484,6 +509,12 @@ export async function runPaperGenerationBenchmarkCase(runId: string, caseId: str
       runId,
       caseId,
       errorCategory: error instanceof Error ? error.name : "unknown",
+      // Every post-generation failure here reads as "Error" and nothing else.
+      // A case that generated a complete paper, spent its budget and then fell
+      // over on storage or publishing reported only its class, so the cause had
+      // to be guessed at. Truncated, and it carries no candidate work: the paper
+      // is not in scope here, only the harness fault that lost it.
+      reason: error instanceof Error ? error.message.slice(0, 300) : undefined,
     });
     return "failed" as const;
   }
