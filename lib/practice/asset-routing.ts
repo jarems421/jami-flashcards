@@ -1,3 +1,4 @@
+import { drawnFigureIssues } from "@/lib/practice/drawn-figure";
 import { looksLikeSvg, sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 
 /**
@@ -124,4 +125,33 @@ export function assetRoutingIssues(
     }
   }
   return issues;
+}
+
+/**
+ * Every figure fault across a paper: the wrong tool, and the wrong drawing.
+ *
+ * One call so generation runs both, rather than a loop at the call site that
+ * cannot be tested without standing up the request handler around it.
+ */
+export function paperFigureIssues(
+  questions: readonly {
+    id: string;
+    prompt: string;
+    assets?: readonly { id?: string; type?: string; content?: string }[];
+  }[],
+  options: { rasterEnabled: boolean }
+): AssetRoutingIssue[] {
+  return questions.flatMap((question) => [
+    ...assetRoutingIssues(question, options),
+    ...(question.assets ?? []).flatMap((asset) =>
+      asset.type === "diagram" && looksLikeSvg(asset.content ?? "")
+        ? drawnFigureIssues({
+            questionId: question.id,
+            assetId: asset.id ?? "a figure",
+            prompt: question.prompt,
+            svg: asset.content ?? "",
+          }).map((issue) => ({ questionId: question.id, ...issue }))
+        : []
+    ),
+  ]);
 }

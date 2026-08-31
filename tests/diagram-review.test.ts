@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drawnFigureIssues } from "@/services/ai/diagram-review.server";
+import { drawnFigureIssues } from "@/lib/practice/drawn-figure";
 
 /**
  * A sanitised SVG is safe and well-formed, and neither says it is the right

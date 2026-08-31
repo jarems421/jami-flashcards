@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assetRoutingIssues } from "@/lib/practice/asset-routing";
+import { assetRoutingIssues, paperFigureIssues } from "@/lib/practice/asset-routing";
 
 /**
  * Two generators that fail in opposite directions.
@@ -117,5 +117,51 @@ describe("choosing between a drawing and a photograph", () => {
 
   it("says nothing about a question that needs no picture", () => {
     expect(codes({ prompt: "Define the term 'osmosis'.", assets: [] })).toEqual([]);
+  });
+});
+
+/**
+ * The one call generation makes.
+ *
+ * Both halves matter and they catch different things: the wrong tool for the
+ * job, and the right tool used wrongly. A loop at the call site could only be
+ * tested by standing up the request handler around it, which is why it is a
+ * function.
+ */
+describe("every figure fault across a paper", () => {
+  const good = '<svg viewBox="0 0 200 120"><polygon points="10,110 190,110 100,10" fill="none" stroke="black"/>' +
+    '<text x="30" y="100">70°</text><text x="160" y="100">60°</text><text x="100" y="30">50°</text></svg>';
+  const impossible = good.replace(">50°<", ">80°<");
+
+  const run = (content: string) =>
+    paperFigureIssues(
+      [{
+        id: "q1",
+        prompt: "Work out the size of the remaining angle.",
+        assets: [{ id: "a1", type: "diagram", content, altText: "A triangle with three marked angles." }],
+      }] as never,
+      { rasterEnabled: true }
+    ).map((issue) => issue.code);
+
+  it("passes a figure that is the right tool and adds up", () => {
+    expect(run(good)).toEqual([]);
+  });
+
+  /** Well-formed, safe, correctly routed -- and arithmetically impossible. */
+  it("catches a correctly drawn figure whose angles cannot exist", () => {
+    expect(run(impossible)).toContain("diagram_angles_do_not_sum");
+  });
+
+  it("still catches the wrong tool for the job", () => {
+    expect(
+      paperFigureIssues(
+        [{
+          id: "q1",
+          prompt: "Work out the size of angle x.",
+          assets: [{ id: "a1", type: "image", title: "Triangle", altText: "A triangle with an angle of 47 degrees marked." }],
+        }] as never,
+        { rasterEnabled: true }
+      ).map((issue) => issue.code)
+    ).toContain("asset_should_be_drawn");
   });
 });

@@ -16,7 +16,7 @@ import {
   type ParsedPracticePaperModelAnswer,
 } from "@/lib/ai/practice-paper-generation";
 import { captureGenerationPass } from "@/lib/ai/generation-capture";
-import { ASSET_ROUTING_INSTRUCTION, assetRoutingIssues } from "@/lib/practice/asset-routing";
+import { ASSET_ROUTING_INSTRUCTION, paperFigureIssues } from "@/lib/practice/asset-routing";
 import {
   forgetGenerationCheckpoint,
   questionFingerprint,
@@ -863,9 +863,7 @@ export async function runPracticePaperGenerationRequest(
      * that cannot be answered from what is in front of them. Checked here,
      * before an image is paid for rather than after.
      */
-    const routing = draft.questions.flatMap((question) =>
-      assetRoutingIssues(question, { rasterEnabled: paperRasterEnabled() })
-    );
+    const routing = paperFigureIssues(draft.questions, { rasterEnabled: paperRasterEnabled() });
     if (routing.length > 0) {
       log.warn("paper_design.asset_routing", {
         issueCount: routing.length,
