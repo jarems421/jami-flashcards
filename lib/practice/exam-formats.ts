@@ -480,7 +480,18 @@ export function buildPracticePaperBrief(profile: ExamFormatProfileVersion): Prac
     materials: profile.requiredMaterials.map((material) => material.title),
     verificationStatus: profile.verificationStatus,
     confidence: profile.confidence,
-    requiresConfirmation: profile.verificationStatus !== "verified" || profile.confidence === "low",
+    /**
+     * Ask the student whenever nobody has read the profile.
+     *
+     * This triggered on "not verified, or low confidence", which was right when
+     * confidence meant "sources found". It no longer does: high now needs a
+     * recorded human check, so every machine-read profile is verified and
+     * medium, and this asked about nothing at all. Medium is exactly the state
+     * worth asking about -- the arithmetic closes and no person has looked --
+     * and the profile that put Paper 2 content in Paper 1 would have sat in it.
+     */
+    requiresConfirmation:
+      profile.verificationStatus !== "verified" || profile.confidence !== "high",
     customFallbackAvailable: profile.verificationStatus !== "verified",
   };
 }

@@ -57,7 +57,21 @@ describe("exam-format profiles", () => {
     const normalized = profile();
     expect(normalized?.verificationStatus).toBe("verified");
     expect(normalized?.confidence).toBe("medium");
-    expect(buildPracticePaperBrief(normalized!).requiresConfirmation).toBe(false);
+    /**
+     * And asks the student before building on it. Medium is the state where the
+     * arithmetic closes and nobody has read the content, which is exactly when
+     * a confirmation is worth having: the profile that put Paper 2 content into
+     * Paper 1 Section D would have sat here.
+     */
+    expect(buildPracticePaperBrief(normalized!).requiresConfirmation).toBe(true);
+  });
+
+  it("stops asking once a person has checked it", () => {
+    const checked = normalizeExamFormatProfileVersion(
+      { ...profile(), humanChecked: true } as never,
+      { profileId: "p1", board: "aqa", now: 1 }
+    );
+    expect(buildPracticePaperBrief(checked!).requiresConfirmation).toBe(false);
   });
 
   it("raises confidence to high only once a person has checked it", () => {
