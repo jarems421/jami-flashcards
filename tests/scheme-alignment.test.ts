@@ -125,6 +125,50 @@ describe("catching a scheme written for another question", () => {
     ).toEqual([]);
   });
 
+  /**
+   * A calculation's answer is a figure the stem does not contain: that is the
+   * task. A correct research-methods scheme computing "(82 - 41)/82 x 100 =
+   * 50%" was reported for crediting a figure the scenario never gave.
+   */
+  it("allows a figure the scheme works out", () => {
+    expect(
+      codes(
+        question({
+          marks: 6,
+          prompt:
+            "A psychologist is studying a new therapy for phobias. Patients rate their fear on a scale " +
+            "of 0 (no fear) to 100 (extreme fear) before and after treatment. The mean rating fell from " +
+            "82 before to 41 after. Calculate the percentage decrease in mean fear rating.",
+        }),
+        item({
+          maxMarks: 6,
+          answer: "Percentage decrease = (82 - 41)/82 x 100 = 41/82 x 100 = 50% (2 sf).",
+        })
+      )
+    ).not.toContain("scheme_foreign_figures");
+  });
+
+  /** A figure asserted flat, with nothing to derive it from, still counts. */
+  it("still catches a figure the scheme simply asserts", () => {
+    expect(
+      codes(
+        question({
+          marks: 4,
+          prompt:
+            "A student says, 'I only revise with my study group because everyone else in the class " +
+            "revises with a study group, and I do not want to look different.' Explain which type of " +
+            "social influence is most likely to be operating in this situation.",
+        }),
+        item({
+          maxMarks: 4,
+          answer:
+            "Normative social influence: students recycle to gain approval from peers. 68% of pupils " +
+            "reported recycling after the head student's campaign, against 12% before it.",
+        })
+      )
+    ).toContain("scheme_foreign_figures");
+  });
+
   /** A percentage the question itself supplies is not foreign. */
   it("allows figures the question supplied", () => {
     expect(

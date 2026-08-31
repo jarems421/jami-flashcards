@@ -163,7 +163,18 @@ export function schemeAlignmentIssues(
      * obedience under "Discuss research into obedience" is quoting a study, and
      * that question carries no scenario, so it is left alone.
      */
-    const invented = [...percentages(prose)].filter(
+    /**
+     * Unless the scheme is showing its working.
+     *
+     * A calculation question's answer is a figure the stem does not contain --
+     * that is the whole task. "(82 - 41)/82 x 100 = 50%" was reported as a
+     * figure the scenario never gave, on a research-methods question whose
+     * scheme was correct. Arithmetic in the prose is the difference between a
+     * number worked out and a number asserted: the invented "68% of pupils
+     * reported recycling" is stated flat, with nothing to derive it from.
+     */
+    const showsWorking = /\d\s*[-+×x*/÷]\s*\d|=\s*\d/.test(prose);
+    const invented = showsWorking ? [] : [...percentages(prose)].filter(
       (value) => !percentages(question.prompt).has(value)
     );
     if (invented.length > 0) {
