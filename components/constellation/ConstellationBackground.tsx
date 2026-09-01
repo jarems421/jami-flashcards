@@ -113,12 +113,24 @@ export default function ConstellationBackground({
         backgroundColor: "#04020b",
       }}
     >
-      <div className="absolute inset-0 z-10 opacity-[0.96]">
+      {/*
+        * The stars, with nothing on top of them.
+        *
+        * There were two dimmers here -- a 0.96 wrapper and an 8 per cent dark
+        * veil over the field -- on top of the star's own 0.88 and the app
+        * overlay at 0.2. Each is small; multiplied together they took the glow,
+        * which is a soft shadow at low alpha to begin with, down to nothing,
+        * and squeezed the twinkle into a range too narrow to see. The stars
+        * read as flat dots.
+        *
+        * Dimming belongs to the one overlay that already exists for it, not to
+        * three more that each look harmless on their own.
+        */}
+      <div className="absolute inset-0 z-10">
         {visibleStars.map((star) => (
           <ConstellationStar key={star.id} star={star} variant="background" />
         ))}
       </div>
-      <div className="absolute inset-0 z-20 bg-[rgba(7,3,18,0.08)]" />
     </div>
   );
 }

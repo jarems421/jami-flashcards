@@ -56,9 +56,6 @@ const STAR_MASK_STYLE = {
 const STAR_GRADIENT =
   "radial-gradient(circle at center, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.95) 26%, rgba(228, 222, 255, 0.44) 56%, rgba(214, 196, 255, 0) 80%)";
 
-const BACKGROUND_STAR_GRADIENT =
-  "radial-gradient(circle at center, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.9) 20%, rgba(228, 222, 255, 0.36) 44%, rgba(214, 196, 255, 0) 70%)";
-
 /**
  * The light a star throws.
  *
@@ -118,9 +115,17 @@ function getSparkles(star: NormalizedStar, starSize: number) {
   });
 }
 
+/**
+ * How long one breath takes.
+ *
+ * Long on purpose. At three seconds this read as a pulse; at five it still
+ * registered as something happening. Around eight it drops below the threshold
+ * where the eye tracks it, which is where a sky wants to be -- you notice that
+ * it is alive without ever catching it moving.
+ */
 function getTwinkleDuration(star: NormalizedStar, isBackground: boolean) {
-  const base = isBackground ? 5.6 : 4.8;
-  const variation = (star.createdAt % 4) / 10 + ((star.id.length % 7) / 10);
+  const base = isBackground ? 8.8 : 8;
+  const variation = (star.createdAt % 4) / 4 + ((star.id.length % 7) / 4);
 
   return `${base + variation}s`;
 }
@@ -172,8 +177,16 @@ export default function ConstellationStar({
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          background: isBackground ? BACKGROUND_STAR_GRADIENT : STAR_GRADIENT,
-          opacity: isBackground ? 0.88 : isPreview ? 0.92 : 0.86,
+          background: STAR_GRADIENT,
+          /*
+           * A background star is drawn the same as one in the sky.
+           *
+           * It used to be a tighter gradient at a lower opacity, and then had
+           * three further dimmers stacked over it, so it arrived on screen as a
+           * flat dot with no visible glow or twinkle. The background is meant
+           * to be the same sky seen through the app, not a duller copy of it.
+           */
+          opacity: isPreview ? 0.92 : 0.86,
           filter: `drop-shadow(0 0 ${getStarGlowRadius(glowStrength, starSize)}px rgba(255, 255, 255, ${0.4 + glowStrength * 0.3}))`,
           animationName: "constellation-twinkle",
           animationDuration: getTwinkleDuration(star, isBackground),

@@ -1608,12 +1608,23 @@ html.constellation-background-enabled,
 body.constellation-background-enabled {
   background: #060311;
 
-  /* Neutral, high-contrast surfaces over the star field. */
+  /*
+   * Surfaces over the star field, at two settled opacities.
+   *
+   * The point of turning the background on is to see it, and at 0.86 to 0.94
+   * every panel was effectively solid -- the sky was visible only in the gaps
+   * between cards. Ordinary panels sit near 0.7 now, which still leaves white
+   * text at a contrast ratio around 7:1 even directly over the brightest star.
+   *
+   * Anything read or typed into is fully opaque instead. A flashcard with a
+   * star drifting through the answer is not atmosphere, it is a distraction,
+   * and the same goes for a dialog and a text field.
+   */
   --color-surface-base: #060311;
-  --color-surface-raised: rgba(12, 9, 24, 0.86);
-  --color-surface-overlay: rgba(18, 12, 32, 0.9);
-  --color-surface-panel: rgba(12, 9, 24, 0.88);
-  --color-surface-panel-strong: rgba(8, 6, 18, 0.94);
+  --color-surface-raised: rgba(12, 9, 24, 0.70);
+  --color-surface-overlay: #120c20;
+  --color-surface-panel: rgba(12, 9, 24, 0.70);
+  --color-surface-panel-strong: rgba(8, 6, 18, 0.80);
   --color-glass-subtle: rgba(255, 255, 255, 0.08);
   --color-glass-medium: rgba(255, 255, 255, 0.12);
   --color-glass-strong: rgba(255, 255, 255, 0.18);
@@ -1624,7 +1635,8 @@ body.constellation-background-enabled {
   --color-success-text: #dffcf7;
   --color-error-text: #ffe7f2;
   --color-warning-text: #fff1dc;
-  --color-field-bg: rgba(7, 5, 17, 0.86);
+  /* Opaque: text you are typing should not have a star behind it. */
+  --color-field-bg: #070511;
   --color-field-text: #fffaff;
   --color-field-placeholder: #d0c8dd;
   --color-field-border: rgba(238, 225, 255, 0.28);
@@ -1659,14 +1671,14 @@ body.constellation-background-enabled [data-app-surface="true"] {
 }
 
 body.constellation-background-enabled .app-panel {
-  background-color: rgba(12, 9, 24, 0.88);
+  background-color: rgba(12, 9, 24, 0.70);
   background-image: none;
   border-color: rgba(238, 225, 255, 0.24);
   backdrop-filter: none;
 }
 
 body.constellation-background-enabled .app-panel-warm {
-  background-color: rgba(15, 10, 30, 0.9);
+  background-color: rgba(15, 10, 30, 0.72);
   background-image: none;
   border-color: rgba(234, 219, 255, 0.28);
   backdrop-filter: none;
@@ -1674,7 +1686,7 @@ body.constellation-background-enabled .app-panel-warm {
 
 body.constellation-background-enabled .bg-surface-panel,
 body.constellation-background-enabled .bg-surface-panel-strong {
-  background-color: rgba(12, 9, 24, 0.9) !important;
+  background-color: rgba(12, 9, 24, 0.72) !important;
   background-image: none !important;
   backdrop-filter: none !important;
 }
@@ -1689,16 +1701,24 @@ body.constellation-background-enabled .study-flashcard-face {
   -webkit-backdrop-filter: none;
 }
 
+/*
+ * Opaque, deliberately.
+ *
+ * A card is the one surface a student is actually reading, and a star drifting
+ * through the answer is not atmosphere. These were 0.92 and 0.95 -- almost
+ * solid, but not solid, which is the worst of both: no sky worth seeing and a
+ * moving highlight behind the text.
+ */
 body.constellation-background-enabled .study-flashcard-face-front {
-  background: rgba(8, 5, 18, 0.92);
+  background: #080512;
 }
 
 body.constellation-background-enabled .study-flashcard-face-back {
-  background: rgba(12, 7, 24, 0.95);
+  background: #0c0718;
 }
 
 body.constellation-background-enabled .app-topbar {
-  background: rgba(10, 8, 22, 0.86) !important;
+  background: rgba(10, 8, 22, 0.72) !important;
   background-image: none !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
@@ -1706,7 +1726,7 @@ body.constellation-background-enabled .app-topbar {
 }
 
 body.constellation-background-enabled .app-nav {
-  background: rgba(10, 8, 22, 0.88) !important;
+  background: rgba(10, 8, 22, 0.74) !important;
   background-image: none !important;
   backdrop-filter: none !important;
 }
@@ -1726,14 +1746,6 @@ body.constellation-background-enabled::before {
 
 /* Constellation keyframes */
 
-/*
- * A star breathing, not blinking.
- *
- * This ran 0.85 to 1 over a 5 per cent scale, which at the speed it was set to
- * read as a flicker at the edge of vision rather than as something alive. The
- * range is wider and the shape is asymmetric -- a slow swell, a longer settle
- * -- so it holds at the top of the cycle instead of bouncing off it.
- */
 /*
  * A star breathing, on opacity alone.
  *

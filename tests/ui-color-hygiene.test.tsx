@@ -97,7 +97,11 @@ describe("theme colour hygiene", () => {
       "0 0 0 1px color-mix(in srgb, var(--study-card-border"
     );
     expect(globals).toContain("background-color: var(--color-surface-panel);");
-    expect(globals).toContain("background: rgba(8, 5, 18, 0.92);");
+    // The flashcard front is opaque under the constellation background, not
+    // 0.92: the same colour, but a card is the one surface a student is reading
+    // and a star drifting behind the answer is a distraction rather than
+    // atmosphere. Panels around it went the other way and got more transparent.
+    expect(globals).toContain("background: #080512;");
     expect(globals).toContain("--color-text-primary: #fff8ff;");
   });
 

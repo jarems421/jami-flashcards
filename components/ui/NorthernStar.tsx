@@ -13,27 +13,27 @@
 export const NORTHERN_STAR_BOX = 160;
 
 /**
- * Four points, 1.37 times taller than wide, on a 0.35 waist.
+ * Four points, 1.63 times taller than wide, on a 0.24 waist.
  *
- * Outer radius 74 vertically and 54 horizontally, with the inner vertices on
- * the 45-degree diagonals at radius 26. The stretch is the whole point: a pole
+ * Outer radius 78 vertically and 48 horizontally, with the inner vertices on
+ * the 45-degree diagonals at radius 19. The stretch is the whole point: a pole
  * star is drawn taller than it is wide, and a symmetrical four-point star is
  * just a sparkle.
  *
- * This has been three shapes. It was symmetrical at a 0.25 waist -- needle-thin
- * and, being unstretched, not really a northern star at all. It was then six
- * points, which separated it outright from the three sparkles that mean "Jami
- * can help here", but read as an asterisk at the 18-26px an ordinary sky is
- * full of. Four broad points on a long vertical axis is legible small and still
- * looks like a star.
+ * The waist is what has moved most. It was 0.25 and unstretched, which is a
+ * sparkle rather than a star; then six points at 0.28, which read as an
+ * asterisk at the 18-26px an ordinary sky is full of; then four points at 0.35,
+ * which was legible but chunky. This is thin without being needle-like -- long
+ * rays on a long axis, which is the shape that reads as calm rather than as
+ * spiky or as heavy.
  *
- * The cost is real and worth stating: this is once again the same shape family
- * as JamiTutorIcon. What separates them now is that an earned star is one tall
- * faceted star and the AI mark is three small flat ones -- carried by
- * composition rather than by geometry.
+ * The cost is real and worth stating: this is the same shape family as
+ * JamiTutorIcon. What separates them is that an earned star is one tall faceted
+ * star and the AI mark is three small flat ones -- carried by composition
+ * rather than by geometry.
  */
 export const NORTHERN_STAR_PATH =
-  "M80 6L98.38 61.62L134 80L98.38 98.38L80 154L61.62 98.38L26 80L61.62 61.62Z";
+  "M80 2L93.44 66.56L128 80L93.44 93.44L80 158L66.56 93.44L32 80L66.56 66.56Z";
 
 /**
  * The smaller cut-out that gives the filled star its facet.
@@ -43,7 +43,7 @@ export const NORTHERN_STAR_PATH =
  * a highlight.
  */
 export const NORTHERN_STAR_FACET_PATH =
-  "M80 50.4L87.35 72.65L101.6 80L87.35 87.35L80 109.6L72.65 87.35L58.4 80L72.65 72.65Z";
+  "M80 48.8L85.37 74.63L99.2 80L85.37 85.37L80 111.2L74.63 85.37L60.8 80L74.63 74.63Z";
 
 /**
  * Places the star at `x, y` drawn `size` across, in the caller's own viewBox.
