@@ -67,7 +67,7 @@ const STAR_MASK_STYLE = {
  * the opposite, and looked it.
  */
 const STAR_GRADIENT =
-  "radial-gradient(circle at center, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.95) 26%, rgba(228, 222, 255, 0.44) 56%, rgba(214, 196, 255, 0) 80%)";
+  "radial-gradient(circle at center, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.9) 12%, rgba(228, 222, 255, 0.3) 38%, rgba(214, 196, 255, 0) 66%)";
 
 /**
  * The light a star throws: a tight white core and a wide violet bloom.
@@ -78,12 +78,18 @@ const STAR_GRADIENT =
  * star, which read as a disc; the answer was never less light, it was light
  * that follows the shape.
  *
- * It then went too far the other way and became a hairline, which is why this
- * is back up to a real radius. It is what makes a 0.165-waist star legible at
- * 18px: the star is thin and the light around it is not.
+ * It then went too far the other way and became a hairline, which is why the
+ * outer bloom is a real radius. It is what makes a thin star legible at 18px:
+ * the star is thin and the light around it is not.
+ *
+ * The tight core shadow is the opposite problem and stayed wrong longer. At
+ * 0.12 to 0.2 of the star it was wide enough to fill the gap between the four
+ * rays, so the middle read as a solid blob and the star looked thick however
+ * far the path was thinned. The centre's apparent weight was never mostly the
+ * geometry. It is a third of what it was.
  */
 function getStarGlowFilter(glowStrength: number, starSize: number) {
-  const core = starSize * (0.12 + glowStrength * 0.08);
+  const core = starSize * (0.05 + glowStrength * 0.04);
   const bloom = starSize * (0.36 + glowStrength * 0.28);
 
   return [
@@ -128,11 +134,12 @@ function getSparkleCount(starSize: number) {
  * So: one soft ellipse, no streaks, with alpha roughly halving at every stop so
  * the falloff never straightens into an edge.
  *
- * It is wider than it is tall, which is the opposite of the star. Matching the
- * star's own proportions seemed right and was not: a bloom taller than wide
- * around a star taller than wide compounds into a standing oval, and the oval
- * is the thing you notice instead of the light. Spreading it the other way
- * cancels rather than doubles, and the glow reads as round.
+ * It is round, and getting there took overshooting twice. Matching the star's
+ * own proportions at 34 by 56 compounded into a standing vertical oval, because
+ * a bloom taller than wide around a star taller than wide doubles rather than
+ * cancels. Correcting to 54 by 42 then read as the horizontal rays being
+ * stretched, most visibly on the largest stars where the bloom is widest. The
+ * light around a star should not have a long axis at all: 48 by 48.
  *
  * Held below the sparkles in brightness on purpose. Around 0.4 it starts to
  * wash them out, and the sparkles are the detail worth seeing.
@@ -143,7 +150,7 @@ function getBloomBackground(glowStrength: number) {
   const alpha = 0.22 + glowStrength * 0.1;
   const at = (fraction: number) => (alpha * fraction).toFixed(3);
 
-  return `radial-gradient(ellipse 54% 42% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(240, 236, 255, ${at(0.5)}) 16%, rgba(228, 222, 255, ${at(0.24)}) 32%, rgba(220, 208, 255, ${at(0.1)}) 50%, rgba(214, 196, 255, ${at(0.03)}) 70%, rgba(214, 196, 255, 0) 100%)`;
+  return `radial-gradient(ellipse 48% 48% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(240, 236, 255, ${at(0.5)}) 16%, rgba(228, 222, 255, ${at(0.24)}) 32%, rgba(220, 208, 255, ${at(0.1)}) 50%, rgba(214, 196, 255, ${at(0.03)}) 70%, rgba(214, 196, 255, 0) 100%)`;
 }
 
 function getSeededFraction(seed: string, index: number) {

@@ -13,11 +13,11 @@
 export const NORTHERN_STAR_BOX = 160;
 
 /**
- * Four rays on cubic curves: radius 79 vertical, 62 horizontal, pull 0.95.
+ * Four rays on cubic curves: radius 79 vertical, 62 horizontal, pull 0.98.
  *
  * Each edge leaves its tip travelling straight down that tip's own axis, then
  * turns into the next tip along the other axis. Both control points sit on the
- * axes at 95 per cent of the way to the centre, which is what pinches the body
+ * axes at 98 per cent of the way to the centre, which is what pinches the body
  * to almost nothing and leaves four fine rays meeting at a point.
  *
  * These were quadratics for a while, and quadratics could not do this. One
@@ -27,8 +27,10 @@ export const NORTHERN_STAR_BOX = 160;
  * waist of 20 and a waist of 5. A cubic has a control point per end, which is
  * the whole reason this shape is finally thin.
  *
- * `pull` is the number to reach for if it ever needs adjusting again: 0.7 is a
- * fuller star, 0.95 is this one, 1.0 collapses the body entirely.
+ * `pull` is the number to reach for if the geometry needs adjusting again: 0.7
+ * is a fuller star, 0.98 is this one, 1.0 collapses the body entirely. Be aware
+ * it is often not the culprit -- how thick the centre *looks* is set at least as
+ * much by the star's glow, which fills the middle in, as by the path.
  *
  * It briefly carried four short diagonal rays as well. They gave the eye
  * something between the long ones, but at 22 units they read as pixelation from
@@ -42,7 +44,7 @@ export const NORTHERN_STAR_BOX = 160;
  * earned star is now unmistakably not an offer of help.
  */
 export const NORTHERN_STAR_PATH =
-  "M80 1C80 76.05 83.1 80 142 80C83.1 80 80 83.95 80 159C80 83.95 76.9 80 18 80C76.9 80 80 76.05 80 1Z";
+  "M80 1C80 78.42 81.24 80 142 80C81.24 80 80 81.58 80 159C80 81.58 78.76 80 18 80C78.76 80 80 78.42 80 1Z";
 
 /**
  * The smaller cut-out that gives the filled star its facet.
@@ -52,7 +54,7 @@ export const NORTHERN_STAR_PATH =
  * highlight.
  */
 export const NORTHERN_STAR_FACET_PATH =
-  "M80 48.4C80 78.42 81.24 80 104.8 80C81.24 80 80 81.58 80 111.6C80 81.58 78.76 80 55.2 80C78.76 80 80 78.42 80 48.4Z";
+  "M80 48.4C80 79.37 80.5 80 104.8 80C80.5 80 80 80.63 80 111.6C80 80.63 79.5 80 55.2 80C79.5 80 80 79.37 80 48.4Z";
 
 /**
  * Places the star at `x, y` drawn `size` across, in the caller's own viewBox.
