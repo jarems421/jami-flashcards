@@ -205,16 +205,20 @@ function getSparkles(star: NormalizedStar, starSize: number) {
 }
 
 /**
- * How long one breath takes.
+ * How long one breath takes: about four seconds.
  *
- * Long on purpose. At three seconds this read as a pulse; at five it still
- * registered as something happening. Around eight it drops below the threshold
- * where the eye tracks it, which is where a sky wants to be -- you notice that
- * it is alive without ever catching it moving.
+ * This has been as short as three, which read as a pulse, and as long as eight,
+ * which is genuinely below the threshold where the eye follows it -- so far
+ * below that the sky stopped looking alive at all. Four is the middle: quick
+ * enough to notice, slow enough that noticing it is not the point.
+ *
+ * The spread matters as much as the number. Every star runs a slightly
+ * different cycle seeded from its own id, so forty of them never fall into step
+ * -- forty stars breathing together is a heartbeat, not a sky.
  */
 function getTwinkleDuration(star: NormalizedStar, isBackground: boolean) {
-  const base = isBackground ? 8.8 : 8;
-  const variation = (star.createdAt % 4) / 4 + ((star.id.length % 7) / 4);
+  const base = isBackground ? 3.9 : 3.5;
+  const variation = (star.createdAt % 4) / 5 + ((star.id.length % 7) / 7);
 
   return `${base + variation}s`;
 }
