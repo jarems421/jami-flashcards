@@ -88,7 +88,35 @@ function getStarGlowFilter(glowStrength: number, starSize: number) {
  * background variant, where sixty stars sit behind every page in the app.
  */
 const SPARKLE_MIN_STAR_SIZE = 30;
-const SPARKLES_PER_STAR = 3;
+const SPARKLES_PER_STAR = 4;
+
+/**
+ * The shine: two crossed streaks of light radiating out of the star's centre.
+ *
+ * The drop-shadows around the star are a halo -- they say the star is bright,
+ * but they do not read as light *coming off* it, because a blur has no
+ * direction. These do: two ellipses crossing at the centre, one tall and one
+ * wide, so the light runs out along the star's own axes and past its tips.
+ *
+ * Ellipses rather than a circle for the same reason the circular halo was
+ * deleted. A disc behind a star is a disc; this has the shape of the thing
+ * throwing it.
+ *
+ * Kept deliberately below the sparkles in brightness. At around 0.4 the streaks
+ * start to wash the sparkles out, and the sparkles are the detail worth seeing.
+ */
+const SHINE_BOX_RATIO = 3;
+const SHINE_THICKNESS = 6;
+
+function getShineBackground(glowStrength: number) {
+  const alpha = 0.2 + glowStrength * 0.1;
+  const mid = (alpha * 0.4).toFixed(3);
+
+  return [
+    `radial-gradient(ellipse ${SHINE_THICKNESS}% 46% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(228, 222, 255, ${mid}) 26%, rgba(214, 196, 255, 0) 68%)`,
+    `radial-gradient(ellipse 46% ${SHINE_THICKNESS}% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(228, 222, 255, ${mid}) 26%, rgba(214, 196, 255, 0) 68%)`,
+  ].join(", ");
+}
 
 function getSeededFraction(seed: string, index: number) {
   let hash = 0;
@@ -101,14 +129,25 @@ function getSeededFraction(seed: string, index: number) {
 /**
  * Where a star's sparkles sit, and when each one lights.
  *
- * Seeded from the star's own id, so a star throws the same sparkles in the
- * same places every time it is drawn rather than rearranging itself on every
- * render. The cycles are long and staggered, so at any instant most are dark
- * and the star reads as shedding light rather than flashing.
+ * One per quadrant, jittered inside it, rather than a seeded angle anywhere on
+ * the circle. The seeded version was badly biased: across 400 ids the quadrant
+ * split came out 400 / 10 / 480 / 310, and for sequentially numbered ids it
+ * picked the *same three* quadrants every time, so every star in a sky had an
+ * empty top-left corner. A hash that is only used three or four times per star
+ * is nowhere near enough samples to trust for coverage.
+ *
+ * Anchoring each sparkle to a quadrant centre and jittering by less than half a
+ * quadrant guarantees all four are occupied while keeping stars unalike. The
+ * seed still sets distance, size and timing, where a bias does no harm.
+ *
+ * The cycles are long and staggered, so the sparkles brighten at different
+ * moments rather than together.
  */
 function getSparkles(star: NormalizedStar, starSize: number) {
   return Array.from({ length: SPARKLES_PER_STAR }, (_, index) => {
-    const angle = getSeededFraction(star.id, index) * Math.PI * 2;
+    const quadrantCentre = (index * Math.PI) / 2 + Math.PI / 4;
+    const jitter = (getSeededFraction(star.id, index) - 0.5) * 0.64;
+    const angle = quadrantCentre + jitter;
     const distance = 55 + getSeededFraction(star.id, index + 7) * 35;
     const size = starSize * (0.13 + getSeededFraction(star.id, index + 13) * 0.08);
 
@@ -184,6 +223,17 @@ export default function ConstellationStar({
    */
   const visual = (
     <>
+      {/* Behind the star and unmasked, so the streaks can run past its tips. */}
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2"
+        aria-hidden="true"
+        style={{
+          width: `${starSize * SHINE_BOX_RATIO}px`,
+          height: `${starSize * SHINE_BOX_RATIO}px`,
+          transform: "translate(-50%, -50%)",
+          background: getShineBackground(glowStrength),
+        }}
+      />
       <div
         className="pointer-events-none absolute inset-0"
         style={{
