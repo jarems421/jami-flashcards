@@ -209,6 +209,14 @@ walkthrough earns one. Nothing else mints a star, and nothing else should start
 to without a deliberate decision — a star that arrives easily stops meaning
 anything.
 
+**Finishing seals what is in a sky, not how it is arranged.** A finished
+constellation takes no new stars — that is what finishing is for, and the next
+one starts collecting them. Everything else about it stays editable: its name,
+and where each star sits. The arrangement is personalisation, and a finished sky
+is the one a student will actually keep looking at, so it is the last thing that
+should be frozen. Do not gate rearranging, renaming or any other presentation
+choice on `status === "active"`.
+
 **Nothing promises a reward it cannot show.** A goal completed against a full
 constellation mints no star, so do not tell a student one is waiting. Read what
 exists rather than inferring it from something adjacent.

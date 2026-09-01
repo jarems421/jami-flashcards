@@ -196,8 +196,18 @@ export default function ConstellationDashboardPage() {
   const canFinishActiveConstellation = activeConstellation
     ? isConstellationReadyToFinish(activeConstellation)
     : false;
-  const canEditSelectedConstellation =
-    selectedConstellation?.status === "active";
+  /*
+   * Finishing a sky seals what is in it, not how it is arranged.
+   *
+   * One flag used to mean both, so finishing a constellation turned it "View
+   * only" and the student lost the ability to move stars they had placed. Those
+   * are different things: a finished sky takes no new stars -- that is what
+   * finishing is for, and the next one starts collecting them -- but where each
+   * star sits is personalisation, and there is no reason for it to expire. The
+   * arrangement is also the part someone is most likely to want to revisit,
+   * because a finished sky is the one they will actually keep looking at.
+   */
+  const canArrangeSelectedConstellation = Boolean(selectedConstellation);
 
   const visibleStars = useMemo(
     () =>
@@ -232,7 +242,7 @@ export default function ConstellationDashboardPage() {
   };
 
   useEffect(() => {
-    if (!draggingStarId || !canEditSelectedConstellation) {
+    if (!draggingStarId || !canArrangeSelectedConstellation) {
       return;
     }
 
@@ -290,7 +300,7 @@ export default function ConstellationDashboardPage() {
       window.removeEventListener("touchend", handleEnd);
       window.removeEventListener("touchcancel", handleEnd);
     };
-  }, [canEditSelectedConstellation, draggingStarId, user.uid]);
+  }, [canArrangeSelectedConstellation, draggingStarId, user.uid]);
 
   const handleKeyboardStarMove = useCallback(
     (starId: string, position: NormalizedStar["position"]) => {
@@ -538,11 +548,6 @@ export default function ConstellationDashboardPage() {
                     <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
                       {selectedConstellation.starCount} / {selectedConstellation.maxStars} stars
                     </span>
-                    {!canEditSelectedConstellation ? (
-                      <span className="app-chip rounded-full px-3 py-1.5 text-xs font-medium">
-                        View only
-                      </span>
-                    ) : null}
                     <Button
                       type="button"
                       size="sm"
@@ -586,12 +591,12 @@ export default function ConstellationDashboardPage() {
                             : "Earned star"
                       }
                       onDragStart={
-                        canEditSelectedConstellation
+                        canArrangeSelectedConstellation
                           ? () => setDraggingStarId(star.id)
                           : undefined
                       }
                       onNudge={
-                        canEditSelectedConstellation
+                        canArrangeSelectedConstellation
                           ? (position) =>
                               handleKeyboardStarMove(star.id, position)
                           : undefined
