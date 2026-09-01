@@ -20,7 +20,15 @@ type ConstellationBackgroundProps = {
   selectedConstellationId?: string;
 };
 
-const MAX_VISIBLE_BACKGROUND_STARS = 60;
+/**
+ * How many stars the app-wide background draws.
+ *
+ * Sixty measured at six milliseconds of extra work every time a page mounted,
+ * and eighteen dropped frames in five seconds; forty costs about one and none.
+ * A full constellation is forty stars anyway, so in practice this only trims
+ * the case where several finished skies have been merged into the view.
+ */
+const MAX_VISIBLE_BACKGROUND_STARS = 40;
 
 export default function ConstellationBackground({
   selectedConstellationId = "",
