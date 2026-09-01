@@ -125,9 +125,23 @@ export default function ConstellationBackgroundShell({
     };
   }, [isBackgroundReady, shouldShowBackground]);
 
+  /*
+   * The sky brings its own colours, so no theme class is stamped while it is on.
+   *
+   * The star field used to sit under whichever colour theme was selected, which
+   * gave a black sky pink buttons and a blush nav -- and, for the two light
+   * themes, the `app-theme-light` rules that turn hard-coded white text dark,
+   * against panels that are still dark. Every one of those is a class on the
+   * document rather than a custom property, so no amount of overriding in
+   * `.constellation-background-enabled` reaches them; not stamping the class is
+   * what actually settles it. The palette itself lives in globals.css beside
+   * the surfaces it belongs to.
+   */
   useEffect(() => {
     const themeTargets = [document.documentElement, document.body];
-    const activeClassNames = new Set(getActiveAppThemeClassNames(appTheme));
+    const activeClassNames = new Set(
+      shouldShowBackground ? [] : getActiveAppThemeClassNames(appTheme)
+    );
 
     for (const target of themeTargets) {
       for (const className of APP_THEME_CLASS_NAMES) {
@@ -140,7 +154,7 @@ export default function ConstellationBackgroundShell({
         target.classList.remove(...APP_THEME_CLASS_NAMES);
       }
     };
-  }, [appTheme]);
+  }, [appTheme, shouldShowBackground]);
 
   useEffect(() => {
     const backgroundTargets = [document.documentElement, document.body];

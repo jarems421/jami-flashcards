@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  CONSTELLATION_BACKGROUND_CRASH_MARKER_STORAGE_KEY,
+  CONSTELLATION_BACKGROUND_STORAGE_KEY,
+} from "@/lib/constellation/background";
+
 export const APP_THEME_STORAGE_KEY = "jami:app-theme";
 export const LEGACY_APP_BACKGROUND_STORAGE_KEY = "jami:app-background";
 export const APP_THEME_EVENT = "jami-app-theme-change";
@@ -125,6 +130,12 @@ export function readAppThemePreference(): AppThemePreference {
  * Built from the same options and class rules the effect uses, so the two
  * cannot drift apart, and wrapped in a try so a browser refusing storage falls
  * through to the default rather than leaving the page blank.
+ *
+ * It also decides, on the same rule the shell uses, whether the star sky is
+ * about to take over the palette -- and stamps the sky's class instead of a
+ * theme's when it is. Without that the app opens in the stored theme's colours
+ * and swaps to black a frame later, which is the flash this script exists to
+ * prevent, just moved.
  */
 export const APP_THEME_BOOTSTRAP_SCRIPT = `(function(){try{var c=${JSON.stringify(
   Object.fromEntries(
@@ -137,7 +148,11 @@ export const APP_THEME_BOOTSTRAP_SCRIPT = `(function(){try{var c=${JSON.stringif
   APP_THEME_STORAGE_KEY
 )})||s.getItem(${JSON.stringify(
   LEGACY_APP_BACKGROUND_STORAGE_KEY
-)});if(t==="purple-pink")t="purple";document.documentElement.classList.add.apply(document.documentElement.classList,c[t]||c.normal)}catch(e){}})();`;
+)});if(t==="purple-pink")t="purple";var d=document.documentElement,p=(window.location&&window.location.pathname)||"";if(s.getItem(${JSON.stringify(
+  CONSTELLATION_BACKGROUND_STORAGE_KEY
+)})==="true"&&s.getItem(${JSON.stringify(
+  CONSTELLATION_BACKGROUND_CRASH_MARKER_STORAGE_KEY
+)})!=="true"&&p!=="/dashboard/constellation"){d.classList.add("constellation-background-enabled")}else{d.classList.add.apply(d.classList,c[t]||c.normal)}}catch(e){}})();`;
 
 export function saveAppThemePreference(value: AppThemePreference) {
   try {

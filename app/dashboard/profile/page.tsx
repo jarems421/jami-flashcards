@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
 import AppPage from "@/components/layout/AppPage";
@@ -27,12 +28,41 @@ import {
   saveAppThemePreference,
   type AppThemePreference,
 } from "@/lib/app/theme-preference";
+import {
+  CONSTELLATION_BACKGROUND_EVENT,
+  readConstellationBackgroundCrashMarked,
+  readConstellationBackgroundEnabled,
+} from "@/lib/constellation/background";
 import { TutorialAccountCard } from "@/components/onboarding/TutorialProvider";
 
 function ThemePreferenceCard() {
   const [selectedTheme, setSelectedTheme] = useState<AppThemePreference>(() =>
     readAppThemePreference(),
   );
+  const [skyIsOn, setSkyIsOn] = useState(false);
+
+  /*
+   * The sky is a preset of its own and brings its own black palette, so while
+   * it is on these six swatches change nothing. Saying so is the difference
+   * between a setting that is off and a setting that looks broken.
+   */
+  useEffect(() => {
+    const syncSky = () => {
+      setSkyIsOn(
+        readConstellationBackgroundEnabled() &&
+          !readConstellationBackgroundCrashMarked(),
+      );
+    };
+
+    syncSky();
+    window.addEventListener("storage", syncSky);
+    window.addEventListener(CONSTELLATION_BACKGROUND_EVENT, syncSky);
+
+    return () => {
+      window.removeEventListener("storage", syncSky);
+      window.removeEventListener(CONSTELLATION_BACKGROUND_EVENT, syncSky);
+    };
+  }, []);
 
   const handleSelectTheme = (value: AppThemePreference) => {
     setSelectedTheme(value);
@@ -46,6 +76,20 @@ function ThemePreferenceCard() {
         title="Choose your study atmosphere"
         description="Saved only on this device. Your notes and study data do not change."
       />
+      {skyIsOn ? (
+        <p className="app-subtle-panel mt-4 rounded-lg px-3 py-2.5 text-sm leading-6">
+          Your star sky is on, so Jami is black everywhere to keep the stars the
+          only colour on screen. Pick a colour here and it comes back when you
+          remove the background from{" "}
+          <Link
+            href="/dashboard/constellation"
+            className="font-semibold text-text-primary underline underline-offset-2"
+          >
+            Stars
+          </Link>
+          .
+        </p>
+      ) : null}
       {/*
         Read as a palette rather than a list of settings: the swatch is the
         content, the name labels it, and the description moves to the button's

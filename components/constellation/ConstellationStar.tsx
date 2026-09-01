@@ -24,6 +24,13 @@ type ConstellationStarProps = {
   interaction?: "arrange" | "connect";
   /** The star a line is currently being drawn from. */
   isLinkSource?: boolean;
+  /**
+   * The star the half-drawn line is currently over.
+   *
+   * Letting go here joins the two, so this is the one piece of feedback that
+   * turns the drop from a guess into a decision.
+   */
+  isLinkTarget?: boolean;
   /** Keyboard equivalent of pressing the star, used to pick link ends. */
   onActivate?: () => void;
 };
@@ -236,6 +243,7 @@ export default function ConstellationStar({
   label = "Earned star",
   interaction = "arrange",
   isLinkSource = false,
+  isLinkTarget = false,
   onActivate,
 }: ConstellationStarProps) {
   const isBackground = variant === "background";
@@ -265,8 +273,44 @@ export default function ConstellationStar({
    * so dropping the blend mode costs almost nothing to look at, and the twinkle
    * now animates opacity alone, which the compositor handles without help.
    */
+  /*
+   * The mark on a star that is picked up, or about to be joined to.
+   *
+   * This was `outline` on the button, which is a square -- a hard-cornered box
+   * around a star, in a sky. A ring is the shape the thing it marks actually
+   * is, and it stays a ring: never filled, because the sky's own rule is that
+   * nothing solid goes behind a star. It reads as a control rather than as
+   * light, which is exactly what it is.
+   *
+   * The source ring breathes and the target ring does not. Holding still is the
+   * signal: a line has found somewhere to land, and letting go now will join
+   * them.
+   */
+  const ringSize = Math.max(starSize * 2.1, 30);
+  const ring =
+    isLinkSource || isLinkTarget ? (
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute left-1/2 top-1/2 rounded-full ${
+          isLinkTarget ? "" : "constellation-star-ring"
+        }`}
+        style={{
+          width: `${ringSize}px`,
+          height: `${ringSize}px`,
+          transform: "translate(-50%, -50%)",
+          border: isLinkTarget
+            ? "1.5px solid rgba(255, 255, 255, 0.85)"
+            : "1px solid rgba(226, 230, 255, 0.6)",
+          boxShadow: isLinkTarget
+            ? "0 0 18px rgba(214, 221, 255, 0.45)"
+            : "0 0 12px rgba(198, 202, 255, 0.28)",
+        }}
+      />
+    ) : null;
+
   const visual = (
     <>
+      {ring}
       {/* Behind the star and unmasked, so the light stands off it. */}
       <div
         className="pointer-events-none absolute left-1/2 top-1/2"
@@ -344,7 +388,21 @@ export default function ConstellationStar({
         data-star-id={star.id}
         aria-label={`${label}. ${instruction}`}
         aria-pressed={isConnecting ? isLinkSource : undefined}
-        onPointerDown={onDragStart}
+        onPointerDown={(event) => {
+          if (!onDragStart) return;
+          /*
+           * Focus without scrolling, then swallow the default.
+           *
+           * Pressing a star focuses it, and a browser scrolls a newly focused
+           * control into view -- so on iPad, touching a star near the edge of a
+           * 560px sky jumped the whole page under the finger mid-drag. Taking
+           * the focus deliberately, with the scroll off, keeps the star
+           * reachable by keyboard without the page moving.
+           */
+          event.currentTarget.focus({ preventScroll: true });
+          event.preventDefault();
+          onDragStart();
+        }}
         onKeyDown={(event) => {
           if (isConnecting) {
             if (event.key === "Enter" || event.key === " ") {
@@ -368,7 +426,11 @@ export default function ConstellationStar({
             y: clampPercentage(star.position.y + offset.y),
           });
         }}
-        className={`${className} border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--color-selected-border)] ${isLinkSource ? "outline outline-2 outline-offset-4 outline-[var(--color-selected-border)]" : ""}`}
+        /*
+         * Round, so the focus ring is a circle around a star rather than a box
+         * around one: an outline follows the element's own radius.
+         */
+        className={`${className} rounded-full border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[6px] focus-visible:outline-[rgba(226,230,255,0.75)]`}
         style={style}
         title={label}
       >
