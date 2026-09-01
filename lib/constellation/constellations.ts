@@ -90,6 +90,21 @@ export function toggleConstellationLine(
 }
 
 /**
+ * Removes the most recently drawn line.
+ *
+ * Lines are appended, so the last element is the newest and popping it walks a
+ * pattern back the way it was built. This is not a general undo -- it will not
+ * restore a line that was removed -- because the thing worth undoing while
+ * drawing is the stroke you just made, and a full history would have to survive
+ * page loads and other devices to be worth the name.
+ */
+export function removeLastConstellationLine(
+  lines: ConstellationLine[]
+): ConstellationLine[] {
+  return lines.length ? lines.slice(0, -1) : lines;
+}
+
+/**
  * Drops any line whose stars are no longer in the sky.
  *
  * A line outlives the star it points at -- deleting a star, or a backfill

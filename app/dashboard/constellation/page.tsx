@@ -8,8 +8,10 @@ import {
   getActiveConstellation,
   getFallbackConstellation,
   isConstellationReadyToFinish,
+  removeLastConstellationLine,
   toggleConstellationLine,
   type Constellation,
+  type ConstellationLine,
 } from "@/lib/constellation/constellations";
 import {
   createConstellation,
@@ -85,7 +87,18 @@ export default function ConstellationDashboardPage() {
    */
   const [skyMode, setSkyMode] = useState<"arrange" | "connect">("arrange");
   const [linkFromStarId, setLinkFromStarId] = useState<string | null>(null);
+  // Clearing every line is one click away from a pattern someone built by
+  // hand, so the button asks once before it does it.
+  const [isConfirmingClearLines, setIsConfirmingClearLines] = useState(false);
   const [linkPoint, setLinkPoint] = useState<{ x: number; y: number } | null>(null);
+  /**
+   * The star the half-drawn line is currently over.
+   *
+   * Tracked during the drag rather than only read on release, so the line can
+   * snap to it and the star can light up. Dropping a line used to be aimed
+   * blind: nothing on screen said whether letting go would join anything.
+   */
+  const [linkHoverStarId, setLinkHoverStarId] = useState<string | null>(null);
   const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -324,13 +337,18 @@ export default function ConstellationDashboardPage() {
    * them in one document, and a read-modify-write of the array is what keeps
    * "draw the same line twice to remove it" a single, obvious operation.
    */
-  const handleToggleLine = useCallback(
-    (starA: string, starB: string) => {
+  /**
+   * The one path every line change goes through: drawing, undo and clear all.
+   *
+   * They differ only in which array they hand over, so sharing the write keeps
+   * the optimistic update, the save and the error handling identical for all
+   * three. Bailing when the array is unchanged means a no-op never costs a
+   * write.
+   */
+  const applyLines = useCallback(
+    (next: ConstellationLine[]) => {
       const constellation = selectedConstellation;
-      if (!constellation) return;
-
-      const next = toggleConstellationLine(constellation.lines, starA, starB);
-      if (next === constellation.lines) return;
+      if (!constellation || next === constellation.lines) return;
 
       setConstellations((current) =>
         current.map((entry) =>
@@ -347,6 +365,37 @@ export default function ConstellationDashboardPage() {
     [selectedConstellation, showError, user.uid]
   );
 
+  const handleToggleLine = useCallback(
+    (starA: string, starB: string) => {
+      if (!selectedConstellation) return;
+      applyLines(
+        toggleConstellationLine(selectedConstellation.lines, starA, starB)
+      );
+    },
+    [applyLines, selectedConstellation]
+  );
+
+  const handleUndoLine = useCallback(() => {
+    if (!selectedConstellation) return;
+    applyLines(removeLastConstellationLine(selectedConstellation.lines));
+  }, [applyLines, selectedConstellation]);
+
+  const handleClearLines = useCallback(() => {
+    if (!selectedConstellation?.lines.length) return;
+    applyLines([]);
+    setIsConfirmingClearLines(false);
+  }, [applyLines, selectedConstellation]);
+
+  /*
+   * Stable, because the drawn figure is memoised on it. An arrow function
+   * written inline here would be a new value on every pointer move and would
+   * rebuild every line in the sky mid-drag.
+   */
+  const handleRemoveLine = useCallback(
+    (line: ConstellationLine) => handleToggleLine(line.a, line.b),
+    [handleToggleLine]
+  );
+
   const handleStarPressed = useCallback(
     (starId: string) => {
       if (!linkFromStarId) {
@@ -358,6 +407,7 @@ export default function ConstellationDashboardPage() {
       }
       setLinkFromStarId(null);
       setLinkPoint(null);
+      setLinkHoverStarId(null);
     },
     [handleToggleLine, linkFromStarId]
   );
@@ -380,37 +430,47 @@ export default function ConstellationDashboardPage() {
       });
     };
 
-    const handleMove = (event: PointerEvent) => {
-      trackTo(event.clientX, event.clientY);
-    };
-
     /*
-     * Which star the line was dropped on, asked of the document rather than
+     * Which star is under the pointer, asked of the document rather than
      * tracked with enter and leave handlers.
      *
      * A pointer that is down is captured, so the stars underneath it never
      * receive an enter event -- the only reliable way to know what is beneath
-     * the finger at the moment it lifts is to ask the document directly.
+     * the finger is to ask the document directly. It is one hit test per move,
+     * which is what buys the snap.
      */
-    const handleEnd = (event: PointerEvent) => {
-      const dropped = document
-        .elementFromPoint(event.clientX, event.clientY)
+    const starUnder = (clientX: number, clientY: number) => {
+      const element = document
+        .elementFromPoint(clientX, clientY)
         ?.closest<HTMLElement>("[data-star-id]");
-      const targetId = dropped?.dataset.starId;
+      const starId = element?.dataset.starId;
 
-      if (targetId && targetId !== linkFromStarId) {
+      return starId && starId !== linkFromStarId ? starId : null;
+    };
+
+    const handleMove = (event: PointerEvent) => {
+      trackTo(event.clientX, event.clientY);
+      setLinkHoverStarId(starUnder(event.clientX, event.clientY));
+    };
+
+    const handleEnd = (event: PointerEvent) => {
+      const targetId = starUnder(event.clientX, event.clientY);
+
+      if (targetId) {
         handleToggleLine(linkFromStarId, targetId);
         setLinkFromStarId(null);
       }
       // Released on empty sky: the star stays picked, so it can also be joined
       // by tapping a second one. Escape or a second tap on it clears the pick.
       setLinkPoint(null);
+      setLinkHoverStarId(null);
     };
 
     const handleCancelKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setLinkFromStarId(null);
       setLinkPoint(null);
+      setLinkHoverStarId(null);
     };
 
     window.addEventListener("pointermove", handleMove);
@@ -431,6 +491,8 @@ export default function ConstellationDashboardPage() {
     if (isConnecting) return;
     setLinkFromStarId(null);
     setLinkPoint(null);
+    setLinkHoverStarId(null);
+    setIsConfirmingClearLines(false);
   }, [isConnecting]);
 
   const handleKeyboardStarMove = useCallback(
@@ -809,11 +871,86 @@ export default function ConstellationDashboardPage() {
                   </Button>
                 </div>
 
-                <p className="text-xs text-text-muted" aria-live="polite">
-                  {isConnecting && linkFromStarId
-                    ? "Now choose another star to join it to. Escape cancels."
-                    : activeSkyMode.hint}
-                </p>
+                {/*
+                  * The hint changes mid-gesture, so it holds its own height.
+                  *
+                  * On iPad the connect hint wrapped to two lines and the one
+                  * that replaced it fitted on one, so touching a star pulled
+                  * the entire sky up by a line and dropped it back on release
+                  * -- the page moving under the finger, halfway through a drag.
+                  * The longest wording is rendered invisibly underneath at
+                  * whatever width the page is, which reserves exactly the right
+                  * space without anyone having to guess a min-height.
+                  */}
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="relative min-w-0 flex-1 text-xs text-text-muted">
+                    <span aria-hidden="true" className="invisible block">
+                      {skyModes
+                        .map((mode) => mode.hint)
+                        .reduce((longest, hint) =>
+                          hint.length > longest.length ? hint : longest
+                        )}
+                    </span>
+                    <span className="absolute inset-0 block" aria-live="polite">
+                      {isConnecting && linkFromStarId
+                        ? linkHoverStarId
+                          ? "Let go to join these two."
+                          : "Now choose another star to join it to. Escape cancels."
+                        : activeSkyMode.hint}
+                    </span>
+                  </div>
+
+                  {/*
+                    * Taking lines back, next to the sentence explaining how to
+                    * draw them and only while drawing is what a press means.
+                    *
+                    * Tapping a line already removed it, but a line is a couple
+                    * of pixels wide and that is the wrong thing to have to aim
+                    * at when a pattern has gone wrong. Undo walks back the way
+                    * the pattern was built; clear starts the sky over.
+                    */}
+                  {isConnecting && selectedLines.length ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleUndoLine}
+                      >
+                        Undo line
+                      </Button>
+                      {isConfirmingClearLines ? (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="danger"
+                            onClick={handleClearLines}
+                          >
+                            Remove all {selectedLines.length}?
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setIsConfirmingClearLines(false)}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="surface"
+                          onClick={() => setIsConfirmingClearLines(true)}
+                        >
+                          Clear lines
+                        </Button>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
 
                 <div
                   id="constellation-container"
@@ -834,14 +971,14 @@ export default function ConstellationDashboardPage() {
                     stars={visibleStars}
                     pending={
                       linkFromStarId && linkPoint
-                        ? { fromStarId: linkFromStarId, ...linkPoint }
+                        ? {
+                            fromStarId: linkFromStarId,
+                            ...linkPoint,
+                            toStarId: linkHoverStarId,
+                          }
                         : null
                     }
-                    onRemoveLine={
-                      isConnecting
-                        ? (line) => handleToggleLine(line.a, line.b)
-                        : undefined
-                    }
+                    onRemoveLine={isConnecting ? handleRemoveLine : undefined}
                   />
                   <div className="absolute inset-0 z-10">
                     {visibleStars.map((star) => (
@@ -850,6 +987,9 @@ export default function ConstellationDashboardPage() {
                         star={star}
                         interaction={skyMode}
                         isLinkSource={linkFromStarId === star.id}
+                        isLinkTarget={
+                          isConnecting && linkHoverStarId === star.id
+                        }
                         onActivate={
                           isConnecting
                             ? () => handleStarPressed(star.id)

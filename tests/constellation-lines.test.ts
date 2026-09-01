@@ -4,6 +4,7 @@ import {
   MAX_LINES_PER_CONSTELLATION,
   normalizeConstellation,
   normalizeConstellationLines,
+  removeLastConstellationLine,
   toggleConstellationLine,
   type ConstellationLine,
 } from "@/lib/constellation/constellations";
@@ -113,6 +114,32 @@ describe("constellation lines", () => {
       expect(toggleConstellationLine(full, "hub", "star-0")).toHaveLength(
         MAX_LINES_PER_CONSTELLATION - 1
       );
+    });
+  });
+
+  describe("taking lines back", () => {
+    it("removes the most recently drawn line", () => {
+      expect(
+        removeLastConstellationLine(lines(["a", "b"], ["c", "d"]))
+      ).toEqual(lines(["a", "b"]));
+    });
+
+    it("walks a pattern back the way it was built", () => {
+      let current = toggleConstellationLine([], "a", "b");
+      current = toggleConstellationLine(current, "b", "c");
+      current = toggleConstellationLine(current, "c", "d");
+
+      current = removeLastConstellationLine(current);
+      expect(current).toEqual(lines(["a", "b"], ["b", "c"]));
+      current = removeLastConstellationLine(current);
+      expect(current).toEqual(lines(["a", "b"]));
+      current = removeLastConstellationLine(current);
+      expect(current).toEqual([]);
+    });
+
+    it("returns the same array when there is nothing to remove", () => {
+      const empty: ConstellationLine[] = [];
+      expect(removeLastConstellationLine(empty)).toBe(empty);
     });
   });
 
