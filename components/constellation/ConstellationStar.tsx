@@ -82,16 +82,17 @@ function getStarGlowFilter(glowStrength: number, starSize: number) {
 /**
  * How many sparkles a star throws.
  *
- * Every star gets some. There used to be a 30px floor below which a star threw
- * none at all, which meant roughly a third of an ordinary sky simply sat
- * still -- and since size tracks the goal behind it, the stars that went
- * without were the ones for smaller goals. The floor was there to ration
- * elements when the page was struggling for frames; it is not needed now that
- * the blend modes are gone, and it was solving the problem in the wrong place.
+ * Every star gets some, on every surface. There were two exclusions and both
+ * were rationing elements from the days when the page was struggling for
+ * frames: a 30px floor, below which a star threw none -- and since size tracks
+ * the goal behind it, the stars going without were the ones earned for smaller
+ * goals -- and the whole background variant, which is the same sky seen through
+ * the app and had no business being a duller copy of it.
  *
- * Count scales with the star instead, which is also what looks right: four
- * sparkles around an 18px star would crowd it. Small stars get two, on opposite
- * diagonals; larger ones get all four, one per quadrant.
+ * The blend modes that caused the frame problem are long gone. Count scales
+ * with the star instead, which is also what looks right: four sparkles around
+ * an 18px star would crowd it. Small stars get two, on opposite diagonals;
+ * larger ones get all four, one per quadrant.
  */
 const SPARKLE_FULL_STAR_SIZE = 30;
 const SPARKLES_PER_STAR = 4;
@@ -111,10 +112,14 @@ function getSparkleCount(starSize: number) {
  * other way: thin streaks running past the tips read as spikes pointing off the
  * peaks rather than as anything glowing.
  *
- * So: one soft ellipse, no streaks, alpha roughly halving at every stop so the
- * falloff never straightens into an edge, and sized 34 by 56 per cent of the
- * box -- taller than wide, like the star -- so the light has the shape of the
- * thing throwing it without tracing its outline.
+ * So: one soft ellipse, no streaks, with alpha roughly halving at every stop so
+ * the falloff never straightens into an edge.
+ *
+ * It is wider than it is tall, which is the opposite of the star. Matching the
+ * star's own proportions seemed right and was not: a bloom taller than wide
+ * around a star taller than wide compounds into a standing oval, and the oval
+ * is the thing you notice instead of the light. Spreading it the other way
+ * cancels rather than doubles, and the glow reads as round.
  *
  * Held below the sparkles in brightness on purpose. Around 0.4 it starts to
  * wash them out, and the sparkles are the detail worth seeing.
@@ -125,7 +130,7 @@ function getBloomBackground(glowStrength: number) {
   const alpha = 0.22 + glowStrength * 0.1;
   const at = (fraction: number) => (alpha * fraction).toFixed(3);
 
-  return `radial-gradient(ellipse 34% 56% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(240, 236, 255, ${at(0.5)}) 16%, rgba(228, 222, 255, ${at(0.24)}) 32%, rgba(220, 208, 255, ${at(0.1)}) 50%, rgba(214, 196, 255, ${at(0.03)}) 70%, rgba(214, 196, 255, 0) 100%)`;
+  return `radial-gradient(ellipse 54% 42% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(240, 236, 255, ${at(0.5)}) 16%, rgba(228, 222, 255, ${at(0.24)}) 32%, rgba(220, 208, 255, ${at(0.1)}) 50%, rgba(214, 196, 255, ${at(0.03)}) 70%, rgba(214, 196, 255, 0) 100%)`;
 }
 
 function getSeededFraction(seed: string, index: number) {
@@ -211,7 +216,7 @@ export default function ConstellationStar({
   const glowStrength = Math.max(0, Math.min(1, star.glow));
   // Was multiplied by a three-branch ternary whose every branch was 1.
   const starSize = getEffectiveStarVisualSize(star);
-  const sparkles = variant === "default" ? getSparkles(star, starSize) : [];
+  const sparkles = getSparkles(star, starSize);
   const className = `absolute select-none ${variant === "default" ? "constellation-star-enter" : ""} ${onDragStart ? "cursor-grab touch-none" : ""}`;
   const style = {
     left: `${star.position.x}%`,
