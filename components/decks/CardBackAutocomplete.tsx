@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { autocompleteCardBack } from "@/services/ai/autocomplete-card";
-import { JamiSparklesIcon } from "@/components/ui";
+import { JamiTutorIcon } from "@/components/ui";
 
 type Props = {
   front: string;
@@ -88,7 +88,7 @@ export default function CardBackAutocomplete({
         aria-label={hint}
         className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold text-text-muted transition duration-fast hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-text-muted"
       >
-        <JamiSparklesIcon className="h-3.5 w-3.5" />
+        <JamiTutorIcon className="h-3.5 w-3.5" />
         {loading ? "Drafting…" : "Draft"}
       </button>
     </div>

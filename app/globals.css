@@ -1726,15 +1726,46 @@ body.constellation-background-enabled::before {
 
 /* Constellation keyframes */
 
+/*
+ * A star breathing, not blinking.
+ *
+ * This ran 0.85 to 1 over a 5 per cent scale, which at the speed it was set to
+ * read as a flicker at the edge of vision rather than as something alive. The
+ * range is wider and the shape is asymmetric -- a slow swell, a longer settle
+ * -- so it holds at the top of the cycle instead of bouncing off it.
+ */
 @keyframes constellation-twinkle {
   0%,
   100% {
-    opacity: 0.85;
-    transform: scale(1);
+    opacity: 0.72;
+    transform: scale(0.985);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  62% {
+    opacity: 0.96;
+    transform: scale(1.04);
+  }
+}
+
+/*
+ * The halo, on its own longer cycle.
+ *
+ * Wider swing than the star it sits behind, and slower, so the light arrives
+ * after the star brightens rather than with it. That lag is what makes it read
+ * as radiance rather than as one thing pulsing.
+ */
+@keyframes constellation-radiance {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translate(-50%, -50%) scale(0.92);
   }
   50% {
     opacity: 1;
-    transform: scale(1.05);
+    transform: translate(-50%, -50%) scale(1.08);
   }
 }
 
@@ -1847,6 +1878,47 @@ body.constellation-background-enabled::before {
   }
 }
 
+/*
+ * The halo: arrives behind the star, then keeps breathing.
+ *
+ * Every other layer in this sequence is `forwards` and stops -- the moment
+ * lasts three seconds and then leaves. This one does not stop, because a star
+ * that finishes moving and then sits perfectly still for two seconds reads as
+ * a picture of a star. The swell is slow and small enough that it registers as
+ * light rather than as an animation asking to be watched.
+ */
+@keyframes star-reward-radiance {
+  0%,
+  40% {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  70% {
+    opacity: 0.95;
+    transform: scale(1.03);
+  }
+  85% {
+    opacity: 0.78;
+    transform: scale(0.99);
+  }
+  100% {
+    opacity: 0.92;
+    transform: scale(1.01);
+  }
+}
+
+@keyframes star-reward-breathe {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
 @keyframes star-reward-constellation {
   0%,
   55% {
@@ -1915,6 +1987,18 @@ body.constellation-background-enabled::before {
   animation: star-reward-constellation 820ms 160ms ease-out forwards;
 }
 
+/*
+ * Two animations, one after the other: the arrival hands over to the breath.
+ * Both scale, so they cannot overlap -- the second is delayed by exactly the
+ * first's duration plus its delay, which is where the arrival leaves off.
+ */
+.star-reward-halo {
+  opacity: 0;
+  transform-origin: 80px 80px;
+  animation: star-reward-radiance 1100ms 120ms ease-out forwards,
+    star-reward-breathe 4200ms 1220ms ease-in-out infinite;
+}
+
 .star-reward-copy {
   animation: star-reward-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: 160ms;
@@ -1928,6 +2012,7 @@ body.constellation-background-enabled::before {
   .star-reward-trace,
   .star-reward-core,
   .star-reward-cut,
+  .star-reward-halo,
   .star-reward-orbit {
     animation: none;
   }
@@ -1942,6 +2027,10 @@ body.constellation-background-enabled::before {
 
   .star-reward-trace {
     stroke-dashoffset: 0;
+  }
+
+  .star-reward-halo {
+    opacity: 0.9;
   }
 
   .star-reward-core,

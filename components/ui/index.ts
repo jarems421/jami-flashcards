@@ -27,7 +27,6 @@ export {
   NORTHERN_STAR_PATH,
   northernStarTransform,
 } from "./NorthernStar";
-export { default as JamiSparklesIcon } from "./JamiSparklesIcon";
 export { default as PageHero } from "./PageHero";
 export { default as Textarea } from "./Textarea";
 export { default as ProgressBar } from "./ProgressBar";

@@ -8,6 +8,7 @@ import {
   getActiveConstellation,
   getFallbackConstellation,
   isConstellationReadyToFinish,
+  MAX_STARS_PER_CONSTELLATION,
   type Constellation,
 } from "@/lib/constellation/constellations";
 import {
@@ -441,7 +442,15 @@ export default function ConstellationDashboardPage() {
                 disabled={!canFinishActiveConstellation || isFinishingConstellation}
                 onClick={() => void handleFinishConstellation()}
               >
-                {isFinishingConstellation ? "Finishing..." : canFinishActiveConstellation ? "Finish constellation" : "Finish at 40 stars"}
+                {isFinishingConstellation
+                  ? "Finishing..."
+                  : canFinishActiveConstellation
+                    ? "Finish constellation"
+                    /* The limit, read rather than retyped: it lived in this
+                     * sentence as "40" while MAX_STARS_PER_CONSTELLATION held
+                     * the real number, so changing the constant made the
+                     * button lie. */
+                    : `Finish at ${activeConstellation?.maxStars ?? MAX_STARS_PER_CONSTELLATION} stars`}
               </Button>
             }
           />

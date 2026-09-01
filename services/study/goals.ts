@@ -114,15 +114,21 @@ export async function getDashboardGoalSummary(
   userId: string,
   now = Date.now()
 ): Promise<DashboardGoalSummary> {
-  const [activeGoals, completedSnapshot] = await Promise.all([
+  /*
+   * Whether a star exists, not whether a goal was completed.
+   *
+   * This asked for one completed goal and reported it as an earned star, and
+   * the two are not the same: a goal that completes while the constellation is
+   * full mints nothing (createStarForGoalIfMissing returns null at its
+   * starCount check). Today then told the student "Your latest goal reward is
+   * waiting" and sent them to a sky that had not changed.
+   *
+   * lib/study/study-feedback.ts already draws this distinction correctly, and
+   * acknowledges that case in words instead.
+   */
+  const [activeGoals, starSnapshot] = await Promise.all([
     loadActiveGoalsIncludingLegacy(userId),
-    getDocs(
-      query(
-        goalsCollection(userId),
-        where("status", "==", "completed"),
-        limit(1)
-      )
-    ),
+    getDocs(query(collection(db, "users", userId, "stars"), limit(1))),
   ]);
 
   return {
@@ -133,7 +139,7 @@ export async function getDashboardGoalSummary(
           (goal.deadline <= 0 || goal.deadline > now)
       )
       .sort((left, right) => right.createdAt - left.createdAt),
-    hasEarnedStars: !completedSnapshot.empty,
+    hasEarnedStars: !starSnapshot.empty,
   };
 }
 

@@ -50,6 +50,30 @@ const MARK_VIEW_BOX = "-20 -14 200 200";
 function NorthernStarMark() {
   return (
     <svg viewBox={MARK_VIEW_BOX} className="h-full w-full" aria-hidden="true">
+      {/*
+        * The light around the star, as a gradient rather than a blur.
+        *
+        * There was a blurred bloom here once and it was taken out; the test
+        * beside this file still forbids filter: blur and backdrop-filter
+        * anywhere in the reward's CSS. A radial gradient gives the same warmth
+        * with none of the cost -- no offscreen buffer, no banding on a large
+        * soft edge -- and it is painted first so everything else sits in it.
+        */}
+      <defs>
+        <radialGradient id="star-reward-halo-fill">
+          <stop offset="0%" stopColor="currentColor" stopOpacity="0.42" />
+          <stop offset="38%" stopColor="currentColor" stopOpacity="0.14" />
+          <stop offset="72%" stopColor="currentColor" stopOpacity="0.03" />
+          <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <circle
+        className="star-reward-halo"
+        cx="80"
+        cy="80"
+        r="92"
+        fill="url(#star-reward-halo-fill)"
+      />
       <g className="star-reward-orbit">
         <polyline
           points={TRAIL.map((point) => `${point.x},${point.y}`).join(" ")}
@@ -156,6 +180,21 @@ export default function StarRewardOverlay({ reward, onDone }: StarRewardOverlayP
 
   if (!reward || typeof document === "undefined") return null;
 
+  /*
+   * What a screen reader is told.
+   *
+   * This said "Goal complete: {goalName}" for every star, including the one
+   * for finishing the walkthrough -- which has no goal behind it at all, only
+   * `goalId: ""` and the label "First study loop". A student using a reader
+   * was told they had completed a goal they never set. The constellation page
+   * already reads `rewardKind` to caption the same star correctly; this
+   * follows it.
+   */
+  const announcement =
+    reward.star.rewardKind === "onboarding"
+      ? `Walkthrough complete: ${reward.star.rewardLabel ?? reward.goalName}`
+      : `Goal complete: ${reward.goalName}`;
+
   return createPortal(
     <div
       className={`star-reward-overlay fixed inset-0 z-[95] flex items-center justify-center p-4 ${
@@ -193,9 +232,7 @@ export default function StarRewardOverlay({ reward, onDone }: StarRewardOverlayP
           <p className="mt-2 text-2xs text-text-muted">Tap anywhere to continue</p>
         </div>
       </div>
-      <span className="sr-only">
-        Goal complete: {reward.goalName}. You earned a star.
-      </span>
+      <span className="sr-only">{announcement}. You earned a star.</span>
     </div>,
     document.body
   );

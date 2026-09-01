@@ -77,7 +77,6 @@ export type TodayChecklist = {
   reviewDrafts: boolean;
   checkProgress: boolean;
   setGoal: boolean;
-  earnStar: boolean;
 };
 
 export type TodayWorkspaceSummary = {
@@ -309,7 +308,6 @@ function buildChecklist(input: BuildTodayPlanInput): TodayChecklist {
     reviewDrafts: input.drafts.some((draft) => draft.contentStatus === "draft"),
     checkProgress: input.progressVisited === true,
     setGoal: (input.activeGoals ?? []).some((goal) => goal.status === "active"),
-    earnStar: input.hasEarnedStars === true,
   };
 }
 

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -286,13 +286,33 @@ describe("Jami's own mark", () => {
     }
   });
 
-  it("keeps the generic Draft sparkle separate from the Tutor mark", () => {
-    // The two share a visual language, but card-back autocomplete remains a
-    // non-conversational drafting action rather than importing the Tutor mark.
-    const autocomplete = readFileSync(
-      join(process.cwd(), "components/decks/CardBackAutocomplete.tsx"),
-      "utf8",
-    );
-    expect(autocomplete).toContain("JamiSparklesIcon");
+  /*
+   * This asserted the opposite: that card-back autocomplete kept a separate
+   * JamiSparklesIcon, because drafting a card is a non-conversational action
+   * rather than talking to Jami. The distinction was real, and it cost two
+   * marks with different geometry for one idea -- one filled, one outlined --
+   * so which a student saw depended on the surface rather than on what was
+   * being offered.
+   *
+   * One mark now. The split that matters is between something the app offers
+   * to do and something the student earned. NorthernStar is meant to carry
+   * that, though today it is a four-pointed star like these -- eight vertices,
+   * four long points -- so only its size and singleness separate them.
+   */
+  it("is the only mark for anything Jami offers to do", () => {
+    const surfaces = [
+      "components/decks/CardBackAutocomplete.tsx",
+      "components/practice/PracticePaperCreator.tsx",
+      "components/practice/PracticePaperFormatConfirmation.tsx",
+    ];
+
+    for (const surface of surfaces) {
+      const source = readFileSync(join(process.cwd(), surface), "utf8");
+      expect(source, surface).toContain("JamiTutorIcon");
+    }
+
+    expect(
+      existsSync(join(process.cwd(), "components/ui/JamiSparklesIcon.tsx")),
+    ).toBe(false);
   });
 });

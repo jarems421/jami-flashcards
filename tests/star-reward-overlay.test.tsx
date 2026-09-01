@@ -38,7 +38,6 @@ const star: Star = {
   color: "white",
   position: { x: 50, y: 50 },
   createdAt: 1,
-  presetId: "classic",
   rewardKind: "onboarding",
   rewardLabel: "First study loop",
 };
@@ -99,14 +98,37 @@ describe("the star reward moment", () => {
     expect(overlay()).toBeNull();
   });
 
-  it("names the goal the star was earned for", async () => {
+  it("names what the star was earned for", async () => {
     await render({ star, goalName: "First study loop" });
 
     expect(overlay()).not.toBeNull();
     expect(overlay()?.textContent).toContain("Star earned");
     expect(overlay()?.textContent).toContain("First study loop");
+  });
+
+  /*
+   * The walkthrough star has no goal behind it -- goalId is "" -- and this
+   * announced "Goal complete: First study loop" for it, telling a student
+   * using a reader they had completed a goal they never set. The old
+   * assertion locked that in.
+   */
+  it("does not call the walkthrough star a completed goal", async () => {
+    await render({ star, goalName: "First study loop" });
+
     expect(document.body.textContent).toContain(
-      "Goal complete: First study loop. You earned a star."
+      "Walkthrough complete: First study loop. You earned a star."
+    );
+    expect(document.body.textContent).not.toContain("Goal complete");
+  });
+
+  it("does call a goal star a completed goal", async () => {
+    await render({
+      star: { ...star, id: "goal-1", goalId: "goal-1", rewardKind: "goal", rewardLabel: undefined },
+      goalName: "Fifty cards at ninety percent",
+    });
+
+    expect(document.body.textContent).toContain(
+      "Goal complete: Fifty cards at ninety percent. You earned a star."
     );
   });
 

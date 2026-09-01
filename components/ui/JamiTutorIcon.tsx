@@ -17,7 +17,16 @@ const STARS = [
 ];
 
 /**
- * Jami's mark, drawn wherever the conversational Tutor is offered.
+ * Jami's mark, drawn wherever the app offers to do something for a student.
+ *
+ * There were two of these -- this one and an outlined JamiSparklesIcon with
+ * different geometry -- doing the same job on different surfaces. One mark now,
+ * so "Jami can help here" always looks the same.
+ *
+ * It must not read as the star in NorthernStar, which means something a student
+ * earned rather than something the app is offering. That difference is thinner
+ * than it should be: NorthernStar has eight vertices but four long points, the
+ * same family as these, so only size and count tell them apart today.
  *
  * `currentColor` lets the same geometry sit quietly in navigation, pick up an
  * accent in a Tutor header, and inherit the correct contrast inside buttons.

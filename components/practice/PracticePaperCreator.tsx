@@ -11,7 +11,7 @@ import {
   FeedbackBanner,
   FileField,
   Input,
-  JamiSparklesIcon,
+  JamiTutorIcon,
   OptionSwitch,
   ProgressBar,
   Select,
@@ -509,7 +509,7 @@ export default function PracticePaperCreator() {
 
       <div className="flex items-start gap-3.5">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-accent/12 text-accent">
-          <JamiSparklesIcon className="h-6 w-6" />
+          <JamiTutorIcon className="h-6 w-6" />
         </span>
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">

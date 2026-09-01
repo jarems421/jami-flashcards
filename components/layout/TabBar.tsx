@@ -110,7 +110,15 @@ const tabs: Tab[] = [
     label: "Stars",
     description: "Rewards",
     group: "support",
-    icon: "M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005z",
+    /*
+     * The northern star, scaled from its own 160 box into this 24 one.
+     *
+     * The entry that leads to the sky drew a five-point Heroicon, so the
+     * feature was announced in the nav with a star nobody ever earns. The
+     * reward overlay, the walkthrough trail, the landing page and now the sky
+     * itself all draw NORTHERN_STAR_PATH; this is the same path at 24.
+     */
+    icon: "M12 0.67L13.34 9.67L20.31 6.34L14.69 12L20.31 17.66L13.34 14.33L12 23.33L10.66 14.33L3.69 17.66L9.31 12L3.69 6.34L10.66 9.67Z",
   },
   /*
    * Last but one, directly above Account.

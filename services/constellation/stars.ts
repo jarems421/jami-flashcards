@@ -13,13 +13,20 @@ import {
 import { db } from "@/services/firebase/client";
 import { getActiveOrCreateInitialConstellation } from "@/services/constellation/constellations";
 import type { Goal } from "@/lib/study/goals";
-import { getStarColor, getStarRewardSize, resolveStarPresetId } from "@/lib/constellation/stars";
+import {
+  getDefaultStarPosition,
+  getStarColor,
+  getStarRewardSize,
+} from "@/lib/constellation/stars";
 import { parseStarData, type NormalizedStar } from "@/lib/constellation/stars";
 import { withTimeout } from "@/services/firebase/firestore";
 
 const QUERY_MS = 30_000;
 const CREATE_MS = 30_000;
 const UPDATE_MS = 30_000;
+/** The onboarding star, which is always the same document. */
+const ONBOARDING_STAR_ID = "onboarding-first-loop";
+
 const STAR_COUNT_FIELD = "starCount";
 
 function getStarsCollection(userId: string) {
@@ -112,18 +119,16 @@ export async function createStarForGoalIfMissing(userId: string, goal: Goal) {
   const completedGoalsCount = completedGoalsSnapshot.data().count;
   const createdAt = Date.now();
 
-  const presetId = resolveStarPresetId(goal);
   const star = {
     goalId: goal.id,
     constellationId: activeConstellation.id,
     size: getStarRewardSize(goal.targetCards),
     glow: goal.targetAccuracy,
     color: getStarColor(completedGoalsCount),
-    presetId,
-    position: {
-      x: 10 + Math.random() * 80,
-      y: 10 + Math.random() * 80,
-    },
+    // Seeded from the star's own id rather than Math.random, so a star lands in
+    // the same place whether it is read from this write or placed later by a
+    // backfill. The goal id is the star id, which is what makes it stable.
+    position: getDefaultStarPosition(goal.id),
     createdAt,
   };
 
@@ -193,7 +198,7 @@ export async function createOnboardingStarIfMissing(userId: string): Promise<
   | { status: "pending" }
 > {
   const starsCollection = getStarsCollection(userId);
-  const starRef = doc(starsCollection, "onboarding-first-loop");
+  const starRef = doc(starsCollection, ONBOARDING_STAR_ID);
   const existing = await withTimeout(
     getDoc(starRef),
     QUERY_MS,
@@ -228,13 +233,9 @@ export async function createOnboardingStarIfMissing(userId: string): Promise<
     size: getStarRewardSize(1),
     glow: 0.85,
     color: "white",
-    presetId: "classic" as const,
     rewardKind: "onboarding" as const,
     rewardLabel: "First study loop",
-    position: {
-      x: 10 + Math.random() * 80,
-      y: 10 + Math.random() * 80,
-    },
+    position: getDefaultStarPosition(ONBOARDING_STAR_ID),
     createdAt,
   };
 

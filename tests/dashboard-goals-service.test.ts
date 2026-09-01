@@ -74,6 +74,21 @@ function queryStatus(target: unknown) {
   return status?.value ?? null;
 }
 
+/**
+ * The summary now asks whether a star exists rather than whether a goal was
+ * completed, because a goal finished against a full constellation mints no
+ * star. That read goes to a different collection, and the mocks route on goal
+ * status, so without this it fell through to the legacy-compatibility branch
+ * and was counted as one.
+ */
+function isStarsQuery(target: unknown) {
+  const base =
+    target && typeof target === "object" && "base" in target
+      ? (target as { base?: { path?: unknown } }).base
+      : (target as { path?: unknown } | null);
+  return typeof base?.path === "string" && base.path.endsWith("/stars");
+}
+
 describe("dashboard goal summary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -83,6 +98,7 @@ describe("dashboard goal summary", () => {
   it("loads only active/current goal states while retaining missing-status legacy goals", async () => {
     let compatibilityReads = 0;
     firestore.getDocs.mockImplementation(async (target: unknown) => {
+      if (isStarsQuery(target)) return snapshot([goalDocument("star-1", {})]);
       const status = queryStatus(target);
       if (status === "active") {
         return snapshot([
@@ -132,13 +148,26 @@ describe("dashboard goal summary", () => {
     expect(second).toEqual(first);
     expect(compatibilityReads).toBe(1);
     expect(firestore.where).toHaveBeenCalledWith("status", "==", "active");
-    expect(firestore.where).toHaveBeenCalledWith("status", "==", "completed");
+    /*
+     * The summary reads stars, not completed goals. It used to ask for one
+     * completed goal and report it as an earned star, so a goal finished
+     * against a full constellation -- which mints nothing -- still told the
+     * student on Today that a reward was waiting.
+     */
+    expect(firestore.collection).toHaveBeenCalledWith(
+      expect.anything(),
+      "users",
+      "dashboard-goals-user",
+      "stars"
+    );
+    expect(firestore.where).not.toHaveBeenCalledWith("status", "==", "completed");
     expect(firestore.limit).toHaveBeenCalledWith(1);
   });
 
   it("invalidates the legacy compatibility snapshot after a goal write", async () => {
     let compatibilityReads = 0;
     firestore.getDocs.mockImplementation(async (target: unknown) => {
+      if (isStarsQuery(target)) return snapshot([]);
       if (queryStatus(target) !== null) return snapshot([]);
       compatibilityReads += 1;
       return snapshot([]);
@@ -158,6 +187,7 @@ describe("dashboard goal summary", () => {
 
   it("pages current goal history and appends readable legacy history records", async () => {
     firestore.getDocs.mockImplementation(async (target: unknown) => {
+      if (isStarsQuery(target)) return snapshot([goalDocument("star-1", {})]);
       const status = queryStatus(target);
       if (Array.isArray(status)) {
         return snapshot([

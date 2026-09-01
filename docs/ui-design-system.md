@@ -153,6 +153,45 @@ Sources is a focused reference workspace, not a file manager.
   originals immutable; reuse the existing explicit source indexes, and render only
   the relevant pages when a visual or scanned document needs on-demand inspection.
 
+### Stars and constellations
+
+Stars are Jami's own thing. They drifted because nothing here described them, so
+each surface invented its own.
+
+**One star means earned.** Every star a student has earned is the eight-point
+`NorthernStar` (`components/ui/NorthernStar.tsx`) — in the reward overlay, in
+the sky, in the walkthrough trail, in the nav entry, on the signed-out landing
+page. Use `northernStarTransform` to place it; never draw another star shape
+and never substitute an image. The sky drew a PNG for a long time, so a student
+earned one star and found a different one when they went to look at it.
+
+**One mark means Jami is offering to do something.** `JamiTutorIcon` — three
+small four-point sparkles — wherever the app offers help: tutor, drafting a
+card, generating a paper, reading a source. There is one of these, not one per
+surface.
+
+The two must stay apart, and at the time of writing they barely are: the
+earned star has eight vertices but four long points, which is the same shape
+family as the sparkles. Only size and count separate them. Whatever the earned
+star becomes, it should differ from the AI mark in shape and not just in scale.
+
+**One word per level.**
+
+> a **goal** is a target you set → completing it earns a **star** → stars fill a
+> named **constellation** → finished constellations are your **sky**
+
+Say "goal", "star", "constellation" and "sky" for those four things and nothing
+else. Not "quest star", not "reward star", not "goal reward".
+
+**Stars come from goals.** Completing a goal earns one; finishing the
+walkthrough earns one. Nothing else mints a star, and nothing else should start
+to without a deliberate decision — a star that arrives easily stops meaning
+anything.
+
+**Nothing promises a reward it cannot show.** A goal completed against a full
+constellation mints no star, so do not tell a student one is waiting. Read what
+exists rather than inferring it from something adjacent.
+
 ## Component Rules
 
 Prefer reusable shared components over page-specific styling.

@@ -113,7 +113,6 @@ describe("today plan", () => {
       reviewCards: true,
       createNotebook: true,
       setGoal: false,
-      earnStar: false,
     });
   });
 
@@ -139,7 +138,6 @@ describe("today plan", () => {
     });
 
     expect(plan.nextAction.type).toBe("view_star");
-    expect(plan.checklist.earnStar).toBe(true);
   });
 
   it("continues the most recent notebook before flashcard setup", () => {

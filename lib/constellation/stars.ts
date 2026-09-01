@@ -1,12 +1,3 @@
-import type { Goal } from "@/lib/study/goals";
-
-export type StarPresetId =
-  | "classic"
-  | "blue-spark"
-  | "gold-burst"
-  | "violet-comet"
-  | "magenta-elite";
-
 export type StarPosition = {
   x: number;
   y: number;
@@ -21,7 +12,6 @@ export type Star = {
   color: string;
   position: StarPosition;
   createdAt: number;
-  presetId?: StarPresetId;
   rewardKind?: "goal" | "onboarding";
   rewardLabel?: string;
 };
@@ -69,6 +59,14 @@ function getDeterministicPositionValue(value: string, index: number) {
   return 10 + getSeededRandom(value, index) * 80;
 }
 
+/**
+ * How warm a sky becomes as goals are completed.
+ *
+ * Read at the moment a star is minted, so the colour records how far along the
+ * student was when they earned it rather than what the star cost them. Kept
+ * when the five rarity presets went, because unlike them it is actually drawn:
+ * `getStarPalette` in ConstellationStar reads it.
+ */
 export function getStarColor(completedGoalsCount: number) {
   if (completedGoalsCount >= 10) {
     return "gold";
@@ -81,29 +79,14 @@ export function getStarColor(completedGoalsCount: number) {
   return "white";
 }
 
-const STAR_PRESET_ICON_MAP: Record<StarPresetId, string> = {
-  classic: "constellation/star.png",
-  "blue-spark": "constellation/star.png",
-  "gold-burst": "constellation/star.png",
-  "violet-comet": "constellation/star.png",
-  "magenta-elite": "constellation/star.png",
-};
-
-export function getStarPresetIconPath(presetId?: StarPresetId): string | null {
-  return presetId ? `/images/${STAR_PRESET_ICON_MAP[presetId]}` : null;
-}
-
-export function resolveStarPresetId(goal: Goal): StarPresetId {
-  if (goal.targetCards >= 100 && goal.targetAccuracy >= 0.9) {
-    return "magenta-elite";
-  }
-  if (goal.targetCards >= 60) return "gold-burst";
-  if (goal.targetCards >= 30) return "violet-comet";
-  if (goal.targetCards >= 15) return "blue-spark";
-  return "classic";
-}
-
-function getDefaultStarPosition(seed = "default-star"): StarPosition {
+/**
+ * Where a star sits when it has never been placed.
+ *
+ * Seeded from the star's own id, so the same star lands in the same spot every
+ * time it is read. Both service write paths use this rather than Math.random,
+ * which used to give a star one position on the server and another on backfill.
+ */
+export function getDefaultStarPosition(seed = "default-star"): StarPosition {
   return {
     x: getDeterministicPositionValue(seed, 1),
     y: getDeterministicPositionValue(seed, 2),
@@ -142,7 +125,6 @@ function getLegacyStarVisualSize(starSize: number) {
 
 export function getEffectiveStarVisualSize(star: {
   size: number;
-  presetId?: StarPresetId;
   isLegacyStar?: boolean;
 }) {
   const shouldUseLegacyScale =
@@ -155,37 +137,6 @@ export function getEffectiveStarVisualSize(star: {
     : getStarVisualSize(star.size);
 }
 
-function inferStarPresetIdFromLegacyValues(
-  starSize: number,
-  starGlow: number
-): StarPresetId {
-  const inferredTargetCards = Math.max(0, Math.round(Math.exp(starSize) - 1));
-
-  return resolveStarPresetId(
-    {
-      id: "legacy-star",
-      deadline: 0,
-      progress: {
-        cardsCompleted: 0,
-        correctAnswers: 0,
-        totalAnswers: 0,
-      },
-      status: "active",
-      createdAt: Date.now(),
-      targetCards: inferredTargetCards,
-      targetAccuracy: starGlow,
-    } as Goal
-  );
-}
-
-export function getEffectiveStarPresetId(star: {
-  presetId?: StarPresetId;
-  size: number;
-  glow: number;
-}): StarPresetId {
-  return star.presetId ?? inferStarPresetIdFromLegacyValues(star.size, star.glow);
-}
-
 export function buildPreviewStar({
   targetCards,
   targetAccuracy,
@@ -195,7 +146,6 @@ export function buildPreviewStar({
   goalId = "preview-goal",
   createdAt = 0,
   position = { x: 50, y: 50 },
-  presetId,
 }: {
   targetCards: number;
   targetAccuracy: number;
@@ -205,7 +155,6 @@ export function buildPreviewStar({
   goalId?: string;
   createdAt?: number;
   position?: StarPosition;
-  presetId?: StarPresetId;
 }) {
   return normalizeStar({
     id,
@@ -216,23 +165,6 @@ export function buildPreviewStar({
     color: getStarColor(completedGoalsCount),
     createdAt,
     position,
-    presetId:
-      presetId ??
-      resolveStarPresetId({
-        id: goalId,
-        name: "Preview goal",
-        scope: { type: "all" },
-        deadline: 0,
-        progress: {
-          cardsCompleted: 0,
-          correctAnswers: 0,
-          totalAnswers: 0,
-        },
-        status: "active",
-        createdAt,
-        targetCards,
-        targetAccuracy,
-      }),
   });
 }
 
@@ -245,7 +177,7 @@ export function normalizeStar(star: {
   color: string;
   createdAt: number;
   position?: Partial<StarPosition>;
-  presetId?: StarPresetId;
+  isLegacyStar?: boolean;
   rewardKind?: "goal" | "onboarding";
   rewardLabel?: string;
 }): NormalizedStar {
@@ -265,9 +197,7 @@ export function normalizeStar(star: {
     constellationId: typeof star.constellationId === "string" ? star.constellationId : "",
     position,
     needsBackfill: !hasValidPosition,
-    isLegacyStar: star.presetId === undefined,
-    presetId:
-      star.presetId ?? inferStarPresetIdFromLegacyValues(star.size, star.glow),
+    isLegacyStar: star.isLegacyStar === true,
     rewardKind: star.rewardKind ?? "goal",
     rewardLabel: star.rewardLabel,
   };
@@ -290,10 +220,18 @@ export function parseStarData(
       typeof data.position === "object" && data.position !== null
         ? (data.position as Partial<StarPosition>)
         : undefined,
-    presetId:
-      typeof data.presetId === "string"
-        ? (data.presetId as StarPresetId)
-        : undefined,
+    /*
+     * The five rarity presets are gone, but the field they were stored in is
+     * still the only way to tell a star's vintage apart.
+     *
+     * Stars written before the presets existed hold `size` as a 0..1 fraction;
+     * every star since holds ln(targetCards + 1). Those ranges overlap -- a
+     * one-card goal gives ln(2) = 0.69 -- so the number cannot say which scale
+     * it is on, and reading an old star on the new scale draws it far too
+     * small. The absence of presetId is what dates it, which is why the field
+     * is still read here and nowhere else.
+     */
+    isLegacyStar: data.presetId === undefined,
     rewardKind: data.rewardKind === "onboarding" ? "onboarding" : "goal",
     rewardLabel:
       typeof data.rewardLabel === "string"
@@ -331,5 +269,3 @@ export function spreadBackfilledStars(stars: NormalizedStar[]) {
     };
   });
 }
-
-

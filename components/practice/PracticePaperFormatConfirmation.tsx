@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Input, JamiSparklesIcon } from "@/components/ui";
+import { Button, Input, JamiTutorIcon } from "@/components/ui";
 import type { PracticePaperBrief } from "@/lib/practice/exam-formats";
 
 function Fact({ label, value }: { label: string; value: string }) {
@@ -42,7 +42,7 @@ export default function PracticePaperFormatConfirmation({
     >
       <div className="flex items-start gap-3 border-b border-[var(--color-border)] px-5 py-4 sm:px-6">
         <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-accent/12 text-accent">
-          <JamiSparklesIcon className="size-4.5" aria-hidden="true" />
+          <JamiTutorIcon className="size-4.5" />
         </span>
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
