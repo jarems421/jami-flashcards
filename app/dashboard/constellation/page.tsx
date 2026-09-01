@@ -9,7 +9,6 @@ import {
   getFallbackConstellation,
   isConstellationReadyToFinish,
   toggleConstellationLine,
-  MAX_STARS_PER_CONSTELLATION,
   type Constellation,
 } from "@/lib/constellation/constellations";
 import {
@@ -521,6 +520,50 @@ export default function ConstellationDashboardPage() {
     setRenameValue("");
   };
 
+  const skyModes = [
+    {
+      id: "arrange" as const,
+      label: "Move",
+      hint: "Drag a star to move it. Arrow keys nudge a focused star.",
+      icon: "M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3",
+    },
+    {
+      id: "connect" as const,
+      label: "Connect",
+      hint: "Drag from one star to another to join them. Draw the same line again, or tap it, to remove it.",
+      icon: "M6 18 18 6M6 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z",
+    },
+  ];
+  const activeSkyMode =
+    skyModes.find((mode) => mode.id === skyMode) ?? skyModes[0];
+  const pastConstellations = constellations.filter(
+    (constellation) => constellation.id !== activeConstellation?.id
+  );
+  const renameField = (widthClassName: string) => (
+    <div className="flex flex-wrap items-center gap-2">
+      <Input
+        ref={renameInputRef}
+        value={renameValue}
+        onChange={(event) => setRenameValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") void handleRename();
+          if (event.key === "Escape") cancelRename();
+        }}
+        containerClassName={widthClassName}
+      />
+      <Button
+        size="sm"
+        onClick={() => void handleRename()}
+        disabled={!renameValue.trim()}
+      >
+        Save
+      </Button>
+      <Button size="sm" variant="ghost" onClick={cancelRename}>
+        Cancel
+      </Button>
+    </div>
+  );
+
   return (
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
@@ -537,291 +580,336 @@ export default function ConstellationDashboardPage() {
         contentClassName="space-y-4 sm:space-y-6"
       >
         {feedback ? (
-          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} />
-        ) : null}
-
-        {!isLoading && activeConstellation ? (
-          <PageHero
-            compact
-            eyebrow="Goal rewards"
-            title={
-              renamingConstellationId === activeConstellation.id ? (
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Input
-                    ref={renameInputRef}
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void handleRename();
-                      if (e.key === "Escape") cancelRename();
-                    }}
-                    containerClassName="w-full max-w-sm"
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => void handleRename()} disabled={!renameValue.trim()}>Save</Button>
-                    <Button size="sm" variant="ghost" onClick={cancelRename}>Cancel</Button>
-                  </div>
-                </div>
-              ) : (
-                activeConstellation.name
-              )
-            }
-            description={
-              <>
-                <p>
-                  Constellations are your reward space. Complete goals to earn stars, then arrange the active sky so your progress feels visible.
-                </p>
-              </>
-            }
-            action={
-              renamingConstellationId === activeConstellation.id ? null : <Button type="button" variant="secondary" onClick={() => startRename(activeConstellation)}>
-                Rename
-              </Button>
-            }
-            secondaryAction={
-              <Button
-                type="button"
-                disabled={!canFinishActiveConstellation || isFinishingConstellation}
-                onClick={() => void handleFinishConstellation()}
-              >
-                {isFinishingConstellation
-                  ? "Finishing..."
-                  : canFinishActiveConstellation
-                    ? "Finish constellation"
-                    /* The limit, read rather than retyped: it lived in this
-                     * sentence as "40" while MAX_STARS_PER_CONSTELLATION held
-                     * the real number, so changing the constant made the
-                     * button lie. */
-                    : `Finish at ${activeConstellation?.maxStars ?? MAX_STARS_PER_CONSTELLATION} stars`}
-              </Button>
-            }
+          <FeedbackBanner
+            type={feedback.type}
+            message={feedback.message}
+            onDismiss={() => clearFeedback()}
           />
-        ) : null}
-
-        {!isLoading && !activeConstellation ? (
-          <Card tone="warm" padding="md">
-            <SectionHeader
-              eyebrow="Reward space"
-              title="Create a constellation"
-              description="Stars from completed goals need somewhere to live. Make a constellation now, then let rewards fill it over time."
-            />
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Input
-                placeholder="Constellation name"
-                value={constellationName}
-                onChange={(event) => setConstellationName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    void handleCreateConstellation();
-                  }
-                }}
-                containerClassName="w-full max-w-xs"
-              />
-              <Button
-                type="button"
-                disabled={isCreatingConstellation || !constellationName.trim()}
-                onClick={() => void handleCreateConstellation()}
-              >
-                {isCreatingConstellation ? "Creating..." : "Create"}
-              </Button>
-            </div>
-          </Card>
         ) : null}
 
         {isLoading ? (
           <div className="space-y-4">
-            <Skeleton className="h-12 w-48" />
-            <Skeleton className="h-80" />
+            <Skeleton className="h-28" />
+            <Skeleton className="h-[32rem]" />
             <Skeleton className="h-36" />
           </div>
         ) : (
           <>
-            <Card padding="md" className="space-y-4">
-              <SectionHeader
-                title="Your sky"
-                description="View your reward stars here. The active constellation can be arranged; finished constellations stay as calm records of past progress."
-              />
-              <div className="app-subtle-panel flex flex-col gap-3 rounded-xl p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted sm:max-w-xs">
-                  Constellation
-                  <span className="relative mt-1 block">
-                    <select
-                      value={selectedConstellation?.id ?? ""}
-                      onChange={(event) =>
-                        setSelectedConstellationId(event.target.value)
-                      }
-                      className="app-field w-full appearance-none truncate rounded-2xl py-3 pl-4 pr-12 text-sm font-medium normal-case tracking-normal"
-                    >
-                      {constellations.map((constellation) => (
-                        <option
-                          key={constellation.id}
-                          value={constellation.id}
-                        >
-                          {constellation.name}
-                        </option>
-                      ))}
-                    </select>
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary"
-                    >
-                      <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                </label>
+            {/*
+             * The lifecycle, said once, at the top.
+             *
+             * A sky holds forty stars and only one is ever active -- the
+             * service refuses to create a second and always has. That rule was
+             * enforced and never explained, so "why can I not make a new
+             * constellation" had no answer anywhere on the page. It is the
+             * first thing said now.
+             */}
+            <PageHero
+              compact
+              eyebrow="Goal rewards"
+              title="Your stars"
+              description={
+                <p>
+                  Finishing a goal earns a star. Forty stars fill a sky; finish
+                  that sky to keep it as a record, and the next one starts
+                  collecting.
+                </p>
+              }
+            />
 
-                {selectedConstellation ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold capitalize">
-                      {selectedConstellation.status === "active" ? "Active sky" : "Finished sky"}
-                    </span>
-                    <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
-                      {selectedConstellation.starCount} / {selectedConstellation.maxStars} stars
-                    </span>
-                    {/*
-                      * Two buttons rather than one that toggles its own label.
-                      *
-                      * A single button would have to read either the mode it is
-                      * in or the mode it would switch to, and every visitor
-                      * guesses differently. Two, with the live one pressed,
-                      * says both at once and needs no guess.
-                      */}
-                    <div
-                      role="group"
-                      aria-label="What dragging a star does"
-                      className="flex items-center gap-1 rounded-full bg-glass-subtle p-1"
-                    >
-                      {(["arrange", "connect"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          aria-pressed={skyMode === mode}
-                          onClick={() => setSkyMode(mode)}
-                          className={`rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition-colors ${
-                            skyMode === mode
-                              ? "bg-selected-bg text-selected-text"
-                              : "text-text-muted hover:text-text-primary"
-                          }`}
-                        >
-                          {mode}
-                        </button>
-                      ))}
-                    </div>
-                    {isConnecting ? (
-                      <span className="text-xs text-text-muted">
-                        {linkFromStarId
-                          ? "Now choose another star. Escape cancels."
-                          : "Drag between two stars to join them. Draw the same line again, or tap it, to remove it."}
-                      </span>
-                    ) : null}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={isSelectedConstellationBackground ? "secondary" : "primary"}
-                      onClick={handleToggleSelectedBackground}
-                    >
-                      {getConstellationBackgroundActionLabel(
-                        isSelectedConstellationBackground
-                      )}
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-
-              <div
-                id="constellation-container"
-                className="relative h-[60vh] w-full select-none overflow-hidden rounded-2xl border border-[var(--color-border)] bg-surface-base sm:h-[560px]"
-                style={{
-                  /*
-                   * Night, and nothing else.
-                   *
-                   * Two wide violet washes were painted here to carry the
-                   * ambient half of the glow. They read as light coming from
-                   * nowhere -- a bloom in the corner of an empty sky with no
-                   * star responsible for it. The radiance belongs to the stars
-                   * and is drawn by them; the sky behind is just dark.
-                   */
-                  backgroundColor: "#090413",
-                }}
-              >
-                <ConstellationLines
-                  lines={selectedLines}
-                  stars={visibleStars}
-                  pending={
-                    linkFromStarId && linkPoint
-                      ? { fromStarId: linkFromStarId, ...linkPoint }
-                      : null
+            {activeConstellation ? null : (
+              <Card tone="warm" padding="md">
+                <SectionHeader
+                  eyebrow={
+                    constellations.length ? "Every sky finished" : "Reward space"
                   }
-                  onRemoveLine={
-                    isConnecting
-                      ? (line) => handleToggleLine(line.a, line.b)
-                      : undefined
+                  title={
+                    constellations.length
+                      ? "Start your next sky"
+                      : "Create your first sky"
+                  }
+                  description={
+                    constellations.length
+                      ? "Nothing is collecting stars at the moment. Name the next sky and the stars from your next goals will land in it."
+                      : "Stars from completed goals need somewhere to live. Make a sky now and let rewards fill it over time."
                   }
                 />
-                <div className="absolute inset-0 z-10">
-                  {visibleStars.map((star) => (
-                    <ConstellationStar
-                      key={star.id}
-                      star={star}
-                      interaction={skyMode}
-                      isLinkSource={linkFromStarId === star.id}
-                      onActivate={
-                        isConnecting ? () => handleStarPressed(star.id) : undefined
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Input
+                    placeholder="Sky name"
+                    value={constellationName}
+                    onChange={(event) =>
+                      setConstellationName(event.target.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        void handleCreateConstellation();
                       }
-                      label={
-                        star.rewardKind === "onboarding"
-                          ? star.rewardLabel ?? "First study loop"
-                          : goalsById[star.goalId]
-                            ? `Earned for a ${goalsById[star.goalId].targetCards}-card goal`
-                            : "Earned star"
-                      }
-                      onDragStart={
-                        !canArrangeSelectedConstellation
-                          ? undefined
-                          : isConnecting
-                            ? () => {
-                                setLinkFromStarId(star.id);
-                                setLinkPoint(star.position);
-                              }
-                            : () => setDraggingStarId(star.id)
-                      }
-                      onNudge={
-                        canArrangeSelectedConstellation && !isConnecting
-                          ? (position) =>
-                              handleKeyboardStarMove(star.id, position)
-                          : undefined
-                      }
-                    />
-                  ))}
+                    }}
+                    containerClassName="w-full max-w-xs"
+                  />
+                  <Button
+                    type="button"
+                    disabled={
+                      isCreatingConstellation || !constellationName.trim()
+                    }
+                    onClick={() => void handleCreateConstellation()}
+                  >
+                    {isCreatingConstellation ? "Creating..." : "Create sky"}
+                  </Button>
                 </div>
-                {visibleStars.length === 0 ? (
-                  <div className="absolute inset-0 z-20 flex items-center justify-center p-5">
-                    <div className="max-w-md">
-                      <EmptyState
-                        variant="plain"
-                        emoji="Stars"
-                        eyebrow="No stars yet"
-                        title="Complete goals to fill this sky"
-                        description="Constellations are rewards, not another task list. Finish a study goal and its star will appear here."
-                        action={
-                          <Link
-                            href="/dashboard/goals"
-                            className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
+              </Card>
+            )}
+
+            {selectedConstellation ? (
+              <Card padding="md" className="space-y-4">
+                {/* Which sky, and whether it is the one collecting stars. */}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    {renamingConstellationId === selectedConstellation.id ? (
+                      renameField("w-full max-w-xs")
+                    ) : (
+                      <button
+                        type="button"
+                        className="group flex min-w-0 items-center gap-2 text-left"
+                        onClick={() => startRename(selectedConstellation)}
+                      >
+                        <span className="truncate text-lg font-semibold text-text-primary">
+                          {selectedConstellation.name}
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className="shrink-0 text-text-muted transition-colors group-hover:text-accent"
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
                           >
-                            Create a goal
-                          </Link>
+                            <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                          </svg>
+                        </span>
+                        <span className="sr-only">Rename this sky</span>
+                      </button>
+                    )}
+                    <p className="mt-1 text-xs text-text-muted">
+                      {selectedConstellation.status === "active"
+                        ? "Collecting stars now"
+                        : "Finished - kept as a record"}
+                      {" · "}
+                      {selectedConstellation.starCount} of{" "}
+                      {selectedConstellation.maxStars} stars
+                    </p>
+                  </div>
+
+                  {constellations.length > 1 ? (
+                    <label className="flex shrink-0 flex-col gap-1 text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted sm:items-end">
+                      Viewing
+                      <span className="relative mt-1 block">
+                        <select
+                          value={selectedConstellation.id}
+                          onChange={(event) =>
+                            setSelectedConstellationId(event.target.value)
+                          }
+                          className="app-field w-full min-w-[12rem] appearance-none truncate rounded-2xl py-2.5 pl-4 pr-10 text-sm font-medium normal-case tracking-normal"
+                        >
+                          {constellations.map((constellation) => (
+                            <option
+                              key={constellation.id}
+                              value={constellation.id}
+                            >
+                              {constellation.name}
+                              {constellation.id === activeConstellation?.id
+                                ? " (active)"
+                                : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary"
+                        >
+                          <path
+                            d="m6 8 4 4 4-4"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </span>
+                    </label>
+                  ) : null}
+                </div>
+
+                {/*
+                 * The toolbar, which used to be one wrapping row holding the
+                 * switcher, two chips, the mode toggle, a sentence of help and
+                 * the background button. At most widths it wrapped into
+                 * something that read as broken rather than as a toolbar. Two
+                 * groups now, at opposite ends, and the help text has a line of
+                 * its own so it can never push anything out of place.
+                 */}
+                <div className="app-subtle-panel flex flex-col gap-3 rounded-2xl p-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div
+                    role="group"
+                    aria-label="What dragging a star does"
+                    className="flex items-center gap-1 self-start rounded-full bg-glass-subtle p-1"
+                  >
+                    {skyModes.map((mode) => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        aria-pressed={skyMode === mode.id}
+                        onClick={() => setSkyMode(mode.id)}
+                        className={`flex min-h-[2.25rem] items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                          skyMode === mode.id
+                            ? "bg-selected-bg text-selected-text"
+                            : "text-text-muted hover:text-text-primary"
+                        }`}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d={mode.icon} />
+                        </svg>
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={
+                      isSelectedConstellationBackground ? "secondary" : "surface"
+                    }
+                    className="self-start sm:self-auto"
+                    aria-pressed={isSelectedConstellationBackground}
+                    onClick={handleToggleSelectedBackground}
+                  >
+                    {getConstellationBackgroundActionLabel(
+                      isSelectedConstellationBackground
+                    )}
+                  </Button>
+                </div>
+
+                <p className="text-xs text-text-muted" aria-live="polite">
+                  {isConnecting && linkFromStarId
+                    ? "Now choose another star to join it to. Escape cancels."
+                    : activeSkyMode.hint}
+                </p>
+
+                <div
+                  id="constellation-container"
+                  className="relative h-[60vh] w-full select-none overflow-hidden rounded-2xl border border-[var(--color-border)] bg-surface-base sm:h-[560px]"
+                  style={{
+                    /*
+                     * Night, and nothing else. Two wide violet washes were
+                     * painted here to carry the ambient half of the glow, and
+                     * they read as light coming from nowhere -- a bloom in the
+                     * corner of an empty sky with no star responsible for it.
+                     * The radiance belongs to the stars and is drawn by them.
+                     */
+                    backgroundColor: "#090413",
+                  }}
+                >
+                  <ConstellationLines
+                    lines={selectedLines}
+                    stars={visibleStars}
+                    pending={
+                      linkFromStarId && linkPoint
+                        ? { fromStarId: linkFromStarId, ...linkPoint }
+                        : null
+                    }
+                    onRemoveLine={
+                      isConnecting
+                        ? (line) => handleToggleLine(line.a, line.b)
+                        : undefined
+                    }
+                  />
+                  <div className="absolute inset-0 z-10">
+                    {visibleStars.map((star) => (
+                      <ConstellationStar
+                        key={star.id}
+                        star={star}
+                        interaction={skyMode}
+                        isLinkSource={linkFromStarId === star.id}
+                        onActivate={
+                          isConnecting
+                            ? () => handleStarPressed(star.id)
+                            : undefined
+                        }
+                        label={
+                          star.rewardKind === "onboarding"
+                            ? star.rewardLabel ?? "First study loop"
+                            : goalsById[star.goalId]
+                              ? `Earned for a ${goalsById[star.goalId].targetCards}-card goal`
+                              : "Earned star"
+                        }
+                        onDragStart={
+                          !canArrangeSelectedConstellation
+                            ? undefined
+                            : isConnecting
+                              ? () => {
+                                  setLinkFromStarId(star.id);
+                                  setLinkPoint(star.position);
+                                }
+                              : () => setDraggingStarId(star.id)
+                        }
+                        onNudge={
+                          canArrangeSelectedConstellation && !isConnecting
+                            ? (position) =>
+                                handleKeyboardStarMove(star.id, position)
+                            : undefined
                         }
                       />
-                    </div>
+                    ))}
                   </div>
-                ) : null}
-              </div>
-              {selectedConstellation ? (
+                  {visibleStars.length === 0 ? (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center p-5">
+                      <div className="max-w-md">
+                        <EmptyState
+                          variant="plain"
+                          emoji="Stars"
+                          eyebrow="No stars yet"
+                          title="Complete goals to fill this sky"
+                          description="Skies are rewards, not another task list. Finish a study goal and its star will appear here."
+                          action={
+                            <Link
+                              href="/dashboard/goals"
+                              className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
+                            >
+                              Create a goal
+                            </Link>
+                          }
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
                 <div>
                   <div className="mb-2 flex justify-between text-xs text-text-muted">
-                    <span>{selectedConstellation.name}</span>
+                    <span>
+                      {selectedConstellation.starCount} of{" "}
+                      {selectedConstellation.maxStars} stars
+                    </span>
                     <span>{selectedProgressPercent}% filled</span>
                   </div>
                   <div className="h-2 rounded-full bg-glass-medium">
@@ -831,62 +919,105 @@ export default function ConstellationDashboardPage() {
                     />
                   </div>
                 </div>
-              ) : null}
-            </Card>
 
-            {constellations.length > 1 ? (
-              <Card padding="md" className="space-y-4">
-                <SectionHeader
-                  title="Past skies"
-                  description="Finished constellations stay here as a simple archive."
-                />
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {constellations
-                    .filter((constellation) => constellation.id !== activeConstellation?.id)
-                    .map((constellation) => (
-                      <div key={constellation.id} className="app-panel p-4 text-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          {renamingConstellationId === constellation.id ? (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Input
-                                ref={renameInputRef}
-                                value={renameValue}
-                                onChange={(e) => setRenameValue(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") void handleRename();
-                                  if (e.key === "Escape") cancelRename();
-                                }}
-                                containerClassName="w-full max-w-[10rem]"
-                              />
-                              <Button size="sm" onClick={() => void handleRename()} disabled={!renameValue.trim()}>Save</Button>
-                              <Button size="sm" variant="ghost" onClick={cancelRename}>Cancel</Button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className="group flex min-w-0 items-center gap-2 font-medium transition-colors hover:text-accent"
-                              onClick={() => startRename(constellation)}
-                            >
-                              <span className="truncate">{constellation.name}</span>
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-text-muted transition-colors group-hover:text-accent" aria-label="Rename">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                                <span>Rename</span>
-                              </span>
-                            </button>
-                          )}
-                          <span className="app-chip shrink-0 rounded-full px-2.5 py-1 text-xs capitalize">
-                            {constellation.status}
-                          </span>
-                        </div>
-                        <div className="mt-2 text-xs text-text-muted">
-                          {constellation.starCount} star{constellation.starCount === 1 ? "" : "s"}
-                        </div>
-                      </div>
-                    ))}
-                </div>
+                {/*
+                 * Finishing, offered where it applies and only when it can be
+                 * done. It used to be a permanently disabled button in the page
+                 * header reading "Finish at 40 stars" -- a control that spends
+                 * almost its whole life explaining why it does not work.
+                 */}
+                {selectedConstellation.id === activeConstellation?.id &&
+                canFinishActiveConstellation ? (
+                  <div className="app-subtle-panel flex flex-col gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-text-primary">
+                        This sky is full
+                      </p>
+                      <p className="mt-0.5 text-xs text-text-muted">
+                        Finish it to keep it as a record, and a new sky starts
+                        collecting your next stars. You can still rearrange this
+                        one and draw on it afterwards.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      className="shrink-0"
+                      disabled={isFinishingConstellation}
+                      onClick={() => void handleFinishConstellation()}
+                    >
+                      {isFinishingConstellation
+                        ? "Finishing..."
+                        : "Finish this sky"}
+                    </Button>
+                  </div>
+                ) : null}
               </Card>
             ) : null}
 
+            {pastConstellations.length ? (
+              <Card padding="md" className="space-y-4">
+                <SectionHeader
+                  title="Past skies"
+                  description="Finished skies stay here. Open one to look at it, rearrange its stars, or redraw its lines."
+                />
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {pastConstellations.map((constellation) => (
+                    <div
+                      key={constellation.id}
+                      className={`app-panel p-4 text-sm ${
+                        constellation.id === selectedConstellation?.id
+                          ? "ring-1 ring-[var(--color-selected-border)]"
+                          : ""
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        {renamingConstellationId === constellation.id ? (
+                          renameField("w-full max-w-[10rem]")
+                        ) : (
+                          <>
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-text-primary">
+                                {constellation.name}
+                              </p>
+                              <p className="mt-0.5 text-xs text-text-muted">
+                                {constellation.starCount} star
+                                {constellation.starCount === 1 ? "" : "s"}
+                                {constellation.status === "finished"
+                                  ? " · finished"
+                                  : ""}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => startRename(constellation)}
+                              >
+                                Rename
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="surface"
+                                disabled={
+                                  constellation.id === selectedConstellation?.id
+                                }
+                                onClick={() =>
+                                  setSelectedConstellationId(constellation.id)
+                                }
+                              >
+                                {constellation.id === selectedConstellation?.id
+                                  ? "Viewing"
+                                  : "Open"}
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
           </>
         )}
       </AppPage>

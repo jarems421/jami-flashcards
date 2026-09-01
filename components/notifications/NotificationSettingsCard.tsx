@@ -162,45 +162,58 @@ export default function NotificationSettingsCard({
 
   const canSubscribe =
     isSupported && (!isAppleMobile || isStandalone) && permission !== "denied";
+  /**
+   * The state of reminders, as one quiet line rather than a coloured panel.
+   *
+   * This used to fill a block with `app-warning` -- a solid amber card that
+   * appeared the moment reminders were switched on and then stayed, because
+   * turning the preference on is only the first of two steps and the second one
+   * has its own button further down this card. So the loudest element on the
+   * page was a duplicate of a control already sitting below it, and the only
+   * way to make it go away was to finish a task it did not offer.
+   *
+   * The colour lives in a two-pixel dot now. It still distinguishes the four
+   * states at a glance, and none of them shouts.
+   */
   const reminderStatus = useMemo(() => {
     if (!isSupported) {
       return {
-        label: "Reminders unavailable on this device.",
+        label: "Not available on this device",
         detail: "This browser does not support web push notifications.",
-        tone: "app-warning",
+        dotClassName: "bg-[var(--color-text-muted)]",
       };
     }
 
     if (permission === "denied") {
       return {
-        label: "Notifications blocked in browser settings.",
+        label: "Blocked in browser settings",
         detail:
           "Re-enable notification permission before this device can receive reminders.",
-        tone: "app-danger",
+        dotClassName: "bg-[var(--color-error-text)]",
       };
     }
 
     if (!preferences.enabled) {
       return {
-        label: "Reminders off.",
-        detail: "Turn on Daily reminder when you want Jami to nudge you.",
-        tone: "app-chip",
+        label: "Off",
+        detail: "Turn the switch on when you want Jami to nudge you.",
+        dotClassName: "bg-[var(--color-text-muted)]",
       };
     }
 
     if (!hasSubscription) {
       return {
-        label: "Reminder preference enabled.",
+        label: "On, but not on this device yet",
         detail:
-          "Enable notifications on this device to receive the reminder here.",
-        tone: "app-warning",
+          "Enable notifications below and reminders will arrive here too.",
+        dotClassName: "bg-[var(--color-warning-text)]",
       };
     }
 
     return {
-      label: "Reminders enabled.",
-      detail: "Next reminder: 4:00 PM Europe/London.",
-      tone: "app-success",
+      label: "On",
+      detail: "Next reminder at 4:00 PM, Europe/London.",
+      dotClassName: "bg-[var(--color-success-text)]",
     };
   }, [hasSubscription, isSupported, permission, preferences.enabled]);
 
@@ -436,11 +449,22 @@ export default function NotificationSettingsCard({
         </div>
       </div>
 
-      <div className={`${reminderStatus.tone} mt-5 rounded-xl px-4 py-3.5`}>
-        <div className="text-sm font-semibold">{reminderStatus.label}</div>
-        <p className="mt-1 text-xs leading-5 text-inherit/80">
-          {reminderStatus.detail}
-        </p>
+      <div
+        className="app-subtle-panel mt-5 flex items-start gap-3 rounded-xl px-4 py-3"
+        aria-live="polite"
+      >
+        <span
+          aria-hidden="true"
+          className={`mt-[0.45rem] h-2 w-2 shrink-0 rounded-full ${reminderStatus.dotClassName}`}
+        />
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-text-primary">
+            {reminderStatus.label}
+          </p>
+          <p className="mt-0.5 text-xs leading-5 text-text-muted">
+            {reminderStatus.detail}
+          </p>
+        </div>
       </div>
 
       {preferences.enabled ? (
