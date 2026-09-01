@@ -67,7 +67,7 @@ const STAR_MASK_STYLE = {
  * the opposite, and looked it.
  */
 const STAR_GRADIENT =
-  "radial-gradient(circle at center, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.9) 12%, rgba(228, 222, 255, 0.3) 38%, rgba(214, 196, 255, 0) 66%)";
+  "radial-gradient(circle at center, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.9) 12%, rgba(220, 224, 255, 0.3) 38%, rgba(196, 198, 255, 0) 66%)";
 
 /**
  * The light a star throws: a tight white core and a wide violet bloom.
@@ -94,7 +94,7 @@ function getStarGlowFilter(glowStrength: number, starSize: number) {
 
   return [
     `drop-shadow(0 0 ${core}px rgba(255, 255, 255, ${0.6 + glowStrength * 0.25}))`,
-    `drop-shadow(0 0 ${bloom}px rgba(214, 200, 255, ${0.34 + glowStrength * 0.2}))`,
+    `drop-shadow(0 0 ${bloom}px rgba(198, 202, 255, ${0.34 + glowStrength * 0.2}))`,
   ].join(" ");
 }
 
@@ -150,7 +150,7 @@ function getBloomBackground(glowStrength: number) {
   const alpha = 0.22 + glowStrength * 0.1;
   const at = (fraction: number) => (alpha * fraction).toFixed(3);
 
-  return `radial-gradient(ellipse 48% 48% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(240, 236, 255, ${at(0.5)}) 16%, rgba(228, 222, 255, ${at(0.24)}) 32%, rgba(220, 208, 255, ${at(0.1)}) 50%, rgba(214, 196, 255, ${at(0.03)}) 70%, rgba(214, 196, 255, 0) 100%)`;
+  return `radial-gradient(ellipse 48% 48% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(236, 238, 255, ${at(0.5)}) 16%, rgba(220, 224, 255, ${at(0.24)}) 32%, rgba(208, 214, 255, ${at(0.1)}) 50%, rgba(196, 198, 255, ${at(0.03)}) 70%, rgba(196, 198, 255, 0) 100%)`;
 }
 
 function getSeededFraction(seed: string, index: number) {

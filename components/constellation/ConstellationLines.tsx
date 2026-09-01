@@ -48,8 +48,8 @@ export default function ConstellationLines({
 
   const isBackground = variant === "background";
   const stroke = isBackground
-    ? "rgba(214, 200, 255, 0.28)"
-    : "rgba(224, 214, 255, 0.5)";
+    ? "rgba(198, 206, 255, 0.28)"
+    : "rgba(210, 218, 255, 0.5)";
 
   return (
     <svg
@@ -108,7 +108,7 @@ export default function ConstellationLines({
           y1={pendingFrom.y}
           x2={pending!.x}
           y2={pending!.y}
-          stroke="rgba(224, 214, 255, 0.7)"
+          stroke="rgba(210, 218, 255, 0.7)"
           strokeLinecap="round"
           strokeDasharray="3 3"
           vectorEffect="non-scaling-stroke"
