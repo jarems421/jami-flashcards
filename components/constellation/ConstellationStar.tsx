@@ -91,31 +91,31 @@ const SPARKLE_MIN_STAR_SIZE = 30;
 const SPARKLES_PER_STAR = 4;
 
 /**
- * The shine: two crossed streaks of light radiating out of the star's centre.
+ * The bloom: light standing off the star, in the star's own proportions.
  *
- * The drop-shadows around the star are a halo -- they say the star is bright,
- * but they do not read as light *coming off* it, because a blur has no
- * direction. These do: two ellipses crossing at the centre, one tall and one
- * wide, so the light runs out along the star's own axes and past its tips.
+ * This has now been wrong in both directions and the failures are worth
+ * keeping, because they are opposite. A circular div was drawn behind each star
+ * and read as "a strict circle around the star" -- its alpha stepped 0.16, 0.07,
+ * 0, which leaves a shoulder, and the eye finds a shoulder and calls it an
+ * edge. Replacing it with two crossed ellipses along the star's axes went the
+ * other way: thin streaks running past the tips read as spikes pointing off the
+ * peaks rather than as anything glowing.
  *
- * Ellipses rather than a circle for the same reason the circular halo was
- * deleted. A disc behind a star is a disc; this has the shape of the thing
- * throwing it.
+ * So: one soft ellipse, no streaks, alpha roughly halving at every stop so the
+ * falloff never straightens into an edge, and sized 34 by 56 per cent of the
+ * box -- taller than wide, like the star -- so the light has the shape of the
+ * thing throwing it without tracing its outline.
  *
- * Kept deliberately below the sparkles in brightness. At around 0.4 the streaks
- * start to wash the sparkles out, and the sparkles are the detail worth seeing.
+ * Held below the sparkles in brightness on purpose. Around 0.4 it starts to
+ * wash them out, and the sparkles are the detail worth seeing.
  */
-const SHINE_BOX_RATIO = 3;
-const SHINE_THICKNESS = 6;
+const BLOOM_BOX_RATIO = 3.2;
 
-function getShineBackground(glowStrength: number) {
-  const alpha = 0.2 + glowStrength * 0.1;
-  const mid = (alpha * 0.4).toFixed(3);
+function getBloomBackground(glowStrength: number) {
+  const alpha = 0.22 + glowStrength * 0.1;
+  const at = (fraction: number) => (alpha * fraction).toFixed(3);
 
-  return [
-    `radial-gradient(ellipse ${SHINE_THICKNESS}% 46% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(228, 222, 255, ${mid}) 26%, rgba(214, 196, 255, 0) 68%)`,
-    `radial-gradient(ellipse 46% ${SHINE_THICKNESS}% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(228, 222, 255, ${mid}) 26%, rgba(214, 196, 255, 0) 68%)`,
-  ].join(", ");
+  return `radial-gradient(ellipse 34% 56% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(240, 236, 255, ${at(0.5)}) 16%, rgba(228, 222, 255, ${at(0.24)}) 32%, rgba(220, 208, 255, ${at(0.1)}) 50%, rgba(214, 196, 255, ${at(0.03)}) 70%, rgba(214, 196, 255, 0) 100%)`;
 }
 
 function getSeededFraction(seed: string, index: number) {
@@ -223,15 +223,15 @@ export default function ConstellationStar({
    */
   const visual = (
     <>
-      {/* Behind the star and unmasked, so the streaks can run past its tips. */}
+      {/* Behind the star and unmasked, so the light stands off it. */}
       <div
         className="pointer-events-none absolute left-1/2 top-1/2"
         aria-hidden="true"
         style={{
-          width: `${starSize * SHINE_BOX_RATIO}px`,
-          height: `${starSize * SHINE_BOX_RATIO}px`,
+          width: `${starSize * BLOOM_BOX_RATIO}px`,
+          height: `${starSize * BLOOM_BOX_RATIO}px`,
           transform: "translate(-50%, -50%)",
-          background: getShineBackground(glowStrength),
+          background: getBloomBackground(glowStrength),
         }}
       />
       <div

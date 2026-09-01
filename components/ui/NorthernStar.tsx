@@ -13,12 +13,13 @@
 export const NORTHERN_STAR_BOX = 160;
 
 /**
- * Four points, 1.72 times taller than wide, on a 0.165 waist.
+ * Four points, 1.36 times taller than wide, on a 0.165 waist.
  *
- * Outer radius 79 vertically and 46 horizontally, with the inner vertices on
- * the 45-degree diagonals at radius 13. The side points are longer than a
- * strict pole star would draw them, which keeps the cross of light reading as a
- * cross rather than as a vertical streak with two nubs. The stretch is the whole point: a pole
+ * Outer radius 79 vertically and 58 horizontally, with the inner vertices on
+ * the 45-degree diagonals at radius 13. The side points are far longer than a
+ * strict pole star would draw them -- reaching 58 from a 13 waist, they are
+ * thinner in proportion the further out they go, which is what makes a wide
+ * star still read as delicate rather than as a cross. The stretch is the whole point: a pole
  * star is drawn taller than it is wide, and a symmetrical four-point star is
  * just a sparkle.
  *
@@ -37,7 +38,7 @@ export const NORTHERN_STAR_BOX = 160;
  * rather than by geometry.
  */
 export const NORTHERN_STAR_PATH =
-  "M80 1L89.19 70.81L126 80L89.19 89.19L80 159L70.81 89.19L34 80L70.81 70.81Z";
+  "M80 1L89.19 70.81L138 80L89.19 89.19L80 159L70.81 89.19L22 80L70.81 70.81Z";
 
 /**
  * The smaller cut-out that gives the filled star its facet.
@@ -47,7 +48,7 @@ export const NORTHERN_STAR_PATH =
  * a highlight.
  */
 export const NORTHERN_STAR_FACET_PATH =
-  "M80 48.4L83.68 76.32L98.4 80L83.68 83.68L80 111.6L76.32 83.68L61.6 80L76.32 76.32Z";
+  "M80 48.4L83.68 76.32L103.2 80L83.68 83.68L80 111.6L76.32 83.68L56.8 80L76.32 76.32Z";
 
 /**
  * Places the star at `x, y` drawn `size` across, in the caller's own viewBox.
