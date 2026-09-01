@@ -12,7 +12,6 @@ const star: NormalizedStar = {
   constellationId: "constellation-1",
   size: 30,
   glow: 0.5,
-  color: "gold",
   position: { x: 50, y: 50 },
   createdAt: 1,
   needsBackfill: false,

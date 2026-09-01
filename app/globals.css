@@ -1734,38 +1734,54 @@ body.constellation-background-enabled::before {
  * range is wider and the shape is asymmetric -- a slow swell, a longer settle
  * -- so it holds at the top of the cycle instead of bouncing off it.
  */
+/*
+ * A star breathing, on opacity alone.
+ *
+ * This also animated `scale`, which meant every star in the sky was running a
+ * transform on an element that already carried a blend mode and a filter. The
+ * scale is gone, the range is narrower and the cycle is roughly half again as
+ * long, so it reads as a star holding its light rather than pulsing.
+ */
 @keyframes constellation-twinkle {
   0%,
   100% {
-    opacity: 0.72;
-    transform: scale(0.985);
+    opacity: 0.76;
   }
-  45% {
+  50% {
     opacity: 1;
-    transform: scale(1.06);
-  }
-  62% {
-    opacity: 0.96;
-    transform: scale(1.04);
   }
 }
 
 /*
- * The halo, on its own longer cycle.
+ * A sparkle coming off a star: lights, drifts outward a little, goes out.
  *
- * Wider swing than the star it sits behind, and slower, so the light arrives
- * after the star brightens rather than with it. That lag is what makes it read
- * as radiance rather than as one thing pulsing.
+ * Dark for most of its cycle -- it reaches full brightness for a moment around
+ * a third of the way through and is gone by two thirds. With three per star on
+ * long staggered cycles, only one or two are ever lit at once, which is the
+ * difference between a star shedding light and a string of fairy lights.
+ *
+ * The drift direction is set per sparkle in the component, pointing away from
+ * the star it belongs to.
  */
-@keyframes constellation-radiance {
+@keyframes constellation-sparkle {
   0%,
+  72%,
   100% {
-    opacity: 0.55;
-    transform: translate(-50%, -50%) scale(0.92);
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
   }
-  50% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.08);
+  16% {
+    opacity: 0.9;
+    transform: translate(
+        calc(var(--sparkle-drift-x, 0px) * 0.4),
+        calc(var(--sparkle-drift-y, 0px) * 0.4)
+      )
+      scale(1);
+  }
+  44% {
+    opacity: 0.35;
+    transform: translate(var(--sparkle-drift-x, 0px), var(--sparkle-drift-y, 0px))
+      scale(0.75);
   }
 }
 
@@ -1999,6 +2015,39 @@ body.constellation-background-enabled::before {
     star-reward-breathe 4200ms 1220ms ease-in-out infinite;
 }
 
+/*
+ * A sparkle thrown off the reward star.
+ *
+ * Lights after the star has resolved, holds briefly, drifts out and goes. Runs
+ * once rather than looping: the moment lasts three seconds, and a sparkle still
+ * blinking as the overlay leaves reads as an animation that was cut off.
+ */
+@keyframes star-reward-sparkle {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  30% {
+    opacity: 0.95;
+    transform: scale(1.1);
+  }
+  60% {
+    opacity: 0.5;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+
+.star-reward-sparkle {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: star-reward-sparkle 1400ms ease-out both;
+}
+
 .star-reward-copy {
   animation: star-reward-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: 160ms;
@@ -2013,6 +2062,7 @@ body.constellation-background-enabled::before {
   .star-reward-core,
   .star-reward-cut,
   .star-reward-halo,
+  .star-reward-sparkle,
   .star-reward-orbit {
     animation: none;
   }
@@ -2031,6 +2081,12 @@ body.constellation-background-enabled::before {
 
   .star-reward-halo {
     opacity: 0.9;
+  }
+
+  /* The sparkles are the motion, so under reduced motion there is nothing
+     for them to be. */
+  .star-reward-sparkle {
+    opacity: 0;
   }
 
   .star-reward-core,

@@ -98,7 +98,9 @@ describe("the first-loop onboarding star", () => {
     ];
     expect(written.rewardKind).toBe("onboarding");
     expect(written.rewardLabel).toBe("First study loop");
-    expect(written.color).toBe("white");
+    // Stars no longer carry a colour: they were white, blue and gold, and the
+    // hue sat in the middle of the star rather than in the light around it.
+    expect(written.color).toBeUndefined();
     expect(written.constellationId).toBe("constellation-1");
   });
 

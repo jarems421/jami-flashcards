@@ -35,7 +35,6 @@ const star: Star = {
   constellationId: "constellation-1",
   size: 22,
   glow: 0.85,
-  color: "white",
   position: { x: 50, y: 50 },
   createdAt: 1,
   rewardKind: "onboarding",

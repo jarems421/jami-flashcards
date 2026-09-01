@@ -158,7 +158,7 @@ Sources is a focused reference workspace, not a file manager.
 Stars are Jami's own thing. They drifted because nothing here described them, so
 each surface invented its own.
 
-**One star means earned.** Every star a student has earned is the eight-point
+**One star means earned.** Every star a student has earned is the four-point
 `NorthernStar` (`components/ui/NorthernStar.tsx`) — in the reward overlay, in
 the sky, in the walkthrough trail, in the nav entry, on the signed-out landing
 page. Use `northernStarTransform` to place it; never draw another star shape
@@ -170,10 +170,31 @@ small four-point sparkles — wherever the app offers help: tutor, drafting a
 card, generating a paper, reading a source. There is one of these, not one per
 surface.
 
-The two must stay apart, and at the time of writing they barely are: the
-earned star has eight vertices but four long points, which is the same shape
-family as the sparkles. Only size and count separate them. Whatever the earned
-star becomes, it should differ from the AI mark in shape and not just in scale.
+The two must stay apart, and they are close: both are four-point stars. What
+separates them is composition, not geometry — an earned star is one tall
+faceted star with a 1.37 vertical stretch, the AI mark is three small flat ones.
+A six-point star was tried to separate them outright and read as an asterisk at
+the sizes a sky is full of. If they ever need pulling further apart, move the AI
+mark rather than the star.
+
+**Every star is white.** They came in white, blue and gold, warming as goals
+were completed, and the hue sat at the 24 per cent stop of the star's gradient
+— so a gold star was gold through its core rather than white-hot with warm
+light around it. Size is the only axis a star varies on now, and it grows with
+the goal behind it.
+
+**Light has no edge.** A star's own glow is a single `drop-shadow`, which
+follows its silhouette and falls off on a Gaussian. Ambient radiance belongs to
+the sky, as a wide wash on the container, not to each star. Never draw a shape
+behind a star to represent its light: a circle behind a four-point star reads as
+a disc, which is exactly what it is.
+
+**The sky has a frame budget.** Up to forty stars are on the constellation page
+and up to sixty behind every other page in the app. No star layer may carry
+`mix-blend-mode` or `will-change`, animations are `opacity` only where they can
+be, and anything that adds an element per star — sparkles — is rationed by size.
+An earlier pass put three blended, promoted layers on every star and the page
+was visibly laggy.
 
 **One word per level.**
 

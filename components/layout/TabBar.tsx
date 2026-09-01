@@ -118,7 +118,7 @@ const tabs: Tab[] = [
      * reward overlay, the walkthrough trail, the landing page and now the sky
      * itself all draw NORTHERN_STAR_PATH; this is the same path at 24.
      */
-    icon: "M12 0.67L13.34 9.67L20.31 6.34L14.69 12L20.31 17.66L13.34 14.33L12 23.33L10.66 14.33L3.69 17.66L9.31 12L3.69 6.34L10.66 9.67Z",
+    icon: "M12 0.9L14.76 9.24L20.1 12L14.76 14.76L12 23.1L9.24 14.76L3.9 12L9.24 9.24Z",
   },
   /*
    * Last but one, directly above Account.

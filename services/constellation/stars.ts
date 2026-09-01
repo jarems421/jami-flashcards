@@ -1,7 +1,6 @@
 import {
   collection,
   doc,
-  getCountFromServer,
   getDoc,
   getDocs,
   limit,
@@ -15,7 +14,6 @@ import { getActiveOrCreateInitialConstellation } from "@/services/constellation/
 import type { Goal } from "@/lib/study/goals";
 import {
   getDefaultStarPosition,
-  getStarColor,
   getStarRewardSize,
 } from "@/lib/constellation/stars";
 import { parseStarData, type NormalizedStar } from "@/lib/constellation/stars";
@@ -105,18 +103,11 @@ export async function createStarForGoalIfMissing(userId: string, goal: Goal) {
     return null;
   }
 
-  const completedGoalsSnapshot = await withTimeout(
-    getCountFromServer(
-      query(
-        collection(db, "users", userId, "goals"),
-        where("status", "==", "completed")
-      )
-    ),
-    QUERY_MS,
-    "Load completed goals"
-  );
-
-  const completedGoalsCount = completedGoalsSnapshot.data().count;
+  /*
+   * The completed-goal count used to be read here, and only ever to choose
+   * between a white, blue and gold star. Stars are all white now, so this is
+   * one aggregate query off the path every time a goal turns into a star.
+   */
   const createdAt = Date.now();
 
   const star = {
@@ -124,7 +115,6 @@ export async function createStarForGoalIfMissing(userId: string, goal: Goal) {
     constellationId: activeConstellation.id,
     size: getStarRewardSize(goal.targetCards),
     glow: goal.targetAccuracy,
-    color: getStarColor(completedGoalsCount),
     // Seeded from the star's own id rather than Math.random, so a star lands in
     // the same place whether it is read from this write or placed later by a
     // backfill. The goal id is the star id, which is what makes it stable.
@@ -232,7 +222,6 @@ export async function createOnboardingStarIfMissing(userId: string): Promise<
     constellationId: activeConstellation.id,
     size: getStarRewardSize(1),
     glow: 0.85,
-    color: "white",
     rewardKind: "onboarding" as const,
     rewardLabel: "First study loop",
     position: getDefaultStarPosition(ONBOARDING_STAR_ID),

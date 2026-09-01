@@ -9,7 +9,6 @@ export type Star = {
   constellationId: string;
   size: number;
   glow: number;
-  color: string;
   position: StarPosition;
   createdAt: number;
   rewardKind?: "goal" | "onboarding";
@@ -59,25 +58,16 @@ function getDeterministicPositionValue(value: string, index: number) {
   return 10 + getSeededRandom(value, index) * 80;
 }
 
-/**
- * How warm a sky becomes as goals are completed.
+/*
+ * Stars used to come in white, blue and gold, warming as goals were completed.
+ * Drawn, the colour sat at the 24 per cent stop of the star's own gradient, so
+ * a gold star was gold through its core rather than white-hot with warm light
+ * around it, and it simply looked wrong. Every star is white now.
  *
- * Read at the moment a star is minted, so the colour records how far along the
- * student was when they earned it rather than what the star cost them. Kept
- * when the five rarity presets went, because unlike them it is actually drawn:
- * `getStarPalette` in ConstellationStar reads it.
+ * Existing documents keep their `color` field; nothing reads it. That is the
+ * same treatment `presetId` got, except presetId has to stay because its
+ * absence is what dates a legacy star.
  */
-export function getStarColor(completedGoalsCount: number) {
-  if (completedGoalsCount >= 10) {
-    return "gold";
-  }
-
-  if (completedGoalsCount >= 5) {
-    return "blue";
-  }
-
-  return "white";
-}
 
 /**
  * Where a star sits when it has never been placed.
@@ -140,7 +130,6 @@ export function getEffectiveStarVisualSize(star: {
 export function buildPreviewStar({
   targetCards,
   targetAccuracy,
-  completedGoalsCount,
   constellationId = "preview-constellation",
   id = "preview-star",
   goalId = "preview-goal",
@@ -149,7 +138,6 @@ export function buildPreviewStar({
 }: {
   targetCards: number;
   targetAccuracy: number;
-  completedGoalsCount: number;
   constellationId?: string;
   id?: string;
   goalId?: string;
@@ -162,7 +150,6 @@ export function buildPreviewStar({
     constellationId,
     size: getStarRewardSize(targetCards),
     glow: targetAccuracy,
-    color: getStarColor(completedGoalsCount),
     createdAt,
     position,
   });
@@ -174,7 +161,6 @@ export function normalizeStar(star: {
   constellationId?: string;
   size: number;
   glow: number;
-  color: string;
   createdAt: number;
   position?: Partial<StarPosition>;
   isLegacyStar?: boolean;
@@ -214,7 +200,6 @@ export function parseStarData(
       typeof data.constellationId === "string" ? data.constellationId : "",
     size: typeof data.size === "number" ? data.size : 0,
     glow: typeof data.glow === "number" ? data.glow : 0,
-    color: typeof data.color === "string" ? data.color : "white",
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     position:
       typeof data.position === "object" && data.position !== null

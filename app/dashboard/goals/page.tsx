@@ -30,7 +30,6 @@ import { getActiveStudyFolders } from "@/services/study/folders";
 import {
   createGoal,
   getActiveGoalsWithCurrentStatuses,
-  getCompletedGoalCount,
   getGoalHistoryPage,
   type GoalHistoryCursor,
   updateGoal,
@@ -197,28 +196,21 @@ export default function GoalsPage() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyUnavailable, setHistoryUnavailable] = useState(false);
-  const [completedGoalsCount, setCompletedGoalsCount] = useState(0);
   const [goalsUnavailable, setGoalsUnavailable] = useState(false);
 
   const lastForegroundRefreshAtRef = useRef(0);
 
   const loadGoalData = useCallback(
     async () => {
-      const [activeGoals, completedCount] = await Promise.all([
-        getActiveGoalsWithCurrentStatuses(user.uid),
-        getCompletedGoalCount(user.uid),
-      ]);
-      return { activeGoals, completedCount };
+      // The completed-goal count came along only to pick the preview star's
+      // colour. Stars are all white, so this page loads one query fewer.
+      return { activeGoals: await getActiveGoalsWithCurrentStatuses(user.uid) };
     },
     [user.uid]
   );
 
-  const applyGoalData = useCallback((data: {
-    activeGoals: Goal[];
-    completedCount: number;
-  }) => {
+  const applyGoalData = useCallback((data: { activeGoals: Goal[] }) => {
     setGoals(data.activeGoals);
-    setCompletedGoalsCount(data.completedCount);
     setGoalsUnavailable(false);
   }, []);
 
@@ -367,7 +359,6 @@ export default function GoalsPage() {
   const previewStar = buildPreviewStar({
     targetCards: previewTargetCards,
     targetAccuracy: previewTargetAccuracy,
-    completedGoalsCount: completedGoalsCount + 1,
     constellationId: previewConstellationId,
     position: { x: 50, y: 50 },
   });

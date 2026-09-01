@@ -1,8 +1,8 @@
 /**
  * Jami's star, in one place.
  *
- * The reward moment, the walkthrough's progress trail and the signed-out
- * landing page all draw the same eight-point northern star. Keeping the path
+ * The reward moment, the walkthrough's progress trail, the sky and the
+ * signed-out landing page all draw the same star. Keeping the path
  * here is what makes them read as one object at three sizes rather than three
  * unrelated star drawings, and it is why the reward can grow its own animated
  * layers without the small ones drifting away from it.
@@ -13,27 +13,37 @@
 export const NORTHERN_STAR_BOX = 160;
 
 /**
- * Six points, a 0.28 waist, and 1.18 taller than it is wide.
+ * Four points, 1.37 times taller than wide, on a 0.35 waist.
  *
- * It was four points at a 0.25 waist, which is very nearly a cross, and the
- * same shape family as the three sparkles that mean "Jami can help here" -- so
- * only size and count told an earned star apart from an offer of help. Six
- * points separates them outright, and the vertical stretch is what makes it a
- * northern star rather than a generic one: the pole star is drawn taller than
- * it is wide.
+ * Outer radius 74 vertically and 54 horizontally, with the inner vertices on
+ * the 45-degree diagonals at radius 26. The stretch is the whole point: a pole
+ * star is drawn taller than it is wide, and a symmetrical four-point star is
+ * just a sparkle.
+ *
+ * This has been three shapes. It was symmetrical at a 0.25 waist -- needle-thin
+ * and, being unstretched, not really a northern star at all. It was then six
+ * points, which separated it outright from the three sparkles that mean "Jami
+ * can help here", but read as an asterisk at the 18-26px an ordinary sky is
+ * full of. Four broad points on a long vertical axis is legible small and still
+ * looks like a star.
+ *
+ * The cost is real and worth stating: this is once again the same shape family
+ * as JamiTutorIcon. What separates them now is that an earned star is one tall
+ * faceted star and the AI mark is three small flat ones -- carried by
+ * composition rather than by geometry.
  */
 export const NORTHERN_STAR_PATH =
-  "M80 4.48L88.96 64.48L135.43 42.24L97.92 80L135.43 117.76L88.96 95.52L80 155.52L71.04 95.52L24.57 117.76L62.08 80L24.57 42.24L71.04 64.48Z";
+  "M80 6L98.38 61.62L134 80L98.38 98.38L80 154L61.62 98.38L26 80L61.62 61.62Z";
 
 /**
  * The smaller cut-out that gives the filled star its facet.
  *
- * The same six points at the same waist and stretch, at 40 per cent. A facet
+ * The same four points at the same waist and stretch, at 40 per cent. A facet
  * of a different shape from the star holding it reads as a mistake rather than
  * a highlight.
  */
 export const NORTHERN_STAR_FACET_PATH =
-  "M80 49.79L83.58 73.79L102.17 64.9L87.17 80L102.17 95.1L83.58 86.21L80 110.21L76.42 86.21L57.83 95.1L72.83 80L57.83 64.9L76.42 73.79Z";
+  "M80 50.4L87.35 72.65L101.6 80L87.35 87.35L80 109.6L72.65 87.35L58.4 80L72.65 72.65Z";
 
 /**
  * Places the star at `x, y` drawn `size` across, in the caller's own viewBox.

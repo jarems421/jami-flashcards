@@ -47,6 +47,21 @@ const TRAIL = [
  */
 const MARK_VIEW_BOX = "-20 -14 200 200";
 
+/**
+ * Sparkles in the gaps between the star's arms.
+ *
+ * The star is four-point and tall, so the space around it is four wide
+ * diagonal wedges. These sit in them, out beyond the tips, at sizes small
+ * enough to read as thrown light rather than as more stars.
+ */
+const REWARD_SPARKLES = [
+  { x: 112, y: 44, size: 11 },
+  { x: 36, y: 40, size: 9 },
+  { x: 138, y: 116, size: 10 },
+  { x: 26, y: 108, size: 12 },
+  { x: 96, y: 8, size: 7 },
+] as const;
+
 function NorthernStarMark() {
   return (
     <svg viewBox={MARK_VIEW_BOX} className="h-full w-full" aria-hidden="true">
@@ -60,10 +75,19 @@ function NorthernStarMark() {
         * soft edge -- and it is painted first so everything else sits in it.
         */}
       <defs>
+        {/*
+          * Five stops rather than four, on a curve that never straightens.
+          *
+          * A gradient that steps 0.42 -> 0.14 -> 0.03 -> 0 has a shoulder in
+          * it, and the eye finds a shoulder and reads it as an edge. Halving
+          * the alpha at each stop gives a falloff with no place to catch.
+          */}
         <radialGradient id="star-reward-halo-fill">
-          <stop offset="0%" stopColor="currentColor" stopOpacity="0.42" />
-          <stop offset="38%" stopColor="currentColor" stopOpacity="0.14" />
-          <stop offset="72%" stopColor="currentColor" stopOpacity="0.03" />
+          <stop offset="0%" stopColor="currentColor" stopOpacity="0.34" />
+          <stop offset="24%" stopColor="currentColor" stopOpacity="0.17" />
+          <stop offset="46%" stopColor="currentColor" stopOpacity="0.08" />
+          <stop offset="68%" stopColor="currentColor" stopOpacity="0.03" />
+          <stop offset="88%" stopColor="currentColor" stopOpacity="0.008" />
           <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
         </radialGradient>
       </defs>
@@ -105,6 +129,38 @@ function NorthernStarMark() {
         strokeWidth="2"
         strokeLinejoin="round"
       />
+      {/*
+        * Sparkles coming off the star.
+        *
+        * Placed by hand rather than seeded: there is exactly one reward star on
+        * screen, it is always the same size in the same box, and five positions
+        * chosen to sit in the gaps between its arms beat five random ones. Each
+        * lights on its own delay after the star has resolved.
+        */}
+      {REWARD_SPARKLES.map((sparkle, index) => (
+        /*
+         * The group carries the placement and the path carries the animation,
+         * which is not a style choice.
+         *
+         * In SVG the `transform` attribute and the CSS `transform` property are
+         * the same property, so a keyframe that animates scale silently
+         * replaces the translate that put the sparkle where it belongs -- every
+         * one of them collapses onto the star's own origin and vanishes behind
+         * it. Splitting placement onto a parent leaves the path's own transform
+         * free to be animated.
+         */
+        <g
+          key={`${sparkle.x}-${sparkle.y}`}
+          transform={northernStarTransform(sparkle.x, sparkle.y, sparkle.size)}
+        >
+          <path
+            className="star-reward-sparkle"
+            d={NORTHERN_STAR_PATH}
+            fill="currentColor"
+            style={{ animationDelay: `${1.1 + index * 0.34}s` }}
+          />
+        </g>
+      ))}
       <path className="star-reward-core" d={NORTHERN_STAR_PATH} fill="currentColor" />
       <path
         className="star-reward-cut"
