@@ -126,7 +126,7 @@ export default function ConstellationBackground({
         * Dimming belongs to the one overlay that already exists for it, not to
         * three more that each look harmless on their own.
         */}
-      <div className="absolute inset-0 z-10">
+      <div className="constellation-sky-layer absolute inset-0 z-10">
         {visibleStars.map((star) => (
           <ConstellationStar key={star.id} star={star} variant="background" />
         ))}

@@ -76,11 +76,20 @@ export default function ConstellationBackgroundShell({
     };
   }, []);
 
+  /*
+   * Notebooks show the sky too, if the student turned it on.
+   *
+   * They were excluded when the notebook viewport was rewritten, with no note
+   * saying why -- most likely to keep anything animated away from the ink
+   * canvas. Page colours are solid, so the sheet stays opaque and the stars sit
+   * around the paper rather than under the writing.
+   *
+   * The constellation page is still excluded, and for a reason that has not
+   * changed: it draws the same sky in the middle of the page, and a second copy
+   * of it behind that is just noise.
+   */
   const shouldShowBackground =
-    isEnabled &&
-    !isCrashMarked &&
-    !pathname.startsWith("/dashboard/notebooks/") &&
-    pathname !== "/dashboard/constellation";
+    isEnabled && !isCrashMarked && pathname !== "/dashboard/constellation";
 
   useEffect(() => {
     if (!shouldShowBackground || isBackgroundReady) {

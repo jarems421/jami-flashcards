@@ -773,6 +773,21 @@
     display: none !important;
   }
 
+  /*
+   * The sky holds still while a notebook is open.
+   *
+   * Ink latency is the one thing in this app worth protecting above everything
+   * else, and a notebook can have sixty animated stars behind it. They are
+   * compositor-only animations and should cost nothing next to a drawing
+   * canvas, but "should" is not a good enough argument to spend pen feel on.
+   * The stars, their glow and their sparkles all still draw -- they simply stop
+   * moving while there is a pen in play.
+   */
+  body.jami-notebook-editor-active .constellation-sky-layer,
+  body.jami-notebook-editor-active .constellation-sky-layer * {
+    animation-play-state: paused !important;
+  }
+
   body.jami-notebook-editor-active .notebook-text-editor,
   body.jami-notebook-editor-active [data-notebook-text-editor="true"] {
     -webkit-touch-callout: default !important;
