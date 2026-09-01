@@ -76,6 +76,15 @@ function getDeterministicPositionValue(value: string, index: number) {
  * time it is read. Both service write paths use this rather than Math.random,
  * which used to give a star one position on the server and another on backfill.
  */
+/**
+ * Stamped on every star written, so its `size` can be read on the right scale.
+ *
+ * It replaces `presetId`, which carried this meaning by accident: a field for
+ * something else entirely, whose absence happened to date a star. That is a
+ * dangerous way to store a schema version, and deleting the presets proved it.
+ */
+export const STAR_SCHEMA_VERSION = 2;
+
 export function getDefaultStarPosition(seed = "default-star"): StarPosition {
   return {
     x: getDeterministicPositionValue(seed, 1),
@@ -206,17 +215,23 @@ export function parseStarData(
         ? (data.position as Partial<StarPosition>)
         : undefined,
     /*
-     * The five rarity presets are gone, but the field they were stored in is
-     * still the only way to tell a star's vintage apart.
+     * Which scale this star's `size` is on, which the number itself cannot say.
      *
-     * Stars written before the presets existed hold `size` as a 0..1 fraction;
-     * every star since holds ln(targetCards + 1). Those ranges overlap -- a
-     * one-card goal gives ln(2) = 0.69 -- so the number cannot say which scale
-     * it is on, and reading an old star on the new scale draws it far too
-     * small. The absence of presetId is what dates it, which is why the field
-     * is still read here and nowhere else.
+     * Stars written before the rarity presets existed hold `size` as a 0..1
+     * fraction; every star since holds ln(targetCards + 1). Those ranges
+     * overlap -- a one-card goal gives ln(2) = 0.69 -- so reading an old star
+     * on the new scale draws it far too small, and reading a new one on the old
+     * scale draws it far too big.
+     *
+     * This read `presetId === undefined` alone, and presetId stopped being
+     * written when the presets were deleted -- which quietly dated every new
+     * star as ancient and drew the onboarding star, whose size is ln(2), at
+     * 42px instead of 18px. STAR_SCHEMA_VERSION is now written in its place and
+     * says only what it means. Either marker is enough to date a star as
+     * modern; neither is ever written to an old one.
      */
-    isLegacyStar: data.presetId === undefined,
+    isLegacyStar:
+      data.presetId === undefined && data.starSchemaVersion === undefined,
     rewardKind: data.rewardKind === "onboarding" ? "onboarding" : "goal",
     rewardLabel:
       typeof data.rewardLabel === "string"

@@ -15,6 +15,7 @@ import type { Goal } from "@/lib/study/goals";
 import {
   getDefaultStarPosition,
   getStarRewardSize,
+  STAR_SCHEMA_VERSION,
 } from "@/lib/constellation/stars";
 import { parseStarData, type NormalizedStar } from "@/lib/constellation/stars";
 import { withTimeout } from "@/services/firebase/firestore";
@@ -115,6 +116,9 @@ export async function createStarForGoalIfMissing(userId: string, goal: Goal) {
     constellationId: activeConstellation.id,
     size: getStarRewardSize(goal.targetCards),
     glow: goal.targetAccuracy,
+    // Says which scale `size` is on. Without it the star reads as pre-preset,
+    // whose sizes were 0..1, and is drawn on the wrong curve.
+    starSchemaVersion: STAR_SCHEMA_VERSION,
     // Seeded from the star's own id rather than Math.random, so a star lands in
     // the same place whether it is read from this write or placed later by a
     // backfill. The goal id is the star id, which is what makes it stable.
@@ -222,6 +226,7 @@ export async function createOnboardingStarIfMissing(userId: string): Promise<
     constellationId: activeConstellation.id,
     size: getStarRewardSize(1),
     glow: 0.85,
+    starSchemaVersion: STAR_SCHEMA_VERSION,
     rewardKind: "onboarding" as const,
     rewardLabel: "First study loop",
     position: getDefaultStarPosition(ONBOARDING_STAR_ID),
