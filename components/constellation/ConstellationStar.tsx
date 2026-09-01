@@ -13,6 +13,19 @@ type ConstellationStarProps = {
   onNudge?: (position: NormalizedStar["position"]) => void;
   variant?: "default" | "background" | "preview";
   label?: string;
+  /**
+   * What a press on this star means right now.
+   *
+   * The sky has one gesture and two things it could mean, so the page picks
+   * which. In "arrange" a press starts a drag; in "connect" it starts a line to
+   * another star. Announcing the difference matters as much as behaving
+   * differently, because a screen reader user has no mode indicator to look at.
+   */
+  interaction?: "arrange" | "connect";
+  /** The star a line is currently being drawn from. */
+  isLinkSource?: boolean;
+  /** Keyboard equivalent of pressing the star, used to pick link ends. */
+  onActivate?: () => void;
 };
 
 /**
@@ -210,6 +223,9 @@ export default function ConstellationStar({
   onNudge,
   variant = "default",
   label = "Earned star",
+  interaction = "arrange",
+  isLinkSource = false,
+  onActivate,
 }: ConstellationStarProps) {
   const isBackground = variant === "background";
   const isPreview = variant === "preview";
@@ -303,13 +319,29 @@ export default function ConstellationStar({
     </>
   );
 
-  if (onDragStart || onNudge) {
+  if (onDragStart || onNudge || onActivate) {
+    const isConnecting = interaction === "connect";
+    const instruction = isConnecting
+      ? isLinkSource
+        ? "Selected. Choose another star to join it to, or press Escape to cancel."
+        : "Press to start a line from this star."
+      : "Use the arrow keys to move this star.";
+
     return (
       <button
         type="button"
-        aria-label={`${label}. Use the arrow keys to move this star.`}
+        data-star-id={star.id}
+        aria-label={`${label}. ${instruction}`}
+        aria-pressed={isConnecting ? isLinkSource : undefined}
         onPointerDown={onDragStart}
         onKeyDown={(event) => {
+          if (isConnecting) {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onActivate?.();
+            }
+            return;
+          }
           if (!onNudge) return;
           const step = event.shiftKey ? 5 : 1;
           const offset = {
@@ -325,7 +357,7 @@ export default function ConstellationStar({
             y: clampPercentage(star.position.y + offset.y),
           });
         }}
-        className={`${className} border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--color-selected-border)]`}
+        className={`${className} border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--color-selected-border)] ${isLinkSource ? "outline outline-2 outline-offset-4 outline-[var(--color-selected-border)]" : ""}`}
         style={style}
         title={label}
       >

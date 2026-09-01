@@ -210,6 +210,15 @@ walkthrough earns one. Nothing else mints a star, and nothing else should start
 to without a deliberate decision — a star that arrives easily stops meaning
 anything.
 
+**A sky is drawn on, not just filled.** Stars can be joined into a figure —
+lines between them, stored on the constellation and drawn wherever that sky is.
+The gesture lives behind an explicit Arrange / Connect toggle, because dragging
+a star already moves it and one gesture cannot mean two things; whichever mode
+is live, a drag does exactly one thing and the button says which. Drawing the
+same line twice removes it, so joining and unjoining are one action rather than
+two. Lines are a presentation choice like position and naming, so they follow
+the same rule below: finishing a sky never freezes them.
+
 **Finishing seals what is in a sky, not how it is arranged.** A finished
 constellation takes no new stars — that is what finishing is for, and the next
 one starts collecting them. Everything else about it stays editable: its name,

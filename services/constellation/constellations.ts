@@ -15,7 +15,9 @@ import {
   getActiveConstellation,
   MAX_STARS_PER_CONSTELLATION,
   normalizeConstellation,
+  normalizeConstellationLines,
   type Constellation,
+  type ConstellationLine,
 } from "@/lib/constellation/constellations";
 
 const QUERY_MS = 30_000;
@@ -241,6 +243,9 @@ async function createInitialConstellationTransaction(
   return {
     id: initialConstellationRef.id,
     ...initialConstellation,
+    // Not written to Firestore: a new sky has no stars, so it can have no
+    // lines, and an empty array in every document is storage for nothing.
+    lines: [],
   };
 }
 
@@ -371,6 +376,37 @@ export async function finishConstellation(userId: string, constellationId: strin
   );
 
   return finishedAt;
+}
+
+/**
+ * Persists a constellation's lines, normalised on the way out.
+ *
+ * The caller has already normalised these to draw them, but the array it holds
+ * came from a page that has been open a while and may have been edited many
+ * times since the last read. Normalising again here is cheap and means a
+ * malformed pair can never be the thing that lands in Firestore.
+ */
+export async function saveConstellationLines(
+  userId: string,
+  constellationId: string,
+  lines: ConstellationLine[]
+) {
+  const normalized = normalizeConstellationLines(lines);
+  const constellationRef = doc(
+    db,
+    "users",
+    userId,
+    "constellations",
+    constellationId
+  );
+
+  await withTimeout(
+    updateDoc(constellationRef, { lines: normalized }),
+    UPDATE_MS,
+    "Save constellation lines"
+  );
+
+  return normalized;
 }
 
 export async function renameConstellation(

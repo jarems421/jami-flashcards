@@ -13,24 +13,28 @@
 export const NORTHERN_STAR_BOX = 160;
 
 /**
- * Four rays on deep curves: radius 79 vertical, 62 horizontal, waist 5.
+ * Four rays on cubic curves: radius 79 vertical, 62 horizontal, pull 0.95.
  *
- * Each edge is a quadratic bowing hard toward the centre, so a ray is widest
- * where it leaves the body and comes to a fine point. That taper is what makes
- * it read as light rather than as a shape, and it is what every straight-edged
- * version was missing -- a straight-sided polygon reads as a polygon at any
- * weight, which is why five rounds of thinning never fixed "chunky" or "plain".
+ * Each edge leaves its tip travelling straight down that tip's own axis, then
+ * turns into the next tip along the other axis. Both control points sit on the
+ * axes at 95 per cent of the way to the centre, which is what pinches the body
+ * to almost nothing and leaves four fine rays meeting at a point.
+ *
+ * These were quadratics for a while, and quadratics could not do this. One
+ * control point has to serve both ends of an edge, so it cannot leave the top
+ * tip vertically and arrive at the side tip horizontally, and the middle stays
+ * fat however far the control is dragged in -- the body barely moved between a
+ * waist of 20 and a waist of 5. A cubic has a control point per end, which is
+ * the whole reason this shape is finally thin.
+ *
+ * `pull` is the number to reach for if it ever needs adjusting again: 0.7 is a
+ * fuller star, 0.95 is this one, 1.0 collapses the body entirely.
  *
  * It briefly carried four short diagonal rays as well. They gave the eye
- * something between the long ones, but at 22 units they were small enough to
- * read as pixelation from any distance -- and lengthening them to 34 or 44
- * turns this into an ornate eight-pointed star, which is a different object.
- * Four rays and nothing else is the cleaner answer.
- *
- * The waist is the number that matters, and it is small: 5, not the 10 to 20
- * tried first. Deep curves between only four tips leave a lot of body in the
- * middle, and at anything above about 8 the star stops being a star and becomes
- * a rounded diamond with points on it.
+ * something between the long ones, but at 22 units they read as pixelation from
+ * a distance -- and lengthening them to 34 or 44 turns this into an ornate
+ * eight-pointed star, which is a different object. Four rays and nothing else
+ * is the cleaner answer, and it leaves no feature small enough to alias.
  *
  * This is no longer the same shape family as JamiTutorIcon, which is three flat
  * four-point sparkles with straight edges. That collision was a standing note
@@ -38,7 +42,7 @@ export const NORTHERN_STAR_BOX = 160;
  * earned star is now unmistakably not an offer of help.
  */
 export const NORTHERN_STAR_PATH =
-  "M80 1Q83.54 76.46 142 80Q83.54 83.54 80 159Q76.46 83.54 18 80Q76.46 76.46 80 1Z";
+  "M80 1C80 76.05 83.1 80 142 80C83.1 80 80 83.95 80 159C80 83.95 76.9 80 18 80C76.9 80 80 76.05 80 1Z";
 
 /**
  * The smaller cut-out that gives the filled star its facet.
@@ -48,7 +52,7 @@ export const NORTHERN_STAR_PATH =
  * highlight.
  */
 export const NORTHERN_STAR_FACET_PATH =
-  "M80 48.4Q81.41 78.59 104.8 80Q81.41 81.41 80 111.6Q78.59 81.41 55.2 80Q78.59 78.59 80 48.4Z";
+  "M80 48.4C80 78.42 81.24 80 104.8 80C81.24 80 80 81.58 80 111.6C80 81.58 78.76 80 55.2 80C78.76 80 80 78.42 80 48.4Z";
 
 /**
  * Places the star at `x, y` drawn `size` across, in the caller's own viewBox.

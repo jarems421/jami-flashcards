@@ -8,6 +8,7 @@ import {
   getActiveConstellation,
   getFallbackConstellation,
   isConstellationReadyToFinish,
+  toggleConstellationLine,
   MAX_STARS_PER_CONSTELLATION,
   type Constellation,
 } from "@/lib/constellation/constellations";
@@ -16,6 +17,7 @@ import {
   ensureConstellationSetup,
   finishConstellation,
   renameConstellation,
+  saveConstellationLines,
 } from "@/services/constellation/constellations";
 import {
   getConstellationBackgroundActionLabel,
@@ -40,6 +42,7 @@ import { getGoals } from "@/services/study/goals";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card, EmptyState, FeedbackBanner, Input, PageHero, SectionHeader, Skeleton } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
+import ConstellationLines from "@/components/constellation/ConstellationLines";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
 function getConstellationProgressPercent(constellation: Constellation | null) {
@@ -73,6 +76,17 @@ export default function ConstellationDashboardPage() {
   const [backgroundConstellationId, setBackgroundConstellationId] = useState("");
 
   const lastForegroundRefreshAtRef = useRef(0);
+  /*
+   * One gesture, two meanings, so the sky has a mode.
+   *
+   * Dragging a star already moves it, and dragging from a star to another star
+   * is the natural way to join them -- the same gesture cannot be both. A
+   * visible toggle is the honest way to resolve that: at any moment a drag does
+   * exactly one thing and the button says which.
+   */
+  const [skyMode, setSkyMode] = useState<"arrange" | "connect">("arrange");
+  const [linkFromStarId, setLinkFromStarId] = useState<string | null>(null);
+  const [linkPoint, setLinkPoint] = useState<{ x: number; y: number } | null>(null);
   const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -208,6 +222,8 @@ export default function ConstellationDashboardPage() {
    * because a finished sky is the one they will actually keep looking at.
    */
   const canArrangeSelectedConstellation = Boolean(selectedConstellation);
+  const isConnecting = skyMode === "connect";
+  const selectedLines = selectedConstellation?.lines ?? [];
 
   const visibleStars = useMemo(
     () =>
@@ -301,6 +317,122 @@ export default function ConstellationDashboardPage() {
       window.removeEventListener("touchcancel", handleEnd);
     };
   }, [canArrangeSelectedConstellation, draggingStarId, user.uid]);
+
+  /**
+   * Joins two stars, or unjoins them if a line is already there.
+   *
+   * Writes the whole array rather than a single edge: there are at most 120 of
+   * them in one document, and a read-modify-write of the array is what keeps
+   * "draw the same line twice to remove it" a single, obvious operation.
+   */
+  const handleToggleLine = useCallback(
+    (starA: string, starB: string) => {
+      const constellation = selectedConstellation;
+      if (!constellation) return;
+
+      const next = toggleConstellationLine(constellation.lines, starA, starB);
+      if (next === constellation.lines) return;
+
+      setConstellations((current) =>
+        current.map((entry) =>
+          entry.id === constellation.id ? { ...entry, lines: next } : entry
+        )
+      );
+      void saveConstellationLines(user.uid, constellation.id, next).catch(
+        (error: unknown) => {
+          console.error("Failed to save constellation lines.", error);
+          showError("Failed to save your constellation lines.");
+        }
+      );
+    },
+    [selectedConstellation, showError, user.uid]
+  );
+
+  const handleStarPressed = useCallback(
+    (starId: string) => {
+      if (!linkFromStarId) {
+        setLinkFromStarId(starId);
+        return;
+      }
+      if (linkFromStarId !== starId) {
+        handleToggleLine(linkFromStarId, starId);
+      }
+      setLinkFromStarId(null);
+      setLinkPoint(null);
+    },
+    [handleToggleLine, linkFromStarId]
+  );
+
+  useEffect(() => {
+    if (!linkFromStarId) {
+      return;
+    }
+
+    const container = document.getElementById("constellation-container");
+    if (!container) {
+      return;
+    }
+
+    const trackTo = (clientX: number, clientY: number) => {
+      const rect = container.getBoundingClientRect();
+      setLinkPoint({
+        x: clampPercentage(((clientX - rect.left) / rect.width) * 100),
+        y: clampPercentage(((clientY - rect.top) / rect.height) * 100),
+      });
+    };
+
+    const handleMove = (event: PointerEvent) => {
+      trackTo(event.clientX, event.clientY);
+    };
+
+    /*
+     * Which star the line was dropped on, asked of the document rather than
+     * tracked with enter and leave handlers.
+     *
+     * A pointer that is down is captured, so the stars underneath it never
+     * receive an enter event -- the only reliable way to know what is beneath
+     * the finger at the moment it lifts is to ask the document directly.
+     */
+    const handleEnd = (event: PointerEvent) => {
+      const dropped = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>("[data-star-id]");
+      const targetId = dropped?.dataset.starId;
+
+      if (targetId && targetId !== linkFromStarId) {
+        handleToggleLine(linkFromStarId, targetId);
+        setLinkFromStarId(null);
+      }
+      // Released on empty sky: the star stays picked, so it can also be joined
+      // by tapping a second one. Escape or a second tap on it clears the pick.
+      setLinkPoint(null);
+    };
+
+    const handleCancelKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setLinkFromStarId(null);
+      setLinkPoint(null);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
+    window.addEventListener("keydown", handleCancelKey);
+
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
+      window.removeEventListener("keydown", handleCancelKey);
+    };
+  }, [handleToggleLine, linkFromStarId]);
+
+  // Leaving Connect mode drops any half-drawn line with it.
+  useEffect(() => {
+    if (isConnecting) return;
+    setLinkFromStarId(null);
+    setLinkPoint(null);
+  }, [isConnecting]);
 
   const handleKeyboardStarMove = useCallback(
     (starId: string, position: NormalizedStar["position"]) => {
@@ -548,6 +680,42 @@ export default function ConstellationDashboardPage() {
                     <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
                       {selectedConstellation.starCount} / {selectedConstellation.maxStars} stars
                     </span>
+                    {/*
+                      * Two buttons rather than one that toggles its own label.
+                      *
+                      * A single button would have to read either the mode it is
+                      * in or the mode it would switch to, and every visitor
+                      * guesses differently. Two, with the live one pressed,
+                      * says both at once and needs no guess.
+                      */}
+                    <div
+                      role="group"
+                      aria-label="What dragging a star does"
+                      className="flex items-center gap-1 rounded-full bg-glass-subtle p-1"
+                    >
+                      {(["arrange", "connect"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          aria-pressed={skyMode === mode}
+                          onClick={() => setSkyMode(mode)}
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition-colors ${
+                            skyMode === mode
+                              ? "bg-selected-bg text-selected-text"
+                              : "text-text-muted hover:text-text-primary"
+                          }`}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+                    {isConnecting ? (
+                      <span className="text-xs text-text-muted">
+                        {linkFromStarId
+                          ? "Now choose another star. Escape cancels."
+                          : "Drag between two stars to join them. Draw the same line again, or tap it, to remove it."}
+                      </span>
+                    ) : null}
                     <Button
                       type="button"
                       size="sm"
@@ -578,11 +746,30 @@ export default function ConstellationDashboardPage() {
                   backgroundColor: "#090413",
                 }}
               >
+                <ConstellationLines
+                  lines={selectedLines}
+                  stars={visibleStars}
+                  pending={
+                    linkFromStarId && linkPoint
+                      ? { fromStarId: linkFromStarId, ...linkPoint }
+                      : null
+                  }
+                  onRemoveLine={
+                    isConnecting
+                      ? (line) => handleToggleLine(line.a, line.b)
+                      : undefined
+                  }
+                />
                 <div className="absolute inset-0 z-10">
                   {visibleStars.map((star) => (
                     <ConstellationStar
                       key={star.id}
                       star={star}
+                      interaction={skyMode}
+                      isLinkSource={linkFromStarId === star.id}
+                      onActivate={
+                        isConnecting ? () => handleStarPressed(star.id) : undefined
+                      }
                       label={
                         star.rewardKind === "onboarding"
                           ? star.rewardLabel ?? "First study loop"
@@ -591,12 +778,17 @@ export default function ConstellationDashboardPage() {
                             : "Earned star"
                       }
                       onDragStart={
-                        canArrangeSelectedConstellation
-                          ? () => setDraggingStarId(star.id)
-                          : undefined
+                        !canArrangeSelectedConstellation
+                          ? undefined
+                          : isConnecting
+                            ? () => {
+                                setLinkFromStarId(star.id);
+                                setLinkPoint(star.position);
+                              }
+                            : () => setDraggingStarId(star.id)
                       }
                       onNudge={
-                        canArrangeSelectedConstellation
+                        canArrangeSelectedConstellation && !isConnecting
                           ? (position) =>
                               handleKeyboardStarMove(star.id, position)
                           : undefined

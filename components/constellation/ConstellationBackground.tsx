@@ -14,6 +14,7 @@ import {
 } from "@/lib/constellation/stars";
 import { backfillStarPositions, getStars } from "@/services/constellation/stars";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
+import ConstellationLines from "@/components/constellation/ConstellationLines";
 
 type ConstellationBackgroundProps = {
   selectedConstellationId?: string;
@@ -127,6 +128,20 @@ export default function ConstellationBackground({
         * three more that each look harmless on their own.
         */}
       <div className="constellation-sky-layer absolute inset-0 z-10">
+        {/*
+          * The pattern follows the sky wherever it is drawn.
+          *
+          * A figure someone drew out of their own goals is the point of drawing
+          * it; showing it only on the page where it was made would be the same
+          * mistake as the sky having one star in the reward and another in the
+          * constellation. Fainter here than on that page, because behind a
+          * working surface it is atmosphere rather than the subject.
+          */}
+        <ConstellationLines
+          lines={selectedConstellation?.lines ?? []}
+          stars={visibleStars}
+          variant="background"
+        />
         {visibleStars.map((star) => (
           <ConstellationStar key={star.id} star={star} variant="background" />
         ))}
