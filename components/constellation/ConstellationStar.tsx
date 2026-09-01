@@ -80,15 +80,25 @@ function getStarGlowFilter(glowStrength: number, starSize: number) {
 }
 
 /**
- * Which stars throw sparkles.
+ * How many sparkles a star throws.
  *
- * Sparkles are the one thing here that adds elements rather than removing
- * them, so they are rationed: only stars at least this wide carry them, which
- * in an ordinary sky is a handful rather than all forty. Never on the
- * background variant, where sixty stars sit behind every page in the app.
+ * Every star gets some. There used to be a 30px floor below which a star threw
+ * none at all, which meant roughly a third of an ordinary sky simply sat
+ * still -- and since size tracks the goal behind it, the stars that went
+ * without were the ones for smaller goals. The floor was there to ration
+ * elements when the page was struggling for frames; it is not needed now that
+ * the blend modes are gone, and it was solving the problem in the wrong place.
+ *
+ * Count scales with the star instead, which is also what looks right: four
+ * sparkles around an 18px star would crowd it. Small stars get two, on opposite
+ * diagonals; larger ones get all four, one per quadrant.
  */
-const SPARKLE_MIN_STAR_SIZE = 30;
+const SPARKLE_FULL_STAR_SIZE = 30;
 const SPARKLES_PER_STAR = 4;
+
+function getSparkleCount(starSize: number) {
+  return starSize >= SPARKLE_FULL_STAR_SIZE ? SPARKLES_PER_STAR : 2;
+}
 
 /**
  * The bloom: light standing off the star, in the star's own proportions.
@@ -144,9 +154,14 @@ function getSeededFraction(seed: string, index: number) {
  * moments rather than together.
  */
 function getSparkles(star: NormalizedStar, starSize: number) {
-  return Array.from({ length: SPARKLES_PER_STAR }, (_, index) => {
-    const quadrantCentre = (index * Math.PI) / 2 + Math.PI / 4;
-    const jitter = (getSeededFraction(star.id, index) - 0.5) * 0.64;
+  const count = getSparkleCount(starSize);
+
+  return Array.from({ length: count }, (_, index) => {
+    // With two, they take opposite diagonals rather than adjacent ones, so a
+    // small star still reads as lit on both sides instead of lopsided.
+    const step = (Math.PI * 2) / count;
+    const quadrantCentre = index * step + Math.PI / 4;
+    const jitter = (getSeededFraction(star.id, index) - 0.5) * (step * 0.4);
     const angle = quadrantCentre + jitter;
     const distance = 55 + getSeededFraction(star.id, index + 7) * 35;
     const size = starSize * (0.13 + getSeededFraction(star.id, index + 13) * 0.08);
@@ -196,10 +211,7 @@ export default function ConstellationStar({
   const glowStrength = Math.max(0, Math.min(1, star.glow));
   // Was multiplied by a three-branch ternary whose every branch was 1.
   const starSize = getEffectiveStarVisualSize(star);
-  const sparkles =
-    variant === "default" && starSize >= SPARKLE_MIN_STAR_SIZE
-      ? getSparkles(star, starSize)
-      : [];
+  const sparkles = variant === "default" ? getSparkles(star, starSize) : [];
   const className = `absolute select-none ${variant === "default" ? "constellation-star-enter" : ""} ${onDragStart ? "cursor-grab touch-none" : ""}`;
   const style = {
     left: `${star.position.x}%`,

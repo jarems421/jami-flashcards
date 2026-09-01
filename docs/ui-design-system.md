@@ -158,7 +158,7 @@ Sources is a focused reference workspace, not a file manager.
 Stars are Jami's own thing. They drifted because nothing here described them, so
 each surface invented its own.
 
-**One star means earned.** Every star a student has earned is the four-point
+**One star means earned.** Every star a student has earned is the eight-ray
 `NorthernStar` (`components/ui/NorthernStar.tsx`) — in the reward overlay, in
 the sky, in the walkthrough trail, in the nav entry, on the signed-out landing
 page. Use `northernStarTransform` to place it; never draw another star shape
@@ -170,12 +170,13 @@ small four-point sparkles — wherever the app offers help: tutor, drafting a
 card, generating a paper, reading a source. There is one of these, not one per
 surface.
 
-The two must stay apart, and they are close: both are four-point stars. What
-separates them is composition, not geometry — an earned star is one tall
-faceted star with a 1.37 vertical stretch, the AI mark is three small flat ones.
-A six-point star was tried to separate them outright and read as an asterisk at
-the sizes a sky is full of. If they ever need pulling further apart, move the AI
-mark rather than the star.
+The two are now clearly apart, which took a while. An earned star is eight rays
+on curves — four long, four short diagonals, every edge tapering — while the AI
+mark is three small flat four-point sparkles. For several versions they were the
+same shape family and only size and count told them apart; a six-point star was
+tried to separate them and read as an asterisk at the sizes a sky is full of.
+Curves and secondary points are what finally did it. If they ever drift back
+together, move the AI mark rather than the star.
 
 **Every star is white.** They came in white, blue and gold, warming as goals
 were completed, and the hue sat at the 24 per cent stop of the star's gradient

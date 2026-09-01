@@ -295,9 +295,9 @@ describe("Jami's own mark", () => {
    * being offered.
    *
    * One mark now. The split that matters is between something the app offers
-   * to do and something the student earned. NorthernStar is meant to carry
-   * that, though today it is a four-pointed star like these -- eight vertices,
-   * four long points -- so only its size and singleness separate them.
+   * to do and something the student earned. NorthernStar carries that: it is
+   * eight rays on curves, so it no longer shares a shape family with these
+   * three flat four-point sparkles the way it did for several versions.
    */
   it("is the only mark for anything Jami offers to do", () => {
     const surfaces = [

@@ -24,9 +24,9 @@ const STARS = [
  * so "Jami can help here" always looks the same.
  *
  * It must not read as the star in NorthernStar, which means something a student
- * earned rather than something the app is offering. That difference is thinner
- * than it should be: NorthernStar has eight vertices but four long points, the
- * same family as these, so only size and count tell them apart today.
+ * earned rather than something the app is offering. That used to rest on size
+ * and count alone, because both were flat four-point stars. NorthernStar is now
+ * eight rays on curves, so the two are separated by shape as well.
  *
  * `currentColor` lets the same geometry sit quietly in navigation, pick up an
  * accent in a Tutor header, and inherit the correct contrast inside buttons.

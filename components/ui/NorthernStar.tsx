@@ -13,42 +13,42 @@
 export const NORTHERN_STAR_BOX = 160;
 
 /**
- * Four points, 1.36 times taller than wide, on a 0.165 waist.
+ * Eight rays on curves: four long, four short diagonals, all tapering.
  *
- * Outer radius 79 vertically and 58 horizontally, with the inner vertices on
- * the 45-degree diagonals at radius 13. The side points are far longer than a
- * strict pole star would draw them -- reaching 58 from a 13 waist, they are
- * thinner in proportion the further out they go, which is what makes a wide
- * star still read as delicate rather than as a cross. The stretch is the whole point: a pole
- * star is drawn taller than it is wide, and a symmetrical four-point star is
- * just a sparkle.
+ * Radius 79 vertically, 62 horizontally, 22 on the diagonals, drawn as
+ * quadratic curves through a waist vertex at radius 9. Every edge bows toward
+ * the centre, so a ray is widest where it leaves the body and comes to a fine
+ * point -- which is what makes it read as light rather than as a shape.
  *
- * The waist is what has moved most, and always in the same direction once the
- * shape settled. It was 0.25 and unstretched, which is a sparkle rather than a
- * star; then six points at 0.28, which read as an asterisk at the 18-26px an
- * ordinary sky is full of; then four points at 0.35, then 0.24, both still
- * called chunky. At 0.165 on a near-2:1 axis the star is a thin cross of light.
- * What keeps it legible at 18px is not its width but its glow -- the shape got
- * thinner and the light around it got stronger in the same pass, which is why
- * neither reads as weak.
+ * This was straight-edged for a long time and every version of it was called
+ * chunky or plain: at four points and at six, at waists from 0.35 down to
+ * 0.165. Thinning was never the answer, because a straight-sided polygon reads
+ * as a polygon at any weight. Two things fixed it. Curving the edges makes each
+ * ray taper instead of running at a constant slope, and the four short
+ * diagonals give the eye something between the long rays, which is the
+ * difference between a cross and a star.
  *
- * The cost is real and worth stating: this is the same shape family as
- * JamiTutorIcon. What separates them is that an earned star is one tall faceted
- * star and the AI mark is three small flat ones -- carried by composition
- * rather than by geometry.
+ * Concave four-point shapes were tried alongside these and read as fat
+ * diamonds -- deep curves between only four tips leave too much body in the
+ * middle. Eight tips is what keeps the curves shallow enough to stay sharp.
+ *
+ * This is also no longer the same shape family as JamiTutorIcon, which is three
+ * flat four-point sparkles. That collision has been a standing note here since
+ * the six-point version was reverted; the curves and the secondary points close
+ * it, and an earned star is now unmistakably not an offer of help.
  */
 export const NORTHERN_STAR_PATH =
-  "M80 1L89.19 70.81L138 80L89.19 89.19L80 159L70.81 89.19L22 80L70.81 70.81Z";
+  "M80 1Q83.44 71.69 95.56 64.44Q88.31 76.56 142 80Q88.31 83.44 95.56 95.56Q83.44 88.31 80 159Q76.56 88.31 64.44 95.56Q71.69 83.44 18 80Q71.69 76.56 64.44 64.44Q76.56 71.69 80 1Z";
 
 /**
  * The smaller cut-out that gives the filled star its facet.
  *
- * The same four points at the same waist and stretch, at 40 per cent. A facet
- * of a different shape from the star holding it reads as a mistake rather than
- * a highlight.
+ * The same eight rays on the same curves, at 40 per cent. A facet of a
+ * different shape from the star holding it reads as a mistake rather than a
+ * highlight.
  */
 export const NORTHERN_STAR_FACET_PATH =
-  "M80 48.4L83.68 76.32L103.2 80L83.68 83.68L80 111.6L76.32 83.68L56.8 80L76.32 76.32Z";
+  "M80 48.4Q81.38 76.67 86.22 73.78Q83.33 78.62 104.8 80Q83.33 81.38 86.22 86.22Q81.38 83.33 80 111.6Q78.62 83.33 73.78 86.22Q76.67 81.38 55.2 80Q76.67 78.62 73.78 73.78Q78.62 76.67 80 48.4Z";
 
 /**
  * Places the star at `x, y` drawn `size` across, in the caller's own viewBox.
