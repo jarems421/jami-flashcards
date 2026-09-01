@@ -1765,35 +1765,35 @@ body.constellation-background-enabled::before {
 }
 
 /*
- * A sparkle coming off a star: lights, drifts outward a little, goes out.
+ * A sparkle coming off a star: brightens, drifts outward a little, settles.
  *
- * Dark for most of its cycle -- it reaches full brightness for a moment around
- * a third of the way through and is gone by two thirds. With three per star on
- * long staggered cycles, only one or two are ever lit at once, which is the
- * difference between a star shedding light and a string of fairy lights.
+ * It never goes out. It used to run to opacity 0 at both ends, so a sparkle
+ * blinked into existence and then vanished, which is a light switch rather than
+ * a star. It rests at 0.3 instead and swells to 0.95, so it is always faintly
+ * there and simply brightens now and then -- the same thing the stars
+ * themselves do, which is what makes the sky feel like one object.
  *
  * The drift direction is set per sparkle in the component, pointing away from
  * the star it belongs to.
  */
 @keyframes constellation-sparkle {
   0%,
-  72%,
   100% {
-    opacity: 0;
-    transform: translate(0, 0) scale(0.4);
+    opacity: 0.3;
+    transform: translate(0, 0) scale(0.72);
   }
-  16% {
-    opacity: 0.9;
+  22% {
+    opacity: 0.95;
     transform: translate(
         calc(var(--sparkle-drift-x, 0px) * 0.4),
         calc(var(--sparkle-drift-y, 0px) * 0.4)
       )
       scale(1);
   }
-  44% {
-    opacity: 0.35;
+  58% {
+    opacity: 0.48;
     transform: translate(var(--sparkle-drift-x, 0px), var(--sparkle-drift-y, 0px))
-      scale(0.75);
+      scale(0.82);
   }
 }
 

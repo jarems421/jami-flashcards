@@ -13,19 +13,21 @@
 export const NORTHERN_STAR_BOX = 160;
 
 /**
- * Four points, 1.63 times taller than wide, on a 0.24 waist.
+ * Four points, 1.98 times taller than wide, on a 0.165 waist.
  *
- * Outer radius 78 vertically and 48 horizontally, with the inner vertices on
- * the 45-degree diagonals at radius 19. The stretch is the whole point: a pole
+ * Outer radius 79 vertically and 40 horizontally, with the inner vertices on
+ * the 45-degree diagonals at radius 13. The stretch is the whole point: a pole
  * star is drawn taller than it is wide, and a symmetrical four-point star is
  * just a sparkle.
  *
- * The waist is what has moved most. It was 0.25 and unstretched, which is a
- * sparkle rather than a star; then six points at 0.28, which read as an
- * asterisk at the 18-26px an ordinary sky is full of; then four points at 0.35,
- * which was legible but chunky. This is thin without being needle-like -- long
- * rays on a long axis, which is the shape that reads as calm rather than as
- * spiky or as heavy.
+ * The waist is what has moved most, and always in the same direction once the
+ * shape settled. It was 0.25 and unstretched, which is a sparkle rather than a
+ * star; then six points at 0.28, which read as an asterisk at the 18-26px an
+ * ordinary sky is full of; then four points at 0.35, then 0.24, both still
+ * called chunky. At 0.165 on a near-2:1 axis the star is a thin cross of light.
+ * What keeps it legible at 18px is not its width but its glow -- the shape got
+ * thinner and the light around it got stronger in the same pass, which is why
+ * neither reads as weak.
  *
  * The cost is real and worth stating: this is the same shape family as
  * JamiTutorIcon. What separates them is that an earned star is one tall faceted
@@ -33,7 +35,7 @@ export const NORTHERN_STAR_BOX = 160;
  * rather than by geometry.
  */
 export const NORTHERN_STAR_PATH =
-  "M80 2L93.44 66.56L128 80L93.44 93.44L80 158L66.56 93.44L32 80L66.56 66.56Z";
+  "M80 1L89.19 70.81L120 80L89.19 89.19L80 159L70.81 89.19L40 80L70.81 70.81Z";
 
 /**
  * The smaller cut-out that gives the filled star its facet.
@@ -43,7 +45,7 @@ export const NORTHERN_STAR_PATH =
  * a highlight.
  */
 export const NORTHERN_STAR_FACET_PATH =
-  "M80 48.8L85.37 74.63L99.2 80L85.37 85.37L80 111.2L74.63 85.37L60.8 80L74.63 74.63Z";
+  "M80 48.4L83.68 76.32L96 80L83.68 83.68L80 111.6L76.32 83.68L64 80L76.32 76.32Z";
 
 /**
  * Places the star at `x, y` drawn `size` across, in the caller's own viewBox.

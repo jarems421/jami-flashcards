@@ -562,20 +562,15 @@ export default function ConstellationDashboardPage() {
                 className="relative h-[60vh] w-full select-none overflow-hidden rounded-2xl border border-[var(--color-border)] bg-surface-base sm:h-[560px]"
                 style={{
                   /*
-                   * The sky's own light.
+                   * Night, and nothing else.
                    *
-                   * The glow used to be a circular div behind each star, which
-                   * read as a hard disc rather than as radiance. The ambient
-                   * half of it lives here instead: two wide, offset washes over
-                   * the night colour, far larger than any star and fading to
-                   * nothing well before an edge. One element for the whole
-                   * sky, so it costs nothing per star.
+                   * Two wide violet washes were painted here to carry the
+                   * ambient half of the glow. They read as light coming from
+                   * nowhere -- a bloom in the corner of an empty sky with no
+                   * star responsible for it. The radiance belongs to the stars
+                   * and is drawn by them; the sky behind is just dark.
                    */
                   backgroundColor: "#090413",
-                  backgroundImage: [
-                    "radial-gradient(120% 80% at 30% 12%, rgba(122, 96, 190, 0.20) 0%, rgba(122, 96, 190, 0.07) 38%, rgba(122, 96, 190, 0) 72%)",
-                    "radial-gradient(90% 70% at 78% 88%, rgba(86, 112, 190, 0.16) 0%, rgba(86, 112, 190, 0.05) 40%, rgba(86, 112, 190, 0) 74%)",
-                  ].join(", "),
                 }}
               >
                 <div className="absolute inset-0 z-10">

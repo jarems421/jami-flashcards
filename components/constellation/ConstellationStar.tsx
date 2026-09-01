@@ -57,16 +57,26 @@ const STAR_GRADIENT =
   "radial-gradient(circle at center, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.95) 26%, rgba(228, 222, 255, 0.44) 56%, rgba(214, 196, 255, 0) 80%)";
 
 /**
- * The light a star throws.
+ * The light a star throws: a tight white core and a wide violet bloom.
  *
- * One shadow, sized from the star. There were two, at radii up to a full star
- * width, sitting under a separate circular halo element -- which is what made
- * the glow read as a strict circle around the star rather than as light. A
- * drop-shadow blurs the star's own silhouette and falls off on a Gaussian, so
- * it takes the shape of the star and has no boundary at all.
+ * Both are drop-shadows, so both blur the star's own silhouette and fall off on
+ * a Gaussian -- shaped like the star, with no boundary anywhere. That is the
+ * distinction that matters here. An earlier pass got a circular div behind each
+ * star, which read as a disc; the answer was never less light, it was light
+ * that follows the shape.
+ *
+ * It then went too far the other way and became a hairline, which is why this
+ * is back up to a real radius. It is what makes a 0.165-waist star legible at
+ * 18px: the star is thin and the light around it is not.
  */
-function getStarGlowRadius(glowStrength: number, starSize: number) {
-  return starSize * (0.09 + glowStrength * 0.09);
+function getStarGlowFilter(glowStrength: number, starSize: number) {
+  const core = starSize * (0.12 + glowStrength * 0.08);
+  const bloom = starSize * (0.36 + glowStrength * 0.28);
+
+  return [
+    `drop-shadow(0 0 ${core}px rgba(255, 255, 255, ${0.6 + glowStrength * 0.25}))`,
+    `drop-shadow(0 0 ${bloom}px rgba(214, 200, 255, ${0.34 + glowStrength * 0.2}))`,
+  ].join(" ");
 }
 
 /**
@@ -187,7 +197,7 @@ export default function ConstellationStar({
            * to be the same sky seen through the app, not a duller copy of it.
            */
           opacity: isPreview ? 0.92 : 0.86,
-          filter: `drop-shadow(0 0 ${getStarGlowRadius(glowStrength, starSize)}px rgba(255, 255, 255, ${0.4 + glowStrength * 0.3}))`,
+          filter: getStarGlowFilter(glowStrength, starSize),
           animationName: "constellation-twinkle",
           animationDuration: getTwinkleDuration(star, isBackground),
           animationDelay: getTwinkleDelay(star),
@@ -209,7 +219,9 @@ export default function ConstellationStar({
             marginLeft: `${-sparkle.size / 2}px`,
             marginTop: `${-sparkle.size / 2}px`,
             background: "rgba(255, 255, 255, 0.95)",
-            opacity: 0,
+            // Matches the floor in constellation-sparkle: a sparkle is always
+            // faintly lit, so this is where it sits before its cycle starts.
+            opacity: 0.3,
             ["--sparkle-drift-x" as string]: `${sparkle.driftX}px`,
             ["--sparkle-drift-y" as string]: `${sparkle.driftY}px`,
             animationName: "constellation-sparkle",
