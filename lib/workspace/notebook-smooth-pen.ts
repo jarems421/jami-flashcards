@@ -791,9 +791,31 @@ export function createNotebookSmoothPenStrokeFactory(
       build() {
         return new Stroke([renderablePath()]);
       },
-      inkTrailStyle() {
-        return { color, width: strokeWidth() };
-      },
+      /*
+       * No `inkTrailStyle`, and its absence is the feature.
+       *
+       * js-draw turns on the Web Ink API's compositor trail for any builder
+       * that offers one -- `if (this.builder.inkTrailStyle)` in Pen.onPointerDown
+       * -- and that trail is fed the raw DOM event, `event.isTrusted` and all.
+       * It never passes through the input mapper, so it is drawn to the
+       * unfiltered pointer while this stroke is deliberately drawn to the held,
+       * smoothed one.
+       *
+       * The gap between those two is the trailing distance the smoothing
+       * accepts on purpose: "a stroke ends a fraction short of where the pen
+       * physically left -- and ink that is not there cannot be seen". The
+       * compositor was drawing that missing fraction back in, outside anything
+       * this app renders, and dropping it a frame or two after the real ink
+       * landed. Reported as ink glitching and reaching past the lift, and worse
+       * zoomed in, where the trail is thicker and every pixel is magnified.
+       *
+       * It also draws the raw path, tremor included, which is the jitter the
+       * One Euro filter exists to remove.
+       *
+       * The cost is the latency the trail was hiding. This ink is filtered
+       * behind the pen by design, so a trail racing ahead of it was never
+       * hiding latency here -- it was contradicting the design.
+       */
       /**
        * Called when the pen is held still, to offer a tidied version of what
        * has been drawn. Returning null leaves the stroke exactly as drawn.
