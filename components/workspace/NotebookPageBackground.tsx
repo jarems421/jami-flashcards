@@ -29,6 +29,7 @@ import { getNotebookPageStyleBackground } from "@/lib/workspace/notebook-page-co
  */
 export const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "bg-white text-slate-950 after:border-black",
+  cream: "bg-[#f7f1e3] text-[#2a2318] after:border-black",
   black: "bg-[#080a10] text-[#f8fafc] after:border-white/55",
 };
 

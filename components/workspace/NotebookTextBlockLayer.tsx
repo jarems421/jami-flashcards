@@ -16,9 +16,11 @@ import {
   type NotebookTextBlock,
   type NotebookTextBlockResizeEdge,
 } from "@/lib/workspace/notebooks";
+import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
 
 const TEXT_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "text-slate-950 placeholder:text-slate-400",
+  cream: "text-[#2a2318] placeholder:text-[#8a7d63]",
   black: "text-[#f8fafc] placeholder:text-slate-500",
 };
 
@@ -161,7 +163,7 @@ function NotebookTextBlockLayer({
   onChangeText,
   onStopEditing,
 }: Props) {
-  const onBlack = pageColor === "black";
+  const onBlack = getNotebookPaperPalette(pageColor).isDark;
   const frameBorderClass = onBlack ? "border-white/55" : "border-slate-950/40";
 
   return (

@@ -22,6 +22,7 @@ import {
   createNotebook,
   createNotebookPage,
 } from "@/services/study/notebooks";
+import { NOTEBOOK_PAGE_COLORS } from "@/lib/workspace/notebook-paper-palette";
 
 type FolderNotebookCreatorProps = {
   userId: string;
@@ -174,7 +175,7 @@ export default function FolderNotebookCreator({
             <fieldset>
               <legend className="text-sm font-medium text-text-secondary">Page colour</legend>
               <div className="mt-2 flex flex-wrap gap-2">
-                {(["white", "black"] as NotebookPageColor[]).map((option) => (
+                {NOTEBOOK_PAGE_COLORS.map((option) => (
                   <Button
                     key={option}
                     type="button"

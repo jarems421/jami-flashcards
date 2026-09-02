@@ -14,6 +14,7 @@ import {
 } from "@/lib/workspace/notebooks";
 import { legacyStrokesToJsDrawSvg } from "@/lib/workspace/notebook-ink-data";
 import { normalizeNotebookStrokes } from "@/lib/workspace/notebook-page-content";
+import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
 
 // Full-size, non-interactive render of a page's saved content (style, background
 // file, ink SVG, text blocks). Used as the swipe preview so the real adjacent
@@ -42,6 +43,9 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
   const hasInk =
     Boolean(page.inkData?.svg) || (page.strokeData?.strokes?.length ?? 0) > 0;
 
+  const isDarkPaper = getNotebookPaperPalette(pageColor).isDark;
+
+
   return (
     <>
       <NotebookPageBackground
@@ -63,7 +67,7 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
           aria-hidden="true"
           className={`absolute overflow-hidden rounded-sm border bg-transparent ${
             block.outlineVisible
-              ? pageColor === "black"
+              ? isDarkPaper
                 ? "border-white/30"
                 : "border-slate-950/25"
               : "border-transparent"
@@ -77,7 +81,7 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
         >
           <div
             className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-sm p-2 pr-10 text-sm font-medium leading-6 ${
-              pageColor === "black" ? "text-[#f8fafc]" : "text-slate-950"
+              isDarkPaper ? "text-[#f8fafc]" : "text-slate-950"
             }`}
           >
             {block.text}

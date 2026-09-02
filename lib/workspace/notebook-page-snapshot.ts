@@ -14,6 +14,10 @@ import {
   getNotebookRuledLines,
   NOTEBOOK_DOT_SPACING,
 } from "@/lib/workspace/notebook-paper";
+import {
+  getNotebookPaperPalette,
+  getNotebookRuleColor,
+} from "@/lib/workspace/notebook-paper-palette";
 
 export const NOTEBOOK_PAGE_SNAPSHOT_SCALE = 2;
 export const NOTEBOOK_PAGE_SNAPSHOT_FALLBACK_SCALE = 1.6;
@@ -189,11 +193,8 @@ export function getNotebookSnapshotPaperPattern(
   }
 
   return {
-    backgroundColor: pageColor === "black" ? "#080a10" : "#ffffff",
-    lineColor:
-      pageColor === "black"
-        ? "rgba(248, 250, 252, 0.14)"
-        : "rgba(30, 41, 59, 0.14)",
+    backgroundColor: getNotebookPaperPalette(pageColor).paper,
+    lineColor: getNotebookRuleColor(pageColor),
     horizontalLines,
     verticalLines,
     dotCenters,
@@ -358,10 +359,10 @@ function drawTextBlocks(
     context.clip();
 
     if (block.outlineVisible) {
-      context.strokeStyle =
-        pageColor === "black"
-          ? "rgba(255, 255, 255, 0.3)"
-          : "rgba(15, 23, 42, 0.25)";
+      const paper = getNotebookPaperPalette(pageColor);
+      context.strokeStyle = paper.isDark
+        ? "rgba(255, 255, 255, 0.3)"
+        : "rgba(15, 23, 42, 0.25)";
       context.lineWidth = 1;
       makeRoundedRectPath(
         context,
@@ -374,7 +375,7 @@ function drawTextBlocks(
       context.stroke();
     }
 
-    context.fillStyle = pageColor === "black" ? "#f8fafc" : "#0f172a";
+    context.fillStyle = getNotebookPaperPalette(pageColor).ink;
     const lines = wrapNotebookSnapshotText(
       block.text,
       block.width - NOTEBOOK_TEXT_PADDING * 2,

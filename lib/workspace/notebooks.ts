@@ -60,7 +60,7 @@ export type NotebookStrokeColor =
   | NotebookPenColor
   | NotebookHighlighterColor
   | NotebookCustomStrokeColor;
-export type NotebookPageColor = "white" | "black";
+export type NotebookPageColor = "white" | "cream" | "black";
 export type NotebookPageStyle = "plain" | "lined" | "grid" | "dot";
 export const NOTEBOOK_CREATION_PAGE_STYLES = [
   "plain",
@@ -233,7 +233,7 @@ export function isNotebookPageType(value: unknown): value is NotebookPageType {
 }
 
 export function isNotebookPageColor(value: unknown): value is NotebookPageColor {
-  return value === "white" || value === "black";
+  return value === "white" || value === "cream" || value === "black";
 }
 
 export function isNotebookPenColor(value: unknown): value is NotebookPenColor {

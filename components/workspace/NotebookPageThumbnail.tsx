@@ -21,6 +21,7 @@ import {
 } from "@/lib/workspace/notebook-page-content";
 import { orderNotebookStrokesForRendering } from "@/lib/workspace/notebook-rendering";
 import { resolveNotebookPageThumbnail } from "@/lib/workspace/notebook-page-ink-split";
+import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
 
 export default function NotebookPageThumbnail({
   page,
@@ -41,6 +42,9 @@ export default function NotebookPageThumbnail({
   const strokes = normalizeNotebookStrokes(preview.strokes).slice(0, 10);
   const textBlocks = page.textBlocks.slice(0, 3);
   const inkSvg = preview.inkSvg;
+
+  const isDarkPaper = getNotebookPaperPalette(pageColor).isDark;
+
 
   return (
     <div
@@ -98,12 +102,12 @@ export default function NotebookPageThumbnail({
              */
             // eslint-disable-next-line no-restricted-syntax
             className={`absolute overflow-hidden rounded-sm border-[0.5px] px-1 text-[0.34rem] font-semibold leading-tight ${
-              pageColor === "black"
+              isDarkPaper
                 ? "text-[#f8fafc]/80"
                 : "text-slate-950/75"
             } ${
               block.outlineVisible
-                ? pageColor === "black"
+                ? isDarkPaper
                   ? "border-white/25"
                   : "border-slate-950/20"
                 : "border-transparent"
@@ -121,7 +125,7 @@ export default function NotebookPageThumbnail({
       </div>
       <div
         className={`absolute bottom-1.5 left-1.5 rounded-full px-2 py-0.5 text-2xs font-semibold leading-none tabular-nums backdrop-blur-sm ${
-          pageColor === "black"
+          isDarkPaper
             ? "bg-white/15 text-[#f8fafc]"
             : "bg-slate-950/55 text-white"
         }`}

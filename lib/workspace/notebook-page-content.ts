@@ -1,5 +1,9 @@
 import { normalizeTimedInkPoint } from "@/lib/workspace/notebook-ink-engine";
 import {
+  getNotebookPaperPalette,
+  NOTEBOOK_PAGE_COLORS,
+} from "@/lib/workspace/notebook-paper-palette";
+import {
   buildTypedContentFromTextBlocks,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
@@ -24,10 +28,14 @@ import {
   NOTEBOOK_DOT_SPACING,
 } from "@/lib/workspace/notebook-paper";
 
-const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
-  white: "#ffffff",
-  black: "#080a10",
-};
+/*
+ * Kept as a lookup because it is on the hot path of legacy stroke painting,
+ * but sourced from the palette so a new paper cannot be added to one and not
+ * the other.
+ */
+const PAGE_COLOR_HEX = Object.fromEntries(
+  NOTEBOOK_PAGE_COLORS.map((color) => [color, getNotebookPaperPalette(color).paper])
+) as Record<NotebookPageColor, string>;
 
 const PEN_COLOR_HEX: Record<NotebookPenColor, string> = {
   black: "#111827",
@@ -174,7 +182,7 @@ export function getNotebookPageStyleBackground(
   style: NotebookPageStyle
 ) {
   if (style === "plain") return undefined;
-  const lineColor = pageColor === "black" ? "#f8fafc" : "#1e293b";
+  const lineColor = getNotebookPaperPalette(pageColor).line;
   const svgBody =
     style === "lined"
       ? `<path d="${getNotebookRuledLines(NOTEBOOK_PAGE_COORDINATE_HEIGHT)

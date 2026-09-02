@@ -8,6 +8,11 @@ import ObjectActionsSheet, {
   type ObjectActionsSheetAction,
 } from "@/components/workspace/ObjectActionsSheet";
 import { cx } from "@/lib/app/class-names";
+import {
+  getNotebookPaperPalette,
+  getNotebookRuleColor,
+} from "@/lib/workspace/notebook-paper-palette";
+import type { NotebookPageColor } from "@/lib/workspace/notebooks";
 import { getObjectColorPreset } from "@/lib/workspace/object-card-styles";
 
 export type NotebookObjectCardProps = {
@@ -17,7 +22,7 @@ export type NotebookObjectCardProps = {
   folderName?: string;
   color?: string;
   icon?: string;
-  pageColor?: string;
+  pageColor?: NotebookPageColor;
   pageStyle?: string;
   pageCount?: number;
   updatedLabel?: string;
@@ -45,9 +50,9 @@ function NotebookCardInner({
   editorPreview,
 }: NotebookObjectCardProps) {
   const preset = getObjectColorPreset(color);
-  const paperFill = pageColor === "black" ? "#0b1020" : "#f8fafc";
+  const paperFill = getNotebookPaperPalette(pageColor).paper;
   const paperLine =
-    pageColor === "black" ? "rgba(248,250,252,0.18)" : "rgba(15,23,42,0.13)";
+    getNotebookRuleColor(pageColor, getNotebookPaperPalette(pageColor).isDark ? 0.18 : 0.13);
   const paperStyle =
     pageStyle === "lined"
       ? {

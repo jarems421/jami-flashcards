@@ -151,6 +151,7 @@ import {
   trackNotebookPdfCanvas,
   type NotebookPdfCanvasTracking,
 } from "@/lib/workspace/notebook-pdf-canvas";
+import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
 
 type Point = { x: number; y: number };
 type EditorTool = NotebookStrokeTool | "text" | "select";
@@ -982,8 +983,11 @@ export default function NotebookEditorPage() {
 
   useEffect(() => {
     setPenColor((current) => {
-      if (pageColor === "black" && current === "black") return "white";
-      if (pageColor === "white" && current === "white") return "black";
+      // Keep the nib visible when the paper changes under it: a black pen on
+      // black paper, or a white one on white or cream, writes nothing.
+      const paper = getNotebookPaperPalette(pageColor);
+      if (paper.isDark && current === "black") return "white";
+      if (!paper.isDark && current === "white") return "black";
       return current;
     });
   }, [pageColor, setPenColor]);
