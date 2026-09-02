@@ -166,13 +166,36 @@ describe("the star a line is about to reach", () => {
       );
     });
 
-    const ring = container.querySelector<HTMLElement>("span.rounded-full");
+    const ring = container.querySelector<HTMLElement>("[data-star-ring]");
     expect(ring).toBeTruthy();
     // A ring, never a disc: the sky draws nothing solid behind a star.
     expect(ring?.style.background).toBe("");
     expect(container.querySelector("button")?.className).toContain(
       "rounded-full"
     );
+  });
+
+  it("carries a touch target a finger can land on, whatever the star's size", () => {
+    // The drawn star is 18px at its smallest and the bloom around it is over
+    // three times wider, so a button at star size is a quarter of what somebody
+    // is aiming at. Missing it puts the press on the sky, where the browser is
+    // free to read the drag as a page scroll -- which is the screen moving when
+    // somebody meant to move a star.
+    act(() => {
+      root.render(
+        <ConstellationStar
+          star={{ ...stars[0], size: 0 }}
+          interaction="connect"
+          onDragStart={() => undefined}
+          onActivate={() => undefined}
+        />
+      );
+    });
+
+    const target = container.querySelector<HTMLElement>("[data-star-hit-area]");
+    expect(Number.parseFloat(target?.style.width ?? "0")).toBeGreaterThanOrEqual(44);
+    expect(target?.style.height).toBe(target?.style.width);
+    expect(target?.className).toContain("touch-none");
   });
 
   it("draws no ring when nothing is being connected", () => {
@@ -187,7 +210,7 @@ describe("the star a line is about to reach", () => {
       );
     });
 
-    expect(container.querySelector("span.rounded-full")).toBeNull();
+    expect(container.querySelector("[data-star-ring]")).toBeNull();
   });
 
   it("breathes while it is the star being dragged from, not the target", () => {
@@ -203,7 +226,7 @@ describe("the star a line is about to reach", () => {
       );
     });
 
-    expect(container.querySelector("span.rounded-full")?.className).toContain(
+    expect(container.querySelector("[data-star-ring]")?.className).toContain(
       "constellation-star-ring"
     );
   });

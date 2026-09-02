@@ -99,6 +99,15 @@ export default function ConstellationDashboardPage() {
    * blind: nothing on screen said whether letting go would join anything.
    */
   const [linkHoverStarId, setLinkHoverStarId] = useState<string | null>(null);
+  /**
+   * Whether the press now in progress already settled what it meant.
+   *
+   * Pressing a second star finishes the line there and then, so the release
+   * that follows has nothing left to do -- and would otherwise draw the same
+   * line a second time, which is how a line is taken back. The release reads
+   * this and stands down.
+   */
+  const linkPressResolvedRef = useRef(false);
   const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -396,14 +405,28 @@ export default function ConstellationDashboardPage() {
     [handleToggleLine]
   );
 
-  const handleStarPressed = useCallback(
-    (starId: string) => {
+  /**
+   * A press on a star in Connect mode.
+   *
+   * With nothing picked it picks this star, and the gesture carries on -- the
+   * drag from here to another star is still the fast way to draw a line. With
+   * something already picked, the press is the second half of a tap-and-tap:
+   * another star joins the two, and the same star lets go of it. Both finish
+   * here rather than waiting for the release, because a tap has no meaningful
+   * release position and the hint has always said to choose a second star.
+   */
+  const beginOrFinishLink = useCallback(
+    (star: NormalizedStar) => {
       if (!linkFromStarId) {
-        setLinkFromStarId(starId);
+        linkPressResolvedRef.current = false;
+        setLinkFromStarId(star.id);
+        setLinkPoint(star.position);
         return;
       }
-      if (linkFromStarId !== starId) {
-        handleToggleLine(linkFromStarId, starId);
+
+      linkPressResolvedRef.current = true;
+      if (linkFromStarId !== star.id) {
+        handleToggleLine(linkFromStarId, star.id);
       }
       setLinkFromStarId(null);
       setLinkPoint(null);
@@ -443,27 +466,61 @@ export default function ConstellationDashboardPage() {
       const element = document
         .elementFromPoint(clientX, clientY)
         ?.closest<HTMLElement>("[data-star-id]");
-      const starId = element?.dataset.starId;
 
-      return starId && starId !== linkFromStarId ? starId : null;
+      return element?.dataset.starId ?? null;
     };
 
     const handleMove = (event: PointerEvent) => {
       trackTo(event.clientX, event.clientY);
-      setLinkHoverStarId(starUnder(event.clientX, event.clientY));
+      const under = starUnder(event.clientX, event.clientY);
+      setLinkHoverStarId(under === linkFromStarId ? null : under);
     };
 
-    const handleEnd = (event: PointerEvent) => {
-      const targetId = starUnder(event.clientX, event.clientY);
+    /*
+     * Safari decides whether a gesture scrolls the page on its first move, and
+     * the sky's `touch-action` is what tells it not to. This is the second lock
+     * on the same door, for the case where the finger has already left the sky.
+     */
+    const blockTouchScroll = (event: TouchEvent) => {
+      event.preventDefault();
+    };
 
-      if (targetId) {
-        handleToggleLine(linkFromStarId, targetId);
-        setLinkFromStarId(null);
-      }
-      // Released on empty sky: the star stays picked, so it can also be joined
-      // by tapping a second one. Escape or a second tap on it clears the pick.
+    const clearPick = () => {
+      setLinkFromStarId(null);
       setLinkPoint(null);
       setLinkHoverStarId(null);
+    };
+
+    /*
+     * Where the press ended decides what it meant.
+     *
+     * Landing on another star joins the two: that is the drag. Ending on the
+     * star it began from leaves it picked, so a second star can be tapped
+     * instead of dragged to. Ending on empty sky lets go of it -- a pick used
+     * to survive that, so the only way out of one was to find another star, and
+     * a half-drawn line followed the pointer around with no way to put it down.
+     */
+    const handleEnd = (event: PointerEvent) => {
+      if (linkPressResolvedRef.current) {
+        linkPressResolvedRef.current = false;
+        return;
+      }
+
+      const releasedOn = starUnder(event.clientX, event.clientY);
+
+      if (releasedOn && releasedOn !== linkFromStarId) {
+        handleToggleLine(linkFromStarId, releasedOn);
+        clearPick();
+        return;
+      }
+
+      if (releasedOn === linkFromStarId) {
+        setLinkPoint(null);
+        setLinkHoverStarId(null);
+        return;
+      }
+
+      clearPick();
     };
 
     const handleCancelKey = (event: KeyboardEvent) => {
@@ -477,12 +534,14 @@ export default function ConstellationDashboardPage() {
     window.addEventListener("pointerup", handleEnd);
     window.addEventListener("pointercancel", handleEnd);
     window.addEventListener("keydown", handleCancelKey);
+    window.addEventListener("touchmove", blockTouchScroll, { passive: false });
 
     return () => {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleEnd);
       window.removeEventListener("pointercancel", handleEnd);
       window.removeEventListener("keydown", handleCancelKey);
+      window.removeEventListener("touchmove", blockTouchScroll);
     };
   }, [handleToggleLine, linkFromStarId]);
 
@@ -954,7 +1013,20 @@ export default function ConstellationDashboardPage() {
 
                 <div
                   id="constellation-container"
-                  className="relative h-[60vh] w-full select-none overflow-hidden rounded-2xl border border-[var(--color-border)] bg-surface-base sm:h-[560px]"
+                  /*
+                    * The sky takes the whole gesture from a tablet upwards.
+                    *
+                    * Arranging and connecting are both direct manipulation, and
+                    * a drag that starts anywhere in here is meant for a star --
+                    * so nothing in it should ever be read as a page scroll. A
+                    * press that misses a star used to scroll the page instead,
+                    * which is the whole complaint about the screen moving.
+                    *
+                    * Phones keep their scrolling: the sky is 60vh there, the
+                    * page has to be reachable past it, and a phone is for
+                    * looking at a sky rather than editing one.
+                    */
+                  className="relative h-[60vh] w-full touch-auto select-none overflow-hidden rounded-2xl border border-[var(--color-border)] bg-surface-base sm:h-[560px] sm:touch-none"
                   style={{
                     /*
                      * Night, and nothing else. Two wide violet washes were
@@ -992,7 +1064,7 @@ export default function ConstellationDashboardPage() {
                         }
                         onActivate={
                           isConnecting
-                            ? () => handleStarPressed(star.id)
+                            ? () => beginOrFinishLink(star)
                             : undefined
                         }
                         label={
@@ -1006,10 +1078,7 @@ export default function ConstellationDashboardPage() {
                           !canArrangeSelectedConstellation
                             ? undefined
                             : isConnecting
-                              ? () => {
-                                  setLinkFromStarId(star.id);
-                                  setLinkPoint(star.position);
-                                }
+                              ? () => beginOrFinishLink(star)
                               : () => setDraggingStarId(star.id)
                         }
                         onNudge={

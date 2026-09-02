@@ -317,11 +317,22 @@ export default function ConstellationStar({
    * signal: a line has found somewhere to land, and letting go now will join
    * them.
    */
-  const ringSize = Math.max(starSize * 2.1, 30);
+  /*
+   * Just clear of the ray tips, and nothing more.
+   *
+   * This was 2.1 times the star with a 30px floor, which put a 38px ring around
+   * an 18px star and a 109px one around a 52px star -- big enough to read as a
+   * region of the sky being selected rather than a star. The star box is the
+   * star's full extent, since the long rays reach its edge, so a small fraction
+   * past it is all the clearance a ring needs. No floor: the floor was what made
+   * the smallest stars look most wrapped up.
+   */
+  const ringSize = starSize * 1.32;
   const ring =
     isLinkSource || isLinkTarget ? (
       <span
         aria-hidden="true"
+        data-star-ring="true"
         className={`pointer-events-none absolute left-1/2 top-1/2 rounded-full ${
           isLinkTarget ? "" : "constellation-star-ring"
         }`}
@@ -332,15 +343,47 @@ export default function ConstellationStar({
           border: isLinkTarget
             ? "1.5px solid rgba(255, 255, 255, 0.85)"
             : "1px solid rgba(226, 230, 255, 0.6)",
+          // Scaled with the ring: an 18px glow around a 24px circle is a halo,
+          // not an edge.
           boxShadow: isLinkTarget
-            ? "0 0 18px rgba(214, 221, 255, 0.45)"
-            : "0 0 12px rgba(198, 202, 255, 0.28)",
+            ? "0 0 8px rgba(214, 221, 255, 0.45)"
+            : "0 0 6px rgba(198, 202, 255, 0.28)",
+        }}
+      />
+    ) : null;
+
+  /*
+   * A touch target a finger can actually land on.
+   *
+   * The drawn star is 18 to 52 pixels, and the button was exactly that -- so on
+   * the smallest stars the thing you press is a quarter the size of the thing
+   * you see, since the bloom around it is over three times wider. Miss it, and
+   * the press lands on the sky instead, where nothing stops the browser reading
+   * the drag as a page scroll. That is the screen moving when somebody meant to
+   * move a star, and it is a hit-testing problem rather than a touch-action one.
+   *
+   * Overflowing the button rather than resizing it: the star's own box is what
+   * places its light and its sparkles, and 44px is Apple's minimum rather than
+   * a number that suits an 18px star.
+   */
+  const hitSize = Math.max(starSize, 44);
+  const hitArea =
+    onDragStart || onActivate ? (
+      <span
+        aria-hidden="true"
+        data-star-hit-area="true"
+        className="absolute left-1/2 top-1/2 touch-none rounded-full"
+        style={{
+          width: `${hitSize}px`,
+          height: `${hitSize}px`,
+          transform: "translate(-50%, -50%)",
         }}
       />
     ) : null;
 
   const visual = (
     <>
+      {hitArea}
       {ring}
       {/* Behind the star and unmasked, so the light stands off it. */}
       <div
