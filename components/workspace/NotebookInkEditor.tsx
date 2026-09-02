@@ -364,13 +364,42 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           syncViewportRef.current = syncViewport;
           editorRef.current = editor;
           editor.setReadOnly(readOnlyRef.current);
-          // js-draw's display cache re-renders busy scenes from 600px
-          // CSS-resolution bitmap blocks. On high-DPI screens those blit
-          // upscaled, so ink turns rasterized/blurry after any full re-render
-          // (eraser, undo/redo) — and polyline strokes trip the cache
-          // threshold almost immediately because it counts path segments.
-          // Raising the threshold to Infinity forces the vector fallback, so
-          // pages always re-render from geometry and stay crisp.
+          /*
+           * js-draw's display cache is off, and cannot be repaired from here.
+           *
+           * It re-renders busy scenes from bitmap blocks fixed at 600x600
+           * canvas units, and decides a block is sharp enough to blit when one
+           * of its pixels covers no more than `maxScale` screen pixels --
+           * defined upstream as `Math.max(1, 1.3 / devicePixelRatio)`. The
+           * floor is the bug: at devicePixelRatio 2 it evaluates to 1, so a
+           * cache pixel may cover a whole CSS pixel, which is two device
+           * pixels, and the blit is a 2x upscale. That is the blurriness after
+           * every eraser and undo. js-draw's own comment beside it reads
+           * "TODO: Decrease the minimum cache scale as well."
+           *
+           * A note left here in July said to revisit with a DPR-aware cache.
+           * Checked properly on 2 September: it cannot be built from
+           * application code, for three separate reasons.
+           *
+           *  - `blockResolution` cannot be raised after construction. The
+           *    cache's `createRenderer` closes over the original 600 to size
+           *    its canvas, so changing the prop alone leaves the canvas and the
+           *    cache disagreeing about how big a block is.
+           *  - `Display.cache` is a private field and `getCache()` is marked
+           *    @internal, so the cache object cannot be replaced.
+           *  - `RenderingCache` is not exported from js-draw's entry point, so
+           *    a correctly-sized one cannot be constructed to put there.
+           *
+           * Fixing it properly means patching js-draw or changing it upstream,
+           * and this repo patches no dependencies. Until then the threshold
+           * stays at Infinity, which forces the vector fallback: every page
+           * re-renders from geometry and stays crisp at any zoom.
+           *
+           * The cost of that is proportional to how many path segments a page
+           * holds, which is why the real fix went into what gets stored rather
+           * than how it is drawn -- see notebook-ink-compaction.ts, which took
+           * the worst page found from 9,540 segments to 2,835.
+           */
           const displayCache = (
             editor.display as unknown as {
               getCache?: () => {
