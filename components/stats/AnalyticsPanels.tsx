@@ -32,11 +32,20 @@ export function ScheduleForecastPanel({ analytics }: { analytics: SpacedRepetiti
                       ? "bg-[var(--color-warm-accent)]"
                       : "bg-[var(--color-accent)]"
                   }`}
+                  /*
+                    * Height in proportion to the count, with only enough of a
+                    * floor to keep a single card visible.
+                    *
+                    * The floor was 12 per cent, which is a fifth of the tallest
+                    * bar -- so a day with one card and a day with thirty were
+                    * drawn nearly the same height, and the one thing a forecast
+                    * is for, seeing where the pile is, was the thing it hid.
+                    */
                   style={{
                     height:
                       point.dueCount === 0
                         ? "3px"
-                        : `${Math.max(12, Math.round((point.dueCount / maxDueCount) * 100))}%`,
+                        : `${Math.max(5, Math.round((point.dueCount / maxDueCount) * 100))}%`,
                   }}
                 />
               </div>

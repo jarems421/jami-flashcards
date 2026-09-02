@@ -120,6 +120,16 @@ describe("buildSpacedRepetitionAnalytics", () => {
     expect(analytics.dueIn30Days).toBe(3);
     expect(analytics.dueForecast7d.some((point) => point.dueCount > 0)).toBe(true);
     expect(analytics.weakestAreas[0]?.name).toBe("Biology");
+    /*
+     * And the id it was ranked by, not just its name.
+     *
+     * Progress lists these as the thing to study next, and each row opens a
+     * session filtered to that deck or Topic. A name cannot address one, so
+     * dropping the id turned the most actionable ranking in the app into a
+     * label nobody could act on.
+     */
+    expect(analytics.weakestAreas[0]?.id).toBe("biology");
+    expect(analytics.weakestAreas[0]?.kind).toBe("deck");
   });
 
   it("builds recent change summaries from the last 7 days vs previous 7 days", () => {

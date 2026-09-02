@@ -1,6 +1,15 @@
 import type { Card } from "@/lib/study/cards";
 
 export type WeakArea = {
+  /**
+   * The deck or Topic this area is, so it can be studied.
+   *
+   * The ranking has always known it -- it is half of the bucket key -- and used
+   * to drop it on the way out, which left the caller a display name and no way
+   * to act on it. A weak area you cannot open is a complaint rather than a
+   * finding.
+   */
+  id: string;
   name: string;
   kind: "deck" | "topic";
   /** Average FSRS difficulty (0–10) across cards in this area. */
@@ -64,6 +73,7 @@ export function getWeakPoints(
   const areas: WeakArea[] = [];
 
   for (const [key, bucket] of buckets) {
+    const id = key.slice(key.indexOf(":") + 1);
     const cardCount = bucket.difficulties.length;
     if (cardCount < 2) continue; // skip areas with very few cards
 
@@ -76,10 +86,11 @@ export function getWeakPoints(
 
     const name =
       bucket.kind === "deck"
-        ? deckNamesById[key.slice(5)] ?? "Unknown deck"
-        : topicNamesById[key.slice(6)] ?? "Unknown Topic";
+        ? deckNamesById[id] ?? "Unknown deck"
+        : topicNamesById[id] ?? "Unknown Topic";
 
     areas.push({
+      id,
       name,
       kind: bucket.kind,
       avgDifficulty,
