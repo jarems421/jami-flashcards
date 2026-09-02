@@ -8,6 +8,7 @@ import {
 } from "@/lib/practice/practice-papers";
 import { normalizeInkPressure, normalizeInkTime } from "@/lib/workspace/notebook-ink-engine";
 import type { NotebookStrokeTool } from "@/lib/workspace/notebook-ink-types";
+import { compactNotebookInkSvg } from "@/lib/workspace/notebook-ink-compaction";
 
 export type { NotebookStrokeTool } from "@/lib/workspace/notebook-ink-types";
 
@@ -693,14 +694,43 @@ function getUtf8ByteLength(value: string) {
 export function prepareNotebookPageSnapshotForPersistence(
   input: NotebookPageSnapshotInput
 ): NotebookPageSnapshotInput & { byteLength: number } {
-  const inkData = input.inkData
+  const normalizedInk = input.inkData
     ? normalizeNotebookInkData(input.inkData)
     : undefined;
-  if (input.inkData && !inkData) {
+  if (input.inkData && !normalizedInk) {
     throw new NotebookPagePersistenceError(
       "invalid-ink",
       "This page's drawing data is invalid. Your local draft is still available."
     );
+  }
+  /*
+   * Thin legacy ink on its way out, before it is measured against the cap.
+   *
+   * Strokes recorded before the smooth pen kept every input sample as a
+   * separate line segment: one real page held 106 strokes as 9,540 path
+   * commands and 152KB, about 1.4KB a stroke. At that rate the 850KB cap below
+   * arrives at roughly six hundred strokes, and every re-render before then
+   * redraws all of it. Compaction took that page to 41KB with no visible
+   * change, which is both a third of the drawing work and three times the
+   * headroom.
+   *
+   * Curved paths are left alone, so ink from the current pen passes through
+   * untouched and this only ever reaches the old dense kind. It is also
+   * effectively idempotent: a second pass finds nothing left within tolerance.
+   *
+   * Wrapped because saving someone's page must not fail over an optimisation.
+   * If compaction throws, the original ink is what gets written.
+   */
+  let inkData = normalizedInk;
+  if (normalizedInk) {
+    try {
+      const compacted = compactNotebookInkSvg(normalizedInk.svg);
+      if (compacted.bytesAfter < compacted.bytesBefore) {
+        inkData = { ...normalizedInk, svg: compacted.svg };
+      }
+    } catch {
+      inkData = normalizedInk;
+    }
   }
   if (inkData && inkData.svg.length > MAX_NOTEBOOK_INK_SVG_LENGTH) {
     throw new NotebookPagePersistenceError(
