@@ -1,6 +1,20 @@
 // Bumped whenever the navigation strategy changes, so pages cached under the
 // old one go rather than lingering beside the new.
-const STATIC_CACHE = "jami-static-v4";
+/*
+ * Bumping this name is how a stale install is cleared.
+ *
+ * `activate` deletes every cache that is not this one, so a new name evicts the
+ * lot: cached shells, cached chunks, everything. Without a bump those survive
+ * indefinitely, and a shell that wins the navigation race below carries old
+ * chunk references to chunks that are still cached -- which is a whole previous
+ * build of the app, running from a cold launch on a slow connection.
+ *
+ * Bumped to v5 on 3 September chasing a report of an ink bug that had been
+ * fixed on 11 August but was still being seen, and only inside the installed
+ * app. That was never confirmed as the cause, but a stale install is worth
+ * removing from the list of things a bug report can mean.
+ */
+const STATIC_CACHE = "jami-static-v5";
 
 /**
  * How long the network gets to produce a current page before the cached one is
