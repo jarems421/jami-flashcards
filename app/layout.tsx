@@ -1,10 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import { Nunito_Sans } from "next/font/google";
+import { Urbanist } from "next/font/google";
 
-const nunitoSans = Nunito_Sans({
+/*
+ * One face for the whole app, chosen against the sky rather than in isolation.
+ *
+ * Nunito Sans was friendly and rounded -- the register of a cheerful consumer
+ * app -- and carried none of the calm the product had grown into. Urbanist is
+ * geometric with near-circular bowls, which is the same shape language as the
+ * star and its bloom, and it sets airier, so navigation labels breathe instead
+ * of crowding.
+ *
+ * Variable, so every weight from 400 to 800 arrives in one file and the
+ * heavier headings cost no extra request.
+ */
+const urbanist = Urbanist({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-nunito-sans",
+  variable: "--font-urbanist",
 });
 import ConstellationBackgroundShell from "@/components/constellation/ConstellationBackgroundShell";
 import PwaBootstrap from "@/components/layout/PwaBootstrap";
@@ -52,7 +64,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${nunitoSans.variable} h-full antialiased`}
+      className={`${urbanist.variable} h-full antialiased`}
       // The theme class below is stamped on before React sees the document.
       suppressHydrationWarning
     >
