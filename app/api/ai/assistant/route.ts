@@ -51,6 +51,7 @@ import {
   streamAiText,
   type AiResponseDiagnostics,
 } from "@/lib/ai/provider-router";
+import { describeUnmetAiProviderRequirements } from "@/lib/ai/provider-policy";
 import {
   decideTutorRoute,
   type AiGenerationRole,
@@ -100,6 +101,22 @@ async function getAuthenticatedUserId(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!isAnyAiProviderConfigured()) {
+    /*
+     * Say which requirement is unmet, because this refusal used to say nothing.
+     *
+     * The check ran before the logger was created, so the single most common AI
+     * failure in this app produced no server-side line at all -- and the reply
+     * a student saw was the same whether the key was absent, the key was fine
+     * and a flag was missing, or a kill switch was on. Production ran for a day
+     * with `GEMINI_API_KEY` set and its three flags unset, which looks
+     * identical from the outside to having no key.
+     *
+     * Names only, never values, so this is safe in any log sink.
+     */
+    createLogger({ route: "ai.assistant", requestId: randomUUID() }).error(
+      "provider.not_configured",
+      { unmet: describeUnmetAiProviderRequirements(process.env) }
+    );
     return failureResponse(
       "AI features are not configured",
       503,
@@ -325,6 +342,7 @@ export async function POST(request: NextRequest) {
           prepared,
           async (visualParts) =>
             cleanAiResponseText(await generateAiText({
+              reasoningEffort: resolved.reasoningEffort,
               role: "documentVision",
               timeoutMs: 24_000,
               deadlineAt,
@@ -592,6 +610,7 @@ ${responseGuidance.instruction}`;
     try {
       const preflight = parseTutorRoutingPreflight(
         await generateAiText({
+          reasoningEffort: resolved.reasoningEffort,
           role: "worker",
           routeReason: "routing_preflight",
           timeoutMs: 7_000,
@@ -676,6 +695,7 @@ ${responseGuidance.instruction}`;
         },
       ];
       const jurorOpinion = await generateAiText({
+        reasoningEffort: resolved.reasoningEffort,
         role: "juror",
         routeReason: "second_correction",
         timeoutMs: 18_000,
@@ -721,6 +741,7 @@ ${responseGuidance.instruction}`;
     structuredRetry?: boolean;
   }) =>
     generateAiText({
+      reasoningEffort: resolved.reasoningEffort,
       role: responseRole,
       routeReason: responseRouteReason,
       timeoutMs: REQUEST_TIMEOUT_MS,

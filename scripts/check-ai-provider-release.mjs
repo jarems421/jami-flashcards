@@ -12,7 +12,12 @@ const ROLES = [
     name: "worker",
     modelKey: "OPENROUTER_WORKER_MODEL",
     providersKey: "OPENROUTER_WORKER_PROVIDERS",
-    fallbackModel: "xiaomi/mimo-v2.5",
+    // Must equal DEFAULT_MODELS.worker in lib/ai/provider-policy.ts. This is a
+    // .mjs script and that is TypeScript, so the value is copied rather than
+    // imported -- `ai-provider-policy.test.ts` fails if the two ever disagree,
+    // because a gate validating a model the app does not use is worse than no
+    // gate at all.
+    fallbackModel: "z-ai/glm-5.3-flash",
     minimumContext: 1_048_576,
     requiresImageInput: true,
     acceptableQuantizations: ["fp8", "bf16", "fp16", "fp32"],
@@ -22,8 +27,28 @@ const ROLES = [
     name: "supervisor",
     modelKey: "OPENROUTER_SUPERVISOR_MODEL",
     providersKey: "OPENROUTER_SUPERVISOR_PROVIDERS",
-    fallbackModel: "minimax/minimax-m3",
-    minimumContext: 1_000_000,
+    // Must equal DEFAULT_MODELS.supervisor in lib/ai/provider-policy.ts;
+    // ai-provider-policy.test.ts fails if they disagree.
+    fallbackModel: "qwen/qwen3.6-35b-a3b",
+    /*
+     * 256K, and the number is measured rather than inherited.
+     *
+     * This was 1,000,000, which is what a supervisor would need if raw sources
+     * reached it. They do not: every source goes through Gemini's documentVision
+     * first and arrives as extracted text capped at 30,000 characters, and a
+     * paper takes at most 15 of them (MAX_PRACTICE_PAPER_SOURCE_IDS). So the
+     * true worst case is 15 x 30,000 + a 12,000-character research brief +
+     * instructions = 477,000 characters. Measured against assessment-shaped
+     * prose at 4.67 characters per token, that is ~102,000 input tokens, and
+     * ~118,000 with the output allowance.
+     *
+     * A 1M floor was therefore asking for eight times the headroom the role can
+     * use, and it cost real safety: only six models on the whole zero-retention
+     * catalogue could clear it, which left the supervisor -- the role that
+     * generates papers and marks work -- on a single endpoint. 256K is a little
+     * over twice the measured ceiling.
+     */
+    minimumContext: 256_000,
     requiresImageInput: true,
     acceptableQuantizations: ["fp8", "bf16", "fp16", "fp32"],
     requiredParameters: ["reasoning", "max_tokens", "response_format", "structured_outputs"],
@@ -36,7 +61,9 @@ const ROLES = [
     modelKey: "OPENROUTER_SUPERVISOR_STANDBY_MODEL",
     providersKey: "OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS",
     fallbackModel: "moonshotai/kimi-k3",
-    minimumContext: 1_000_000,
+    // The standby stands in for the supervisor, so it needs what the supervisor
+    // needs and no more.
+    minimumContext: 256_000,
     requiresImageInput: true,
     acceptableQuantizations: ["fp8", "bf16", "fp16", "fp32"],
     requiredParameters: ["reasoning", "max_tokens", "response_format", "structured_outputs"],
@@ -58,8 +85,23 @@ function splitList(value) {
   return value?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
 }
 
+/*
+ * Every failure, not the first one.
+ *
+ * `fail` threw, and `assertOfflineConfiguration()` ran before the live endpoint
+ * checks -- so on any machine missing one unrelated production flag the script
+ * died before it ever asked OpenRouter anything. That is how a worker allowlist
+ * naming an endpoint that does not serve the worker's model reached production:
+ * the check that exists to catch exactly that was never reached, and the only
+ * line of output said `PRACTICE_PAPER_MARKING_WORKFLOW_ENABLED must be true`.
+ *
+ * Collecting instead means a local config gap reports itself as a local config
+ * gap and the endpoint validation still runs and still speaks up.
+ */
+const failures = [];
+
 function fail(message) {
-  throw new Error(message);
+  failures.push(message);
 }
 
 function assertOfflineConfiguration() {
@@ -210,5 +252,23 @@ async function assertLiveEndpoints() {
 }
 
 assertOfflineConfiguration();
-if (process.argv.includes("--live")) await assertLiveEndpoints();
-else process.stdout.write("AI release environment is internally consistent. Add --live to validate endpoints.\n");
+
+if (process.argv.includes("--live")) {
+  if (process.env.OPENROUTER_API_KEY?.trim()) {
+    await assertLiveEndpoints();
+  } else {
+    fail("Cannot validate endpoints without OPENROUTER_API_KEY.");
+  }
+} else if (failures.length === 0) {
+  process.stdout.write(
+    "AI release environment is internally consistent. Add --live to validate endpoints.\n"
+  );
+}
+
+if (failures.length > 0) {
+  process.stderr.write(`\n${failures.length} AI release problem(s):\n`);
+  for (const message of failures) process.stderr.write(`  - ${message}\n`);
+  process.exit(1);
+}
+
+process.stdout.write("AI release checks passed.\n");

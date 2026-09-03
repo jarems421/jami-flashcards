@@ -92,8 +92,38 @@ export type AiProviderAttempt = {
   providerAllowlist: readonly string[];
   quantizations: readonly string[];
   thinking: boolean;
+  reasoningEffort: AiReasoningEffort;
   routeReason: AiRouteReason;
 };
+
+export type AiReasoningEffort = "low" | "medium" | "high";
+
+/**
+ * How hard the model should think, scaled to how hard the question is.
+ *
+ * Reasoning is not free: measured on GLM 5.3 Flash, the same tutor question
+ * took 12.4 seconds and 222 thinking tokens when the model was left to its own
+ * default, and 4.4 seconds with none, for an answer that was 62 words instead
+ * of 66. Spending that on "what does osmosis mean" buys nothing; spending it on
+ * a disputed mark does.
+ *
+ * So the route already decided the difficulty, and this reads it rather than
+ * asking again: routine work thinks little, the supervisor's papers and marking
+ * think more, and a juror adjudicating a challenge thinks hardest. A student
+ * can raise it for themselves, and the setting says what it costs in waiting.
+ */
+export function getReasoningEffort(
+  role: AiGenerationRole,
+  preference?: AiReasoningEffort
+): AiReasoningEffort {
+  const byRole: AiReasoningEffort =
+    role === "juror" ? "high" : role === "supervisor" ? "medium" : "low";
+  if (!preference) return byRole;
+  // A preference raises the floor; it never lowers what the role needs, or a
+  // student could quietly make their own disputed mark cheaper to adjudicate.
+  const order: AiReasoningEffort[] = ["low", "medium", "high"];
+  return order.indexOf(preference) > order.indexOf(byRole) ? preference : byRole;
+}
 
 export type AiProviderPolicy = {
   openRouterReady: boolean;
@@ -103,8 +133,8 @@ export type AiProviderPolicy = {
 };
 
 const DEFAULT_MODELS = {
-  worker: "xiaomi/mimo-v2.5",
-  supervisor: "minimax/minimax-m3",
+  worker: "z-ai/glm-5.3-flash",
+  supervisor: "qwen/qwen3.6-35b-a3b",
   juror: "moonshotai/kimi-k2.6",
   research: "gemini-3.5-flash-lite",
   documentVision: "gemini-3.5-flash-lite",
@@ -114,12 +144,56 @@ const DEFAULT_MODELS = {
 } satisfies Record<AiRole, string>;
 
 const DEFAULT_PROVIDERS = {
-  // These defaults are intentionally limited to current full-context ZDR
-  // endpoints. The live release check rejects stale entries before cutover.
-  worker: ["parasail"],
-  // The supervisor always returns validated JSON. Of the current full-context
-  // FP8 ZDR endpoints, Parasail advertises structured response support.
-  supervisor: ["parasail"],
+  /*
+   * These defaults are intentionally limited to current full-context ZDR
+   * endpoints. The live release check rejects stale entries before cutover.
+   *
+   * The worker's was `["parasail"]` against a `xiaomi/mimo-v2.5` model that
+   * Parasail does not serve, so every routine tutor question failed closed with
+   * OpenRouter's "No allowed providers are available for the selected model"
+   * and the Tutor answered nothing at all. Papers and marking were unaffected,
+   * because the supervisor's allowlist did contain an endpoint for its own
+   * model -- which is why this read as "the AI tutor is broken" rather than as
+   * an outage.
+   *
+   * Two things made it survivable for so long. `.env.local` set
+   * OPENROUTER_WORKER_PROVIDERS to `novita,parasail`, so it always worked on a
+   * developer machine; and the one compliant endpoint the model had was sitting
+   * in DEFAULT_FAILOVER_PROVIDERS instead, which is only reached after a parsed
+   * reply comes back empty -- never after a request that fails outright.
+   *
+   * Parasail is deliberately absent even though it serves this model: its
+   * endpoint is deranked (`status: -2`) at the time of writing, and the release
+   * check refuses an allowlist naming an endpoint that is not currently
+   * healthy. Add it back when it recovers, or do not -- three healthy endpoints
+   * is already two more than the role had.
+   */
+  worker: ["z-ai", "novita", "modal"],
+  /*
+   * Four endpoints, and a model measured against the job rather than assumed.
+   *
+   * This was MiniMax M3 on Parasail alone, and both halves were a problem. The
+   * endpoint was the only compliant one the model had, it sat at `status: -2`,
+   * and it answered HTTP 429 on three of three attempts under a trivial
+   * benchmark -- while carrying paper generation and marking. And the model was
+   * the weakest of the three that completed a run of the app's own mark-scheme
+   * prompt:
+   *
+   *   kimi-k2.6           22/24 (92%)   $0.023   2 endpoints
+   *   qwen3.6-35b-a3b     20/24 (83%)   $0.038   4 endpoints
+   *   minimax-m3          14/24 (58%)   $0.024   2 endpoints
+   *
+   * Kimi scored highest and is deliberately not here: it is the juror, and a
+   * juror that adjudicates its own supervisor's work is not independent of it.
+   * Qwen takes the seat on the two things the role was short of -- twenty-five
+   * points of accuracy and twice the endpoints -- and keeps worker, supervisor
+   * and juror in three different model families.
+   *
+   * It costs about half as much again per batch and runs slower. That is the
+   * trade, taken deliberately: papers and mark schemes are the last place to
+   * economise, and the incumbent was failing 42 per cent of the checks.
+   */
+  supervisor: ["coreweave", "siliconflow", "akashml"],
   // Moonshot's own endpoint serves Kimi at INT4; SiliconFlow serves the same
   // model at FP8 on an equally full-context ZDR endpoint, so the juror is no
   // longer pinned to a single provider or to the lowest precision available.
@@ -171,8 +245,13 @@ const DEFAULT_STANDBY = {
  * than quietly used.
  */
 const DEFAULT_FAILOVER_PROVIDERS = {
-  worker: ["novita"],
-  supervisor: ["deepinfra"],
+  // DeepInfra rather than Novita: Novita is in the worker's primary allowlist
+  // now, and a failover that names an endpoint already carrying normal traffic
+  // is not a failover.
+  worker: ["deepinfra"],
+  // Parasail serves the supervisor's model compliantly but is held out of the
+  // primary list for the same reason: kept in reserve, not in rotation.
+  supervisor: ["parasail"],
 } as const;
 
 export function failoverProvidersFor(
@@ -340,6 +419,49 @@ export function buildAiCapabilityRegistry(
   };
 }
 
+/**
+ * Which requirements a provider does not currently meet, by variable name.
+ *
+ * A provider is ready only when its key is present *and* three separate
+ * booleans are the literal string "true". Every AI route refuses with the same
+ * "AI features are not configured" when none is ready, which is accurate and
+ * says nothing about which of the eight possible reasons applied -- so a
+ * deployment with a perfectly good `GEMINI_API_KEY` and no `GEMINI_ENABLED`
+ * looks exactly like one with no key at all, and the obvious conclusion is that
+ * the key is wrong.
+ *
+ * That is not hypothetical. Production ran with only `GEMINI_API_KEY` set, so
+ * every AI feature in the app answered 503 and the Tutor told students it was
+ * "not configured in this deployment yet", while the same code worked on any
+ * machine with a full `.env.local`.
+ *
+ * Names only. A value is never returned from here -- the whole point is that
+ * this is safe to log.
+ */
+export function describeUnmetAiProviderRequirements(
+  env: Record<string, string | undefined>
+): string[] {
+  const unmet: string[] = [];
+
+  for (const prefix of ["GEMINI", "OPENROUTER"] as const) {
+    if (!env[`${prefix}_API_KEY`]?.trim()) unmet.push(`${prefix}_API_KEY`);
+    for (const flag of [
+      "ENABLED",
+      "PRIVACY_APPROVED",
+      "QUALITY_GATE_PASSED",
+    ] as const) {
+      if (env[`${prefix}_${flag}`] !== "true") {
+        unmet.push(`${prefix}_${flag}`);
+      }
+    }
+    if (env[`${prefix}_KILL_SWITCH`] === "true") {
+      unmet.push(`${prefix}_KILL_SWITCH is on`);
+    }
+  }
+
+  return unmet;
+}
+
 export function resolveAiProviderPolicy(
   env: Record<string, string | undefined>
 ): AiProviderPolicy {
@@ -437,6 +559,7 @@ function attemptFor(
     providerAllowlist: capability.providerAllowlist,
     quantizations: capability.quantizations,
     thinking: capability.reasoning,
+    reasoningEffort: getReasoningEffort(role),
     routeReason,
   };
 }
@@ -461,6 +584,7 @@ function standbyAttemptFor(
     providerAllowlist: standby.providerAllowlist,
     quantizations: capability.quantizations,
     thinking: capability.reasoning,
+    reasoningEffort: getReasoningEffort(role),
     routeReason: "provider_standby",
   };
 }
@@ -498,6 +622,7 @@ function failoverAttemptFor(
     providerAllowlist: providers,
     quantizations: capability.quantizations,
     thinking: capability.reasoning,
+    reasoningEffort: getReasoningEffort(role),
     routeReason: "provider_failover",
   };
 }

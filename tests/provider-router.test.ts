@@ -68,8 +68,8 @@ describe("provider router", () => {
 
     expect(mocks.generateOpenRouterText).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: "minimax/minimax-m3",
-        providerAllowlist: ["parasail"],
+        model: "qwen/qwen3.6-35b-a3b",
+        providerAllowlist: ["coreweave", "siliconflow", "akashml"],
         quantizations: ["fp32", "fp16", "bf16", "fp8"],
         temperature: 0.2,
         topP: 0.8,
@@ -115,11 +115,11 @@ describe("provider router", () => {
       timeoutMs: 5_000,
     })).resolves.toBe("supervisor answer");
     expect(mocks.generateOpenRouterText.mock.calls.map((call) => call[0].model)).toEqual([
-      "xiaomi/mimo-v2.5",
-      "xiaomi/mimo-v2.5",
-      "xiaomi/mimo-v2.5",
+      "z-ai/glm-5.3-flash",
+      "z-ai/glm-5.3-flash",
+      "z-ai/glm-5.3-flash",
     ]);
-    expect(mocks.generateOpenRouterText.mock.calls[2][0].providerAllowlist).toEqual(["novita"]);
+    expect(mocks.generateOpenRouterText.mock.calls[2][0].providerAllowlist).toEqual(["deepinfra"]);
 
     mocks.generateOpenRouterText.mockReset();
     mocks.generateOpenRouterText.mockRejectedValue(new Error("supervisor unavailable"));
@@ -131,9 +131,9 @@ describe("provider router", () => {
     // Exhausts the primary, then the standby, then fails closed. Supervisor
     // work is never quietly served by a smaller model.
     expect(mocks.generateOpenRouterText.mock.calls.map((call) => call[0].model)).toEqual([
-      "minimax/minimax-m3",
-      "minimax/minimax-m3",
-      "minimax/minimax-m3",
+      "qwen/qwen3.6-35b-a3b",
+      "qwen/qwen3.6-35b-a3b",
+      "qwen/qwen3.6-35b-a3b",
       "moonshotai/kimi-k3",
     ]);
   });
@@ -161,16 +161,16 @@ describe("provider router", () => {
 
     const calls = mocks.generateOpenRouterText.mock.calls.map((call) => call[0]);
     expect(calls.map((call) => call.model)).toEqual([
-      "minimax/minimax-m3",
-      "minimax/minimax-m3",
-      "minimax/minimax-m3",
+      "qwen/qwen3.6-35b-a3b",
+      "qwen/qwen3.6-35b-a3b",
+      "qwen/qwen3.6-35b-a3b",
     ]);
-    expect(calls[0].providerAllowlist).toEqual(["parasail"]);
-    expect(calls[2].providerAllowlist).toEqual(["deepinfra"]);
+    expect(calls[0].providerAllowlist).toEqual(["coreweave", "siliconflow", "akashml"]);
+    expect(calls[2].providerAllowlist).toEqual(["parasail"]);
     expect(calls[2].quantizations).toEqual(["fp32", "fp16", "bf16", "fp8"]);
     expect(retries).toEqual([
-      "minimax/minimax-m3->minimax/minimax-m3",
-      "minimax/minimax-m3->minimax/minimax-m3",
+      "qwen/qwen3.6-35b-a3b->qwen/qwen3.6-35b-a3b",
+      "qwen/qwen3.6-35b-a3b->qwen/qwen3.6-35b-a3b",
     ]);
   });
 
@@ -189,9 +189,9 @@ describe("provider router", () => {
 
     const calls = mocks.generateOpenRouterText.mock.calls.map((call) => call[0]);
     expect(calls.map((call) => call.model)).toEqual([
-      "minimax/minimax-m3",
-      "minimax/minimax-m3",
-      "minimax/minimax-m3",
+      "qwen/qwen3.6-35b-a3b",
+      "qwen/qwen3.6-35b-a3b",
+      "qwen/qwen3.6-35b-a3b",
       "moonshotai/kimi-k3",
     ]);
   });
@@ -238,7 +238,7 @@ describe("what an attempt off the primary is given to work with", () => {
     expect(calls).toHaveLength(3);
     expect(calls[0].timeoutMs).toBe(60_000);
     expect(calls[1].timeoutMs).toBe(60_000);
-    expect(calls[2].providerAllowlist).toEqual(["deepinfra"]);
+    expect(calls[2].providerAllowlist).toEqual(["parasail"]);
     expect(calls[2].timeoutMs).toBe(180_000);
   });
 

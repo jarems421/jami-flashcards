@@ -244,10 +244,33 @@ describe("how hard a model is allowed to think", () => {
     expect(bodyOf(fetchMock).reasoning.effort).toBe("high");
   });
 
-  /** A role that does not reason must not be sent a reasoning budget at all. */
-  it("sends nothing when the role does not reason", async () => {
+  /*
+   * A role that does not reason has to say so out loud.
+   *
+   * This used to assert the opposite -- that no reasoning budget was sent at
+   * all -- on the reasonable-sounding view that silence means off. It does not:
+   * silence leaves the model's own default in charge, and the models this app
+   * runs reason by default. Measured on GLM 5.3 Flash, three runs of one
+   * ordinary tutor question: 12.4s and 222 thinking tokens with the field
+   * omitted, 4.4s and none with `effort: "low"`, for an answer four words
+   * shorter. `enabled: false` is not an option -- the endpoints do not
+   * advertise it, so `require_parameters` refuses the call outright.
+   */
+  it("asks for the least thinking when the role does not reason", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(streamResponse(SSE));
     await collect(streamOpenRouterText({ ...baseInput, reasoning: false }));
-    expect(bodyOf(fetchMock).reasoning).toBeUndefined();
+    expect(bodyOf(fetchMock).reasoning).toMatchObject({
+      enabled: true,
+      exclude: true,
+      effort: "low",
+    });
+  });
+
+  it("still lets a caller raise the effort on a non-reasoning role", async () => {
+    // The student's own thinking-time preference arrives this way, and it must
+    // survive a role whose default is the floor.
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(streamResponse(SSE));
+    await collect(streamOpenRouterText({ ...baseInput, reasoning: false, reasoningEffort: "high" }));
+    expect(bodyOf(fetchMock).reasoning.effort).toBe("high");
   });
 });

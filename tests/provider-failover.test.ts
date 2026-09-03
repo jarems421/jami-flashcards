@@ -12,11 +12,11 @@ import { failoverProvidersFor } from "@/lib/ai/provider-policy";
  */
 describe("deliberate provider failover", () => {
   it("offers the worker an independent full-context endpoint", () => {
-    expect(failoverProvidersFor("worker", {} as unknown as NodeJS.ProcessEnv)).toEqual(["novita"]);
+    expect(failoverProvidersFor("worker", {} as unknown as NodeJS.ProcessEnv)).toEqual(["deepinfra"]);
   });
 
   it("offers the supervisor a second endpoint for the same model", () => {
-    expect(failoverProvidersFor("supervisor", {} as unknown as NodeJS.ProcessEnv)).toEqual(["deepinfra"]);
+    expect(failoverProvidersFor("supervisor", {} as unknown as NodeJS.ProcessEnv)).toEqual(["parasail"]);
   });
 
   /**
@@ -41,7 +41,7 @@ describe("deliberate provider failover", () => {
       failoverProvidersFor("supervisor", {
         OPENROUTER_SUPERVISOR_FAILOVER_PROVIDERS: "  ",
       } as unknown as NodeJS.ProcessEnv)
-    ).toEqual(["deepinfra"]);
+    ).toEqual(["parasail"]);
   });
 
   /**
@@ -50,6 +50,6 @@ describe("deliberate provider failover", () => {
    * returns `{}` would keep serving a share of ordinary traffic.
    */
   it("is not the primary allowlist", () => {
-    expect(failoverProvidersFor("supervisor", {} as unknown as NodeJS.ProcessEnv)).not.toContain("parasail");
+    expect(failoverProvidersFor("supervisor", {} as unknown as NodeJS.ProcessEnv)).not.toContain("coreweave");
   });
 });

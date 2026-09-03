@@ -148,9 +148,33 @@ export function buildOpenRouterRequestBody(
      * `medium` is the cap because it is what was measured working, not because
      * it is tuned. A caller wanting more should have to say so.
      */
-    ...(options.reasoning
-      ? { reasoning: { enabled: true, exclude: true, effort: options.reasoningEffort ?? "medium" } }
-      : {}),
+    /*
+     * A role that does not want reasoning has to say so, not stay silent.
+     *
+     * Omitting the field left the model's own default in charge, and the models
+     * this app runs reason by default -- so the worker, declared `reasoning:
+     * false`, was spending 222 of 353 output tokens thinking on an ordinary
+     * tutor question and taking 12.4 seconds over it. Measured on GLM 5.3
+     * Flash, three runs each, same prompt:
+     *
+     *   omitted (as shipped)   12.4s   3/3 valid   66 words   222 reasoning
+     *   effort "low"            4.4s   3/3 valid   62 words     0 reasoning
+     *   enabled: false          0.1s   0/3 valid    -           -
+     *
+     * So `low` rather than `enabled: false`: the explicit off switch is refused
+     * outright under `require_parameters`, because the endpoints do not
+     * advertise it. `low` is accepted, returns no reasoning tokens, and costs
+     * nothing in answer quality -- 62 words against 66.
+     *
+     * `low` is only the floor. The effort a request actually asks for scales
+     * with how hard the question was judged to be, and a student can raise it
+     * for themselves -- see `getReasoningEffort` in provider-policy.
+     */
+    reasoning: {
+      enabled: true,
+      exclude: true,
+      effort: options.reasoningEffort ?? (options.reasoning ? "medium" : "low"),
+    },
     ...(options.jsonSchema
       ? {
           response_format: {

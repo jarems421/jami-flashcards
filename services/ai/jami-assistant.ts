@@ -25,9 +25,23 @@ function getFriendlyAssistantError(
       : "Jami has reached today's AI limit. Try again tomorrow.";
   }
   if (status === 503) {
-    return code === "budget_unavailable"
-      ? message || "AI usage limits are temporarily unavailable. Try again shortly."
-      : "Jami AI is not configured in this deployment yet.";
+    if (code === "budget_unavailable") {
+      return message || "AI usage limits are temporarily unavailable. Try again shortly.";
+    }
+    /*
+     * Only `not_configured` means not configured.
+     *
+     * This read "anything that is not a budget problem", so every other 503 --
+     * a provider outage, a workflow that would not start, a queue that was
+     * full -- told the student the app was unfinished, and a genuinely
+     * transient failure looked permanent enough to stop trying. The one case
+     * that really is a deployment fault now says so on its own code, and
+     * everything else says what it is: temporary.
+     */
+    if (code === "not_configured") {
+      return "Jami's AI is not switched on for this app yet.";
+    }
+    return message || "Jami is unavailable for a moment. Try again shortly.";
   }
   if (status >= 500) return message || "Jami could not answer just now. Try again in a moment.";
   return message || "Jami could not answer that just now.";

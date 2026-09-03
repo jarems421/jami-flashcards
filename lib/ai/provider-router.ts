@@ -12,6 +12,7 @@ import {
   type OpenRouterUsage,
 } from "@/lib/ai/openrouter";
 import {
+  type AiReasoningEffort,
   buildAiProviderPlan,
   failoverProvidersFor,
   hasVisualAiInput,
@@ -62,6 +63,13 @@ export type AiRouterOptions = {
   deadlineAt?: number;
   generationConfig?: RouterGenerationConfig;
   signal?: AbortSignal;
+  /**
+   * How hard to think, when the caller knows better than the role does.
+   *
+   * A student can raise this for themselves in settings; it never lowers what
+   * the role already requires. Left unset, the role's own level applies.
+   */
+  reasoningEffort?: AiReasoningEffort;
   /**
    * Send this call to a specific approved endpoint instead of the role's usual
    * one. Rejected unless the role actually lists it as a failover, so this
@@ -223,6 +231,7 @@ async function runBufferedAttempt(
       timeoutMs,
       signal: options.signal,
       reasoning: attempt.thinking,
+      reasoningEffort: options.reasoningEffort ?? attempt.reasoningEffort,
       temperature: sampling.temperature,
       topP: sampling.topP,
       maxOutputTokens: cappedOutputTokens(
@@ -311,6 +320,7 @@ async function runStreamBufferedAttempt(
       timeoutMs,
       signal: options.signal,
       reasoning: attempt.thinking,
+      reasoningEffort: options.reasoningEffort ?? attempt.reasoningEffort,
       temperature: sampling.temperature,
       topP: sampling.topP,
       maxOutputTokens: cappedOutputTokens(
@@ -464,6 +474,7 @@ export async function* streamAiText(
           timeoutMs,
           signal: options.signal,
           reasoning: attempt.thinking,
+          reasoningEffort: options.reasoningEffort ?? attempt.reasoningEffort,
           temperature: sampling.temperature,
           topP: sampling.topP,
           maxOutputTokens: cappedOutputTokens(
