@@ -63,6 +63,17 @@ export function makePrecisePenInputMapper(
   editor: JsDrawEditor,
   inkSmoothers: Map<number, NotebookInkSmoother>
 ) {
+  /**
+   * Where each pointer's ink was last actually drawn to, in screen pixels.
+   *
+   * Kept beside the smoothers rather than inside them because the lift needs an
+   * answer even for a pointer that never got one.
+   */
+  const lastEmittedScreenPositions = new Map<
+    number,
+    { x: number; y: number }
+  >();
+
   class PrecisePenInputMapper extends jsDraw.InputMapper {
     onEvent(event: JsDrawInputEvent): boolean {
       if (
@@ -83,6 +94,10 @@ export function makePrecisePenInputMapper(
               time: current.timeStamp,
             })
           );
+          lastEmittedScreenPositions.set(current.id, {
+            x: current.screenPos.x,
+            y: current.screenPos.y,
+          });
         } else {
           /*
            * A stroke ends on the point it was already drawn to, and gains
@@ -109,20 +124,62 @@ export function makePrecisePenInputMapper(
            * ink arriving late very much can.
            */
           const smoother = inkSmoothers.get(current.id);
-          if (smoother) {
-            const settled =
-              event.kind === jsDraw.InputEvtType.PointerUpEvt
-                ? smoother.current()
-                : smoother.next({
-                    x: current.screenPos.x,
-                    y: current.screenPos.y,
-                    time: current.timeStamp,
-                  });
+          const isLift = event.kind === jsDraw.InputEvtType.PointerUpEvt;
+          /*
+           * The lift moves nothing, whether or not this pointer has a smoother.
+           *
+           * Holding the filter at the lift used to be the whole of this, and it
+           * sat inside `if (smoother)` -- so the invariant it was written for,
+           * that a stroke ends on the point it was already drawn to, quietly
+           * did not hold whenever a smoother was missing. It can be: a down
+           * that reached the tool by a different route, a tool swapped
+           * mid-contact, a contact resumed after a cancel. In every one of
+           * those the lift fell through carrying its raw position, js-draw
+           * added that as the final point, and the stroke ended somewhere the
+           * ink had never been drawn -- past the pen, and permanently, because
+           * it is in the geometry rather than in a frame.
+           *
+           * The last position actually emitted is remembered instead, so the
+           * lift has something to hold even with no filter to hold. A stroke
+           * now ends where it was drawn to by construction rather than by the
+           * happy case.
+           */
+          const settled = smoother
+            ? isLift
+              ? smoother.current()
+              : smoother.next({
+                  x: current.screenPos.x,
+                  y: current.screenPos.y,
+                  time: current.timeStamp,
+                })
+            : isLift
+              ? lastEmittedScreenPositions.get(current.id) ?? {
+                  x: current.screenPos.x,
+                  y: current.screenPos.y,
+                }
+              : { x: current.screenPos.x, y: current.screenPos.y };
+
+          /*
+           * Only rebuilt when the position actually moves.
+           *
+           * This runs on every coalesced sample of every stroke, and a pointer
+           * whose position is unchanged -- a move with no smoother, most of
+           * them -- should carry on as the object it already was rather than
+           * become an identical copy of itself.
+           */
+          if (
+            settled.x !== current.screenPos.x ||
+            settled.y !== current.screenPos.y
+          ) {
             current = current.withScreenPosition(
               jsDraw.Vec2.of(settled.x, settled.y),
               editor.viewport
             );
           }
+          lastEmittedScreenPositions.set(current.id, {
+            x: settled.x,
+            y: settled.y,
+          });
         }
 
         const handled = this.emit({
@@ -134,6 +191,7 @@ export function makePrecisePenInputMapper(
         });
         if (event.kind === jsDraw.InputEvtType.PointerUpEvt) {
           inkSmoothers.delete(current.id);
+          lastEmittedScreenPositions.delete(current.id);
         }
         return handled;
       }
