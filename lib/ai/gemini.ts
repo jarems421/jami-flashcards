@@ -446,7 +446,20 @@ export async function deleteTemporaryGeminiVideo(name?: string) {
   await new GoogleGenAI({ apiKey }).files.delete({ name }).catch(() => undefined);
 }
 
-export async function generateGeminiVideoText(input: { uri: string; mimeType: string; model: string; agentic: boolean; prompt: string }) {
+/**
+ * Reads a video, either by sampling frames or by seeking.
+ *
+ * `{ fps }` samples the whole recording at that rate and is the only mode that
+ * reliably inventories what is on screen -- measured against the app's own
+ * prompt, a sampled pass found eleven visuals in a lesson where the seeking
+ * pass found none and described it as "a host talking without diagrams".
+ *
+ * `"agentic"` is kept for the opposite job: going back to a handful of moments
+ * that are already identified, where the model is answering a pointed question
+ * rather than being asked what is there. It costs a fraction of a full pass,
+ * which is the whole reason the second look is affordable.
+ */
+export async function generateGeminiVideoText(input: { uri: string; mimeType: string; model: string; processing: { fps: number } | "agentic"; prompt: string }) {
   if (!resolveAiProviderPolicy(process.env).geminiReady) throw new Error("gemini_not_configured");
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) throw new Error("gemini_not_configured");
@@ -455,7 +468,7 @@ export async function generateGeminiVideoText(input: { uri: string; mimeType: st
     store: false,
     input: [
       { type: "text", text: input.prompt },
-      { type: "video", uri: input.uri, mime_type: input.mimeType, processing: input.agentic ? "agentic" : { type: "static", fps: 1 } },
+      { type: "video", uri: input.uri, mime_type: input.mimeType, processing: input.processing === "agentic" ? "agentic" : { type: "static", fps: input.processing.fps } },
     ],
     generation_config: { max_output_tokens: 16_000 },
   });
