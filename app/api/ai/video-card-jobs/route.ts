@@ -4,7 +4,15 @@ import { start } from "workflow/api";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getBearerToken } from "@/lib/auth/bearer";
 import {
-  parseVideoCardLimit, VIDEO_MAX_BYTES, VIDEO_MAX_SECONDS, mapVideoCardJobData, parseVideoCoverage } from "@/lib/ai/video-card-jobs";
+  CARD_SOURCE_MAX_BYTES,
+  CARD_SOURCE_TEXT_MAX_LENGTH,
+  parseVideoCardLimit,
+  VIDEO_MAX_BYTES,
+  VIDEO_MAX_SECONDS,
+  mapVideoCardJobData,
+  parseVideoCoverage,
+} from "@/lib/ai/video-card-jobs";
+import { isSourceFileMimeType } from "@/lib/material/source-files";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
 import { getAdminAuth, getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { generateVideoCardWorkflow } from "@/workflows/video-card-generation";
@@ -104,10 +112,36 @@ export async function POST(request: NextRequest) {
       const allowed = ["video/mp4", "video/mpeg", "video/quicktime", "video/webm"];
       if (!allowed.includes(metadata.contentType || "") || Number(metadata.size) > VIDEO_MAX_BYTES || durationSeconds <= 0 || durationSeconds > VIDEO_MAX_SECONDS) throw new Error("invalid_upload");
       source = { sourceKind: "upload", storagePath, fileName: typeof body.fileName === "string" ? body.fileName.slice(0, 160) : "Uploaded video", mimeType: metadata.contentType, sizeBytes: Number(metadata.size), durationSeconds, title: typeof body.fileName === "string" ? body.fileName.slice(0, 160) : "Uploaded video" };
+    } else if (body.sourceKind === "file") {
+      const storagePath = typeof body.storagePath === "string" ? body.storagePath : "";
+      const expectedPrefix = `users/${uid}/cardSourceImports/${id}/`;
+      if (!storagePath.startsWith(expectedPrefix)) throw new Error("invalid_upload");
+      const [metadata] = await getAdminStorageBucket().file(storagePath).getMetadata();
+      const mimeType = metadata.contentType || "";
+      const sizeBytes = Number(metadata.size);
+      if (!isSourceFileMimeType(mimeType) || sizeBytes <= 0 || sizeBytes >= CARD_SOURCE_MAX_BYTES) {
+        throw new Error("invalid_upload");
+      }
+      const fileName = typeof body.fileName === "string" ? body.fileName.trim().slice(0, 160) : "Uploaded source";
+      source = { sourceKind: "file", storagePath, fileName, mimeType, sizeBytes, durationSeconds: 0, title: fileName };
+    } else if (body.sourceKind === "text") {
+      const contentText = typeof body.contentText === "string" ? body.contentText.trim() : "";
+      if (!contentText || contentText.length > CARD_SOURCE_TEXT_MAX_LENGTH) throw new Error("invalid_text");
+      source = { sourceKind: "text", contentText, durationSeconds: 0, title: "Pasted notes" };
     } else throw new Error("invalid_source");
   } catch (error) {
     const code = error instanceof Error ? error.message : "invalid_source";
-    return failure(code === "youtube_not_public" ? "That YouTube video is not public." : code === "youtube_not_configured" ? "YouTube imports are not configured yet." : "That video could not be verified.", code === "youtube_not_configured" ? 503 : 400, code);
+    return failure(
+      code === "youtube_not_public"
+        ? "That YouTube video is not public."
+        : code === "youtube_not_configured"
+          ? "YouTube imports are not configured yet."
+          : code === "invalid_text"
+            ? `Paste between 1 and ${CARD_SOURCE_TEXT_MAX_LENGTH.toLocaleString()} characters.`
+            : "That source could not be verified.",
+      code === "youtube_not_configured" ? 503 : 400,
+      code
+    );
   }
   if (Number(source.durationSeconds) > VIDEO_MAX_SECONDS) return failure("Videos must be 90 minutes or shorter.", 413, "video_too_long");
   let budget; try { budget = await checkAiBudget({ uid, action: "videoCardImport", skipBurstLimit: true }); } catch { return failure("AI usage limits are temporarily unavailable.", 503, "budget_unavailable"); }

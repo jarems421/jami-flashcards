@@ -1,11 +1,14 @@
 export const VIDEO_MAX_BYTES = 500 * 1024 * 1024;
 export const VIDEO_MAX_SECONDS = 90 * 60;
+export const CARD_SOURCE_MAX_BYTES = 20 * 1024 * 1024;
+export const CARD_SOURCE_TEXT_MAX_LENGTH = 60_000;
 
 export type VideoCoverage = "focused" | "standard" | "thorough";
 export type VideoVisualType = "diagram" | "table" | "graph" | "equation" | "slide" | "worked_example";
 export type VideoVisualClassification = "core_teaching" | "worked_example" | "practice_question" | "contextual_support" | "decorative_administrative" | "uncertain";
 export type VideoJobStatus = "queued" | "running" | "ready" | "approved" | "failed" | "cancelled";
 export type VideoJobStage = "preparing" | "reading_video" | "creating_cards" | "ready";
+export type CardImportSourceKind = "youtube" | "upload" | "file" | "text";
 
 export type VideoCardDraft = {
   id: string;
@@ -52,7 +55,7 @@ export type VideoCardJob = {
   maxCards?: number;
   focus?: string;
   durationSeconds: number;
-  sourceKind: "youtube" | "upload";
+  sourceKind: CardImportSourceKind;
   drafts: VideoCardDraft[];
   warnings: VideoCardWarning[];
   evidence: VideoCardEvidence[];
@@ -62,6 +65,7 @@ export type VideoCardJob = {
    */
   youtubeUrl?: string;
   storagePath?: string;
+  fileName?: string;
   provider?: string;
   fallbackReason?: string;
   createdAt: number;
@@ -251,12 +255,16 @@ export function mapVideoCardJobData(id: string, raw: Record<string, unknown>): V
       : {}),
     ...(cleanText(raw.focus, 500) ? { focus: cleanText(raw.focus, 500) } : {}),
     durationSeconds: typeof raw.durationSeconds === "number" ? raw.durationSeconds : 0,
-    sourceKind: raw.sourceKind === "upload" ? "upload" : "youtube",
+    sourceKind:
+      raw.sourceKind === "upload" || raw.sourceKind === "file" || raw.sourceKind === "text"
+        ? raw.sourceKind
+        : "youtube",
     drafts,
     warnings,
     evidence,
     ...(typeof raw.youtubeUrl === "string" ? { youtubeUrl: raw.youtubeUrl } : {}),
     ...(typeof raw.storagePath === "string" ? { storagePath: raw.storagePath } : {}),
+    ...(typeof raw.fileName === "string" ? { fileName: raw.fileName } : {}),
     ...(typeof raw.provider === "string" ? { provider: raw.provider } : {}),
     ...(typeof raw.fallbackReason === "string" ? { fallbackReason: raw.fallbackReason } : {}),
     createdAt: typeof raw.createdAt === "number" ? raw.createdAt : 0,

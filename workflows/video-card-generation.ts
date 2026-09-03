@@ -1,4 +1,4 @@
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
 export async function generateVideoCardWorkflow(uid: string, jobId: string) {
   "use workflow";
@@ -26,5 +26,6 @@ async function failVideoGeneration(uid: string, jobId: string) {
   if (!data || data.status === "cancelled") return;
   if (typeof data.storagePath === "string") await getAdminStorageBucket().file(data.storagePath).delete({ ignoreNotFound: true }).catch(() => undefined);
   const now = Date.now();
-  await ref.update({ status: "failed", failureMessage: "Jami could not read that video. Check the link or file and try again.", completedAt: now, expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000), updatedAt: now });
+  const sourceName = data.sourceKind === "file" || data.sourceKind === "text" ? "source" : "video";
+  await ref.update({ status: "failed", failureMessage: `Jami could not read that ${sourceName}. Check it and try again.`, contentText: FieldValue.delete(), completedAt: now, expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000), updatedAt: now });
 }

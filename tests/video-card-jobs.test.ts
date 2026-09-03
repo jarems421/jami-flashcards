@@ -4,6 +4,7 @@ import {
   formatVideoTimestamp,
   getVideoCoverageSelectivity,
   getVideoSamplingFps,
+  mapVideoCardJobData,
   parseVideoCardLimit,
   VIDEO_CARD_REVIEW_CEILING,
 } from "@/lib/ai/video-card-jobs";
@@ -92,5 +93,17 @@ describe("video card routing", () => {
 
   it("keeps the timestamp label stable", () => {
     expect(formatVideoTimestamp(125)).toBe("2:05");
+  });
+
+  it("keeps file and pasted-text imports distinct from video jobs", () => {
+    expect(mapVideoCardJobData("file-job", {
+      sourceKind: "file",
+      fileName: "Lecture 4.pptx",
+      coverage: "standard",
+    })).toMatchObject({ sourceKind: "file", fileName: "Lecture 4.pptx" });
+    expect(mapVideoCardJobData("text-job", {
+      sourceKind: "text",
+      coverage: "thorough",
+    })).toMatchObject({ sourceKind: "text", coverage: "thorough" });
   });
 });

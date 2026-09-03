@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getBearerToken } from "@/lib/auth/bearer";
-import { mapVideoCardJobData } from "@/lib/ai/video-card-jobs";
+import { mapVideoCardJobData, VIDEO_CARD_REVIEW_CEILING } from "@/lib/ai/video-card-jobs";
 import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import { refundAiBudget } from "@/services/ai/budgets";
 import { getAdminAuth, getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
@@ -22,7 +22,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const uid = await uidFor(request); if (!uid) return failure("Unauthorized", 401);
   const { jobId } = await params; if (!valid(jobId)) return failure("Job not found", 404);
   let body: { drafts?: unknown }; try { body = await request.json(); } catch { return failure("Invalid request", 400); }
-  if (!Array.isArray(body.drafts) || body.drafts.length > 35) return failure("Invalid cards", 400);
+  if (!Array.isArray(body.drafts) || body.drafts.length > VIDEO_CARD_REVIEW_CEILING) return failure("Invalid cards", 400);
   const ref = getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId); const snap = await ref.get();
   if (!snap.exists || snap.data()?.status !== "ready") return failure("This import is not ready to edit.", 409);
   const original = new Map(mapVideoCardJobData(jobId, snap.data() ?? {}).drafts.map((card) => [card.id, card]));
@@ -42,7 +42,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const grant = refundable && data.budgetGrant && typeof data.budgetGrant === "object"
     ? data.budgetGrant as AiBudgetGrant
     : undefined;
-  const now = Date.now(); await ref.update({ status: "cancelled", cancellationRequested: true, drafts: [], evidence: [], budgetRefunded: refundable || data.budgetRefunded === true, completedAt: now, expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000), updatedAt: now });
+  const now = Date.now(); await ref.update({ status: "cancelled", cancellationRequested: true, drafts: [], evidence: [], contentText: FieldValue.delete(), budgetRefunded: refundable || data.budgetRefunded === true, completedAt: now, expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000), updatedAt: now });
   if (grant) await refundAiBudget(grant).catch(() => undefined);
   if (typeof data.storagePath === "string") await getAdminStorageBucket().file(data.storagePath).delete({ ignoreNotFound: true }).catch(() => undefined);
   return Response.json(mapVideoCardJobData(jobId, { ...data, status: "cancelled", drafts: [], updatedAt: now }));
