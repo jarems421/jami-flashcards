@@ -186,6 +186,19 @@ describe("Storage security rules", () => {
     await assertFails(uploadBytes(ref(demoStorage, `${root}/video.webm`), blob("video/webm")));
   });
 
+  it("allows private temporary card-source files but rejects unsafe types", async () => {
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const bobStorage = testEnv.authenticatedContext("bob").storage();
+    const root = "users/alice/cardSourceImports/job-123456789012";
+    const slides = ref(aliceStorage, `${root}/lecture.pptx`);
+
+    await assertSucceeds(uploadBytes(slides, blob("application/vnd.openxmlformats-officedocument.presentationml.presentation")));
+    await assertSucceeds(getBytes(slides));
+    await assertFails(getBytes(ref(bobStorage, `${root}/lecture.pptx`)));
+    await assertFails(uploadBytes(ref(aliceStorage, `${root}/script.js`), blob("application/javascript")));
+    await assertSucceeds(deleteObject(slides));
+  });
+
   it("lets only the owner read server-created assistant and paper images", async () => {
     const assistantPath =
       "users/alice/assistantImages/asset-1/illustration.webp";

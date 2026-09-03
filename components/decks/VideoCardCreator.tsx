@@ -161,7 +161,10 @@ export default function VideoCardCreator({
   useEffect(() => {
     void getRecentVideoCardJobs()
       .then((jobs) => {
-        const resumable = jobs.find((item) => ["queued", "running", "ready"].includes(item.status));
+        const resumable = jobs.find((item) =>
+          ["youtube", "upload"].includes(item.sourceKind) &&
+          ["queued", "running", "ready"].includes(item.status)
+        );
         if (resumable) setJob(resumable);
       })
       .catch(() => undefined);

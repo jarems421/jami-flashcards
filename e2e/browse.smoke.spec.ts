@@ -150,6 +150,14 @@ test("Cards lists seeded cards and searches their fronts", async ({ page }) => {
   // The other seeded card must drop out, or the filter is not applied.
   await expect(page.getByText(E2E_CARDS[1].front)).toHaveCount(0);
 
+  await page.getByRole("button", { name: "From notes or file" }).click();
+  await expect(page.getByText("Turn study material into a draft deck")).toBeVisible();
+  await expect(page.getByText("PDF, PowerPoint, Word, text or image · under 20 MB")).toBeVisible();
+  await expect(page.getByText("Key points")).toBeVisible();
+  await expect(page.getByText("Standard")).toBeVisible();
+  await expect(page.getByText("Thorough")).toBeVisible();
+  await expect(page.getByLabel("Most cards to make (optional)")).toHaveCount(0);
+
   expect(errors).toEqual([]);
 });
 

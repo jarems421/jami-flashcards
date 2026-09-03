@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // The cards carry no timestamps and no evidence, and the video the
     // timestamps referred to is deleted right after this commits. Once an
     // import is approved there is nothing left to look back at.
-    transaction.update(jobRef, { status: "approved", drafts: [], evidence: [], storagePath: FieldValue.delete(), approvedCardIds: cards.map((card) => card.id), completedAt: now, expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000), updatedAt: now });
+    transaction.update(jobRef, { status: "approved", drafts: [], evidence: [], storagePath: FieldValue.delete(), contentText: FieldValue.delete(), approvedCardIds: cards.map((card) => card.id), completedAt: now, expiresAt: Timestamp.fromMillis(now + 24 * 60 * 60_000), updatedAt: now });
     return { kind: "created" as const, cards, storagePath };
   });
 

@@ -4,35 +4,27 @@ import {
   useEffect,
   useMemo,
   useState,
-  type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
-  getCardContentKey,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
   normalizeCardContentInput,
-  parseCardImportText,
   type Card,
-  type ImportedCardDraft,
 } from "@/lib/study/cards";
-import { downloadTextFile } from "@/lib/app/download";
 import type { Feedback } from "@/lib/app/feedback";
 import type { Topic } from "@/lib/material/topics";
-import {
-  CardBatchCreateError,
-  createCard,
-  createCardsInBatches,
-} from "@/services/study/cards";
+import { createCard } from "@/services/study/cards";
 import type { Deck } from "@/lib/study/decks";
 import { featureFlags } from "@/lib/app/feature-flags";
 import TopicPicker from "@/components/topics/TopicPicker";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import VideoCardCreator from "@/components/decks/VideoCardCreator";
-import { Button, Input, SectionHeader, StudyText, Textarea } from "@/components/ui";
+import SourceCardCreator from "@/components/decks/SourceCardCreator";
+import { Button, Input, SectionHeader, StudyText } from "@/components/ui";
 
-type CreationMode = "single" | "list" | "video";
+type CreationMode = "single" | "source" | "video";
 
 type CardCreationPanelProps = {
   userId: string;
@@ -53,28 +45,6 @@ type CardCreationPanelProps = {
   ) => void;
   onFeedback: (feedback: Feedback) => void;
 };
-
-function getNewDraftSummary(
-  drafts: ImportedCardDraft[],
-  existingKeys: Set<string>
-) {
-  const seenKeys = new Set<string>();
-  const newDrafts: ImportedCardDraft[] = [];
-  let duplicateCount = 0;
-
-  for (const draft of drafts) {
-    const key = getCardContentKey(draft.front, draft.back);
-    if (existingKeys.has(key) || seenKeys.has(key)) {
-      duplicateCount += 1;
-      continue;
-    }
-
-    seenKeys.add(key);
-    newDrafts.push(draft);
-  }
-
-  return { newDrafts, duplicateCount };
-}
 
 function ModeButton({
   active,
@@ -104,7 +74,6 @@ export default function CardCreationPanel({
   userId,
   decks,
   decksLoading = false,
-  existingCards,
   topics,
   onTopicsChange,
   defaultDeckId,
@@ -121,44 +90,18 @@ export default function CardCreationPanel({
   const [singleTopicIds, setSingleTopicIds] = useState<string[]>([]);
   const [addingSingleCard, setAddingSingleCard] = useState(false);
 
-  const [listDeckId, setListDeckId] = useState(fallbackDeckId);
-  const [listText, setListText] = useState("");
-  const [listFileName, setListFileName] = useState("");
-  const [listTopicIds, setListTopicIds] = useState<string[]>([]);
-  const [addingListCards, setAddingListCards] = useState(false);
-  const [listProgress, setListProgress] = useState<{ completed: number; total: number } | null>(null);
-
   useEffect(() => {
     if (!fallbackDeckId) {
       return;
     }
 
     setSingleDeckId((current) => current || fallbackDeckId);
-    setListDeckId((current) => current || fallbackDeckId);
   }, [fallbackDeckId]);
 
   const deckNamesById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
     [decks]
   );
-  const existingKeysByDeckId = useMemo(() => {
-    const keys = new Map<string, Set<string>>();
-
-    for (const card of existingCards) {
-      const deckKeys = keys.get(card.deckId) ?? new Set<string>();
-      deckKeys.add(getCardContentKey(card.front, card.back));
-      keys.set(card.deckId, deckKeys);
-    }
-
-    return keys;
-  }, [existingCards]);
-
-  const listSummary = useMemo(() => parseCardImportText(listText), [listText]);
-  const listDraftSummary = useMemo(
-    () => getNewDraftSummary(listSummary.cards, existingKeysByDeckId.get(listDeckId) ?? new Set()),
-    [existingKeysByDeckId, listDeckId, listSummary.cards]
-  );
-
   const renderDeckSelect = (
     value: string,
     onChange: (value: string) => void,
@@ -250,90 +193,6 @@ export default function CardCreationPanel({
     }
   };
 
-  const handleListFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const input = event.currentTarget;
-    const file = input.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    try {
-      setListText(await file.text());
-      setListFileName(file.name);
-      onFeedback({ type: "success", message: "File loaded. Check the preview before adding cards." });
-    } catch (error) {
-      console.error(error);
-      onFeedback({ type: "error", message: "Failed to read that file." });
-    } finally {
-      input.value = "";
-    }
-  };
-
-  const handleAddListCards = async () => {
-    if (!listDeckId) {
-      onFeedback({ type: "error", message: "Choose a deck first." });
-      return;
-    }
-
-    if (listSummary.skippedRows > 0) {
-      onFeedback({ type: "error", message: "Fix the rows that need attention before adding cards." });
-      return;
-    }
-
-    if (listDraftSummary.newDrafts.length === 0) {
-      onFeedback({
-        type: "error",
-        message: listSummary.cards.length > 0 ? "All detected cards already exist in this deck." : "Paste a list of cards first.",
-      });
-      return;
-    }
-
-    setAddingListCards(true);
-    setListProgress({ completed: 0, total: listDraftSummary.newDrafts.length });
-
-    try {
-      const createdCards = await createCardsInBatches(
-        {
-          drafts: listDraftSummary.newDrafts,
-          deckId: listDeckId,
-          userId,
-          topicIds: listTopicIds,
-        },
-        (completed, total) => setListProgress({ completed, total })
-      );
-      const duplicateMessage =
-        listDraftSummary.duplicateCount > 0
-          ? ` Skipped ${listDraftSummary.duplicateCount} duplicate${listDraftSummary.duplicateCount === 1 ? "" : "s"}.`
-          : "";
-
-      setListText("");
-      setListFileName("");
-      setListTopicIds([]);
-      setListProgress(null);
-      onCardsCreated(createdCards, { source: "list", selectCreated: true });
-      onFeedback({
-        type: "success",
-        message: `Added ${createdCards.length} cards.${duplicateMessage} They are selected below so you can add Topics if needed.`,
-      });
-    } catch (error) {
-      console.error(error);
-      const createdCards =
-        error instanceof CardBatchCreateError ? error.createdCards : [];
-      if (createdCards.length > 0) {
-        onCardsCreated(createdCards, { source: "list", selectCreated: true });
-      }
-      onFeedback({
-        type: "error",
-        message:
-          createdCards.length > 0
-            ? `Added ${createdCards.length} cards before the batch stopped. Check the selected cards before retrying.`
-            : "Failed to add those cards.",
-      });
-    } finally {
-      setAddingListCards(false);
-    }
-  };
-
   return (
     <section id="add-card" className="app-panel p-4 sm:p-5">
       <SectionHeader
@@ -342,8 +201,8 @@ export default function CardCreationPanel({
         action={
           <div className="flex flex-wrap gap-2">
             <ModeButton active={mode === "single"} onClick={() => setMode("single")}>Single card</ModeButton>
+            <ModeButton active={mode === "source"} onClick={() => setMode("source")}>From notes or file</ModeButton>
             <ModeButton active={mode === "video"} onClick={() => setMode("video")}>From video</ModeButton>
-            <ModeButton active={mode === "list"} onClick={() => setMode("list")}>Advanced: Paste list</ModeButton>
           </div>
         }
       />
@@ -474,176 +333,20 @@ export default function CardCreationPanel({
         />
       ) : null}
 
-      {mode === "list" ? (
-        <div className="mt-5 space-y-4 animate-fade-in">
-          {!deckIsFixed ? (
-            <div>
-              <div className="mb-2 text-sm font-medium tracking-[0.01em] text-text-secondary">
-                Deck
-              </div>
-              {renderDeckSelect(listDeckId, setListDeckId, addingListCards)}
-            </div>
-          ) : null}
-          <Textarea
-            label="Cards to add"
-            placeholder={"Front | Back\nFront - Back\n\nFront\nBack"}
-            value={listText}
-            onChange={(event) => setListText(event.target.value)}
-            rows={8}
-            disabled={addingListCards}
-          />
-          <details className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
-            <summary className="cursor-pointer text-sm font-medium text-text-secondary">
-              Topics for imported cards{" "}
-              <span className="font-normal text-text-muted">(optional)</span>
-            </summary>
-            <div className="mt-4">
-              <TopicPicker
-                userId={userId}
-                topics={topics}
-                selectedTopicIds={listTopicIds}
-                onChange={setListTopicIds}
-                onTopicsChange={onTopicsChange}
-                disabled={addingListCards}
-              />
-            </div>
-          </details>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <div className="app-subtle-panel rounded-lg p-4">
-              <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                Formats
-              </div>
-              <div className="mt-2 space-y-2 text-sm leading-6 text-text-secondary">
-                <p className="app-chip rounded-md px-3 py-2 font-mono text-xs">
-                  Front | Back
-                </p>
-                <p>Dash, colon, or two-line cards also work.</p>
-              </div>
-              <label className="app-chip mt-3 inline-flex min-h-[2.5rem] cursor-pointer items-center justify-center rounded-xl px-3 py-2 text-sm font-medium transition duration-fast hover:border-border-strong">
-                Upload a file
-                <input
-                  type="file"
-                  accept=".txt,.tsv,.csv,text/plain,text/tab-separated-values,text/csv"
-                  className="sr-only"
-                  disabled={addingListCards}
-                  onChange={(event) => void handleListFileChange(event)}
-                />
-              </label>
-              {listFileName ? (
-                <p className="mt-3 text-xs font-medium text-text-secondary">
-                  Loaded {listFileName}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="app-subtle-panel rounded-lg p-4">
-              <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                Preview
-              </div>
-              {listSummary.cards.length > 0 ? (
-                <div className="mt-3 space-y-2">
-                  {listSummary.cards.slice(0, 3).map((card, index) => (
-                    <div
-                      key={`${card.front}-${index}`}
-                      className="app-subtle-panel rounded-md p-3"
-                    >
-                      <StudyText
-                        as="div"
-                        text={card.front}
-                        className="truncate text-sm font-medium text-text-primary"
-                      />
-                      <StudyText
-                        as="div"
-                        text={card.back}
-                        className="mt-1 truncate text-xs text-text-muted"
-                      />
-                    </div>
-                  ))}
-                  {listSummary.cards.length > 3 ? (
-                    <div className="text-xs text-text-muted">
-                      Plus {listSummary.cards.length - 3} more.
-                    </div>
-                  ) : null}
-                  {listDraftSummary.duplicateCount > 0 ? (
-                    <div className="app-selected rounded-full px-3 py-1.5 text-xs font-medium">
-                      {listDraftSummary.duplicateCount} duplicate{listDraftSummary.duplicateCount === 1 ? "" : "s"} will be skipped.
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="mt-2 text-sm leading-6 text-text-secondary">
-                  Paste cards or upload a file to check them before saving.
-                </p>
-              )}
-            </div>
-          </div>
-
-          {listSummary.skippedRows > 0 ? (
-            <div className="rounded-lg border border-error/35 bg-error-muted p-4 text-sm leading-6 text-[var(--color-error-text)]">
-              <div className="font-semibold">
-                {listSummary.skippedRows} row{listSummary.skippedRows === 1 ? "" : "s"} need attention.
-              </div>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                {listSummary.errors.map((error) => (
-                  <li key={error}>{error}</li>
-                ))}
-              </ul>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-3"
-                onClick={() => downloadTextFile("card-list-issues.txt", listSummary.errors.join("\n"))}
-              >
-                Save issues
-              </Button>
-            </div>
-          ) : null}
-
-          <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-center">
-            <Button
-              type="button"
-              disabled={
-                addingListCards ||
-                !listDeckId ||
-                listDraftSummary.newDrafts.length === 0 ||
-                listSummary.skippedRows > 0
-              }
-              onClick={() => void handleAddListCards()}
-              size="lg"
-              className="w-full sm:w-auto"
-            >
-              {addingListCards
-                ? "Adding..."
-                : listDraftSummary.newDrafts.length > 0
-                  ? `Add ${listDraftSummary.newDrafts.length} cards`
-                  : "Add cards"}
-            </Button>
-            <Button
-              type="button"
-              disabled={addingListCards || (!listText && !listFileName)}
-              onClick={() => {
-                setListText("");
-                setListFileName("");
-                setListTopicIds([]);
-                setListProgress(null);
-              }}
-              variant="ghost"
-              size="lg"
-              className="w-full sm:w-auto"
-            >
-              Clear
-            </Button>
-            <div className="text-center text-sm text-text-muted sm:text-left">
-              {listProgress
-                ? `${listProgress.completed} / ${listProgress.total} added.`
-                : listDraftSummary.newDrafts.length > 0 && listSummary.skippedRows === 0
-                  ? `${listDraftSummary.newDrafts.length} cards ready.`
-                  : "No cards added yet."}
-            </div>
-          </div>
-        </div>
+      {mode === "source" ? (
+        <SourceCardCreator
+          userId={userId}
+          decks={decks}
+          topics={topics}
+          defaultDeckId={defaultDeckId}
+          onTopicsChange={onTopicsChange}
+          onCardsCreated={(cards) =>
+            onCardsCreated(cards, { source: "source", selectCreated: true })
+          }
+          onMessage={(message, error) =>
+            onFeedback({ type: error ? "error" : "success", message })
+          }
+        />
       ) : null}
 
     </section>

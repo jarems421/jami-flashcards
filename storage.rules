@@ -76,6 +76,14 @@ service firebase.storage {
       allow delete: if isSelf(userId) && !isDemoAccount();
     }
 
+    // Files used to create flashcard drafts are temporary. The server deletes
+    // them when the student approves or discards the generated batch.
+    match /users/{userId}/cardSourceImports/{jobId}/{fileName} {
+      allow read: if isSelf(userId);
+      allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedSourceFile();
+      allow delete: if isSelf(userId) && !isDemoAccount();
+    }
+
     // AI-created images are written and deleted only by server routes using
     // Firebase Admin. The owner may view the private object after the route
     // has returned its storage path.

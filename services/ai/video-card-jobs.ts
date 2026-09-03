@@ -1,16 +1,16 @@
-import { mapVideoCardJobData, type VideoCardDraft, type VideoCardJob, type VideoCoverage } from "@/lib/ai/video-card-jobs";
+import { mapVideoCardJobData, type CardImportSourceKind, type VideoCardDraft, type VideoCardJob, type VideoCoverage } from "@/lib/ai/video-card-jobs";
 import { mapCardData, type Card } from "@/lib/study/cards";
 import { auth } from "@/services/firebase/client";
 
 async function request(path: string, init?: RequestInit) {
-  const user = auth.currentUser; if (!user) throw new Error("Sign in again to import a video.");
+  const user = auth.currentUser; if (!user) throw new Error("Sign in again to create cards from a source.");
   const response = await fetch(path, { ...init, headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), Authorization: `Bearer ${await user.getIdToken()}`, ...init?.headers } });
   const data = await response.json().catch(() => null) as Record<string, unknown> | null;
-  if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "Jami could not process that video.");
+  if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "Jami could not process that source.");
   return data ?? {};
 }
 
-export async function createVideoCardJob(input: { id: string; sourceKind: "youtube" | "upload"; youtubeUrl?: string; storagePath?: string; fileName?: string; durationSeconds?: number; deckId: string; topicIds: string[]; coverage: VideoCoverage; focus?: string }) {
+export async function createVideoCardJob(input: { id: string; sourceKind: CardImportSourceKind; youtubeUrl?: string; storagePath?: string; fileName?: string; mimeType?: string; durationSeconds?: number; contentText?: string; deckId: string; topicIds: string[]; coverage: VideoCoverage; focus?: string }) {
   const data = await request("/api/ai/video-card-jobs", { method: "POST", headers: { "x-idempotency-key": input.id }, body: JSON.stringify(input) });
   return mapVideoCardJobData(input.id, data);
 }
