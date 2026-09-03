@@ -176,13 +176,12 @@ describe("the sky is on the document before the first paint", () => {
     ).toEqual(["app-theme-pink", "app-theme-light"]);
   });
 
-  it("has the notebook palette right in the first painted frame", () => {
+  it("keeps the sky off a notebook, whatever the preference says", () => {
     /*
-     * Notebooks show the sky, and the reason they were kept from it before was
-     * a class arriving after the page had measured itself. Stamping it here is
-     * the answer to that, so this is the assertion the whole exclusion used to
-     * stand in for: by the time a notebook route paints once, the palette is
-     * already the sky's and nothing changes it afterwards.
+     * Notebooks have been added and removed three times; see the exclusion list
+     * for the history. The last attempt was tried on an iPad and was buggy in
+     * use, so this holds the line until somebody has both a profile and a
+     * symptom -- a nested route, because that is how notebooks are addressed.
      */
     expect(
       run(
@@ -192,7 +191,7 @@ describe("the sky is on the document before the first paint", () => {
         },
         "/dashboard/notebooks/abc123"
       )
-    ).toEqual(["constellation-background-enabled"]);
+    ).toEqual(["app-theme-pink", "app-theme-light"]);
   });
 
   it("agrees with the shell about every excluded path", () => {

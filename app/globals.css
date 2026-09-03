@@ -776,12 +776,13 @@
   /*
    * The sky holds still while a notebook is open.
    *
-   * Ink latency is the one thing in this app worth protecting above everything
-   * else, and a notebook can have sixty animated stars behind it. They are
-   * compositor-only animations and should cost nothing next to a drawing
-   * canvas, but "should" is not a good enough argument to spend pen feel on.
-   * The stars, their glow and their sparkles all still draw -- they simply stop
-   * moving while there is a pen in play.
+   * Dead as it stands: notebooks are on the star field's exclusion list, so
+   * there is no sky behind one for this to hold still. It is kept because it is
+   * the mitigation any fourth attempt at that would want on day one -- ink
+   * latency is the one thing in this app worth protecting above everything
+   * else, and forty masked, filtered, animated layers behind a canvas that
+   * repaints every stroke is not a cost to take on trust. See
+   * CONSTELLATION_BACKGROUND_EXCLUDED_PATHS for why they are excluded.
    */
   body.jami-notebook-editor-active .constellation-sky-layer,
   body.jami-notebook-editor-active .constellation-sky-layer * {
@@ -1915,6 +1916,28 @@ body.constellation-background-enabled::before {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
   }
+}
+
+/*
+ * The light behind Jami's mark, breathing.
+ *
+ * One element, opacity only, on one page. It is the whole of the "mystical"
+ * budget on the Tutor front door, and it is deliberately not the two 288px
+ * blurred discs that used to float behind the headline there: those decorated
+ * the page, this one says where Jami is.
+ */
+@keyframes jami-mark-glow {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.jami-mark-glow {
+  animation: jami-mark-glow 6s ease-in-out infinite;
 }
 
 .constellation-star-enter {

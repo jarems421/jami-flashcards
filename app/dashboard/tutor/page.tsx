@@ -13,7 +13,7 @@ import {
   IconBubble,
   JamiTutorIcon,
   SectionHeader,
-    Skeleton,
+  Skeleton,
 } from "@/components/ui";
 import { useFeedback } from "@/hooks/useFeedback";
 import {
@@ -40,6 +40,26 @@ import { getActiveSources } from "@/services/study/sources";
 const MAX_PENDING_DRAFTS = 20;
 const MAX_RECENT_SOURCES = 6;
 
+/**
+ * When a source was last touched, in the roughest terms that are still true.
+ *
+ * A row that only names a source is a filing cabinet. Knowing which one you had
+ * open yesterday is most of how you find the one you want.
+ */
+function formatLastUsed(updatedAt: number) {
+  const elapsed = Math.max(0, Date.now() - updatedAt);
+  const hours = Math.floor(elapsed / 3_600_000);
+  if (hours < 1) return "Just now";
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+  }).format(updatedAt);
+}
+
 function Chip({ children }: { children: React.ReactNode }) {
   return (
     <span className="app-chip rounded-full px-2.5 py-1 text-2xs font-semibold">
@@ -48,38 +68,18 @@ function Chip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TutorStep({
-  number,
-  title,
-  detail,
-}: {
-  number: string;
-  title: string;
-  detail: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-start gap-3">
-      <span className="app-chip grid h-7 w-7 shrink-0 place-items-center rounded-full text-2xs font-semibold tabular-nums">
-        {number}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-semibold text-text-primary">
-          {title}
-        </span>
-        <span className="mt-0.5 block text-xs leading-5 text-text-muted">
-          {detail}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 /**
  * Jami's front door.
  *
- * The invitation to study is the main surface. Material stays within reach,
- * while generated drafts sit in a distinct approval queue so administrative
- * work never makes the Tutor feel like another dashboard.
+ * Two things happen here: you pick something to ask about, and you clear the
+ * drafts Jami has written for you. So those are what the page is, in that
+ * order, and the header above them is a label rather than an event.
+ *
+ * It used to open on a 400px hero -- a headline at text-5xl, one button, two
+ * blurred decorative discs, and a numbered 01/02/03 explainer of how tutoring
+ * works -- none of which was the student's own material, and all of which sat
+ * above it. An explainer earns its place the first time somebody arrives and
+ * costs them a scroll on every visit after that.
  */
 export default function TutorPage() {
   const { user } = useUser();
@@ -139,6 +139,22 @@ export default function TutorPage() {
     [sources],
   );
   const hasDrafts = draftGroups.length > 0;
+  /*
+   * Which sources have drafts waiting, so a row can say so.
+   *
+   * The two halves of this page were about the same material and never
+   * referred to each other: the queue below knew a source had four cards
+   * waiting and the row for that source, directly above it, showed nothing.
+   */
+  const draftsBySource = useMemo(
+    () =>
+      new Map(
+        draftGroups
+          .filter((group) => group.sourceId)
+          .map((group) => [group.sourceId as string, group.total])
+      ),
+    [draftGroups]
+  );
 
   return (
     <AppPage
@@ -147,8 +163,8 @@ export default function TutorPage() {
       viewsLabel="Tutor views"
       backHref="/dashboard"
       backLabel="Today"
-      width="3xl"
-      contentClassName="space-y-4 sm:space-y-6"
+      width="xl"
+      contentClassName="space-y-4"
     >
       {feedback ? (
         <FeedbackBanner
@@ -158,257 +174,221 @@ export default function TutorPage() {
         />
       ) : null}
 
-      <div className="grid min-w-0 gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
-        <div className="min-w-0 space-y-4 sm:space-y-6">
-          <Card tone="warm" padding="lg" className="min-h-[25rem]">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-accent/10 blur-3xl"
-            />
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute -bottom-32 left-1/4 h-64 w-64 rounded-full bg-warm-glow blur-3xl"
-            />
-
-            <div className="relative flex min-h-[21rem] flex-col">
-              <div className="flex items-center gap-3">
-                <span className="grid h-12 w-12 place-items-center rounded-2xl border border-warm-border bg-warm-glow text-warm-accent shadow-warm">
-                  <JamiTutorIcon className="h-7 w-7" />
-                </span>
-                <span>
-                  <span className="block text-2xs font-semibold uppercase tracking-[0.2em] text-warm-accent">
-                    Jami Tutor
-                  </span>
-                  <span className="mt-0.5 block text-xs text-text-muted">
-                    Beside your work, when you ask
-                  </span>
-                </span>
-              </div>
-
-              <div className="mt-9 max-w-2xl sm:mt-12">
-                <h2 className="text-3xl font-medium leading-[1.08] tracking-[-0.035em] text-text-primary sm:text-4xl lg:text-5xl">
-                  What are you working through?
-                </h2>
-                <p className="mt-4 max-w-xl text-sm leading-7 text-text-secondary sm:text-base">
-                  Choose your notes, a paper, or another source. Jami will help
-                  you find the next step without taking the thinking away.
-                </p>
-                <div className="mt-7 flex flex-wrap items-center gap-3">
-                  <ButtonLink href="/dashboard/library" size="lg">
-                    Choose material
-                  </ButtonLink>
-                  <span className="text-xs leading-5 text-text-muted">
-                    Reads only what you hand it
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-10 grid gap-5 border-t border-[var(--color-border)] pt-5 sm:grid-cols-3">
-                <TutorStep
-                  number="01"
-                  title="Hint first"
-                  detail="A useful nudge before an answer."
-                />
-                <TutorStep
-                  number="02"
-                  title="Work it through"
-                  detail="Explain, question, and check together."
-                />
-                <TutorStep
-                  number="03"
-                  title="You stay in control"
-                  detail="Full solutions and drafts are deliberate."
-                />
-              </div>
-            </div>
-          </Card>
-
-          {loading || recentSources.length > 0 ? (
-            <Card padding="lg">
-              <SectionHeader
-                eyebrow="Pick up where you left off"
-                title="Recent material"
-                description="Jami reads the one you pick, for that conversation only."
-                action={
-                  <ButtonLink
-                    href="/dashboard/library"
-                    variant="secondary"
-                    size="sm"
-                  >
-                    See all
-                  </ButtonLink>
-                }
-              />
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {loading ? (
-                  <>
-                    <Skeleton className="h-20" />
-                    <Skeleton className="h-20" />
-                  </>
-                ) : (
-                  recentSources.map((source) => (
-                    <Link
-                      key={source.id}
-                      href={getSourcePanelHref(source.id, "tutor")}
-                      className="group app-subtle-panel flex min-h-20 items-center gap-3 rounded-xl p-3.5 transition duration-fast hover:-translate-y-[1px] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)]"
-                    >
-                      <IconBubble
-                        size="md"
-                        shape="rounded"
-                        className="app-chip shrink-0 font-semibold"
-                        aria-hidden
-                      >
-                        {getSourceTypeMark(source.type)}
-                      </IconBubble>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-text-primary">
-                          {source.title}
-                        </span>
-                        <span className="mt-1 block text-xs text-text-muted">
-                          {getSourceTypeLabel(source.type)}
-                        </span>
-                      </span>
-                      <span
-                        aria-hidden="true"
-                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm text-text-muted transition duration-fast group-hover:bg-[var(--color-glass-strong)] group-hover:text-text-primary"
-                      >
-                        →
-                      </span>
-                    </Link>
-                  ))
-                )}
-              </div>
-            </Card>
-          ) : (
-            <EmptyState
-              title="Give Jami something useful to read"
-              description="Add a source, then ask from that material when you need help."
-              action={
-                <ButtonLink href="/dashboard/library">Add a source</ButtonLink>
-              }
-            />
-          )}
-        </div>
-
-        <aside
-          className={`${hasDrafts ? "order-first xl:order-none" : ""} min-w-0 xl:sticky xl:top-28`}
-        >
-          <Card tone={hasDrafts ? "warm" : "subtle"} padding="md">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                  Draft review
-                </p>
-                <h2 className="mt-2 text-lg font-semibold tracking-tight text-text-primary">
-                  {loading
-                    ? "Checking your queue"
-                    : hasDrafts
-                      ? `${drafts.length} waiting for you`
-                      : "You are all caught up"}
-                </h2>
-              </div>
+      {/*
+        * Who this is and how to start, on one line.
+        *
+        * The single promise that matters is here and nowhere else. It used to
+        * be made four times on this screen -- "Reads only what you hand it",
+        * "for that conversation only", "Nothing Jami writes joins your studying
+        * until you have read it and said yes", "Keeps nothing between
+        * conversations". Each is true and the wording is deliberate, but four
+        * reassurances on one page stop reassuring and start sounding nervous.
+        */}
+      <Card tone="warm" padding="md">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <span className="relative grid h-12 w-12 shrink-0 place-items-center">
+              {/*
+                * Light around the mark rather than behind the page. It is the
+                * one piece of atmosphere here, it belongs to Jami, and it
+                * breathes slowly enough that noticing it is not the point.
+                */}
               <span
-                className={`grid h-9 min-w-9 shrink-0 place-items-center rounded-full px-2 text-xs font-semibold tabular-nums ${
-                  hasDrafts ? "app-selected" : "app-chip"
-                }`}
-              >
-                {loading ? "…" : drafts.length}
+                aria-hidden="true"
+                className="jami-mark-glow pointer-events-none absolute inset-0 -m-3 rounded-full bg-[radial-gradient(circle_at_center,var(--color-warm-glow)_0%,transparent_70%)]"
+              />
+              <span className="relative grid h-12 w-12 place-items-center rounded-2xl border border-warm-border bg-warm-glow text-warm-accent shadow-warm">
+                <JamiTutorIcon className="h-6 w-6" />
               </span>
-            </div>
-            <p className="mt-3 text-xs leading-5 text-text-muted">
-              {"Nothing Jami writes joins your studying until you have read it and said yes."}
-            </p>
-
-            <div className="mt-5 space-y-2.5">
-              {loading ? (
-                <>
-                  <Skeleton className="h-24" />
-                  <Skeleton className="h-24" />
-                </>
-              ) : loadFailed ? (
-                <EmptyState
-                  variant="compact"
-                  align="left"
-                  emoji="Draft"
-                  title="Drafts are unavailable"
-                  description="We could not read your queue, so it has not been treated as empty."
-                  action={
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => void reload()}
-                    >
-                      Try again
-                    </Button>
-                  }
-                />
-              ) : !hasDrafts ? (
-                <div className="app-subtle-panel rounded-xl p-4">
-                  <p className="text-sm font-medium text-text-primary">
-                    Nothing needs reviewing
-                  </p>
-                  <p className="mt-1.5 text-xs leading-5 text-text-muted">
-                    Card and question drafts will wait here for your approval.
-                  </p>
-                </div>
-              ) : (
-                draftGroups.map((group) => (
-                  <div
-                    key={group.sourceId ?? "__unsourced__"}
-                    className="app-subtle-panel rounded-xl p-3.5"
-                  >
-                    <div className="flex items-start gap-3">
-                      <IconBubble
-                        size="sm"
-                        shape="rounded"
-                        className="app-chip shrink-0 font-semibold tabular-nums"
-                        aria-hidden
-                      >
-                        {group.total}
-                      </IconBubble>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold text-text-primary">
-                          {group.title}
-                        </div>
-                        {group.preview ? (
-                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">
-                            {group.preview}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                      {describeDraftCounts(group).map((part) => (
-                        <Chip key={part}>{part}</Chip>
-                      ))}
-                    </div>
-                    {group.sourceId ? (
-                      <ButtonLink
-                        href={getSourcePanelHref(group.sourceId, "drafts")}
-                        variant="secondary"
-                        size="sm"
-                        className="mt-3 w-full"
-                      >
-                        Review drafts
-                      </ButtonLink>
-                    ) : null}
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="mt-5 border-t border-[var(--color-border)] pt-4">
-              <p className="flex items-start gap-2 text-2xs leading-5 text-text-muted">
-                <span
-                  aria-hidden="true"
-                  className="mt-2 h-1 w-1 shrink-0 rounded-full bg-current"
-                />
-                Keeps nothing between conversations
+            </span>
+            <div className="min-w-0">
+              <p className="text-2xs font-semibold uppercase tracking-[0.2em] text-warm-accent">
+                Jami Tutor
+              </p>
+              <p className="mt-1 text-sm leading-6 text-text-secondary">
+                Ask from your own material.
+              </p>
+              {/*
+                * Two short lines, and deliberately still two.
+                *
+                * Folding them into one sentence was the first thing tried here
+                * and `tutor-surface.test.ts` caught it: what a student needs to
+                * know about what Jami retains has to be scannable, because a
+                * paragraph about it is skipped exactly on the first visit, when
+                * it is the only time it matters. Four of these on one page was
+                * the problem; one is not the fix.
+                */}
+              <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-2xs leading-5 text-text-muted">
+                <span>Reads only what you hand it</span>
+                <span>Keeps nothing between conversations</span>
               </p>
             </div>
-          </Card>
-        </aside>
-      </div>
+          </div>
+          <ButtonLink href="/dashboard/library" className="shrink-0">
+            Choose material
+          </ButtonLink>
+        </div>
+      </Card>
+
+      {/*
+        * Your material, first, because picking something is what you came to
+        * do. It used to sit under the hero and beside a sidebar that moved to
+        * the top whenever a draft existed, so the page arrived in a different
+        * shape depending on data.
+        */}
+      {loading || recentSources.length > 0 ? (
+        <Card padding="md">
+          <SectionHeader
+            title="Recent material"
+            description="Pick one to ask about."
+            action={
+              <ButtonLink href="/dashboard/library" variant="secondary" size="sm">
+                See all
+              </ButtonLink>
+            }
+          />
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {loading ? (
+              <>
+                <Skeleton className="h-16" />
+                <Skeleton className="h-16" />
+              </>
+            ) : (
+              recentSources.map((source) => (
+                <Link
+                  key={source.id}
+                  href={getSourcePanelHref(source.id, "tutor")}
+                  className="group app-subtle-panel flex items-center gap-3 rounded-lg p-3 transition duration-fast hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)]"
+                >
+                  <IconBubble
+                    size="sm"
+                    shape="rounded"
+                    className="app-chip shrink-0 font-semibold"
+                    aria-hidden
+                  >
+                    {getSourceTypeMark(source.type)}
+                  </IconBubble>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-text-primary">
+                      {source.title}
+                    </span>
+                    <span className="mt-0.5 block truncate text-2xs text-text-muted">
+                      {getSourceTypeLabel(source.type)} ·{" "}
+                      {formatLastUsed(source.updatedAt)}
+                    </span>
+                  </span>
+                  {draftsBySource.has(source.id) ? (
+                    <span className="app-selected shrink-0 rounded-full px-2 py-0.5 text-2xs font-semibold tabular-nums">
+                      {draftsBySource.get(source.id)} waiting
+                    </span>
+                  ) : null}
+                  <span
+                    aria-hidden="true"
+                    className="shrink-0 text-sm text-text-muted transition duration-fast group-hover:text-text-primary"
+                  >
+                    →
+                  </span>
+                </Link>
+              ))
+            )}
+          </div>
+        </Card>
+      ) : (
+        <EmptyState
+          title="Give Jami something useful to read"
+          description="Add a source, then ask from that material when you need help."
+          action={<ButtonLink href="/dashboard/library">Add a source</ButtonLink>}
+        />
+      )}
+
+      <Card tone={hasDrafts ? "warm" : "default"} padding="md">
+        <SectionHeader
+          title="Draft review"
+          description="Nothing Jami writes joins your studying until you have said yes."
+          action={
+            <span
+              className={`grid h-8 min-w-8 shrink-0 place-items-center rounded-full px-2.5 text-xs font-semibold tabular-nums ${
+                hasDrafts ? "app-selected" : "app-chip"
+              }`}
+              aria-label={`${loading ? 0 : drafts.length} drafts waiting`}
+            >
+              {loading ? "…" : drafts.length}
+            </span>
+          }
+        />
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {loading ? (
+            <>
+              <Skeleton className="h-24" />
+              <Skeleton className="h-24" />
+            </>
+          ) : loadFailed ? (
+            <div className="sm:col-span-2">
+              <EmptyState
+                variant="compact"
+                align="left"
+                emoji="Draft"
+                title="Drafts are unavailable"
+                description="We could not read your queue, so it has not been treated as empty."
+                action={
+                  <Button type="button" size="sm" onClick={() => void reload()}>
+                    Try again
+                  </Button>
+                }
+              />
+            </div>
+          ) : !hasDrafts ? (
+            <p className="text-sm text-text-muted sm:col-span-2">
+              Nothing is waiting. Card and question drafts will gather here for
+              your approval.
+            </p>
+          ) : (
+            draftGroups.map((group) => (
+              <div
+                key={group.sourceId ?? "__unsourced__"}
+                className="app-subtle-panel flex flex-col rounded-lg p-3"
+              >
+                <div className="flex items-start gap-3">
+                  <IconBubble
+                    size="sm"
+                    shape="rounded"
+                    className="app-chip shrink-0 font-semibold tabular-nums"
+                    aria-hidden
+                  >
+                    {group.total}
+                  </IconBubble>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-text-primary">
+                      {group.title}
+                    </div>
+                    {group.preview ? (
+                      <p className="mt-1 line-clamp-2 text-2xs leading-5 text-text-muted">
+                        {group.preview}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  {describeDraftCounts(group).map((part) => (
+                    <Chip key={part}>{part}</Chip>
+                  ))}
+                </div>
+                {group.sourceId ? (
+                  <ButtonLink
+                    href={getSourcePanelHref(group.sourceId, "drafts")}
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3"
+                  >
+                    Review drafts
+                  </ButtonLink>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
     </AppPage>
   );
 }

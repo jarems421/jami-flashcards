@@ -108,6 +108,20 @@ export default function ConstellationDashboardPage() {
    * this and stands down.
    */
   const linkPressResolvedRef = useRef(false);
+  /**
+   * Whether a finger is currently on a star.
+   *
+   * A ref rather than state, and read by a listener that is attached for the
+   * life of the page, because the ordering is what the whole bug was: both
+   * touch blockers used to be attached inside effects keyed on the drag state,
+   * so `pointerdown` set state, React scheduled a render, and the first
+   * `touchmove` arrived before the listener existed. iOS decides on that first
+   * move whether a gesture scrolls the page, and once it has decided, no
+   * `touch-action` and no later `preventDefault` takes it back -- which is why
+   * dragging a star up, or reaching down to the star below it, took the page
+   * with it.
+   */
+  const starGestureRef = useRef(false);
   const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -277,6 +291,40 @@ export default function ConstellationDashboardPage() {
     setIsConstellationBackgroundEnabled(true);
     setConstellationBackgroundEnabled(true);
   };
+
+  /*
+   * The page does not move while a star is being handled.
+   *
+   * Attached once, for the life of the page, and non-passive so that
+   * `preventDefault` actually counts. It only ever refuses the scroll -- the
+   * position updates stay in the drag effects below, where they can see the
+   * state they need.
+   */
+  useEffect(() => {
+    const container = document.getElementById("constellation-container");
+    if (!container) return;
+
+    const refuseScroll = (event: TouchEvent) => {
+      if (starGestureRef.current) event.preventDefault();
+    };
+
+    // Released anywhere -- on a star, on empty sky, off the page entirely.
+    const endGesture = () => { starGestureRef.current = false; };
+
+    container.addEventListener("touchmove", refuseScroll, { passive: false });
+    window.addEventListener("pointerup", endGesture);
+    window.addEventListener("pointercancel", endGesture);
+    window.addEventListener("touchend", endGesture);
+    window.addEventListener("touchcancel", endGesture);
+
+    return () => {
+      container.removeEventListener("touchmove", refuseScroll);
+      window.removeEventListener("pointerup", endGesture);
+      window.removeEventListener("pointercancel", endGesture);
+      window.removeEventListener("touchend", endGesture);
+      window.removeEventListener("touchcancel", endGesture);
+    };
+  }, []);
 
   useEffect(() => {
     if (!draggingStarId || !canArrangeSelectedConstellation) {
@@ -1078,8 +1126,14 @@ export default function ConstellationDashboardPage() {
                           !canArrangeSelectedConstellation
                             ? undefined
                             : isConnecting
-                              ? () => beginOrFinishLink(star)
-                              : () => setDraggingStarId(star.id)
+                              ? () => {
+                                  starGestureRef.current = true;
+                                  beginOrFinishLink(star);
+                                }
+                              : () => {
+                                  starGestureRef.current = true;
+                                  setDraggingStarId(star.id);
+                                }
                         }
                         onNudge={
                           canArrangeSelectedConstellation && !isConnecting

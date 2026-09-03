@@ -17,26 +17,35 @@ export const CONSTELLATION_BACKGROUND_EVENT =
  * so opening a notebook painted in one palette and swapped to another. Reading
  * one list is what stops that happening to the next path added here.
  *
- * Only the constellation page is on it. That page draws the same sky in the
- * middle of itself, and a second copy behind that is noise.
+ * The constellation page draws the same sky in the middle of itself, and a
+ * second copy behind that is noise.
  *
- * Notebooks were on this list twice and are off it again, deliberately. The
- * reason given last time was a class flip landing after the notebook had
- * measured its frame -- the shape of a report about handwriting squashed into a
- * corner -- and that reason has been answered rather than ignored: the class is
- * stamped by the blocking script now, so on a notebook route the palette is
- * correct in the first painted frame and nothing about it changes afterwards.
- * None of the rules that arrive with the class affect layout in any case; they
- * set colours, backgrounds and backdrop filters.
+ * Notebooks have now been added and removed three times, so the short version
+ * is worth having in one place before anyone tries a fourth:
  *
- * What has not been answered is the frame cost of forty animated, filtered
- * layers behind a canvas that repaints on every stroke. `globals.css` holds
- * every sky animation still while a notebook is open, which is the mitigation
- * that ships with this; whether that is the right trade is a question for
- * somebody writing on an iPad, not for a test.
+ *  - excluded when the notebook viewport was rewritten, with no note saying why;
+ *  - allowed on 1 September, on the reasoning that page colours are solid so
+ *    stars can only sit around the paper;
+ *  - excluded the next day after a student's handwriting turned up squashed
+ *    into a corner, blamed on the sky's class landing after the notebook had
+ *    measured its frame -- diagnosis by timing, never reproduced;
+ *  - allowed again on 3 September with that answered: the class is stamped by
+ *    the blocking script in the head now, so the palette is right in the first
+ *    painted frame and nothing about it changes afterwards;
+ *  - and excluded again the same day, because it was tried on an iPad and was
+ *    buggy in use. That is the finding that counts. The class-timing theory was
+ *    answered and the sky was still not fit to sit behind somebody writing, so
+ *    whatever is wrong is something else, and it has not been found yet.
+ *
+ * What is known and unresolved is the cost: forty stars, each a masked element
+ * carrying two drop-shadows, plus their sparkles -- roughly 160 layers -- behind
+ * a canvas that clears and repaints its whole backing store on every frame of a
+ * stroke. Nobody has profiled that on the device it matters on. Do not put this
+ * back without doing so, and without a symptom written down here.
  */
 export const CONSTELLATION_BACKGROUND_EXCLUDED_PATHS = [
   "/dashboard/constellation",
+  "/dashboard/notebooks/",
 ];
 
 export function allowsConstellationBackground(pathname: string) {
