@@ -45,6 +45,7 @@ import {
   type NotebookBatchedPen,
   type NotebookPenPreviewBatch,
 } from "@/lib/workspace/notebook-pen-preview";
+import { NOTEBOOK_INK_WARM_SNAPSHOT_IDLE_MS } from "@/lib/workspace/notebook-autosave";
 import {
   dispatchPreciseNotebookPointerMove,
   getJsDrawPointerReferenceElement,
@@ -80,6 +81,16 @@ export type NotebookInkEditorHandle = {
   redo(): void;
   serialize(): string | null;
   serializeAsync(): Promise<string | null>;
+  /**
+   * The most recent snapshot, taken off the critical path.
+   *
+   * A page swipe needs the outgoing page as an SVG the instant the gesture
+   * starts, and `serialize()` blocks the main thread to produce one -- on the
+   * very pointermove that begins the swipe, which is where a stall is most
+   * visible. This returns a snapshot that was already prepared while the page
+   * sat idle, and falls back to the blocking path only when there is none.
+   */
+  serializeWarm(): string | null;
   setEraserMode(mode: NotebookEraserMode): void;
   undo(): void;
 };
@@ -195,6 +206,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const pendingStyleRef = useRef(false);
     const appliedStyleRef = useRef<NotebookInkStyle | null>(null);
     const initialSvgRef = useRef(initialSvg);
+    /** The prepared snapshot, and whether ink has changed since it was taken. */
+    const warmSvgRef = useRef<string | null>(null);
+    const warmStaleRef = useRef(true);
+    const warmTimerRef = useRef<number | null>(null);
+    const warmVersionRef = useRef(0);
     const readOnlyRef = useRef(readOnly);
     const desiredStyleRef = useRef<NotebookInkStyle>({
       activeTool,
@@ -229,6 +245,43 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       onReadyError,
     ]);
 
+    /**
+     * Prepares a snapshot once the page has been still for a moment.
+     *
+     * `toSVGAsync` yields between components, so a large page is exported
+     * across several frames instead of one long block. Doing it while nothing
+     * is happening is what lets the swipe read a finished SVG rather than
+     * paying for one. Skipped entirely while a pointer is down: an export
+     * taken mid-stroke would be wrong, and the moment is the worst one to
+     * spend work in.
+     */
+    const scheduleWarmSnapshot = useCallback(() => {
+      if (warmTimerRef.current !== null) window.clearTimeout(warmTimerRef.current);
+      warmTimerRef.current = window.setTimeout(() => {
+        warmTimerRef.current = null;
+        const editor = editorRef.current;
+        if (!editor || !readyRef.current) return;
+        if (pointerLifecycleRef.current?.isInteracting) {
+          scheduleWarmSnapshot();
+          return;
+        }
+        const version = warmVersionRef.current;
+        void editor
+          .toSVGAsync({ pauseAfterCount: 24 })
+          .then((svg) => {
+            if (
+              pointerLifecycleRef.current?.isInteracting ||
+              version !== warmVersionRef.current
+            ) {
+              return;
+            }
+            warmSvgRef.current = svg.outerHTML;
+            warmStaleRef.current = false;
+          })
+          .catch(() => undefined);
+      }, NOTEBOOK_INK_WARM_SNAPSHOT_IDLE_MS);
+    }, []);
+
     useImperativeHandle(
       forwardedRef,
       () => ({
@@ -256,6 +309,19 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           void editorRef.current?.history.redo();
         },
         serialize() {
+          return serializeNotebookInkSynchronously(
+            editorRef.current,
+            readyRef.current,
+            () => pointerLifecycleRef.current?.isInteracting ?? false
+          );
+        },
+        serializeWarm() {
+          // A prepared snapshot is preferred even mid-gesture, where the
+          // blocking path refuses to run at all and would otherwise hand the
+          // swipe a stale SVG from the last save.
+          if (!warmStaleRef.current && warmSvgRef.current !== null) {
+            return warmSvgRef.current;
+          }
           return serializeNotebookInkSynchronously(
             editorRef.current,
             readyRef.current,
@@ -508,6 +574,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
                 event.redoStackSize
               );
               if (!loadingRef.current) {
+                warmVersionRef.current += 1;
+                warmStaleRef.current = true;
+                scheduleWarmSnapshot();
                 callbacksRef.current.onChange();
               }
             }
@@ -524,6 +593,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             appliedStyleRef.current = { ...desiredStyleRef.current };
             loadingRef.current = false;
             readyRef.current = true;
+            // The first swipe of a session deserves a prepared snapshot too.
+            scheduleWarmSnapshot();
             callbacksRef.current.onHistoryChange(
               editor.history.undoStackSize,
               editor.history.redoStackSize
@@ -544,6 +615,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       return () => {
         disposed = true;
         readyRef.current = false;
+        if (warmTimerRef.current !== null) {
+          window.clearTimeout(warmTimerRef.current);
+          warmTimerRef.current = null;
+        }
+        warmSvgRef.current = null;
+        warmStaleRef.current = true;
+        warmVersionRef.current += 1;
         pointerLifecycle?.reset();
         inkSmoothers.clear();
         lastForwardedPointerSamples.clear();
@@ -563,7 +641,14 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         jsDrawRef.current = null;
         syncViewportRef.current = null;
       };
-    }, [pageHeight, pageId, pageWidth, renderWindowRef, syncViewportRef]);
+    }, [
+      pageHeight,
+      pageId,
+      pageWidth,
+      renderWindowRef,
+      scheduleWarmSnapshot,
+      syncViewportRef,
+    ]);
 
     useEffect(() => {
       const editor = editorRef.current;

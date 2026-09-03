@@ -1,5 +1,6 @@
 import "server-only";
 
+import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -26,6 +27,7 @@ import {
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { deleteTemporaryGeminiVideo, generateGeminiVideoText, uploadTemporaryGeminiVideo } from "@/lib/ai/gemini";
 import { generateAiText } from "@/lib/ai/provider-router";
+import { runWithAiSpendContext } from "@/lib/ai/spend-context";
 
 type Evidence = {
   id: string;
@@ -478,6 +480,12 @@ export async function refineCardsWithPrivateRouter(
 }
 
 export async function generateVideoCardsForJob(uid: string, jobId: string) {
+  return runWithAiSpendContext(aiSpendContextFor(uid, "videoCardImport"), () =>
+    generateVideoCardsForJobMetered(uid, jobId)
+  );
+}
+
+async function generateVideoCardsForJobMetered(uid: string, jobId: string) {
   const ref = getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId);
   const snapshot = await ref.get();
   if (!snapshot.exists || snapshot.data()?.cancellationRequested) return;

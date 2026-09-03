@@ -22,12 +22,6 @@ import {
   type CachedReadOptions,
 } from "@/services/cache/read-through";
 import {
-  invalidateLegacyActiveRecords,
-  isAfterActiveCursor,
-  loadCachedLegacyActiveRecords,
-  mergeActiveItems,
-} from "@/services/study/active-compatibility";
-import {
   buildSourcePayload,
   mapSourceData,
   type Source,
@@ -39,62 +33,6 @@ const WRITE_MS = 30_000;
 
 function sourcesCollection(userId: string) {
   return collection(db, "users", userId, "sources");
-}
-
-const SOURCES_COLLECTION = "sources";
-
-async function getLegacyActiveSources(userId: string) {
-  const records = await loadCachedLegacyActiveRecords(
-    userId,
-    SOURCES_COLLECTION,
-    async () => {
-      const snapshot = await withTimeout(
-        getDocs(sourcesCollection(userId)),
-        LOAD_MS,
-        "Load legacy sources"
-      );
-      return snapshot.docs
-        .map((sourceDoc) => ({
-          id: sourceDoc.id,
-          data: sourceDoc.data() as Record<string, unknown>,
-        }))
-        .filter(
-          ({ data }) => data.status !== "active" && data.status !== "archived"
-        );
-    }
-  );
-  return records.map(({ id, data }) => mapSourceData(id, data));
-}
-
-async function getLegacyActiveSourcesForFolder(
-  userId: string,
-  folderId: string
-) {
-  const records = await loadCachedLegacyActiveRecords(
-    userId,
-    `${SOURCES_COLLECTION}:folder:${folderId}`,
-    async () => {
-      const snapshot = await withTimeout(
-        getDocs(
-          query(
-            sourcesCollection(userId),
-            where("folderIds", "array-contains", folderId)
-          )
-        ),
-        LOAD_MS,
-        "Load legacy folder sources"
-      );
-      return snapshot.docs
-        .map((sourceDoc) => ({
-          id: sourceDoc.id,
-          data: sourceDoc.data() as Record<string, unknown>,
-        }))
-        .filter(
-          ({ data }) => data.status !== "active" && data.status !== "archived"
-        );
-    }
-  );
-  return records.map(({ id, data }) => mapSourceData(id, data));
 }
 
 export async function getSources(userId: string): Promise<Source[]> {
@@ -124,25 +62,21 @@ export async function getActiveSources(
 }
 
 async function loadActiveSources(normalizedUserId: string): Promise<Source[]> {
-  const [snapshot, legacyItems] = await Promise.all([
-    withTimeout(
-      getDocs(
-        query(
-          sourcesCollection(normalizedUserId),
-          where("status", "==", "active"),
-          orderBy("updatedAt", "desc")
-        )
-      ),
-      LOAD_MS,
-      "Load active sources"
+  const snapshot = await withTimeout(
+    getDocs(
+      query(
+        sourcesCollection(normalizedUserId),
+        where("status", "==", "active"),
+        orderBy("updatedAt", "desc")
+      )
     ),
-    getLegacyActiveSources(normalizedUserId),
-  ]);
+    LOAD_MS,
+    "Load active sources"
+  );
 
-  const currentItems = snapshot.docs.map((sourceDoc) =>
+  return snapshot.docs.map((sourceDoc) =>
     mapSourceData(sourceDoc.id, sourceDoc.data() as Record<string, unknown>)
   );
-  return mergeActiveItems(currentItems, legacyItems);
 }
 
 export type SourceFolderPageCursor = {
@@ -170,22 +104,15 @@ export async function getActiveSourcesForFolderPage(
       : []),
     limit(pageSize + 1),
   ];
-  const [snapshot, legacyItemsForFolder] = await Promise.all([
-    withTimeout(
-      getDocs(query(sourcesCollection(normalizedUserId), ...constraints)),
-      LOAD_MS,
-      "Load active folder source page"
-    ),
-    getLegacyActiveSourcesForFolder(normalizedUserId, normalizedFolderId),
-  ]);
+  const snapshot = await withTimeout(
+    getDocs(query(sourcesCollection(normalizedUserId), ...constraints)),
+    LOAD_MS,
+    "Load active folder source page"
+  );
 
-  const currentItems = snapshot.docs.map((sourceDoc) =>
+  const mergedItems = snapshot.docs.map((sourceDoc) =>
     mapSourceData(sourceDoc.id, sourceDoc.data() as Record<string, unknown>)
   );
-  const legacyItems = legacyItemsForFolder.filter((source) =>
-      options.cursor ? isAfterActiveCursor(source, options.cursor) : true
-    );
-  const mergedItems = mergeActiveItems(currentItems, legacyItems);
   const items = mergedItems.slice(0, pageSize);
   const finalItem = items.at(-1);
 
@@ -227,24 +154,20 @@ export async function getActiveSourcesForDashboard(
     .filter((source) => source.status === "active");
   if (exactSources.length > 0) return exactSources;
 
-  const [existenceSnapshot, legacyItems] = await Promise.all([
-    withTimeout(
-      getDocs(
-        query(
-          sourcesCollection(normalizedUserId),
-          where("status", "==", "active"),
-          limit(1)
-        )
-      ),
-      LOAD_MS,
-      "Check for an active dashboard source"
+  const existenceSnapshot = await withTimeout(
+    getDocs(
+      query(
+        sourcesCollection(normalizedUserId),
+        where("status", "==", "active"),
+        limit(1)
+      )
     ),
-    getLegacyActiveSources(normalizedUserId),
-  ]);
-  const currentItems = existenceSnapshot.docs.map((sourceDoc) =>
+    LOAD_MS,
+    "Check for an active dashboard source"
+  );
+  return existenceSnapshot.docs.map((sourceDoc) =>
     mapSourceData(sourceDoc.id, sourceDoc.data() as Record<string, unknown>)
   );
-  return mergeActiveItems(currentItems, legacyItems, 1);
 }
 
 export async function createSource(
@@ -269,7 +192,6 @@ export async function createSource(
     "Create source"
   );
   invalidateDashboardData(userId);
-  invalidateLegacyActiveRecords(userId, SOURCES_COLLECTION);
   void requestSourceIndex(docRef.id).catch(() => undefined);
 
   return docRef.id;
@@ -316,7 +238,6 @@ export async function updateSource(
     "Update source"
   );
   invalidateDashboardData(userId);
-  invalidateLegacyActiveRecords(userId, SOURCES_COLLECTION);
   void requestSourceIndex(sourceId).catch(() => undefined);
 }
 
@@ -328,5 +249,4 @@ export async function deleteSource(userId: string, sourceId: string) {
     "Delete source"
   );
   invalidateDashboardData(userId);
-  invalidateLegacyActiveRecords(userId, SOURCES_COLLECTION);
 }

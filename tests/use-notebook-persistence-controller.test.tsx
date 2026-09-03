@@ -113,6 +113,7 @@ beforeEach(() => {
     isInteracting: () => inkInteracting,
     redo: vi.fn(),
     serialize: () => "<svg data-sync='true' />",
+    serializeWarm: () => "<svg />",
     serializeAsync: async () => "<svg data-async='true' />",
     setEraserMode: vi.fn(),
     undo: vi.fn(),

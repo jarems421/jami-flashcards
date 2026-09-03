@@ -18,7 +18,6 @@ import {
   readThroughCache,
   type CachedReadOptions,
 } from "@/services/cache/read-through";
-import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import {
   mapCardData,
   normalizeCardContentInput,
@@ -120,38 +119,14 @@ export async function loadUserCards(
 }
 
 async function loadUserCardsFromServer(userId: string): Promise<Card[]> {
-  const cards = collection(db, "cards");
-  const [current, legacy] = await Promise.all([
-    withTimeout(
-      getDocs(query(cards, where("userId", "==", userId))),
-      LOAD_MS,
-      "Load study cards"
-    ),
-    withTimeout(
-      getDocs(query(cards, where("uid", "==", userId))),
-      LOAD_MS,
-      "Load legacy study cards"
-    ).catch((error: unknown) => {
-      if (isFirebasePermissionDenied(error)) {
-        console.warn(
-          "Legacy card lookup was denied; continuing with current userId cards."
-        );
-        return null;
-      }
-      throw error;
-    }),
-  ]);
-  const merged = new Map<string, Card>();
-  [current, legacy].forEach((snapshot) => {
-    snapshot?.docs.forEach((cardDoc) => {
-      const card = mapCardData(
-        cardDoc.id,
-        cardDoc.data() as Record<string, unknown>
-      );
-      if (card.userId === userId) merged.set(card.id, card);
-    });
-  });
-  return Array.from(merged.values());
+  const snapshot = await withTimeout(
+    getDocs(query(collection(db, "cards"), where("userId", "==", userId))),
+    LOAD_MS,
+    "Load study cards"
+  );
+  return snapshot.docs.map((cardDoc) =>
+    mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
+  );
 }
 
 /** Cards in one deck, unsorted; callers order them for their own display. */
@@ -159,29 +134,16 @@ export async function getCardsForDeck(
   userId: string,
   deckId: string
 ): Promise<Card[]> {
-  const cards = collection(db, "cards");
-  const [current, legacy] = await Promise.all([
-    getDocs(
-      query(cards, where("deckId", "==", deckId), where("userId", "==", userId))
-    ),
-    getDocs(
-      query(cards, where("deckId", "==", deckId), where("uid", "==", userId))
-    ).catch((error: unknown) => {
-      if (isFirebasePermissionDenied(error)) return null;
-      throw error;
-    }),
-  ]);
-  const merged = new Map<string, Card>();
-  [current, legacy].forEach((snapshot) => {
-    snapshot?.docs.forEach((cardDoc) => {
-      const card = mapCardData(
-        cardDoc.id,
-        cardDoc.data() as Record<string, unknown>
-      );
-      if (card.userId === userId) merged.set(card.id, card);
-    });
-  });
-  return Array.from(merged.values());
+  const snapshot = await getDocs(
+    query(
+      collection(db, "cards"),
+      where("deckId", "==", deckId),
+      where("userId", "==", userId)
+    )
+  );
+  return snapshot.docs.map((cardDoc) =>
+    mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
+  );
 }
 
 /**

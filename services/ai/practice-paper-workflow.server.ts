@@ -1,5 +1,7 @@
 import "server-only";
 
+import { aiSpendContextFor } from "@/services/ai/spend.server";
+import { runWithAiSpendContext } from "@/lib/ai/spend-context";
 import { Timestamp } from "firebase-admin/firestore";
 import sharp from "sharp";
 
@@ -432,7 +434,13 @@ export async function createPaperRasterAssets(input: {
   return current;
 }
 
-export async function prepareQueuedPracticePaperResearch(
+export async function prepareQueuedPracticePaperResearch(uid: string, jobId: string) {
+  return runWithAiSpendContext(aiSpendContextFor(uid, "practicePaperGeneration"), () =>
+    prepareQueuedPracticePaperResearchMetered(uid, jobId)
+  );
+}
+
+async function prepareQueuedPracticePaperResearchMetered(
   uid: string,
   jobId: string
 ): Promise<WorkflowGenerationStatus> {
@@ -497,7 +505,13 @@ export async function prepareQueuedPracticePaperResearch(
   return "ready";
 }
 
-export async function generateQueuedPracticePaperDraft(
+export async function generateQueuedPracticePaperDraft(uid: string, jobId: string) {
+  return runWithAiSpendContext(aiSpendContextFor(uid, "practicePaperGeneration"), () =>
+    generateQueuedPracticePaperDraftMetered(uid, jobId)
+  );
+}
+
+async function generateQueuedPracticePaperDraftMetered(
   uid: string,
   jobId: string
 ): Promise<WorkflowGenerationStatus> {
@@ -620,7 +634,13 @@ export async function generateQueuedPracticePaperDraft(
   return "ready";
 }
 
-export async function createQueuedPracticePaperFigures(
+export async function createQueuedPracticePaperFigures(uid: string, jobId: string) {
+  return runWithAiSpendContext(aiSpendContextFor(uid, "practicePaperGeneration"), () =>
+    createQueuedPracticePaperFiguresMetered(uid, jobId)
+  );
+}
+
+async function createQueuedPracticePaperFiguresMetered(
   uid: string,
   jobId: string
 ): Promise<WorkflowGenerationStatus> {
@@ -662,7 +682,13 @@ export async function createQueuedPracticePaperFigures(
   return "ready";
 }
 
-export async function finalizeQueuedPracticePaper(
+export async function finalizeQueuedPracticePaper(uid: string, jobId: string) {
+  return runWithAiSpendContext(aiSpendContextFor(uid, "practicePaperGeneration"), () =>
+    finalizeQueuedPracticePaperMetered(uid, jobId)
+  );
+}
+
+async function finalizeQueuedPracticePaperMetered(
   uid: string,
   jobId: string
 ): Promise<WorkflowGenerationStatus> {

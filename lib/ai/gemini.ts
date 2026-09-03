@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getAiSpendContext } from "@/lib/ai/spend-context";
 import {
   GoogleGenAI,
   type Content,
@@ -473,5 +474,18 @@ export async function generateGeminiVideoText(input: { uri: string; mimeType: st
     generation_config: { max_output_tokens: 16_000 },
   });
   if (!response.output_text?.trim()) throw new Error("gemini_empty");
+  /*
+   * Video calls reach Gemini directly rather than through the provider router,
+   * so they would otherwise be the one expensive path the meter never saw --
+   * and a ninety-minute agentic read is the most expensive call the app makes.
+   */
+  const usage = response.usage as { prompt_token_count?: number; candidates_token_count?: number } | undefined;
+  const spend = getAiSpendContext();
+  spend?.record({
+    provider: "gemini",
+    model: input.model,
+    promptTokens: usage?.prompt_token_count,
+    completionTokens: usage?.candidates_token_count,
+  });
   return { text: response.output_text, provider: "Google", usage: response.usage };
 }

@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { aiSpendContextFor } from "@/services/ai/spend.server";
+import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import sharp from "sharp";
 import type { NextRequest } from "next/server";
 import {
@@ -114,6 +116,8 @@ export async function POST(request: NextRequest) {
   };
 
   const budget = await checkAiBudget({ uid, action: "tutorIllustration" });
+  // Everything this request spends from here on is billed to this student.
+  enterAiSpendContext(aiSpendContextFor(uid, "tutorIllustration"));
   if (!budget.allowed) return createAiBudgetLimitResponse("tutorIllustration", budget);
 
   const requestId = randomUUID();

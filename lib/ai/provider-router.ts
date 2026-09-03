@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AiContentPart } from "@/lib/ai/content-parts";
+import { getAiSpendContext } from "@/lib/ai/spend-context";
 import { createLogger } from "@/lib/observability/logger";
 import {
   generateGeminiText,
@@ -162,6 +163,23 @@ function optionalSamplingParameters(
 
 function recordUsage(info: AiResponseDiagnostics) {
   usageLog.info("request.completed", info);
+
+  /*
+   * Metered against whoever the route said it was for. Fire-and-forget on
+   * purpose: what this records is useful, and never useful enough to be worth
+   * failing a student's request over.
+   */
+  const spend = getAiSpendContext();
+  if (!spend) return;
+  spend.record({
+    provider: info.provider,
+    model: info.modelName,
+    promptTokens: info.promptTokenCount,
+    completionTokens: info.candidatesTokenCount,
+    ...(info.estimatedCostUsd === undefined
+      ? {}
+      : { reportedCostUsd: info.estimatedCostUsd }),
+  });
 }
 
 function recordFailure(attempt: AiProviderAttempt, error: unknown, latencyMs: number) {

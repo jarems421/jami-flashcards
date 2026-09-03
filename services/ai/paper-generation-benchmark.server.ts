@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createLogger } from "@/lib/observability/logger";
 import { createHash, randomUUID } from "node:crypto";
 import type { AiResponseDiagnostics } from "@/lib/ai/provider-router";
 import type { Source } from "@/lib/material/sources";
@@ -34,6 +35,8 @@ import { runPracticePaperGenerationForBenchmark } from "@/services/ai/practice-p
 import { createPaperRasterAssets } from "@/services/ai/practice-paper-workflow.server";
 import { practicePaperSecretRef } from "@/services/ai/practice-paper-secrets.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
+
+const benchmarkLog = createLogger({ route: "paper_benchmark" });
 
 const PILOT_FOLDER_ID = "paper-quality-pilots";
 
@@ -505,7 +508,7 @@ export async function runPaperGenerationBenchmarkCase(runId: string, caseId: str
       }, { merge: true }),
       runRef(runId).set({ activeCaseId: null, updatedAt: now }, { merge: true }),
     ]);
-    console.error("paper_benchmark.case_failed", {
+    benchmarkLog.error("case_failed", {
       runId,
       caseId,
       errorCategory: error instanceof Error ? error.name : "unknown",

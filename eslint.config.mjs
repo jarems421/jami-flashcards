@@ -57,6 +57,23 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    /*
+     * Server code logs through the redacting logger, never through console.
+     *
+     * `lib/observability/logger.ts` matches field names to keep student work,
+     * prompts and credentials out of the logs -- a guarantee that only holds
+     * where it is actually used, and a bare `console.error({ front })` reads
+     * harmlessly at the call site while writing a flashcard into the host's
+     * log search. These paths were already clean when the rule was added; it
+     * is here to keep them that way.
+     *
+     * Client components are deliberately not covered. The logger is
+     * `server-only`, and console output in a browser stays in that browser.
+     */
+    files: ["app/api/**/*.ts", "workflows/**/*.ts", "**/*.server.ts"],
+    rules: { "no-console": "error" },
+  },
+  {
     files: ["lib/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [

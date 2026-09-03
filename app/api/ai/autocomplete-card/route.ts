@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { aiSpendContextFor } from "@/services/ai/spend.server";
+import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
@@ -274,6 +276,8 @@ export async function POST(request: NextRequest) {
   let budgetDecision;
   try {
     budgetDecision = await checkAiBudget({ uid, action: "autocompleteCard" });
+    // Everything this request spends from here on is billed to this student.
+    enterAiSpendContext(aiSpendContextFor(uid, "autocompleteCard"));
   } catch (error) {
     log.error("budget.check_failed", { error });
     return Response.json(

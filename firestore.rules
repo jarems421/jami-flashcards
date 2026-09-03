@@ -96,6 +96,12 @@ service cloud.firestore {
     // Official format profiles, imports, held-out papers, model output, spend
     // and human review evidence are available only through owner-authenticated
     // server routes. Firebase clients cannot enumerate or mutate them.
+    // Per-student AI allowances and metered spend. Written only by server
+    // routes through the Admin SDK; a client that could edit either could lift
+    // its own daily limit or hide what it costs.
+    match /aiBudgets/{budgetId} { allow read, write: if false; }
+    match /aiSpend/{spendId} { allow read, write: if false; }
+
     match /examFormatProfiles/{profileId} {
       allow read, write: if false;
       match /versions/{versionId} { allow read, write: if false; }

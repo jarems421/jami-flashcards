@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { aiSpendContextFor } from "@/services/ai/spend.server";
+import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import type { NextRequest } from "next/server";
 import { buildJamiAssistantReferenceParts } from "@/lib/ai/jami-assistant";
 import { parsePracticePaperModelAnswer } from "@/lib/ai/practice-paper-generation";
@@ -97,6 +99,8 @@ export async function POST(request: NextRequest) {
   let budget;
   try {
     budget = await checkAiBudget({ uid, action: "practicePaperGeneration" });
+    // Everything this request spends from here on is billed to this student.
+    enterAiSpendContext(aiSpendContextFor(uid, "practicePaperGeneration"));
   } catch (error) {
     log.error("budget.check_failed", { error });
     return responseError("AI usage limits are temporarily unavailable.", 503, "budget_unavailable");

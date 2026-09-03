@@ -1,5 +1,7 @@
 import "server-only";
 
+import { aiSpendContextFor } from "@/services/ai/spend.server";
+import { runWithAiSpendContext } from "@/lib/ai/spend-context";
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { applyPracticePaperMarkRanges } from "@/lib/evaluation/marking-calibration";
 import { mergePracticePaperQuestionRemark } from "@/lib/ai/practice-paper-marking";
@@ -67,7 +69,13 @@ async function updateStage(
   return job;
 }
 
-export async function prepareQueuedPracticePaperMarkingEvidence(
+export async function prepareQueuedPracticePaperMarkingEvidence(uid: string, jobId: string) {
+  return runWithAiSpendContext(aiSpendContextFor(uid, "practicePaperMarking"), () =>
+    prepareQueuedPracticePaperMarkingEvidenceMetered(uid, jobId)
+  );
+}
+
+async function prepareQueuedPracticePaperMarkingEvidenceMetered(
   uid: string,
   jobId: string
 ) {
@@ -167,6 +175,12 @@ async function loadSavedMarkerStages(
 }
 
 export async function runQueuedPracticePaperMarking(uid: string, jobId: string) {
+  return runWithAiSpendContext(aiSpendContextFor(uid, "practicePaperMarking"), () =>
+    runQueuedPracticePaperMarkingMetered(uid, jobId)
+  );
+}
+
+async function runQueuedPracticePaperMarkingMetered(uid: string, jobId: string) {
   const { artifactRef, jobRef } = refs(uid, jobId);
   const artifactSnapshot = await artifactRef.get();
   if (artifactSnapshot.data()?.markingReady === true) return "ready" as const;
@@ -354,6 +368,12 @@ export async function runQueuedPracticePaperMarking(uid: string, jobId: string) 
 }
 
 export async function finalizeQueuedPracticePaperMarking(uid: string, jobId: string) {
+  return runWithAiSpendContext(aiSpendContextFor(uid, "practicePaperMarking"), () =>
+    finalizeQueuedPracticePaperMarkingMetered(uid, jobId)
+  );
+}
+
+async function finalizeQueuedPracticePaperMarkingMetered(uid: string, jobId: string) {
   const { artifactRef, jobRef, userRef } = refs(uid, jobId);
   const job = await updateStage(uid, jobId, "finalising");
   const artifact = (await artifactRef.get()).data() ?? {};

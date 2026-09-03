@@ -14,10 +14,10 @@
  * Two partial caches already existed with the right ingredients:
  * `services/dashboard/cache.ts`, which had the windows and the revision
  * invalidation but was keyed by user alone so it could hold only Today's
- * snapshot, and `services/study/active-compatibility.ts`, which was properly
- * keyed but covered only the legacy fallback beside the real query. This is
- * those two generalised, and it is invalidated by the write sites that already
- * call `invalidateDashboardData`.
+ * snapshot, and a per-collection compatibility cache that has since been
+ * deleted along with the legacy fallbacks it served. This is those two
+ * generalised, and it is invalidated by the write sites that already call
+ * `invalidateDashboardData`.
  */
 
 /** How long a value is served without going back to the server. */

@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { aiSpendContextFor } from "@/services/ai/spend.server";
+import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
@@ -255,6 +257,8 @@ export async function POST(request: NextRequest) {
       // All validation, ownership checks, and required Firestore reads have
       // completed. Charge immediately before the provider attempt.
       budgetDecision = await checkAiBudget({ uid, action: budgetAction });
+      // Everything this request spends from here on is billed to this student.
+      enterAiSpendContext(aiSpendContextFor(uid, budgetAction));
     } catch (error) {
       log.error("budget.check_failed", { action: budgetAction, error });
       return Response.json(

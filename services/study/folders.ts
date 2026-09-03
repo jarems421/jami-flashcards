@@ -20,12 +20,6 @@ import {
   type CachedReadOptions,
 } from "@/services/cache/read-through";
 import {
-  invalidateLegacyActiveRecords,
-  isAfterActiveCursor,
-  loadCachedLegacyActiveRecords,
-  mergeActiveItems,
-} from "@/services/study/active-compatibility";
-import {
   buildStudyFolderPayload,
   mapStudyFolderData,
   normalizeStudyFolderName,
@@ -42,29 +36,6 @@ const WRITE_MS = 30_000;
 
 function foldersCollection(userId: string) {
   return collection(db, "users", userId, "studyFolders");
-}
-
-const FOLDERS_COLLECTION = "studyFolders";
-
-async function getLegacyActiveStudyFolders(userId: string) {
-  const records = await loadCachedLegacyActiveRecords(
-    userId,
-    FOLDERS_COLLECTION,
-    async () => {
-      const snapshot = await withTimeout(
-        getDocs(foldersCollection(userId)),
-        LOAD_MS,
-        "Load legacy study folders"
-      );
-      return snapshot.docs
-        .map((folderDoc) => ({
-          id: folderDoc.id,
-          data: folderDoc.data() as Record<string, unknown>,
-        }))
-        .filter(({ data }) => typeof data.archived !== "boolean");
-    }
-  );
-  return records.map(({ id, data }) => mapStudyFolderData(id, data));
 }
 
 export type StudyFolderPageCursor = {
@@ -88,23 +59,14 @@ export async function getActiveStudyFoldersPage(
       : []),
     limit(pageSize + 1),
   ];
-  const [snapshot, allLegacyItems] = await Promise.all([
-    withTimeout(
-      getDocs(query(foldersCollection(normalizedUserId), ...constraints)),
-      LOAD_MS,
-      "Load active study folder page"
-    ),
-    getLegacyActiveStudyFolders(normalizedUserId),
-  ]);
-  const currentItems = snapshot.docs.map((folderDoc) =>
+  const snapshot = await withTimeout(
+    getDocs(query(foldersCollection(normalizedUserId), ...constraints)),
+    LOAD_MS,
+    "Load active study folder page"
+  );
+  const mergedItems = snapshot.docs.map((folderDoc) =>
     mapStudyFolderData(folderDoc.id, folderDoc.data() as Record<string, unknown>)
   );
-  const legacyItems = options.cursor
-    ? allLegacyItems.filter((item) =>
-        isAfterActiveCursor(item, options.cursor as StudyFolderPageCursor)
-      )
-    : allLegacyItems;
-  const mergedItems = mergeActiveItems(currentItems, legacyItems);
   const items = mergedItems.slice(0, pageSize);
   const finalItem = items.at(-1);
 
@@ -135,25 +97,21 @@ export async function getActiveStudyFolders(
 }
 
 async function loadActiveStudyFolders(normalizedUserId: string) {
-  const [snapshot, legacyItems] = await Promise.all([
-    withTimeout(
-      getDocs(
-        query(
-          foldersCollection(normalizedUserId),
-          where("archived", "==", false),
-          orderBy("updatedAt", "desc")
-        )
-      ),
-      LOAD_MS,
-      "Load active study folders"
+  const snapshot = await withTimeout(
+    getDocs(
+      query(
+        foldersCollection(normalizedUserId),
+        where("archived", "==", false),
+        orderBy("updatedAt", "desc")
+      )
     ),
-    getLegacyActiveStudyFolders(normalizedUserId),
-  ]);
+    LOAD_MS,
+    "Load active study folders"
+  );
 
-  const currentItems = snapshot.docs.map((folderDoc) =>
+  return snapshot.docs.map((folderDoc) =>
     mapStudyFolderData(folderDoc.id, folderDoc.data() as Record<string, unknown>)
   );
-  return mergeActiveItems(currentItems, legacyItems);
 }
 
 export async function getStudyFolderById(
@@ -204,7 +162,6 @@ export async function createStudyFolder(
     "Create study folder"
   );
   invalidateDashboardData(normalizedUserId);
-  invalidateLegacyActiveRecords(normalizedUserId, FOLDERS_COLLECTION);
 
   reportTutorialAction("create-folder", { folderId: docRef.id });
 
@@ -272,7 +229,6 @@ export async function updateStudyFolder(
     "Update study folder"
   );
   invalidateDashboardData(normalizedUserId);
-  invalidateLegacyActiveRecords(normalizedUserId, FOLDERS_COLLECTION);
 }
 
 export async function archiveStudyFolder(userId: string, folderId: string) {

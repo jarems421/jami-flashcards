@@ -95,12 +95,12 @@ describe("dashboard goal summary", () => {
     firestore.updateDoc.mockResolvedValue(undefined);
   });
 
-  it("loads only active/current goal states while retaining missing-status legacy goals", async () => {
-    let compatibilityReads = 0;
+  it("loads only the active goals, and reads stars rather than completed goals", async () => {
+    let activeReads = 0;
     firestore.getDocs.mockImplementation(async (target: unknown) => {
       if (isStarsQuery(target)) return snapshot([goalDocument("star-1", {})]);
-      const status = queryStatus(target);
-      if (status === "active") {
+      if (queryStatus(target) === "active") {
+        activeReads += 1;
         return snapshot([
           goalDocument("current", {
             name: "Current goal",
@@ -110,43 +110,23 @@ describe("dashboard goal summary", () => {
           }),
         ]);
       }
-      if (status === "completed") {
-        return snapshot([
-          goalDocument("completed", {
-            name: "Completed goal",
-            status: "completed",
-          }),
-        ]);
-      }
-
-      compatibilityReads += 1;
-      return snapshot([
-        goalDocument("legacy", {
-          name: "Legacy goal",
-          deadline: 3_000,
-          createdAt: 20,
-        }),
-        goalDocument("legacy-expired", {
-          name: "Expired legacy goal",
-          deadline: 900,
-          createdAt: 10,
-        }),
-      ]);
+      return snapshot([]);
     });
 
-    const { getDashboardGoalSummary } = await import(
-      "@/services/study/goals"
-    );
+    const { getDashboardGoalSummary } = await import("@/services/study/goals");
     const first = await getDashboardGoalSummary("dashboard-goals-user", 1_000);
     const second = await getDashboardGoalSummary("dashboard-goals-user", 1_000);
 
-    expect(first.activeGoals.map((goal) => goal.id)).toEqual([
-      "current",
-      "legacy",
-    ]);
+    expect(first.activeGoals.map((goal) => goal.id)).toEqual(["current"]);
     expect(first.hasEarnedStars).toBe(true);
     expect(second).toEqual(first);
-    expect(compatibilityReads).toBe(1);
+    /*
+     * Twice, deliberately recorded: goals are the one active list not behind
+     * the read-through cache, so Today re-reads them on every visit. What the
+     * deleted compatibility layer cached was its own full-collection scan, not
+     * this query -- so removing it cost no caching and saved a scan.
+     */
+    expect(activeReads).toBe(2);
     expect(firestore.where).toHaveBeenCalledWith("status", "==", "active");
     /*
      * The summary reads stars, not completed goals. It used to ask for one
@@ -164,12 +144,11 @@ describe("dashboard goal summary", () => {
     expect(firestore.limit).toHaveBeenCalledWith(1);
   });
 
-  it("invalidates the legacy compatibility snapshot after a goal write", async () => {
-    let compatibilityReads = 0;
+  it("re-reads the summary after a goal is written", async () => {
+    let activeReads = 0;
     firestore.getDocs.mockImplementation(async (target: unknown) => {
       if (isStarsQuery(target)) return snapshot([]);
-      if (queryStatus(target) !== null) return snapshot([]);
-      compatibilityReads += 1;
+      if (queryStatus(target) === "active") activeReads += 1;
       return snapshot([]);
     });
 
@@ -182,14 +161,15 @@ describe("dashboard goal summary", () => {
     });
     await getDashboardGoalSummary("dashboard-goals-write-user", 1_000);
 
-    expect(compatibilityReads).toBe(2);
+    // A write has to drop the cached summary, or Today keeps showing a goal
+    // the student has just finished.
+    expect(activeReads).toBe(2);
   });
 
-  it("pages current goal history and appends readable legacy history records", async () => {
+  it("pages goal history newest first, on one indexed query", async () => {
     firestore.getDocs.mockImplementation(async (target: unknown) => {
       if (isStarsQuery(target)) return snapshot([goalDocument("star-1", {})]);
-      const status = queryStatus(target);
-      if (Array.isArray(status)) {
+      if (Array.isArray(queryStatus(target))) {
         return snapshot([
           goalDocument("current", {
             name: "Current history",
@@ -198,17 +178,7 @@ describe("dashboard goal summary", () => {
           }),
         ]);
       }
-
-      return snapshot([
-        goalDocument("legacy-history", {
-          name: "Legacy history",
-          status: "cancelled",
-        }),
-        goalDocument("active", {
-          name: "Not history",
-          status: "active",
-        }),
-      ]);
+      return snapshot([]);
     });
 
     const { getGoalHistoryPage } = await import("@/services/study/goals");
@@ -216,10 +186,7 @@ describe("dashboard goal summary", () => {
       pageSize: 2,
     });
 
-    expect(page.items.map((goal) => goal.id)).toEqual([
-      "current",
-      "legacy-history",
-    ]);
+    expect(page.items.map((goal) => goal.id)).toEqual(["current"]);
     expect(page.nextCursor).toBeNull();
     expect(firestore.where).toHaveBeenCalledWith(
       "status",
@@ -231,12 +198,13 @@ describe("dashboard goal summary", () => {
     expect(firestore.limit).toHaveBeenCalledWith(3);
   });
 
-  it("applies answer progress to a displayed legacy-active goal", async () => {
+  it("applies answer progress and completes a goal that has been met", async () => {
     firestore.getDocs.mockImplementation(async (target: unknown) => {
-      if (queryStatus(target) === "active") return snapshot([]);
+      if (queryStatus(target) !== "active") return snapshot([]);
       return snapshot([
-        goalDocument("legacy-active", {
-          name: "Legacy active goal",
+        goalDocument("active-goal", {
+          name: "Active goal",
+          status: "active",
           targetCards: 1,
           targetAccuracy: 0.8,
           deadline: 5_000,
@@ -262,7 +230,7 @@ describe("dashboard goal summary", () => {
     expect(result.completedGoals).toBe(1);
     expect(firestore.updateDoc).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: "users/dashboard-goals-progress-user/goals/legacy-active",
+        path: "users/dashboard-goals-progress-user/goals/active-goal",
       }),
       expect.objectContaining({
         progress: {

@@ -1445,6 +1445,35 @@
       var(--shadow-card);
   }
 
+  /*
+   * The card turns in space rather than squashing flat.
+   *
+   * The markup asked for depth with `perspective-[1400px]`, which is a Tailwind
+   * v4 utility and generates nothing on v3 -- so the shell had no perspective
+   * at all, and `rotateY(180deg)` collapsed the card to zero width and back
+   * with no sense of a face turning away. The flip was there; it just looked
+   * like a trick, which is exactly how it read.
+   *
+   * 1400px is far enough back to be a card on a desk rather than a door
+   * swinging past your nose. It lives here rather than in the class list
+   * because the shell already owns the rest of the card's chrome.
+   */
+  .study-flashcard-shell {
+    perspective: 1400px;
+  }
+
+  /*
+   * How the turn feels: quick enough to be an answer arriving, slow enough to
+   * read as one object rotating.
+   *
+   * 380ms rather than the 430 it had, on a curve that overshoots a degree or two
+   * and settles, so the card lands rather than stopping dead. Anything springier
+   * on a face this large starts to wobble.
+   */
+  .study-flashcard-turn {
+    transition: transform 380ms cubic-bezier(0.22, 1.1, 0.36, 1);
+  }
+
   .study-flashcard-shell:focus-visible {
     outline: 2px solid var(--color-selected-border);
     outline-offset: 4px;

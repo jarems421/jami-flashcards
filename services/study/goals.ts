@@ -17,10 +17,6 @@ import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import { createStarForGoalIfMissing } from "@/services/constellation/stars";
 import {
-  invalidateLegacyActiveRecords,
-  loadCachedLegacyActiveRecords,
-} from "@/services/study/active-compatibility";
-import {
   getGoalDisplayName,
   getGoalStatusAtTime,
   getUpdatedGoalAfterAnswer,
@@ -44,9 +40,7 @@ export type DashboardGoalSummary = {
   hasEarnedStars: boolean;
 };
 
-export type GoalHistoryCursor =
-  | { phase: "modern"; createdAt: number; id: string }
-  | { phase: "legacy"; id: string | null };
+export type GoalHistoryCursor = { createdAt: number; id: string };
 
 const QUERY_MS = 30_000;
 const UPDATE_MS = 30_000;
@@ -63,51 +57,13 @@ export async function getGoals(userId: string): Promise<Goal[]> {
   );
 }
 
-function isPersistedGoalStatus(value: unknown) {
-  return (
-    value === "active" ||
-    value === "completed" ||
-    value === "failed" ||
-    value === "cancelled"
+async function loadActiveGoals(userId: string) {
+  const snapshot = await getDocs(
+    query(goalsCollection(userId), where("status", "==", "active"))
   );
-}
-
-function isHistoricalGoalStatus(value: unknown) {
-  return value === "completed" || value === "failed" || value === "cancelled";
-}
-
-function invalidateGoalCompatibility(userId: string) {
-  invalidateLegacyActiveRecords(userId, "goals");
-  invalidateLegacyActiveRecords(userId, "goals-history");
-}
-
-async function loadActiveGoalsIncludingLegacy(userId: string) {
-  const userGoals = goalsCollection(userId);
-  const [activeSnapshot, legacyRecords] = await Promise.all([
-    getDocs(query(userGoals, where("status", "==", "active"))),
-    loadCachedLegacyActiveRecords(userId, "goals", async () => {
-      const snapshot = await getDocs(userGoals);
-      return snapshot.docs
-        .map((goalDoc) => ({
-          id: goalDoc.id,
-          data: goalDoc.data() as Record<string, unknown>,
-        }))
-        .filter((record) => !isPersistedGoalStatus(record.data.status));
-    }),
-  ]);
-  const activeGoalsById = new Map<string, Goal>();
-
-  legacyRecords.forEach((record) => {
-    activeGoalsById.set(record.id, normalizeGoal(record.id, record.data));
-  });
-  activeSnapshot.docs.forEach((goalDoc) => {
-    activeGoalsById.set(
-      goalDoc.id,
-      normalizeGoal(goalDoc.id, goalDoc.data() as Record<string, unknown>)
-    );
-  });
-
-  return Array.from(activeGoalsById.values());
+  return snapshot.docs.map((goalDoc) =>
+    normalizeGoal(goalDoc.id, goalDoc.data() as Record<string, unknown>)
+  );
 }
 
 export async function getDashboardGoalSummary(
@@ -127,7 +83,7 @@ export async function getDashboardGoalSummary(
    * acknowledges that case in words instead.
    */
   const [activeGoals, starSnapshot] = await Promise.all([
-    loadActiveGoalsIncludingLegacy(userId),
+    loadActiveGoals(userId),
     getDocs(query(collection(db, "users", userId, "stars"), limit(1))),
   ]);
 
@@ -147,7 +103,7 @@ export async function getActiveGoalsWithCurrentStatuses(
   userId: string,
   now = Date.now()
 ) {
-  const goals = await loadActiveGoalsIncludingLegacy(userId);
+  const goals = await loadActiveGoals(userId);
   const updates: Promise<void>[] = [];
   const currentGoals = goals.map((goal) => {
     const status = getGoalStatusAtTime(goal, now);
@@ -160,7 +116,6 @@ export async function getActiveGoalsWithCurrentStatuses(
 
   if (updates.length > 0) {
     await Promise.all(updates);
-    invalidateGoalCompatibility(userId);
     invalidateDashboardData(userId);
   }
 
@@ -181,53 +136,13 @@ export async function getGoalHistoryPage(
   options: { cursor?: GoalHistoryCursor | null; pageSize?: number } = {}
 ) {
   const pageSize = Math.max(1, Math.min(100, options.pageSize ?? 30));
-  const legacyGoals = await loadCachedLegacyActiveRecords(
-    userId,
-    "goals-history",
-    async () => {
-      const snapshot = await getDocs(goalsCollection(userId));
-      return snapshot.docs
-        .map((goalDoc) => ({
-          id: goalDoc.id,
-          data: goalDoc.data() as Record<string, unknown>,
-        }))
-        .filter(
-          (record) =>
-            isHistoricalGoalStatus(record.data.status) &&
-            typeof record.data.createdAt !== "number"
-        );
-    }
-  );
-  const normalizedLegacyGoals = legacyGoals
-    .map((record) => normalizeGoal(record.id, record.data))
-    .sort((left, right) => right.id.localeCompare(left.id));
-
-  if (options.cursor?.phase === "legacy") {
-    const startIndex = options.cursor.id
-      ? normalizedLegacyGoals.findIndex((goal) => goal.id === options.cursor?.id) + 1
-      : 0;
-    const safeStartIndex = Math.max(0, startIndex);
-    const items = normalizedLegacyGoals.slice(
-      safeStartIndex,
-      safeStartIndex + pageSize
-    );
-    const hasMore =
-      safeStartIndex + items.length < normalizedLegacyGoals.length;
-    return {
-      items,
-      nextCursor: hasMore
-        ? ({ phase: "legacy", id: items[items.length - 1]?.id ?? null } as const)
-        : null,
-    };
-  }
-
   const snapshot = await getDocs(
     query(
       goalsCollection(userId),
       where("status", "in", ["completed", "failed", "cancelled"]),
       orderBy("createdAt", "desc"),
       orderBy(documentId(), "desc"),
-      ...(options.cursor?.phase === "modern"
+      ...(options.cursor
         ? [startAfter(options.cursor.createdAt, options.cursor.id)]
         : []),
       limit(pageSize + 1)
@@ -239,30 +154,17 @@ export async function getGoalHistoryPage(
       normalizeGoal(goalDoc.id, goalDoc.data() as Record<string, unknown>)
     );
 
-  if (snapshot.docs.length > pageSize && pageDocs.length > 0) {
-    return {
-      items,
-      nextCursor: {
-        phase: "modern" as const,
-        createdAt: pageDocs[pageDocs.length - 1].data().createdAt as number,
-        id: pageDocs[pageDocs.length - 1].id,
-      },
-    };
-  }
-
-  const legacyCapacity = pageSize - items.length;
-  const appendedLegacy = normalizedLegacyGoals.slice(0, legacyCapacity);
-  const combinedItems = [...items, ...appendedLegacy];
-  const hasMoreLegacy = appendedLegacy.length < normalizedLegacyGoals.length;
+  const finalDoc = pageDocs[pageDocs.length - 1];
 
   return {
-    items: combinedItems,
-    nextCursor: hasMoreLegacy
-      ? {
-          phase: "legacy" as const,
-          id: appendedLegacy[appendedLegacy.length - 1]?.id ?? null,
-        }
-      : null,
+    items,
+    nextCursor:
+      snapshot.docs.length > pageSize && finalDoc
+        ? {
+            createdAt: finalDoc.data().createdAt as number,
+            id: finalDoc.id,
+          }
+        : null,
   };
 }
 
@@ -271,7 +173,6 @@ export async function createGoal(
   goal: Omit<Goal, "id">
 ): Promise<Goal> {
   const goalRef = await addDoc(goalsCollection(userId), goal);
-  invalidateGoalCompatibility(userId);
   invalidateDashboardData(userId);
   return { id: goalRef.id, ...goal };
 }
@@ -282,7 +183,6 @@ export async function updateGoal(
   updates: Partial<Omit<Goal, "id">>
 ) {
   await updateDoc(doc(db, "users", userId, "goals", goalId), updates);
-  invalidateGoalCompatibility(userId);
   invalidateDashboardData(userId);
 }
 
@@ -296,7 +196,7 @@ export async function applyGoalProgressForAnswer(
   // created before `status` was persisted must not appear active in Today and
   // then silently miss answer progress.
   const activeGoals = await withTimeout(
-    loadActiveGoalsIncludingLegacy(userId),
+    loadActiveGoals(userId),
     QUERY_MS,
     "Load active goals"
   );
@@ -343,11 +243,9 @@ export async function applyGoalProgressForAnswer(
 
   const results = await Promise.all(goalUpdates);
   if (results.some((result) => result.completedGoals > 0 || result.starsEarned > 0)) {
-    invalidateGoalCompatibility(userId);
     invalidateDashboardData(userId);
   } else if (activeGoals.length > 0) {
     // An active goal can gain card progress without completing.
-    invalidateGoalCompatibility(userId);
     invalidateDashboardData(userId);
   }
 

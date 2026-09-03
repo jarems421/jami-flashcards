@@ -509,8 +509,10 @@ export default function NotebookEditorPage() {
     createPageIndicatorRef,
     createPageProgressCircleRef,
     getSelectedPageId: () => pageState.read().selectedPage?.id ?? null,
+    // Prepared while the page was idle, so beginning a swipe does not pay for
+    // an SVG export on the pointermove that starts it.
     getInkSnapshotSvg: () =>
-      inkEditorRef.current?.serialize() ?? selectedPageInkSvg,
+      inkEditorRef.current?.serializeWarm() ?? selectedPageInkSvg,
     onSwipeMotionChange: setPageSwipeMotion,
     onInkSnapshotChange: setPageSwipeInkSnapshot,
   });

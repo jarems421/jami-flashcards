@@ -31,11 +31,14 @@
     "firebase:login": "firebase login",
     "firebase:projects": "firebase projects:list",
     "firebase:rules:deploy": "firebase deploy --only firestore:rules,firestore:indexes,storage",
-    "audit:ai-endpoints": "node --env-file-if-exists=.env.local scripts/audit-ai-endpoints.mjs"
+    "audit:ai-endpoints": "node --env-file-if-exists=.env.local scripts/audit-ai-endpoints.mjs",
+    "report:ai-spend": "node --env-file-if-exists=.env.local scripts/ai-spend-report.mjs",
+    "audit:legacy-shapes": "node --env-file-if-exists=.env.local scripts/audit-legacy-shapes.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.17.1",
     "@napi-rs/canvas": "^0.1.100",
+    "@sentry/node": "^10.73.0",
     "cheerio": "^1.1.2",
     "firebase": "^12.16.0",
     "firebase-admin": "^13.10.0",

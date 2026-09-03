@@ -1,5 +1,12 @@
 export const NOTEBOOK_AUTOSAVE_IDLE_MS = 5_000;
 export const NOTEBOOK_INK_UI_SYNC_IDLE_MS = 200;
+/**
+ * How long the page must sit still before a swipe snapshot is prepared.
+ *
+ * Long enough that it does not fire between two strokes of the same letter,
+ * short enough that a page is ready to swipe well before a hand gets there.
+ */
+export const NOTEBOOK_INK_WARM_SNAPSHOT_IDLE_MS = 600;
 
 export type NotebookSaveCompletionInput = {
   saveId: number;

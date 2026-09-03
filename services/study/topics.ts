@@ -19,11 +19,6 @@ import {
   type CachedReadOptions,
 } from "@/services/cache/read-through";
 import {
-  invalidateLegacyActiveRecords,
-  loadCachedLegacyActiveRecords,
-  mergeActiveItems,
-} from "@/services/study/active-compatibility";
-import {
   mapTopicData,
   getTopicNameKey,
   MAX_LINKED_TOPICS,
@@ -47,34 +42,6 @@ function topicsCollection(userId: string) {
   return collection(db, "users", userId, "topics");
 }
 
-const TOPICS_COLLECTION = "topics";
-
-async function getLegacyActiveTopics(userId: string) {
-  const records = await loadCachedLegacyActiveRecords(
-    userId,
-    TOPICS_COLLECTION,
-    async () => {
-      const snapshot = await withTimeout(
-        getDocs(topicsCollection(userId)),
-        LOAD_MS,
-        "Load legacy topics"
-      );
-      return snapshot.docs
-        .map((topicDoc) => ({
-          id: topicDoc.id,
-          data: topicDoc.data() as Record<string, unknown>,
-        }))
-        .filter(
-          ({ data }) =>
-            data.status !== "active" &&
-            data.status !== "archived" &&
-            data.status !== "merged"
-        );
-    }
-  );
-  return records.map(({ id, data }) => mapTopicData(id, data));
-}
-
 /** Shared by six pages, so the result is cached rather than re-read by each. */
 export async function getActiveTopics(
   userId: string,
@@ -90,25 +57,21 @@ export async function getActiveTopics(
 }
 
 async function loadActiveTopics(normalizedUserId: string): Promise<Topic[]> {
-  const [snapshot, legacyItems] = await Promise.all([
-    withTimeout(
-      getDocs(
-        query(
-          topicsCollection(normalizedUserId),
-          where("status", "==", "active"),
-          orderBy("updatedAt", "desc")
-        )
-      ),
-      LOAD_MS,
-      "Load active topics"
+  const snapshot = await withTimeout(
+    getDocs(
+      query(
+        topicsCollection(normalizedUserId),
+        where("status", "==", "active"),
+        orderBy("updatedAt", "desc")
+      )
     ),
-    getLegacyActiveTopics(normalizedUserId),
-  ]);
+    LOAD_MS,
+    "Load active topics"
+  );
 
-  const currentItems = snapshot.docs.map((topicDoc) =>
+  return snapshot.docs.map((topicDoc) =>
     mapTopicData(topicDoc.id, topicDoc.data() as Record<string, unknown>)
   );
-  return mergeActiveItems(currentItems, legacyItems);
 }
 
 export async function createTopic(
@@ -145,7 +108,6 @@ export async function createTopic(
     "Create topic"
   );
   invalidateDashboardData(userId);
-  invalidateLegacyActiveRecords(userId, TOPICS_COLLECTION);
 
   return {
     id: docRef.id,
@@ -198,7 +160,6 @@ export async function createOrGetTopic(userId: string, nameInput: string) {
       updatedAt: Date.now(),
     });
     invalidateDashboardData(userId);
-    invalidateLegacyActiveRecords(userId, TOPICS_COLLECTION);
     return { ...legacyMatch, normalizedName };
   }
 
@@ -275,7 +236,6 @@ export async function updateTopic(
     "Update topic"
   );
   invalidateDashboardData(userId);
-  invalidateLegacyActiveRecords(userId, TOPICS_COLLECTION);
 }
 
 async function commitBatches(
@@ -303,16 +263,11 @@ export async function migrateCardTagsToTopics(userId: string) {
     return { migratedCards: 0, createdTopics: 0 };
   }
 
-  const [currentCardsSnapshot, legacyCardsSnapshot, topicsSnapshot, foldersSnapshot] = await Promise.all([
+  const [cardsSnapshot, topicsSnapshot, foldersSnapshot] = await Promise.all([
     withTimeout(
       getDocs(query(collection(db, "cards"), where("userId", "==", normalizedUserId))),
       LOAD_MS,
       "Load cards for topic migration"
-    ),
-    withTimeout(
-      getDocs(query(collection(db, "cards"), where("uid", "==", normalizedUserId))),
-      LOAD_MS,
-      "Load legacy cards for topic migration"
     ),
     withTimeout(getDocs(topicsCollection(normalizedUserId)), LOAD_MS, "Load topics for migration"),
     withTimeout(
@@ -322,7 +277,7 @@ export async function migrateCardTagsToTopics(userId: string) {
     ),
   ]);
   const cardsById = new Map(
-    [...currentCardsSnapshot.docs, ...legacyCardsSnapshot.docs].map((cardDoc) => [
+    cardsSnapshot.docs.map((cardDoc) => [
       cardDoc.id,
       cardDoc,
     ])
@@ -381,7 +336,6 @@ export async function migrateCardTagsToTopics(userId: string) {
   }
   const invalidateTopicData = () => {
     invalidateDashboardData(normalizedUserId);
-    invalidateLegacyActiveRecords(normalizedUserId, TOPICS_COLLECTION);
   };
   await commitBatches(
     topicCreateOperations,
@@ -439,18 +393,11 @@ export async function deleteTopicEverywhere(userId: string, topicId: string) {
   if (!normalizedUserId) throw new Error("Missing userId.");
   if (!normalizedTopicId) throw new Error("Missing topicId.");
 
-  const [currentCards, legacyCards, notebooks, sources, drafts, mastery] = await Promise.all([
+  const [cards, notebooks, sources, drafts, mastery] = await Promise.all([
     getDocs(
       query(
         collection(db, "cards"),
         where("userId", "==", normalizedUserId),
-        where("topicIds", "array-contains", normalizedTopicId)
-      )
-    ),
-    getDocs(
-      query(
-        collection(db, "cards"),
-        where("uid", "==", normalizedUserId),
         where("topicIds", "array-contains", normalizedTopicId)
       )
     ),
@@ -481,7 +428,7 @@ export async function deleteTopicEverywhere(userId: string, topicId: string) {
   ]);
   const cardDocuments = Array.from(
     new Map(
-      [...currentCards.docs, ...legacyCards.docs].map((cardDoc) => [
+      cards.docs.map((cardDoc) => [
         cardDoc.id,
         cardDoc,
       ])
@@ -512,7 +459,6 @@ export async function deleteTopicEverywhere(userId: string, topicId: string) {
   );
   const invalidateTopicData = () => {
     invalidateDashboardData(normalizedUserId);
-    invalidateLegacyActiveRecords(normalizedUserId, TOPICS_COLLECTION);
   };
   await commitBatches(operations, "Delete topic", invalidateTopicData);
 }

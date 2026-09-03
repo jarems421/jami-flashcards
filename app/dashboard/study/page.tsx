@@ -2042,8 +2042,8 @@ export default function StudyPage() {
                         : "Jami cannot see this card's answer until you flip it, so it can nudge you towards it but never hand it over."
                     }
                   />
-                  <div data-study-current-card-id={current.id} className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-2xl perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
-                    <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
+                  <div data-study-current-card-id={current.id} className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-2xl" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
+                    <div className={`study-flashcard-turn relative aspect-[5/4] w-full [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
                       <div
                         className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-2xl p-5 [backface-visibility:hidden] sm:p-8 lg:p-10"
                         aria-hidden={flipped}
