@@ -897,6 +897,20 @@ describe("Firestore security rules", () => {
     );
   });
 
+  it("keeps durable video-card jobs and evidence server-only", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", ALICE, "videoCardJobs", "job-1"), {
+        status: "ready",
+        evidence: [{ summary: "private extracted evidence" }],
+      });
+    });
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const jobRef = doc(aliceDb, "users", ALICE, "videoCardJobs", "job-1");
+    await assertFails(getDoc(jobRef));
+    await assertFails(setDoc(jobRef, { status: "approved" }, { merge: true }));
+    await assertFails(getDocs(collection(aliceDb, "users", ALICE, "videoCardJobs")));
+  });
+
   it("keeps marking jobs, evidence manifests, and workflow artifacts server-only", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const adminDb = context.firestore();

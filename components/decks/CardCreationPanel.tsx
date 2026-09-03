@@ -29,9 +29,10 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import TopicPicker from "@/components/topics/TopicPicker";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
+import VideoCardCreator from "@/components/decks/VideoCardCreator";
 import { Button, Input, SectionHeader, StudyText, Textarea } from "@/components/ui";
 
-type CreationMode = "single" | "list";
+type CreationMode = "single" | "list" | "video";
 
 type CardCreationPanelProps = {
   userId: string;
@@ -341,6 +342,7 @@ export default function CardCreationPanel({
         action={
           <div className="flex flex-wrap gap-2">
             <ModeButton active={mode === "single"} onClick={() => setMode("single")}>Single card</ModeButton>
+            <ModeButton active={mode === "video"} onClick={() => setMode("video")}>From video</ModeButton>
             <ModeButton active={mode === "list"} onClick={() => setMode("list")}>Advanced: Paste list</ModeButton>
           </div>
         }
@@ -454,6 +456,22 @@ export default function CardCreationPanel({
             {addingSingleCard ? "Adding..." : "Add card"}
           </Button>
         </div>
+      ) : null}
+
+      {mode === "video" ? (
+        <VideoCardCreator
+          userId={userId}
+          decks={decks}
+          topics={topics}
+          defaultDeckId={defaultDeckId}
+          onTopicsChange={onTopicsChange}
+          onCardsCreated={(cards) =>
+            onCardsCreated(cards, { source: "video", selectCreated: true })
+          }
+          onMessage={(message, error) =>
+            onFeedback({ type: error ? "error" : "success", message })
+          }
+        />
       ) : null}
 
       {mode === "list" ? (

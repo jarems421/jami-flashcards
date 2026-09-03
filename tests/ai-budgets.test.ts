@@ -67,6 +67,7 @@ describe("AI budget configuration", () => {
         "practicePaperMarking",
         "sourceFlashcardDrafts",
         "sourcePracticeDrafts",
+        "videoCardImport",
       ].sort()
     );
   });
@@ -82,6 +83,11 @@ describe("AI budget configuration", () => {
       AI_BUDGETS.assistant.burstScope
     );
     expect(AI_BUDGETS.sourceFlashcardDrafts).toMatchObject({
+      dailyRequestLimit: 10,
+      burstRequestLimit: 2,
+      burstScope: "sourceDrafts",
+    });
+    expect(AI_BUDGETS.videoCardImport).toMatchObject({
       dailyRequestLimit: 10,
       burstRequestLimit: 2,
       burstScope: "sourceDrafts",

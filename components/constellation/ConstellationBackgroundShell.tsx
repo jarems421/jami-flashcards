@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import ConstellationBackgroundErrorBoundary from "@/components/constellation/ConstellationBackgroundErrorBoundary";
 import {
+  allowsConstellationBackground,
   CONSTELLATION_BACKGROUND_EVENT,
   readConstellationBackgroundCrashMarked,
   readConstellationBackgroundConstellationId,
@@ -77,32 +78,16 @@ export default function ConstellationBackgroundShell({
   }, []);
 
   /*
-   * Notebooks are excluded again, and this time the reason is written down.
-   *
-   * They were excluded when the notebook viewport was rewritten, with no note
-   * saying why. I removed the exclusion on 1 September because page colours are
-   * solid, so stars can only ever sit around the paper -- which is true of
-   * painting, and beside the point.
-   *
-   * The background does not just paint. It mounts on an idle callback, well
-   * after the page has rendered, and when it arrives it toggles classes on
-   * <html> and <body>: constellation-background-enabled goes on and the theme
-   * class comes off. A notebook sizes its page by measuring its frame and
-   * fitting the sheet into it, so a class flip that lands after that
-   * measurement is exactly the shape of "all the writing is squashed into a
-   * mini page in the corner" -- which is what a student reported the next day,
-   * on the one account where the background was on.
-   *
-   * That is a diagnosis by timing and coincidence rather than a reproduction,
-   * so it is not proof. It is enough to stop showing a decorative sky over
-   * someone's handwriting until it is proof: notebooks are where the work is,
-   * and stars behind them buy nothing worth this risk.
+   * Which routes show the sky, on one rule shared with the blocking script that
+   * stamps its class before the first paint. See the list itself for why
+   * notebooks are on the allowed side of it again.
    */
   const shouldShowBackground =
     isEnabled &&
     !isCrashMarked &&
-    !pathname.startsWith("/dashboard/notebooks/") &&
-    pathname !== "/dashboard/constellation";
+    // Typed as a string, but null with no router above this -- a test harness,
+    // or a tree rendered outside the app shell.
+    allowsConstellationBackground(pathname ?? "");
 
   useEffect(() => {
     if (!shouldShowBackground || isBackgroundReady) {

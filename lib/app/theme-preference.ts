@@ -2,6 +2,7 @@
 
 import {
   CONSTELLATION_BACKGROUND_CRASH_MARKER_STORAGE_KEY,
+  CONSTELLATION_BACKGROUND_EXCLUDED_PATHS,
   CONSTELLATION_BACKGROUND_STORAGE_KEY,
 } from "@/lib/constellation/background";
 
@@ -152,7 +153,9 @@ export const APP_THEME_BOOTSTRAP_SCRIPT = `(function(){try{var c=${JSON.stringif
   CONSTELLATION_BACKGROUND_STORAGE_KEY
 )})==="true"&&s.getItem(${JSON.stringify(
   CONSTELLATION_BACKGROUND_CRASH_MARKER_STORAGE_KEY
-)})!=="true"&&p!=="/dashboard/constellation"){d.classList.add("constellation-background-enabled")}else{d.classList.add.apply(d.classList,c[t]||c.normal)}}catch(e){}})();`;
+)})!=="true"&&${JSON.stringify(
+  CONSTELLATION_BACKGROUND_EXCLUDED_PATHS
+)}.every(function(x){return p.indexOf(x)!==0})){d.classList.add("constellation-background-enabled")}else{d.classList.add.apply(d.classList,c[t]||c.normal)}}catch(e){}})();`;
 
 export function saveAppThemePreference(value: AppThemePreference) {
   try {

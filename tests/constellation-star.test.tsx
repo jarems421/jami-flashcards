@@ -68,3 +68,67 @@ describe("ConstellationStar", () => {
     expect(container.querySelector("button")).toBeNull();
   });
 });
+
+/**
+ * The sky is meant to look alive from behind a page, and twice now it has
+ * quietly stopped: once when sparkles were rationed to stars over 36px, which
+ * excluded most of a sky whose stars run from 18 to 52, and once when every
+ * star breathed to the same shallow floor. Neither shows up in a type error and
+ * both read as "the stars do not twinkle any more".
+ */
+describe("the background sky stays alive", () => {
+  /** The animated elements a star renders: its body, then its sparkles. */
+  function twinklingParts() {
+    return [...container.querySelectorAll<HTMLElement>("div")].filter((node) =>
+      node.style.animationName.startsWith("constellation-")
+    );
+  }
+
+  it("sparkles on a small background star, not only the large ones", () => {
+    act(() => {
+      root.render(
+        <ConstellationStar
+          // Below the 36px floor that used to decide this, and the commonest
+          // size in a real sky.
+          star={{ ...star, size: 0 }}
+          variant="background"
+        />
+      );
+    });
+
+    const sparkles = twinklingParts().filter(
+      (node) => node.style.animationName === "constellation-sparkle"
+    );
+    expect(sparkles.length).toBeGreaterThan(0);
+    // Small enough to be proportional, large enough to find behind a page.
+    for (const sparkle of sparkles) {
+      expect(Number.parseFloat(sparkle.style.width)).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("gives each star its own depth of breath", () => {
+    const floors = new Set<string>();
+
+    for (const id of ["star-a", "star-b", "star-c", "star-d"]) {
+      act(() => {
+        root.render(
+          <ConstellationStar star={{ ...star, id }} variant="background" />
+        );
+      });
+
+      const body = twinklingParts().find(
+        (node) => node.style.animationName === "constellation-twinkle"
+      );
+      const floor = body?.style.getPropertyValue("--twinkle-floor") ?? "";
+      expect(floor).not.toBe("");
+      // Deeper than the fixed 0.76 it replaced, and never so deep the star
+      // reads as going out.
+      expect(Number.parseFloat(floor)).toBeGreaterThanOrEqual(0.45);
+      expect(Number.parseFloat(floor)).toBeLessThanOrEqual(0.8);
+      floors.add(floor);
+    }
+
+    // Four stars in step at the same depth is a setting, not a sky.
+    expect(floors.size).toBeGreaterThan(1);
+  });
+});

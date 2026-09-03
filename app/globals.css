@@ -1850,10 +1850,19 @@ body.constellation-background-enabled::before {
  * scale is gone, the range is narrower and the cycle is roughly half again as
  * long, so it reads as a star holding its light rather than pulsing.
  */
+/*
+ * A star breathing.
+ *
+ * The floor comes from the star rather than from here: a single value for the
+ * whole sky had every star swinging the same shallow quarter, in step in depth
+ * even while their cycles were staggered, and behind a dimmed page that reads
+ * as not moving at all. The fallback is the old fixed value, for anything that
+ * animates a star without setting one.
+ */
 @keyframes constellation-twinkle {
   0%,
   100% {
-    opacity: 0.76;
+    opacity: var(--twinkle-floor, 0.76);
   }
   50% {
     opacity: 1;

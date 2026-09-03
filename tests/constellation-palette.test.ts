@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { APP_THEME_BOOTSTRAP_SCRIPT } from "@/lib/app/theme-preference";
+import { CONSTELLATION_BACKGROUND_EXCLUDED_PATHS } from "@/lib/constellation/background";
 
 /**
  * Turning the star sky on used to leave the chosen colour theme underneath it,
@@ -173,6 +174,42 @@ describe("the sky is on the document before the first paint", () => {
         "constellation-background-crash-marked": "true",
       })
     ).toEqual(["app-theme-pink", "app-theme-light"]);
+  });
+
+  it("has the notebook palette right in the first painted frame", () => {
+    /*
+     * Notebooks show the sky, and the reason they were kept from it before was
+     * a class arriving after the page had measured itself. Stamping it here is
+     * the answer to that, so this is the assertion the whole exclusion used to
+     * stand in for: by the time a notebook route paints once, the palette is
+     * already the sky's and nothing changes it afterwards.
+     */
+    expect(
+      run(
+        {
+          "jami:app-theme": "pink",
+          "constellation-background-enabled": "true",
+        },
+        "/dashboard/notebooks/abc123"
+      )
+    ).toEqual(["constellation-background-enabled"]);
+  });
+
+  it("agrees with the shell about every excluded path", () => {
+    // The two ran on different lists for a day, and a notebook opened in one
+    // palette and flipped to the other a frame later.
+    for (const path of CONSTELLATION_BACKGROUND_EXCLUDED_PATHS) {
+      expect(
+        run(
+          {
+            "jami:app-theme": "pink",
+            "constellation-background-enabled": "true",
+          },
+          path
+        ),
+        path
+      ).toEqual(["app-theme-pink", "app-theme-light"]);
+    }
   });
 
   it("leaves the Stars page on the student's own theme", () => {

@@ -124,7 +124,7 @@ const SPARKLE_FULL_STAR_SIZE = 30;
 const SPARKLES_PER_STAR = 4;
 
 /**
- * The background sparkles on fewer stars, and that is a frame-time decision.
+ * Every background star sparkles again, at two apiece.
  *
  * A sparkle is another masked, animated element, and the background carries the
  * most stars while being the one place something else on the page needs the
@@ -136,22 +136,39 @@ const SPARKLES_PER_STAR = 4;
  *   60 stars, sparkles on every one        17.3ms   52fps   18 long frames
  *   40 stars, sparkles on those over 36px  12.5ms   59fps    6 long frames
  *
- * So the sky costs about a millisecond instead of six, and stops causing long
- * frames entirely. The stars still sparkle -- the largest handful do, which is
- * where it reads anyway -- and the constellation page is untouched, because
- * there the sky is the content rather than something behind it.
+ * The middle row is where the cost was, and it is 60 stars carrying up to four
+ * sparkles each -- around 240 of them. Rationing by size then took the count to
+ * roughly 30, which bought the frames back and left most of the sky with no
+ * sparkles at all: stars are 18 to 52 pixels, so a 36px floor silently excluded
+ * the majority, and the sky read as dead.
+ *
+ * Forty stars at two each is 80, a third of what the expensive row measured and
+ * a long way under it. That is a reasoned bet rather than a measurement, and
+ * `BACKGROUND_SPARKLES_PER_STAR` is the knob: at 1 the count halves again, at 0
+ * the star bodies still breathe on their own.
  */
-const BACKGROUND_SPARKLE_MIN_STAR_SIZE = 36;
 const BACKGROUND_SPARKLES_PER_STAR = 2;
 
 function getSparkleCount(starSize: number, isBackground: boolean) {
-  if (isBackground) {
-    return starSize >= BACKGROUND_SPARKLE_MIN_STAR_SIZE
-      ? BACKGROUND_SPARKLES_PER_STAR
-      : 0;
-  }
+  if (isBackground) return BACKGROUND_SPARKLES_PER_STAR;
 
   return starSize >= SPARKLE_FULL_STAR_SIZE ? SPARKLES_PER_STAR : 2;
+}
+
+/**
+ * How dim a star gets at the bottom of its breath, seeded per star.
+ *
+ * The floor was a single 0.76 for every star in the sky, which is a swing of
+ * under a quarter and, behind a page that is also dimmed, close to invisible --
+ * "the stars do not twinkle any more" is what a fixed shallow floor looks like.
+ *
+ * Varying it is what makes it read as a sky rather than a setting: some stars
+ * barely move, others halve and come back, and none of them are in step. It
+ * costs nothing at all -- the element and its animation already exist, and
+ * opacity is the one property the compositor handles on its own.
+ */
+function getTwinkleFloor(star: NormalizedStar) {
+  return 0.45 + getSeededFraction(star.id, 53) * 0.35;
 }
 
 /**
@@ -187,12 +204,29 @@ function getBloomBackground(glowStrength: number) {
   return `radial-gradient(ellipse 48% 48% at 50% 50%, rgba(255, 255, 255, ${alpha}) 0%, rgba(236, 238, 255, ${at(0.5)}) 16%, rgba(220, 224, 255, ${at(0.24)}) 32%, rgba(208, 214, 255, ${at(0.1)}) 50%, rgba(196, 198, 255, ${at(0.03)}) 70%, rgba(196, 198, 255, 0) 100%)`;
 }
 
+/**
+ * A stable number in [0, 1) for one star and one purpose.
+ *
+ * FNV-1a with a final avalanche, rather than the `hash * 31 % 100000` this was.
+ * That version barely dispersed: two ids differing in their last character came
+ * out one part in a hundred thousand apart, so a whole sky of stars named in
+ * sequence got the same answer to three decimal places -- which is why the
+ * quadrant bias noted below was as bad as it was, and why every star ended up
+ * breathing to an identical depth the moment anything rounded the result.
+ *
+ * Changing this reshuffles where sparkles sit and how long they take. Both are
+ * cosmetic and neither was chosen; only the spread was ever the point.
+ */
 function getSeededFraction(seed: string, index: number) {
-  let hash = 0;
+  let hash = Math.imul(2166136261 ^ index, 16777619);
   for (let position = 0; position < seed.length; position += 1) {
-    hash = (hash * 31 + seed.charCodeAt(position) + index * 977) % 100_000;
+    hash ^= seed.charCodeAt(position);
+    hash = Math.imul(hash, 16777619);
   }
-  return hash / 100_000;
+  hash ^= hash >>> 15;
+  hash = Math.imul(hash, 2246822507);
+  hash ^= hash >>> 13;
+  return (hash >>> 0) / 4294967296;
 }
 
 /**
@@ -227,7 +261,17 @@ function getSparkles(
     const jitter = (getSeededFraction(star.id, index) - 0.5) * (step * 0.4);
     const angle = quadrantCentre + jitter;
     const distance = 55 + getSeededFraction(star.id, index + 7) * 35;
-    const size = starSize * (0.13 + getSeededFraction(star.id, index + 13) * 0.08);
+    /*
+     * Sized with the star, but never below what the eye can find.
+     *
+     * Proportional alone put a 2.3px sparkle around an 18px star, and at that
+     * size a point of light behind a page is not dim, it is absent -- which is
+     * most of the sky, since the smallest stars are the commonest.
+     */
+    const size = Math.max(
+      3.2,
+      starSize * (0.13 + getSeededFraction(star.id, index + 13) * 0.08)
+    );
 
     return {
       key: `${star.id}-sparkle-${index}`,
@@ -410,6 +454,11 @@ export default function ConstellationStar({
            */
           opacity: isPreview ? 0.92 : 0.86,
           filter: getStarGlowFilter(glowStrength, starSize),
+          // How far down this star's breath goes. The keyframe reads it, so
+          // every star in the sky swings a different amount.
+          ["--twinkle-floor" as string]: isPreview
+            ? 0.9
+            : getTwinkleFloor(star).toFixed(3),
           animationName: "constellation-twinkle",
           animationDuration: getTwinkleDuration(star, isBackground),
           animationDelay: getTwinkleDelay(star),

@@ -167,6 +167,25 @@ describe("Storage security rules", () => {
     await assertFails(uploadBytes(fileRef, blob("application/javascript")));
   });
 
+  it("allows only the owner to manage supported video-card uploads", async () => {
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const bobStorage = testEnv.authenticatedContext("bob").storage();
+    const filePath = "users/alice/videoCardImports/job-123456789012/video.mp4";
+    await assertSucceeds(uploadBytes(ref(aliceStorage, filePath), blob("video/mp4")));
+    await assertSucceeds(getBytes(ref(aliceStorage, filePath)));
+    await assertFails(getBytes(ref(bobStorage, filePath)));
+    await assertFails(deleteObject(ref(bobStorage, filePath)));
+    await assertSucceeds(deleteObject(ref(aliceStorage, filePath)));
+  });
+
+  it("rejects unsafe video-card uploads and demo writers", async () => {
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const demoStorage = testEnv.authenticatedContext("alice", { demo: true }).storage();
+    const root = "users/alice/videoCardImports/job-123456789012";
+    await assertFails(uploadBytes(ref(aliceStorage, `${root}/script.js`), blob("application/javascript")));
+    await assertFails(uploadBytes(ref(demoStorage, `${root}/video.webm`), blob("video/webm")));
+  });
+
   it("lets only the owner read server-created assistant and paper images", async () => {
     const assistantPath =
       "users/alice/assistantImages/asset-1/illustration.webp";

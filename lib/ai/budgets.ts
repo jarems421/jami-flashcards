@@ -6,6 +6,7 @@ export type AiBudgetAction =
   | "tutorIllustration"
   | "practicePaperGeneration"
   | "practicePaperMarking"
+  | "videoCardImport"
   | "sourceFlashcardDrafts"
   | "sourcePracticeDrafts";
 
@@ -115,6 +116,14 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstScope: "sourceDrafts",
     tokenCap: 24_000,
     inputTokenCap: 250_000,
+  },
+  videoCardImport: {
+    dailyRequestLimit: 10,
+    burstRequestLimit: 2,
+    burstWindowMs: 60_000,
+    burstScope: "sourceDrafts",
+    tokenCap: 16_000,
+    inputTokenCap: null,
   },
   // The source text is sliced to a fixed length before it is sent.
   sourceFlashcardDrafts: {

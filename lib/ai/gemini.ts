@@ -427,3 +427,38 @@ export async function generateGeminiImage(input: {
     attempt.release();
   }
 }
+
+/** Video imports are deliberately isolated from the normal text/image router. */
+export async function uploadTemporaryGeminiVideo(input: { path: string; mimeType: string }) {
+  if (!resolveAiProviderPolicy(process.env).geminiReady) throw new Error("gemini_not_configured");
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) throw new Error("gemini_not_configured");
+  const ai = new GoogleGenAI({ apiKey });
+  const file = await ai.files.upload({ file: input.path, config: { mimeType: input.mimeType, displayName: "Temporary Jami video import" } });
+  if (!file.uri) throw new Error("gemini_upload_failed");
+  return { uri: file.uri, name: file.name };
+}
+
+export async function deleteTemporaryGeminiVideo(name?: string) {
+  if (!name) return;
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) return;
+  await new GoogleGenAI({ apiKey }).files.delete({ name }).catch(() => undefined);
+}
+
+export async function generateGeminiVideoText(input: { uri: string; mimeType: string; model: string; agentic: boolean; prompt: string }) {
+  if (!resolveAiProviderPolicy(process.env).geminiReady) throw new Error("gemini_not_configured");
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) throw new Error("gemini_not_configured");
+  const response = await new GoogleGenAI({ apiKey }).interactions.create({
+    model: input.model,
+    store: false,
+    input: [
+      { type: "text", text: input.prompt },
+      { type: "video", uri: input.uri, mime_type: input.mimeType, processing: input.agentic ? "agentic" : { type: "static", fps: 1 } },
+    ],
+    generation_config: { max_output_tokens: 16_000 },
+  });
+  if (!response.output_text?.trim()) throw new Error("gemini_empty");
+  return { text: response.output_text, provider: "Google", usage: response.usage };
+}

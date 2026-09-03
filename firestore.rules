@@ -307,6 +307,10 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
+      match /videoCardJobs/{jobId} {
+        allow read, write: if false;
+      }
+
       // Embeddings and extracted chunks are server-owned private indexes. The
       // client receives only the grounded answer and source receipt.
       match /sourceChunks/{chunkId} {
