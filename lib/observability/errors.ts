@@ -1,6 +1,6 @@
 import "server-only";
 
-import * as Sentry from "@sentry/node";
+import * as Sentry from "@sentry/nextjs";
 
 /**
  * Where a server error goes, so that finding out about one does not depend on
