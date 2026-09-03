@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TopicPicker from "@/components/topics/TopicPicker";
 import { Button, Card as Panel, FileField, Input, OptionSwitch, ProgressBar, Select, Textarea } from "@/components/ui";
 import {
+  VIDEO_CARD_REVIEW_CEILING,
   VIDEO_MAX_BYTES,
   VIDEO_MAX_SECONDS,
   formatVideoTimestamp,
@@ -41,10 +42,15 @@ type Props = {
   onMessage: (message: string, error?: boolean) => void;
 };
 
+/*
+ * What earns a card, not how many. The counts these used to advertise were a
+ * promise the video had to keep: ask a two-minute clip for 20 to 35 cards and
+ * it pads or apologises. How many there are is what the video decides.
+ */
 const COVERAGE = [
-  { value: "focused" as const, label: "Focused", detail: "8–12 cards" },
-  { value: "standard" as const, label: "Standard", detail: "12–20 cards" },
-  { value: "thorough" as const, label: "Thorough", detail: "20–35 cards" },
+  { value: "focused" as const, label: "Key points", detail: "Core teaching only" },
+  { value: "standard" as const, label: "Standard", detail: "Core teaching and worked examples" },
+  { value: "thorough" as const, label: "Thorough", detail: "Plus definitions and detail" },
 ];
 
 const STAGE = {
@@ -138,6 +144,8 @@ export default function VideoCardCreator({
   const [deckId, setDeckId] = useState(defaultDeckId || decks[0]?.id || "");
   const [topicIds, setTopicIds] = useState<string[]>([]);
   const [coverage, setCoverage] = useState<VideoCoverage>("standard");
+  // Blank means "as many as the video supports", which is the normal case.
+  const [maxCards, setMaxCards] = useState("");
   const [focus, setFocus] = useState("");
   const [job, setJob] = useState<VideoCardJob | null>(null);
   const [busy, setBusy] = useState(false);
@@ -243,6 +251,7 @@ export default function VideoCardCreator({
         deckId,
         topicIds,
         coverage,
+        ...(maxCards.trim() ? { maxCards: Number(maxCards) } : {}),
         focus: focus.trim() || undefined,
       });
       setJob(created);
@@ -493,6 +502,18 @@ export default function VideoCardCreator({
       ) : null}
 
       <OptionSwitch label="Coverage" value={coverage} options={COVERAGE} disabled={busy} onChange={setCoverage} />
+
+      <Input
+        label="Most cards to make (optional)"
+        type="number"
+        min={1}
+        max={VIDEO_CARD_REVIEW_CEILING}
+        inputMode="numeric"
+        placeholder="As many as the video supports"
+        value={maxCards}
+        disabled={busy}
+        onChange={(event) => setMaxCards(event.target.value)}
+      />
 
       <Input
         label="Focus (optional)"

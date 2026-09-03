@@ -48,6 +48,8 @@ export type VideoCardJob = {
   deckId: string;
   topicIds: string[];
   coverage: VideoCoverage;
+  /** A ceiling the student asked for. Absent means "as many as the video supports". */
+  maxCards?: number;
   focus?: string;
   durationSeconds: number;
   sourceKind: "youtube" | "upload";
@@ -67,14 +69,48 @@ export type VideoCardJob = {
   failureMessage?: string;
 };
 
-const COVERAGE_COUNTS: Record<VideoCoverage, { min: number; max: number; target: number }> = {
-  focused: { min: 8, max: 12, target: 10 },
-  standard: { min: 12, max: 20, target: 16 },
-  thorough: { min: 20, max: 35, target: 28 },
+/**
+ * What earns a card, rather than how many to make.
+ *
+ * Coverage was a fixed count per level -- thorough meant 20 to 35 cards -- and
+ * a count is the one thing the video decides, not the student. A two-minute
+ * clip asked for thirty cards either pads to reach them or fails the minimum
+ * and apologises; an hour of lecture capped at thirty-five throws away the rest.
+ *
+ * So the levels describe how selective to be, and the number falls out of what
+ * the video actually contains. The prompt already makes the model inventory
+ * every diagram, worked example and teaching point as evidence before it writes
+ * anything, which is the honest measure of how much is in there.
+ */
+const COVERAGE_SELECTIVITY: Record<VideoCoverage, string> = {
+  focused:
+    "Only core teaching: the points the video exists to make. Skip worked examples, asides and supporting detail.",
+  standard:
+    "Core teaching, plus worked examples and any named method or procedure the video demonstrates.",
+  thorough:
+    "Core teaching, worked examples, and the supporting detail around them -- definitions, conditions, common mistakes and contextual points a student would be expected to know.",
 };
 
-export function getVideoCoverageCounts(coverage: VideoCoverage) {
-  return COVERAGE_COUNTS[coverage];
+export function getVideoCoverageSelectivity(coverage: VideoCoverage) {
+  return COVERAGE_SELECTIVITY[coverage];
+}
+
+/**
+ * The most cards one import may return, when the student has not said.
+ *
+ * A review sanity bound, not a judgement about the video: it is how many drafts
+ * a person will realistically read and approve in one sitting. A student who
+ * wants fewer says so; nobody has to.
+ */
+export const VIDEO_CARD_REVIEW_CEILING = 60;
+
+/** Clamps a student's own limit, if they gave one. */
+export function parseVideoCardLimit(value: unknown): number | null {
+  const limit = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(limit)) return null;
+  const rounded = Math.round(limit);
+  if (rounded < 1) return null;
+  return Math.min(rounded, VIDEO_CARD_REVIEW_CEILING);
 }
 
 export function parseVideoCoverage(value: unknown): VideoCoverage | null {
@@ -210,6 +246,9 @@ export function mapVideoCardJobData(id: string, raw: Record<string, unknown>): V
     deckId: typeof raw.deckId === "string" ? raw.deckId : "",
     topicIds: Array.isArray(raw.topicIds) ? raw.topicIds.filter((v): v is string => typeof v === "string") : [],
     coverage: parseVideoCoverage(raw.coverage) || "standard",
+    ...(parseVideoCardLimit(raw.maxCards) !== null
+      ? { maxCards: parseVideoCardLimit(raw.maxCards) as number }
+      : {}),
     ...(cleanText(raw.focus, 500) ? { focus: cleanText(raw.focus, 500) } : {}),
     durationSeconds: typeof raw.durationSeconds === "number" ? raw.durationSeconds : 0,
     sourceKind: raw.sourceKind === "upload" ? "upload" : "youtube",

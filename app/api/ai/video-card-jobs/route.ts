@@ -3,7 +3,8 @@ import type { NextRequest } from "next/server";
 import { start } from "workflow/api";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getBearerToken } from "@/lib/auth/bearer";
-import { VIDEO_MAX_BYTES, VIDEO_MAX_SECONDS, mapVideoCardJobData, parseVideoCoverage } from "@/lib/ai/video-card-jobs";
+import {
+  parseVideoCardLimit, VIDEO_MAX_BYTES, VIDEO_MAX_SECONDS, mapVideoCardJobData, parseVideoCoverage } from "@/lib/ai/video-card-jobs";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
 import { getAdminAuth, getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { generateVideoCardWorkflow } from "@/workflows/video-card-generation";
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const uid = await authenticate(request); if (!uid) return failure("Unauthorized", 401, "unauthorized");
   let body: Record<string, unknown>; try { body = await request.json(); } catch { return failure("Invalid request", 400, "invalid_request"); }
-  const coverage = parseVideoCoverage(body.coverage); const deckId = typeof body.deckId === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(body.deckId) ? body.deckId : "";
+  const coverage = parseVideoCoverage(body.coverage); const maxCards = parseVideoCardLimit(body.maxCards); const deckId = typeof body.deckId === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(body.deckId) ? body.deckId : "";
   const topics = Array.isArray(body.topicIds) ? body.topicIds.filter((v): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(v)).slice(0, 20) : [];
   const focus = typeof body.focus === "string" ? body.focus.replace(/\s+/g, " ").trim().slice(0, 500) : "";
   if (!coverage || !deckId) return failure("Choose a deck and coverage.", 400, "invalid_request");
@@ -112,11 +113,11 @@ export async function POST(request: NextRequest) {
   let budget; try { budget = await checkAiBudget({ uid, action: "videoCardImport", skipBurstLimit: true }); } catch { return failure("AI usage limits are temporarily unavailable.", 503, "budget_unavailable"); }
   if (!budget.allowed) return createAiBudgetLimitResponse("videoCardImport", budget);
   const now = Date.now();
-  await ref.create({ ...source, deckId, topicIds: topics, coverage, focus, status: "queued", stage: "preparing", progress: 5, drafts: [], warnings: [], budgetGrant: budget.grant, cancellationRequested: false, createdAt: now, updatedAt: now });
+  await ref.create({ ...source, deckId, topicIds: topics, coverage, ...(maxCards !== null ? { maxCards } : {}), focus, status: "queued", stage: "preparing", progress: 5, drafts: [], warnings: [], budgetGrant: budget.grant, cancellationRequested: false, createdAt: now, updatedAt: now });
   try {
     const run = await start(generateVideoCardWorkflow, [uid, id]);
     await ref.update({ workflowRunId: run.runId, updatedAt: Date.now() });
-    return Response.json(mapVideoCardJobData(id, { ...source, deckId, topicIds: topics, coverage, focus, status: "queued", stage: "preparing", progress: 5, createdAt: now, updatedAt: now }), { status: 202 });
+    return Response.json(mapVideoCardJobData(id, { ...source, deckId, topicIds: topics, coverage, ...(maxCards !== null ? { maxCards } : {}), focus, status: "queued", stage: "preparing", progress: 5, createdAt: now, updatedAt: now }), { status: 202 });
   } catch {
     await refundAiBudget(budget.grant);
     if (typeof source.storagePath === "string") {

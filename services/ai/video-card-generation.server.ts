@@ -8,7 +8,8 @@ import { Timestamp } from "firebase-admin/firestore";
 import {
   VIDEO_MAX_SECONDS,
   chooseVideoRoute,
-  getVideoCoverageCounts,
+  getVideoCoverageSelectivity,
+  VIDEO_CARD_REVIEW_CEILING,
   type VideoCardDraft,
   type VideoCardWarning,
   type VideoCoverage,
@@ -61,7 +62,8 @@ type ParseOptions = {
    * model has been paid for and the video read, where a short honest batch
    * beats failing an import the student already waited on.
    */
-  enforceMinimum?: boolean;
+  /** A ceiling the student asked for; absent means the review ceiling applies. */
+  maxCards?: number;
 };
 
 function extractJson(text: string) {
@@ -208,7 +210,6 @@ function warnUncoveredVisuals(evidence: Evidence[], cards: VideoCardDraft[], war
 
 export function parseAndValidateVideoGeneration(
   text: string,
-  coverage: VideoCoverage,
   options: ParseOptions = {}
 ): Generation {
   const raw = extractJson(text);
@@ -223,21 +224,37 @@ export function parseAndValidateVideoGeneration(
   const { kept } = dedupeNearDuplicates(parsed, evidenceById);
   const { supported, weak } = partitionByEvidenceSupport(kept, evidenceById);
 
-  const { min, max } = getVideoCoverageCounts(coverage);
   const usable = [...supported, ...weak];
   if (!usable.length) throw new Error("no_usable_cards");
 
-  // More cards than were asked for is a trim, not a failure: keep the
-  // best-grounded rather than cutting wherever the array happened to end.
-  const cards = usable.length > max ? rankBySupport(usable, evidenceById).slice(0, max) : usable;
-  if (options.enforceMinimum !== false && cards.length < min) throw new Error("card_count_out_of_range");
+  /*
+   * A ceiling, and never a floor.
+   *
+   * There used to be a required range per coverage level, so a short video
+   * could fail with `card_count_out_of_range` for the crime of not containing
+   * enough to say. What a video supports is the video's business; the only
+   * limits left are the student's own, if they set one, and how many drafts a
+   * person will sit and approve. Trimming keeps the best-grounded rather than
+   * cutting wherever the array happened to end.
+   */
+  const limit = options.maxCards ?? VIDEO_CARD_REVIEW_CEILING;
+  const cards =
+    usable.length > limit
+      ? rankBySupport(usable, evidenceById).slice(0, limit)
+      : usable;
 
   const warnings = parseWarnings(raw.warnings, durationSeconds);
   warnUncoveredVisuals(evidence, cards, warnings);
-  if (cards.length < min) {
+  /*
+   * Nothing apologises for a short batch any more. It used to say the video
+   * "supported 6 cards rather than the 20 asked for", which framed a two-minute
+   * clip as having fallen short of a number nobody should have asked it for.
+   * What is worth saying is the opposite case: that good material was left out.
+   */
+  if (usable.length > cards.length) {
     warnings.unshift({
-      id: "warning-short-batch",
-      message: `This video supported ${cards.length} well-grounded cards rather than the ${min} asked for. Jami left out what it could not stand behind.`,
+      id: "warning-trimmed-batch",
+      message: `This video supported ${usable.length} cards. Jami kept the ${cards.length} best grounded in what it saw.`,
     });
   }
 
@@ -251,10 +268,12 @@ export function parseAndValidateVideoGeneration(
   };
 }
 
-function promptFor(coverage: VideoCoverage, focus?: string) {
-  const range = getVideoCoverageCounts(coverage);
+function promptFor(coverage: VideoCoverage, focus?: string, maxCards?: number) {
   return [
-    `Study the entire video and return JSON only with title, evidence, cards, warnings. Create ${range.min}-${range.max} self-contained, detailed flashcards.`,
+    `Study the entire video and return JSON only with title, evidence, cards, warnings. Make one self-contained, detailed flashcard for each thing in the video that earns one, and no more: ${getVideoCoverageSelectivity(coverage)} Do not pad to reach a number, and do not stop early while material that qualifies is left over -- a two-minute clip and an hour of lecture should not produce the same count.`,
+    maxCards
+      ? `The student asked for at most ${maxCards} cards. If more qualify, keep the ${maxCards} best supported by the evidence and say so in a warning.`
+      : "",
     "Evidence entries need id, timestampSeconds, kind (concept or visual), summary, facts, referenced, and for visuals visualType plus classification. Inventory every diagram, table, graph, equation, teaching slide, and worked example. Classifications: core_teaching, worked_example, practice_question, contextual_support, decorative_administrative, uncertain. Core teaching needs cards. Worked examples need reusable-method cards, not details tied only to the example. Practice questions may contribute the explanation but do not copy the question by default. Contextual/decorative items must have exclusionReason.",
     "If speech says “this graph/table/diagram shows”, inspect and account for it. Warnings are only for uncertain potentially important content.",
     "Each card needs id, front, back, evidenceIds, and useful timestampSeconds/visualType where relevant. Use only facts supported by evidence. State the fact in the answer rather than pointing at where it was said: a card whose wording shares nothing with the evidence it cites will be re-checked against the video and may be dropped. Cards must be answerable without the video or an image.",
@@ -432,7 +451,6 @@ async function reviewFlaggedItems(
  */
 export async function refineCardsWithPrivateRouter(
   generation: Generation,
-  coverage: VideoCoverage,
   durationSeconds: number
 ) {
   try {
@@ -449,7 +467,7 @@ export async function refineCardsWithPrivateRouter(
       generationConfig: { responseMimeType: "application/json", maxOutputTokens: 12_000 },
     });
 
-    const refined = parseAndValidateVideoGeneration(text, coverage, { durationSeconds, enforceMinimum: false });
+    const refined = parseAndValidateVideoGeneration(text, { durationSeconds });
     const floor = Math.max(1, Math.ceil(generation.cards.length / 2));
     return refined.cards.length >= floor ? { generation: refined, applied: true } : { generation, applied: false };
   } catch {
@@ -470,7 +488,7 @@ export async function generateVideoCardsForJob(uid: string, jobId: string) {
   if (durationSeconds <= 0 || durationSeconds > VIDEO_MAX_SECONDS) throw new Error("invalid_duration");
   const coverage = job.coverage as VideoCoverage;
   const route = chooseVideoRoute({ durationSeconds });
-  const prompt = promptFor(coverage, typeof job.focus === "string" ? job.focus : undefined);
+  const prompt = promptFor(coverage, typeof job.focus === "string" ? job.focus : undefined, job.maxCards);
   let cleanup: () => Promise<void> = async () => {};
   let uri = typeof job.youtubeUrl === "string" ? job.youtubeUrl : "";
   let mimeType = "video/mp4";
@@ -488,9 +506,9 @@ export async function generateVideoCardsForJob(uid: string, jobId: string) {
 
     // The video has been read and paid for by this point, so a batch short of
     // the coverage minimum is delivered with a warning rather than discarded.
-    const initial = parseAndValidateVideoGeneration(result.text, coverage, { durationSeconds, enforceMinimum: false });
+    const initial = parseAndValidateVideoGeneration(result.text, { durationSeconds, maxCards: job.maxCards });
     const checked = await reviewFlaggedItems(initial, { uri, mimeType });
-    const { generation: parsed, applied } = await refineCardsWithPrivateRouter(checked.generation, coverage, durationSeconds);
+    const { generation: parsed, applied } = await refineCardsWithPrivateRouter(checked.generation, durationSeconds);
 
     const now = Date.now();
     const visualIds = new Set(parsed.evidence.filter((item) => item.kind === "visual").map((item) => item.id));

@@ -67,7 +67,7 @@ describe("video card generation validation", () => {
         timestampSeconds: 42,
       } as never);
 
-      const parsed = parseAndValidateVideoGeneration(json(source), "standard");
+      const parsed = parseAndValidateVideoGeneration(json(source));
       expect(parsed.warnings).toEqual(
         expect.arrayContaining([expect.objectContaining({ timestampSeconds: 42, visualType: "graph" })])
       );
@@ -87,13 +87,13 @@ describe("video card generation validation", () => {
         timestampSeconds: 80,
       } as never);
 
-      expect(parseAndValidateVideoGeneration(json(source), "standard").warnings).toHaveLength(0);
+      expect(parseAndValidateVideoGeneration(json(source)).warnings).toHaveLength(0);
     });
 
     it("refuses a batch in which nothing is grounded", () => {
       const source = batch(12);
       source.cards = source.cards.map((card) => ({ ...card, evidenceIds: ["missing"] }));
-      expect(() => parseAndValidateVideoGeneration(json(source), "standard")).toThrow("no_usable_cards");
+      expect(() => parseAndValidateVideoGeneration(json(source))).toThrow("no_usable_cards");
     });
 
     it("drops a card that asks what another card already asked", () => {
@@ -106,7 +106,7 @@ describe("video card generation validation", () => {
         timestampSeconds: 0,
       });
 
-      const parsed = parseAndValidateVideoGeneration(json(source), "standard");
+      const parsed = parseAndValidateVideoGeneration(json(source));
       expect(parsed.cards.map((card) => card.id)).not.toContain("duplicate");
       expect(parsed.cards).toHaveLength(12);
     });
@@ -121,7 +121,7 @@ describe("video card generation validation", () => {
         timestampSeconds: 0,
       });
 
-      expect(parseAndValidateVideoGeneration(json(source), "standard").cards.map((card) => card.id)).not.toContain(
+      expect(parseAndValidateVideoGeneration(json(source)).cards.map((card) => card.id)).not.toContain(
         "empty"
       );
     });
@@ -140,32 +140,48 @@ describe("video card generation validation", () => {
         timestampSeconds: 5,
       });
 
-      const parsed = parseAndValidateVideoGeneration(json(source), "standard");
+      const parsed = parseAndValidateVideoGeneration(json(source));
       expect(parsed.cards.map((card) => card.id)).toContain("wandered");
       expect(parsed.weakCardIds).toEqual(["wandered"]);
     });
   });
 
-  describe("the coverage range", () => {
-    it("fails a short batch while it is still judging the provider", () => {
-      // Eight cards for a twelve-card minimum: reason enough to fall back to a
-      // stronger model rather than accept what came back.
-      expect(() => parseAndValidateVideoGeneration(json(batch(8)), "standard")).toThrow("card_count_out_of_range");
+  /*
+   * There is no required count any more.
+   *
+   * Coverage used to mean a range -- standard was 12 to 20 -- so a short video
+   * failed `card_count_out_of_range` for the crime of not containing enough to
+   * say, and a long one was capped at a number chosen before anyone had seen
+   * it. What a video supports is the video's business. The only limits left are
+   * a student's own, and how many drafts a person will sit and approve.
+   */
+  describe("how many cards come back", () => {
+    it("delivers what the video supported, however few", () => {
+      const parsed = parseAndValidateVideoGeneration(json(batch(4)));
+      expect(parsed.cards).toHaveLength(4);
+      // And says nothing apologetic about it.
+      expect(
+        parsed.warnings.some((warning) => warning.id === "warning-trimmed-batch")
+      ).toBe(false);
     });
 
-    it("delivers a short batch once the video has already been read", () => {
-      const parsed = parseAndValidateVideoGeneration(json(batch(8)), "standard", { enforceMinimum: false });
-      expect(parsed.cards).toHaveLength(8);
-      expect(parsed.warnings[0]?.message).toContain("8 well-grounded cards");
+    it("keeps a generous batch that no one asked to shorten", () => {
+      const parsed = parseAndValidateVideoGeneration(json(batch(25)));
+      expect(parsed.cards).toHaveLength(25);
     });
 
-    /*
-     * This used to throw, which made the trim on the following line
-     * unreachable and failed an import that only needed cutting down.
-     */
-    it("trims an over-generous batch instead of failing it", () => {
-      const parsed = parseAndValidateVideoGeneration(json(batch(25)), "standard");
-      expect(parsed.cards).toHaveLength(20);
+    it("trims to the student's own limit, keeping the best grounded", () => {
+      const parsed = parseAndValidateVideoGeneration(json(batch(25)), {
+        maxCards: 10,
+      });
+      expect(parsed.cards).toHaveLength(10);
+      expect(parsed.warnings[0]?.message).toContain("25 cards");
+    });
+
+    it("still refuses a batch with nothing usable in it", () => {
+      expect(() => parseAndValidateVideoGeneration(json(batch(0)))).toThrow(
+        "no_usable_cards"
+      );
     });
   });
 
@@ -175,20 +191,20 @@ describe("video card generation validation", () => {
       source.cards[0].timestampSeconds = 99999;
       source.evidence[0].timestampSeconds = 99999;
 
-      const parsed = parseAndValidateVideoGeneration(json(source), "standard", { durationSeconds: 600 });
+      const parsed = parseAndValidateVideoGeneration(json(source), { durationSeconds: 600 });
       expect(parsed.cards[0].timestampSeconds).toBe(600);
       expect(parsed.evidence[0].timestampSeconds).toBe(600);
     });
 
     it("leaves a real timestamp alone", () => {
-      const parsed = parseAndValidateVideoGeneration(json(batch(12)), "standard", { durationSeconds: 600 });
+      const parsed = parseAndValidateVideoGeneration(json(batch(12)), { durationSeconds: 600 });
       expect(parsed.cards[1].timestampSeconds).toBe(10);
     });
   });
 
   describe("the second look", () => {
     it("finds nothing to check on a clean import", () => {
-      expect(collectFlaggedItems(parseAndValidateVideoGeneration(json(batch(12)), "standard"))).toEqual([]);
+      expect(collectFlaggedItems(parseAndValidateVideoGeneration(json(batch(12))))).toEqual([]);
     });
 
     it("collects the weak card, the uncertain moment, and the visual nobody covered", () => {
@@ -205,7 +221,7 @@ describe("video card generation validation", () => {
         { id: "chart", kind: "visual", visualType: "table", classification: "core_teaching", summary: "A table nobody covered", facts: [], referenced: true, timestampSeconds: 200 } as never
       );
 
-      const flagged = collectFlaggedItems(parseAndValidateVideoGeneration(json(source), "standard"));
+      const flagged = collectFlaggedItems(parseAndValidateVideoGeneration(json(source)));
       expect(flagged.map((item) => item.kind)).toEqual([
         "card_weakly_supported",
         "evidence_uncertain",
@@ -214,7 +230,7 @@ describe("video card generation validation", () => {
     });
 
     it("applies a correction, a drop, and a confirmation", () => {
-      const parsed = parseAndValidateVideoGeneration(json(batch(12)), "standard");
+      const parsed = parseAndValidateVideoGeneration(json(batch(12)));
       const withWarning = {
         ...parsed,
         warnings: [{ id: "w1", message: "Not sure about this one.", timestampSeconds: 0 }],
@@ -234,7 +250,7 @@ describe("video card generation validation", () => {
     });
 
     it("leaves a card alone when the second look only confirmed it", () => {
-      const parsed = parseAndValidateVideoGeneration(json(batch(12)), "standard");
+      const parsed = parseAndValidateVideoGeneration(json(batch(12)));
       const applied = applyResolutions(parsed, [{ target: "c0", action: "confirm" }]);
       expect(applied.cards[0]).toEqual(parsed.cards[0]);
     });
@@ -248,30 +264,30 @@ describe("video card generation validation", () => {
      * the harder the quality pass worked, the likelier its work was discarded.
      */
     it("keeps a refined batch that is smaller than the coverage minimum", async () => {
-      const original = parseAndValidateVideoGeneration(json(batch(16)), "standard");
+      const original = parseAndValidateVideoGeneration(json(batch(16)));
       generateAiText.mockResolvedValue(json({ ...batch(10), title: "Lesson" }));
 
-      const result = await refineCardsWithPrivateRouter(original, "standard", 600);
+      const result = await refineCardsWithPrivateRouter(original, 600);
 
       expect(result.applied).toBe(true);
       expect(result.generation.cards).toHaveLength(10);
     });
 
     it("keeps the original when the refiner returns a mangled batch", async () => {
-      const original = parseAndValidateVideoGeneration(json(batch(16)), "standard");
+      const original = parseAndValidateVideoGeneration(json(batch(16)));
       generateAiText.mockResolvedValue(json(batch(3)));
 
-      const result = await refineCardsWithPrivateRouter(original, "standard", 600);
+      const result = await refineCardsWithPrivateRouter(original, 600);
 
       expect(result.applied).toBe(false);
       expect(result.generation).toBe(original);
     });
 
     it("keeps the original when the refiner returns something unusable", async () => {
-      const original = parseAndValidateVideoGeneration(json(batch(16)), "standard");
+      const original = parseAndValidateVideoGeneration(json(batch(16)));
       generateAiText.mockResolvedValue("I could not complete that request.");
 
-      const result = await refineCardsWithPrivateRouter(original, "standard", 600);
+      const result = await refineCardsWithPrivateRouter(original, 600);
 
       expect(result.applied).toBe(false);
       expect(result.generation).toBe(original);

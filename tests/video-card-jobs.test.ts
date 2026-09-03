@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { chooseVideoRoute, formatVideoTimestamp, getVideoCoverageCounts, getVideoSamplingFps } from "@/lib/ai/video-card-jobs";
+import {
+  chooseVideoRoute,
+  formatVideoTimestamp,
+  getVideoCoverageSelectivity,
+  getVideoSamplingFps,
+  parseVideoCardLimit,
+  VIDEO_CARD_REVIEW_CEILING,
+} from "@/lib/ai/video-card-jobs";
 
 const original = { ...process.env };
 afterEach(() => { process.env = { ...original }; });
@@ -56,8 +63,34 @@ describe("video card routing", () => {
     expect(chooseVideoRoute({ durationSeconds: 300 }).model).toBe("gemini-custom");
   });
 
-  it("keeps the requested coverage and timestamp labels stable", () => {
-    expect(getVideoCoverageCounts("thorough")).toEqual({ min: 20, max: 35, target: 28 });
+  /*
+   * Coverage says what earns a card, not how many. A fixed range meant a
+   * two-minute clip was asked for twenty cards and either padded to reach them
+   * or failed `card_count_out_of_range` for not containing enough to say.
+   */
+  it("describes what earns a card rather than a count", () => {
+    for (const coverage of ["focused", "standard", "thorough"] as const) {
+      const text = getVideoCoverageSelectivity(coverage);
+      expect(text, coverage).toBeTruthy();
+      expect(text, coverage).not.toMatch(/\d+\s*(-|to|–)\s*\d+/);
+    }
+    // The levels get broader, not longer-winded, as they go up.
+    expect(getVideoCoverageSelectivity("focused")).toContain("Only core teaching");
+    expect(getVideoCoverageSelectivity("thorough")).toContain("supporting detail");
+  });
+
+  it("takes a limit only when the student sets one, and keeps it sane", () => {
+    expect(parseVideoCardLimit(undefined)).toBeNull();
+    expect(parseVideoCardLimit("")).toBeNull();
+    expect(parseVideoCardLimit(0)).toBeNull();
+    expect(parseVideoCardLimit(-4)).toBeNull();
+    expect(parseVideoCardLimit(12)).toBe(12);
+    expect(parseVideoCardLimit("12")).toBe(12);
+    // Nobody reviews 500 drafts in a sitting, whatever they type.
+    expect(parseVideoCardLimit(500)).toBe(VIDEO_CARD_REVIEW_CEILING);
+  });
+
+  it("keeps the timestamp label stable", () => {
     expect(formatVideoTimestamp(125)).toBe("2:05");
   });
 });
