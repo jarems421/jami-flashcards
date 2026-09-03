@@ -22,12 +22,6 @@ function studyLevelSelect() {
   return document.querySelector<HTMLSelectElement>("select");
 }
 
-function button(label: string) {
-  return [...document.querySelectorAll<HTMLButtonElement>("button")].find(
-    (candidate) => candidate.textContent?.trim() === label
-  );
-}
-
 beforeEach(() => {
   mocks.load.mockReset().mockResolvedValue("gcse-equivalent");
   mocks.save.mockReset().mockResolvedValue("post-16-equivalent");
@@ -42,14 +36,23 @@ afterEach(() => {
 });
 
 describe("StudyLevelPreferenceCard", () => {
-  it("loads and saves a changeable account default", async () => {
+  /*
+   * Choosing a level is what saves it.
+   *
+   * This used to need a second click on a "Save study level" button, while the
+   * theme picker beside it on the same page saved on choosing -- so picking a
+   * level and walking away looked identical to setting one and stored nothing.
+   * The account it was found on had no stored level at all, and the tutor had
+   * been pitching every answer with nothing to go on.
+   */
+  it("saves the moment a level is chosen, with no second click", async () => {
     await act(async () => {
       root.render(<StudyLevelPreferenceCard userId="user-1" />);
     });
 
     expect(mocks.load).toHaveBeenCalledWith("user-1");
     expect(studyLevelSelect()?.value).toBe("gcse-equivalent");
-    expect(button("Save study level")?.disabled).toBe(true);
+    expect(mocks.save).not.toHaveBeenCalled();
 
     await act(async () => {
       const select = studyLevelSelect()!;
@@ -59,16 +62,40 @@ describe("StudyLevelPreferenceCard", () => {
       )?.set?.call(select, "post-16-equivalent");
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    expect(button("Save study level")?.disabled).toBe(false);
+
+    expect(mocks.save).toHaveBeenCalledWith("user-1", "post-16-equivalent");
+    expect(container.textContent).toContain("Default study level saved.");
+  });
+
+  it("lets the last choice win when an earlier save is still in flight", async () => {
+    // Two quick changes: the slow first write must not overwrite the second.
+    let releaseFirst: (value: string) => void = () => {};
+    mocks.save
+      .mockReset()
+      .mockImplementationOnce(
+        () => new Promise<string>((resolve) => { releaseFirst = resolve; })
+      )
+      .mockResolvedValueOnce("undergraduate");
 
     await act(async () => {
-      button("Save study level")?.click();
+      root.render(<StudyLevelPreferenceCard userId="user-1" />);
     });
 
-    expect(mocks.save).toHaveBeenCalledWith(
-      "user-1",
-      "post-16-equivalent"
-    );
-    expect(container.textContent).toContain("Default study level saved.");
+    const choose = async (value: string) => {
+      await act(async () => {
+        const select = studyLevelSelect()!;
+        Object.getOwnPropertyDescriptor(
+          HTMLSelectElement.prototype,
+          "value"
+        )?.set?.call(select, value);
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    };
+
+    await choose("post-16-equivalent");
+    await choose("undergraduate");
+    await act(async () => { releaseFirst("post-16-equivalent"); });
+
+    expect(studyLevelSelect()?.value).toBe("undergraduate");
   });
 });

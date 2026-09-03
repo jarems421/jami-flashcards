@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
+import type { AiReasoningEffort } from "@/lib/ai/provider-policy";
 import type { Source } from "@/lib/material/sources";
 
 const MAX_RELATED_SOURCES = 15;
@@ -19,6 +20,13 @@ export type ResolvedJamiAssistantContext = {
   currentParts: AiContentPart[];
   sources: Source[];
   studyLevelContext?: string;
+  /**
+   * How hard this student has asked Jami to think, if they have said.
+   *
+   * Read from the same user document the study level comes from, so wanting it
+   * costs no extra round trip.
+   */
+  reasoningEffort?: AiReasoningEffort;
 };
 
 export class JamiAssistantContextError extends Error {

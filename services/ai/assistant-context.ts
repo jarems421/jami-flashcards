@@ -13,6 +13,7 @@ import {
   type SourceRelations,
 } from "@/lib/ai/assistant-context.server";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
+import { normalizeReasoningEffort } from "@/lib/profile/reasoning-effort";
 import { mapSourceData, type Source } from "@/lib/material/sources";
 import {
   getStudyLevelTutorLabel,
@@ -35,7 +36,7 @@ const NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT = 12_000;
 
 type AdminDb = ReturnType<typeof getAdminDb>;
 
-async function loadTutorStudyLevel(input: {
+async function loadTutorPreferences(input: {
   db: AdminDb;
   uid: string;
   folderIds: readonly string[];
@@ -62,11 +63,17 @@ async function loadTutorStudyLevel(input: {
   const accountLevel = normalizeStudyLevel(
     userSnapshot.exists ? userSnapshot.data()?.defaultStudyLevel : undefined
   );
+  const reasoningEffort = normalizeReasoningEffort(
+    userSnapshot.exists ? userSnapshot.data()?.reasoningEffort : undefined
+  );
   const level = folderLevels.length === 1 ? folderLevels[0] : accountLevel;
-  if (!level) return undefined;
+  if (!level) return { studyLevelContext: undefined, reasoningEffort };
 
   const source = folderLevels.length === 1 ? "folder override" : "account default";
-  return `Study-level preference: ${getStudyLevelTutorLabel(level)} (${source}). Use this to calibrate vocabulary, assumed knowledge, examples, and explanation depth. It describes the material, not the student's ability. If the student's current request explicitly asks for a different level or style, follow that request instead.`;
+  return {
+    studyLevelContext: `Study-level preference: ${getStudyLevelTutorLabel(level)} (${source}). Use this to calibrate vocabulary, assumed knowledge, examples, and explanation depth. It describes the material, not the student's ability. If the student's current request explicitly asks for a different level or style, follow that request instead.`,
+    reasoningEffort,
+  };
 }
 
 function getNotebookPageText(page: ReturnType<typeof mapNotebookPageData>) {
@@ -444,7 +451,7 @@ export async function resolveJamiAssistantContext(input: {
       : input.context.surface === "sources"
         ? await resolveSourcesContext({ db, uid, context: input.context })
         : await resolveNotebookContext({ db, uid, context: input.context });
-  const [sources, studyLevelContext] = await Promise.all([
+  const [sources, preferences] = await Promise.all([
     selectSources({
       db,
       uid,
@@ -452,7 +459,7 @@ export async function resolveJamiAssistantContext(input: {
       message: input.message,
       includeRelated: input.useRelatedSources,
     }),
-    loadTutorStudyLevel({
+    loadTutorPreferences({
       db,
       uid,
       folderIds: resolved.relations.folderIds,
@@ -464,7 +471,8 @@ export async function resolveJamiAssistantContext(input: {
     currentLabel: resolved.currentLabel,
     currentParts: resolved.currentParts,
     sources,
-    studyLevelContext,
+    studyLevelContext: preferences.studyLevelContext,
+    reasoningEffort: preferences.reasoningEffort,
   };
 }
 

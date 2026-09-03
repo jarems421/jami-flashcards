@@ -5,6 +5,10 @@ import {
   normalizeStudyLevel,
   type StudyLevel,
 } from "@/lib/profile/study-level";
+import {
+  normalizeReasoningEffort,
+  type ReasoningEffortPreference,
+} from "@/lib/profile/reasoning-effort";
 
 export const MAX_USERNAME_LENGTH = 32;
 
@@ -42,6 +46,33 @@ export async function saveInAppUsername(userId: string, username: string) {
   invalidateDashboardData(userId);
 
   return nextUsername || null;
+}
+
+export async function loadReasoningEffort(
+  userId: string
+): Promise<ReasoningEffortPreference | null> {
+  const snapshot = await getDoc(doc(db, "users", userId));
+  if (!snapshot.exists()) return null;
+
+  return normalizeReasoningEffort(snapshot.data().reasoningEffort) ?? null;
+}
+
+export async function saveReasoningEffort(
+  userId: string,
+  effort: ReasoningEffortPreference | null
+) {
+  const normalized = normalizeReasoningEffort(effort);
+  await setDoc(
+    doc(db, "users", userId),
+    {
+      reasoningEffort: normalized ?? deleteField(),
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
+  invalidateDashboardData(userId);
+
+  return normalized ?? null;
 }
 
 export async function loadDefaultStudyLevel(
