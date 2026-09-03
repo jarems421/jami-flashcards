@@ -52,6 +52,24 @@ service firebase.storage {
       allow delete: if isSelf(userId) && !isDemoAccount();
     }
 
+    // An uploaded video is kept until the import is approved or discarded, so
+    // that the timestamps on the draft cards point at something the student can
+    // still watch while reviewing them. Approving, discarding, or a failed
+    // generation all delete the object, and starting another import sweeps the
+    // student's own expired ones.
+    //
+    // None of that covers a bucket-level accident, so this prefix also needs an
+    // age-based lifecycle rule (delete after 2 days) configured on the bucket.
+    // Storage lifecycle lives in bucket configuration rather than in these
+    // rules, which is why it is written down here:
+    //
+    //   gcloud storage buckets update gs://<bucket> --lifecycle-file=<file>
+    //   { "rule": [{ "action": { "type": "Delete" },
+    //                "condition": { "age": 2,
+    //                               "matchesPrefix": ["users/"] } }] }
+    //
+    // Scope the prefix to videoCardImports paths before applying it; nothing
+    // else under users/ is safe to delete on age.
     match /users/{userId}/videoCardImports/{jobId}/{fileName} {
       allow read: if isSelf(userId);
       allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedVideoImport();

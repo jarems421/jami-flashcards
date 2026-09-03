@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { start } from "workflow/api";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { VIDEO_MAX_BYTES, VIDEO_MAX_SECONDS, mapVideoCardJobData, parseVideoCoverage } from "@/lib/ai/video-card-jobs";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
@@ -44,6 +44,31 @@ async function inspectYouTube(url: string) {
   return { videoId: id, url: `https://www.youtube.com/watch?v=${id}`, durationSeconds: parseIsoDuration(item.contentDetails?.duration || ""), title: item.snippet?.title?.slice(0, 160) || "YouTube video" };
 }
 
+/**
+ * Frees the videos behind this student's own expired imports.
+ *
+ * Storage is released when an import fails, is discarded, or is approved. A
+ * student who reads their cards and closes the tab does none of those, and now
+ * that the upload is kept for review it would otherwise sit in the bucket for
+ * good. Starting another import is the natural moment to clear the last one,
+ * and it needs no scheduler to be reliable. Bounded per request, and never a
+ * reason for the new import to fail.
+ */
+async function sweepExpiredImports(db: ReturnType<typeof getAdminDb>, uid: string) {
+  const snapshot = await db
+    .collection("users").doc(uid).collection("videoCardJobs")
+    .where("expiresAt", "<=", Timestamp.now())
+    .limit(5)
+    .get();
+
+  await Promise.all(snapshot.docs.map(async (doc) => {
+    const storagePath = doc.data().storagePath;
+    if (typeof storagePath !== "string" || !storagePath) return;
+    await getAdminStorageBucket().file(storagePath).delete({ ignoreNotFound: true });
+    await doc.ref.update({ storagePath: FieldValue.delete() });
+  }));
+}
+
 export async function GET(request: NextRequest) {
   const uid = await authenticate(request); if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const snapshot = await getAdminDb().collection("users").doc(uid).collection("videoCardJobs").orderBy("updatedAt", "desc").limit(10).get();
@@ -58,6 +83,7 @@ export async function POST(request: NextRequest) {
   const focus = typeof body.focus === "string" ? body.focus.replace(/\s+/g, " ").trim().slice(0, 500) : "";
   if (!coverage || !deckId) return failure("Choose a deck and coverage.", 400, "invalid_request");
   const db = getAdminDb();
+  await sweepExpiredImports(db, uid).catch(() => undefined);
   const deck = await db.collection("decks").doc(deckId).get();
   if (!deck.exists || ![deck.data()?.userId, deck.data()?.uid].includes(uid)) return failure("Deck not found", 404, "deck_not_found");
   const id = jobId(request.headers.get("x-idempotency-key"));

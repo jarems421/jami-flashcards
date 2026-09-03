@@ -359,17 +359,38 @@ describe("the smooth pen", () => {
     expect(worstStray).toBeLessThan(1);
   });
 
-  it("weights the stroke by average pressure, not by however it landed", () => {
+  it("does not let a light landing decide the weight of the whole stroke", () => {
     // A light touch at the start followed by firm pressure throughout.
     const points = [
       point(0, 0, 1),
       ...Array.from({ length: 30 }, (_, step) => point((step + 1) * 6, 0, 9)),
     ];
-    const stroke = buildStroke(points).getParts()[0].style.stroke;
+    const part = buildStroke(points).getParts()[0];
 
-    expect(stroke).toBeDefined();
-    // Nearer the sustained 9 than the initial 1.
-    expect(stroke!.width).toBeGreaterThan(7);
+    /*
+     * This used to be answered by averaging the pressure into one width for the
+     * whole stroke, because a stroked centre line cannot do anything else --
+     * and the risk being guarded against was that however lightly the pen
+     * happened to land would set the weight of everything after it.
+     *
+     * The pen now draws the weights it was actually written with, so the
+     * sustained run is simply drawn at the weight it was sustained at, and the
+     * landing only affects the landing.
+     */
+    expect(part.style.fill.a).toBeGreaterThan(0);
+
+    const acrossTheSustainedRun: number[] = [];
+    const consider = (p: Point2) => {
+      if (p.x > 60) acrossTheSustainedRun.push(p.y);
+    };
+    consider(part.path.startPoint);
+    for (const piece of part.path.parts) {
+      if ("endPoint" in piece) consider(piece.endPoint);
+    }
+
+    expect(
+      Math.max(...acrossTheSustainedRun) - Math.min(...acrossTheSustainedRun)
+    ).toBeGreaterThan(7);
   });
 
   it("marks a dot for a tap, which a zero-length stroke would not", () => {

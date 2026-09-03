@@ -179,6 +179,45 @@ const STRAIGHTEN_MAXIMUM_BOW = 0.32;
  */
 const REVERSAL_BISECTOR_FLOOR = 0.01;
 
+/**
+ * The circle-to-Bezier constant, for a quarter turn.
+ *
+ * Used for the round caps on a tapered stroke and for the dot, which is the
+ * same shape with no length.
+ */
+const QUARTER_ARC_HANDLE = 0.5522847498;
+
+/**
+ * How many samples either side are averaged into a point's width.
+ *
+ * Pressure off a digitiser is noisy at a scale the eye reads as a ragged edge
+ * rather than as pressure, and the outline shows every bit of it: the centreline
+ * is smoothed by the spline, but the distance out to the edge is not smoothed by
+ * anything. Averaging over a short run keeps the swell of a stroke while losing
+ * the tremble in it.
+ */
+const WIDTH_SMOOTHING_RADIUS = 2;
+
+/**
+ * The thinnest a tapered stroke goes, as a fraction of its own average.
+ *
+ * Apple Pencil reports very little pressure for the first sample or two of a
+ * contact, and a taper that honoured it exactly would start every stroke from
+ * nothing -- which reads as the pen failing to catch rather than as a
+ * calligraphic entry.
+ */
+const MINIMUM_WIDTH_FRACTION = 0.35;
+
+/**
+ * How much a stroke's width must vary before it is worth drawing as an outline.
+ *
+ * A mouse, a desktop stylus, and an Apple Pencil held at a steady weight all
+ * report one width, and for those the old uniform stroked path is the better
+ * answer: half the geometry, and identical on screen. The outline is spent only
+ * where there is something for it to show.
+ */
+const WIDTH_VARIATION_FLOOR = 0.08;
+
 const GUIDE_ANGLE_STEP = Math.PI / 4;
 const GUIDE_ANGLE_WINDOW = (8 * Math.PI) / 180;
 
@@ -288,6 +327,126 @@ export function createNotebookSmoothPenStrokeFactory(
   feel: NotebookPenFeel = getNotebookPenFeel(NOTEBOOK_PEN_SMOOTHING_DEFAULT)
 ): ComponentBuilderFactory {
   const { PathCommandType, Rect2, Stroke, Vec2 } = jsDraw;
+
+  /**
+   * Cubic Beziers through every point, C1 by construction.
+   *
+   * The same Catmull-Rom the centreline is drawn with, in a form the two edges
+   * of a tapered stroke can also use. Their tangents come from their own
+   * neighbours rather than the centreline's, because an offset edge turns
+   * through a different angle than the line it was offset from -- sharper on
+   * the inside of a bend, gentler on the outside.
+   */
+  const cubicsThrough = (pts: Point2[]): PathCommand[] => {
+    const at = (index: number) =>
+      pts[Math.min(Math.max(index, 0), pts.length - 1)];
+    const direction = (index: number) => {
+      const arriving = at(index).minus(at(index - 1));
+      const leaving = at(index + 1).minus(at(index));
+      if (arriving.magnitude() === 0) return leaving;
+      if (leaving.magnitude() === 0) return arriving;
+      const bisector = arriving.normalized().plus(leaving.normalized());
+      return bisector.magnitude() < REVERSAL_BISECTOR_FLOOR ? leaving : bisector;
+    };
+
+    const commands: PathCommand[] = [];
+    for (let index = 0; index < pts.length - 1; index += 1) {
+      const from = at(index);
+      const to = at(index + 1);
+      const reach = to.distanceTo(from) * TANGENT_SCALE;
+      const armOut = direction(index);
+      const armIn = direction(index + 1);
+      commands.push({
+        kind: PathCommandType.CubicBezierTo,
+        controlPoint1:
+          armOut.magnitude() > 0
+            ? from.plus(armOut.normalized().times(reach))
+            : from,
+        controlPoint2:
+          armIn.magnitude() > 0 ? to.minus(armIn.normalized().times(reach)) : to,
+        endPoint: to,
+      });
+    }
+    return commands;
+  };
+
+  /**
+   * The round end of a stroke: a half circle from one edge to the other, as two
+   * quarter-circle cubics.
+   *
+   * Drawn rather than left to a line cap because a tapered stroke is a filled
+   * outline, and an outline has no caps to set -- the ends are simply part of
+   * the shape.
+   */
+  const semicircle = (
+    centre: Point2,
+    from: Point2,
+    outward: Point2,
+    radius: number
+  ): PathCommand[] => {
+    const spoke = from.minus(centre);
+    if (radius <= 0 || spoke.magnitude() === 0 || outward.magnitude() === 0) {
+      return [];
+    }
+    const unit = spoke.normalized();
+    const away = outward.normalized();
+    const handle = radius * QUARTER_ARC_HANDLE;
+    const mid = centre.plus(away.times(radius));
+    const to = centre.minus(unit.times(radius));
+    return [
+      {
+        kind: PathCommandType.CubicBezierTo,
+        controlPoint1: from.plus(away.times(handle)),
+        controlPoint2: mid.plus(unit.times(handle)),
+        endPoint: mid,
+      },
+      {
+        kind: PathCommandType.CubicBezierTo,
+        controlPoint1: mid.minus(unit.times(handle)),
+        controlPoint2: to.plus(away.times(handle)),
+        endPoint: to,
+      },
+    ];
+  };
+
+  /** Whether this stroke was drawn with enough varying weight to be worth tapering. */
+  const widthVaries = (raw: number[]) => {
+    if (raw.length < 3) return false;
+    let smallest = raw[0];
+    let largest = raw[0];
+    let total = 0;
+    for (const value of raw) {
+      if (value < smallest) smallest = value;
+      if (value > largest) largest = value;
+      total += value;
+    }
+    const mean = total / raw.length;
+    return mean > 0 && (largest - smallest) / mean >= WIDTH_VARIATION_FLOOR;
+  };
+
+  /** Half the width at each point, averaged along the stroke and floored. */
+  const halfWidthsAlong = (raw: number[], count: number) => {
+    const mean = raw.reduce((sum, value) => sum + value, 0) / Math.max(raw.length, 1);
+    const floor = mean * MINIMUM_WIDTH_FRACTION;
+    const result: number[] = [];
+
+    for (let index = 0; index < count; index += 1) {
+      let total = 0;
+      let samples = 0;
+      for (
+        let offset = -WIDTH_SMOOTHING_RADIUS;
+        offset <= WIDTH_SMOOTHING_RADIUS;
+        offset += 1
+      ) {
+        const source = index + offset;
+        if (source < 0 || source >= raw.length) continue;
+        total += raw[source];
+        samples += 1;
+      }
+      result.push(Math.max(samples ? total / samples : mean, floor) / 2);
+    }
+    return result;
+  };
   const { cornerDegrees, cornerDominance, easeTowardsNeighbours } = feel;
 
   return (startPoint: StrokeDataPoint, viewport: Viewport): ComponentBuilder => {
@@ -304,6 +463,15 @@ export function createNotebookSmoothPenStrokeFactory(
     let widthTotal = Math.max(startPoint.width, 0.1);
     let widthSamples = 1;
     const strokeWidth = () => widthTotal / widthSamples;
+    /**
+     * The width reported at each kept point, in step with `points`.
+     *
+     * The average above is still what a uniform stroke is drawn at, and what the
+     * bounding box is grown by. This is what lets a stroke that was not drawn at
+     * one weight be drawn at the weights it was actually made with.
+     */
+    const widths: number[] = [Math.max(startPoint.width, 0.1)];
+    let pendingWidth = widths[0];
     const minimumStep = Math.max(
       viewport.getSizeOfPixelOnCanvas() * MINIMUM_STEP_RATIO,
       0.01
@@ -353,6 +521,7 @@ export function createNotebookSmoothPenStrokeFactory(
 
     /** Every point that shapes the curve, including the one still held. */
     const shapePoints = () => (pending ? [...points, pending] : points);
+    const shapeWidths = () => (pending ? [...widths, pendingWidth] : widths);
 
     /**
      * The neighbours far enough away for a direction through `index` to mean
@@ -700,6 +869,66 @@ export function createNotebookSmoothPenStrokeFactory(
         return bisector;
       };
 
+      /*
+       * A stroke drawn at varying weight is drawn as its own outline.
+       *
+       * A stroked path has one width for its whole length, so for as long as
+       * the pen was one it could not taper: pressure could only be averaged
+       * into a single heavier or lighter line, and an Apple Pencil wrote the
+       * same flat mark as a mouse. What gives handwriting its life is the
+       * modulation along a stroke -- heavy through the downstroke, fine out of
+       * the exit -- and the only way to draw that is to draw both edges.
+       *
+       * Spent only where there is something to show. Anything reporting one
+       * steady width still takes the stroked path above: identical on screen,
+       * and half the geometry to store and reparse.
+       */
+      const sampledWidths = shapeWidths();
+      if (widthVaries(sampledWidths)) {
+        const halfWidths = halfWidthsAlong(sampledWidths, shape.length);
+        const last = shape.length - 1;
+        const normalAt = (index: number) => {
+          const along = at(Math.min(index + 1, last)).minus(
+            at(Math.max(index - 1, 0))
+          );
+          if (along.magnitude() === 0) return Vec2.of(0, 1);
+          const unit = along.normalized();
+          return Vec2.of(-unit.y, unit.x);
+        };
+
+        const normals = shape.map((_, index) => normalAt(index));
+        const left = shape.map((point, index) =>
+          point.plus(normals[index].times(halfWidths[index]))
+        );
+        const right = shape.map((point, index) =>
+          point.minus(normals[index].times(halfWidths[index]))
+        );
+
+        // Out along one edge, round the end, back along the other, round the
+        // start. One closed loop: a stroke made of separate subpaths is welded
+        // into a zig-zag by everything downstream that closes a path.
+        return {
+          startPoint: left[0],
+          commands: [
+            ...cubicsThrough(left),
+            ...semicircle(
+              shape[last],
+              left[last],
+              at(last).minus(at(last - 1)),
+              halfWidths[last]
+            ),
+            ...cubicsThrough([...right].reverse()),
+            ...semicircle(
+              shape[0],
+              right[0],
+              at(0).minus(at(1)),
+              halfWidths[0]
+            ),
+          ],
+          style: { fill: color },
+        };
+      }
+
       const commands: PathCommand[] = [];
       for (let index = 0; index < shape.length - 1; index += 1) {
         const from = at(index);
@@ -747,11 +976,13 @@ export function createNotebookSmoothPenStrokeFactory(
         const newest = pending ?? points[points.length - 1];
         if (next.distanceTo(newest) < minimumStep) return;
 
-        widthTotal += Math.max(newPoint.width, 0.1);
+        const sampleWidth = Math.max(newPoint.width, 0.1);
+        widthTotal += sampleWidth;
         widthSamples += 1;
 
         if (pending === null) {
           pending = next;
+          pendingWidth = sampleWidth;
           return;
         }
         // The held sample earns its place only if dropping it would change
@@ -782,8 +1013,10 @@ export function createNotebookSmoothPenStrokeFactory(
           next.distanceTo(lastKept) >= maximumSpan
         ) {
           points.push(pending);
+          widths.push(pendingWidth);
         }
         pending = next;
+        pendingWidth = sampleWidth;
       },
       preview(renderer) {
         renderer.drawPath(renderablePath());
