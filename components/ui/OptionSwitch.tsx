@@ -9,6 +9,13 @@ export type OptionSwitchOption<Value extends string> = {
   detail?: string;
 };
 
+const columnClasses: Record<number, string> = {
+  2: "sm:grid-cols-2",
+  3: "sm:grid-cols-3",
+  4: "grid-cols-2 sm:grid-cols-4",
+  5: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5",
+};
+
 /**
  * Picks one of two or three ways of doing the same thing.
  *
@@ -29,6 +36,8 @@ export default function OptionSwitch<Value extends string>({
   disabled = false,
   onChange,
   className = "",
+  columns,
+  detail = "always",
 }: {
   label: string;
   value: Value;
@@ -36,9 +45,27 @@ export default function OptionSwitch<Value extends string>({
   disabled?: boolean;
   onChange: (value: Value) => void;
   className?: string;
+  /** Overrides the default of two columns for two options and three for more. */
+  columns?: 2 | 3 | 4 | 5;
+  /**
+   * Where the details go.
+   *
+   * `always` puts every option's line under its own tile, which is right when
+   * there are two or three and the whole decision should be readable at once.
+   * `selected` moves them to a single line beneath the row, which is right once
+   * there are five: five explanations stacked on a phone is a page of reading
+   * in front of somebody who only wanted to start studying.
+   */
+  detail?: "always" | "selected";
 }) {
   const labelId = useId();
-  const hasDetail = options.some((option) => option.detail);
+  const hasDetail = detail === "always" && options.some((option) => option.detail);
+  const selectedDetail =
+    detail === "selected"
+      ? options.find((option) => option.value === value)?.detail
+      : undefined;
+  const grid =
+    columnClasses[columns ?? (options.length > 2 ? 3 : 2)] ?? "sm:grid-cols-3";
 
   return (
     <div className={className}>
@@ -48,11 +75,7 @@ export default function OptionSwitch<Value extends string>({
       >
         {label}
       </span>
-      <div
-        role="radiogroup"
-        aria-labelledby={labelId}
-        className={`grid gap-2 ${options.length > 2 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
-      >
+      <div role="radiogroup" aria-labelledby={labelId} className={`grid gap-2 ${grid}`}>
         {options.map((option) => {
           const selected = option.value === value;
           return (
@@ -92,7 +115,7 @@ export default function OptionSwitch<Value extends string>({
                   {option.label}
                 </span>
               </span>
-              {option.detail ? (
+              {hasDetail && option.detail ? (
                 <span className="mt-1.5 block pl-6 text-xs leading-5 text-text-muted">
                   {option.detail}
                 </span>
@@ -101,6 +124,14 @@ export default function OptionSwitch<Value extends string>({
           );
         })}
       </div>
+      {selectedDetail ? (
+        <p
+          aria-live="polite"
+          className="mt-2 text-xs leading-5 text-text-muted"
+        >
+          {selectedDetail}
+        </p>
+      ) : null}
     </div>
   );
 }

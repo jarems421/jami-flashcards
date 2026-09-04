@@ -226,6 +226,7 @@ export default function CardCreationPanel({
           <div className="grid gap-4 lg:grid-cols-2">
             <Input
               label="Front"
+              symbols
               placeholder="Front"
               value={singleFront}
               onChange={(event) => setSingleFront(event.target.value)}

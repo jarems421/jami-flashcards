@@ -52,16 +52,37 @@ export const E2E_OFFLINE_CARDS = [
  */
 export const E2E_MODES_DECK_ID = "e2e-deck-modes";
 export const E2E_MODES_DECK_NAME = "Browser smoke modes deck";
+/*
+ * `mcqDistractors` stands in for what Jami writes during preparation, which the
+ * browser suite has no provider to produce. Multiple choice refuses to build a
+ * question without them -- that is the point of the mode now -- so a fixture
+ * deck with none would exercise the refusal and nothing else. Card three has
+ * none on purpose: a numeric answer makes its own wrong options.
+ */
 export const E2E_MODES_CARDS = [
   {
     id: "e2e-modes-card-1",
     front: "Which organelle releases energy in a cell?",
     back: "The mitochondrion releases usable energy inside every cell",
+    studySettings: {
+      mcqDistractors: [
+        "The nucleus stores the cell's genetic instructions",
+        "The ribosome assembles proteins from amino acids",
+        "The chloroplast captures light for photosynthesis",
+      ],
+    },
   },
   {
     id: "e2e-modes-card-2",
     front: "What is the powerhouse molecule of the cell?",
     back: "Adenosine triphosphate",
+    studySettings: {
+      mcqDistractors: [
+        "Adenosine diphosphate",
+        "Deoxyribonucleic acid",
+        "Pyruvic acid",
+      ],
+    },
   },
   {
     id: "e2e-modes-card-3",
@@ -72,6 +93,13 @@ export const E2E_MODES_CARDS = [
     id: "e2e-modes-card-4",
     front: "Which structure builds proteins?",
     back: "The ribosome assembles amino acids into proteins",
+    studySettings: {
+      mcqDistractors: [
+        "The mitochondrion releases energy from glucose",
+        "The lysosome breaks down worn-out cell parts",
+        "The vacuole stores water and keeps the cell firm",
+      ],
+    },
   },
 ] as const;
 

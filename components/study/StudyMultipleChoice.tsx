@@ -10,16 +10,20 @@ type StudyMultipleChoiceProps = {
   prompt: string;
   question: McqQuestion;
   onAnswered: (correct: boolean) => void;
-  onContinue: () => void;
+  onContinue: (correct: boolean) => void;
 };
 
 /**
- * Multiple choice, which practises a card and never reschedules it.
+ * Multiple choice, which schedules like every other mode.
  *
- * Recognising the right answer among four is weaker evidence than producing it,
- * so nothing here reaches the scheduler. The page routes this mode through
- * `continueWithoutScheduling`, and the setup screen says so before a session
- * starts.
+ * It used to be practice-only, on the grounds that recognising an answer among
+ * four is weaker evidence than producing it. What made that true was the wrong
+ * options: assembled from other cards in the deck, they were answerable by
+ * elimination, so a right answer meant very little. The options are written for
+ * the card now -- by Jami during preparation, or by the student -- and a
+ * question nobody can pass without knowing the material is evidence worth
+ * scheduling on. A card that cannot get options that good is not asked this
+ * way at all.
  */
 export default function StudyMultipleChoice({
   prompt,
@@ -42,7 +46,7 @@ export default function StudyMultipleChoice({
       if (chosenId) {
         if (event.key === "Enter" || event.code === "Space") {
           event.preventDefault();
-          onContinue();
+          onContinue(chosenId === question.correctOptionId);
         }
         return;
       }
@@ -117,11 +121,11 @@ export default function StudyMultipleChoice({
                 ? "That is the answer on this card."
                 : "Not this one.")}
           </p>
-          <p className="text-2xs text-text-muted">
-            Multiple choice practises this card. It does not change when you next
-            see it.
-          </p>
-          <Button type="button" onClick={onContinue} size="md">
+          <Button
+            type="button"
+            onClick={() => onContinue(chosenId === question.correctOptionId)}
+            size="md"
+          >
             Next card
           </Button>
         </div>

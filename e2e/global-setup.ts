@@ -212,6 +212,9 @@ export default async function globalSetup() {
               reps: 0,
               lapses: 0,
               dueDate: now,
+              ...("studySettings" in card
+                ? { studySettings: card.studySettings }
+                : {}),
             })
           ),
         ]),

@@ -154,5 +154,9 @@ export function mergeAssetIntoSettings(
     mcqDistractors: settings?.mcqDistractors?.length
       ? settings.mcqDistractors
       : asset.distractors,
+    mcqExplanations: {
+      ...asset.misconceptions,
+      ...settings?.mcqExplanations,
+    },
   };
 }

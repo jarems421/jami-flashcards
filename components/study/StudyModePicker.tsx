@@ -1,140 +1,87 @@
 "use client";
 
-import { Button } from "@/components/ui";
+import { OptionSwitch, type OptionSwitchOption } from "@/components/ui";
 import type { StudyMode, StudyModePolicy } from "@/lib/study/study-modes";
 
-export type StudyModeReadiness = {
-  ready: number;
-  unavailable: number;
-};
+type ModeChoice = "smart" | StudyMode;
 
-type ModeChoice = {
-  key: "smart" | StudyMode;
-  label: string;
-  detail: string;
-};
-
-const CHOICES: ModeChoice[] = [
+const CHOICES: readonly OptionSwitchOption<ModeChoice>[] = [
   {
-    key: "smart",
+    value: "smart",
     label: "Smart Mix",
-    detail: "Recommended. Varies how each card is asked.",
+    detail: "Recommended. Varies how each card is asked so no session is one long typing test.",
   },
-  { key: "classic", label: "Classic", detail: "Read it, turn it over, rate it." },
+  { value: "classic", label: "Classic", detail: "Read it, flip it, rate how it went." },
   {
-    key: "type-answer",
+    value: "type-answer",
     label: "Type Answer",
-    detail: "Write the answer before it is shown.",
+    detail: "Write the answer from memory before it is shown.",
   },
-  { key: "gap-fill", label: "Gap Fill", detail: "One word hidden in the answer." },
   {
-    key: "multiple-choice",
+    value: "gap-fill",
+    label: "Gap Fill",
+    detail: "The answer with its key word hidden.",
+  },
+  {
+    value: "multiple-choice",
     label: "Multiple Choice",
-    detail: "Pick from four.",
+    detail: "Pick the answer from four. Jami writes the three wrong ones.",
   },
 ];
 
 type StudyModePickerProps = {
   policy: StudyModePolicy;
   onChange: (policy: StudyModePolicy) => void;
-  readiness: Partial<Record<StudyMode, StudyModeReadiness>>;
-  /** True when the queue about to be studied carries a Daily Review obligation. */
-  scheduledQueue: boolean;
-  onPrepare: () => void;
-  preparing: boolean;
 };
 
 /**
  * How this session will ask its cards.
  *
- * One row of pills and one line of detail. An earlier version laid all five out
- * as description cards with counts on each, which turned the calmest screen in
- * the app into a settings panel -- so only the chosen mode explains itself, and
- * the rest wait to be chosen.
+ * One control and one line, and nothing else. This has been three designs now:
+ * five description cards with a readiness count on each, which turned the
+ * calmest screen in the app into a settings panel; then a row of pills, which
+ * fixed the size and left five unattached bubbles floating over the setup
+ * screen. It is the shared `OptionSwitch` this time, on the same grid as every
+ * other choice in the product, with the explanation of whichever mode is
+ * selected underneath it.
  *
- * The line underneath is where readiness lives, because that is the only number
- * that changes what happens next: a fixed mode leaves out the cards it cannot
- * carry, and a student is owed that before they start rather than as a shorter
- * queue than they asked for.
+ * What was removed matters as much as what is here. The per-mode readiness
+ * counts are gone -- they existed to warn that a fixed mode would silently drop
+ * the cards it could not carry, which is a defect to fix rather than a number
+ * to publish. The practice-only warning is gone because multiple choice
+ * schedules now. And the Prepare button is gone because preparation is no
+ * longer something a student has to know to press: it runs when the session
+ * starts, which is the only moment it was ever needed.
  */
 export default function StudyModePicker({
   policy,
   onChange,
-  readiness,
-  scheduledQueue,
-  onPrepare,
-  preparing,
 }: StudyModePickerProps) {
-  const active = policy.kind === "smart" ? "smart" : policy.mode;
-  const choice = CHOICES.find((entry) => entry.key === active) ?? CHOICES[0];
-  const counts =
-    active === "smart" ? undefined : readiness[active as StudyMode];
-  const practiceOnly = active === "multiple-choice" && scheduledQueue;
-  const needsPreparing =
-    active === "multiple-choice" && (counts?.unavailable ?? 0) > 0;
+  const active: ModeChoice = policy.kind === "smart" ? "smart" : policy.mode;
 
   return (
-    <div className="space-y-2.5">
-      <div
-        role="radiogroup"
-        aria-label="How to study"
-        // Wraps rather than scrolls. A horizontal scroller hid two of the five
-        // modes behind a phone's screen edge with nothing to suggest they were
-        // there, and a second row of pills costs less than a hidden choice.
-        className="flex flex-wrap gap-1.5"
-      >
-        {CHOICES.map((entry) => {
-          const selected = active === entry.key;
-          return (
-            <button
-              key={entry.key}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() =>
-                onChange(
-                  entry.key === "smart"
-                    ? { kind: "smart" }
-                    : { kind: "fixed", mode: entry.key as StudyMode }
-                )
-              }
-              className={`shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-medium transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
-                selected
-                  ? "border-accent/55 bg-accent/10 text-text-primary shadow-e1"
-                  : "border-[var(--color-border)] text-text-secondary hover:border-border-strong hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
-              }`}
-            >
-              {entry.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-2xs leading-5 text-text-muted">
-        <span className="text-text-secondary">{choice.detail}</span>
-        {counts ? (
-          <span className="tabular-nums before:mr-2 before:content-['·']">
-            {counts.ready} ready
-            {counts.unavailable > 0 ? ` · ${counts.unavailable} not suited` : ""}
-          </span>
-        ) : null}
-        {practiceOnly ? (
-          <span className="app-warning rounded-full px-2 py-0.5 font-semibold">
-            Practice only — will not complete today&apos;s review
-          </span>
-        ) : null}
-        {needsPreparing ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={preparing}
-            onClick={onPrepare}
-          >
-            {preparing ? "Preparing…" : "Prepare with Jami"}
-          </Button>
-        ) : null}
-      </div>
+    <div data-study-mode-picker="true" className="space-y-2">
+      <OptionSwitch
+        label="How to study"
+        value={active}
+        options={CHOICES}
+        columns={5}
+        detail="selected"
+        onChange={(value) =>
+          onChange(
+            value === "smart"
+              ? { kind: "smart" }
+              : { kind: "fixed", mode: value as StudyMode }
+          )
+        }
+      />
+      {active !== "classic" ? (
+        <p className="text-2xs leading-5 text-text-muted">
+          Jami reads any new cards when you start, so the gaps land on the words
+          that matter and the wrong answers are worth thinking about. Cards
+          you&apos;ve studied before are ready straight away.
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -20,14 +20,30 @@ export type StudyAsset = {
   ambiguous: boolean;
 };
 
-export const STUDY_ASSET_SCHEMA_VERSION = 1;
-export const STUDY_ASSET_PROMPT_VERSION = 1;
+export const STUDY_ASSET_SCHEMA_VERSION = 2;
+export const STUDY_ASSET_PROMPT_VERSION = 2;
 
 /** Below this the asset is discarded rather than used with a warning. */
 export const MIN_ASSET_CONFIDENCE = 0.6;
 
 export const MAX_CARDS_PER_JOB = 100;
-export const MAX_CARDS_PER_BATCH = 20;
+
+/**
+ * Small batches, many at once.
+ *
+ * This was twenty cards to a request, which is the right shape for cost and the
+ * wrong one for waiting: output tokens dominate the latency of a call, so one
+ * request carrying twenty cards' worth of aliases, gaps and distractors takes
+ * roughly twenty times as long to emit as one carrying a single card, and a
+ * student sat in front of "preparing your session" is watching all of it.
+ *
+ * Six cards a request, up to eight requests in flight, prepares forty-eight
+ * cards in about the time the old shape took for six. The trade is more
+ * requests and a little duplicated system prompt, which is a fair price for a
+ * session that starts inside the time a student will actually wait.
+ */
+export const MAX_CARDS_PER_BATCH = 6;
+export const MAX_CONCURRENT_BATCHES = 8;
 
 const MAX_ALIASES = 6;
 const MAX_CONCEPTS = 5;
@@ -80,12 +96,24 @@ Rules you must not break:
 - NEVER rewrite, correct, improve or replace the card's answer. You are adding to it, not editing it.
 - acceptedAliases are other ways to write THE SAME answer. Not related answers. Not broader answers.
 - requiredConcepts are the ideas a correct answer must contain, each a short noun phrase.
-- clozeCandidates must be exact substrings of the card's answer, copied character for character.
-- distractors must be plausible and DEFINITELY WRONG. Never a second correct answer, never a synonym of the answer.
-- Give ${MIN_DISTRACTORS} or ${MAX_DISTRACTORS} distractors so weak ones can be discarded.
-- Match the answer's length and grammatical form: a one-word answer gets one-word distractors.
 - Set ambiguous true and confidence low when the card is unclear, has more than one defensible answer, or you are guessing.
 - An honest low confidence is worth more than a confident invention.
+
+clozeCandidates -- the words worth hiding:
+- Each must be an exact substring of the card's answer, copied character for character.
+- Choose the word that carries the meaning: the term being defined, the quantity, the mechanism, the one word a student who half-knew this would get wrong.
+- Never choose a word the question already contains, and never a word whose absence leaves a sentence anyone could complete from grammar alone.
+- Prefer one word or a short phrase. Hiding half the answer is not a gap, it is the whole question again.
+
+distractors -- the wrong options for multiple choice, and the part that matters most:
+- Each must be a plausible answer TO THIS QUESTION and definitely wrong. Not a fact about something else, not an answer to a neighbouring topic.
+- Write the mistakes a student actually makes: the neighbouring concept people confuse this with, the right idea at the wrong scale or stage, the common misremembering, the plausible-sounding invention.
+- A student who has not learned this should have no way to tell which is right by looking at the options alone. If one option is obviously the only real answer, you have failed.
+- Never a second correct answer, never a synonym, never a broader or narrower version of the true answer.
+- Match the answer's length, register and grammatical form. A one-word answer gets one-word distractors; a definition gets definitions.
+- Give ${MIN_DISTRACTORS} or ${MAX_DISTRACTORS} so the weakest can be discarded.
+- misconceptions must have one entry per distractor, keyed by that distractor's exact text, saying in one sentence what a student was probably thinking of. This is shown to them after they choose, so it must teach the difference, not scold.
+- If you cannot write three genuinely wrong-but-tempting options for this card, return an empty distractors array. An empty list costs the student nothing. A guessable question costs them a wrong idea about what they know.
 
 Respond as: { "assets": [ ... ] }`;
 

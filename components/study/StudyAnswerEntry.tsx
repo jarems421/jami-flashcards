@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, StudyText } from "@/components/ui";
+import { Button, StudyText, SymbolKeyboard } from "@/components/ui";
 import type { MarkedAnswer } from "@/lib/study/answer-marking";
 import type { ExerciseVerdict } from "@/lib/study/study-modes";
 
@@ -95,6 +95,7 @@ export default function StudyAnswerEntry({
         >
           {label}
         </label>
+        <div className="relative">
         {multiline ? (
           <textarea
             id="study-answer-entry"
@@ -114,7 +115,7 @@ export default function StudyAnswerEntry({
                 submit();
               }
             }}
-            className={`${fieldClasses} resize-y leading-7`}
+            className={`${fieldClasses} resize-y pb-11 leading-7`}
           />
         ) : (
           <input
@@ -136,9 +137,24 @@ export default function StudyAnswerEntry({
                 submit();
               }
             }}
-            className={fieldClasses}
+            className={`${fieldClasses} pr-14`}
           />
         )}
+          {/*
+            Sits inside the field rather than above it. Typing an answer with a
+            degree sign or a subscript in it should not mean leaving the field,
+            and on an iPad the alternative is hunting through the system
+            keyboard's third page.
+          */}
+          <SymbolKeyboard
+            targetRef={inputRef}
+            className={
+              multiline
+                ? "absolute bottom-3 right-3"
+                : "absolute right-3 top-1/2 -translate-y-1/2"
+            }
+          />
+        </div>
 
         {hint && hintUsed ? (
           <p className="rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-2.5 text-sm text-text-secondary">

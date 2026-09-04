@@ -22,6 +22,7 @@
     "corpus:holdout": "node --no-warnings scripts/corpus-holdout.mjs",
     "corpus:experiment": "node --no-warnings scripts/corpus-experiment.mjs",
     "eval:exemplar": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/exemplar-run.ts",
+    "check:study-latency": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/study-asset-latency.ts",
     "check": "npm run typecheck && npm run lint && npm run check:sizes && npm run check:paper-benchmark && npm test",
     "verify:all": "npm run check && npm run build && npm run test:rules && npm run test:e2e",
     "emulators:free": "node scripts/free-emulator-ports.mjs",

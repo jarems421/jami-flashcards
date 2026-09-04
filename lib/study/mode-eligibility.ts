@@ -2,17 +2,19 @@ import type { Card } from "@/lib/study/cards";
 import { selectClozeSpan } from "@/lib/study/gap-fill";
 import { buildMultipleChoiceQuestion } from "@/lib/study/mcq";
 import { hasMathDelimiters, splitMathRichText } from "@/lib/study/math-text";
+import { classifyAnswerShape } from "@/lib/study/answer-marking";
 import {
   isStudyMode,
   type ResolvedExercise,
   type StudyMode,
+  type StudyModePolicy,
 } from "@/lib/study/study-modes";
 
 /**
  * Why a card cannot be put in a given mode.
  *
- * Stable codes rather than sentences: the readiness panel counts them, tests
- * assert on them, and the wording above them can change without breaking either.
+ * Stable codes rather than sentences: tests assert on them and the wording
+ * shown above them can change without breaking either.
  */
 export type ModeIneligibilityReason =
   | "empty-card"
@@ -98,11 +100,12 @@ export function getClassicEligibility(card: Card): ModeEligibility {
 /**
  * What the resolver is allowed to look at beyond the card itself.
  *
- * Multiple choice is the only mode that needs neighbours: its wrong answers
- * come from other cards. Everything else ignores this.
+ * Only the session seed now. Multiple choice used to want the card's
+ * neighbours, back when its wrong options were borrowed from them; it builds
+ * from material written for the card itself instead, so nothing here needs the
+ * rest of the library.
  */
 export type ModeResolutionContext = {
-  siblings?: Card[];
   seed?: number;
 };
 
@@ -114,11 +117,7 @@ export function getMultipleChoiceEligibility(
   if (authorDisabled(card, "multiple-choice")) {
     return { eligible: false, reason: "disabled-by-author" };
   }
-  const question = buildMultipleChoiceQuestion({
-    card,
-    siblings: context.siblings ?? [],
-    seed: context.seed,
-  });
+  const question = buildMultipleChoiceQuestion({ card, seed: context.seed });
   // Three believable wrong answers or nothing. Padding the list would make a
   // question answerable by elimination, which teaches the wrong skill.
   return question ? ELIGIBLE : { eligible: false, reason: "needs-preparation" };
@@ -145,13 +144,22 @@ export function getModeEligibility(
 /**
  * Smart Mix, in preference order.
  *
- * Gap Fill before Type Answer before Classic: a blank in a sentence is the
- * cheapest true recall test, typing the whole answer is the strongest, and
- * Classic is what is left when neither can be built honestly. Multiple choice
- * is not in the list -- it cannot complete a scheduled card, so it never
- * appears in a mix that might be running Daily Review.
+ * Type Answer first because producing an answer from nothing is the strongest
+ * evidence there is, then Gap Fill, then Multiple Choice, and Classic last as
+ * what remains when none of the others can be built honestly.
+ *
+ * Multiple choice is in the list now that it schedules, but it sits below the
+ * two recall modes on purpose: picking the right answer out of four is real
+ * evidence when the four are good, and still less than writing it down. It only
+ * ever reaches a card that has prepared distractors or a numeric answer, so an
+ * unprepared deck mixes exactly as it did before.
  */
-const SMART_MIX_ORDER: StudyMode[] = ["gap-fill", "type-answer", "classic"];
+const SMART_MIX_ORDER: StudyMode[] = [
+  "type-answer",
+  "gap-fill",
+  "multiple-choice",
+  "classic",
+];
 
 /**
  * Vary the mode across a session so it does not become one long typing test.
@@ -160,9 +168,13 @@ const SMART_MIX_ORDER: StudyMode[] = ["gap-fill", "type-answer", "classic"];
  * function of where the card sits: a resumed session resolves every card to
  * exactly the mode it had before, with nothing extra persisted.
  */
-export function resolveSmartMixMode(card: Card, position: number): StudyMode {
+export function resolveSmartMixMode(
+  card: Card,
+  position: number,
+  context: ModeResolutionContext = {}
+): StudyMode {
   const available = SMART_MIX_ORDER.filter(
-    (mode) => getModeEligibility(card, mode).eligible
+    (mode) => getModeEligibility(card, mode, context).eligible
   );
   if (available.length === 0) return "classic";
   return available[position % available.length];
@@ -174,7 +186,7 @@ export function resolveExerciseMode(
   position: number,
   context: ModeResolutionContext = {}
 ): StudyMode | null {
-  if (policy.kind === "smart") return resolveSmartMixMode(card, position);
+  if (policy.kind === "smart") return resolveSmartMixMode(card, position, context);
   // A fixed mode never quietly degrades: a card that cannot carry it is
   // dropped from the session and counted, rather than shown as Classic.
   return getModeEligibility(card, policy.mode, context).eligible
@@ -220,11 +232,7 @@ export function buildDeterministicExercise(
   }
 
   if (mode === "multiple-choice") {
-    const question = buildMultipleChoiceQuestion({
-      card,
-      siblings: context.siblings ?? [],
-      seed: context.seed,
-    });
+    const question = buildMultipleChoiceQuestion({ card, seed: context.seed });
     if (!question) return null;
     return { ...base, mode, prompt: card.front, mcq: question };
   }
@@ -234,4 +242,58 @@ export function buildDeterministicExercise(
   }
 
   return null;
+}
+
+/**
+ * Whether sending this card to a model would actually buy anything.
+ *
+ * Preparation is not free -- it is the only thing between pressing Start and
+ * the first card -- so a card that the deterministic path already handles well
+ * should never be sent. Two whole categories qualify, and they are the ones a
+ * flashcard app is full of:
+ *
+ * A **numeric** answer needs nothing. Its wrong options come from moving the
+ * number, which lands on the mistakes students actually make; its marking is
+ * exact within a tolerance; and blanking a word in "9.8 m/s" is just the
+ * question again.
+ *
+ * A **maths-heavy** answer needs nothing either, and more than that should not
+ * be sent. A model writing plausible wrong formulas is the case where a
+ * hallucination is most convincing and least checkable: nothing downstream can
+ * tell "confidently wrong" from "subtly right", so the honest move is to leave
+ * formula cards on Classic rather than invent options for them.
+ *
+ * Then it comes down to the mode. **Type Answer needs no preparation at all** --
+ * showing the front and asking for the back is entirely deterministic, and the
+ * only thing a model adds is judging prose, which the runtime check already
+ * does on demand for a fraction of the tokens and only when local marking is
+ * genuinely stuck. **Gap Fill** wants help choosing which word to hide, but only
+ * on an answer long enough for that to be a choice. **Multiple Choice** is the
+ * real dependency: without written distractors there is no question to ask.
+ */
+export function needsStudyAssetPreparation(
+  card: Card,
+  policy: StudyModePolicy
+): boolean {
+  if (!hasContent(card)) return false;
+
+  const answer = card.back.trim();
+  if (classifyAnswerShape(answer) === "numeric") return false;
+  if (mathsShare(answer) > MAX_MATHS_SHARE_OF_ANSWER) return false;
+
+  const mcqIsMissing = () => buildMultipleChoiceQuestion({ card }) === null;
+  // A one-word answer has no choice of word to hide, so nothing to improve.
+  const gapHasOptions = () => answer.split(/\s+/).length > 2;
+
+  if (policy.kind === "smart") return mcqIsMissing() || gapHasOptions();
+  switch (policy.mode) {
+    case "multiple-choice":
+      return mcqIsMissing();
+    case "gap-fill":
+      return gapHasOptions();
+    case "type-answer":
+    case "classic":
+    default:
+      return false;
+  }
 }

@@ -2,9 +2,11 @@
 
 import {
   useId,
+  useRef,
   type KeyboardEventHandler,
   type ReactNode,
 } from "react";
+import { SymbolKeyboard } from "@/components/ui";
 
 type CardBackEditorProps = {
   label?: string;
@@ -35,6 +37,7 @@ export default function CardBackEditor({
   action,
 }: CardBackEditorProps) {
   const textareaId = useId();
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
 
   return (
     <div>
@@ -53,8 +56,9 @@ export default function CardBackEditor({
           {action}
         </div>
       ) : null}
-      <div className="app-field rounded-xl transition duration-fast">
+      <div className="app-field relative rounded-xl transition duration-fast">
         <textarea
+          ref={fieldRef}
           id={textareaId}
           rows={rows}
           value={value}
@@ -65,8 +69,14 @@ export default function CardBackEditor({
           onKeyDown={onKeyDown}
           // Inherit the wrapper's radius so the field reads as one shape rather
           // than two rounded rectangles sitting on top of each other.
-          className="w-full resize-y rounded-[inherit] bg-transparent px-5 py-4 text-sm leading-6 text-field-text placeholder:text-field-placeholder outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full resize-y rounded-[inherit] bg-transparent px-5 pb-12 pt-4 text-sm leading-6 text-field-text placeholder:text-field-placeholder outline-none disabled:cursor-not-allowed disabled:opacity-60"
         />
+        {/*
+          An answer is where the symbols actually go -- a formula, a unit, a
+          subscript in a chemical name -- so this field gets the palette and the
+          deck-name fields above it do not.
+        */}
+        <SymbolKeyboard targetRef={fieldRef} className="absolute bottom-3 right-3" />
       </div>
     </div>
   );

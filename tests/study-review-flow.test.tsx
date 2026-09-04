@@ -104,6 +104,24 @@ vi.mock("@/services/study/topics", () => ({
   getActiveTopics: vi.fn().mockResolvedValue([]),
 }));
 
+// Preparation runs when a session starts, so every test in this file goes
+// through it. Mocked to return nothing by default, which is the unprepared deck
+// the deterministic modes have to work on anyway; the multiple-choice tests
+// hand it real assets.
+vi.mock("@/services/study/study-assets", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/services/study/study-assets")>()),
+  loadStudyAssets: vi.fn().mockResolvedValue({}),
+  prepareStudyAssets: vi.fn().mockResolvedValue({
+    jobId: "job-1",
+    status: "completed",
+    requested: 0,
+    prepared: 0,
+    reused: 0,
+    failed: 0,
+  }),
+  checkTypedAnswer: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock("@/services/study/session", () => ({
   closeRemoteStudySession: vi.fn().mockResolvedValue(true),
   loadRemoteActiveStudySession: vi
@@ -136,6 +154,24 @@ const { recordSimpleStudyResult, updateCardAfterReview } = await import(
 );
 const { applyGoalProgressForAnswer } = await import("@/services/study/goals");
 const { recordStudyReview } = await import("@/services/study/activity");
+const { loadStudyAssets, prepareStudyAssets } = await import(
+  "@/services/study/study-assets"
+);
+
+/** What Jami produces for a card during preparation, trimmed to what is used. */
+function preparedAsset(cardId: string, distractors: string[]) {
+  return {
+    cardId,
+    answerShape: "short" as const,
+    acceptedAliases: [],
+    requiredConcepts: [],
+    clozeCandidates: [],
+    distractors,
+    misconceptions: {},
+    confidence: 0.9,
+    ambiguous: false,
+  };
+}
 
 let container: HTMLDivElement;
 let root: Root;
@@ -177,6 +213,18 @@ async function click(label: string) {
   expect(target, `expected a button labelled "${label}"`).toBeDefined();
   await act(async () => {
     target!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle();
+}
+
+/** Multiple-choice options carry a number badge, so match on their text, not their start. */
+async function chooseOption(text: string) {
+  const option = [...document.querySelectorAll('[role="radio"]')].find(
+    (candidate) => candidate.textContent?.includes(text)
+  );
+  expect(option, `expected an option reading "${text}"`).toBeDefined();
+  await act(async () => {
+    option!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await settle();
 }
@@ -463,6 +511,25 @@ describe("the answer-first modes", () => {
     expect(currentCardId()).toBe("card-2");
   });
 
+  /*
+   * Whether a card is worth sending to a model is decided by
+   * `needsStudyAssetPreparation`, which has its own unit tests. These two are
+   * about the wiring, which is the half that broke: the rule shipped correct
+   * and unreferenced once already, and every test still passed.
+   */
+  it("spends nothing on a mode that has no use for a model", async () => {
+    await click("Type Answer");
+    await click("Start Daily Review");
+    expect(currentCardId()).toBe("card-1");
+    expect(vi.mocked(prepareStudyAssets)).not.toHaveBeenCalled();
+  });
+
+  it("prepares when the mode cannot be built without it", async () => {
+    await click("Multiple Choice");
+    await click("Start Daily Review");
+    expect(vi.mocked(prepareStudyAssets)).toHaveBeenCalled();
+  });
+
   it("remembers the chosen mode for next time", async () => {
     await click("Type Answer");
     expect(window.localStorage.getItem("jami:study-mode:user-1")).toBe(
@@ -470,11 +537,49 @@ describe("the answer-first modes", () => {
     );
   });
 
-  it("never lets Multiple Choice complete a due card", async () => {
+  /*
+   * Multiple choice was practice-only while its wrong options came from
+   * whatever else was in the deck. These two say what replaced that: the
+   * question is not offered at all unless the options were written for the
+   * card, and when it is offered it counts like every other mode.
+   */
+  it("refuses a Multiple Choice session on a deck nobody has prepared", async () => {
     await click("Multiple Choice");
+    await click("Start Daily Review");
+    expect(currentCardId()).toBeUndefined();
     expect(document.body.textContent).toContain(
-      "will not complete today's review"
+      "None of these cards can be studied that way yet"
     );
+  });
+
+  it("completes a due card once Jami has written the wrong answers", async () => {
+    vi.mocked(loadStudyAssets).mockResolvedValue({
+      "card-1": preparedAsset("card-1", [
+        "The main store of genetic information.",
+        "Where lipids are packaged for export.",
+        "The site of photosynthesis in a plant.",
+      ]),
+      "card-2": preparedAsset("card-2", [
+        "Where energy is released from glucose.",
+        "Where waste is broken down.",
+        "Where the cell is held together.",
+      ]),
+    });
+
+    await click("Multiple Choice");
+    await click("Start Daily Review");
+    expect(currentCardId()).toBe("card-1");
+
+    await chooseOption("The immediate energy carrier of the cell.");
+    await click("Next card");
+
+    expect(vi.mocked(recordStudyReview)).toHaveBeenCalledWith(
+      "user-1",
+      expect.any(Number),
+      expect.objectContaining({ isCorrect: true })
+    );
+    expect(vi.mocked(markDailyReviewCardComplete)).toHaveBeenCalled();
+    expect(currentCardId()).toBe("card-2");
   });
 });
 

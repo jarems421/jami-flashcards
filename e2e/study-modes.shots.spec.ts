@@ -33,18 +33,19 @@ test("study modes walkthrough", async ({ page }) => {
 
   const describeStudyScreen = async () =>
     page.evaluate(() => ({
-      picker: Boolean(
-        document.querySelector('[role="radiogroup"][aria-label="How to study"]')
-      ),
-      modePills: [
+      // The control names itself with aria-labelledby, not aria-label: it is
+      // the shared OptionSwitch now rather than a hand-rolled pill row.
+      picker: Boolean(document.querySelector("[data-study-mode-picker]")),
+      modes: [
         ...document.querySelectorAll(
-          '[role="radiogroup"][aria-label="How to study"] [role="radio"]'
+          "[data-study-mode-picker] [role=\"radio\"]"
         ),
       ].map((node) => node.textContent?.trim()),
+      preparing: Boolean(document.querySelector("[data-study-preparing]")),
       inSession: Boolean(document.querySelector("[data-study-current-card-id]")),
       answerField: Boolean(document.querySelector("#study-answer-entry")),
       mcqOptions: document.querySelectorAll(
-        '[role="radiogroup"][aria-label="Answer choices"] [role="radio"]'
+        '[aria-label="Answer choices"] [role="radio"]'
       ).length,
       overflow:
         document.documentElement.scrollWidth -

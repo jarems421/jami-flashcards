@@ -150,12 +150,18 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     tokenCap: 12_000,
     inputTokenCap: null,
   },
-  // One job prepares up to a hundred cards in batches of twenty, so the daily
-  // limit is a job count rather than a card count. Deliberate: a student
-  // presses Prepare, they do not trip this by editing cards.
+  // One job prepares up to a hundred cards, so the daily limit is a job count
+  // rather than a card count.
+  //
+  // This was ten a day, set when preparation was a button a student pressed on
+  // a deck. It runs at the start of a session now, so the limit has to survive
+  // a normal day's studying rather than a deliberate act -- and because a
+  // prepared card is cached until it is edited, a returning student's session
+  // spends nothing at all. Sixty is generous for new material and still a
+  // ceiling on a runaway loop.
   studyAssetGeneration: {
-    dailyRequestLimit: 10,
-    burstRequestLimit: 2,
+    dailyRequestLimit: 60,
+    burstRequestLimit: 10,
     burstWindowMs: 60_000,
     burstScope: "studyModes",
     tokenCap: 10_000,

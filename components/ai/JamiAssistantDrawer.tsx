@@ -53,6 +53,7 @@ import {
   DialogTitle,
   JamiTutorIcon,
   StudyText,
+  SymbolKeyboard,
 } from "@/components/ui";
 import type { NotebookImageRef } from "@/lib/workspace/notebooks";
 import {
@@ -1072,6 +1073,12 @@ export default function JamiAssistantDrawer({
                 onError={setError}
               />
               <div className="flex items-center gap-1.5">
+                {/*
+                  In the composer's own toolbar rather than floating over the
+                  text: this row already holds the other things you do to a
+                  message before sending it.
+                */}
+                <SymbolKeyboard targetRef={inputRef} />
                 {dictation.supported ? (
                   <button
                     type="button"

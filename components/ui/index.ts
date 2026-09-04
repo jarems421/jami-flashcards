@@ -34,6 +34,7 @@ export { default as ViewTabs } from "./ViewTabs";
 export type { ViewTabItem } from "./ViewTabs";
 export { default as SectionHeader } from "./SectionHeader";
 export { default as Skeleton } from "./Skeleton";
+export { default as SymbolKeyboard } from "./SymbolKeyboard";
 export { default as StatTile } from "./StatTile";
 export { default as StudyText } from "./StudyText";
 export { default as StudyTextSegments } from "./StudyTextSegments";

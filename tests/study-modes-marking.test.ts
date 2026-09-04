@@ -14,9 +14,13 @@ import {
   getGapFillEligibility,
   getModeEligibility,
   getTypeAnswerEligibility,
+  needsStudyAssetPreparation,
   resolveSmartMixMode,
 } from "@/lib/study/mode-eligibility";
-import { resolveAttemptOutcome } from "@/lib/study/study-modes";
+import {
+  resolveAttemptOutcome,
+  type StudyMode,
+} from "@/lib/study/study-modes";
 import type { Card } from "@/lib/study/cards";
 
 function card(overrides: Partial<Card> = {}): Card {
@@ -363,11 +367,23 @@ describe("Smart Mix", () => {
     expect(new Set(modes).size).toBeGreaterThan(1);
   });
 
-  it("never offers multiple choice, which cannot complete a due card", () => {
+  it("leaves multiple choice out until its wrong answers exist", () => {
     const subject = card();
     for (let position = 0; position < 12; position += 1) {
       expect(resolveSmartMixMode(subject, position)).not.toBe("multiple-choice");
     }
+  });
+
+  it("brings multiple choice in once the card has been prepared", () => {
+    const subject = card({
+      studySettings: {
+        mcqDistractors: ["The ribosome", "The nucleus", "The lysosome"],
+      },
+    });
+    const modes = Array.from({ length: 8 }, (_, position) =>
+      resolveSmartMixMode(subject, position)
+    );
+    expect(modes).toContain("multiple-choice");
   });
 
   it("falls back to Classic when nothing else can be built", () => {
@@ -401,5 +417,63 @@ describe("building an exercise", () => {
     expect(
       buildDeterministicExercise(card(), "multiple-choice", "hash-1")
     ).toBeNull();
+  });
+});
+
+/*
+ * What decides whether a card costs a model call. Preparation is the only thing
+ * standing between Start and the first card, so the cheap answer -- not sending
+ * it -- has to be the one these cards get.
+ */
+describe("deciding what is worth preparing", () => {
+  const SMART = { kind: "smart" } as const;
+  const fixed = (mode: StudyMode) => ({ kind: "fixed", mode }) as const;
+
+  it("never sends a numeric answer", () => {
+    const subject = card({ back: "9.8 m/s" });
+    expect(needsStudyAssetPreparation(subject, SMART)).toBe(false);
+    expect(needsStudyAssetPreparation(subject, fixed("multiple-choice"))).toBe(
+      false
+    );
+  });
+
+  it("never sends a formula", () => {
+    const subject = card({ back: "$E_k = \frac{1}{2}mv^2$" });
+    expect(needsStudyAssetPreparation(subject, SMART)).toBe(false);
+  });
+
+  it("never sends anything for Type Answer", () => {
+    // Presenting the card is deterministic and prose marking is asked for on
+    // demand, so there is nothing an asset would add up front.
+    expect(needsStudyAssetPreparation(card(), fixed("type-answer"))).toBe(false);
+  });
+
+  it("never sends anything for Classic", () => {
+    expect(needsStudyAssetPreparation(card(), fixed("classic"))).toBe(false);
+  });
+
+  it("sends a wordy answer that has no multiple-choice options yet", () => {
+    expect(needsStudyAssetPreparation(card(), fixed("multiple-choice"))).toBe(
+      true
+    );
+    expect(needsStudyAssetPreparation(card(), SMART)).toBe(true);
+  });
+
+  it("stops sending a card once its options have been written", () => {
+    const subject = card({
+      studySettings: {
+        mcqDistractors: ["The ribosome", "The nucleus", "The lysosome"],
+      },
+    });
+    expect(
+      needsStudyAssetPreparation(subject, fixed("multiple-choice"))
+    ).toBe(false);
+  });
+
+  it("sends a long answer for Gap Fill but not a one-word one", () => {
+    expect(needsStudyAssetPreparation(card(), fixed("gap-fill"))).toBe(true);
+    expect(
+      needsStudyAssetPreparation(card({ back: "Paris" }), fixed("gap-fill"))
+    ).toBe(false);
   });
 });

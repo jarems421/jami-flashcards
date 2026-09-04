@@ -2618,22 +2618,21 @@ export default function NotebookEditorPage() {
         />
 
         {!practicePaperTutorLocked ? (
-        <JamiAssistantDrawer
-          userId={user.uid}
-          open={assistantOpen}
-          onOpenChange={handleAssistantOpenChange}
-          resetKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}
-          contextKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}
-          contextLabel="Current notebook page"
-          historyContextLabel={`${notebook.title} · Page ${Math.max(selectedPageIndex + 1, 1)}`}
-          getContext={getNotebookAssistantContext}
-          quickActions={notebookAssistantQuickActions}
-          settingsFolderIds={notebook.folderId ? [notebook.folderId] : []}
-          onBeforeIllustrationInsert={() => saveCurrentPage({ flush: true })}
-          onIllustrationInserted={handleIllustrationInserted}
-        />
+          <JamiAssistantDrawer
+            userId={user.uid}
+            open={assistantOpen}
+            onOpenChange={handleAssistantOpenChange}
+            resetKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}
+            contextKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}
+            contextLabel="Current notebook page"
+            historyContextLabel={`${notebook.title} · Page ${Math.max(selectedPageIndex + 1, 1)}`}
+            getContext={getNotebookAssistantContext}
+            quickActions={notebookAssistantQuickActions}
+            settingsFolderIds={notebook.folderId ? [notebook.folderId] : []}
+            onBeforeIllustrationInsert={() => saveCurrentPage({ flush: true })}
+            onIllustrationInserted={handleIllustrationInserted}
+          />
         ) : null}
-
         {pagesDrawerOpen ? (
           <NotebookPagesDrawer
             pages={pages}

@@ -28,23 +28,15 @@ function card(overrides: Partial<Card> = {}): Card {
   };
 }
 
-function siblings(count: number) {
-  return Array.from({ length: count }, (_, index) =>
-    card({
-      id: `sibling-${index}`,
-      front: `Question ${index}`,
-      back: `The organelle number ${index}`,
-    })
-  );
+const PREPARED = ["The ribosome", "The nucleus", "The lysosome"];
+
+function prepared(distractors: string[] = PREPARED) {
+  return card({ studySettings: { mcqDistractors: distractors } });
 }
 
 describe("building a multiple-choice question", () => {
   it("produces one correct answer among four", () => {
-    const question = buildMultipleChoiceQuestion({
-      card: card(),
-      siblings: siblings(6),
-      seed: 7,
-    });
+    const question = buildMultipleChoiceQuestion({ card: prepared(), seed: 7 });
     expect(question).not.toBeNull();
     expect(question!.options).toHaveLength(MCQ_OPTION_COUNT);
     const correct = question!.options.filter(
@@ -56,8 +48,7 @@ describe("building a multiple-choice question", () => {
 
   it("never repeats an option", () => {
     const question = buildMultipleChoiceQuestion({
-      card: card(),
-      siblings: siblings(8),
+      card: prepared([...PREPARED, "The nucleus", "The golgi body"]),
       seed: 3,
     });
     const texts = question!.options.map((option) => option.text.toLowerCase());
@@ -66,11 +57,7 @@ describe("building a multiple-choice question", () => {
 
   it("never offers the right answer twice under another name", () => {
     const question = buildMultipleChoiceQuestion({
-      card: card(),
-      siblings: [
-        ...siblings(4),
-        card({ id: "duplicate", back: "the mitochondrion." }),
-      ],
+      card: prepared(["the mitochondrion.", ...PREPARED]),
       seed: 1,
     });
     const matches = question!.options.filter((option) =>
@@ -79,43 +66,59 @@ describe("building a multiple-choice question", () => {
     expect(matches).toHaveLength(1);
   });
 
-  it("refuses rather than padding when there are too few siblings", () => {
+  it("refuses a card whose wrong answers were never written", () => {
+    expect(buildMultipleChoiceQuestion({ card: card(), seed: 1 })).toBeNull();
+  });
+
+  it("refuses rather than padding a short list out", () => {
     expect(
-      buildMultipleChoiceQuestion({ card: card(), siblings: siblings(1), seed: 1 })
+      buildMultipleChoiceQuestion({ card: prepared(["The ribosome"]), seed: 1 })
     ).toBeNull();
   });
 
+  /*
+   * The one case that needs no preparation. Moving a number by a factor of ten
+   * or a tenth lands on the mistakes students actually make, which is more than
+   * could ever be said for the answers to neighbouring cards.
+   */
   it("builds believable wrong numbers for a numeric answer", () => {
     const question = buildMultipleChoiceQuestion({
       card: card({ back: "9.8 m/s" }),
-      siblings: [],
       seed: 4,
     });
     expect(question).not.toBeNull();
     expect(question!.options).toHaveLength(MCQ_OPTION_COUNT);
-    expect(
-      question!.options.every((option) => /\d/.test(option.text))
-    ).toBe(true);
+    expect(question!.options.every((option) => /\d/.test(option.text))).toBe(true);
   });
 
-  it("prefers the author's own distractors", () => {
+  it("uses the author's own distractors", () => {
+    const question = buildMultipleChoiceQuestion({ card: prepared(), seed: 2 });
+    const texts = question!.options.map((option) => option.text);
+    for (const distractor of PREPARED) expect(texts).toContain(distractor);
+  });
+
+  it("explains a wrong option with the misconception written for it", () => {
     const question = buildMultipleChoiceQuestion({
       card: card({
         studySettings: {
-          mcqDistractors: ["The ribosome", "The nucleus", "The lysosome"],
+          mcqDistractors: PREPARED,
+          mcqExplanations: {
+            "The ribosome": "Ribosomes build proteins; they do not release energy.",
+          },
         },
       }),
-      siblings: siblings(8),
-      seed: 2,
+      seed: 5,
     });
-    const texts = question!.options.map((option) => option.text);
-    expect(texts).toContain("The ribosome");
-    expect(texts).toContain("The nucleus");
-    expect(texts).toContain("The lysosome");
+    const option = question!.options.find(
+      (entry) => entry.text === "The ribosome"
+    )!;
+    expect(question!.explanations[option.id]).toBe(
+      "Ribosomes build proteins; they do not release energy."
+    );
   });
 
   it("orders the options the same way for the same seed", () => {
-    const input = { card: card(), siblings: siblings(6), seed: 11 };
+    const input = { card: prepared(), seed: 11 };
     expect(buildMultipleChoiceQuestion(input)).toEqual(
       buildMultipleChoiceQuestion(input)
     );

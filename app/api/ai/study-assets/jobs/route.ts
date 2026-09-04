@@ -17,6 +17,7 @@ import {
   getStudyAssetCacheKey,
   MAX_CARDS_PER_BATCH,
   MAX_CARDS_PER_JOB,
+  MAX_CONCURRENT_BATCHES,
   parseStudyAssetResponse,
   STUDY_ASSET_PROMPT_VERSION,
   STUDY_ASSET_SCHEMA_VERSION,
@@ -27,8 +28,28 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { createLogger } from "@/lib/observability/logger";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
-const BATCH_TIMEOUT_MS = 20_000;
+/*
+ * One batch's own patience, and the whole job's.
+ *
+ * These were twelve and twenty-one seconds, chosen to fit inside the wait a
+ * student would tolerate at the start of a session. Measured against the worker
+ * model, a batch of six cards takes 18-21s on the fast endpoint and 39-46s on
+ * the fallback -- so every batch was being killed before it could answer and
+ * first-time preparation produced nothing at all, quietly, while looking like
+ * it had merely been unlucky.
+ *
+ * The fix was not a shorter batch. It was to stop making a student wait for the
+ * whole queue: the page blocks on a few cards and prepares the rest while they
+ * study, so this can afford to take as long as the work actually takes. What
+ * bounds it now is the platform's own function limit, not somebody's patience.
+ */
+const BATCH_TIMEOUT_MS = 45_000;
+const JOB_DEADLINE_MS = 95_000;
+/** Below this there is no point starting another call, only finishing one. */
+const MIN_USEFUL_MS = 2_500;
+
 const log = createLogger({ route: "api.ai.study-assets" });
 
 type OwnedCard = {
@@ -55,13 +76,14 @@ function failure(error: string, status: number, code: string) {
 /**
  * Prepare the AI half of the study modes for one deck.
  *
- * Deliberate: a student presses Prepare. Nothing here runs because a card was
- * edited or a session started, so the cost is always something they asked for
- * and can see the size of first.
+ * Called when a session starts, which is what makes the cache the whole design
+ * rather than an optimisation. Cards already prepared under their current
+ * content are answered for free and never reach a model, so a student studying
+ * a deck they have studied before spends nothing and waits for nothing; only
+ * genuinely new or edited cards cost anything.
  *
- * The order matters. Cards already cached are answered for free, and only what
- * is left is sent -- so preparing a deck a second time after adding five cards
- * costs five cards, not the deck.
+ * Nothing here runs because a card was created or edited. Preparation follows
+ * the student into a session; it does not chase them around the app.
  */
 export async function POST(request: NextRequest) {
   if (!featureFlags.enableStudyModes) {
@@ -217,14 +239,17 @@ export async function POST(request: NextRequest) {
     batches.push(pending.slice(start, start + MAX_CARDS_PER_BATCH));
   }
 
-  const runBatch = async (batch: typeof pending): Promise<StudyAsset[]> => {
+  const runBatch = async (
+    batch: typeof pending,
+    timeoutMs: number
+  ): Promise<StudyAsset[]> => {
     const text = await generateAiText({
       role: "worker",
       routeReason: "explicit_role",
       // A batch that quietly escalates to the supervisor is a batch whose cost
       // nobody predicted. A worker that cannot do this should fail loudly.
       allowRoleEscalation: false,
-      timeoutMs: BATCH_TIMEOUT_MS,
+      timeoutMs,
       generationConfig: {
         temperature: 0.1,
         maxOutputTokens: getAiTokenCap("studyAssetGeneration"),
@@ -245,31 +270,67 @@ export async function POST(request: NextRequest) {
     return parseStudyAssetResponse(text, batch.map((entry) => entry.card));
   };
 
-  // Batches run together rather than in sequence: five sequential calls would
-  // spend most of a minute waiting, and a student watching a progress bar for a
-  // deck they just pressed Prepare on will assume it has hung.
-  const settled = await Promise.allSettled(
-    batches.map(async (batch) => {
-      try {
-        return await runBatch(batch);
-      } catch (error) {
-        log.warn("batch.failed", { size: batch.length, error });
-        // One retry, then the batch is given up on. Its cards stay unprepared
-        // and every other batch is still kept.
-        return runBatch(batch);
-      }
-    })
-  );
+  /*
+   * A fixed pool of workers pulling from one queue, under a shared deadline.
+   *
+   * Firing every batch at once was fine at twenty cards a batch, when a hundred
+   * cards was five calls. At six a batch it is seventeen, and seventeen
+   * simultaneous requests is a way to be rate-limited rather than a way to be
+   * fast. Eight in flight is the width that keeps the provider busy without
+   * queueing behind itself.
+   *
+   * Each worker checks the clock before starting anything: a batch that cannot
+   * finish is never begun, so the job ends near its deadline instead of one
+   * batch timeout past it.
+   */
+  const deadlineAt = Date.now() + JOB_DEADLINE_MS;
+  const msLeft = () => deadlineAt - Date.now();
 
   const assetsByCardId = new Map<string, StudyAsset>();
   let failedBatches = 0;
-  for (const result of settled) {
-    if (result.status !== "fulfilled") {
-      failedBatches += 1;
-      continue;
+  let skippedBatches = 0;
+  let cursor = 0;
+
+  const worker = async () => {
+    for (;;) {
+      const position = cursor;
+      cursor += 1;
+      if (position >= batches.length) return;
+      const batch = batches[position];
+
+      if (msLeft() < MIN_USEFUL_MS) {
+        skippedBatches += 1;
+        continue;
+      }
+
+      try {
+        const assets = await runBatch(batch, Math.min(BATCH_TIMEOUT_MS, msLeft()));
+        for (const asset of assets) assetsByCardId.set(asset.cardId, asset);
+      } catch (error) {
+        log.warn("batch.failed", { size: batch.length, error });
+        // One retry, and only if there is still time for it to land. Retrying
+        // into the deadline just spends the student's wait twice.
+        if (msLeft() < MIN_USEFUL_MS) {
+          failedBatches += 1;
+          continue;
+        }
+        try {
+          const assets = await runBatch(batch, Math.min(BATCH_TIMEOUT_MS, msLeft()));
+          for (const asset of assets) assetsByCardId.set(asset.cardId, asset);
+        } catch (retryError) {
+          log.warn("batch.retry_failed", { size: batch.length, error: retryError });
+          failedBatches += 1;
+        }
+      }
     }
-    for (const asset of result.value) assetsByCardId.set(asset.cardId, asset);
-  }
+  };
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(MAX_CONCURRENT_BATCHES, batches.length) },
+      worker
+    )
+  );
 
   if (assetsByCardId.size > 0) {
     const writer = db.batch();
@@ -302,7 +363,8 @@ export async function POST(request: NextRequest) {
   }
 
   const summary = {
-    status: failedBatches === batches.length ? "failed" : "completed",
+    status:
+      failedBatches + skippedBatches === batches.length ? "failed" : "completed",
     requested: cards.length,
     prepared,
     reused: cached.size,

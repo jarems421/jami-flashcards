@@ -55,52 +55,12 @@ function shuffle<T>(items: T[], random: () => number) {
 }
 
 /**
- * How plausible a sibling answer is as a wrong option.
- *
- * A good distractor looks like it could belong to the same question: same kind
- * of thing, roughly the same length, drawn from the same corner of the subject.
- * A distractor that is obviously the wrong *shape* -- a date against a
- * definition -- teaches students to answer by elimination rather than by
- * knowing.
- */
-function scoreDistractor(candidate: Card, answer: Card) {
-  const candidateText = candidate.back.trim();
-  if (!candidateText || candidateText.length > MAX_OPTION_LENGTH) return -1;
-  if (normalizeAnswerText(candidateText) === normalizeAnswerText(answer.back)) {
-    return -1;
-  }
-
-  let score = 0;
-  if (candidate.deckId === answer.deckId) score += 4;
-
-  const answerTopics = new Set(answer.topicIds ?? []);
-  const sharedTopics = (candidate.topicIds ?? []).filter((id) => answerTopics.has(id));
-  score += Math.min(sharedTopics.length, 3) * 3;
-
-  if (classifyAnswerShape(candidateText) === classifyAnswerShape(answer.back)) {
-    score += 5;
-  }
-
-  const lengthRatio =
-    Math.min(candidateText.length, answer.back.length) /
-    Math.max(candidateText.length, answer.back.length, 1);
-  score += Math.round(lengthRatio * 5);
-
-  // Ending the same way -- both plural, both a verb phrase -- reads as the same
-  // grammatical answer to the same question.
-  if (candidateText.slice(-2).toLowerCase() === answer.back.slice(-2).toLowerCase()) {
-    score += 2;
-  }
-
-  return score;
-}
-
-/**
  * Wrong-but-believable numbers, built by moving the real one.
  *
- * Only for numeric answers, where sibling cards rarely supply anything near the
- * right magnitude. The perturbations are the mistakes students actually make:
- * a factor of ten, a transposed pair, a near miss.
+ * The one kind of card that needs no preparation. The perturbations are the
+ * mistakes students actually make -- a factor of ten, a doubling, a near miss --
+ * and each is unarguably wrong while looking like the sort of thing that could
+ * have been right.
  */
 function numericDistractors(answer: string) {
   const parsed = parseNumericAnswer(answer);
@@ -134,19 +94,27 @@ function numericDistractors(answer: string) {
 }
 
 /**
- * Build a multiple-choice question from what is already on hand.
+ * Build a multiple-choice question, or refuse.
  *
- * Author distractors first, then numeric perturbation for numeric answers, then
- * the best sibling answers. Returns null rather than padding: three weak
- * options make a question that can be answered without knowing anything, which
- * is worse than not offering the mode.
+ * Two sources, and only two. Wrong options written *for this card* -- by Jami
+ * during preparation, or by the student in the card editor -- and, for a
+ * numeric answer, the number moved to somewhere a student might plausibly land.
+ *
+ * There used to be a third: the answers off other cards in the same deck,
+ * ranked by how similar they looked. It produced questions that could be
+ * answered without knowing anything, because the one option that actually
+ * addressed the question was the right one. Distractors have to be wrong
+ * answers *to this question*, and no amount of ranking turns an answer to a
+ * different question into one.
+ *
+ * So a card with nothing prepared and a non-numeric answer gets no question at
+ * all, and is asked another way instead.
  */
 export function buildMultipleChoiceQuestion(input: {
   card: Card;
-  siblings: Card[];
   seed?: number;
 }): McqQuestion | null {
-  const { card, siblings } = input;
+  const { card } = input;
   const answerText = card.back.trim();
   if (!answerText || answerText.length > MAX_OPTION_LENGTH) return null;
 
@@ -162,30 +130,17 @@ export function buildMultipleChoiceQuestion(input: {
     distractors.push(trimmed);
   };
 
-  for (const authored of card.studySettings?.mcqDistractors ?? []) {
-    push(authored);
+  for (const written of card.studySettings?.mcqDistractors ?? []) {
+    push(written);
   }
 
-  if (distractors.length < REQUIRED_DISTRACTORS && classifyAnswerShape(answerText) === "numeric") {
+  if (
+    distractors.length < REQUIRED_DISTRACTORS &&
+    classifyAnswerShape(answerText) === "numeric"
+  ) {
     for (const candidate of numericDistractors(answerText)) {
       if (distractors.length >= REQUIRED_DISTRACTORS) break;
       push(candidate);
-    }
-  }
-
-  if (distractors.length < REQUIRED_DISTRACTORS) {
-    const ranked = siblings
-      .filter((sibling) => sibling.id !== card.id)
-      .map((sibling) => ({ sibling, score: scoreDistractor(sibling, card) }))
-      .filter((entry) => entry.score >= 0)
-      // Card id breaks ties so the same deck always yields the same question.
-      .sort(
-        (left, right) =>
-          right.score - left.score || left.sibling.id.localeCompare(right.sibling.id)
-      );
-    for (const entry of ranked) {
-      if (distractors.length >= REQUIRED_DISTRACTORS) break;
-      push(entry.sibling.back);
     }
   }
 
@@ -195,23 +150,30 @@ export function buildMultipleChoiceQuestion(input: {
     (input.seed ?? 0) ^ seedFrom(card.id + getCardContentHash(card))
   );
   const correctOptionId = "opt-0";
+  const chosen = distractors.slice(0, REQUIRED_DISTRACTORS);
   const options = shuffle(
     [
       { id: correctOptionId, text: answerText },
-      ...distractors
-        .slice(0, REQUIRED_DISTRACTORS)
-        .map((text, position) => ({ id: `opt-${position + 1}`, text })),
+      ...chosen.map((text, position) => ({
+        id: `opt-${position + 1}`,
+        text,
+      })),
     ],
     random
   );
 
+  // Why a student might have picked this one, when Jami worked it out during
+  // preparation. Keyed by the distractor's text rather than its option id,
+  // because the ids are assigned here and the misconceptions were written
+  // before the shuffle.
+  const written = card.studySettings?.mcqExplanations ?? {};
   const explanations: Record<string, string> = {
     [correctOptionId]: "That is the answer on this card.",
   };
   for (const option of options) {
     if (option.id === correctOptionId) continue;
     explanations[option.id] =
-      "That is the answer to a different card in this deck, not this one.";
+      written[option.text] ?? "Close, but not what this card asks for.";
   }
 
   return { options, correctOptionId, explanations };

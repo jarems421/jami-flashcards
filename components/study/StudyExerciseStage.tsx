@@ -32,10 +32,6 @@ type StudyExerciseStageProps = {
    * wrong and never seeing it again is the one outcome that teaches nothing.
    */
   onCommit: (rating: CardRating, options?: { requeueOnMiss?: boolean }) => void;
-  /** Record a practice result that must not touch the schedule. */
-  onPractice: (correct: boolean) => void;
-  /** Advance without scheduling. Used by multiple choice. */
-  onContinue: () => void;
   onModeAnswered: (mode: StudyMode, correct: boolean) => void;
   /**
    * Ask a semantic marker about prose the local tiers could not decide.
@@ -78,8 +74,6 @@ export default function StudyExerciseStage({
   exercise,
   savingRating,
   onCommit,
-  onPractice,
-  onContinue,
   onModeAnswered,
   onSemanticCheck,
 }: StudyExerciseStageProps) {
@@ -178,11 +172,14 @@ export default function StudyExerciseStage({
         <StudyMultipleChoice
           prompt={exercise.prompt}
           question={exercise.mcq}
-          onAnswered={(correct) => {
-            onModeAnswered("multiple-choice", correct);
-            onPractice(correct);
-          }}
-          onContinue={onContinue}
+          onAnswered={(correct) => onModeAnswered("multiple-choice", correct)}
+          // Picking the answer is the attempt; reading why the others were
+          // wrong is not part of it. The rating is settled the moment they
+          // choose and committed when they move on, so the explanation can be
+          // read for as long as they like without it counting as hesitation.
+          onContinue={(correct) =>
+            onCommit(correct ? "good" : "again", { requeueOnMiss: true })
+          }
         />
       </div>
     );
