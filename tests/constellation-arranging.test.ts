@@ -39,7 +39,30 @@ describe("arranging a finished constellation", () => {
     expect(pageSource).toContain("onNudge");
   });
 
+  it("keeps the sky from turning a star gesture into page scrolling", () => {
+    expect(pageSource).toContain('w-full touch-none select-none');
+    expect(pageSource).not.toContain("sm:touch-none");
+  });
+
   it("no longer marks any sky as view only", () => {
     expect(pageSource).not.toContain("View only");
+  });
+
+  it("uses compact accessible controls for undo, redo, and clear", () => {
+    expect(pageSource).toContain('role="toolbar"');
+    expect(pageSource).toContain('aria-label="Undo last line"');
+    expect(pageSource).toContain('aria-label="Restore last undone line"');
+    expect(pageSource).toContain('aria-label="Clear all lines"');
+    expect(pageSource).not.toContain(">Undo line<");
+    expect(pageSource).not.toContain(">Clear lines<");
+  });
+
+  it("keeps undone lines available to restore until the drawing changes", () => {
+    expect(pageSource).toContain("const [lineRedoHistory, setLineRedoHistory]");
+    expect(pageSource).toContain("const handleRedoLine");
+    expect(pageSource).toContain("current.lines.slice(0, -1)");
+    expect(pageSource).toContain(
+      'setLineRedoHistory({ constellationId: "", lines: [] })'
+    );
   });
 });

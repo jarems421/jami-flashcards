@@ -7,7 +7,6 @@ import {
   Card as Panel,
   FileField,
   Input,
-  JamiTutorIcon,
   OptionSwitch,
   ProgressBar,
   Select,
@@ -49,11 +48,6 @@ type Props = {
   onCardsCreated: (cards: Card[]) => void;
   onMessage: (message: string, error?: boolean) => void;
 };
-
-const INPUT_OPTIONS = [
-  { value: "file" as const, label: "Upload a file", detail: "PDF, slides, document or image" },
-  { value: "text" as const, label: "Paste text", detail: "Notes, a transcript or an article" },
-];
 
 const COVERAGE_OPTIONS = [
   { value: "focused" as const, label: "Key points", detail: "Core teaching only" },
@@ -287,10 +281,7 @@ export default function SourceCardCreator({
         {["queued", "running"].includes(job.status) ? (
           <Panel tone="subtle" padding="md">
             <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="flex items-center gap-2 font-medium text-text-primary">
-                <JamiTutorIcon className="size-4" />
-                {STAGE_LABELS[job.stage]}
-              </span>
+              <span className="font-medium text-text-primary">{STAGE_LABELS[job.stage]}</span>
               <span className="tabular-nums text-text-muted">{job.progress}%</span>
             </div>
             <ProgressBar className="mt-3" progress={job.progress} size="sm" variant="warm" />
@@ -330,22 +321,23 @@ export default function SourceCardCreator({
   }
 
   return (
-    <div className="mt-5 space-y-5 animate-fade-in">
-      <Panel tone="subtle" padding="md" className="overflow-hidden">
-        <div className="flex items-start gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
-            <JamiTutorIcon className="size-5" />
-          </span>
-          <div>
-            <p className="font-semibold text-text-primary">Turn study material into a draft deck</p>
-            <p className="mt-1 text-sm leading-6 text-text-secondary">
-              Jami reads the source once, makes as many useful cards as the material supports, then lets you review every card.
-            </p>
-          </div>
-        </div>
-      </Panel>
-
-      <OptionSwitch label="Source" value={inputKind} options={INPUT_OPTIONS} disabled={busy} onChange={setInputKind} />
+    <div className="mt-5 space-y-4 animate-fade-in">
+      <div className="flex gap-2">
+        <Button
+          variant={inputKind === "file" ? "secondary" : "ghost"}
+          disabled={busy}
+          onClick={() => setInputKind("file")}
+        >
+          Upload
+        </Button>
+        <Button
+          variant={inputKind === "text" ? "secondary" : "ghost"}
+          disabled={busy}
+          onClick={() => setInputKind("text")}
+        >
+          Paste text
+        </Button>
+      </div>
 
       {inputKind === "file" ? (
         <FileField

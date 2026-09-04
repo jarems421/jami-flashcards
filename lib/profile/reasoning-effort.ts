@@ -16,21 +16,18 @@
 export const REASONING_EFFORT_OPTIONS = [
   {
     value: "low",
-    label: "Quick",
-    description: "Fastest replies. Best for definitions, recall and quick checks.",
-    timing: "usually a few seconds",
+    label: "Low",
+    description: "Fastest for straightforward questions",
   },
   {
     value: "medium",
-    label: "Balanced",
-    description: "More working shown on harder questions. A little slower.",
-    timing: "a few seconds longer",
+    label: "Medium",
+    description: "More thought when useful",
   },
   {
     value: "high",
-    label: "Thorough",
-    description: "Thinks hardest before answering. Best for proofs, essays and marking disputes.",
-    timing: "noticeably slower, sometimes much",
+    label: "High",
+    description: "Deepest reasoning for difficult work",
   },
 ] as const;
 
@@ -52,6 +49,6 @@ export function normalizeReasoningEffort(
 export function getReasoningEffortLabel(value: ReasoningEffortPreference) {
   return (
     REASONING_EFFORT_OPTIONS.find((option) => option.value === value)?.label ??
-    "Balanced"
+    "Medium"
   );
 }
