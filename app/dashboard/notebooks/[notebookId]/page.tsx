@@ -2627,6 +2627,7 @@ export default function NotebookEditorPage() {
           historyContextLabel={`${notebook.title} · Page ${Math.max(selectedPageIndex + 1, 1)}`}
           getContext={getNotebookAssistantContext}
           quickActions={notebookAssistantQuickActions}
+          settingsFolderIds={notebook.folderId ? [notebook.folderId] : []}
           onBeforeIllustrationInsert={() => saveCurrentPage({ flush: true })}
           onIllustrationInserted={handleIllustrationInserted}
         />

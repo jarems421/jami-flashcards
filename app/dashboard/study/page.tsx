@@ -2119,6 +2119,11 @@ export default function StudyPage() {
                     historyContextLabel={`Flashcard · ${current.front.slice(0, 72)}`}
                     getContext={getLearnAssistantContext}
                     quickActions={learnAssistantQuickActions}
+                    // A card inherits folder context through its deck, so this
+                    // is the deck's folders rather than anything on the card.
+                    settingsFolderIds={
+                      decks.find((deck) => deck.id === current.deckId)?.folderIds ?? []
+                    }
                     emptyStateNote={
                       flipped
                         ? undefined

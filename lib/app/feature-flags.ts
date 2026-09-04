@@ -2,24 +2,31 @@ export type FeatureFlagKey =
   | "enableFolders"
   | "enableMasteryProgress"
   | "enableFlashcardAi"
-  | "enableStudyModes";
+  | "enableStudyModes"
+  | "enableTutorPersonalisation";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
   enableMasteryProgress: true,
   enableFlashcardAi: true,
-  // On by default now the modes have been through the browser. Classic is
-  // unaffected either way: the flag only decides whether the other modes are
-  // offered at all, and setting NEXT_PUBLIC_ENABLE_STUDY_MODES=false hides them
-  // again without touching the code.
+  // Both features landed with their complete UI, persistence and prompt paths.
+  // A direct public environment override can still remove either surface.
   enableStudyModes: true,
+  enableTutorPersonalisation: true,
 };
 
-const ENV_KEYS: Record<FeatureFlagKey, string> = {
-  enableFolders: "NEXT_PUBLIC_ENABLE_FOLDERS",
-  enableMasteryProgress: "NEXT_PUBLIC_ENABLE_MASTERY_PROGRESS",
-  enableFlashcardAi: "NEXT_PUBLIC_ENABLE_FLASHCARD_AI",
-  enableStudyModes: "NEXT_PUBLIC_ENABLE_STUDY_MODES",
+/**
+ * Public client variables must be referenced directly for Next to replace
+ * them in the browser bundle. A computed `process.env[key]` lookup silently
+ * falls back to the defaults on the client.
+ */
+const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
+  enableFolders: process.env.NEXT_PUBLIC_ENABLE_FOLDERS,
+  enableMasteryProgress: process.env.NEXT_PUBLIC_ENABLE_MASTERY_PROGRESS,
+  enableFlashcardAi: process.env.NEXT_PUBLIC_ENABLE_FLASHCARD_AI,
+  enableStudyModes: process.env.NEXT_PUBLIC_ENABLE_STUDY_MODES,
+  enableTutorPersonalisation:
+    process.env.NEXT_PUBLIC_ENABLE_TUTOR_PERSONALISATION,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -31,7 +38,7 @@ function parseFlagValue(value: string | undefined, fallback: boolean) {
 }
 
 export function isFeatureEnabled(key: FeatureFlagKey) {
-  return parseFlagValue(process.env[ENV_KEYS[key]], DEFAULT_FLAGS[key]);
+  return parseFlagValue(ENV_VALUES[key], DEFAULT_FLAGS[key]);
 }
 
 export const featureFlags: Record<FeatureFlagKey, boolean> = {
@@ -39,4 +46,5 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableMasteryProgress: isFeatureEnabled("enableMasteryProgress"),
   enableFlashcardAi: isFeatureEnabled("enableFlashcardAi"),
   enableStudyModes: isFeatureEnabled("enableStudyModes"),
+  enableTutorPersonalisation: isFeatureEnabled("enableTutorPersonalisation"),
 };

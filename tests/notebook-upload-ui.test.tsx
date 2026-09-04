@@ -41,6 +41,8 @@ async function renderCreator() {
           name: "Biology",
           archived: false,
           topicIds: [],
+          tutorInstructions: "",
+          tutorInstructionsUpdatedAt: 0,
           createdAt: 1,
           updatedAt: 1,
         }}

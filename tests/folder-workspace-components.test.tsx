@@ -27,6 +27,8 @@ const folder: StudyFolder = {
   color: "violet",
   icon: "atom",
   topicIds: ["topic-1"],
+  tutorInstructions: "",
+  tutorInstructionsUpdatedAt: 0,
   createdAt: 100,
   updatedAt: 200,
   archived: false,

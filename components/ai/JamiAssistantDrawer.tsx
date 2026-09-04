@@ -54,6 +54,17 @@ import {
   StudyText,
 } from "@/components/ui";
 import type { NotebookImageRef } from "@/lib/workspace/notebooks";
+import {
+  CloseIcon,
+  HistoryIcon,
+  MicrophoneIcon,
+  NewChatIcon,
+  SendIcon,
+  SettingsIcon,
+  StopDictationIcon,
+} from "@/components/ai/JamiAssistantIcons";
+import TutorSettingsPanel from "@/components/ai/TutorSettingsPanel";
+import { featureFlags } from "@/lib/app/feature-flags";
 
 /**
  * A chip offered before the conversation starts. Most send a prompt, but a
@@ -106,6 +117,15 @@ type JamiAssistantDrawerProps = {
     contentRevision: number;
   }) => void;
   onBeforeIllustrationInsert?: () => boolean | Promise<boolean>;
+  /**
+   * The folders this conversation's material belongs to, when the surface
+   * knows.
+   *
+   * Only used to tell the settings panel which folder's instructions are in
+   * force. Left undefined by a surface that cannot say, and the panel then
+   * explains the rule rather than asserting an answer it does not have.
+   */
+  settingsFolderIds?: readonly string[];
 };
 
 type DrawerMessage = {
@@ -119,75 +139,6 @@ type DrawerMessage = {
   canIllustrate?: boolean;
 };
 
-function CloseIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
-      <path d="m5 5 10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function SendIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-4 w-4">
-      <path d="M12 18V6m0 0-4.5 4.5M12 6l4.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function MicrophoneIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-4 w-4">
-      <path
-        d="M12 4.25a2.4 2.4 0 0 1 2.4 2.4v4.6a2.4 2.4 0 0 1-4.8 0v-4.6a2.4 2.4 0 0 1 2.4-2.4Z"
-        fill="currentColor"
-      />
-      <path
-        d="M6.9 11.1a5.1 5.1 0 0 0 10.2 0M12 16.2v3.55"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-/** A filled square: the universal "this is recording, press to stop" mark. */
-function StopDictationIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-4 w-4">
-      <rect x="7.6" y="7.6" width="8.8" height="8.8" rx="2.2" fill="currentColor" />
-    </svg>
-  );
-}
-
-function HistoryIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-[1.05rem] w-[1.05rem]">
-      <path
-        d="M4.6 5.3A7 7 0 1 1 3 10m1.6-4.7V2.8m0 2.5H2.1M10 6.3V10l2.6 1.6"
-        stroke="currentColor"
-        strokeWidth="1.55"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function NewChatIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-[1.05rem] w-[1.05rem]">
-      <path
-        d="M10 4v12M4 10h12"
-        stroke="currentColor"
-        strokeWidth="1.65"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 export default function JamiAssistantDrawer({
   open,
   onOpenChange,
@@ -200,6 +151,7 @@ export default function JamiAssistantDrawer({
   emptyStateNote,
   onIllustrationInserted,
   onBeforeIllustrationInsert,
+  settingsFolderIds,
 }: JamiAssistantDrawerProps) {
   const [messages, setMessages] = useState<DrawerMessage[]>([]);
   const [input, setInput] = useState("");
@@ -226,6 +178,15 @@ export default function JamiAssistantDrawer({
    * too narrow to show both, so it stays a modal sheet.
   */
   const [sidePanel, setSidePanel] = useState(false);
+  /**
+   * Settings, shown over the conversation rather than beside it.
+   *
+   * The drawer is already the narrowest surface in the app, so a second column
+   * is not available; and settings are read and changed deliberately, not
+   * glanced at mid-question. It carries its own header with a way back, so the
+   * conversation is one tap away and still there when you return.
+   */
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const previousResetKeyRef = useRef(resetKey);
@@ -766,6 +727,17 @@ export default function JamiAssistantDrawer({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
+              {featureFlags.enableTutorPersonalisation ? (
+                <button
+                  type="button"
+                  aria-label="Open Tutor settings"
+                  title="Tutor settings"
+                  className="inline-grid h-10 w-10 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <SettingsIcon />
+                </button>
+              ) : null}
               <button
                 type="button"
                 aria-label={historyOpen ? "Return to current Jami chat" : "Open Jami chat history"}
@@ -1182,6 +1154,15 @@ export default function JamiAssistantDrawer({
             </>
           )}
         </footer>
+
+        {settingsOpen ? (
+          <div className="absolute inset-0 z-10 flex flex-col bg-[var(--color-surface-panel-strong)]">
+            <TutorSettingsPanel
+              activeFolderIds={settingsFolderIds}
+              onBack={() => setSettingsOpen(false)}
+            />
+          </div>
+        ) : null}
       </DialogPanel>
     </Dialog>
   );

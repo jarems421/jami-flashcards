@@ -98,6 +98,39 @@ describe("Firestore security rules", () => {
     await assertFails(getDoc(doc(guestDb, "users", ALICE)));
   });
 
+  it("lets a student read their Tutor settings but never write them directly", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const guestDb = testEnv.unauthenticatedContext().firestore();
+
+    const settingsPath = ["users", ALICE, "tutorPersonalisation", "settings"] as const;
+
+    // Seeded past the rules, which is the only way this document is ever
+    // written: the settings route uses the Admin SDK so one normalisation and
+    // one set of length limits apply to every write.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), ...settingsPath), {
+        version: 1,
+        helpApproach: "hints-first",
+        updatedAt: 1,
+      });
+    });
+
+    await assertSucceeds(getDoc(doc(aliceDb, ...settingsPath)));
+    await assertFails(getDoc(doc(bobDb, ...settingsPath)));
+    await assertFails(getDoc(doc(guestDb, ...settingsPath)));
+
+    // A client that could write here could set guidance the server never
+    // normalised, including a document past the length the prompt budgets for.
+    await assertFails(
+      setDoc(doc(aliceDb, ...settingsPath), { helpApproach: "explain-directly" })
+    );
+    await assertFails(
+      updateDoc(doc(aliceDb, ...settingsPath), { customGuidance: "x" })
+    );
+    await assertFails(deleteDoc(doc(aliceDb, ...settingsPath)));
+  });
+
   it("keeps onboarding progress private and blocks demo writes", async () => {
     const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
     const bobDb = testEnv.authenticatedContext(BOB).firestore();
