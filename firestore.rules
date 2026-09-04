@@ -72,6 +72,22 @@ service cloud.firestore {
       }
     }
 
+    // Prepared study material and the jobs that made it.
+    //
+    // Top-level and scoped by userId, matching where cards themselves live, so
+    // an asset can be fetched alongside the card it belongs to. Reads are the
+    // owner's; every write goes through an authenticated server route, which is
+    // the only place ownership of the source card is actually established.
+    match /cardStudyAssets/{cardId} {
+      allow read: if canReadOwnedData(resource.data);
+      allow write: if false;
+    }
+
+    match /cardStudyAssetJobs/{jobId} {
+      allow read: if canReadOwnedData(resource.data);
+      allow write: if false;
+    }
+
     match /cards/{cardId} {
       allow read: if canReadOwnedData(resource.data);
       allow create: if !isDemoAccount() &&
@@ -101,6 +117,11 @@ service cloud.firestore {
     // its own daily limit or hide what it costs.
     match /aiBudgets/{budgetId} { allow read, write: if false; }
     match /aiSpend/{spendId} { allow read, write: if false; }
+
+    // Daily usage counters. Written only by the analytics ingest route, which
+    // decides what a valid event is; a client that could write here could
+    // invent events or inflate its own.
+    match /analyticsDaily/{dayKey} { allow read, write: if false; }
 
     match /examFormatProfiles/{profileId} {
       allow read, write: if false;

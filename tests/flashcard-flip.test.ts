@@ -17,8 +17,10 @@ import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "..");
 const globalsCss = readFileSync(join(root, "app/globals.css"), "utf8");
-const studyPage = readFileSync(
-  join(root, "app/dashboard/study/page.tsx"),
+// The card markup moved out of the study page when the exercise components
+// were extracted. The rule it is checked against did not move with it.
+const flashcard = readFileSync(
+  join(root, "components/study/StudyFlashcard.tsx"),
   "utf8"
 );
 
@@ -32,13 +34,13 @@ describe("the flashcard flip has somewhere to turn in", () => {
   it("keeps the two faces in the same 3D space", () => {
     // Without preserve-3d the back face is flattened into the front's plane and
     // the turn stops meaning anything.
-    expect(studyPage).toContain("[transform-style:preserve-3d]");
-    expect(studyPage).toContain("[transform:rotateY(180deg)]");
+    expect(flashcard).toContain("[transform-style:preserve-3d]");
+    expect(flashcard).toContain("[transform:rotateY(180deg)]");
   });
 
   it("does not lean on a Tailwind v4 utility to do it", () => {
     // `perspective-[1400px]` is the exact class that produced nothing here.
-    expect(studyPage).not.toMatch(/\bperspective-\[/);
+    expect(flashcard).not.toMatch(/\bperspective-\[/);
   });
 
   it("turns on a curve that settles rather than stopping dead", () => {

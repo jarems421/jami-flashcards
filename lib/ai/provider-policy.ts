@@ -633,6 +633,16 @@ export function buildAiProviderPlan(input: {
   routeReason?: AiRouteReason;
   hasVisualInput: boolean;
   policy: AiProviderPolicy;
+  /**
+   * Whether a worker call may finish on the supervisor.
+   *
+   * Defaults to true, which is what every existing caller expects. A route
+   * whose job is bulk and cheap passes false: escalating a batch of a hundred
+   * cards to the expensive model would turn a routine preparation run into a
+   * bill nobody asked for, and a worker that cannot do the job should say so
+   * rather than quietly buy a better one.
+   */
+  allowRoleEscalation?: boolean;
 }): AiProviderAttempt[] {
   let role: AiGenerationRole;
   let reason: AiRouteReason;
@@ -653,7 +663,10 @@ export function buildAiProviderPlan(input: {
   if (role === "worker") {
     const failover = failoverAttemptFor(role, input.policy);
     if (failover) attempts.push(failover);
-    if (capabilityIsReady("supervisor", input.policy)) {
+    if (
+      input.allowRoleEscalation !== false &&
+      capabilityIsReady("supervisor", input.policy)
+    ) {
       attempts.push(attemptFor("supervisor", input.policy, "provider_escalation"));
     }
     return attempts;

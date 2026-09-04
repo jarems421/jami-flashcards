@@ -68,8 +68,25 @@ describe("AI budget configuration", () => {
         "sourceFlashcardDrafts",
         "sourcePracticeDrafts",
         "videoCardImport",
+        "studyAssetGeneration",
+        "studyAnswerCheck",
       ].sort()
     );
+  });
+
+  it("gives the study modes their own burst allowance", () => {
+    // Preparing a deck must not eat the allowance the tutor needs to answer a
+    // question in the middle of a session.
+    expect(AI_BUDGETS.studyAssetGeneration.burstScope).toBe("studyModes");
+    expect(AI_BUDGETS.studyAnswerCheck.burstScope).toBe("studyModes");
+    expect(AI_BUDGETS.assistant.burstScope).not.toBe("studyModes");
+  });
+
+  it("caps what one preparation job may be sent", () => {
+    // A hundred cards of text is the one input here that a student can grow
+    // without noticing.
+    expect(AI_BUDGETS.studyAssetGeneration.inputTokenCap).toBeGreaterThan(0);
+    expect(AI_BUDGETS.studyAnswerCheck.inputTokenCap).toBeGreaterThan(0);
   });
 
   it("uses the agreed daily and burst allowances", () => {

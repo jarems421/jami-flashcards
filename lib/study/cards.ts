@@ -1,5 +1,6 @@
 import { normalizeStudyTextInput } from "@/lib/study/display-text";
 import { normalizeStringArray } from "@/lib/material/content";
+import type { CardStudySettings } from "@/lib/study/study-modes";
 
 export const MAX_FRONT_LENGTH = 400;
 export const MAX_BACK_LENGTH = 2_000;
@@ -40,6 +41,8 @@ export type Card = {
   simpleStudyCorrectCount?: number;
   simpleStudyLastResult?: "correct" | "wrong";
   simpleStudyLastReviewedAt?: number;
+  /** Optional author overrides for the typed and gapped study modes. */
+  studySettings?: CardStudySettings;
 };
 
 export type CardReviewValueUpdates = Partial<

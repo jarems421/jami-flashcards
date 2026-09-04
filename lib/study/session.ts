@@ -2,6 +2,12 @@ import type { Card } from "@/lib/study/cards";
 import type { DailyReviewState } from "@/lib/study/daily-review-types";
 import { getStudyDayKey } from "@/lib/study/day";
 import type { CardRating } from "@/lib/study/scheduler";
+import {
+  isStudyMode,
+  SMART_STUDY_MODE_POLICY,
+  type StudyMode,
+  type StudyModePolicy,
+} from "@/lib/study/study-modes";
 
 export type StudySessionKind = "daily-required" | "daily-optional" | "custom" | "simple";
 export type StudySessionStatus = "active" | "ended" | "completed";
@@ -15,8 +21,35 @@ export type StudySessionStats = {
   ratings: Record<CardRating, number>;
 };
 
+/**
+ * One card's exercise, frozen into the session.
+ *
+ * Everything needed to redraw the question is here, including the MCQ options
+ * and their order, so a resumed session never has to reach Firestore for an
+ * asset that may not be cached -- and never shows a student a different set of
+ * choices than the ones they were looking at.
+ *
+ * `contentHash` is the safety catch: if the card has been edited since, the
+ * exercise is stale and must be rebuilt or dropped rather than marked against.
+ */
+export type PersistedStudyExercise = {
+  cardId: string;
+  mode: StudyMode;
+  contentHash: string;
+  cloze?: { start: number; end: number; answer: string };
+  mcq?: {
+    options: Array<{ id: string; text: string }>;
+    correctOptionId: string;
+    explanations?: Record<string, string>;
+  };
+};
+
+export type StudyModeResults = Partial<
+  Record<StudyMode, { answered: number; correct: number }>
+>;
+
 export type PersistedStudySession = {
-  version: 2;
+  version: 3;
   sessionId: string;
   revision: number;
   userId: string;
@@ -34,16 +67,26 @@ export type PersistedStudySession = {
   endedAt?: number;
   endReason?: StudySessionEndReason;
   closedRevision?: number;
+  /** How this session asks its cards. Absent on v1 and v2, which were all Classic. */
+  modePolicy?: StudyModePolicy;
+  /** Fixed at session start so a shuffled MCQ keeps its order across a resume. */
+  seed?: number;
+  exercises?: PersistedStudyExercise[];
+  modeResults?: StudyModeResults;
 };
 
 export const ACTIVE_STUDY_SESSION_DOC_ID = "activeSession";
 export const ACTIVE_STUDY_SESSION_PREFIX = "jami:active-study-session:";
 export const CLOSED_STUDY_SESSION_PREFIX = "jami:closed-study-session:";
-export const ACTIVE_STUDY_SESSION_VERSION = 2;
+// Annotated rather than inferred so it does not widen to `number` when spread
+// into an object literal, which would make every caller's session untypeable.
+export const ACTIVE_STUDY_SESSION_VERSION: PersistedStudySession["version"] = 3;
+/** Every schema this build still knows how to read. */
+const READABLE_SESSION_VERSIONS = [1, 2, 3];
 export const ACTIVE_STUDY_SESSION_MAX_AGE_MS = 30 * 60 * 60 * 1000;
 
 export type ClosedStudySessionTombstone = {
-  version: 2;
+  version: 3;
   userId: string;
   sessionId: string;
   revision: number;
@@ -154,6 +197,109 @@ function createSessionId(userId: string, now: number) {
   return `${userId}:${now}:${randomPart}`;
 }
 
+export function normalizeModePolicy(value: unknown): StudyModePolicy {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return SMART_STUDY_MODE_POLICY;
+  }
+  const data = value as Record<string, unknown>;
+  if (data.kind === "fixed" && isStudyMode(data.mode)) {
+    return { kind: "fixed", mode: data.mode };
+  }
+  return SMART_STUDY_MODE_POLICY;
+}
+
+function normalizeClozeSpan(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  const start = normalizeCount(data.start);
+  const end = normalizeCount(data.end);
+  const answer = typeof data.answer === "string" ? data.answer : "";
+  if (!answer || end <= start) return null;
+  return { start, end, answer };
+}
+
+function normalizeMcqSnapshot(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  const rawOptions = Array.isArray(data.options) ? data.options : [];
+  const options = rawOptions
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const option = entry as Record<string, unknown>;
+      const id = typeof option.id === "string" ? option.id.trim() : "";
+      const text = typeof option.text === "string" ? option.text : "";
+      return id && text ? { id, text } : null;
+    })
+    .filter((option): option is { id: string; text: string } => option !== null);
+  const correctOptionId =
+    typeof data.correctOptionId === "string" ? data.correctOptionId : "";
+  // A snapshot whose right answer is not among its choices is unusable, and
+  // repairing it would mean inventing one.
+  if (options.length < 2 || !options.some((option) => option.id === correctOptionId)) {
+    return null;
+  }
+  const explanations: Record<string, string> = {};
+  if (data.explanations && typeof data.explanations === "object") {
+    for (const [key, text] of Object.entries(data.explanations as Record<string, unknown>)) {
+      if (typeof text === "string" && text.trim()) explanations[key] = text;
+    }
+  }
+  return { options, correctOptionId, explanations };
+}
+
+export function normalizePersistedExercises(
+  value: unknown,
+  cardIds: string[]
+): PersistedStudyExercise[] {
+  if (!Array.isArray(value)) return [];
+  const allowed = new Set(cardIds);
+  const seen = new Set<string>();
+  const exercises: PersistedStudyExercise[] = [];
+
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const data = entry as Record<string, unknown>;
+    const cardId = typeof data.cardId === "string" ? data.cardId.trim() : "";
+    const contentHash =
+      typeof data.contentHash === "string" ? data.contentHash.trim() : "";
+    if (!cardId || !allowed.has(cardId) || seen.has(cardId)) continue;
+    if (!isStudyMode(data.mode) || !contentHash) continue;
+
+    const cloze = normalizeClozeSpan(data.cloze);
+    const mcq = normalizeMcqSnapshot(data.mcq);
+    // A mode whose material did not survive normalization is dropped rather
+    // than downgraded, so the session rebuilds it instead of asking a
+    // half-formed question.
+    if (data.mode === "gap-fill" && !cloze) continue;
+    if (data.mode === "multiple-choice" && !mcq) continue;
+
+    seen.add(cardId);
+    exercises.push({
+      cardId,
+      mode: data.mode,
+      contentHash,
+      ...(cloze ? { cloze } : {}),
+      ...(mcq ? { mcq } : {}),
+    });
+  }
+
+  return exercises;
+}
+
+export function normalizeModeResults(value: unknown): StudyModeResults {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const results: StudyModeResults = {};
+  for (const [mode, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!isStudyMode(mode) || !entry || typeof entry !== "object") continue;
+    const data = entry as Record<string, unknown>;
+    results[mode] = {
+      answered: normalizeCount(data.answered),
+      correct: normalizeCount(data.correct),
+    };
+  }
+  return results;
+}
+
 function normalizeRevision(value: unknown, index: number, stats: StudySessionStats) {
   const explicitRevision = normalizeCount(value);
   if (explicitRevision > 0) {
@@ -186,7 +332,7 @@ export function normalizePersistedStudySession(
       : currentStudyDayKey;
 
   if (
-    (data.version !== 1 && data.version !== ACTIVE_STUDY_SESSION_VERSION) ||
+    !READABLE_SESSION_VERSIONS.includes(data.version as number) ||
     data.userId !== userId ||
     !isSessionKind(data.kind) ||
     status !== "active" ||
@@ -201,6 +347,8 @@ export function normalizePersistedStudySession(
     createLegacySessionId({ userId, studyDayKey, kind: data.kind, startedAt, cardIds });
   const revision = normalizeRevision(data.revision, index, stats);
   const closedRevision = normalizeCount(data.closedRevision);
+  const exercises = normalizePersistedExercises(data.exercises, cardIds);
+  const modeResults = normalizeModeResults(data.modeResults);
 
   return {
     version: ACTIVE_STUDY_SESSION_VERSION,
@@ -221,6 +369,13 @@ export function normalizePersistedStudySession(
     startedAt,
     savedAt,
     ...(closedRevision > 0 ? { closedRevision } : {}),
+    // v1 and v2 sessions predate modes and were all Classic. Reading one back
+    // as Smart Mix would silently change what a resumed session asks, so the
+    // absence of a policy is preserved and the caller decides.
+    ...(data.modePolicy ? { modePolicy: normalizeModePolicy(data.modePolicy) } : {}),
+    ...(normalizeCount(data.seed) > 0 ? { seed: normalizeCount(data.seed) } : {}),
+    ...(exercises.length > 0 ? { exercises } : {}),
+    ...(Object.keys(modeResults).length > 0 ? { modeResults } : {}),
   };
 }
 
@@ -275,7 +430,7 @@ function normalizeTombstone(value: unknown, userId: string, now = Date.now()) {
       : null;
 
   if (
-    (data.version !== 1 && data.version !== ACTIVE_STUDY_SESSION_VERSION) ||
+    !READABLE_SESSION_VERSIONS.includes(data.version as number) ||
     !session ||
     !sessionId ||
     sessionId !== session.sessionId ||
@@ -519,6 +674,10 @@ export function buildPersistedStudySession({
   selectedTopicIds,
   startedAt,
   now = Date.now(),
+  modePolicy,
+  seed,
+  exercises,
+  modeResults,
 }: {
   userId: string;
   sessionId?: string | null;
@@ -532,6 +691,10 @@ export function buildPersistedStudySession({
   selectedTopicIds: string[];
   startedAt?: number | null;
   now?: number;
+  modePolicy?: StudyModePolicy;
+  seed?: number;
+  exercises?: PersistedStudyExercise[];
+  modeResults?: StudyModeResults;
 }): PersistedStudySession {
   const nextRevision = revision && revision > 0 ? Math.floor(revision) : 1;
   return {
@@ -549,6 +712,10 @@ export function buildPersistedStudySession({
     selectedTopicIds,
     startedAt: startedAt ?? now,
     savedAt: now,
+    ...(modePolicy ? { modePolicy } : {}),
+    ...(seed ? { seed } : {}),
+    ...(exercises && exercises.length > 0 ? { exercises } : {}),
+    ...(modeResults && Object.keys(modeResults).length > 0 ? { modeResults } : {}),
   };
 }
 

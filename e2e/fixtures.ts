@@ -44,6 +44,38 @@ export const E2E_OFFLINE_CARDS = [
 ] as const;
 
 /**
+ * A deck for the study modes, kept separate so the mode checks can grade cards
+ * without making the other flows order-dependent.
+ *
+ * The answers are chosen to exercise each mode honestly: one long enough to
+ * carry a blank, one short factual answer, one number with a unit.
+ */
+export const E2E_MODES_DECK_ID = "e2e-deck-modes";
+export const E2E_MODES_DECK_NAME = "Browser smoke modes deck";
+export const E2E_MODES_CARDS = [
+  {
+    id: "e2e-modes-card-1",
+    front: "Which organelle releases energy in a cell?",
+    back: "The mitochondrion releases usable energy inside every cell",
+  },
+  {
+    id: "e2e-modes-card-2",
+    front: "What is the powerhouse molecule of the cell?",
+    back: "Adenosine triphosphate",
+  },
+  {
+    id: "e2e-modes-card-3",
+    front: "What is the acceleration due to gravity on Earth?",
+    back: "9.8 m/s",
+  },
+  {
+    id: "e2e-modes-card-4",
+    front: "Which structure builds proteins?",
+    back: "The ribosome assembles amino acids into proteins",
+  },
+] as const;
+
+/**
  * Material the browse screens list. These smokes read and filter rather than
  * mutate, so the data can be shared without making the suite order-dependent.
  */

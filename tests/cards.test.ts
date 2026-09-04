@@ -8,6 +8,7 @@ import {
 } from "@/lib/study/cards";
 import type { Card } from "@/lib/study/cards";
 import { getCardQualityWarnings } from "@/lib/study/card-quality";
+import { ACTIVE_STUDY_SESSION_VERSION } from "@/lib/study/session";
 import {
   buildDailyReviewStateData,
   buildDailyReviewQueues,
@@ -508,7 +509,7 @@ describe("daily review memory risk", () => {
       updatedAt: 1,
     };
     const activeSession = {
-      version: 2 as const,
+      version: ACTIVE_STUDY_SESSION_VERSION,
       sessionId: "session-1",
       revision: 1,
       userId: "user",

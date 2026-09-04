@@ -8,13 +8,21 @@ export type AiBudgetAction =
   | "practicePaperMarking"
   | "videoCardImport"
   | "sourceFlashcardDrafts"
-  | "sourcePracticeDrafts";
+  | "sourcePracticeDrafts"
+  | "studyAssetGeneration"
+  | "studyAnswerCheck";
 
 type AiBudgetConfig = {
   dailyRequestLimit: number;
   burstRequestLimit: number;
   burstWindowMs: number;
-  burstScope: "assistantInteractive" | "tutorIllustrations" | "sourceDrafts";
+  burstScope:
+    | "assistantInteractive"
+    | "tutorIllustrations"
+    | "sourceDrafts"
+    // Its own scope so preparing a deck cannot use up the allowance the
+    // tutor needs to answer a question mid-session.
+    | "studyModes";
   tokenCap: number;
   /**
    * Ceiling on what one request may cost to *send*, or null where the input is
@@ -141,6 +149,28 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstScope: "sourceDrafts",
     tokenCap: 12_000,
     inputTokenCap: null,
+  },
+  // One job prepares up to a hundred cards in batches of twenty, so the daily
+  // limit is a job count rather than a card count. Deliberate: a student
+  // presses Prepare, they do not trip this by editing cards.
+  studyAssetGeneration: {
+    dailyRequestLimit: 10,
+    burstRequestLimit: 2,
+    burstWindowMs: 60_000,
+    burstScope: "studyModes",
+    tokenCap: 10_000,
+    inputTokenCap: 30_000,
+  },
+  // Reached only when a typed prose answer is locally uncertain, so most
+  // sessions never touch it. Running out costs a self-grade tap, not a broken
+  // session, which is why the cap can be generous without being risky.
+  studyAnswerCheck: {
+    dailyRequestLimit: 150,
+    burstRequestLimit: 12,
+    burstWindowMs: 60_000,
+    burstScope: "studyModes",
+    tokenCap: 600,
+    inputTokenCap: 4_000,
   },
 };
 

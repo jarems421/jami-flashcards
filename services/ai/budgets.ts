@@ -195,6 +195,12 @@ export async function refundAiBudget(grant: AiBudgetGrant) {
 }
 
 const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
+  studyAssetGeneration:
+    "Jami has prepared as many decks as it can today. Try again tomorrow.",
+  // Deliberately not phrased as a failure: running out costs a self-grade tap,
+  // and the session carries on exactly as it would have.
+  studyAnswerCheck:
+    "Jami has checked as many written answers as it can today. You can still mark your own.",
   assistant: "Jami has reached today's AI limit. Try again tomorrow.",
   tutorIllustration:
     "Jami has reached today's illustration limit. Try again tomorrow.",

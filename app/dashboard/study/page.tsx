@@ -9,14 +9,13 @@ import { toggleIdSelection } from "@/lib/app/multi-select";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import {
   buildDailyReviewQueues,
-  DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
   DAILY_REVIEW_STATE_DOC_ID,
   getCardsByIds,
   getRemainingCarryoverRequiredCards,
   getRemainingFreshRequiredCards,
   sortCardsByStudyPriority,
 } from "@/lib/study/daily-review";
-import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
+import { getMsUntilNextStudyBoundary, getStudyDayKey } from "@/lib/study/day";
 import {
   buildCustomReviewCards,
   EMPTY_FOCUSED_REVIEW_RECENTS,
@@ -28,32 +27,41 @@ import {
 } from "@/lib/study/focused-review";
 import {
   formatResetCountdown,
-  getAnswerFeedback,
   getSessionLabel,
-  getSimpleStudyFeedback,
   RATING_LABELS,
-  RATING_STYLES,
-  withGoalReward,
 } from "@/lib/study/study-feedback";
 import InlineStudyFeedback from "@/components/study/InlineStudyFeedback";
+import StudyFlashcard from "@/components/study/StudyFlashcard";
+import StudyRatingControls from "@/components/study/StudyRatingControls";
+import StudyExerciseStage from "@/components/study/StudyExerciseStage";
+import StudyModePicker, {
+  type StudyModeReadiness,
+} from "@/components/study/StudyModePicker";
 import FocusedReviewBuilder from "@/components/study/FocusedReviewBuilder";
 import StudyHomeStat from "@/components/study/StudyHomeStat";
-import { isStruggleRating, isSuccessfulRating, updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
+import type { CardRating } from "@/lib/study/scheduler";
 import type { Card } from "@/lib/study/cards";
+import { isFeatureEnabled } from "@/lib/app/feature-flags";
 import {
-  buildCardReviewUpdateCommand,
-  hasCardReviewUpdateCommand,
-} from "@/lib/study/card-review";
+  DEFAULT_STUDY_MODE_POLICY,
+  readStudyModePolicy,
+  saveStudyModePolicy,
+} from "@/lib/study/study-mode-preference";
 import {
-  applySimpleStudyResultToCard,
-  applySimpleStudyResultToQueue,
-  buildSimpleStudyQueue,
-  type SimpleStudyResult,
-} from "@/lib/study/simple-study";
+  getCardContentHash,
+  STUDY_MODES,
+  type StudyMode,
+  type StudyModePolicy,
+} from "@/lib/study/study-modes";
+import {
+  buildDeterministicExercise,
+  getModeEligibility,
+  resolveExerciseMode,
+} from "@/lib/study/mode-eligibility";
+import { buildSimpleStudyQueue } from "@/lib/study/simple-study";
 import {
   getOfflineQueuedReviews,
   loadOfflineStudySnapshot,
-  queueOfflineStudyReview,
   saveOfflineStudySnapshot,
 } from "@/lib/study/offline-study";
 import {
@@ -72,18 +80,21 @@ import {
   saveClosedStudySessionTombstone,
   savePersistedStudySession,
   type PersistedStudySession,
+  type StudyModeResults,
   type StudySessionKind,
 } from "@/lib/study/session";
-import { ensureDailyReviewState, ensureStudyStateSetup, markDailyReviewCardComplete, recordDailyReviewWeakAttempt } from "@/services/study/daily-review";
-import {
-  loadUserCards,
-  recordSimpleStudyResult,
-  updateCardAfterReview,
-} from "@/services/study/cards";
+import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
+import { loadUserCards } from "@/services/study/cards";
 import { syncOfflineStudyReviews } from "@/services/study/offline";
 import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActiveStudySession } from "@/services/study/session";
-import { applyGoalProgressForAnswer } from "@/services/study/goals";
-import { loadStudyActivity, recordStudyReview } from "@/services/study/activity";
+import { loadStudyActivity } from "@/services/study/activity";
+import {
+  checkTypedAnswer,
+  loadStudyAssets,
+  mergeAssetIntoSettings,
+  prepareStudyAssets,
+} from "@/services/study/study-assets";
+import type { StudyAsset } from "@/lib/ai/study-assets";
 import { computeStudyStreak } from "@/lib/study/activity";
 import { getDecks } from "@/services/study/decks";
 import type { Deck } from "@/lib/study/decks";
@@ -93,14 +104,22 @@ import { getDeckColorPreset } from "@/lib/study/deck-style";
 import AppPage from "@/components/layout/AppPage";
 import StarRewardOverlay from "@/components/constellation/StarRewardOverlay";
 import { useFocusedReviewState, useStudyDataState, useStudySessionState } from "@/hooks/useStudyWorkspaceState";
+import { useStudyExerciseController } from "@/hooks/useStudyExerciseController";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import {
   Button, Card as SurfaceCard, EmptyState, FeedbackBanner,
-  JamiTutorIcon, ProgressBar, Skeleton, StudyText,
+  JamiTutorIcon, ProgressBar, Skeleton,
 } from "@/components/ui";
 
 type SessionKind = StudySessionKind;
+
+const MODE_LABELS: Record<StudyMode, string> = {
+  classic: "Classic",
+  "type-answer": "Type Answer",
+  "gap-fill": "Gap Fill",
+  "multiple-choice": "Multiple Choice",
+};
 
 /** Refreshing on every tab focus hammered Firestore on a busy desk. */
 const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
@@ -150,11 +169,34 @@ export default function StudyPage() {
     sessionRestoreReady, setSessionRestoreReady,
   } = useStudySessionState();
   const { feedback, success, showError, clear: clearFeedback } = useFeedback();
+  const studyModesEnabled = isFeatureEnabled("enableStudyModes");
+  // Read from storage on mount rather than as an initial value, so the server
+  // and the first client render agree and nothing hydrates twice.
+  const [modePolicy, setModePolicyState] = useState<StudyModePolicy>(
+    DEFAULT_STUDY_MODE_POLICY
+  );
+  const setModePolicy = useCallback(
+    (next: StudyModePolicy) => {
+      setModePolicyState(next);
+      saveStudyModePolicy(user.uid, next);
+    },
+    [user.uid]
+  );
+
+  useEffect(() => {
+    setModePolicyState(readStudyModePolicy(user.uid));
+  }, [user.uid]);
+  const [modeResults, setModeResults] = useState<StudyModeResults>({});
+  const [studyAssets, setStudyAssets] = useState<Record<string, StudyAsset>>({});
+  const [preparing, setPreparing] = useState(false);
+  // Fixed when a session starts so a shuffled set of choices survives a
+  // refresh. Regenerating it on resume would reorder the options under the
+  // student's finger.
+  const sessionSeedRef = useRef(0);
   const handleStarRewardDone = useCallback(
     () => setStarReward(null),
     [setStarReward]
   );
-  const flipTimestampRef = useRef(0);
   const autoStartHandledRef = useRef(false);
   const sessionRestoreHandledRef = useRef(false);
   const sessionStartedAtRef = useRef<number | null>(null);
@@ -672,19 +714,54 @@ export default function StudyPage() {
               ? simpleStudyQueue.cards
               : customPreviewCards;
       const now = Date.now();
+      const seed = Math.floor(Math.random() * 0x7fffffff) || 1;
+      sessionSeedRef.current = seed;
+
+      // A fixed mode never quietly degrades. Cards that cannot carry it are
+      // dropped here and the student is told how many, rather than finding a
+      // shorter queue than they asked for, or a Classic card in the middle of a
+      // typing session.
+      const eligibleCards =
+        studyModesEnabled && modePolicy.kind === "fixed" && kind !== "simple"
+          ? nextCards.filter((card) =>
+              getModeEligibility(card, modePolicy.mode, {
+                siblings: cards.filter(
+                  (sibling) =>
+                    sibling.deckId === card.deckId && sibling.id !== card.id
+                ),
+                seed,
+              }).eligible
+            )
+          : nextCards;
+
+      if (nextCards.length > 0 && eligibleCards.length === 0) {
+        showError(
+          "None of these cards can be studied that way yet. Try Smart Mix or another mode."
+        );
+        return;
+      }
+      const droppedCards = nextCards.length - eligibleCards.length;
+      if (droppedCards > 0) {
+        success(
+          `${droppedCards} card${droppedCards === 1 ? "" : "s"} left out: they cannot be asked this way.`
+        );
+      }
+
       const nextStats = createEmptySessionStats();
       const sessionSelectedDeckIds = kind === "simple" ? [] : selectedDeckIds;
       const sessionSelectedTopicIds = kind === "simple" ? [] : selectedTopicIds;
       const nextSession = buildPersistedStudySession({
         userId: user.uid,
         kind,
-        sessionCards: nextCards,
+        sessionCards: eligibleCards,
         index: 0,
         stats: nextStats,
         selectedDeckIds: sessionSelectedDeckIds,
         selectedTopicIds: sessionSelectedTopicIds,
         startedAt: now,
         now,
+        modePolicy,
+        seed,
       });
 
       clearClosedStudySessionTombstone(user.uid);
@@ -695,8 +772,9 @@ export default function StudyPage() {
       latestPersistedSessionRef.current = nextSession;
       remoteCloseKeyRef.current = null;
       setSessionKind(kind);
-      setSessionCards(nextCards);
+      setSessionCards(eligibleCards);
       setSessionStats(nextStats);
+      setModeResults({});
       setIndex(0);
       setFlipped(false);
       setSavingRating(null);
@@ -712,8 +790,10 @@ export default function StudyPage() {
       }
     },
     [
+      cards,
       clearFeedback,
       customPreviewCards,
+      modePolicy,
       pushFocusedReviewRecents,
       remainingCarryoverRequiredCards,
       remainingFreshRequiredCards,
@@ -728,7 +808,10 @@ export default function StudyPage() {
       setSessionCards,
       setSessionKind,
       setSessionStats,
+      showError,
       simpleStudyQueue.cards,
+      studyModesEnabled,
+      success,
       user.uid,
     ]
   );
@@ -1018,6 +1101,88 @@ export default function StudyPage() {
         .sort((left, right) => (left.dueDate ?? 0) - (right.dueDate ?? 0))[0] ?? null,
     [cards]
   );
+  /**
+   * Where multiple choice looks for believable wrong answers.
+   *
+   * Same deck first, because a distractor from an unrelated subject is
+   * answerable by elimination. Capped so a large library does not turn every
+   * card into a full scan.
+   */
+  const distractorPool = useMemo(() => {
+    if (!current) return [] as Card[];
+    const sameDeck = cards.filter(
+      (card) => card.deckId === current.deckId && card.id !== current.id
+    );
+    if (sameDeck.length >= 12) return sameDeck.slice(0, 200);
+    return [
+      ...sameDeck,
+      ...cards
+        .filter((card) => card.deckId !== current.deckId && card.id !== current.id)
+        .slice(0, 200),
+    ];
+  }, [cards, current]);
+
+  /**
+   * The card as the markers should see it.
+   *
+   * Prepared aliases, concepts, gaps and distractors are folded in here rather
+   * than written back to the card, so the card the student wrote is never
+   * edited by a model. Author settings still win inside the merge.
+   */
+  const preparedCurrent = useMemo(() => {
+    if (!current) return null;
+    const settings = mergeAssetIntoSettings(
+      studyAssets[current.id],
+      current.studySettings
+    );
+    return settings === current.studySettings
+      ? current
+      : { ...current, studySettings: settings };
+  }, [current, studyAssets]);
+
+  const currentExercise = useMemo(() => {
+    const current = preparedCurrent;
+    if (!current || !sessionKind) return null;
+    // Simple Study is its own two-point flow and is left alone. Classic falls
+    // through to the flip card below rather than through the exercise stage.
+    if (!studyModesEnabled || sessionKind === "simple") return null;
+    const context = { siblings: distractorPool, seed: sessionSeedRef.current };
+    const mode = resolveExerciseMode(current, modePolicy, index, context);
+    if (!mode || mode === "classic") return null;
+    return buildDeterministicExercise(
+      current,
+      mode,
+      getCardContentHash(current),
+      context
+    );
+  }, [
+    distractorPool,
+    index,
+    modePolicy,
+    preparedCurrent,
+    sessionKind,
+    studyModesEnabled,
+  ]);
+
+  const modeReadiness = useMemo(() => {
+    const queue =
+      remainingRequiredCards.length > 0 ? remainingRequiredCards : cards;
+    const readiness: Partial<Record<StudyMode, StudyModeReadiness>> = {};
+    if (!studyModesEnabled) return readiness;
+    for (const mode of STUDY_MODES) {
+      let ready = 0;
+      for (const card of queue) {
+        const siblings = cards.filter(
+          (sibling) =>
+            sibling.deckId === card.deckId && sibling.id !== card.id
+        );
+        if (getModeEligibility(card, mode, { siblings }).eligible) ready += 1;
+      }
+      readiness[mode] = { ready, unavailable: queue.length - ready };
+    }
+    return readiness;
+  }, [cards, remainingRequiredCards, studyModesEnabled]);
+
   const totalCards = sessionCards.length;
   const remainingCards = current ? totalCards - index : 0;
   const accuracyPercentage = sessionStats.reviewedCards > 0 ? Math.round((sessionStats.correctAnswers / sessionStats.reviewedCards) * 100) : 0;
@@ -1051,6 +1216,34 @@ export default function StudyPage() {
         selectedTopicIds,
         startedAt: sessionStartedAtRef.current,
         now,
+        modePolicy,
+        seed: sessionSeedRef.current,
+        modeResults,
+        // Only the exercises still ahead are snapshotted. They carry their own
+        // options and blanks, so a resumed session redraws the same question
+        // without needing Firestore -- and the content hash lets a card that
+        // has been edited since be rebuilt rather than marked against.
+        exercises: sessionCards.slice(index).flatMap((card) => {
+          const context = { siblings: [] as Card[], seed: sessionSeedRef.current };
+          const mode = resolveExerciseMode(card, modePolicy, index, context);
+          if (!mode) return [];
+          const exercise = buildDeterministicExercise(
+            card,
+            mode,
+            getCardContentHash(card),
+            context
+          );
+          if (!exercise) return [];
+          return [
+            {
+              cardId: card.id,
+              mode: exercise.mode,
+              contentHash: exercise.cardContentHash,
+              ...(exercise.cloze ? { cloze: exercise.cloze } : {}),
+              ...(exercise.mcq ? { mcq: exercise.mcq } : {}),
+            },
+          ];
+        }),
       });
 
       sessionIdRef.current = currentSession.sessionId;
@@ -1060,7 +1253,17 @@ export default function StudyPage() {
       latestPersistedSessionRef.current = currentSession;
       return currentSession;
     },
-    [index, selectedDeckIds, selectedTopicIds, sessionCards, sessionKind, sessionStats, user.uid]
+    [
+      index,
+      modePolicy,
+      modeResults,
+      selectedDeckIds,
+      selectedTopicIds,
+      sessionCards,
+      sessionKind,
+      sessionStats,
+      user.uid,
+    ]
   );
 
   useEffect(() => {
@@ -1128,315 +1331,159 @@ export default function StudyPage() {
     };
   }, [getCurrentPersistedSession]);
 
-  const goNext = () => {
-    setIndex((value) => value + 1);
-    setFlipped(false);
-  };
+  const closeJamiAssistant = useCallback(
+    () => setJamiAssistantOpen(false),
+    [setJamiAssistantOpen]
+  );
 
-  const requeueCurrentCard = (nextCard: Card) => {
-    setSessionCards((prev) => {
-      const before = prev.slice(0, index);
-      const after = prev.slice(index + 1);
-      return [...before, ...after, nextCard];
-    });
-    setFlipped(false);
-  };
-
-  const handleOfflineRating = async (rating: CardRating) => {
-    if (!current || !sessionKind) return;
-    if (sessionKind === "simple") return;
-
-    const now = Date.now();
-    const durationMs = flipTimestampRef.current > 0 ? now - flipTimestampRef.current : undefined;
-    const isCorrect = isSuccessfulRating(rating);
-    const isStruggle = isStruggleRating(rating);
-    const schedule = sessionKind === "custom" ? null : updateCardSchedule(current, rating);
-    const cardUpdates: Record<string, number | string> = {};
-    let retryResult: { attemptCount: number; parked: boolean } | null = null;
-
-    if (schedule) {
-      Object.assign(cardUpdates, schedule);
-    } else if (isStruggle) {
-      const studyDayKey = getStudyDayKey(now);
-      cardUpdates.lastStruggleAt = now;
-      cardUpdates.lastStruggleStudyDayKey = studyDayKey;
-      cardUpdates.memoryRiskOverrideDayKey = shiftStudyDayKey(studyDayKey, 1);
-      cardUpdates.customStruggleCount = (current.customStruggleCount ?? 0) + 1;
-    }
-    if (isStruggle) {
-      cardUpdates.simpleStudyLastResult = "wrong";
-      cardUpdates.simpleStudyLastReviewedAt = now;
-      cardUpdates.simpleStudyWrongCount = (current.simpleStudyWrongCount ?? 0) + 1;
-    }
-
-    if (sessionKind === "daily-required" && isStruggle) {
-      const currentAttempts = dailyReviewState?.requiredRetryCounts[current.id] ?? 0;
-      const attemptCount = currentAttempts + 1;
-      retryResult = {
-        attemptCount,
-        parked: attemptCount >= DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
-      };
-    }
-
-    const parkedRiskUpdates =
-      sessionKind === "daily-required" && isStruggle && retryResult?.parked
-        ? {
-            lastStruggleAt: now,
-            lastStruggleStudyDayKey: getStudyDayKey(now),
-            memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
-          }
-        : null;
-
-    if (parkedRiskUpdates) {
-      Object.assign(cardUpdates, parkedRiskUpdates);
-    }
-
-    queueOfflineStudyReview({
-      userId: user.uid,
-      cardId: current.id,
-      deckId: current.deckId,
-      topicIds: current.topicIds ?? [],
-      folderIds: decks.find((deck) => deck.id === current.deckId)?.folderIds ?? [],
-      rating,
-      reviewedAt: now,
-      studyDayKey: getStudyDayKey(now),
-      isCorrect,
-      durationMs,
-      sessionKind,
-      cardUpdates,
-      clearMemoryRiskOverrideDayKey: Boolean(schedule && isCorrect),
-    });
-    refreshPendingOfflineReviews();
-    const nextCard: Card = {
-      ...current,
-      ...(schedule ?? {}),
-      ...(parkedRiskUpdates ?? {}),
-      ...(sessionKind === "custom" && isStruggle
-        ? {
-            lastStruggleAt: now,
-            lastStruggleStudyDayKey: getStudyDayKey(now),
-            memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
-            customStruggleCount: (current.customStruggleCount ?? 0) + 1,
-          }
-        : {}),
-      ...(isStruggle
-        ? {
-            simpleStudyLastResult: "wrong" as const,
-            simpleStudyLastReviewedAt: now,
-            simpleStudyWrongCount: (current.simpleStudyWrongCount ?? 0) + 1,
-          }
-        : {}),
-      ...(schedule && isCorrect ? { memoryRiskOverrideDayKey: undefined } : {}),
-    };
-    const nextCardsSnapshot = cards.map((card) => (card.id === current.id ? nextCard : card));
-
-    if (schedule || (sessionKind === "custom" && isStruggle)) {
-      setCards(nextCardsSnapshot);
-      saveOfflineStudySnapshot(user.uid, { cards: nextCardsSnapshot, decks });
-    }
-
-    if (sessionKind === "daily-required") {
-      if (isStruggle && retryResult) {
-        setDailyReviewState((prev) => prev ? {
-          ...prev,
-          requiredRetryCounts: { ...prev.requiredRetryCounts, [current.id]: retryResult.attemptCount },
-          parkedRequiredCardIds: retryResult.parked && !prev.parkedRequiredCardIds.includes(current.id) ? [...prev.parkedRequiredCardIds, current.id] : prev.parkedRequiredCardIds,
-          updatedAt: now,
-        } : prev);
-      } else {
-        setDailyReviewState((prev) => prev ? { ...prev, completedRequiredCardIds: prev.completedRequiredCardIds.includes(current.id) ? prev.completedRequiredCardIds : [...prev.completedRequiredCardIds, current.id], updatedAt: now } : prev);
-      }
-    } else if (sessionKind === "daily-optional") {
-      setDailyReviewState((prev) => prev ? { ...prev, completedOptionalCardIds: prev.completedOptionalCardIds.includes(current.id) ? prev.completedOptionalCardIds : [...prev.completedOptionalCardIds, current.id], updatedAt: now } : prev);
-    }
-
-    bumpSessionRevision();
-    setOfflineMode(true);
-    setSessionStats((prev) => ({ reviewedCards: prev.reviewedCards + 1, correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0), completedGoals: prev.completedGoals, starsEarned: prev.starsEarned, ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 } }));
-    setAnswerFeedback(getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)));
-    success("Saved offline. This answer will sync when you are back online.");
-
-    if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
-      requeueCurrentCard(nextCard);
-    } else {
-      goNext();
-    }
-  };
-
-  const handleSimpleStudyResult = async (result: SimpleStudyResult) => {
-    if (!current || sessionKind !== "simple" || savingRating) return;
-
-    const now = Date.now();
-    const nextCard = applySimpleStudyResultToCard(current, result, now);
-    const nextCardsSnapshot = cards.map((card) => (card.id === current.id ? nextCard : card));
-    const ratingForStats: CardRating = result === "correct" ? "good" : "again";
-    setSavingRating(ratingForStats);
-    clearFeedback();
-
-    setCards(nextCardsSnapshot);
-    saveOfflineStudySnapshot(user.uid, { cards: nextCardsSnapshot, decks });
-    if (result === "correct") {
-      setSessionCards((prev) => prev.map((card) => (card.id === current.id ? nextCard : card)));
-      setIndex((value) => Math.min(value + 1, sessionCards.length));
-    } else {
-      setSessionCards((prev) => applySimpleStudyResultToQueue(prev, current.id, result, now));
-    }
-    bumpSessionRevision();
-    setSessionStats((prev) => ({
-      reviewedCards: prev.reviewedCards + 1,
-      correctAnswers: prev.correctAnswers + (result === "correct" ? 1 : 0),
-      completedGoals: prev.completedGoals,
-      starsEarned: prev.starsEarned,
-      ratings: { ...prev.ratings, [ratingForStats]: prev.ratings[ratingForStats] + 1 },
-    }));
-    setAnswerFeedback(getSimpleStudyFeedback(result));
-    setFlipped(false);
-
-    try {
-      await recordSimpleStudyResult(current.id, result, now);
-    } catch (error) {
-      console.warn("Failed to save Simple Study result.", error);
-      setOfflineMode(true);
-      success("Kept this Simple Study answer in your current session. It will refresh when your connection settles.");
-    } finally {
-      setSavingRating(null);
-    }
-  };
-
-  const handleRating = async (rating: CardRating) => {
-    if (!current || !sessionKind) return;
-    if (sessionKind === "simple") {
-      await handleSimpleStudyResult(rating === "again" || rating === "hard" ? "wrong" : "correct");
-      return;
-    }
-    setSavingRating(rating);
-    clearFeedback();
-    try {
-      if (offlineMode || (typeof navigator !== "undefined" && !navigator.onLine)) {
-        await handleOfflineRating(rating);
-        return;
-      }
-
-      const now = Date.now();
-      const isCorrect = isSuccessfulRating(rating);
-      const isStruggle = isStruggleRating(rating);
-      const schedule = sessionKind === "custom" ? null : updateCardSchedule(current, rating);
-      const cardReviewUpdate = buildCardReviewUpdateCommand({
-        schedule,
-        isCorrect,
-        isStruggle,
-        reviewedAt: now,
-      });
-
-      const reviewPromise = recordStudyReview(user.uid, now, {
-        isCorrect,
-        durationMs: flipTimestampRef.current > 0 ? now - flipTimestampRef.current : undefined,
-        sessionKind: sessionKind === "custom" ? "custom" : "daily",
-      });
-      const goalProgressPromise = applyGoalProgressForAnswer(user.uid, isCorrect, now, {
-        deckId: current.deckId,
-        topicIds: current.topicIds ?? [],
-        folderIds: decks.find((deck) => deck.id === current.deckId)?.folderIds ?? [],
-      });
-      const remainingPromises: Promise<unknown>[] = [];
-      if (hasCardReviewUpdateCommand(cardReviewUpdate)) {
-        remainingPromises.push(
-          updateCardAfterReview(current.id, cardReviewUpdate)
-        );
-      }
-      let retryResultPromise: Promise<{ attemptCount: number; parked: boolean }> | null = null;
-      if (sessionKind === "daily-required" && isStruggle) {
-        retryResultPromise = recordDailyReviewWeakAttempt(user.uid, current.id, now);
-        remainingPromises.push(retryResultPromise);
-      } else if (sessionKind === "daily-required") {
-        remainingPromises.push(markDailyReviewCardComplete(user.uid, current.id, "required"));
-      }
-      if (sessionKind === "daily-optional") remainingPromises.push(markDailyReviewCardComplete(user.uid, current.id, "optional"));
-      const [, goalProgress] = await Promise.all([reviewPromise, goalProgressPromise, ...remainingPromises]);
-      const retryResult = retryResultPromise ? await retryResultPromise : null;
-      const parkedRiskUpdates =
-        sessionKind === "daily-required" && isStruggle && retryResult?.parked
-          ? {
-              lastStruggleAt: now,
-              lastStruggleStudyDayKey: getStudyDayKey(now),
-              memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
-            }
-          : null;
-      if (parkedRiskUpdates) {
-        await updateCardAfterReview(current.id, {
-          values: parkedRiskUpdates,
-        });
-      }
-      const nextCard: Card = {
-        ...current,
-        ...(schedule ?? {}),
-        ...(parkedRiskUpdates ?? {}),
-        ...(sessionKind === "custom" && isStruggle
-          ? {
-              lastStruggleAt: now,
-              lastStruggleStudyDayKey: getStudyDayKey(now),
-              memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
-              customStruggleCount: (current.customStruggleCount ?? 0) + 1,
-            }
-          : {}),
-        ...(isStruggle
-          ? {
-              simpleStudyLastResult: "wrong" as const,
-              simpleStudyLastReviewedAt: now,
-              simpleStudyWrongCount: (current.simpleStudyWrongCount ?? 0) + 1,
-            }
-          : {}),
-        ...(schedule && isCorrect ? { memoryRiskOverrideDayKey: undefined } : {}),
-      };
-      if (schedule || (sessionKind === "custom" && isStruggle)) {
-        setCards((prev) => prev.map((card) => (card.id === current.id ? nextCard : card)));
-      }
-      if (sessionKind === "daily-required") {
-        if (isStruggle && retryResult) {
-          setDailyReviewState((prev) => prev ? {
-            ...prev,
-            requiredRetryCounts: { ...prev.requiredRetryCounts, [current.id]: retryResult.attemptCount },
-            parkedRequiredCardIds: retryResult.parked && !prev.parkedRequiredCardIds.includes(current.id) ? [...prev.parkedRequiredCardIds, current.id] : prev.parkedRequiredCardIds,
-            updatedAt: now,
-          } : prev);
-        } else {
-          setDailyReviewState((prev) => prev ? { ...prev, completedRequiredCardIds: prev.completedRequiredCardIds.includes(current.id) ? prev.completedRequiredCardIds : [...prev.completedRequiredCardIds, current.id], updatedAt: now } : prev);
-        }
-      } else if (sessionKind === "daily-optional") {
-        setDailyReviewState((prev) => prev ? { ...prev, completedOptionalCardIds: prev.completedOptionalCardIds.includes(current.id) ? prev.completedOptionalCardIds : [...prev.completedOptionalCardIds, current.id], updatedAt: now } : prev);
-      }
-      bumpSessionRevision();
-      setSessionStats((prev) => ({ reviewedCards: prev.reviewedCards + 1, correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0), completedGoals: prev.completedGoals + goalProgress.completedGoals, starsEarned: prev.starsEarned + goalProgress.starsEarned, ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 } }));
-      setAnswerFeedback(
-        withGoalReward(
-          getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)),
-          goalProgress
-        )
-      );
-      // Only the first is shown: finishing two goals on one card is rare, and
-      // stacking overlays would bury the card behind the celebration.
-      if (goalProgress.rewards.length > 0) setStarReward(goalProgress.rewards[0]);
-      if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
-        requeueCurrentCard(nextCard);
-      } else {
-        goNext();
-      }
-    } catch (error) {
-      console.error(error);
-      showError("Failed to save that answer. Please try again.");
-    } finally {
-      setSavingRating(null);
-    }
-  };
-
-  const handleFlip = useCallback(() => {
-    if (!current || flipped) return;
-    flipTimestampRef.current = Date.now();
-    setFlipped(true);
+  /**
+   * The one road into scheduling.
+   *
+   * Reveal, then commit. Everything a rating sets off -- FSRS, Daily Review
+   * completion, goals and stars, streak activity, the offline queue, the
+   * in-session retry cadence -- lives behind this controller, so a new exercise
+   * cannot quietly grow its own way of writing a card.
+   */
+  const {
+    reveal: handleFlip,
+    commitReview,
+    continueWithoutScheduling,
+    presentation,
+  } = useStudyExerciseController({
+    userId: user.uid,
+    current,
+    sessionKind,
+    flipped,
+    setFlipped,
     // The tutor is told whether the card is flipped, so a drawer left open
     // across the flip would be answering about the wrong phase.
-    setJamiAssistantOpen(false);
-  }, [current, flipped, setFlipped, setJamiAssistantOpen]);
+    onReveal: closeJamiAssistant,
+    cards,
+    setCards,
+    decks,
+    index,
+    setIndex,
+    sessionCards,
+    setSessionCards,
+    dailyReviewState,
+    setDailyReviewState,
+    setSessionStats,
+    setAnswerFeedback,
+    setStarReward,
+    savingRating,
+    setSavingRating,
+    offlineMode,
+    setOfflineMode,
+    bumpSessionRevision,
+    refreshPendingOfflineReviews,
+    clearFeedback,
+    notifySuccess: success,
+    notifyError: showError,
+  });
+
+  // Read once per session rather than per card: the whole queue's assets are a
+  // single small read, and doing it per card would put a round trip between
+  // every question and the next.
+  useEffect(() => {
+    if (!studyModesEnabled || sessionCards.length === 0) return;
+    let cancelled = false;
+    void loadStudyAssets(sessionCards.map((card) => card.id)).then((assets) => {
+      if (!cancelled) setStudyAssets((prev) => ({ ...prev, ...assets }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionCards, studyModesEnabled]);
+
+  /**
+   * Prepare the AI half of the modes for the cards about to be studied.
+   *
+   * Explicit, at deck level, and never triggered by editing or creating a card.
+   * Cards already prepared under their current content cost nothing, so pressing
+   * this again after adding a few cards prepares only those.
+   */
+  const handlePrepareStudyModes = useCallback(async () => {
+    const queue =
+      remainingRequiredCards.length > 0 ? remainingRequiredCards : cards;
+    if (queue.length === 0) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      showError("Preparing study modes needs a connection.");
+      return;
+    }
+
+    setPreparing(true);
+    clearFeedback();
+    try {
+      const byDeck = new Map<string, string[]>();
+      for (const card of queue.slice(0, 100)) {
+        byDeck.set(card.deckId, [...(byDeck.get(card.deckId) ?? []), card.id]);
+      }
+      let prepared = 0;
+      let reused = 0;
+      for (const [deckId, cardIds] of byDeck) {
+        const result = await prepareStudyAssets({ deckId, cardIds });
+        prepared += result.prepared;
+        reused += result.reused;
+      }
+      const refreshed = await loadStudyAssets(queue.map((card) => card.id));
+      setStudyAssets((prev) => ({ ...prev, ...refreshed }));
+      success(
+        prepared > 0
+          ? `Prepared ${prepared} card${prepared === 1 ? "" : "s"}.`
+          : reused > 0
+            ? "These cards were already prepared."
+            : "Nothing needed preparing."
+      );
+    } catch (error) {
+      console.error("Failed to prepare study modes.", error);
+      showError(
+        error instanceof Error
+          ? error.message
+          : "Jami could not prepare these cards just now."
+      );
+    } finally {
+      setPreparing(false);
+    }
+  }, [cards, clearFeedback, remainingRequiredCards, showError, success]);
+
+  const handleSemanticCheck = useCallback(
+    async (response: string) => {
+      if (!current) return null;
+      const checked = await checkTypedAnswer({ cardId: current.id, response });
+      // "needs-self-grade" is the caller's default, so it is reported as no
+      // answer rather than as a fourth verdict the stage has to handle.
+      return checked && checked.verdict !== "needs-self-grade"
+        ? { ...checked, verdict: checked.verdict }
+        : null;
+    },
+    [current]
+  );
+
+  const recordModeAnswer = useCallback((mode: StudyMode, correct: boolean) => {
+    setModeResults((prev) => {
+      const previous = prev[mode] ?? { answered: 0, correct: 0 };
+      return {
+        ...prev,
+        [mode]: {
+          answered: previous.answered + 1,
+          correct: previous.correct + (correct ? 1 : 0),
+        },
+      };
+    });
+  }, []);
+
+  const handleRating = useCallback(
+    (rating: CardRating, options: { requeueOnMiss?: boolean } = {}) => {
+      if (!current) return;
+      void commitReview({
+        cardId: current.id,
+        rating,
+        answeredAt: Date.now(),
+        requeueOnMiss: options.requeueOnMiss,
+      });
+    },
+    [commitReview, current]
+  );
 
   const getLearnAssistantContext = useCallback(async (): Promise<JamiAssistantContext> => {
     if (!current) {
@@ -1486,6 +1533,9 @@ export default function StudyPage() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      // The answer-first modes own their own keys: the typing field takes the
+      // space bar, and multiple choice binds 1-4 to its options.
+      if (currentExercise) return;
       if (event.code === "Space") {
         event.preventDefault();
         if (!flipped && current) handleFlip();
@@ -1504,7 +1554,7 @@ export default function StudyPage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [current, flipped, handleFlip, savingRating, sessionKind]);
+  }, [current, currentExercise, flipped, handleFlip, savingRating, sessionKind]);
 
   const exitSession = () => {
     if (sessionKind) {
@@ -1654,6 +1704,19 @@ export default function StudyPage() {
                       label="Easy extras"
                     />
                   </div>
+
+                  {studyModesEnabled ? (
+                    <div className="mt-6">
+                      <StudyModePicker
+                        policy={modePolicy}
+                        onChange={setModePolicy}
+                        readiness={modeReadiness}
+                        scheduledQueue={remainingRequiredCards.length > 0}
+                        onPrepare={() => void handlePrepareStudyModes()}
+                        preparing={preparing}
+                      />
+                    </div>
+                  ) : null}
 
                   <div data-tutorial-target="complete-review" className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
                     {hasCarryoverRequiredCards ? (
@@ -1917,6 +1980,26 @@ export default function StudyPage() {
                       ))}
                     </div>
                   </div>
+                  {Object.keys(modeResults).length > 0 ? (
+                    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm">
+                      <div className="text-center text-xs text-text-muted">By mode</div>
+                      <div className="mt-2 grid gap-1.5 text-xs text-text-secondary">
+                        {(Object.entries(modeResults) as Array<
+                          [StudyMode, { answered: number; correct: number }]
+                        >).map(([mode, result]) => (
+                          <span
+                            key={mode}
+                            className="inline-flex items-center justify-between gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-2.5 py-1"
+                          >
+                            <span>{MODE_LABELS[mode]}</span>
+                            <span className="font-semibold tabular-nums text-text-primary">
+                              {result.correct}/{result.answered}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-center text-sm">
                     <div className="text-xs text-text-muted">Goals completed</div>
                     <div className="mt-2 flex min-h-7 items-center justify-center text-lg font-semibold leading-none tabular-nums text-text-primary">{sessionStats.completedGoals}</div>
@@ -2042,134 +2125,47 @@ export default function StudyPage() {
                         : "Jami cannot see this card's answer until you flip it, so it can nudge you towards it but never hand it over."
                     }
                   />
-                  <div data-study-current-card-id={current.id} className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-2xl" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
-                    <div className={`study-flashcard-turn relative aspect-[5/4] w-full [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
-                      <div
-                        className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-2xl p-5 [backface-visibility:hidden] sm:p-8 lg:p-10"
-                        aria-hidden={flipped}
-                        inert={flipped}
-                        style={{
-                          "--study-card-border": currentDeckColor.base,
-                        } as React.CSSProperties}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex min-w-0 items-center gap-2 text-xs font-medium opacity-65">
-                            <span
-                              aria-hidden="true"
-                              className="h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: currentDeckColor.base }}
-                            />
-                            <span className="truncate">
-                              {deckNamesById[current.deckId] ?? "Flashcard"}
-                            </span>
-                          </div>
-                          {(current.topicIds?.length ?? 0) > 0 ? (
-                            <div className="flex max-w-[60%] flex-wrap justify-end gap-1.5">
-                              {(current.topicIds ?? []).slice(0, 2).map((topicId) => (
-                                <span key={topicId} className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-2xs font-medium opacity-75">
-                                  {topicNamesById[topicId] ?? "Topic"}
-                                </span>
-                              ))}
-                              {(current.topicIds?.length ?? 0) > 2 ? (
-                                <span className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-2xs font-medium opacity-65">+{(current.topicIds?.length ?? 0) - 2}</span>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="flex flex-1 items-center justify-center py-6">
-                          <StudyText
-                            as="p"
-                            text={current.front}
-                            className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-[color:inherit] sm:text-2xl xl:text-4xl"
-                          />
-                        </div>
-                        <div className="text-center text-xs font-medium opacity-60">Tap anywhere on the card or press Space to reveal</div>
-                      </div>
-                      {/*
-                        backface-visibility hides the answer visually but leaves
-                        it in the accessibility tree and in find-in-page, so an
-                        unflipped card would read out its own answer. inert and
-                        aria-hidden take it out of both until the flip.
-                      */}
-                      <div
-                        className="study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-2xl p-5 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10"
-                        aria-hidden={!flipped}
-                        inert={!flipped}
-                        style={{
-                          "--study-card-border": currentDeckColor.base,
-                        } as React.CSSProperties}
-                      >
-                        <div className="flex items-center gap-2 text-xs font-normal tracking-[0.06em] opacity-65">
-                          <span
-                            aria-hidden="true"
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: currentDeckColor.base }}
-                          />
-                          <span>Answer</span>
-                        </div>
-                        <div className="flex flex-1 items-center justify-center py-6">
-                          <StudyText
-                            as="p"
-                            text={current.back}
-                            className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-[color:inherit] sm:text-2xl xl:text-4xl"
-                          />
-                        </div>
-                        <div className="text-center text-xs font-medium opacity-60">How well did you recall this?</div>
-                      </div>
-                    </div>
-                  </div>
-              </section>
-              {flipped ? (
-                <div className="sticky bottom-3 z-30 animate-fade-in space-y-3 rounded-xl border border-[var(--color-border)] bg-surface-panel/95 p-2 shadow-e2 backdrop-blur-md sm:static sm:z-auto sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
-                  {savingRating ? <div className="text-center text-sm text-text-muted">Saving...</div> : null}
-                  <div className="space-y-3">
-                      {sessionKind === "simple" ? (
-                        <div className="grid grid-cols-2 gap-2 sm:gap-3" aria-label="Simple Study answer choices">
-                          <button
-                            type="button"
-                            aria-label="Missed this card"
-                            disabled={savingRating !== null}
-                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-xl border border-rose-300/25 bg-rose-400/[0.08] px-3 py-4 text-center text-base font-semibold text-rose-100 shadow-e1 transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-rose-200/45 hover:bg-rose-400/[0.12] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
-                            onClick={() => void handleSimpleStudyResult("wrong")}
-                          >
-                            <span>Missed</span>
-                            <span className="text-2xs font-normal opacity-75">Back of queue</span>
-                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-black/10 px-2 text-2xs leading-none tabular-nums opacity-75">1</span>
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="Got this card right"
-                            disabled={savingRating !== null}
-                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-xl border border-emerald-300/25 bg-emerald-400/[0.08] px-3 py-4 text-center text-base font-semibold text-emerald-100 shadow-e1 transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-emerald-200/45 hover:bg-emerald-400/[0.12] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
-                            onClick={() => void handleSimpleStudyResult("correct")}
-                          >
-                            <span>Got it</span>
-                            <span className="text-2xs font-normal opacity-75">Clear card</span>
-                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-black/10 px-2 text-2xs leading-none tabular-nums opacity-75">2</span>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-                          {(["again", "hard", "good", "easy"] as CardRating[]).map((rating) => {
-                            const meta = RATING_STYLES[rating];
-                            return (
-                            <button
-                              key={rating}
-                              type="button"
-                              disabled={savingRating !== null}
-                              className={`flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-4 text-center text-base font-semibold shadow-e1 transition duration-fast ease-spring hover:-translate-y-[0.5px] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm ${meta.classes}`}
-                              onClick={() => void handleRating(rating)}
-                            >
-                              <span>{RATING_LABELS[rating]}</span>
-                              <span className="text-2xs font-normal opacity-75">{meta.hint}</span>
-                              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-black/10 px-2 text-2xs leading-none tabular-nums opacity-75">{meta.shortcut}</span>
-                            </button>
-                            );
-                          })}
-                        </div>
+                  {currentExercise ? (
+                    <StudyExerciseStage
+                      key={`${current.id}:${currentExercise.mode}:${currentExercise.cardContentHash}:${presentation}`}
+                      card={preparedCurrent ?? current}
+                      exercise={currentExercise}
+                      savingRating={savingRating}
+                      onCommit={handleRating}
+                      onPractice={(correct) =>
+                        continueWithoutScheduling({
+                          cardId: current.id,
+                          correct,
+                        })
+                      }
+                      onContinue={() =>
+                        continueWithoutScheduling({
+                          cardId: current.id,
+                          correct: true,
+                        })
+                      }
+                      onModeAnswered={recordModeAnswer}
+                      onSemanticCheck={handleSemanticCheck}
+                    />
+                  ) : (
+                    <StudyFlashcard
+                      card={current}
+                      flipped={flipped}
+                      onReveal={handleFlip}
+                      deckName={deckNamesById[current.deckId] ?? "Flashcard"}
+                      deckColor={currentDeckColor.base}
+                      topicNames={(current.topicIds ?? []).map(
+                        (topicId) => topicNamesById[topicId] ?? "Topic"
                       )}
-                  </div>
-                </div>
+                    />
+                  )}
+              </section>
+              {flipped && !currentExercise ? (
+                <StudyRatingControls
+                  scale={sessionKind === "simple" ? "two-point" : "four-point"}
+                  savingRating={savingRating}
+                  onRate={handleRating}
+                />
               ) : null}
               <div className="flex flex-wrap gap-3">
                 <Button type="button" onClick={exitSession} variant="secondary">End session</Button>

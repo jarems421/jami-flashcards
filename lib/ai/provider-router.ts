@@ -91,6 +91,13 @@ export type AiRouterOptions = {
    * is no worse off than before.
    */
   fallbackTimeoutMs?: number;
+  /**
+   * Let a worker call end on the supervisor. True unless a caller says not to.
+   *
+   * The bulk study-asset route sets this false: a batch that quietly escalates
+   * is a batch whose cost nobody predicted.
+   */
+  allowRoleEscalation?: boolean;
   onRetry?: (info: {
     error: unknown;
     provider: AiProvider;
@@ -126,6 +133,7 @@ function planFor(options: AiRouterOptions) {
     routeReason: options.routeReason,
     hasVisualInput: hasVisualAiInput(options.request.contents),
     policy: resolveAiProviderPolicy(process.env),
+    allowRoleEscalation: options.allowRoleEscalation,
   });
 }
 
