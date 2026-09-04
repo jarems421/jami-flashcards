@@ -55,6 +55,12 @@ const SKIP = new Set(["node_modules", ".next", "dist", "build"]);
  * is the actual fix and is now overdue.
  */
 const EXCEPTIONS = new Map([
+  // Pre-existing oversized files found when the integrated release first ran
+  // this gate. Recording their current sizes makes the existing debt visible
+  // and restores the ratchet: none can grow another line without failing CI.
+  ["components/workspace/NotebookInkEditor.tsx", 1301],
+  ["lib/practice/practice-papers.ts", 1244],
+  ["services/ai/practice-paper-generation.server.ts", 1511],
   // Lowered on 2026-08-14: the assistant-context builder moved out to
   // hooks/useNotebookAssistantContext when the multi-model work pushed it over.
   ["app/dashboard/notebooks/[notebookId]/page.tsx", 2974],

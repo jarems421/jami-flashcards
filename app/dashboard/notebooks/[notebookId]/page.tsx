@@ -2619,6 +2619,7 @@ export default function NotebookEditorPage() {
 
         {!practicePaperTutorLocked ? (
         <JamiAssistantDrawer
+          userId={user.uid}
           open={assistantOpen}
           onOpenChange={handleAssistantOpenChange}
           resetKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}

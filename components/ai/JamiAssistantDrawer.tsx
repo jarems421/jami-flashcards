@@ -99,6 +99,7 @@ export type JamiAssistantQuickAction =
     };
 
 type JamiAssistantDrawerProps = {
+  userId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   resetKey: string;
@@ -141,6 +142,7 @@ type DrawerMessage = {
 };
 
 export default function JamiAssistantDrawer({
+  userId,
   open,
   onOpenChange,
   resetKey,
@@ -1064,7 +1066,7 @@ export default function JamiAssistantDrawer({
             />
             <div className="flex items-center justify-between gap-3 px-2 pb-2">
               <TutorReasoningMenu
-                userId={auth.currentUser?.uid ?? ""}
+                userId={userId}
                 disabled={loading}
                 onSaveStarted={handleReasoningSaveStarted}
                 onError={setError}

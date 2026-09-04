@@ -2,10 +2,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const pageSource = readFileSync(
-  path.join(process.cwd(), "app/dashboard/constellation/page.tsx"),
-  "utf8"
-);
+const pageSource = [
+  "app/dashboard/constellation/page.tsx",
+  "components/constellation/ConstellationControls.tsx",
+]
+  .map((file) => readFileSync(path.join(process.cwd(), file), "utf8"))
+  .join("\n");
 
 /**
  * Finishing a constellation seals what is in it, not how it is arranged.
@@ -50,9 +52,9 @@ describe("arranging a finished constellation", () => {
 
   it("uses compact accessible controls for undo, redo, and clear", () => {
     expect(pageSource).toContain('role="toolbar"');
-    expect(pageSource).toContain('aria-label="Undo last line"');
-    expect(pageSource).toContain('aria-label="Restore last undone line"');
-    expect(pageSource).toContain('aria-label="Clear all lines"');
+    expect(pageSource).toContain('label="Undo last line"');
+    expect(pageSource).toContain('label="Restore last undone line"');
+    expect(pageSource).toContain('label="Clear all lines"');
     expect(pageSource).not.toContain(">Undo line<");
     expect(pageSource).not.toContain(">Clear lines<");
   });

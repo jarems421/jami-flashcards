@@ -20,7 +20,6 @@ import {
   saveConstellationLines,
 } from "@/services/constellation/constellations";
 import {
-  getConstellationBackgroundActionLabel,
   readConstellationBackgroundConstellationId,
   readConstellationBackgroundEnabled,
   setConstellationBackgroundConstellationId,
@@ -53,6 +52,9 @@ import {
 } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import ConstellationLines from "@/components/constellation/ConstellationLines";
+import ConstellationControls, {
+  type ConstellationSkyMode,
+} from "@/components/constellation/ConstellationControls";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
 function getConstellationProgressPercent(constellation: Constellation | null) {
@@ -94,7 +96,7 @@ export default function ConstellationDashboardPage() {
    * visible toggle is the honest way to resolve that: at any moment a drag does
    * exactly one thing and the button says which.
    */
-  const [skyMode, setSkyMode] = useState<"arrange" | "connect">("arrange");
+  const [skyMode, setSkyMode] = useState<ConstellationSkyMode>("arrange");
   const [linkFromStarId, setLinkFromStarId] = useState<string | null>(null);
   // Clearing every line is one click away from a pattern someone built by
   // hand, so the button asks once before it does it.
@@ -731,22 +733,6 @@ export default function ConstellationDashboardPage() {
     setRenameValue("");
   };
 
-  const skyModes = [
-    {
-      id: "arrange" as const,
-      label: "Move",
-      hint: "Drag a star to move it. Arrow keys nudge a focused star.",
-      icon: "M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3",
-    },
-    {
-      id: "connect" as const,
-      label: "Connect",
-      hint: "Drag from one star to another to join them. Draw the same line again, or tap it, to remove it.",
-      icon: "M6 18 18 6M6 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z",
-    },
-  ];
-  const activeSkyMode =
-    skyModes.find((mode) => mode.id === skyMode) ?? skyModes[0];
   const pastConstellations = constellations.filter(
     (constellation) => constellation.id !== activeConstellation?.id
   );
@@ -960,182 +946,19 @@ export default function ConstellationDashboardPage() {
                   ) : null}
                 </div>
 
-                {/*
-                 * The toolbar, which used to be one wrapping row holding the
-                 * switcher, two chips, the mode toggle, a sentence of help and
-                 * the background button. At most widths it wrapped into
-                 * something that read as broken rather than as a toolbar. Two
-                 * groups now, at opposite ends, and the help text has a line of
-                 * its own so it can never push anything out of place.
-                 */}
-                <div className="app-subtle-panel flex flex-col gap-3 rounded-2xl p-2.5 sm:flex-row sm:items-center sm:justify-between">
-                  <div
-                    role="group"
-                    aria-label="What dragging a star does"
-                    className="flex items-center gap-1 self-start rounded-full bg-glass-subtle p-1"
-                  >
-                    {skyModes.map((mode) => (
-                      <button
-                        key={mode.id}
-                        type="button"
-                        aria-pressed={skyMode === mode.id}
-                        onClick={() => setSkyMode(mode.id)}
-                        className={`flex min-h-[2.25rem] items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                          skyMode === mode.id
-                            ? "bg-selected-bg text-selected-text"
-                            : "text-text-muted hover:text-text-primary"
-                        }`}
-                      >
-                        <svg
-                          aria-hidden="true"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d={mode.icon} />
-                        </svg>
-                        {mode.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={
-                      isSelectedConstellationBackground ? "secondary" : "surface"
-                    }
-                    className="self-start sm:self-auto"
-                    aria-pressed={isSelectedConstellationBackground}
-                    onClick={handleToggleSelectedBackground}
-                  >
-                    {getConstellationBackgroundActionLabel(
-                      isSelectedConstellationBackground
-                    )}
-                  </Button>
-                </div>
-
-                {/*
-                  * The hint changes mid-gesture, so it holds its own height.
-                  *
-                  * On iPad the connect hint wrapped to two lines and the one
-                  * that replaced it fitted on one, so touching a star pulled
-                  * the entire sky up by a line and dropped it back on release
-                  * -- the page moving under the finger, halfway through a drag.
-                  * The longest wording is rendered invisibly underneath at
-                  * whatever width the page is, which reserves exactly the right
-                  * space without anyone having to guess a min-height.
-                  */}
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="relative min-w-0 flex-1 text-xs text-text-muted">
-                    <span aria-hidden="true" className="invisible block">
-                      {skyModes
-                        .map((mode) => mode.hint)
-                        .reduce((longest, hint) =>
-                          hint.length > longest.length ? hint : longest
-                        )}
-                    </span>
-                    <span className="absolute inset-0 block" aria-live="polite">
-                      {isConnecting && linkFromStarId
-                        ? linkHoverStarId
-                          ? "Let go to join these two."
-                          : "Now choose another star to join it to. Escape cancels."
-                        : activeSkyMode.hint}
-                    </span>
-                  </div>
-
-                  {isConnecting && (selectedLines.length || redoLines.length) ? (
-                    <div
-                      role="toolbar"
-                      aria-label="Line editing"
-                      className="flex shrink-0 items-center gap-1 rounded-full border border-border-subtle bg-glass-subtle p-1"
-                    >
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="!size-9 rounded-full"
-                        aria-label="Undo last line"
-                        title="Undo"
-                        disabled={!selectedLines.length}
-                        onClick={handleUndoLine}
-                      >
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          className="size-4"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M9 7 4 12l5 5" />
-                          <path d="M5 12h8a6 6 0 0 1 6 6" />
-                        </svg>
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="!size-9 rounded-full"
-                        aria-label="Restore last undone line"
-                        title="Redo"
-                        disabled={!redoLines.length}
-                        onClick={handleRedoLine}
-                      >
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          className="size-4"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="m15 7 5 5-5 5" />
-                          <path d="M19 12h-8a6 6 0 0 0-6 6" />
-                        </svg>
-                      </Button>
-                      <span
-                        aria-hidden="true"
-                        className="mx-0.5 h-5 w-px bg-border-subtle"
-                      />
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="!size-9 rounded-full text-danger-text hover:text-danger-text"
-                        aria-label="Clear all lines"
-                        title="Clear all lines"
-                        disabled={!selectedLines.length}
-                        onClick={() => setIsConfirmingClearLines(true)}
-                      >
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          className="size-4"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M4 7h16" />
-                          <path d="M9 7V4h6v3" />
-                          <path d="m6.5 7 1 13h9l1-13" />
-                          <path d="M10 11v5M14 11v5" />
-                        </svg>
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
+                <ConstellationControls
+                  mode={skyMode}
+                  onModeChange={setSkyMode}
+                  isBackground={isSelectedConstellationBackground}
+                  onToggleBackground={handleToggleSelectedBackground}
+                  linkFromStarId={linkFromStarId}
+                  linkHoverStarId={linkHoverStarId}
+                  lineCount={selectedLines.length}
+                  redoCount={redoLines.length}
+                  onUndo={handleUndoLine}
+                  onRedo={handleRedoLine}
+                  onClear={() => setIsConfirmingClearLines(true)}
+                />
 
                 <div
                   id="constellation-container"

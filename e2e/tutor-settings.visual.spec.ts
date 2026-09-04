@@ -1,30 +1,23 @@
+import { mkdirSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./fixtures";
+
+const screenshotDirectory = "test-results/tutor-settings";
 
 /**
  * The Tutor settings drawer, at the three widths the design system asks about.
  *
- * Temporary: this runs only while `NEXT_PUBLIC_ENABLE_TUTOR_PERSONALISATION` is
- * on, and the flag ships off, so it is not yet a suite member. It exists to
- * prove the drawer opens, both views render, and nothing overflows a phone.
+ * This runs whenever Tutor personalisation is enabled (the default). It proves
+ * the drawer opens, both views render, and nothing overflows a phone.
  */
 
 /*
- * Held out of CI until it has been seen to pass, which it has not been.
- *
- * The flag is on by default now, so the feature is there to test -- the reason
- * this is opt-in is the spec itself. It was written on a machine that could not
- * run a build, emulators and a browser at the same time, and it has never
- * completed a run: the furthest it reached was the drawer opening. Adding an
- * unproven spec to a suite the whole `e2e` directory belongs to would break
- * every CI run for a fault in the test rather than the app.
- *
- * Run it with NEXT_PUBLIC_ENABLE_TUTOR_PERSONALISATION=true set for the runner.
- * Once it passes, delete this guard -- it earns its place then.
+ * An explicit false value keeps the test aligned with deployments where the
+ * feature has deliberately been disabled.
  */
 test.skip(
-  process.env.NEXT_PUBLIC_ENABLE_TUTOR_PERSONALISATION !== "true",
-  "Opt-in until this spec has been seen to pass."
+  process.env.NEXT_PUBLIC_ENABLE_TUTOR_PERSONALISATION === "false",
+  "Tutor personalisation is disabled for this run."
 );
 
 async function signIn(page: Page) {
@@ -36,6 +29,8 @@ async function signIn(page: Page) {
 }
 
 test("the Tutor settings drawer holds up at every width", async ({ page }) => {
+  mkdirSync(screenshotDirectory, { recursive: true });
+
   const errors: Error[] = [];
   page.on("pageerror", (error) => errors.push(error));
 
@@ -65,7 +60,7 @@ test("the Tutor settings drawer holds up at every width", async ({ page }) => {
     await page.setViewportSize({ width, height });
     await page.waitForTimeout(400);
     await page.screenshot({
-      path: `e2e-screens/tutor-settings-preferences-${name}.png`,
+      path: `${screenshotDirectory}/preferences-${name}.png`,
     });
 
     const panel = page.getByRole("tabpanel");
@@ -78,13 +73,13 @@ test("the Tutor settings drawer holds up at every width", async ({ page }) => {
   await page.getByRole("tab", { name: "Folder instructions" }).click();
   await page.waitForTimeout(600);
   await page.screenshot({
-    path: "e2e-screens/tutor-settings-folders-desktop.png",
+    path: `${screenshotDirectory}/folders-desktop.png`,
   });
 
   await page.setViewportSize({ width: 390, height: 900 });
   await page.waitForTimeout(400);
   await page.screenshot({
-    path: "e2e-screens/tutor-settings-folders-phone.png",
+    path: `${screenshotDirectory}/folders-phone.png`,
   });
 
   expect(errors).toEqual([]);

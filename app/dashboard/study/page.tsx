@@ -2111,6 +2111,7 @@ export default function StudyPage() {
                   </div>
 
                   <JamiAssistantDrawer
+                    userId={user.uid}
                     open={jamiAssistantOpen}
                     onOpenChange={setJamiAssistantOpen}
                     resetKey={current.id}

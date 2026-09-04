@@ -379,6 +379,7 @@ export default function LibraryPage() {
       />
 
       <JamiAssistantDrawer
+        userId={user.uid}
         open={visiblePanel === "tutor"}
         onOpenChange={(open) => {
           if (!open) setActivePanel(null);

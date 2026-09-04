@@ -66,6 +66,7 @@ function render(over: Partial<{ contextKey: string }> = {}) {
   act(() => {
     root.render(
       <JamiAssistantDrawer
+        userId="user-1"
         open
         onOpenChange={vi.fn()}
         resetKey="reset-1"
