@@ -44,6 +44,15 @@ export type TutorCheckUnderstanding = "when-useful" | "often" | "never";
 
 type GuidedOption<Value extends string> = {
   value: Value;
+  /**
+   * What the student calls this, not what the code calls it.
+   *
+   * These read as things you might say to a tutor -- "nudge me first", "just
+   * explain it" -- because that is the decision being made. An earlier pass
+   * named them after the field they set (Adaptive, Hints first, Concise) and
+   * the screen read like a configuration panel rather than a conversation about
+   * how someone likes to be taught.
+   */
   label: string;
   /** One line on what choosing this actually does, shown under the label. */
   detail: string;
@@ -62,28 +71,28 @@ export const TUTOR_HELP_APPROACH_OPTIONS: readonly GuidedOption<TutorHelpApproac
   [
     {
       value: "adaptive",
-      label: "Adaptive",
-      detail: "Jami decides from the question. Recommended.",
+      label: "Let Jami decide",
+      detail: "Reads what you asked and picks. Recommended.",
       instruction: "",
     },
     {
       value: "hints-first",
-      label: "Hints first",
-      detail: "Start with a nudge, and give the full answer when asked.",
+      label: "Nudge me first",
+      detail: "A small hint to get going. Ask and you get the whole answer.",
       instruction:
         "This student prefers a hint first: open with the smallest useful hint or next step. Give the full solution as soon as they ask for it, or when a hint has already not helped.",
     },
     {
       value: "guide-with-questions",
-      label: "Guide with questions",
-      detail: "Lead with short questions that get them there.",
+      label: "Ask me questions",
+      detail: "Short questions that lead you to it yourself.",
       instruction:
         "This student prefers being led to the answer: ask short, concrete questions that move them forward. Answer outright as soon as they ask you to, rather than continuing to question them.",
     },
     {
       value: "explain-directly",
-      label: "Explain directly",
-      detail: "Skip the hints and explain the point.",
+      label: "Just explain it",
+      detail: "Straight to the explanation, no build-up.",
       instruction:
         "This student prefers a direct explanation: explain the point properly rather than opening with hints or questions.",
     },
@@ -93,28 +102,28 @@ export const TUTOR_EXPLANATION_DEPTH_OPTIONS: readonly GuidedOption<TutorExplana
   [
     {
       value: "adaptive",
-      label: "Adaptive",
-      detail: "Length follows the question. Recommended.",
+      label: "Match the question",
+      detail: "Short questions get short answers. Recommended.",
       instruction: "",
     },
     {
       value: "concise",
-      label: "Concise",
-      detail: "The essential point, then stop.",
+      label: "Keep it brief",
+      detail: "The key point, and nothing after it.",
       instruction:
         "This student prefers concise explanations: give the essential point and stop, unless they ask for more.",
     },
     {
       value: "balanced",
-      label: "Balanced",
-      detail: "The point, plus enough working to follow it.",
+      label: "Show some working",
+      detail: "The point, plus enough steps to follow it.",
       instruction:
         "This student prefers a balanced explanation: the point, with enough working or reasoning to follow it.",
     },
     {
       value: "detailed",
-      label: "Detailed",
-      detail: "Full reasoning, with a worked example where it helps.",
+      label: "Walk me through it",
+      detail: "The full reasoning, with an example where it helps.",
       instruction:
         "This student prefers detailed explanations: work through the reasoning, and include a worked example where one genuinely helps.",
     },
@@ -133,28 +142,28 @@ export const TUTOR_FEEDBACK_DIRECTNESS_OPTIONS: readonly GuidedOption<TutorFeedb
   [
     {
       value: "balanced",
-      label: "Balanced",
-      detail: "What is right, what needs fixing, what is next. Recommended.",
+      label: "Even-handed",
+      detail: "What worked, what to fix, what to do next. Recommended.",
       instruction: "",
     },
     {
       value: "gentle",
-      label: "Gentle",
-      detail: "Lead with what worked before the corrections.",
+      label: "Go gently",
+      detail: "Start with what went well before the corrections.",
       instruction:
         "This student prefers gentler feedback: lead with what they got right, then raise what needs fixing without softening the correction itself.",
     },
     {
       value: "direct",
-      label: "Direct",
-      detail: "Straight to what is wrong.",
+      label: "Be blunt",
+      detail: "Straight to what is wrong, no cushioning.",
       instruction:
         "This student prefers direct feedback: name what is wrong first and briefly, without preamble or encouragement padding.",
     },
     {
       value: "strict",
-      label: "Strict",
-      detail: "Hold them to the mark scheme, including small errors.",
+      label: "Hold me to the mark scheme",
+      detail: "Pick up slips in units, notation and wording too.",
       instruction:
         "This student prefers strict feedback: hold them to the standard of the course, and raise small errors of notation, units, precision and phrasing rather than letting them pass.",
     },
@@ -172,21 +181,21 @@ export const TUTOR_CHECK_UNDERSTANDING_OPTIONS: readonly GuidedOption<TutorCheck
   [
     {
       value: "when-useful",
-      label: "When useful",
-      detail: "Only where it would genuinely help. Recommended.",
+      label: "Only when it helps",
+      detail: "No quiz for the sake of one. Recommended.",
       instruction: "",
     },
     {
       value: "often",
-      label: "Often",
-      detail: "Usually finish by checking the idea landed.",
+      label: "Check I have got it",
+      detail: "Usually finish with a question on what we covered.",
       instruction:
         "This student likes being checked on: after explaining something substantial, usually end with one specific question that tests whether the idea landed. Make it about the material, never a generic \"does that make sense?\".",
     },
     {
       value: "never",
-      label: "Never",
-      detail: "Explain and stop.",
+      label: "Do not quiz me",
+      detail: "Explain, then stop.",
       instruction:
         "This student does not want to be quizzed: explain and stop, and do not end with a comprehension question unless they ask to be tested.",
     },

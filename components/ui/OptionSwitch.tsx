@@ -24,6 +24,7 @@ export type OptionSwitchOption<Value extends string> = {
  */
 export default function OptionSwitch<Value extends string>({
   label,
+  hideLabel = false,
   value,
   options,
   disabled = false,
@@ -31,6 +32,15 @@ export default function OptionSwitch<Value extends string>({
   className = "",
 }: {
   label: string;
+  /**
+   * Keep the label for screen readers but do not draw it.
+   *
+   * For a surface that already asks the question in a heading above the
+   * control, where drawing the label again would say the same thing twice. The
+   * label stays required either way, because the radiogroup still has to be
+   * named for anyone not reading the heading.
+   */
+  hideLabel?: boolean;
   value: Value;
   options: readonly OptionSwitchOption<Value>[];
   disabled?: boolean;
@@ -44,14 +54,26 @@ export default function OptionSwitch<Value extends string>({
     <div className={className}>
       <span
         id={labelId}
-        className="mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary"
+        className={
+          hideLabel
+            ? "sr-only"
+            : "mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary"
+        }
       >
         {label}
       </span>
       <div
         role="radiogroup"
         aria-labelledby={labelId}
-        className={`grid gap-2 ${options.length > 2 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
+        /*
+         * Four options are two rows of two, not a row of three and an orphan.
+         * Three across is right for three; applied to four it left one choice
+         * sitting alone under the others, which reads as an afterthought rather
+         * than a peer of the three above it.
+         */
+        className={`grid gap-2 ${
+          options.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"
+        }`}
       >
         {options.map((option) => {
           const selected = option.value === value;

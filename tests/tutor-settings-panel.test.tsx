@@ -91,7 +91,7 @@ describe("the Tutor settings panel", () => {
     // Not "no folder instructions apply", which would be a claim the panel has
     // no basis for.
     expect(container.textContent).toContain(
-      "Folder instructions apply when the material you are asking about sits in exactly one folder."
+      "Your subject notes apply whenever the thing you are asking about sits in one folder."
     );
   });
 
@@ -104,7 +104,7 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel activeFolderIds={["folder-1"]} />);
 
-    expect(container.textContent).toContain("Folder instructions from Biology");
+    expect(container.textContent).toContain("Using your notes for Biology");
   });
 
   it("explains the multi-folder case instead of interrupting the chat", async () => {
@@ -115,7 +115,7 @@ describe("the Tutor settings panel", () => {
     );
 
     expect(container.textContent).toContain(
-      "belongs to more than one folder, so no folder instructions are being applied"
+      "belongs to more than one folder, so no subject notes are being applied"
     );
   });
 
@@ -138,7 +138,7 @@ describe("the Tutor settings panel", () => {
     await render(<TutorSettingsPanel />);
 
     expect(container.textContent).toContain(
-      "No saved preferences — Jami is adapting to each question"
+      "None set, so Jami adapts to each question"
     );
   });
 
@@ -156,7 +156,7 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel />);
 
-    expect(container.textContent).toContain("2 saved preferences");
+    expect(container.textContent).toContain("2 of your choices are in use");
   });
 
   it("keeps Save disabled until something has actually changed", async () => {
@@ -178,7 +178,7 @@ describe("the Tutor settings panel", () => {
     await render(<TutorSettingsPanel />);
 
     const foldersTab = [...container.querySelectorAll('[role="tab"]')].find(
-      (tab) => tab.textContent?.includes("Folder instructions")
+      (tab) => tab.textContent?.includes("Subject notes")
     ) as HTMLButtonElement;
     await act(async () => foldersTab.click());
 

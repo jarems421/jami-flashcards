@@ -44,7 +44,7 @@ import {
 } from "@/services/ai/ai-privacy-notice";
 import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
 import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard";
-import AiResponse from "@/components/ai/AiResponse";
+import AssistantAnswerBody from "@/components/ai/AssistantAnswerBody";
 import {
   Dialog,
   DialogBackdrop,
@@ -848,7 +848,26 @@ export default function JamiAssistantDrawer({
                       }`}
                     >
                       {message.role === "assistant" ? (
-                        <AiResponse content={message.text} className="select-text" />
+                        <AssistantAnswerBody
+                          text={message.text}
+                          illustrations={message.illustrations ?? []}
+                          renderIllustration={(illustration) => (
+                            <AssistantIllustrationCard
+                              key={illustration.id}
+                              illustration={illustration}
+                              canInsert={
+                                Boolean(onIllustrationInserted) &&
+                                contextKey.startsWith("notebook:") &&
+                                !viewingForeignThread
+                              }
+                              inserted={insertedIllustrationIds.has(illustration.id)}
+                              inserting={insertingIllustrationId === illustration.id}
+                              onInsert={() =>
+                                void addIllustrationToPage(message, illustration)
+                              }
+                            />
+                          )}
+                        />
                       ) : (
                         <StudyText
                           text={message.text}
@@ -878,20 +897,6 @@ export default function JamiAssistantDrawer({
                             ))}
                           </div>
                         ) : null}
-                        {message.illustrations?.map((illustration) => (
-                          <AssistantIllustrationCard
-                            key={illustration.id}
-                            illustration={illustration}
-                            canInsert={
-                              Boolean(onIllustrationInserted) &&
-                              contextKey.startsWith("notebook:") &&
-                              !viewingForeignThread
-                            }
-                            inserted={insertedIllustrationIds.has(illustration.id)}
-                            inserting={insertingIllustrationId === illustration.id}
-                            onInsert={() => void addIllustrationToPage(message, illustration)}
-                          />
-                        ))}
                         {message.canIllustrate &&
                         message.id &&
                         activeThread &&
@@ -1099,23 +1104,23 @@ export default function JamiAssistantDrawer({
           <div className="mt-2 flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
             <details className="group min-w-0 flex-1 basis-[15rem] text-xs text-text-muted">
               <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-full px-1.5 font-medium transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 [&::-webkit-details-marker]:hidden">
-                <span>Context</span>
-                <span aria-hidden="true" className="h-1 w-1 rounded-full bg-current opacity-45" />
-                <span>{useRelatedSources ? "Folder sources on" : "Folder sources off"}</span>
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  className="h-3.5 w-3.5 transition-transform duration-fast group-open:rotate-180"
-                >
-                  <path
-                    d="m4 6 4 4 4-4"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                {/*
+                  Two marks for one control: a dot separating "Context" from the
+                  state, and a chevron saying it opens. Neither was carrying its
+                  own weight -- the dot separated a label from the thing it
+                  labelled, and the chevron said "expandable" next to a line that
+                  could say it in a word. The state is the label now, and the
+                  word changes when it opens.
+                */}
+                <span>
+                  {useRelatedSources ? "Folder sources on" : "Folder sources off"}
+                </span>
+                <span className="font-semibold text-accent group-open:hidden">
+                  Change
+                </span>
+                <span className="hidden font-semibold text-accent group-open:inline">
+                  Hide
+                </span>
               </summary>
               <div className="mt-2 flex w-full items-center justify-between gap-4 rounded-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
                 <span className="min-w-0">

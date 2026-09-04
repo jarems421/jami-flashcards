@@ -2621,10 +2621,13 @@ export default function NotebookEditorPage() {
         <JamiAssistantDrawer
           open={assistantOpen}
           onOpenChange={handleAssistantOpenChange}
-          resetKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}
-          contextKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}
+          // Scoped to the notebook, not the page: a question worked across a
+          // page break is one conversation, and the current page is still sent
+          // fresh on every turn.
+          resetKey={`notebook:${notebook.id}`}
+          contextKey={`notebook:${notebook.id}`}
           contextLabel="Current notebook page"
-          historyContextLabel={`${notebook.title} · Page ${Math.max(selectedPageIndex + 1, 1)}`}
+          historyContextLabel={notebook.title}
           getContext={getNotebookAssistantContext}
           quickActions={notebookAssistantQuickActions}
           settingsFolderIds={notebook.folderId ? [notebook.folderId] : []}

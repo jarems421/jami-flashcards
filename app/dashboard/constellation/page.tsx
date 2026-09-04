@@ -46,6 +46,14 @@ import ConstellationStar from "@/components/constellation/ConstellationStar";
 import ConstellationLines from "@/components/constellation/ConstellationLines";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
+/**
+ * Set on `body` for as long as a finger is on a star.
+ *
+ * The rule it pairs with is in `globals.css`, next to the one that hands every
+ * button permission to pan -- which is what a star was inheriting.
+ */
+const STAR_GESTURE_BODY_CLASS = "jami-star-gesture-active";
+
 function getConstellationProgressPercent(constellation: Constellation | null) {
   if (!constellation || constellation.maxStars <= 0) return 0;
   return Math.min(100, Math.round((constellation.starCount / constellation.maxStars) * 100));
@@ -122,6 +130,19 @@ export default function ConstellationDashboardPage() {
    * with it.
    */
   const starGestureRef = useRef(false);
+  /**
+   * Starts and ends a star press, and locks the page while it lasts.
+   *
+   * Both halves in one function because they have to happen together and
+   * synchronously, inside the `pointerdown` that begins the press: iPad settles
+   * whether a gesture may scroll before any move arrives, so a lock applied a
+   * render later is a lock applied too late.
+   */
+  const setStarGesture = useCallback((active: boolean) => {
+    starGestureRef.current = active;
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle(STAR_GESTURE_BODY_CLASS, active);
+  }, []);
   const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -301,30 +322,43 @@ export default function ConstellationDashboardPage() {
    * state they need.
    */
   useEffect(() => {
-    const container = document.getElementById("constellation-container");
-    if (!container) return;
-
+    /*
+     * On `window`, not on the sky.
+     *
+     * This listener is the one that refuses the scroll, and it was attached to
+     * `#constellation-container` by id on mount -- but that element is rendered
+     * inside `selectedConstellation ? ... : null`, and on the first render there
+     * is no selected constellation because the data has not loaded. So
+     * `getElementById` returned null, the effect returned early, and with `[]`
+     * deps it never ran again. The listener that was supposed to hold the page
+     * still had never once been attached, which is why every previous attempt
+     * at this looked correct and changed nothing.
+     *
+     * `window` is always there, so there is no element to miss and no ordering
+     * to get wrong. It is non-passive so `preventDefault` counts, and it only
+     * ever acts while a finger is actually on a star.
+     */
     const refuseScroll = (event: TouchEvent) => {
       if (starGestureRef.current) event.preventDefault();
     };
 
     // Released anywhere -- on a star, on empty sky, off the page entirely.
-    const endGesture = () => { starGestureRef.current = false; };
+    const endGesture = () => { setStarGesture(false); };
 
-    container.addEventListener("touchmove", refuseScroll, { passive: false });
+    window.addEventListener("touchmove", refuseScroll, { passive: false });
     window.addEventListener("pointerup", endGesture);
     window.addEventListener("pointercancel", endGesture);
     window.addEventListener("touchend", endGesture);
     window.addEventListener("touchcancel", endGesture);
 
     return () => {
-      container.removeEventListener("touchmove", refuseScroll);
+      window.removeEventListener("touchmove", refuseScroll);
       window.removeEventListener("pointerup", endGesture);
       window.removeEventListener("pointercancel", endGesture);
       window.removeEventListener("touchend", endGesture);
       window.removeEventListener("touchcancel", endGesture);
     };
-  }, []);
+  }, [setStarGesture]);
 
   useEffect(() => {
     if (!draggingStarId || !canArrangeSelectedConstellation) {
@@ -1127,11 +1161,11 @@ export default function ConstellationDashboardPage() {
                             ? undefined
                             : isConnecting
                               ? () => {
-                                  starGestureRef.current = true;
+                                  setStarGesture(true);
                                   beginOrFinishLink(star);
                                 }
                               : () => {
-                                  starGestureRef.current = true;
+                                  setStarGesture(true);
                                   setDraggingStarId(star.id);
                                 }
                         }

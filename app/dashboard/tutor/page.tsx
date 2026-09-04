@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
-import TutorSettingsDrawer from "@/components/ai/TutorSettingsDrawer";
 import { SettingsIcon } from "@/components/ai/JamiAssistantIcons";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useUser } from "@/components/providers/UserProvider";
@@ -89,7 +88,6 @@ export default function TutorPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const { feedback, showError, clear: clearFeedback } = useFeedback();
 
   const loadTutorData = useCallback(
@@ -171,15 +169,12 @@ export default function TutorPage() {
       contentClassName="space-y-4"
       action={
         featureFlags.enableTutorPersonalisation ? (
-          <button
-            type="button"
-            aria-label="Open Tutor settings"
-            title="Tutor settings"
-            className="inline-grid h-10 w-10 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <SettingsIcon />
-          </button>
+          <ButtonLink href="/dashboard/tutor/personalise" variant="surface" size="sm">
+            <span className="mr-2 inline-grid place-items-center text-text-muted">
+              <SettingsIcon />
+            </span>
+            Personalise Jami
+          </ButtonLink>
         ) : undefined
       }
     >
@@ -406,10 +401,6 @@ export default function TutorPage() {
           )}
         </div>
       </Card>
-      <TutorSettingsDrawer
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
     </AppPage>
   );
 }

@@ -553,7 +553,19 @@ export default function ConstellationStar({
          * Round, so the focus ring is a circle around a star rather than a box
          * around one: an outline follows the element's own radius.
          */
-        className={`${className} rounded-full border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[6px] focus-visible:outline-[rgba(226,230,255,0.75)]`}
+        /*
+         * `touch-none` on the button itself, which is the element a finger
+         * actually lands on.
+         *
+         * The invisible hit area inside it already had this, but that span is
+         * `aria-hidden` decoration -- the press is received here. iOS settles
+         * whether a touch may scroll the page at the moment it starts, from the
+         * `touch-action` of the element under the finger, and nothing later
+         * takes that back: not `preventDefault` on a move, not capturing the
+         * pointer. So the element under the finger has to say no first, and a
+         * blocker on `touchmove` is only the second half of the fix.
+         */
+        className={`${className} touch-none rounded-full border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[6px] focus-visible:outline-[rgba(226,230,255,0.75)]`}
         style={style}
         title={label}
       >
