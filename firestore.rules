@@ -227,6 +227,14 @@ service cloud.firestore {
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();
       }
 
+      // Saved Tutor teaching preferences. Readable by the student who set
+      // them; written through the authenticated settings route so one
+      // normalisation and one set of length limits apply to every write.
+      match /tutorPersonalisation/{documentId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if false;
+      }
+
       match /notebooks/{notebookId} {
         allow read: if isSelf(userId);
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();

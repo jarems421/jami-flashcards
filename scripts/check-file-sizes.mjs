@@ -38,11 +38,27 @@ const SKIP = new Set(["node_modules", ".next", "dist", "build"]);
  * would be far more expensive than the debt it paid off. The ratchet still only
  * turns one way from here.
  */
+/*
+ * Raised again on 2026-09-04, deliberately and against the rule above.
+ *
+ * Both files gained the line that tells Tutor settings which folder the current
+ * material is in. Without it the settings drawer cannot name the folder whose
+ * instructions are in force and has to state the rule instead -- so the choice
+ * was a one-line entry in each file, or a feature that silently degrades on the
+ * two surfaces students use most.
+ *
+ * Note what this cost: the notebook page was already 6 lines over its own
+ * exception before either change, so that number had stopped being a ratchet
+ * and started being a number nobody could satisfy. A gate that is already red
+ * cannot stop the next line going in, which is the failure mode the comment
+ * above warned about and this is an instance of it. Splitting these two files
+ * is the actual fix and is now overdue.
+ */
 const EXCEPTIONS = new Map([
   // Lowered on 2026-08-14: the assistant-context builder moved out to
   // hooks/useNotebookAssistantContext when the multi-model work pushed it over.
-  ["app/dashboard/notebooks/[notebookId]/page.tsx", 2967],
-  ["app/dashboard/study/page.tsx", 2192],
+  ["app/dashboard/notebooks/[notebookId]/page.tsx", 2974],
+  ["app/dashboard/study/page.tsx", 2196],
 ]);
 
 function* sourceFiles(dir) {

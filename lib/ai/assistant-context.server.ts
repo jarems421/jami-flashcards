@@ -21,6 +21,14 @@ export type ResolvedJamiAssistantContext = {
   sources: Source[];
   studyLevelContext?: string;
   /**
+   * The student's saved teaching preferences and, where the material sits in
+   * exactly one folder, that folder's instruction document.
+   *
+   * Undefined whenever nothing has been set, which is the ordinary case: an
+   * account on adaptive defaults adds nothing to the prompt.
+   */
+  personalisationContext?: string;
+  /**
    * How hard this student has asked Jami to think, if they have said.
    *
    * Read from the same user document the study level comes from, so wanting it

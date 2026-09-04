@@ -38,6 +38,8 @@ const folder: StudyFolder = {
   name: "Science",
   subject: "Science",
   topicIds: [topic.id],
+  tutorInstructions: "",
+  tutorInstructionsUpdatedAt: 0,
   archived: false,
   createdAt: 1,
   updatedAt: 2,

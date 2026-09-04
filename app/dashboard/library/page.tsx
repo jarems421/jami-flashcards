@@ -391,6 +391,9 @@ export default function LibraryPage() {
           surface: "sources",
           sourceIds: selectedSource ? [selectedSource.id] : [],
         })}
+        // The folders this source sits in, so Tutor settings can say which
+        // folder's instructions are in force rather than restating the rule.
+        settingsFolderIds={selectedSource?.folderIds ?? []}
         quickActions={[
           {
             label: "Explain key ideas",

@@ -48,6 +48,8 @@ const biologyFolder = {
   id: "folder-1",
   name: "Biology",
   topicIds: [],
+  tutorInstructions: "",
+  tutorInstructionsUpdatedAt: 0,
   createdAt: 1,
   updatedAt: 1,
   archived: false,

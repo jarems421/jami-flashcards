@@ -6,6 +6,7 @@ import {
   normalizeStudyLevel,
   type StudyLevel,
 } from "@/lib/profile/study-level";
+import { normalizeFolderTutorInstructions } from "@/lib/ai/tutor-personalisation";
 
 export type StudyFolder = {
   id: string;
@@ -15,6 +16,16 @@ export type StudyFolder = {
   color?: string;
   icon?: string;
   topicIds: string[];
+  /**
+   * What the student has told Jami about teaching this subject.
+   *
+   * Empty for every folder that has never been given any, which is the same
+   * thing a folder written before this field existed reads as -- so there is
+   * nothing to migrate. Edited in Tutor settings rather than in the folder
+   * itself, because all the durable Tutor controls live in one place.
+   */
+  tutorInstructions: string;
+  tutorInstructionsUpdatedAt: number;
   createdAt: number;
   updatedAt: number;
   archived: boolean;
@@ -50,6 +61,11 @@ export function mapStudyFolderData(
       MAX_STUDY_FOLDER_TOPIC_IDS,
       120
     ),
+    tutorInstructions: normalizeFolderTutorInstructions(data.tutorInstructions),
+    tutorInstructionsUpdatedAt:
+      typeof data.tutorInstructionsUpdatedAt === "number"
+        ? data.tutorInstructionsUpdatedAt
+        : 0,
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
     archived: data.archived === true,

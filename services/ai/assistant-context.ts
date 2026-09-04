@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import {
   JamiAssistantContextError,
@@ -14,6 +15,11 @@ import {
 } from "@/lib/ai/assistant-context.server";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import { normalizeReasoningEffort } from "@/lib/profile/reasoning-effort";
+import {
+  buildTutorPersonalisationInstruction,
+  normalizeTutorPreferences,
+  selectFolderTutorInstructions,
+} from "@/lib/ai/tutor-personalisation";
 import { mapSourceData, type Source } from "@/lib/material/sources";
 import {
   getStudyLevelTutorLabel,
@@ -43,14 +49,18 @@ async function loadTutorPreferences(input: {
 }) {
   const userRef = input.db.collection("users").doc(input.uid);
   const folderIds = Array.from(new Set(input.folderIds.filter(Boolean))).slice(0, 12);
-  const [userSnapshot, folderSnapshots] = await Promise.all([
-    userRef.get(),
-    Promise.all(
-      folderIds.map((folderId) =>
-        userRef.collection("studyFolders").doc(folderId).get()
-      )
-    ),
-  ]);
+  const [userSnapshot, folderSnapshots, personalisationSnapshot] =
+    await Promise.all([
+      userRef.get(),
+      Promise.all(
+        folderIds.map((folderId) =>
+          userRef.collection("studyFolders").doc(folderId).get()
+        )
+      ),
+      // Alongside the two reads this function already made, so saved teaching
+      // preferences cost no extra round trip.
+      userRef.collection("tutorPersonalisation").doc("settings").get(),
+    ]);
 
   const folderLevels = Array.from(
     new Set(
@@ -66,12 +76,47 @@ async function loadTutorPreferences(input: {
   const reasoningEffort = normalizeReasoningEffort(
     userSnapshot.exists ? userSnapshot.data()?.reasoningEffort : undefined
   );
+  /*
+   * Folder instructions apply only when the material sits in exactly one
+   * folder, because two documents cannot be merged into one set of teaching
+   * instructions and picking between them would be a guess. A card in two
+   * folders therefore gets the general preferences and nothing else, and the
+   * settings drawer says so rather than the conversation asking about it.
+   */
+  const selectedFolder = selectFolderTutorInstructions(
+    folderSnapshots
+      .filter((snapshot) => snapshot.exists)
+      .map((snapshot) => snapshot.data() ?? {})
+  );
+  const preferences = normalizeTutorPreferences(
+    personalisationSnapshot.exists
+      ? (personalisationSnapshot.data() as Record<string, unknown>)
+      : undefined
+  );
+  const personalisationContext = buildTutorPersonalisationInstruction({
+    preferences,
+    folderInstructions: selectedFolder.instructions,
+    ...(selectedFolder.folderName
+      ? { folderName: selectedFolder.folderName }
+      : {}),
+    // Per request, like every other fenced block, so nothing a student saved
+    // can close a marker it was not given.
+    boundaryToken: randomUUID(),
+  });
+
   const level = folderLevels.length === 1 ? folderLevels[0] : accountLevel;
-  if (!level) return { studyLevelContext: undefined, reasoningEffort };
+  if (!level) {
+    return {
+      studyLevelContext: undefined,
+      personalisationContext,
+      reasoningEffort,
+    };
+  }
 
   const source = folderLevels.length === 1 ? "folder override" : "account default";
   return {
     studyLevelContext: `Study-level preference: ${getStudyLevelTutorLabel(level)} (${source}). Use this to calibrate vocabulary, assumed knowledge, examples, and explanation depth. It describes the material, not the student's ability. If the student's current request explicitly asks for a different level or style, follow that request instead.`,
+    personalisationContext,
     reasoningEffort,
   };
 }
@@ -472,6 +517,7 @@ export async function resolveJamiAssistantContext(input: {
     currentParts: resolved.currentParts,
     sources,
     studyLevelContext: preferences.studyLevelContext,
+    personalisationContext: preferences.personalisationContext,
     reasoningEffort: preferences.reasoningEffort,
   };
 }
