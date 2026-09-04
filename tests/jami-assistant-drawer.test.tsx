@@ -36,6 +36,11 @@ vi.mock("@/services/firebase/client", () => ({
   auth: { currentUser: { uid: "user-1" } },
 }));
 
+vi.mock("@/services/profile", () => ({
+  loadReasoningEffort: vi.fn().mockResolvedValue("medium"),
+  saveReasoningEffort: vi.fn().mockResolvedValue("medium"),
+}));
+
 // Stubbed to keep KaTeX and the lazy markdown renderer out of these tests.
 vi.mock("@/components/ai/AiResponse", () => ({
   default: ({ content }: { content: string }) => (

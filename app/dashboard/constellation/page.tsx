@@ -8,7 +8,6 @@ import {
   getActiveConstellation,
   getFallbackConstellation,
   isConstellationReadyToFinish,
-  removeLastConstellationLine,
   toggleConstellationLine,
   type Constellation,
   type ConstellationLine,
@@ -41,7 +40,17 @@ import {
 } from "@/services/constellation/stars";
 import { getGoals } from "@/services/study/goals";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card, EmptyState, FeedbackBanner, Input, PageHero, SectionHeader, Skeleton } from "@/components/ui";
+import {
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  FeedbackBanner,
+  Input,
+  PageHero,
+  SectionHeader,
+  Skeleton,
+} from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import ConstellationLines from "@/components/constellation/ConstellationLines";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
@@ -90,6 +99,10 @@ export default function ConstellationDashboardPage() {
   // Clearing every line is one click away from a pattern someone built by
   // hand, so the button asks once before it does it.
   const [isConfirmingClearLines, setIsConfirmingClearLines] = useState(false);
+  const [lineRedoHistory, setLineRedoHistory] = useState<{
+    constellationId: string;
+    lines: ConstellationLine[];
+  }>({ constellationId: "", lines: [] });
   const [linkPoint, setLinkPoint] = useState<{ x: number; y: number } | null>(null);
   /**
    * The star the half-drawn line is currently over.
@@ -259,6 +272,13 @@ export default function ConstellationDashboardPage() {
   const canArrangeSelectedConstellation = Boolean(selectedConstellation);
   const isConnecting = skyMode === "connect";
   const selectedLines = selectedConstellation?.lines ?? [];
+  const redoLines = useMemo(
+    () =>
+      selectedConstellation?.id === lineRedoHistory.constellationId
+        ? lineRedoHistory.lines
+        : [],
+    [lineRedoHistory, selectedConstellation?.id]
+  );
 
   const visibleStars = useMemo(
     () =>
@@ -425,6 +445,7 @@ export default function ConstellationDashboardPage() {
   const handleToggleLine = useCallback(
     (starA: string, starB: string) => {
       if (!selectedConstellation) return;
+      setLineRedoHistory({ constellationId: "", lines: [] });
       applyLines(
         toggleConstellationLine(selectedConstellation.lines, starA, starB)
       );
@@ -433,13 +454,34 @@ export default function ConstellationDashboardPage() {
   );
 
   const handleUndoLine = useCallback(() => {
-    if (!selectedConstellation) return;
-    applyLines(removeLastConstellationLine(selectedConstellation.lines));
+    const lastLine = selectedConstellation?.lines.at(-1);
+    if (!selectedConstellation || !lastLine) return;
+
+    setLineRedoHistory((current) => ({
+      constellationId: selectedConstellation.id,
+      lines:
+        current.constellationId === selectedConstellation.id
+          ? [...current.lines, lastLine]
+          : [lastLine],
+    }));
+    applyLines(selectedConstellation.lines.slice(0, -1));
   }, [applyLines, selectedConstellation]);
+
+  const handleRedoLine = useCallback(() => {
+    const restoredLine = redoLines.at(-1);
+    if (!selectedConstellation || !restoredLine) return;
+
+    applyLines([...selectedConstellation.lines, restoredLine]);
+    setLineRedoHistory((current) => ({
+      constellationId: selectedConstellation.id,
+      lines: current.lines.slice(0, -1),
+    }));
+  }, [applyLines, redoLines, selectedConstellation]);
 
   const handleClearLines = useCallback(() => {
     if (!selectedConstellation?.lines.length) return;
     applyLines([]);
+    setLineRedoHistory({ constellationId: "", lines: [] });
     setIsConfirmingClearLines(false);
   }, [applyLines, selectedConstellation]);
 
@@ -1007,54 +1049,90 @@ export default function ConstellationDashboardPage() {
                     </span>
                   </div>
 
-                  {/*
-                    * Taking lines back, next to the sentence explaining how to
-                    * draw them and only while drawing is what a press means.
-                    *
-                    * Tapping a line already removed it, but a line is a couple
-                    * of pixels wide and that is the wrong thing to have to aim
-                    * at when a pattern has gone wrong. Undo walks back the way
-                    * the pattern was built; clear starts the sky over.
-                    */}
-                  {isConnecting && selectedLines.length ? (
-                    <div className="flex shrink-0 items-center gap-2">
+                  {isConnecting && (selectedLines.length || redoLines.length) ? (
+                    <div
+                      role="toolbar"
+                      aria-label="Line editing"
+                      className="flex shrink-0 items-center gap-1 rounded-full border border-border-subtle bg-glass-subtle p-1"
+                    >
                       <Button
                         type="button"
-                        size="sm"
+                        size="icon"
                         variant="ghost"
+                        className="!size-9 rounded-full"
+                        aria-label="Undo last line"
+                        title="Undo"
+                        disabled={!selectedLines.length}
                         onClick={handleUndoLine}
                       >
-                        Undo line
-                      </Button>
-                      {isConfirmingClearLines ? (
-                        <>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="danger"
-                            onClick={handleClearLines}
-                          >
-                            Remove all {selectedLines.length}?
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setIsConfirmingClearLines(false)}
-                          >
-                            Cancel
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="surface"
-                          onClick={() => setIsConfirmingClearLines(true)}
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          className="size-4"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                         >
-                          Clear lines
-                        </Button>
-                      )}
+                          <path d="M9 7 4 12l5 5" />
+                          <path d="M5 12h8a6 6 0 0 1 6 6" />
+                        </svg>
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="!size-9 rounded-full"
+                        aria-label="Restore last undone line"
+                        title="Redo"
+                        disabled={!redoLines.length}
+                        onClick={handleRedoLine}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          className="size-4"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="m15 7 5 5-5 5" />
+                          <path d="M19 12h-8a6 6 0 0 0-6 6" />
+                        </svg>
+                      </Button>
+                      <span
+                        aria-hidden="true"
+                        className="mx-0.5 h-5 w-px bg-border-subtle"
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="!size-9 rounded-full text-danger-text hover:text-danger-text"
+                        aria-label="Clear all lines"
+                        title="Clear all lines"
+                        disabled={!selectedLines.length}
+                        onClick={() => setIsConfirmingClearLines(true)}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          className="size-4"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M4 7h16" />
+                          <path d="M9 7V4h6v3" />
+                          <path d="m6.5 7 1 13h9l1-13" />
+                          <path d="M10 11v5M14 11v5" />
+                        </svg>
+                      </Button>
                     </div>
                   ) : null}
                 </div>
@@ -1070,11 +1148,11 @@ export default function ConstellationDashboardPage() {
                     * press that misses a star used to scroll the page instead,
                     * which is the whole complaint about the screen moving.
                     *
-                    * Phones keep their scrolling: the sky is 60vh there, the
-                    * page has to be reachable past it, and a phone is for
-                    * looking at a sky rather than editing one.
+                    * This applies at every width. The rest of the page remains
+                    * scrollable around the sky, but once a gesture begins in
+                    * this canvas it belongs to arranging or connecting stars.
                     */
-                  className="relative h-[60vh] w-full touch-auto select-none overflow-hidden rounded-2xl border border-[var(--color-border)] bg-surface-base sm:h-[560px] sm:touch-none"
+                  className="relative h-[60vh] w-full touch-none select-none overflow-hidden overscroll-contain rounded-2xl border border-[var(--color-border)] bg-surface-base sm:h-[560px]"
                   style={{
                     /*
                      * Night, and nothing else. Two wide violet washes were
@@ -1283,6 +1361,14 @@ export default function ConstellationDashboardPage() {
             ) : null}
           </>
         )}
+        <ConfirmDialog
+          open={isConfirmingClearLines}
+          title="Clear all lines?"
+          description={`This will remove all ${selectedLines.length} connection${selectedLines.length === 1 ? "" : "s"} from this constellation and cannot be undone.`}
+          confirmLabel="Clear lines"
+          onConfirm={handleClearLines}
+          onClose={() => setIsConfirmingClearLines(false)}
+        />
       </AppPage>
     </Refreshable>
   );

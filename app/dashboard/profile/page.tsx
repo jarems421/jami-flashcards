@@ -7,7 +7,6 @@ import { useUser } from "@/components/providers/UserProvider";
 import AppPage from "@/components/layout/AppPage";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import StudyLevelPreferenceCard from "@/components/profile/StudyLevelPreferenceCard";
-import ReasoningEffortCard from "@/components/profile/ReasoningEffortCard";
 import HowJamiWorksCard from "@/components/study/HowJamiWorksCard";
 import NotificationSettingsCard from "@/components/notifications/NotificationSettingsCard";
 import { Button, Card, Input, SectionHeader } from "@/components/ui";
@@ -396,7 +395,6 @@ export default function ProfilePage() {
       */}
       <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2 lg:items-start">
         <StudyLevelPreferenceCard userId={user.uid} />
-      <ReasoningEffortCard userId={user.uid} />
         <ThemePreferenceCard />
       </div>
 

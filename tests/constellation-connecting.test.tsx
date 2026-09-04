@@ -196,6 +196,7 @@ describe("the star a line is about to reach", () => {
     expect(Number.parseFloat(target?.style.width ?? "0")).toBeGreaterThanOrEqual(44);
     expect(target?.style.height).toBe(target?.style.width);
     expect(target?.className).toContain("touch-none");
+    expect(container.querySelector("button")?.className).toContain("touch-none");
   });
 
   it("draws no ring when nothing is being connected", () => {

@@ -524,6 +524,7 @@ export default function ConstellationStar({
            */
           event.currentTarget.focus({ preventScroll: true });
           event.preventDefault();
+          event.currentTarget.setPointerCapture(event.pointerId);
           onDragStart();
         }}
         onKeyDown={(event) => {
@@ -553,7 +554,7 @@ export default function ConstellationStar({
          * Round, so the focus ring is a circle around a star rather than a box
          * around one: an outline follows the element's own radius.
          */
-        className={`${className} rounded-full border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[6px] focus-visible:outline-[rgba(226,230,255,0.75)]`}
+        className={`${className} touch-none rounded-full border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[6px] focus-visible:outline-[rgba(226,230,255,0.75)]`}
         style={style}
         title={label}
       >

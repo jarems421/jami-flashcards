@@ -45,6 +45,7 @@ import {
 import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
 import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard";
 import AiResponse from "@/components/ai/AiResponse";
+import TutorReasoningMenu from "@/components/ai/TutorReasoningMenu";
 import {
   Dialog,
   DialogBackdrop,
@@ -200,6 +201,10 @@ export default function JamiAssistantDrawer({
    * fetch is what actually tells the server to stop.
    */
   const requestAbortRef = useRef<AbortController | null>(null);
+  const reasoningSaveRef = useRef<Promise<void>>(Promise.resolve());
+  const handleReasoningSaveStarted = useCallback((save: Promise<void>) => {
+    reasoningSaveRef.current = save;
+  }, []);
   const abandonActiveRequest = useCallback(() => {
     requestIdRef.current += 1;
     requestPendingRef.current = false;
@@ -507,6 +512,10 @@ export default function JamiAssistantDrawer({
       let streaming = false;
 
       try {
+        // A student can change this immediately before sending. Wait for that
+        // small preference write so this message uses the level shown in the
+        // composer rather than the previous one from their account.
+        await reasoningSaveRef.current;
         const context = await getContext();
         const savedContext = getJamiAssistantSavedContext(context);
         const resolvedContextKey = getJamiAssistantContextKey(savedContext);
@@ -1049,38 +1058,44 @@ export default function JamiAssistantDrawer({
               value={input}
               disabled={loading}
               placeholder="Ask Jami..."
-              className={`min-h-[3.5rem] w-full resize-none bg-transparent py-3 pl-4 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82] ${
-                dictation.supported ? "pr-24" : "pr-14"
-              }`}
+              className="min-h-[5.75rem] w-full resize-none bg-transparent pb-2 pl-4 pr-4 pt-3 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82]"
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleComposerKeyDown}
             />
-            <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
-              {dictation.supported ? (
+            <div className="flex items-center justify-between gap-3 px-2 pb-2">
+              <TutorReasoningMenu
+                userId={auth.currentUser?.uid ?? ""}
+                disabled={loading}
+                onSaveStarted={handleReasoningSaveStarted}
+                onError={setError}
+              />
+              <div className="flex items-center gap-1.5">
+                {dictation.supported ? (
+                  <button
+                    type="button"
+                    aria-label={dictation.listening ? "Stop dictating" : "Dictate your message"}
+                    aria-pressed={dictation.listening}
+                    disabled={loading}
+                    className={`inline-grid h-9 w-9 place-items-center rounded-full transition duration-fast active:scale-95 disabled:cursor-not-allowed disabled:text-text-muted disabled:shadow-none ${
+                      dictation.listening
+                        ? "bg-error text-white shadow-e1 hover:brightness-110"
+                        : "text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                    }`}
+                    onClick={toggleDictation}
+                  >
+                    {dictation.listening ? <StopDictationIcon /> : <MicrophoneIcon />}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  aria-label={dictation.listening ? "Stop dictating" : "Dictate your message"}
-                  aria-pressed={dictation.listening}
-                  disabled={loading}
-                  className={`inline-grid h-9 w-9 place-items-center rounded-full transition duration-fast active:scale-95 disabled:cursor-not-allowed disabled:text-text-muted disabled:shadow-none ${
-                    dictation.listening
-                      ? "bg-error text-white shadow-e1 hover:brightness-110"
-                      : "text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
-                  }`}
-                  onClick={toggleDictation}
+                  aria-label="Send message to Jami"
+                  disabled={loading || (!input.trim() && !dictation.listening)}
+                  className="inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-white shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
+                  onClick={submitComposer}
                 >
-                  {dictation.listening ? <StopDictationIcon /> : <MicrophoneIcon />}
+                  <SendIcon />
                 </button>
-              ) : null}
-              <button
-                type="button"
-                aria-label="Send message to Jami"
-                disabled={loading || (!input.trim() && !dictation.listening)}
-                className="inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-white shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
-                onClick={submitComposer}
-              >
-                <SendIcon />
-              </button>
+              </div>
             </div>
           </div>
           {dictation.listening ? (
