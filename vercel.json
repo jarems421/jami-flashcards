@@ -12,6 +12,10 @@
     {
       "path": "/api/internal/exam-formats/refresh",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/ai/assistant/threads/expire",
+      "schedule": "30 3 * * *"
     }
   ]
 }

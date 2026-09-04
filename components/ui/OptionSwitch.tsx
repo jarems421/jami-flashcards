@@ -31,6 +31,7 @@ const columnClasses: Record<number, string> = {
  */
 export default function OptionSwitch<Value extends string>({
   label,
+  hideLabel = false,
   value,
   options,
   disabled = false,
@@ -40,6 +41,15 @@ export default function OptionSwitch<Value extends string>({
   detail = "always",
 }: {
   label: string;
+  /**
+   * Keep the label for screen readers but do not draw it.
+   *
+   * For a surface that already asks the question in a heading above the
+   * control, where drawing the label again would say the same thing twice. The
+   * label stays required either way, because the radiogroup still has to be
+   * named for anyone not reading the heading.
+   */
+  hideLabel?: boolean;
   value: Value;
   options: readonly OptionSwitchOption<Value>[];
   disabled?: boolean;
@@ -65,13 +75,17 @@ export default function OptionSwitch<Value extends string>({
       ? options.find((option) => option.value === value)?.detail
       : undefined;
   const grid =
-    columnClasses[columns ?? (options.length > 2 ? 3 : 2)] ?? "sm:grid-cols-3";
+    columnClasses[columns ?? (options.length === 3 ? 3 : 2)] ?? "sm:grid-cols-2";
 
   return (
     <div className={className}>
       <span
         id={labelId}
-        className="mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary"
+        className={
+          hideLabel
+            ? "sr-only"
+            : "mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary"
+        }
       >
         {label}
       </span>

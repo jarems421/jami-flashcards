@@ -743,6 +743,38 @@
     touch-action: manipulation;
   }
 
+  /*
+   * Except a star, which is dragged rather than tapped.
+   *
+   * `manipulation` above means "no double-tap-zoom delay, but panning is still
+   * fine", and a star is a `button`, so every star in the sky was being handed
+   * permission to scroll the page the moment a finger landed on it. iPad
+   * settles that question when the touch begins and never revisits it, so the
+   * `preventDefault` calls added on `touchmove` over several attempts at this
+   * bug were arguing with a decision already made -- which is exactly why they
+   * kept looking correct and changing nothing.
+   *
+   * `!important` because this has to beat the rule above it whatever order the
+   * layers end up in, and because being wrong here is invisible until somebody
+   * tries to move a star on an iPad.
+   */
+  [data-star-id] {
+    touch-action: none !important;
+  }
+
+  /*
+   * And while a star is actually being held, the page cannot scroll at all.
+   *
+   * A second, independent lever, on the same principle the notebook editor uses
+   * below: `touch-action` is settled at the start of a gesture, so if anything
+   * ever slips past it, this still holds the page. Applied only for the length
+   * of the press, because the constellation page itself is meant to scroll.
+   */
+  body.jami-star-gesture-active {
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+  }
+
   @media (pointer: coarse) {
     a,
     button,

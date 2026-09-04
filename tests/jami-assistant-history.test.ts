@@ -29,21 +29,28 @@ describe("Jami assistant history", () => {
       notebookId: "notebook-1",
       pageId: "page-4",
     });
-    expect(getJamiAssistantContextKey(saved)).toBe(
-      "notebook:notebook-1:page:page-4"
-    );
+    // Scoped to the notebook, so a chat survives turning the page.
+    expect(getJamiAssistantContextKey(saved)).toBe("notebook:notebook-1");
     expect(saved).not.toHaveProperty("typedText");
     expect(saved).not.toHaveProperty("questionPrompt");
     expect(saved).not.toHaveProperty("snapshot");
   });
 
   it("uses stable context keys for source selections regardless of order", () => {
+    // Keyed on the selected source rather than the whole set, so adding one to
+    // a comparison no longer invalidates the chat. Still order-independent.
     expect(
       getJamiAssistantContextKey({
         surface: "sources",
         sourceIds: ["source-b", "source-a"],
       })
-    ).toBe("sources:source-a,source-b");
+    ).toBe("sources:source-a");
+    expect(
+      getJamiAssistantContextKey({
+        surface: "sources",
+        sourceIds: ["source-a", "source-b"],
+      })
+    ).toBe("sources:source-a");
   });
 
   it("creates compact thread titles from the opening message", () => {

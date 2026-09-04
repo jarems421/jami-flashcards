@@ -67,6 +67,31 @@ describe("ConstellationStar", () => {
 
     expect(container.querySelector("button")).toBeNull();
   });
+
+  /*
+   * iPad settles whether a touch may scroll the page from the `touch-action` of
+   * the element under the finger, at the moment the touch begins, and nothing
+   * later takes that back. So the button itself has to refuse -- the invisible
+   * hit area inside it doing so is not enough, because the press lands here.
+   *
+   * Asserted rather than left to review because this exact bug has been
+   * "fixed" more than once by adding another preventDefault somewhere else.
+   */
+  it("refuses touch gestures on the star a finger actually presses", () => {
+    act(() => {
+      root.render(
+        <ConstellationStar
+          star={star}
+          label="Goal reward"
+          onDragStart={() => undefined}
+        />
+      );
+    });
+
+    const control = container.querySelector("button");
+    expect(control).not.toBeNull();
+    expect(control?.className).toContain("touch-none");
+  });
 });
 
 /**

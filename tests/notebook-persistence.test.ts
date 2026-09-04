@@ -192,4 +192,48 @@ describe("notebook page persistence contract", () => {
       displayHeight: 360,
     });
   });
+
+  /*
+   * Firestore refuses an explicit `undefined`, and neither SDK in this app
+   * enables `ignoreUndefinedProperties`. Every page image is built here, so an
+   * absent optional field written as `undefined` made the whole page write
+   * throw -- which is what stopped a Jami illustration, whose `localPreviewUrl`
+   * is absent by definition, from ever being added to a page.
+   */
+  it("leaves absent optional fields out rather than writing undefined", () => {
+    const fromAssistant = createCenteredNotebookImageRef({
+      id: "jami-asset-1",
+      storagePath: "users/user-1/notebookFiles/notebook-1/asset.png",
+      width: 1024,
+      height: 768,
+    });
+
+    expect(Object.hasOwn(fromAssistant, "localPreviewUrl")).toBe(false);
+    expect(Object.hasOwn(fromAssistant, "altText")).toBe(false);
+    expect(Object.hasOwn(fromAssistant, "sourceAssetId")).toBe(false);
+    expect(
+      Object.values(fromAssistant).some((value) => value === undefined)
+    ).toBe(false);
+
+    const legacy = normalizeNotebookImageRefs([{ id: "legacy-image" }])[0];
+    expect(
+      Object.values(legacy).some((value) => value === undefined)
+    ).toBe(false);
+    expect(Object.hasOwn(legacy, "storagePath")).toBe(false);
+
+    // Values that are present still survive the round trip.
+    const full = normalizeNotebookImageRefs([
+      {
+        id: "image-2",
+        storagePath: "users/user-1/notebookFiles/notebook-1/b.png",
+        altText: "A labelled cell",
+        sourceAssetId: "assistant-asset-2",
+        width: 800,
+        height: 600,
+      },
+    ])[0];
+    expect(full.storagePath).toBe("users/user-1/notebookFiles/notebook-1/b.png");
+    expect(full.altText).toBe("A labelled cell");
+    expect(full.sourceAssetId).toBe("assistant-asset-2");
+  });
 });

@@ -14,6 +14,10 @@ import {
   type SourceRelations,
 } from "@/lib/ai/assistant-context.server";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
+import {
+  getNotebookContextPageTextLimit,
+  selectNotebookContextWindow,
+} from "@/lib/ai/notebook-context-window";
 import { normalizeReasoningEffort } from "@/lib/profile/reasoning-effort";
 import {
   buildTutorPersonalisationInstruction,
@@ -121,13 +125,16 @@ async function loadTutorPreferences(input: {
   };
 }
 
-function getNotebookPageText(page: ReturnType<typeof mapNotebookPageData>) {
+function getNotebookPageText(
+  page: ReturnType<typeof mapNotebookPageData>,
+  limit: number = NOTEBOOK_CONTEXT_PAGE_TEXT_LIMIT
+) {
   return [page.typedContent, ...page.textBlocks.map((block) => block.text)]
     .filter(Boolean)
     .join(" ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, NOTEBOOK_CONTEXT_PAGE_TEXT_LIMIT);
+    .slice(0, limit);
 }
 
 function buildNotebookPageMap(
@@ -136,22 +143,51 @@ function buildNotebookPageMap(
 ) {
   if (pages.length <= 1) return "";
 
-  const lines = pages.map((page) => {
-    const pageText = getNotebookPageText(page);
+  const { nearby, distant } = selectNotebookContextWindow(pages, currentPageId);
+  const nearbyIds = new Set(nearby.map((page) => page.id));
+
+  const describe = (page: ReturnType<typeof mapNotebookPageData>) => {
+    const isNearby = nearbyIds.has(page.id);
+    const pageText = getNotebookPageText(
+      page,
+      getNotebookContextPageTextLimit(isNearby)
+    );
     const details = [
       page.title && !/^Page \d+$/i.test(page.title) ? `title: ${page.title}` : "",
       page.questionPrompt ? `question: ${page.questionPrompt.slice(0, 500)}` : "",
-      pageText
-        ? `typed content: ${pageText}`
-        : "no typed summary available",
+      pageText ? `typed content: ${pageText}` : "no typed summary available",
     ].filter(Boolean);
     return `- Page ${page.pageNumber}${
       page.id === currentPageId ? " (current)" : ""
     }: ${details.join("; ")}`;
-  });
+  };
 
-  return `Notebook page map (loaded when the student asked; handwriting and page imagery are available only for the current page):\n${lines
-    .join("\n")
+  /*
+   * Two bands, because a question that runs over a page break is the ordinary
+   * case and the page it continues onto used to be described no better than one
+   * at the other end of the notebook.
+   */
+  const sections: string[] = [];
+  if (nearby.length > 0) {
+    sections.push(
+      `Pages around the one the student is on. A question may well be split across these, so read them as part of the same piece of work:
+${nearby
+        .map(describe)
+        .join("\n")}`
+    );
+  }
+  if (distant.length > 0) {
+    sections.push(
+      `The rest of the notebook, listed so you can find something the student refers to:
+${distant
+        .map(describe)
+        .join("\n")}`
+    );
+  }
+
+  return `Notebook page map (loaded when the student asked; handwriting and page imagery are available only for the current page, so treat the other pages' typed text as an outline rather than their full contents):
+${sections
+    .join("\n\n")
     .slice(0, NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT)}`;
 }
 

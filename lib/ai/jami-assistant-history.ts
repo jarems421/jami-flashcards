@@ -105,14 +105,52 @@ export function getJamiAssistantSavedContext(
   };
 }
 
+/**
+ * What a saved chat belongs to, and therefore where it can be continued.
+ *
+ * A notebook, not a page. Working a problem across a page break is the ordinary
+ * notebook workflow, and keying on the page meant turning to page 2 severed the
+ * conversation about the thing you were still in the middle of. Nothing is lost
+ * by widening it: the current page is rebuilt and re-sent on every turn, and
+ * the system instruction already says the current page outranks anything
+ * earlier in the conversation.
+ *
+ * Flashcards stay per card. Two cards are genuinely unrelated, review moves
+ * quickly, and it is the one surface where an answer is deliberately withheld
+ * from Jami -- so a thread that could span cards is worth avoiding.
+ *
+ * Sources key on the selected source rather than the set. Keying on the set
+ * meant adding one source to a comparison invalidated the thread, for no
+ * benefit the student could see.
+ */
 export function getJamiAssistantContextKey(
   context: JamiAssistantSavedContext | JamiAssistantContext
 ) {
   if (context.surface === "learn") return `learn:${context.cardId}`;
   if (context.surface === "sources") {
-    return `sources:${[...context.sourceIds].sort().join(",")}`;
+    return `sources:${[...context.sourceIds].sort()[0] ?? ""}`;
   }
-  return `notebook:${context.notebookId}:page:${context.pageId}`;
+  return `notebook:${context.notebookId}`;
+}
+
+/**
+ * Keys this context was stored under before, so old chats still open.
+ *
+ * A thread records the key in force when it was created, and a thread whose
+ * stored key no longer matches is dropped from history entirely. Narrowing or
+ * widening the formula without this would make every existing notebook and
+ * multi-source chat silently disappear.
+ */
+export function getLegacyJamiAssistantContextKeys(
+  context: JamiAssistantSavedContext | JamiAssistantContext
+): string[] {
+  if (context.surface === "notebook") {
+    return [`notebook:${context.notebookId}:page:${context.pageId}`];
+  }
+  if (context.surface === "sources") {
+    return [`sources:${[...context.sourceIds].sort().join(",")}`];
+  }
+  return [];
 }
 
 export function createJamiAssistantThreadTitle(message: string) {
@@ -134,7 +172,14 @@ export function mapJamiAssistantThread(
   const contextKey = normalizeText(data.contextKey, 520);
   if (!context || !contextKey) return null;
   const canonicalContextKey = getJamiAssistantContextKey(context);
-  if (contextKey !== canonicalContextKey) return null;
+  // Accept the key this thread was actually written under, then report the
+  // current one, so a chat saved before the scope widened keeps working.
+  if (
+    contextKey !== canonicalContextKey &&
+    !getLegacyJamiAssistantContextKeys(context).includes(contextKey)
+  ) {
+    return null;
+  }
   return {
     id,
     title:

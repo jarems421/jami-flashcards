@@ -418,12 +418,28 @@ export function normalizeNotebookImageRefs(value: unknown): NotebookImageRef[] {
       NOTEBOOK_PAGE_COORDINATE_HEIGHT,
       360
     );
+    /*
+     * Absent optional fields are left out, not set to `undefined`.
+     *
+     * Firestore rejects an explicit `undefined` outright -- neither SDK here
+     * enables `ignoreUndefinedProperties` -- and every image built for a page
+     * went through this function with at least one absent key. A Jami
+     * illustration has no `localPreviewUrl` by definition, so adding one to a
+     * page always wrote `localPreviewUrl: undefined` and always threw, which
+     * the insert route reported as a generic failure to add the visual.
+     */
+    const storagePath = normalizeOptionalString(image.storagePath, 1_000);
+    const localPreviewUrl = normalizeOptionalString(image.localPreviewUrl, 4_000);
+    const altText = normalizeOptionalString(image.altText, 500);
+    const sourceAssetId = normalizeOptionalString(image.sourceAssetId, 160);
     images.push({
       id,
-      storagePath: normalizeOptionalString(image.storagePath, 1_000),
-      localPreviewUrl: normalizeOptionalString(image.localPreviewUrl, 4_000),
-      width: typeof image.width === "number" ? image.width : undefined,
-      height: typeof image.height === "number" ? image.height : undefined,
+      ...(storagePath ? { storagePath } : {}),
+      ...(localPreviewUrl ? { localPreviewUrl } : {}),
+      ...(typeof image.width === "number" ? { width: image.width } : {}),
+      ...(typeof image.height === "number" ? { height: image.height } : {}),
+      ...(altText ? { altText } : {}),
+      ...(sourceAssetId ? { sourceAssetId } : {}),
       x: clampImageNumber(
         image.x,
         0,
@@ -438,8 +454,6 @@ export function normalizeNotebookImageRefs(value: unknown): NotebookImageRef[] {
       ),
       displayWidth,
       displayHeight,
-      altText: normalizeOptionalString(image.altText, 500),
-      sourceAssetId: normalizeOptionalString(image.sourceAssetId, 160),
     });
   }
 

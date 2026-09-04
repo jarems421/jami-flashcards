@@ -57,6 +57,8 @@ import ConstellationControls, {
 } from "@/components/constellation/ConstellationControls";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
+const STAR_GESTURE_BODY_CLASS = "jami-star-gesture-active";
+
 function getConstellationProgressPercent(constellation: Constellation | null) {
   if (!constellation || constellation.maxStars <= 0) return 0;
   return Math.min(100, Math.round((constellation.starCount / constellation.maxStars) * 100));
@@ -137,6 +139,11 @@ export default function ConstellationDashboardPage() {
    * with it.
    */
   const starGestureRef = useRef(false);
+  const setStarGesture = useCallback((active: boolean) => {
+    starGestureRef.current = active;
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle(STAR_GESTURE_BODY_CLASS, active);
+  }, []);
   const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -314,39 +321,29 @@ export default function ConstellationDashboardPage() {
     setConstellationBackgroundEnabled(true);
   };
 
-  /*
-   * The page does not move while a star is being handled.
-   *
-   * Attached once, for the life of the page, and non-passive so that
-   * `preventDefault` actually counts. It only ever refuses the scroll -- the
-   * position updates stay in the drag effects below, where they can see the
-   * state they need.
-   */
   useEffect(() => {
-    const container = document.getElementById("constellation-container");
-    if (!container) return;
-
+    // Listen on window because the sky is absent until its data has loaded.
     const refuseScroll = (event: TouchEvent) => {
       if (starGestureRef.current) event.preventDefault();
     };
 
     // Released anywhere -- on a star, on empty sky, off the page entirely.
-    const endGesture = () => { starGestureRef.current = false; };
+    const endGesture = () => { setStarGesture(false); };
 
-    container.addEventListener("touchmove", refuseScroll, { passive: false });
+    window.addEventListener("touchmove", refuseScroll, { passive: false });
     window.addEventListener("pointerup", endGesture);
     window.addEventListener("pointercancel", endGesture);
     window.addEventListener("touchend", endGesture);
     window.addEventListener("touchcancel", endGesture);
 
     return () => {
-      container.removeEventListener("touchmove", refuseScroll);
+      window.removeEventListener("touchmove", refuseScroll);
       window.removeEventListener("pointerup", endGesture);
       window.removeEventListener("pointercancel", endGesture);
       window.removeEventListener("touchend", endGesture);
       window.removeEventListener("touchcancel", endGesture);
     };
-  }, []);
+  }, [setStarGesture]);
 
   useEffect(() => {
     if (!draggingStarId || !canArrangeSelectedConstellation) {
@@ -1028,11 +1025,11 @@ export default function ConstellationDashboardPage() {
                             ? undefined
                             : isConnecting
                               ? () => {
-                                  starGestureRef.current = true;
+                                  setStarGesture(true);
                                   beginOrFinishLink(star);
                                 }
                               : () => {
-                                  starGestureRef.current = true;
+                                  setStarGesture(true);
                                   setDraggingStarId(star.id);
                                 }
                         }

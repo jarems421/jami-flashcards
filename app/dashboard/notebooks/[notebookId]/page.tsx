@@ -2622,10 +2622,12 @@ export default function NotebookEditorPage() {
             userId={user.uid}
             open={assistantOpen}
             onOpenChange={handleAssistantOpenChange}
-            resetKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}
-            contextKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}
+            // Keep one conversation across page turns; the current page is
+            // still resolved fresh for every message.
+            resetKey={`notebook:${notebook.id}`}
+            contextKey={`notebook:${notebook.id}`}
             contextLabel="Current notebook page"
-            historyContextLabel={`${notebook.title} · Page ${Math.max(selectedPageIndex + 1, 1)}`}
+            historyContextLabel={notebook.title}
             getContext={getNotebookAssistantContext}
             quickActions={notebookAssistantQuickActions}
             settingsFolderIds={notebook.folderId ? [notebook.folderId] : []}

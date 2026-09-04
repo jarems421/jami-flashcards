@@ -146,11 +146,11 @@ describe("JamiAssistantDrawer", () => {
     expect(sendJamiAssistantMessage).not.toHaveBeenCalled();
   });
 
-  it("refuses to answer when the page changed under the question", async () => {
-    // The drawer was opened against one page; getContext now returns another.
+  it("refuses to answer when the notebook changed under the question", async () => {
+    // Page turns keep one notebook conversation; changing notebooks does not.
     getContext.mockResolvedValue({
       ...CONTEXT,
-      pageId: "page-2",
+      notebookId: "notebook-2",
     } as JamiAssistantContext);
     render({ contextKey: CONTEXT_KEY });
 
