@@ -16,8 +16,46 @@ import {
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
   resizeNotebookImageRef,
   type NotebookImageRef,
+  type NotebookImageResizeCorner,
 } from "@/lib/workspace/notebooks";
 import { getNotebookFileBytes } from "@/services/study/notebook-files";
+
+/*
+ * Every corner drags, the way an image behaves in any other editor. The grip is
+ * a small dot inside a much larger invisible hit box, so a fingertip or a Pencil
+ * can find it on an iPad without the dot itself covering the artwork.
+ */
+const RESIZE_CORNERS: Array<{
+  corner: NotebookImageResizeCorner;
+  label: string;
+  positionClass: string;
+  cursorClass: string;
+}> = [
+  {
+    corner: "top-left",
+    label: "Resize from the top left corner",
+    positionClass: "left-0 top-0 -translate-x-1/2 -translate-y-1/2",
+    cursorClass: "cursor-nwse-resize",
+  },
+  {
+    corner: "top-right",
+    label: "Resize from the top right corner",
+    positionClass: "right-0 top-0 translate-x-1/2 -translate-y-1/2",
+    cursorClass: "cursor-nesw-resize",
+  },
+  {
+    corner: "bottom-right",
+    label: "Resize from the bottom right corner",
+    positionClass: "bottom-0 right-0 translate-x-1/2 translate-y-1/2",
+    cursorClass: "cursor-nwse-resize",
+  },
+  {
+    corner: "bottom-left",
+    label: "Resize from the bottom left corner",
+    positionClass: "bottom-0 left-0 -translate-x-1/2 translate-y-1/2",
+    cursorClass: "cursor-nesw-resize",
+  },
+];
 
 function placement(image: NotebookImageRef) {
   return {
@@ -86,6 +124,7 @@ function NotebookPlacedImage({ image }: { image: NotebookImageRef }) {
 type Gesture = {
   imageId: string;
   kind: "move" | "resize";
+  corner?: NotebookImageResizeCorner;
   pointerId: number;
   startClientX: number;
   startClientY: number;
@@ -110,8 +149,42 @@ function NotebookImageLayer({
   const layerRef = useRef<HTMLDivElement | null>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [draft, setDraft] = useState<NotebookImageRef | null>(null);
-  const displayedImages = images.map((image) =>
-    draft?.id === image.id ? draft : image
+  /*
+   * Where the image was left, held until the save round-trip lands.
+   *
+   * A commit flushes the page and then writes to Firestore, so the `images`
+   * prop keeps the pre-drag geometry for a few hundred milliseconds after the
+   * pointer lifts. Dropping the drag preview at pointer-up made the image snap
+   * back to its old size and place for that window, then jump forwards again
+   * once the write returned.
+   */
+  const [pending, setPending] = useState<NotebookImageRef | null>(null);
+  const commitIdRef = useRef(0);
+  const displayedImages = images.map((image) => {
+    if (draft?.id === image.id) return draft;
+    return pending?.id === image.id ? pending : image;
+  });
+
+  const commitImage = useCallback(
+    (next: NotebookImageRef) => {
+      setPending(next);
+      const commitId = (commitIdRef.current += 1);
+      void Promise.resolve(
+        onCommit?.(
+          images.map((image) => {
+            if (image.id === next.id) return next;
+            return pending?.id === image.id ? pending : image;
+          })
+        )
+      )
+        .catch(() => undefined)
+        .finally(() => {
+          // A newer gesture owns the preview by now; leave its value alone. A
+          // rejected save clears too, so the image falls back to what is stored.
+          if (commitIdRef.current === commitId) setPending(null);
+        });
+    },
+    [images, onCommit, pending]
   );
 
   const updateGesture = useCallback(
@@ -128,11 +201,39 @@ function NotebookImageLayer({
       const next =
         gesture.kind === "move"
           ? moveNotebookImageRef(gesture.original, deltaX, deltaY)
-          : resizeNotebookImageRef(gesture.original, deltaX, deltaY);
+          : resizeNotebookImageRef(
+              gesture.original,
+              deltaX,
+              deltaY,
+              gesture.corner
+            );
       setDraft(next);
       return next;
     },
     [gesture]
+  );
+
+  const startGesture = useCallback(
+    (
+      image: NotebookImageRef,
+      event: ReactPointerEvent<HTMLElement>,
+      corner?: NotebookImageResizeCorner
+    ) => {
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setGesture({
+        imageId: image.id,
+        kind: corner ? "resize" : "move",
+        ...(corner ? { corner } : {}),
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        // The displayed image, so a drag that starts mid-save continues from
+        // what the student can see rather than from the last stored geometry.
+        original: image,
+      });
+    },
+    []
   );
 
   const finishGesture = useCallback(
@@ -144,11 +245,9 @@ function NotebookImageLayer({
       }
       setGesture(null);
       setDraft(null);
-      void onCommit?.(
-        images.map((image) => (image.id === gesture.imageId ? next : image))
-      );
+      commitImage(next);
     },
-    [draft, gesture, images, onCommit, updateGesture]
+    [commitImage, draft, gesture, updateGesture]
   );
 
   const nudge = useCallback(
@@ -166,10 +265,9 @@ function NotebookImageLayer({
                 : null;
       if (!delta) return;
       event.preventDefault();
-      const next = moveNotebookImageRef(image, delta.x, delta.y);
-      void onCommit?.(images.map((item) => (item.id === image.id ? next : item)));
+      commitImage(moveNotebookImageRef(image, delta.x, delta.y));
     },
-    [images, onCommit]
+    [commitImage]
   );
 
   return (
@@ -193,7 +291,7 @@ function NotebookImageLayer({
                   aria-pressed={selected}
                   className={`pointer-events-auto absolute inset-0 touch-none rounded-sm border bg-transparent outline-none transition focus-visible:ring-2 focus-visible:ring-accent/55 ${
                     selected
-                    ? "cursor-move border-accent shadow-ring"
+                      ? "cursor-move border-accent shadow-ring"
                       : "cursor-pointer border-transparent hover:border-accent/55"
                   }`}
                   onClick={(event) => {
@@ -202,17 +300,8 @@ function NotebookImageLayer({
                   }}
                   onKeyDown={(event) => nudge(image, event)}
                   onPointerDown={(event) => {
-                    event.stopPropagation();
                     onSelect?.(image.id);
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                    setGesture({
-                      imageId: image.id,
-                      kind: "move",
-                      pointerId: event.pointerId,
-                      startClientX: event.clientX,
-                      startClientY: event.clientY,
-                      original: image,
-                    });
+                    startGesture(image, event);
                   }}
                   onPointerMove={(event) => {
                     event.stopPropagation();
@@ -221,31 +310,34 @@ function NotebookImageLayer({
                   onPointerUp={finishGesture}
                   onPointerCancel={finishGesture}
                 />
-                {selected ? (
-                  <button
-                    type="button"
-                    aria-label="Resize notebook illustration"
-                    className="pointer-events-auto absolute -bottom-2 -right-2 h-5 w-5 cursor-se-resize touch-none rounded-full border-2 border-white bg-accent shadow-e1"
-                    onPointerDown={(event) => {
-                      event.stopPropagation();
-                      event.currentTarget.setPointerCapture(event.pointerId);
-                      setGesture({
-                        imageId: image.id,
-                        kind: "resize",
-                        pointerId: event.pointerId,
-                        startClientX: event.clientX,
-                        startClientY: event.clientY,
-                        original: image,
-                      });
-                    }}
-                    onPointerMove={(event) => {
-                      event.stopPropagation();
-                      updateGesture(event);
-                    }}
-                    onPointerUp={finishGesture}
-                    onPointerCancel={finishGesture}
-                  />
-                ) : null}
+                {selected
+                  ? RESIZE_CORNERS.map((handle) => (
+                      <button
+                        key={handle.corner}
+                        type="button"
+                        data-image-resize-handle={handle.corner}
+                        aria-label={`${handle.label} of ${
+                          image.altText || "notebook illustration"
+                        }`}
+                        title={handle.label}
+                        className={`group pointer-events-auto absolute z-10 inline-grid h-8 w-8 touch-none place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/55 ${handle.positionClass} ${handle.cursorClass}`}
+                        onPointerDown={(event) =>
+                          startGesture(image, event, handle.corner)
+                        }
+                        onPointerMove={(event) => {
+                          event.stopPropagation();
+                          updateGesture(event);
+                        }}
+                        onPointerUp={finishGesture}
+                        onPointerCancel={finishGesture}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="h-4 w-4 rounded-full border-2 border-white bg-accent shadow-e1 transition group-hover:scale-110"
+                        />
+                      </button>
+                    ))
+                  : null}
               </div>
             );
           })}

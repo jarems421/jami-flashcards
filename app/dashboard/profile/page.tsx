@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
 import AppPage from "@/components/layout/AppPage";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
-import StudyLevelPreferenceCard from "@/components/profile/StudyLevelPreferenceCard";
 import HowJamiWorksCard from "@/components/study/HowJamiWorksCard";
 import NotificationSettingsCard from "@/components/notifications/NotificationSettingsCard";
 import { Button, Card, Input, SectionHeader } from "@/components/ui";
@@ -99,7 +98,7 @@ function ThemePreferenceCard() {
       <div
         role="radiogroup"
         aria-label="App theme"
-        className="mt-5 grid grid-cols-3 gap-x-3 gap-y-4"
+        className="mt-5 grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-6"
       >
         {APP_THEME_OPTIONS.map((option) => {
           const active = selectedTheme === option.value;
@@ -388,15 +387,27 @@ export default function ProfilePage() {
       </Card>
 
       {/*
-        The only pair on the page. Both are small, self-contained choices of
-        roughly the same weight, so they sit level; everything below is a
-        full-width card, which keeps the rhythm predictable rather than
-        alternating between one and two columns down the page.
+        Full width, like every other card on the page.
+
+        This was half of a two-column row, sharing it with the study level --
+        which has moved to Personalise Jami, where the tutor that reads it
+        lives. Leaving a lone half-width card beside a hole would have been a
+        gap where a setting used to be, so the swatches take the row and the
+        page keeps one rhythm all the way down.
       */}
-      <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2 lg:items-start">
-        <StudyLevelPreferenceCard userId={user.uid} />
-        <ThemePreferenceCard />
-      </div>
+      <ThemePreferenceCard />
+
+      {/* One line, because a setting that moved should say where it went once. */}
+      <p className="app-subtle-panel rounded-xl px-4 py-3 text-xs leading-5 text-text-muted">
+        Study level and subjects moved to{" "}
+        <Link
+          href="/dashboard/tutor/personalise"
+          className="font-semibold text-text-primary underline underline-offset-2"
+        >
+          Personalise Jami
+        </Link>
+        .
+      </p>
 
       <TutorialAccountCard />
 

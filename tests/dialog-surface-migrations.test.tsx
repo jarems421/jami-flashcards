@@ -3,6 +3,7 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import CardEditorDialog from "@/components/decks/CardEditorDialog";
 import CardPreviewDialog from "@/components/decks/CardPreviewDialog";
 import InAppNotice from "@/components/layout/InAppNotice";
 import { SourceWorkspaceDrawer } from "@/components/library/SourceWorkspace";
@@ -21,6 +22,16 @@ vi.mock("@/services/profile/in-app-notice", () => ({
   loadActiveInAppNotice: (...args: unknown[]) =>
     loadActiveInAppNotice(...args),
   dismissInAppNotice: (...args: unknown[]) => dismissInAppNotice(...args),
+}));
+
+// The card editor carries a Topic picker and an AI draft button; neither is
+// what these dialog assertions are about.
+vi.mock("@/services/study/topics", () => ({
+  createOrGetTopic: vi.fn(),
+}));
+
+vi.mock("@/services/ai/autocomplete-card", () => ({
+  autocompleteCardBack: vi.fn(),
 }));
 
 let container: HTMLDivElement;
@@ -198,6 +209,64 @@ describe("migrated dialog surfaces", () => {
     expect(document.body.textContent).toContain("Resistance");
     await act(async () => button("Edit card")?.click());
     expect(onEdit).toHaveBeenCalledWith(card);
+  });
+
+  it("edits a card above the grid without disturbing it", async () => {
+    const card = {
+      id: "card-1",
+      deckId: "deck-1",
+      userId: "user-1",
+      front: "Ohm's law",
+      back: "V = IR",
+      tags: [],
+      createdAt: 1,
+    } satisfies Card;
+    const onCancel = vi.fn();
+    const onSave = vi.fn();
+    const editor = (draft: {
+      front: string;
+      back: string;
+      topicIds: string[];
+    }) => (
+      <CardEditorDialog
+        card={card}
+        draft={draft}
+        userId="user-1"
+        topics={[]}
+        topicNamesById={{}}
+        deckName="Electricity"
+        saving={false}
+        error="Both front and back are required."
+        onDraftChange={vi.fn()}
+        onTopicsChange={vi.fn()}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    );
+
+    await render(editor({ front: card.front, back: card.back, topicIds: [] }));
+    await flushFocus();
+
+    // The front field, not the first button: the dialog opens on the work.
+    expect((document.activeElement as HTMLInputElement).value).toBe("Ohm's law");
+    expect(document.body.textContent).toContain("Electricity");
+    expect(document.body.textContent).toContain(
+      "Both front and back are required."
+    );
+
+    // An untouched draft has nothing to lose, so the backdrop still closes it.
+    await pressBackdrop();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    onCancel.mockClear();
+    await render(editor({ front: "Ohm's law restated", back: card.back, topicIds: [] }));
+    await pressBackdrop();
+    expect(onCancel).not.toHaveBeenCalled();
+    await pressEscape();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    await act(async () => button("Save card")?.click());
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 
   it("gives source drawers a generated label and restores Escape dismissal", async () => {

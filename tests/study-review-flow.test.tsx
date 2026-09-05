@@ -217,6 +217,20 @@ async function click(label: string) {
   await settle();
 }
 
+async function selectMode(label: string) {
+  const picker = document.querySelector('[data-study-mode-surface="daily"]');
+  const trigger = picker?.querySelector<HTMLButtonElement>('[aria-haspopup="listbox"]');
+  expect(trigger, "expected the study mode dropdown").toBeTruthy();
+  await act(async () => trigger!.click());
+  const option = [...picker!.querySelectorAll<HTMLButtonElement>('[role="option"]')]
+    .find((candidate) => candidate.textContent?.trim().startsWith(label));
+  expect(option, `expected the ${label} mode option`).toBeDefined();
+  await act(async () => option!.click());
+  await settle();
+  expect(trigger!.getAttribute("aria-expanded")).toBe("false");
+  expect(document.activeElement).toBe(trigger);
+}
+
 /** Multiple-choice options carry a number badge, so match on their text, not their start. */
 async function chooseOption(text: string) {
   const option = [...document.querySelectorAll('[role="radio"]')].find(
@@ -467,7 +481,7 @@ describe("the answer-first modes", () => {
   });
 
   it("asks for the answer once Type Answer is chosen", async () => {
-    await click("Type Answer");
+    await selectMode("Type Answer");
     await click("Start Daily Review");
     expect(document.querySelector("#study-answer-entry")).not.toBeNull();
     // The answer is not on screen while the question is being answered.
@@ -476,8 +490,30 @@ describe("the answer-first modes", () => {
     );
   });
 
+  it("resets a missed Simple Study answer even when only that card remains", async () => {
+    await selectMode("Type Answer");
+    await click("Start Simple Study");
+    const first = currentCardId();
+    await type("something else entirely");
+    await click("Check answer");
+    await click("Next card");
+    await type("Where proteins are built.");
+    await click("Check answer");
+    expect(currentCardId()).toBe(first);
+
+    await type("still unsure");
+    await click("Check answer");
+    await click("Next card");
+    expect(currentCardId()).toBe(first);
+    expect(document.querySelector<HTMLInputElement>("#study-answer-entry")?.value).toBe("");
+    expect(button("Next card")).toBeUndefined();
+    expect(vi.mocked(recordSimpleStudyResult)).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(updateCardAfterReview)).not.toHaveBeenCalled();
+    expect(vi.mocked(markDailyReviewCardComplete)).not.toHaveBeenCalled();
+  });
+
   it("commits Good and moves on for a clean answer", async () => {
-    await click("Type Answer");
+    await selectMode("Type Answer");
     await click("Start Daily Review");
     const first = currentCardId();
     await type("The immediate energy carrier of the cell.");
@@ -492,7 +528,7 @@ describe("the answer-first modes", () => {
   });
 
   it("shows the answer before committing a miss, then requeues the card", async () => {
-    await click("Type Answer");
+    await selectMode("Type Answer");
     await click("Start Daily Review");
     const first = currentCardId()!;
     await type("something else entirely");
@@ -518,20 +554,20 @@ describe("the answer-first modes", () => {
    * and unreferenced once already, and every test still passed.
    */
   it("spends nothing on a mode that has no use for a model", async () => {
-    await click("Type Answer");
+    await selectMode("Type Answer");
     await click("Start Daily Review");
     expect(currentCardId()).toBe("card-1");
     expect(vi.mocked(prepareStudyAssets)).not.toHaveBeenCalled();
   });
 
   it("prepares when the mode cannot be built without it", async () => {
-    await click("Multiple Choice");
+    await selectMode("Multiple Choice");
     await click("Start Daily Review");
     expect(vi.mocked(prepareStudyAssets)).toHaveBeenCalled();
   });
 
   it("remembers the chosen mode for next time", async () => {
-    await click("Type Answer");
+    await selectMode("Type Answer");
     expect(window.localStorage.getItem("jami:study-mode:user-1")).toBe(
       "type-answer"
     );
@@ -544,7 +580,7 @@ describe("the answer-first modes", () => {
    * card, and when it is offered it counts like every other mode.
    */
   it("refuses a Multiple Choice session on a deck nobody has prepared", async () => {
-    await click("Multiple Choice");
+    await selectMode("Multiple Choice");
     await click("Start Daily Review");
     expect(currentCardId()).toBeUndefined();
     expect(document.body.textContent).toContain(
@@ -566,7 +602,7 @@ describe("the answer-first modes", () => {
       ]),
     });
 
-    await click("Multiple Choice");
+    await selectMode("Multiple Choice");
     await click("Start Daily Review");
     expect(currentCardId()).toBe("card-1");
 

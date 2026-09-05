@@ -180,4 +180,92 @@ describe("Learn home layout", () => {
       "Search decks"
     );
   });
+
+  it("opens the builder inside the Focused Review card rather than after the grid", async () => {
+    const trigger = button("Choose decks or Topics");
+    const card = trigger!.closest(".app-panel");
+    expect(card).not.toBeNull();
+
+    await act(async () => {
+      trigger!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    // The setup used to render after the whole "Other ways to study" grid,
+    // which put it below the Simple Study card it has nothing to do with.
+    const builder = document.querySelector("#focused-review-builder");
+    expect(builder).not.toBeNull();
+    expect(card!.contains(builder!)).toBe(true);
+
+    const simpleStudyCard = button("Start Simple Study")?.closest(".app-panel");
+    expect(simpleStudyCard).not.toBeNull();
+    expect(simpleStudyCard!.contains(builder!)).toBe(false);
+  });
+});
+
+describe("How to study", () => {
+  function pickerTrigger(surface: string) {
+    return document.querySelector<HTMLButtonElement>(
+      `[data-study-mode-surface="${surface}"] button`
+    );
+  }
+
+  it("offers the modes on every way to study, starting from Classic", async () => {
+    await act(async () => {
+      button("Choose decks or Topics")!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true })
+      );
+    });
+
+    for (const surface of ["daily", "focused", "simple"]) {
+      const trigger = pickerTrigger(surface);
+      expect(trigger, surface).not.toBeNull();
+      expect(trigger!.getAttribute("aria-expanded")).toBe("false");
+      expect(trigger!.textContent).toContain("Classic");
+    }
+
+    // The focused picker is the one inside the builder, so opening it proves
+    // the modes travel with the session being set up.
+    expect(
+      document
+        .querySelector("#focused-review-builder")
+        ?.contains(pickerTrigger("focused")!)
+    ).toBe(true);
+  });
+
+  it("keeps the other modes and their explanations one click away", async () => {
+    const trigger = pickerTrigger("daily");
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+
+    await act(async () => {
+      trigger!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const list = document.querySelector('[role="listbox"]');
+    expect(trigger!.getAttribute("aria-expanded")).toBe("true");
+    expect(list).not.toBeNull();
+
+    const options = [...list!.querySelectorAll('[role="option"]')];
+    expect(options).toHaveLength(5);
+    expect(list!.textContent).toContain("Smart Mix");
+    expect(list!.textContent).toContain("Multiple Choice");
+    // Every option carries its own line on what it does, which is the reason
+    // this is a list rather than a row of bare pills.
+    expect(list!.textContent).toContain("Write the answer from memory");
+    expect(
+      options.find((option) => option.getAttribute("aria-selected") === "true")
+        ?.textContent
+    ).toContain("Classic");
+
+    await act(async () => {
+      options
+        .find((option) => option.textContent?.startsWith("Smart Mix"))!
+        .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+    expect(pickerTrigger("daily")!.textContent).toContain("Smart Mix");
+    // Chosen once, everywhere: the mode is a student preference, not a
+    // per-card setting hidden on one of three surfaces.
+    expect(pickerTrigger("simple")!.textContent).toContain("Smart Mix");
+  });
 });

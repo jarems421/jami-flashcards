@@ -1,17 +1,23 @@
 "use client";
 
-import { OptionSwitch, type OptionSwitchOption } from "@/components/ui";
+import { OptionMenu, type OptionMenuOption } from "@/components/ui";
 import type { StudyMode, StudyModePolicy } from "@/lib/study/study-modes";
 
 type ModeChoice = "smart" | StudyMode;
 
-const CHOICES: readonly OptionSwitchOption<ModeChoice>[] = [
+/**
+ * Classic first because it is the default and the one a student arrives
+ * already understanding. Smart Mix is the better way to study and says so, but
+ * being recommended is not the same as being what happens to you.
+ */
+const CHOICES: readonly OptionMenuOption<ModeChoice>[] = [
+  { value: "classic", label: "Classic", detail: "Read it, flip it, rate how it went." },
   {
     value: "smart",
     label: "Smart Mix",
-    detail: "Recommended. Varies how each card is asked so no session is one long typing test.",
+    badge: "Recommended",
+    detail: "Varies how each card is asked, so no session is one long typing test.",
   },
-  { value: "classic", label: "Classic", detail: "Read it, flip it, rate how it went." },
   {
     value: "type-answer",
     label: "Type Answer",
@@ -29,44 +35,72 @@ const CHOICES: readonly OptionSwitchOption<ModeChoice>[] = [
   },
 ];
 
+/** Which session is being set up, for the one line that differs between them. */
+export type StudyModeSurface = "daily" | "focused" | "simple";
+
+const PREPARATION_NOTE =
+  "Jami reads any new cards when you start, so the gaps land on the words that matter. Cards you have studied before are ready straight away.";
+
+const SURFACE_NOTE: Record<StudyModeSurface, string | null> = {
+  daily: null,
+  // Focused Review has never moved a card's schedule, whichever way it asks.
+  focused: "Focused Review practises without moving your review dates.",
+  // Simple Study answers on two points, so a mode changes the question and
+  // nothing else: there is no four-point rating for it to feed.
+  simple: "Simple Study still answers Missed or Got it, so this changes the question, not your schedule.",
+};
+
 type StudyModePickerProps = {
   policy: StudyModePolicy;
+  surface?: StudyModeSurface;
+  /** For a surface that already asks the question in a heading of its own. */
+  hideLabel?: boolean;
   onChange: (policy: StudyModePolicy) => void;
 };
 
 /**
  * How this session will ask its cards.
  *
- * One control and one line, and nothing else. This has been three designs now:
- * five description cards with a readiness count on each, which turned the
- * calmest screen in the app into a settings panel; then a row of pills, which
- * fixed the size and left five unattached bubbles floating over the setup
- * screen. It is the shared `OptionSwitch` this time, on the same grid as every
- * other choice in the product, with the explanation of whichever mode is
- * selected underneath it.
+ * One bubble and one line. This has been four designs now: five description
+ * cards with a readiness count on each, which turned the calmest screen in the
+ * app into a settings panel; a row of pills, which fixed the size and left five
+ * unattached bubbles floating over the setup screen; the shared `OptionSwitch`,
+ * which put them on the product's grid and still spent five tiles of a study
+ * screen on a choice most students make once. It is a dropdown now: the current
+ * mode is a pill, and the other four with their explanations are one click
+ * behind it.
  *
- * What was removed matters as much as what is here. The per-mode readiness
- * counts are gone -- they existed to warn that a fixed mode would silently drop
- * the cards it could not carry, which is a defect to fix rather than a number
- * to publish. The practice-only warning is gone because multiple choice
- * schedules now. And the Prepare button is gone because preparation is no
- * longer something a student has to know to press: it runs when the session
- * starts, which is the only moment it was ever needed.
+ * It appears on all three ways to study rather than only on Daily Review, so
+ * the choice is where the session starts. The mode is remembered per student,
+ * so choosing here chooses everywhere -- what a surface changes is what a
+ * rating then does, which is what `SURFACE_NOTE` says out loud.
  */
 export default function StudyModePicker({
   policy,
+  surface = "daily",
+  hideLabel = false,
   onChange,
 }: StudyModePickerProps) {
   const active: ModeChoice = policy.kind === "smart" ? "smart" : policy.mode;
+  const surfaceNote = SURFACE_NOTE[surface];
+  const note =
+    active === "classic"
+      ? surfaceNote
+      : surfaceNote
+        ? `${surfaceNote} ${PREPARATION_NOTE}`
+        : PREPARATION_NOTE;
 
   return (
-    <div data-study-mode-picker="true" className="space-y-2">
-      <OptionSwitch
+    <div
+      data-study-mode-picker="true"
+      data-study-mode-surface={surface}
+      className="space-y-2"
+    >
+      <OptionMenu
         label="How to study"
+        hideLabel={hideLabel}
         value={active}
         options={CHOICES}
-        columns={5}
-        detail="selected"
         onChange={(value) =>
           onChange(
             value === "smart"
@@ -75,12 +109,8 @@ export default function StudyModePicker({
           )
         }
       />
-      {active !== "classic" ? (
-        <p className="text-2xs leading-5 text-text-muted">
-          Jami reads any new cards when you start, so the gaps land on the words
-          that matter and the wrong answers are worth thinking about. Cards
-          you&apos;ve studied before are ready straight away.
-        </p>
+      {note ? (
+        <p className="max-w-md text-2xs leading-5 text-text-muted">{note}</p>
       ) : null}
     </div>
   );

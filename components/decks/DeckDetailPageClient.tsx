@@ -12,7 +12,7 @@ import {
   normalizeCardContentInput,
   type Card,
 } from "@/lib/study/cards";
-import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
+import { getCardContentDuplicateCounts } from "@/lib/study/card-quality";
 import { useUser } from "@/components/providers/UserProvider";
 import type { Feedback } from "@/lib/app/feedback";
 import type { Deck } from "@/lib/study/decks";
@@ -22,13 +22,9 @@ import CardActionsMenu from "@/components/decks/CardActionsMenu";
 import CardFaceSummary from "@/components/decks/CardFaceSummary";
 import BulkTopicToolbar from "@/components/topics/BulkTopicToolbar";
 import { getBulkTopicCapacity } from "@/lib/material/topic-management";
-import TopicPicker from "@/components/topics/TopicPicker";
-import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import CardPreviewDialog from "@/components/decks/CardPreviewDialog";
+import CardEditorDialog from "@/components/decks/CardEditorDialog";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
-import CardBackEditor from "@/components/decks/CardBackEditor";
-import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
-import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import { getDeckById } from "@/services/study/decks";
@@ -41,7 +37,6 @@ import {
 import { getActiveTopics } from "@/services/study/topics";
 import { MAX_LINKED_TOPICS, type Topic } from "@/lib/material/topics";
 import { getDeckStudyHref } from "@/lib/app/routes";
-import { featureFlags } from "@/lib/app/feature-flags";
 import {
   downloadTextFile,
   sanitizeDownloadFileName,
@@ -75,6 +70,9 @@ export default function DeckDetailPageClient() {
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");
   const [editingTopicIds, setEditingTopicIds] = useState<string[]>([]);
+  // The card editor floats above the page, so its own failures belong beside
+  // its fields rather than in the page banner hidden behind it.
+  const [cardEditError, setCardEditError] = useState<string | null>(null);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [previewCardId, setPreviewCardId] = useState<string | null>(null);
@@ -160,6 +158,7 @@ export default function DeckDetailPageClient() {
     setEditingBack("");
     setEditingTopicIds([]);
     setSavingCardId(null);
+    setCardEditError(null);
   };
 
   const startEditingCard = (card: Card) => {
@@ -167,6 +166,7 @@ export default function DeckDetailPageClient() {
     setEditingFront(card.front);
     setEditingBack(card.back);
     setEditingTopicIds(card.topicIds ?? []);
+    setCardEditError(null);
     clearFeedback();
   };
 
@@ -216,7 +216,7 @@ export default function DeckDetailPageClient() {
     const nextBack = normalizeCardContentInput(editingBack);
 
     if (!nextFront || !nextBack) {
-      showError("Both front and back are required.");
+      setCardEditError("Both front and back are required.");
       return;
     }
 
@@ -224,13 +224,14 @@ export default function DeckDetailPageClient() {
       nextFront.length > MAX_FRONT_LENGTH ||
       nextBack.length > MAX_BACK_LENGTH
     ) {
-      showError(`Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`);
+      setCardEditError(`Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`);
       return;
     }
 
     const nextTopicIds = editingTopicIds;
 
     setSavingCardId(cardId);
+    setCardEditError(null);
     clearFeedback();
 
     try {
@@ -258,7 +259,7 @@ export default function DeckDetailPageClient() {
     } catch (error) {
       console.error(error);
       setSavingCardId(null);
-      showError("Failed to update card.");
+      setCardEditError("Failed to update card.");
     }
   };
 
@@ -322,6 +323,11 @@ export default function DeckDetailPageClient() {
     [selectedCards]
   );
   const previewCard = cards.find((card) => card.id === previewCardId) ?? null;
+  const editingCard = cards.find((card) => card.id === editingCardId) ?? null;
+  const topicNamesById = useMemo(
+    () => Object.fromEntries(topics.map((topic) => [topic.id, topic.name])),
+    [topics]
+  );
 
   const handleAddTopicsToSelectedCards = async () => {
     if (selectedCardIds.length === 0 || bulkTopicIds.length === 0) {
@@ -572,17 +578,21 @@ export default function DeckDetailPageClient() {
               {filteredCards.map((card) => (
                 <section
                   key={card.id}
-                  className={`app-panel min-w-0 overflow-visible p-3 transition duration-fast has-[details[open]]:z-40 ${
-                    editingCardId === card.id
-                      ? "sm:col-span-2"
-                      : "min-h-[8.5rem]"
-                  } ${selectedCardIdSet.has(card.id) ? "ring-2 ring-accent/35" : ""}`}
+                  className={`app-panel min-h-[8.5rem] min-w-0 overflow-visible p-3 transition duration-fast has-[details[open]]:z-40 ${
+                    selectedCardIdSet.has(card.id) ? "ring-2 ring-accent/35" : ""
+                  }`}
                 >
-                  {editingCardId === card.id ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <CardDifficultyBadge card={card} compact />
-                        <label className="flex h-10 w-10 cursor-pointer items-center justify-center" title="Select card">
+                  <div className="flex h-full min-w-0 flex-col">
+                    <div className="flex items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <CardFaceSummary
+                          front={card.front}
+                          back={card.back}
+                          onPreview={() => setPreviewCardId(card.id)}
+                        />
+                      </div>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <label className="flex h-10 w-8 cursor-pointer items-center justify-center" title="Select card">
                           <span className="sr-only">Select card</span>
                           <input
                             type="checkbox"
@@ -593,104 +603,15 @@ export default function DeckDetailPageClient() {
                             className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
                           />
                         </label>
-                      </div>
-                      <CardQualityWarnings
-                        warnings={getCardQualityWarnings(
-                          { front: editingFront, back: editingBack, topicIds: editingTopicIds },
-                          { duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)) }
-                        )}
-                      />
-                      <Input
-                        label="Front"
-                        value={editingFront}
-                        onChange={(event) => setEditingFront(event.target.value)}
-                        maxLength={MAX_FRONT_LENGTH}
-                      />
-                      <CardBackEditor
-                        label="Back"
-                        value={editingBack}
-                        onChange={setEditingBack}
-                        maxLength={MAX_BACK_LENGTH}
-                        rows={6}
-                        disabled={savingCardId === card.id}
-                        action={
-                          featureFlags.enableFlashcardAi ? (
-                            <CardBackAutocomplete
-                              front={editingFront}
-                              currentBack={editingBack}
-                              deckId={deckId}
-                              deckName={deck.name}
-                              topics={editingTopicIds
-                                .map((topicId) => topicsById.get(topicId)?.name)
-                                .filter((name): name is string => Boolean(name))}
-                              topicIds={editingTopicIds}
-                              disabled={savingCardId === card.id}
-                              onApply={setEditingBack}
-                            />
-                          ) : null
-                        }
-                      />
-                      <TopicPicker
-                        userId={user.uid}
-                        topics={topics}
-                        selectedTopicIds={editingTopicIds}
-                        onChange={setEditingTopicIds}
-                        onTopicsChange={setTopics}
-                        disabled={savingCardId === card.id}
-                      />
-                      <div className="grid gap-2 sm:flex sm:flex-wrap">
-                        <Button
-                          type="button"
-                          disabled={savingCardId === card.id}
-                          onClick={() => void handleSaveCard(card.id)}
-                          className="w-full sm:w-auto"
-                        >
-                          {savingCardId === card.id ? "Saving..." : "Save card"}
-                        </Button>
-                        <Button
-                          type="button"
-                          disabled={savingCardId === card.id}
-                          onClick={resetEditingCard}
-                          variant="secondary"
-                          className="w-full sm:w-auto"
-                        >
-                          Cancel
-                        </Button>
+                        <CardActionsMenu
+                          deleting={deletingCardId === card.id}
+                          disabled={deletingCardId === card.id}
+                          onEdit={() => startEditingCard(card)}
+                          onDelete={() => setCardPendingDeleteId(card.id)}
+                        />
                       </div>
                     </div>
-                  ) : (
-                    <div className="flex h-full min-w-0 flex-col">
-                      <div className="flex items-start gap-3">
-                        <div className="min-w-0 flex-1">
-                          <CardFaceSummary
-                            front={card.front}
-                            back={card.back}
-                            onPreview={() => setPreviewCardId(card.id)}
-                          />
-                        </div>
-                        <div className="flex shrink-0 items-center gap-0.5">
-                          <label className="flex h-10 w-8 cursor-pointer items-center justify-center" title="Select card">
-                            <span className="sr-only">Select card</span>
-                            <input
-                              type="checkbox"
-                              aria-label={`Select card: ${card.front}`}
-                              checked={selectedCardIdSet.has(card.id)}
-                              onClick={(event) => handleCheckboxClick(card.id, event)}
-                              onChange={() => undefined}
-                              className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
-                            />
-                          </label>
-                          <CardActionsMenu
-                            deleting={deletingCardId === card.id}
-                            disabled={deletingCardId === card.id}
-                            onEdit={() => startEditingCard(card)}
-                            onDelete={() => setCardPendingDeleteId(card.id)}
-                          />
-                        </div>
-                      </div>
-
-                    </div>
-                  )}
+                  </div>
                 </section>
               ))}
             </div>
@@ -715,6 +636,37 @@ export default function DeckDetailPageClient() {
         onEdit={(card) => {
           setPreviewCardId(null);
           startEditingCard(card);
+        }}
+      />
+      <CardEditorDialog
+        card={editingCard}
+        draft={{
+          front: editingFront,
+          back: editingBack,
+          topicIds: editingTopicIds,
+        }}
+        userId={user.uid}
+        topics={topics}
+        topicNamesById={topicNamesById}
+        deckName={deck?.name ?? "Deck"}
+        duplicateCount={
+          editingCard
+            ? duplicateCounts.get(
+                getCardContentKey(editingCard.front, editingCard.back)
+              )
+            : undefined
+        }
+        saving={editingCard ? savingCardId === editingCard.id : false}
+        error={cardEditError}
+        onDraftChange={(patch) => {
+          if (patch.front !== undefined) setEditingFront(patch.front);
+          if (patch.back !== undefined) setEditingBack(patch.back);
+          if (patch.topicIds !== undefined) setEditingTopicIds(patch.topicIds);
+        }}
+        onTopicsChange={setTopics}
+        onCancel={resetEditingCard}
+        onSave={() => {
+          if (editingCard) void handleSaveCard(editingCard.id);
         }}
       />
     </AppPage>

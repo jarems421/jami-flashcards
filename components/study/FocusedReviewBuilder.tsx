@@ -1,7 +1,8 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { Button, Card as SurfaceCard, Input } from "@/components/ui";
+import { Button, Input } from "@/components/ui";
 
 export type FocusedFilterKind = "decks" | "topics";
 
@@ -54,6 +55,34 @@ const COPY: Record<
     fallbackName: "Topic",
   },
 };
+
+/** The numbered steps down the panel, so the order is readable at a glance. */
+function Step({
+  number,
+  title,
+  children,
+}: {
+  number: number;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden="true"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-2xs font-semibold tabular-nums text-text-secondary"
+        >
+          {number}
+        </span>
+        <h4 className="text-sm font-semibold tracking-[0.01em] text-text-primary">
+          {title}
+        </h4>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 function SelectedChips({
   ids,
@@ -129,7 +158,7 @@ function ColumnOptions({
 
   return (
     <div>
-      <div className="text-sm font-medium text-text-primary">
+      <div className="text-xs font-medium uppercase tracking-[0.14em] text-text-muted">
         {copy.recentsHeading}
       </div>
       {column.recents.length > 0 ? (
@@ -167,16 +196,26 @@ type FocusedReviewBuilderProps = {
   previewCount: number;
   /** True when the student has filters on but nothing matches them. */
   selectionEmpty: boolean;
+  /** The "How to study" control, when study modes are switched on. */
+  modePicker?: ReactNode;
   onClearFilters: () => void;
-  onClose: () => void;
   onStart: () => void;
 };
 
 /**
  * Builds a Focused Review session from decks and Topics.
  *
- * The two filter kinds are a tab pair rather than two panels, because a student
- * picks from one list at a time but the selection spans both.
+ * It opens inside the Focused Review card rather than as a panel of its own.
+ * It used to render after the whole "Other ways to study" grid, which put the
+ * setup for one card underneath a different one -- press "Choose decks or
+ * Topics" and the thing that appeared was below Simple Study, attached to
+ * nothing. So there is no card, no heading and no close button here now: the
+ * card supplies all three, and this is the contents of the disclosure it owns.
+ *
+ * Two steps, numbered, in the order the decision is actually made: what to
+ * study, then how to study it. The two filter kinds are a tab pair rather than
+ * two panels, because a student picks from one list at a time but the selection
+ * spans both.
  */
 export default function FocusedReviewBuilder({
   filterKind,
@@ -185,8 +224,8 @@ export default function FocusedReviewBuilder({
   topics,
   previewCount,
   selectionEmpty,
+  modePicker,
   onClearFilters,
-  onClose,
   onStart,
 }: FocusedReviewBuilderProps) {
   const activeColumn = filterKind === "decks" ? decks : topics;
@@ -194,107 +233,86 @@ export default function FocusedReviewBuilder({
     decks.selectedIds.length > 0 || topics.selectedIds.length > 0;
 
   return (
-    <SurfaceCard
+    <div
       id="focused-review-builder"
-      padding="lg"
-      className="relative space-y-5"
+      className="mt-5 space-y-6 border-t border-[var(--color-border)] pt-5"
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="max-w-2xl">
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-            Focused Review setup
+      <Step number={1} title="What to study">
+        <div className="space-y-3">
+          <div
+            role="group"
+            aria-label="Focused Review filter type"
+            className="app-subtle-panel inline-flex w-full rounded-full p-1 sm:w-auto"
+          >
+            {(["decks", "topics"] as FocusedFilterKind[]).map((kind) => {
+              const selected = filterKind === kind;
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => onFilterKindChange(kind)}
+                  className={`min-h-10 flex-1 rounded-full px-5 text-sm font-semibold transition sm:flex-none ${
+                    selected
+                      ? "bg-[var(--color-selected-bg)] text-[var(--color-selected-text)] shadow-sm"
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  {COPY[kind].tab}
+                </button>
+              );
+            })}
           </div>
-          <h3 className="mt-2 text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">
-            Build a focused session
-          </h3>
-          <p className="mt-2 text-sm leading-6 text-text-secondary">
-            Choose any combination of decks and Topics. With nothing selected,
-            every card is included.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onClose}
-          className="w-full sm:w-auto"
-        >
-          Close setup
-        </Button>
-      </div>
 
-      {hasFilters ? (
-        <div className="border-y border-[var(--color-border)] py-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                Selected
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <SelectedChips
-                  ids={decks.selectedIds}
-                  column={decks}
-                  kind="decks"
-                />
-                <SelectedChips
-                  ids={topics.selectedIds}
-                  column={topics}
-                  kind="topics"
-                />
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onClearFilters}
-              className="w-full shrink-0 sm:w-auto"
-            >
-              Clear selection
-            </Button>
+          <div id="focused-review-options" className="space-y-3">
+            <Input
+              label={COPY[filterKind].searchLabel}
+              placeholder={COPY[filterKind].searchPlaceholder}
+              value={activeColumn.search}
+              onChange={(event) =>
+                activeColumn.onSearchChange(event.target.value)
+              }
+            />
+            <ColumnOptions column={activeColumn} kind={filterKind} />
           </div>
+
+          {hasFilters ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <SelectedChips
+                ids={decks.selectedIds}
+                column={decks}
+                kind="decks"
+              />
+              <SelectedChips
+                ids={topics.selectedIds}
+                column={topics}
+                kind="topics"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onClearFilters}
+              >
+                Clear
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm leading-6 text-text-muted">
+              Nothing selected, so this session will use every card.
+            </p>
+          )}
         </div>
+      </Step>
+
+      {modePicker ? (
+        <Step number={2} title="How to study">
+          {modePicker}
+        </Step>
       ) : null}
 
-      <div className="space-y-4">
-        <div
-          role="group"
-          aria-label="Focused Review filter type"
-          className="app-subtle-panel inline-flex w-full rounded-full p-1 sm:w-auto"
-        >
-          {(["decks", "topics"] as FocusedFilterKind[]).map((kind) => {
-            const selected = filterKind === kind;
-            return (
-              <button
-                key={kind}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => onFilterKindChange(kind)}
-                className={`min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition sm:flex-none ${
-                  selected
-                    ? "bg-[var(--color-selected-bg)] text-[var(--color-selected-text)] shadow-sm"
-                    : "text-text-muted hover:text-text-primary"
-                }`}
-              >
-                {COPY[kind].tab}
-              </button>
-            );
-          })}
-        </div>
-
-        <div id="focused-review-options" className="space-y-4">
-          <Input
-            label={COPY[filterKind].searchLabel}
-            placeholder={COPY[filterKind].searchPlaceholder}
-            value={activeColumn.search}
-            onChange={(event) => activeColumn.onSearchChange(event.target.value)}
-          />
-          <ColumnOptions column={activeColumn} kind={filterKind} />
-        </div>
-      </div>
-
       <div className="flex flex-col gap-4 border-t border-[var(--color-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
-        <div aria-live="polite">
+        <div aria-live="polite" className="min-w-0">
           <div className="text-base font-semibold text-text-primary">
             {selectionEmpty
               ? "No cards match this selection"
@@ -303,9 +321,7 @@ export default function FocusedReviewBuilder({
           <p className="mt-1 text-sm leading-6 text-text-muted">
             {selectionEmpty
               ? "Clear a filter or choose something different."
-              : hasFilters
-                ? "Your selected decks and Topics will be mixed into one session."
-                : "No filters are selected, so this session will use every card."}
+              : "Focused Review practises without changing your review dates."}
           </p>
         </div>
         <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
@@ -328,6 +344,6 @@ export default function FocusedReviewBuilder({
           )}
         </div>
       </div>
-    </SurfaceCard>
+    </div>
   );
 }

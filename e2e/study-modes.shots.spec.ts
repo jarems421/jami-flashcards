@@ -33,14 +33,18 @@ test("study modes walkthrough", async ({ page }) => {
 
   const describeStudyScreen = async () =>
     page.evaluate(() => ({
-      // The control names itself with aria-labelledby, not aria-label: it is
-      // the shared OptionSwitch now rather than a hand-rolled pill row.
+      // The mode control is a dropdown now, so the options only exist in the
+      // DOM while it is open. What is always on screen is the trigger, showing
+      // whichever mode this session would start in.
       picker: Boolean(document.querySelector("[data-study-mode-picker]")),
-      modes: [
-        ...document.querySelectorAll(
-          "[data-study-mode-picker] [role=\"radio\"]"
-        ),
-      ].map((node) => node.textContent?.trim()),
+      pickers: document.querySelectorAll("[data-study-mode-picker]").length,
+      mode:
+        document
+          .querySelector("[data-study-mode-picker] button")
+          ?.textContent?.trim() ?? null,
+      openOptions: document.querySelectorAll(
+        "[data-study-mode-picker] [role=\"option\"]"
+      ).length,
       preparing: Boolean(document.querySelector("[data-study-preparing]")),
       inSession: Boolean(document.querySelector("[data-study-current-card-id]")),
       answerField: Boolean(document.querySelector("#study-answer-entry")),
@@ -67,7 +71,7 @@ test("study modes walkthrough", async ({ page }) => {
     // decks, cards, topics and the daily-review state, and on a loaded machine
     // that is well past any timeout worth hard-coding.
     await page
-      .getByRole("radiogroup", { name: "How to study" })
+      .locator("[data-study-mode-picker]")
       .or(page.getByRole("button", { name: "End session" }))
       .first()
       .waitFor({ state: "visible", timeout: 90_000 });
@@ -96,17 +100,30 @@ test("study modes walkthrough", async ({ page }) => {
 
     await page.setViewportSize({ width: 1440, height: 900 });
 
-    const start = page
-      .locator("#focused-review-builder")
-      .getByRole("button", { name: "Start Focused Review" });
+    const builder = page.locator("#focused-review-builder");
+    const start = builder.getByRole("button", { name: "Start Focused Review" });
+    // The builder opens inside the Focused Review card, and its own copy of the
+    // mode dropdown is the one this walk drives.
+    const modeTrigger = builder
+      .locator("[data-study-mode-picker] button")
+      .first();
 
     for (const mode of ["Type Answer", "Gap Fill", "Multiple Choice"]) {
-      const pill = page.getByRole("radio", { name: mode, exact: true });
-      if (!(await pill.count())) {
-        log(`SKIP ${mode}: no pill on screen`);
+      if (!(await modeTrigger.count())) {
+        log(`SKIP ${mode}: no mode dropdown on screen`);
         continue;
       }
-      await pill.click();
+      await modeTrigger.click();
+      await page.waitForTimeout(300);
+      const option = builder.getByRole("option", {
+        name: new RegExp(`^${mode}`),
+      });
+      if (!(await option.count())) {
+        log(`SKIP ${mode}: not offered by the dropdown`);
+        await page.keyboard.press("Escape");
+        continue;
+      }
+      await option.click();
       await page.waitForTimeout(600);
       await shoot(`picked-${mode.replace(/\s+/g, "-").toLowerCase()}`);
 
@@ -136,8 +153,9 @@ test("study modes walkthrough", async ({ page }) => {
       }
     }
   // Asserted once, at the end, on what the walk actually saw.
-  expect(seen["home-desktop"], "the mode row renders").toMatchObject({
+  expect(seen["home-desktop"], "the mode dropdown renders").toMatchObject({
     picker: true,
+    mode: expect.stringContaining("Classic"),
   });
   for (const width of ["home-desktop", "home-tablet", "home-phone"]) {
     expect(

@@ -15,6 +15,8 @@ export {
 export type { DialogDismissReason } from "./Dialog";
 export { default as EmptyState } from "./EmptyState";
 export { default as FileField } from "./FileField";
+export { default as OptionMenu } from "./OptionMenu";
+export type { OptionMenuOption } from "./OptionMenu";
 export { default as OptionSwitch } from "./OptionSwitch";
 export type { OptionSwitchOption } from "./OptionSwitch";
 export { default as Select } from "./Select";

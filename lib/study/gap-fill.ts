@@ -154,9 +154,25 @@ export function selectClozeSpan(input: {
   return { start: best.start, end: best.end, answer: best.text };
 }
 
+/**
+ * One blank per missing word, so the gap says how much is missing.
+ *
+ * A single `_____` for a two- or three-word answer reads as one word, and a
+ * student answers with one word and is marked wrong for something the prompt
+ * never told them. Drawing a blank per word, separated by an ordinary space,
+ * makes the shape of the answer visible without giving any of it away.
+ *
+ * Word count comes from the hidden text itself rather than from a stored
+ * number, so a pinned multi-word gap gets the same treatment as a chosen one.
+ */
+export function renderClozeBlank(answer: string, blank = "_____") {
+  const words = answer.trim().split(/\s+/).filter(Boolean).length;
+  return Array.from({ length: Math.max(1, words) }, () => blank).join(" ");
+}
+
 /** The answer with the span replaced by a blank, for display. */
 export function renderClozePrompt(back: string, span: ClozeSpan, blank = "_____") {
-  return `${back.slice(0, span.start)}${blank}${back.slice(span.end)}`;
+  return `${back.slice(0, span.start)}${renderClozeBlank(span.answer, blank)}${back.slice(span.end)}`;
 }
 
 /**

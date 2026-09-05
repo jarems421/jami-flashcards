@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Button, OptionSwitch, Textarea } from "@/components/ui";
 import {
@@ -15,13 +14,9 @@ import {
   type TutorHelpApproach,
   type TutorPreferences,
 } from "@/lib/ai/tutor-personalisation";
-import { getStudyLevelLabel, type StudyLevel } from "@/lib/profile/study-level";
 
 type TutorPreferencesFormProps = {
   preferences: TutorPreferences;
-  /** The level that will actually apply, and where it came from. */
-  studyLevel: StudyLevel | null;
-  studyLevelSource: "folder" | "account";
   saving: boolean;
   onSave: (input: {
     helpApproach: TutorHelpApproach;
@@ -36,28 +31,19 @@ type TutorPreferencesFormProps = {
  * One question per block, asked the way a student would ask it.
  *
  * The heading is the question -- "When you are stuck" -- and the choices are
- * answers to it. Four labelled radiogroups stacked in a column was accurate and
- * read as a configuration screen: the words were the field names, and nothing
- * on it sounded like studying.
+ * answers to it. It used to carry a helper sentence under each heading as well,
+ * which said again what the four option labels underneath already said; four
+ * questions each with a paragraph and four descriptions was a page of reading
+ * on a screen nobody opened to read. The options explain themselves, and the
+ * chosen one explains itself in one line beneath the row.
  */
-function Choice({
-  question,
-  helper,
-  children,
-}: {
-  question: string;
-  helper: string;
-  children: ReactNode;
-}) {
+function Choice({ question, children }: { question: string; children: ReactNode }) {
   return (
-    <section className="border-t border-[var(--color-border)] pt-6 first:border-t-0 first:pt-0">
-      <h3 className="text-sm font-semibold tracking-tight text-text-primary sm:text-base">
+    <section className="border-t border-[var(--color-border)] pt-4 first:border-t-0 first:pt-0">
+      <h3 className="mb-2.5 text-sm font-semibold tracking-tight text-text-primary">
         {question}
       </h3>
-      <p className="mt-1 max-w-xl text-xs leading-5 text-text-muted sm:text-sm">
-        {helper}
-      </p>
-      <div className="mt-4">{children}</div>
+      {children}
     </section>
   );
 }
@@ -69,14 +55,12 @@ function Choice({
  * form leaves Jami exactly as it was. Changing one changes one thing, which is
  * why each block is a separate question rather than a row in a settings table.
  *
- * Saved explicitly, unlike the study level on the Account page. That is a
- * single choice; this is a form with a text box in it, and storing a half-typed
- * sentence on every keystroke is not the same gesture.
+ * Saved explicitly. This is a form with a text box in it, and storing a
+ * half-typed sentence on every keystroke is not the same gesture as picking a
+ * setting.
  */
 export default function TutorPreferencesForm({
   preferences,
-  studyLevel,
-  studyLevelSource,
   saving,
   onSave,
 }: TutorPreferencesFormProps) {
@@ -106,18 +90,9 @@ export default function TutorPreferencesForm({
     checkUnderstanding !== preferences.checkUnderstanding ||
     customGuidance !== preferences.customGuidance;
 
-  const toOptions = <Value extends string>(
-    options: readonly { value: Value; label: string; detail: string }[]
-  ) =>
-    options.map((option) => ({
-      value: option.value,
-      label: option.label,
-      detail: option.detail,
-    }));
-
   return (
     <form
-      className="flex flex-col gap-6"
+      className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
         if (!dirty || saving) return;
@@ -130,116 +105,76 @@ export default function TutorPreferencesForm({
         });
       }}
     >
-      <Choice
-        question="When you are stuck"
-        helper="How Jami opens when you bring it something you cannot do yet."
-      >
+      <Choice question="When you are stuck">
         <OptionSwitch
           label="When you are stuck"
           hideLabel
+          detail="selected"
+          columns={4}
           value={helpApproach}
           disabled={saving}
           onChange={setHelpApproach}
-          options={toOptions(TUTOR_HELP_APPROACH_OPTIONS)}
+          options={TUTOR_HELP_APPROACH_OPTIONS}
         />
       </Choice>
 
-      <Choice
-        question="How much detail you want"
-        helper="Jami still chooses a shape that suits the question; this sets the length it aims for."
-      >
+      <Choice question="How much detail">
         <OptionSwitch
-          label="How much detail you want"
+          label="How much detail"
           hideLabel
+          detail="selected"
+          columns={4}
           value={explanationDepth}
           disabled={saving}
           onChange={setExplanationDepth}
-          options={toOptions(TUTOR_EXPLANATION_DEPTH_OPTIONS)}
+          options={TUTOR_EXPLANATION_DEPTH_OPTIONS}
         />
       </Choice>
 
-      <Choice
-        question="When you get something wrong"
-        helper="How Jami tells you. It will not soften the correction itself, whichever you choose."
-      >
+      <Choice question="When you get it wrong">
         <OptionSwitch
-          label="When you get something wrong"
+          label="When you get it wrong"
           hideLabel
+          detail="selected"
+          columns={4}
           value={feedbackDirectness}
           disabled={saving}
           onChange={setFeedbackDirectness}
-          options={toOptions(TUTOR_FEEDBACK_DIRECTNESS_OPTIONS)}
+          options={TUTOR_FEEDBACK_DIRECTNESS_OPTIONS}
         />
       </Choice>
 
-      <Choice
-        question="Checking it landed"
-        helper="Whether Jami finishes by asking you something about what you just covered."
-      >
+      <Choice question="Checking it landed">
         <OptionSwitch
           label="Checking it landed"
           hideLabel
+          detail="selected"
+          columns={3}
           value={checkUnderstanding}
           disabled={saving}
           onChange={setCheckUnderstanding}
-          options={toOptions(TUTOR_CHECK_UNDERSTANDING_OPTIONS)}
+          options={TUTOR_CHECK_UNDERSTANDING_OPTIONS}
         />
       </Choice>
 
-      <Choice
-        question="Anything else Jami should know?"
-        helper="A habit that helps you, a way of setting out work, something you always forget. Subject detail belongs in your subject notes below."
-      >
+      <Choice question="Anything else?">
         <Textarea
           aria-label="Anything else Jami should know?"
-          rows={4}
+          rows={3}
           value={customGuidance}
           disabled={saving}
           maxLength={MAX_TUTOR_CUSTOM_GUIDANCE_LENGTH}
-          placeholder="I follow things better when you name the rule before using it."
+          placeholder="Name the rule before you use it."
           onChange={(event) => setCustomGuidance(event.target.value)}
         />
-        <p className="mt-2 text-right text-2xs text-text-muted" aria-hidden="true">
-          {customGuidance.length}/{MAX_TUTOR_CUSTOM_GUIDANCE_LENGTH}
-        </p>
       </Choice>
-
-      {/*
-        Shown, not editable. The control lives on the Account page and a second
-        one here would be two places to change one thing -- and the one that
-        actually applies inside a folder is the folder's own override, which is
-        why this says which is in force rather than just naming a level.
-      */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3.5">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-text-primary">
-            Pitched at {studyLevel ? getStudyLevelLabel(studyLevel) : "no set level"}
-            {studyLevel && studyLevelSource === "folder" ? (
-              <span className="font-normal text-text-muted"> — set by this folder</span>
-            ) : null}
-          </p>
-          <p className="mt-0.5 text-xs text-text-muted">
-            Sets the vocabulary and assumed knowledge Jami works from.
-          </p>
-        </div>
-        <Link
-          href="/dashboard/profile"
-          className="shrink-0 text-xs font-semibold text-accent underline-offset-4 hover:underline"
-        >
-          Change
-        </Link>
-      </div>
 
       <div className="sticky bottom-0 -mx-1 flex items-center gap-3 rounded-2xl bg-[var(--color-surface-panel-strong)] px-1 py-3">
         <Button type="submit" disabled={!dirty || saving}>
           {saving ? "Saving…" : "Save changes"}
         </Button>
         <span className="text-xs text-text-muted">
-          {saving
-            ? "Saving your preferences."
-            : dirty
-              ? "Unsaved changes"
-              : "Jami follows these from your next question."}
+          {saving ? "Saving…" : dirty ? "Unsaved" : "Applies to your next question."}
         </span>
       </div>
     </form>

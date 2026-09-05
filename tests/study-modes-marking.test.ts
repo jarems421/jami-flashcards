@@ -6,6 +6,7 @@ import {
 } from "@/lib/study/answer-marking";
 import {
   markClozeAnswer,
+  renderClozeBlank,
   renderClozePrompt,
   selectClozeSpan,
 } from "@/lib/study/gap-fill";
@@ -475,5 +476,37 @@ describe("deciding what is worth preparing", () => {
     expect(
       needsStudyAssetPreparation(card({ back: "Paris" }), fixed("gap-fill"))
     ).toBe(false);
+  });
+});
+
+describe("showing how much of the answer is missing", () => {
+  it("draws one blank per hidden word, spaced apart", () => {
+    // A single blank for a three-word answer reads as one word, so a student
+    // answers with one word and is marked wrong for something the prompt never
+    // told them.
+    expect(renderClozeBlank("kinetic energy")).toBe("_____ _____");
+    expect(renderClozeBlank("rate of reaction")).toBe("_____ _____ _____");
+  });
+
+  it("draws a single blank for a single word", () => {
+    expect(renderClozeBlank("photosynthesis")).toBe("_____");
+  });
+
+  it("ignores stray whitespace rather than counting it as a word", () => {
+    expect(renderClozeBlank("  kinetic   energy  ")).toBe("_____ _____");
+    expect(renderClozeBlank("   ")).toBe("_____");
+  });
+
+  it("spaces the blanks inside the sentence it replaces", () => {
+    const back = "The store of kinetic energy increases.";
+    const span = {
+      start: back.indexOf("kinetic energy"),
+      end: back.indexOf("kinetic energy") + "kinetic energy".length,
+      answer: "kinetic energy",
+    };
+
+    expect(renderClozePrompt(back, span)).toBe(
+      "The store of _____ _____ increases."
+    );
   });
 });

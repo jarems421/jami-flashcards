@@ -1,4 +1,5 @@
 import { auth } from "@/services/firebase/client";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
 import type {
   TutorCheckUnderstanding,
   TutorExplanationDepth,
@@ -29,6 +30,7 @@ export type TutorFolderInstructions = {
 export type TutorPersonalisation = {
   preferences: TutorPreferences;
   accountStudyLevel: StudyLevel | null;
+  accountStudySubjects: string[];
   folders: TutorFolderSummary[];
   folder: TutorFolderInstructions | null;
 };
@@ -97,6 +99,44 @@ export async function saveTutorPreferences(input: {
   }
   const result = (await response.json()) as { preferences: TutorPreferences };
   return result.preferences;
+}
+
+/**
+ * The study level and the courses behind it, saved together.
+ *
+ * One write rather than two, because they are one answer: moving from GCSE to
+ * University while the old subject list is still stored would leave Jami
+ * pitching undergraduate work at a set of GCSEs.
+ */
+export async function saveTutorStudyProfile(input: {
+  studyLevel: StudyLevel | null;
+  studySubjects: readonly string[];
+}) {
+  const response = await fetch("/api/ai/assistant/personalisation", {
+    method: "PATCH",
+    headers: await headers(true),
+    body: JSON.stringify({
+      target: "study-profile",
+      studyLevel: input.studyLevel,
+      studySubjects: input.studySubjects,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      await failureMessage(response, "Jami could not save your study level.")
+    );
+  }
+  /*
+   * The level lives on the user document, which Today and the study surfaces
+   * read through the shared cache. Without this a student could change their
+   * level and watch the rest of the app keep pitching at the old one until the
+   * cache aged out.
+   */
+  if (auth.currentUser) invalidateDashboardData(auth.currentUser.uid);
+  return (await response.json()) as {
+    studyLevel: StudyLevel | null;
+    studySubjects: string[];
+  };
 }
 
 export async function saveFolderTutorInstructions(input: {

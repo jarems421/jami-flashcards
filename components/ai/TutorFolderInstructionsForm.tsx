@@ -101,7 +101,7 @@ export default function TutorFolderInstructionsForm({
       <EmptyState
         emoji="📁"
         title="No folders yet"
-        description="Subject notes are written for a folder, so make one first. Whatever you write is used whenever Jami helps you with that subject."
+        description="Notes are written for a folder. Make one first."
       />
     );
   }
@@ -116,7 +116,7 @@ export default function TutorFolderInstructionsForm({
   };
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       <Select
         label="Folder"
         value={selectedFolderId}
@@ -148,11 +148,11 @@ export default function TutorFolderInstructionsForm({
           <div>
             <Textarea
               label={`Notes for ${selected?.name ?? "this folder"}`}
-              rows={12}
+              rows={8}
               value={draft}
               disabled={saving}
               maxLength={MAX_FOLDER_TUTOR_INSTRUCTIONS_LENGTH}
-              placeholder="Which course this is, what to focus on, and what to avoid."
+              placeholder="Exam board, notation, what to focus on, what to avoid."
               onChange={(event) => onDraftChange(event.target.value)}
             />
             <p className="mt-2 flex items-center justify-between gap-3 text-2xs text-text-muted">
@@ -161,7 +161,7 @@ export default function TutorFolderInstructionsForm({
                 className="font-semibold text-accent underline-offset-4 hover:underline"
                 onClick={() => setShowExample((current) => !current)}
               >
-                {showExample ? "Hide example" : "See an example"}
+                {showExample ? "Hide example" : "Example"}
               </button>
               <span aria-hidden="true">
                 {draft.length}/{MAX_FOLDER_TUTOR_INSTRUCTIONS_LENGTH}
@@ -194,7 +194,7 @@ export default function TutorFolderInstructionsForm({
               Clear
             </Button>
             {dirty && !saving ? (
-              <span className="text-xs text-text-muted">Unsaved changes</span>
+              <span className="text-xs text-text-muted">Unsaved</span>
             ) : null}
           </div>
         </div>
@@ -203,7 +203,7 @@ export default function TutorFolderInstructionsForm({
       <ConfirmDialog
         open={pendingFolderId !== null}
         title="Discard your changes?"
-        description="You have edited these notes without saving them. Switching folders will lose the edit."
+        description="These notes are not saved. Switching folders loses the edit."
         confirmLabel="Discard and switch"
         cancelLabel="Keep editing"
         onConfirm={() => {

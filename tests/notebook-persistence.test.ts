@@ -193,6 +193,79 @@ describe("notebook page persistence contract", () => {
     });
   });
 
+  it("resizes a visual from any corner and pins the opposite one", () => {
+    const centred = createCenteredNotebookImageRef({
+      id: "image-1",
+      storagePath: "users/user-1/notebookFiles/notebook-1/asset.png",
+      width: 1600,
+      height: 900,
+      altText: "A labelled cell",
+    });
+    const right = centred.x! + centred.displayWidth!;
+    const bottom = centred.y! + centred.displayHeight!;
+
+    // Dragging up and left from the top-left grip grows the image outwards
+    // while its bottom-right corner stays where the student left it.
+    const fromTopLeft = resizeNotebookImageRef(centred, -120, -68, "top-left");
+    expect(fromTopLeft.displayWidth).toBeGreaterThan(centred.displayWidth!);
+    expect(fromTopLeft.x! + fromTopLeft.displayWidth!).toBeCloseTo(right, 0);
+    expect(fromTopLeft.y! + fromTopLeft.displayHeight!).toBeCloseTo(bottom, 0);
+
+    const fromTopRight = resizeNotebookImageRef(centred, 120, -68, "top-right");
+    expect(fromTopRight.displayWidth).toBeGreaterThan(centred.displayWidth!);
+    expect(fromTopRight.x).toBeCloseTo(centred.x!, 0);
+    expect(fromTopRight.y! + fromTopRight.displayHeight!).toBeCloseTo(bottom, 0);
+
+    const fromBottomLeft = resizeNotebookImageRef(
+      centred,
+      -120,
+      68,
+      "bottom-left"
+    );
+    expect(fromBottomLeft.displayWidth).toBeGreaterThan(centred.displayWidth!);
+    expect(fromBottomLeft.x! + fromBottomLeft.displayWidth!).toBeCloseTo(
+      right,
+      0
+    );
+    expect(fromBottomLeft.y).toBeCloseTo(centred.y!, 0);
+
+    // Dragging a corner inwards shrinks rather than grows.
+    const shrunk = resizeNotebookImageRef(centred, 120, 68, "top-left");
+    expect(shrunk.displayWidth).toBeLessThan(centred.displayWidth!);
+    expect(shrunk.x! + shrunk.displayWidth!).toBeCloseTo(right, 0);
+
+    // Every corner keeps the aspect ratio and the minimum display size.
+    for (const corner of [
+      "top-left",
+      "top-right",
+      "bottom-left",
+      "bottom-right",
+    ] as const) {
+      const growsRight = corner.endsWith("right");
+      const growsDown = corner.startsWith("bottom");
+      for (const [dx, dy] of [[growsRight ? -60 : 60, 0], [0, growsDown ? -40 : 40]]) {
+        const smaller = resizeNotebookImageRef(centred, dx, dy, corner);
+        expect(smaller.displayWidth).toBeLessThan(centred.displayWidth!);
+        expect(smaller.displayHeight).toBeLessThan(centred.displayHeight!);
+        expect(growsRight ? smaller.x : smaller.x! + smaller.displayWidth!)
+          .toBeCloseTo(growsRight ? centred.x! : right, 0);
+        expect(growsDown ? smaller.y : smaller.y! + smaller.displayHeight!)
+          .toBeCloseTo(growsDown ? centred.y! : bottom, 0);
+      }
+      const collapsed = resizeNotebookImageRef(centred, -5_000, -5_000, corner);
+      expect(collapsed.displayWidth).toBeGreaterThanOrEqual(120);
+      expect(collapsed.displayHeight).toBeGreaterThanOrEqual(120);
+      const stretched = resizeNotebookImageRef(centred, 5_000, 5_000, corner);
+      expect(
+        stretched.displayWidth! / stretched.displayHeight!
+      ).toBeCloseTo(centred.displayWidth! / centred.displayHeight!, 1);
+      expect(stretched.x).toBeGreaterThanOrEqual(0);
+      expect(stretched.y).toBeGreaterThanOrEqual(0);
+      expect(stretched.x! + stretched.displayWidth!).toBeLessThanOrEqual(900);
+      expect(stretched.y! + stretched.displayHeight!).toBeLessThanOrEqual(1240);
+    }
+  });
+
   /*
    * Firestore refuses an explicit `undefined`, and neither SDK in this app
    * enables `ignoreUndefinedProperties`. Every page image is built here, so an

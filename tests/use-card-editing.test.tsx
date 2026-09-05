@@ -118,9 +118,24 @@ describe("useCardEditing", () => {
     await act(async () => editing.save("card-1"));
 
     expect(mocks.updateCardContent).not.toHaveBeenCalled();
-    expect(feedback.showError).toHaveBeenCalledWith(
-      "Both front and back are required."
-    );
+    // The editor is a dialog over the page, so the message stays with the
+    // fields rather than going to the banner behind it.
+    expect(editing.error).toBe("Both front and back are required.");
+    expect(feedback.showError).not.toHaveBeenCalled();
+    expect(editing.rows.isEditing("card-1")).toBe(true);
+  });
+
+  it("names the open card and clears a stale error on cancel", async () => {
+    act(() => editing.start(startingCard));
+    expect(editing.card?.id).toBe("card-1");
+
+    act(() => editing.rows.updateDraft({ front: "  " }));
+    await act(async () => editing.save("card-1"));
+    expect(editing.error).toBe("Both front and back are required.");
+
+    act(() => editing.cancel());
+    expect(editing.card).toBeNull();
+    expect(editing.error).toBeNull();
   });
 
   it("deletes the pending card and informs selection ownership", async () => {

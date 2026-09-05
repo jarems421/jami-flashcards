@@ -47,6 +47,14 @@ type UseCardEditingOptions = {
 export type CardEditingController = {
   rows: InlineRowEditing<CardDraft>;
   draft: CardDraft;
+  /** The card open in the editor, or null. */
+  card: Card | null;
+  /**
+   * Why the open edit could not be saved. The editor floats above the page, so
+   * its own failures belong beside its fields rather than in the page banner
+   * behind it.
+   */
+  error: string | null;
   start: (card: Card) => void;
   cancel: () => void;
   save: (cardId: string) => Promise<void>;
@@ -75,14 +83,20 @@ export function useCardEditing({
   const draft = rows.draft ?? EMPTY_CARD_DRAFT;
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [previewCardId, setPreviewCardId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const previewCard = useMemo(
     () => cards.find((card) => card.id === previewCardId) ?? null,
     [cards, previewCardId]
+  );
+  const editingCard = useMemo(
+    () => cards.find((card) => card.id === rows.editingId) ?? null,
+    [cards, rows.editingId]
   );
 
   const cancel = useCallback(() => {
     rows.cancelEditing();
     rows.setSaving(null);
+    setError(null);
   }, [rows]);
 
   const start = useCallback(
@@ -92,6 +106,7 @@ export function useCardEditing({
         back: card.back,
         topicIds: card.topicIds ?? [],
       });
+      setError(null);
       feedback.clear();
     },
     [feedback, rows]
@@ -103,20 +118,21 @@ export function useCardEditing({
       const nextBack = normalizeCardContentInput(draft.back);
 
       if (!nextFront || !nextBack) {
-        feedback.showError("Both front and back are required.");
+        setError("Both front and back are required.");
         return;
       }
       if (
         nextFront.length > MAX_FRONT_LENGTH ||
         nextBack.length > MAX_BACK_LENGTH
       ) {
-        feedback.showError(
+        setError(
           `Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`
         );
         return;
       }
 
       rows.setSaving(cardId);
+      setError(null);
       feedback.clear();
       try {
         await updateCardContent(cardId, {
@@ -139,10 +155,10 @@ export function useCardEditing({
         );
         cancel();
         feedback.success("Card updated.");
-      } catch (error) {
-        console.error("Failed to update card.", error);
+      } catch (saveError) {
+        console.error("Failed to update card.", saveError);
         rows.setSaving(null);
-        feedback.showError("Failed to update card.");
+        setError("Failed to update card.");
       }
     },
     [cancel, draft, feedback, rows, setCards]
@@ -163,8 +179,8 @@ export function useCardEditing({
       if (rows.isEditing(cardId)) cancel();
       setPendingDeleteId(null);
       feedback.success("Card deleted.");
-    } catch (error) {
-      console.error("Failed to delete card.", error);
+    } catch (deleteError) {
+      console.error("Failed to delete card.", deleteError);
       feedback.showError("Failed to delete card.");
     } finally {
       rows.setDeleting(null);
@@ -182,6 +198,8 @@ export function useCardEditing({
   return {
     rows,
     draft,
+    card: editingCard,
+    error,
     start,
     cancel,
     save,

@@ -5,6 +5,7 @@ import { useState } from "react";
 import TutorActiveContextSummary from "@/components/ai/TutorActiveContextSummary";
 import TutorFolderInstructionsForm from "@/components/ai/TutorFolderInstructionsForm";
 import TutorPreferencesForm from "@/components/ai/TutorPreferencesForm";
+import TutorStudyProfileForm from "@/components/ai/TutorStudyProfileForm";
 import { Button, FeedbackBanner, Skeleton } from "@/components/ui";
 import { useTutorPersonalisation } from "@/hooks/useTutorPersonalisation";
 
@@ -14,7 +15,7 @@ type TutorSettingsPanelProps = {
    *
    * Exactly one means that folder's notes apply. More than one means none do,
    * because two documents cannot be merged and choosing between them would be a
-   * guess. The summary says which of those is true rather than leaving the
+   * guess. The chip strip says which of those is true rather than leaving the
    * student to work it out from a silent Tutor.
    */
   activeFolderIds?: readonly string[];
@@ -26,28 +27,37 @@ type TutorSettingsPanelProps = {
   backLabel?: string;
 };
 
-type SettingsView = "preferences" | "folders";
+type SettingsView = "course" | "style" | "notes";
 
+/**
+ * Three words, not three phrases.
+ *
+ * The tab row is the widest fixed thing in a 32rem drawer, and "How Jami helps"
+ * beside "Subject notes" spent that width on grammar. Each of these names one
+ * question: what am I studying, how do you teach me, what does this subject
+ * need.
+ */
 const VIEWS: { id: SettingsView; label: string }[] = [
-  { id: "preferences", label: "How Jami helps" },
-  { id: "folders", label: "Subject notes" },
+  { id: "course", label: "Course" },
+  { id: "style", label: "Style" },
+  { id: "notes", label: "Notes" },
 ];
 
 /**
  * The same personalisation, beside a conversation.
  *
- * Two views rather than the page's two stacked cards, because the drawer is the
+ * Views rather than the page's stacked cards, because the drawer is the
  * narrowest surface in the app and a student who opened it mid-question wants
  * one thing, not a screen to read. Anything that needs room -- writing a
- * subject document from scratch, comparing the four choices properly -- has a
- * full page, and this links to it rather than trying to be it.
+ * subject document from scratch -- has a full page, and this links to it rather
+ * than trying to be it.
  */
 export default function TutorSettingsPanel({
   activeFolderIds,
   onBack,
   backLabel = "Back to chat",
 }: TutorSettingsPanelProps) {
-  const [view, setView] = useState<SettingsView>("preferences");
+  const [view, setView] = useState<SettingsView>("course");
   const {
     data,
     preferences,
@@ -61,31 +71,46 @@ export default function TutorSettingsPanel({
     setSelectedFolderId,
     instructionsDraft,
     setInstructionsDraft,
+    studyLevel,
+    studySubjects,
     feedback,
     clearFeedback,
     reload,
     savePreferences,
     saveInstructions,
+    saveStudyProfile,
     skipGuide,
   } = useTutorPersonalisation(activeFolderIds);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
-        <div className="min-w-0">
-          <h2 className="text-base font-medium tracking-tight text-text-primary">
-            Personalise Jami
-          </h2>
-          <p className="mt-0.5 text-xs text-text-muted">
-            How it teaches you, not what it knows.
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-5 py-3.5">
+        <h2 className="min-w-0 truncate text-base font-medium tracking-tight text-text-primary">
+          Personalise Jami
+        </h2>
         {onBack ? (
           <Button type="button" variant="ghost" size="sm" onClick={onBack}>
             {backLabel}
           </Button>
         ) : null}
       </div>
+
+      {/*
+        The status strip sits above the tabs rather than inside one, because
+        what Jami is currently using is true of all three views and repeating it
+        in each was the panel telling a student the same thing three times.
+      */}
+      {loading ? null : (
+        <div className="border-b border-[var(--color-border)] px-5 py-2.5">
+          <TutorActiveContextSummary
+            {...(activeFolderIds ? { activeFolderIds } : {})}
+            activeFolder={activeFolder}
+            accountStudyLevel={studyLevel}
+            accountStudySubjects={studySubjects}
+            activeCount={activeCount}
+          />
+        </div>
+      )}
 
       <div
         role="tablist"
@@ -103,7 +128,7 @@ export default function TutorSettingsPanel({
               aria-selected={selected}
               aria-controls="tutor-settings-panel"
               onClick={() => setView(entry.id)}
-              className={`-mb-px border-b-2 px-3 py-3 text-sm font-medium transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
+              className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
                 selected
                   ? "border-accent text-text-primary"
                   : "border-transparent text-text-muted hover:text-text-secondary"
@@ -119,7 +144,7 @@ export default function TutorSettingsPanel({
         id="tutor-settings-panel"
         role="tabpanel"
         aria-labelledby={`tutor-settings-tab-${view}`}
-        className="flex-1 overflow-y-auto px-5 py-5"
+        className="flex-1 overflow-y-auto px-5 py-4"
       >
         {feedback ? (
           <div className="mb-4">
@@ -131,15 +156,6 @@ export default function TutorSettingsPanel({
           </div>
         ) : null}
 
-        <div className="mb-5">
-          <TutorActiveContextSummary
-            activeFolderIds={activeFolderIds}
-            activeFolder={activeFolder}
-            accountStudyLevel={data?.accountStudyLevel ?? null}
-            activeCount={activeCount}
-          />
-        </div>
-
         {loading ? (
           <div className="space-y-3">
             <Skeleton className="h-24 w-full rounded-2xl" />
@@ -149,12 +165,22 @@ export default function TutorSettingsPanel({
           <Button type="button" variant="secondary" onClick={reload}>
             Try again
           </Button>
-        ) : view === "preferences" ? (
+        ) : view === "course" ? (
+          <TutorStudyProfileForm
+            // Restarted from whatever a save or a reload produced, rather than
+            // by an effect copying values back into fields.
+            key={`${studyLevel ?? "none"}:${studySubjects.join("|")}`}
+            studyLevel={studyLevel}
+            studySubjects={studySubjects}
+            folderLevel={activeFolder?.studyLevel ?? null}
+            folderName={activeFolder?.name ?? null}
+            saving={saving}
+            onSave={saveStudyProfile}
+          />
+        ) : view === "style" ? (
           <TutorPreferencesForm
             key={preferences.updatedAt}
             preferences={preferences}
-            studyLevel={activeFolder?.studyLevel ?? data?.accountStudyLevel ?? null}
-            studyLevelSource={activeFolder?.studyLevel ? "folder" : "account"}
             saving={saving}
             onSave={savePreferences}
           />
@@ -175,7 +201,7 @@ export default function TutorSettingsPanel({
           />
         )}
 
-        <p className="mt-6 border-t border-[var(--color-border)] pt-4 text-xs text-text-muted">
+        <p className="mt-5 border-t border-[var(--color-border)] pt-3 text-2xs text-text-muted">
           <Link
             href="/dashboard/tutor/personalise"
             className="font-semibold text-accent underline-offset-4 hover:underline"

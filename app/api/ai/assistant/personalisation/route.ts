@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
 import {
   assistantAssetError,
   authenticateAssistantAssetRequest,
@@ -12,6 +13,7 @@ import {
   normalizeTutorPreferences,
 } from "@/lib/ai/tutor-personalisation";
 import { normalizeStudyLevel } from "@/lib/profile/study-level";
+import { normalizeStudySubjects } from "@/lib/profile/study-subjects";
 import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
@@ -110,6 +112,16 @@ export async function GET(request: NextRequest) {
     accountStudyLevel: normalizeStudyLevel(
       userSnapshot.exists ? userSnapshot.data()?.defaultStudyLevel : undefined
     ) ?? null,
+    /*
+     * The courses behind that level, which only the levels from A level upwards
+     * ask for. Sent whatever the level is: a student who drops from University
+     * back to GCSE should find their subjects still there if they go back up,
+     * rather than having quietly lost them to a screen that stopped rendering
+     * the field.
+     */
+    accountStudySubjects: normalizeStudySubjects(
+      userSnapshot.exists ? userSnapshot.data()?.studySubjects : undefined
+    ),
     folders,
     folder: folderData
       ? {
@@ -154,6 +166,9 @@ export async function PATCH(request: NextRequest) {
   } catch {
     return assistantAssetError("Invalid request body", 400, "invalid_request");
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return assistantAssetError("Invalid request body", 400, "invalid_request");
+  }
 
   const now = Date.now();
 
@@ -170,6 +185,44 @@ export async function PATCH(request: NextRequest) {
         saved.exists ? (saved.data() as Record<string, unknown>) : undefined
       ),
     });
+  }
+
+  /*
+   * Study level and subjects, which used to be a card on the Account page.
+   *
+   * They live here now because they are the same decision as everything else on
+   * this screen -- what Jami should assume about you -- and because a level set
+   * two pages away from the tutor that uses it was being left unset. Written
+   * through this route rather than straight from the client so the demo-account
+   * guard above covers them like every other setting here.
+   */
+  if (body.target === "study-profile") {
+    if (
+      (body.studyLevel !== null && !normalizeStudyLevel(body.studyLevel)) ||
+      !Array.isArray(body.studySubjects) ||
+      !body.studySubjects.every((subject) => typeof subject === "string")
+    ) {
+      return assistantAssetError("Invalid study profile", 400, "invalid_request");
+    }
+    const level = normalizeStudyLevel(body.studyLevel) ?? null;
+    const subjects = normalizeStudySubjects(body.studySubjects);
+    await getAdminDb()
+      .collection("users")
+      .doc(uid)
+      .set(
+        {
+          defaultStudyLevel: level ?? FieldValue.delete(),
+          studySubjects: subjects,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+    log.info("study_profile.saved", {
+      // The level is a fixed vocabulary; the subject names are the student's.
+      level: level ?? "none",
+      subjects: subjects.length,
+    });
+    return Response.json({ studyLevel: level, studySubjects: subjects });
   }
 
   if (body.target === "folder-instructions") {

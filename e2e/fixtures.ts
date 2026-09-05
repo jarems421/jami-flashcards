@@ -6,6 +6,28 @@ export const E2E_NOTEBOOK_ID = "e2e-notebook";
 export const E2E_PAGE_IDS = ["e2e-page-1", "e2e-page-2"] as const;
 export const E2E_TEXT_MARKER = "Playwright notebook text survives reload.";
 
+/**
+ * A third page carrying a placed visual, the way a Tutor illustration arrives.
+ * It sits apart from the two pages above so the text and ink walkthroughs keep
+ * their surfaces to themselves.
+ */
+export const E2E_IMAGE_PAGE_ID = "e2e-page-3";
+export const E2E_IMAGE_ID = "e2e-image-1";
+export const E2E_IMAGE_ALT = "Seeded tutor illustration";
+/** A 32x18 solid PNG, inlined so placement needs no Storage seeding. */
+export const E2E_IMAGE_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAASCAIAAAC1qksFAAAAH0lEQVR4nGNITvtIU8QwasGoBaMWjFowasGoBfSwAAD0dOKuUgJaLQAAAABJRU5ErkJggg==";
+/**
+ * Room on every side of the 900x1240 page, so a corner drag in the browser
+ * tests the resize maths rather than the clamp at the page edge.
+ */
+export const E2E_IMAGE_PLACEMENT = {
+  x: 240,
+  y: 380,
+  displayWidth: 420,
+  displayHeight: 236,
+} as const;
+
 export const E2E_DECK_ID = "e2e-deck";
 export const E2E_DECK_NAME = "Browser smoke deck";
 /** Due cards the desktop review flow grades to completion. */

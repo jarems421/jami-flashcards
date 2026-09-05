@@ -5,12 +5,9 @@ import {
   applyFraction,
   INDEX_KEYS,
   insertKeyIntoField,
-  insertTextIntoField,
   readSymbolRecents,
   rememberSymbol,
   SYMBOL_GROUPS,
-  toIndexForm,
-  type IndexMode,
   type SymbolKey,
 } from "@/lib/ui/symbol-keyboard";
 
@@ -33,8 +30,6 @@ const KEY_BASE =
   "flex items-center justify-center rounded-md border border-b-2 transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 active:translate-y-[1px] active:border-b";
 const KEY_RESTING =
   "border-[var(--color-border)] border-b-[var(--color-border-strong)] bg-[var(--color-glass-medium)] text-text-secondary hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-strong)] hover:text-text-primary";
-const KEY_HELD =
-  "border-accent/60 border-b-accent bg-accent/20 text-text-primary";
 
 function KeyboardGlyph() {
   return (
@@ -53,11 +48,6 @@ function KeyboardGlyph() {
     </svg>
   );
 }
-
-const MODE_LABEL: Record<IndexMode, string> = {
-  super: "Superscript",
-  sub: "Subscript",
-};
 
 /**
  * A small keyboard for the characters a keyboard will not give you.
@@ -82,7 +72,6 @@ export default function SymbolKeyboard({
   const [group, setGroup] = useState(SYMBOL_GROUPS[0].id);
   const [openUpward, setOpenUpward] = useState(false);
   const [recents, setRecents] = useState<SymbolKey[]>([]);
-  const [mode, setMode] = useState<IndexMode | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
@@ -109,50 +98,6 @@ export default function SymbolKeyboard({
     };
   }, [open, targetRef]);
 
-  /*
-   * Superscript and subscript, handled the way Shift is: they change what the
-   * next keystroke does rather than typing anything themselves.
-   *
-   * A character with no raised form -- a capital, a q, a space -- ends the mode
-   * and is typed normally, because that is what a student means when they
-   * finish an exponent and carry on with the sentence. Nothing is swallowed:
-   * every keystroke either arrives raised or arrives as itself.
-   */
-  useEffect(() => {
-    const field = targetRef.current;
-    if (!mode || !field) return;
-
-    // Typed as Event and narrowed, because `field` is a union of two element
-    // types and TypeScript falls back to the generic listener signature there.
-    const onKeyDown = (event: Event) => {
-      if (!(event instanceof KeyboardEvent)) return;
-      if (event.key === "Escape") {
-        setMode(null);
-        return;
-      }
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
-      // Backspace, arrows, Tab and the rest are navigation, not typing.
-      if (event.key.length !== 1) return;
-
-      const raised = toIndexForm(event.key, mode);
-      if (!raised) {
-        setMode(null);
-        return;
-      }
-      event.preventDefault();
-      insertTextIntoField(field, raised);
-    };
-    // Clicking elsewhere in the answer means the index is finished.
-    const onBlur = () => setMode(null);
-
-    field.addEventListener("keydown", onKeyDown);
-    field.addEventListener("blur", onBlur);
-    return () => {
-      field.removeEventListener("keydown", onKeyDown);
-      field.removeEventListener("blur", onBlur);
-    };
-  }, [mode, targetRef]);
-
   const toggle = useCallback(() => {
     setOpen((wasOpen) => {
       if (wasOpen) return false;
@@ -168,7 +113,6 @@ export default function SymbolKeyboard({
       }
       return true;
     });
-    setMode(null);
   }, []);
 
   const press = useCallback(
@@ -179,7 +123,6 @@ export default function SymbolKeyboard({
       else insertKeyIntoField(field, key);
       field.focus();
       setRecents((current) => rememberSymbol(key, current));
-      setMode(key.then ?? null);
     },
     [targetRef]
   );
@@ -200,29 +143,26 @@ export default function SymbolKeyboard({
     </button>
   );
 
-  const renderMode = (which: IndexMode, label: string) => (
-    <button
-      type="button"
-      aria-pressed={mode === which}
-      aria-label={`${MODE_LABEL[which]} — the next characters you type go ${
-        which === "super" ? "up" : "down"
-      }`}
-      title={MODE_LABEL[which]}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => {
-        setMode((current) => (current === which ? null : which));
-        targetRef.current?.focus();
-      }}
-      className={`${KEY_BASE} col-span-2 h-9 text-base ${
-        mode === which ? KEY_HELD : KEY_RESTING
-      }`}
-    >
-      <span aria-hidden="true">{label}</span>
-    </button>
-  );
+  /*
+   * `relative` only when the caller has not placed this itself.
+   *
+   * It used to be hardcoded and the caller's classes appended after it -- but
+   * every caller that positions this passes `absolute`, and Tailwind emits
+   * `.relative` after `.absolute`, so `relative` won regardless of the order the
+   * classes are written in. The button was therefore laid out in normal flow,
+   * after the field, instead of sitting inside it: half in and half out of the
+   * corner on every surface that has one, not just gap fill.
+   *
+   * An absolutely positioned element is itself a containing block, so the
+   * popover below still anchors to this root either way.
+   */
+  const positioned = /(^|\s)(absolute|fixed|sticky)(\s|$)/.test(className);
 
   return (
-    <div ref={rootRef} className={`relative ${className}`}>
+    <div
+      ref={rootRef}
+      className={positioned ? className : `relative ${className}`}
+    >
       <button
         type="button"
         aria-label="Symbols and formulas"
@@ -289,12 +229,10 @@ export default function SymbolKeyboard({
             </div>
 
             {/*
-              Always present, whatever tab is showing. Four wide keys fill the
-              row exactly: two modes, and two that set one up for you.
+              Always present, whatever tab is showing. Both type something the
+              moment they are pressed; nothing here arms a mode.
             */}
             <div className="grid grid-cols-8 gap-1 border-t border-[var(--color-border)] pt-1.5">
-              {renderMode("super", "x²")}
-              {renderMode("sub", "x₂")}
               {INDEX_KEYS.map((key) => renderKey(key, "index", true))}
             </div>
           </div>
@@ -303,11 +241,9 @@ export default function SymbolKeyboard({
             aria-live="polite"
             className="mt-2 px-0.5 text-2xs leading-4 text-text-muted"
           >
-            {mode
-              ? `${MODE_LABEL[mode]} on — what you type next goes ${
-                  mode === "super" ? "up" : "down"
-                }. Anything without one turns it off.`
-              : "x² and x₂ work like Shift. a⁄b lifts what you just typed into the top of a fraction."}
+            Every key types straight into your answer. Powers and subscripts are
+            in the Powers tab; a⁄b lifts what you just typed into the top of a
+            fraction.
           </p>
         </div>
       ) : null}

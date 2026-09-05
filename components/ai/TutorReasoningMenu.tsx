@@ -15,18 +15,19 @@ type TutorReasoningMenuProps = {
   onError: (message: string) => void;
 };
 
-function ThinkingIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5">
-      <path
-        d="M3 8h.01M8 8h.01M13 8h.01"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
+/**
+ * What the chip says, which is the level itself.
+ *
+ * Deliberately not the option names used in the menu below and in Account
+ * ("Quick", "Balanced", "Thorough"). Those describe the trade to somebody
+ * choosing; this reports the setting to somebody who already chose, in the one
+ * word they would use to ask what it is on.
+ */
+const REASONING_LEVEL_WORD: Record<ReasoningEffortPreference, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+};
 
 export default function TutorReasoningMenu({
   userId,
@@ -98,16 +99,15 @@ export default function TutorReasoningMenu({
         title="Choose reasoning level"
         className="app-chip flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-text-secondary transition duration-fast hover:border-[var(--color-border-strong)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 [&::-webkit-details-marker]:hidden"
       >
-        <ThinkingIcon />
-        <span>{loading ? "Reasoning" : getReasoningEffortLabel(effort)}</span>
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 16 16"
-          fill="none"
-          className="h-3 w-3 transition-transform duration-fast group-open:rotate-180"
-        >
-          <path d="m4 9 4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        {/*
+          The level, and nothing else.
+
+          This carried an icon and a chevron either side of the word, which is
+          three marks to say one thing on a chip eight pixels tall. The word is
+          already the whole message, and it changes when the level changes, so
+          it says both what this is and that it can be pressed.
+        */}
+        <span>{loading ? "Reasoning" : REASONING_LEVEL_WORD[effort]}</span>
       </summary>
 
       <div className="absolute bottom-10 left-0 z-30 w-64 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-e3">

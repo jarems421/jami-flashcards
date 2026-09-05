@@ -447,6 +447,11 @@ export function useStudyExerciseController(
         setSessionCards((prev) =>
           applySimpleStudyResultToQueue(prev, card.id, result, now)
         );
+        // A missed card goes to the back of the queue, which on a one-card
+        // queue is the same card again at the same index. The answer-first
+        // modes are keyed on this counter, so without it a re-asked question
+        // would come back with the previous attempt still revealed under it.
+        setPresentation((value) => value + 1);
       }
       bumpSessionRevision();
       setSessionStats((prev) => ({

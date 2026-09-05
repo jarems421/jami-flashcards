@@ -10,11 +10,15 @@ import { DEFAULT_TUTOR_PREFERENCES } from "@/lib/ai/tutor-personalisation";
  * The settings panel's states, which are mostly the ones a student meets when
  * something is wrong: a load that failed, a folder with nothing written for it,
  * an account with no folders at all.
+ *
+ * Plus the status strip, which is the first thing on the panel and now says all
+ * three of those things in three chips rather than three sentences.
  */
 
 const serviceMocks = vi.hoisted(() => ({
   loadTutorPersonalisation: vi.fn(),
   saveTutorPreferences: vi.fn(),
+  saveTutorStudyProfile: vi.fn(),
   saveFolderTutorInstructions: vi.fn(),
 }));
 
@@ -36,6 +40,7 @@ function personalisation(overrides: Record<string, unknown> = {}) {
   return {
     preferences: { ...DEFAULT_TUTOR_PREFERENCES, folderGuideCompleted: true },
     accountStudyLevel: "post-16-equivalent",
+    accountStudySubjects: ["Biology", "Chemistry"],
     folders: [FOLDER],
     folder: {
       ...FOLDER,
@@ -58,12 +63,20 @@ function buttonWithText(text: string) {
   );
 }
 
+async function openTab(label: string) {
+  const tab = [...container.querySelectorAll('[role="tab"]')].find(
+    (entry) => entry.textContent?.trim() === label
+  ) as HTMLButtonElement;
+  await act(async () => tab.click());
+}
+
 beforeEach(() => {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   serviceMocks.loadTutorPersonalisation.mockReset();
   serviceMocks.saveTutorPreferences.mockReset();
+  serviceMocks.saveTutorStudyProfile.mockReset();
   serviceMocks.saveFolderTutorInstructions.mockReset();
 });
 
@@ -90,9 +103,7 @@ describe("the Tutor settings panel", () => {
 
     // Not "no folder instructions apply", which would be a claim the panel has
     // no basis for.
-    expect(container.textContent).toContain(
-      "Your subject notes apply whenever the thing you are asking about sits in one folder."
-    );
+    expect(container.textContent).toContain("Set per folder");
   });
 
   it("names the folder when the conversation resolves to exactly one", async () => {
@@ -104,7 +115,7 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel activeFolderIds={["folder-1"]} />);
 
-    expect(container.textContent).toContain("Using your notes for Biology");
+    expect(container.textContent).toContain("Biology — on");
   });
 
   it("explains the multi-folder case instead of interrupting the chat", async () => {
@@ -114,9 +125,7 @@ describe("the Tutor settings panel", () => {
       <TutorSettingsPanel activeFolderIds={["folder-1", "folder-2"]} />
     );
 
-    expect(container.textContent).toContain(
-      "belongs to more than one folder, so no subject notes are being applied"
-    );
+    expect(container.textContent).toContain("Several folders — off");
   });
 
   it("reports a failed load and offers a retry rather than an empty form", async () => {
@@ -137,9 +146,7 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel />);
 
-    expect(container.textContent).toContain(
-      "None set, so Jami adapts to each question"
-    );
+    expect(container.textContent).toContain("Default");
   });
 
   it("counts the preferences that will actually reach the prompt", async () => {
@@ -156,18 +163,19 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel />);
 
-    expect(container.textContent).toContain("2 of your choices are in use");
+    expect(container.textContent).toContain("2 changed");
   });
 
   it("keeps Save disabled until something has actually changed", async () => {
     serviceMocks.loadTutorPersonalisation.mockResolvedValue(personalisation());
 
     await render(<TutorSettingsPanel />);
+    await openTab("Style");
 
     const save = buttonWithText("Save changes");
     expect(save).toBeDefined();
     expect((save as HTMLButtonElement).disabled).toBe(true);
-    expect(container.textContent).not.toContain("Unsaved changes");
+    expect(container.textContent).not.toContain("Unsaved");
   });
 
   it("tells a student with no folders what to do first", async () => {
@@ -176,11 +184,7 @@ describe("the Tutor settings panel", () => {
     );
 
     await render(<TutorSettingsPanel />);
-
-    const foldersTab = [...container.querySelectorAll('[role="tab"]')].find(
-      (tab) => tab.textContent?.includes("Subject notes")
-    ) as HTMLButtonElement;
-    await act(async () => foldersTab.click());
+    await openTab("Notes");
 
     expect(container.textContent).toContain("No folders yet");
   });
@@ -195,7 +199,17 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel activeFolderIds={["folder-1"]} />);
 
-    expect(container.textContent).toContain("University");
-    expect(container.textContent).toContain("set by this folder");
+    expect(container.textContent).toContain("University (folder)");
+    expect(container.textContent).toContain("Biology overrides this with");
+  });
+
+  it("opens on the course view, because the level is what Jami misses most", async () => {
+    serviceMocks.loadTutorPersonalisation.mockResolvedValue(personalisation());
+
+    await render(<TutorSettingsPanel />);
+
+    expect(container.textContent).toContain("Your subjects");
+    expect(container.textContent).toContain("Biology");
+    expect(container.textContent).toContain("Chemistry");
   });
 });

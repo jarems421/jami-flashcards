@@ -28,6 +28,7 @@ const auditedFiles = [
   "components/decks/CardBackEditor.tsx",
   "components/decks/CardBackAutocomplete.tsx",
   "components/decks/CardQualityWarnings.tsx",
+  "components/decks/CardEditorDialog.tsx",
   "components/decks/CardCreationPanel.tsx",
   "components/cards/CardBrowserControls.tsx",
   "components/cards/CardBrowserWorkspace.tsx",

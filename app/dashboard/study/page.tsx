@@ -735,8 +735,10 @@ export default function StudyPage() {
 
         // Whether any card needs a model is decided inside
         // prepareSessionAssets, card by card rather than session by session: a
-        // deck is rarely all one kind of answer.
-        const wantsPreparation = studyModesEnabled && kind !== "simple";
+        // deck is rarely all one kind of answer. Simple Study is included:
+        // Classic is still its default and needs nothing prepared, so a student
+        // who has not chosen a mode never waits.
+        const wantsPreparation = studyModesEnabled;
 
         let assets = studyAssets;
         let remainder: Card[] = [];
@@ -768,7 +770,7 @@ export default function StudyPage() {
         // typing session. Judged after preparation, because that is what decides
         // whether a card can carry multiple choice at all.
         const eligibleCards =
-          studyModesEnabled && modePolicy.kind === "fixed" && kind !== "simple"
+          studyModesEnabled && modePolicy.kind === "fixed"
             ? nextCards.filter(
                 (card) =>
                   getModeEligibility(asAsked(card), modePolicy.mode, { seed }).eligible
@@ -892,11 +894,6 @@ export default function StudyPage() {
     setSelectedTopicIds([]);
     clearFeedback();
   }, [clearFeedback, setSelectedDeckIds, setSelectedTopicIds]);
-
-  const closeFocusedReviewBuilder = useCallback(() => {
-    setFocusedReviewOpen(false);
-    window.requestAnimationFrame(() => focusedReviewToggleRef.current?.focus());
-  }, [setFocusedReviewOpen]);
 
   useEffect(() => {
     if (!loaded || sessionRestoreHandledRef.current) return;
@@ -1171,9 +1168,11 @@ export default function StudyPage() {
   const currentExercise = useMemo(() => {
     const current = preparedCurrent;
     if (!current || !sessionKind) return null;
-    // Simple Study is its own two-point flow and is left alone. Classic falls
-    // through to the flip card below rather than through the exercise stage.
-    if (!studyModesEnabled || sessionKind === "simple") return null;
+    // Classic falls through to the flip card below rather than through the
+    // exercise stage. Simple Study runs the modes too: what makes it Simple is
+    // that it answers on two points and never touches a schedule, which is a
+    // property of the rating rather than of the question.
+    if (!studyModesEnabled) return null;
     const context = { seed: sessionSeedRef.current };
     const mode = resolveExerciseMode(current, modePolicy, index, context);
     if (!mode || mode === "classic") return null;
@@ -1479,14 +1478,21 @@ export default function StudyPage() {
             },
           ]
         : [
-            { label: "Nudge me", prompt: "Nudge me towards this without giving it away." },
+            // Match the exercise's help vocabulary; its own buttons still
+            // grade or skip the attempt without opening Tutor.
+            {
+              label: "Give me a hint",
+              prompt:
+                "Give me one hint towards this without telling me the answer.",
+            },
+            {
+              label: "I don't know",
+              prompt:
+                "I'm stuck on this. Walk me through how to work it out, step by step.",
+            },
             {
               label: "Break it down",
               prompt: "What is this question actually asking? Break it down for me.",
-            },
-            {
-              label: "Quiz my thinking",
-              prompt: "Ask me one short question that helps me work this out myself.",
             },
           ],
     [flipped]
@@ -1756,38 +1762,39 @@ export default function StudyPage() {
                   </div>
 
                   <div className="grid gap-4 xl:grid-cols-2">
+                    {/*
+                      The builder opens inside this card and the card takes the
+                      whole row while it is open. It used to render after the
+                      grid, so pressing "Choose decks or Topics" opened a panel
+                      underneath Simple Study, attached to nothing.
+                    */}
                     <SurfaceCard
                       padding="md"
-                      className="flex h-full flex-col"
+                      className={`flex h-full flex-col ${focusedReviewOpen ? "xl:col-span-2" : ""}`}
                     >
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                        Focused Review
-                      </div>
-                      <h3 className="mt-2 text-lg font-semibold text-text-primary">
-                        Choose exactly what to practice
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-text-secondary">
-                        Pick decks or Topics for a targeted session.
-                      </p>
-                      <div
-                        className="mt-4 text-sm font-medium text-text-muted"
-                        aria-live="polite"
-                      >
-                        {hasCustomFilters
-                          ? `${selectedDeckIds.length + selectedTopicIds.length} selected · ${customPreviewCards.length} cards`
-                          : `${customPreviewCards.length} cards available`}
-                      </div>
-                      <div className="mt-auto flex flex-col gap-2 pt-5 sm:flex-row sm:flex-wrap">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                            Focused Review
+                          </div>
+                          <h3 className="mt-2 text-lg font-semibold text-text-primary">
+                            Choose exactly what to practice
+                          </h3>
+                          <p className="mt-2 text-sm leading-6 text-text-secondary">
+                            Pick decks or Topics for a targeted session.
+                          </p>
+                        </div>
                         <Button
                           ref={focusedReviewToggleRef}
                           type="button"
                           variant="secondary"
+                          size="sm"
                           aria-expanded={focusedReviewOpen}
                           aria-controls="focused-review-builder"
                           onClick={() =>
                             setFocusedReviewOpen((currentOpen) => !currentOpen)
                           }
-                          className="w-full sm:w-auto"
+                          className="w-full shrink-0 sm:w-auto"
                         >
                           {focusedReviewOpen
                             ? "Hide choices"
@@ -1795,16 +1802,71 @@ export default function StudyPage() {
                               ? "Edit selection"
                               : "Choose decks or Topics"}
                         </Button>
-                        {customPreviewCards.length > 0 ? (
-                          <Button
-                            type="button"
-                            onClick={handleCustomReviewClick}
-                            className="w-full sm:w-auto"
-                          >
-                            Start Focused Review
-                          </Button>
-                        ) : null}
                       </div>
+
+                      {focusedReviewOpen ? (
+                        <FocusedReviewBuilder
+                          filterKind={focusedFilterKind}
+                          onFilterKindChange={setFocusedFilterKind}
+                          decks={{
+                            search: deckSearch,
+                            onSearchChange: setDeckSearch,
+                            searchResults: deckSearchResults,
+                            recents: recentDecks,
+                            selectedIds: selectedDeckIds,
+                            namesById: deckNamesById,
+                            cardCounts: deckCardCounts,
+                            onToggle: toggleDeckFilter,
+                          }}
+                          topics={{
+                            search: topicSearch,
+                            onSearchChange: setTopicSearch,
+                            searchResults: topicSearchResults,
+                            recents: recentTopics,
+                            selectedIds: selectedTopicIds,
+                            namesById: topicNamesById,
+                            cardCounts: topicCardCounts,
+                            onToggle: toggleTopicFilter,
+                          }}
+                          previewCount={customPreviewCards.length}
+                          selectionEmpty={customSelectionEmpty}
+                          modePicker={
+                            studyModesEnabled ? (
+                              <StudyModePicker
+                                policy={modePolicy}
+                                surface="focused"
+                                // The builder's own step heading asks it.
+                                hideLabel
+                                onChange={setModePolicy}
+                              />
+                            ) : undefined
+                          }
+                          onClearFilters={clearCustomFilters}
+                          onStart={handleCustomReviewClick}
+                        />
+                      ) : (
+                        <>
+                          <div
+                            className="mt-4 text-sm font-medium text-text-muted"
+                            aria-live="polite"
+                          >
+                            {hasCustomFilters
+                              ? `${selectedDeckIds.length + selectedTopicIds.length} selected · ${customPreviewCards.length} cards`
+                              : `${customPreviewCards.length} cards available`}
+                          </div>
+                          <div className="mt-auto pt-5">
+                            {customPreviewCards.length > 0 ? (
+                              <Button
+                                type="button"
+                                onClick={handleCustomReviewClick}
+                                className="w-full sm:w-auto"
+                              >
+                                Start Focused Review
+                              </Button>
+                            ) : null}
+                          </div>
+                        </>
+                      )}
                     </SurfaceCard>
 
                     <SurfaceCard
@@ -1834,6 +1896,15 @@ export default function StudyPage() {
                           missed
                         </span>
                       </div>
+                      {studyModesEnabled ? (
+                        <div className="mt-5">
+                          <StudyModePicker
+                            policy={modePolicy}
+                            surface="simple"
+                            onChange={setModePolicy}
+                          />
+                        </div>
+                      ) : null}
                       <div className="mt-auto pt-5">
                         {simpleStudyQueue.cards.length > 0 ? (
                           <Button
@@ -1853,37 +1924,6 @@ export default function StudyPage() {
                     </SurfaceCard>
                   </div>
                 </section>
-              ) : null}
-              {hasCards && focusedReviewOpen ? (
-                <FocusedReviewBuilder
-                  filterKind={focusedFilterKind}
-                  onFilterKindChange={setFocusedFilterKind}
-                  decks={{
-                    search: deckSearch,
-                    onSearchChange: setDeckSearch,
-                    searchResults: deckSearchResults,
-                    recents: recentDecks,
-                    selectedIds: selectedDeckIds,
-                    namesById: deckNamesById,
-                    cardCounts: deckCardCounts,
-                    onToggle: toggleDeckFilter,
-                  }}
-                  topics={{
-                    search: topicSearch,
-                    onSearchChange: setTopicSearch,
-                    searchResults: topicSearchResults,
-                    recents: recentTopics,
-                    selectedIds: selectedTopicIds,
-                    namesById: topicNamesById,
-                    cardCounts: topicCardCounts,
-                    onToggle: toggleTopicFilter,
-                  }}
-                  previewCount={customPreviewCards.length}
-                  selectionEmpty={customSelectionEmpty}
-                  onClearFilters={clearCustomFilters}
-                  onClose={closeFocusedReviewBuilder}
-                  onStart={handleCustomReviewClick}
-                />
               ) : null}
             </>
           ) : null}
@@ -2096,6 +2136,9 @@ export default function StudyPage() {
                       key={`${current.id}:${currentExercise.mode}:${currentExercise.cardContentHash}:${presentation}`}
                       card={preparedCurrent ?? current}
                       exercise={currentExercise}
+                      ratingScale={
+                        sessionKind === "simple" ? "two-point" : "four-point"
+                      }
                       savingRating={savingRating}
                       onCommit={handleRating}
                       onModeAnswered={recordModeAnswer}

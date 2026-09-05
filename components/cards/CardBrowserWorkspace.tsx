@@ -9,6 +9,7 @@ import Link from "next/link";
 import CardBrowserControls from "@/components/cards/CardBrowserControls";
 import CardBulkActions from "@/components/cards/CardBulkActions";
 import CardGrid from "@/components/cards/CardGrid";
+import CardEditorDialog from "@/components/decks/CardEditorDialog";
 import CardPreviewDialog from "@/components/decks/CardPreviewDialog";
 import { Button, EmptyState, Skeleton } from "@/components/ui";
 import { useCardBrowser } from "@/hooks/useCardBrowser";
@@ -47,7 +48,7 @@ type CardBrowserWorkspaceProps = {
   loading: boolean;
 };
 
-/** Composes browsing, bulk actions, row editing, and preview below the route. */
+/** Composes browsing, bulk actions, card editing, and preview below the route. */
 export default function CardBrowserWorkspace({
   userId,
   data,
@@ -94,6 +95,7 @@ export default function CardBrowserWorkspace({
     [cards]
   );
   const previewCard = editing.preview.card;
+  const editingCard = editing.card;
 
   return (
     <>
@@ -168,13 +170,8 @@ export default function CardBrowserWorkspace({
             bulk={bulk}
           />
           <CardGrid
-            userId={userId}
             cards={browser.results.visibleCards}
-            topics={topics}
-            onTopicsChange={setTopics}
             deckNamesById={deckNamesById}
-            topicNamesById={topicNamesById}
-            duplicateCounts={duplicateCounts}
             browser={browser}
             bulk={bulk}
             editing={editing}
@@ -203,6 +200,32 @@ export default function CardBrowserWorkspace({
         )}
         onClose={editing.preview.close}
         onEdit={editing.preview.edit}
+      />
+
+      <CardEditorDialog
+        card={editingCard}
+        draft={editing.draft}
+        userId={userId}
+        topics={topics}
+        topicNamesById={topicNamesById}
+        deckName={
+          editingCard ? deckNamesById[editingCard.deckId] ?? "Deck" : "Deck"
+        }
+        duplicateCount={
+          editingCard
+            ? duplicateCounts.get(
+                getCardContentKey(editingCard.front, editingCard.back)
+              )
+            : undefined
+        }
+        saving={editingCard ? editing.rows.isSaving(editingCard.id) : false}
+        error={editing.error}
+        onDraftChange={editing.rows.updateDraft}
+        onTopicsChange={setTopics}
+        onCancel={editing.cancel}
+        onSave={() => {
+          if (editingCard) void editing.save(editingCard.id);
+        }}
       />
     </>
   );

@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
   E2E_FOLDER_ID,
+  E2E_IMAGE_ALT,
+  E2E_IMAGE_PAGE_ID,
   E2E_NOTEBOOK_ID,
   E2E_PAGE_IDS,
   E2E_TEXT_MARKER,
@@ -16,7 +18,7 @@ async function signIn(page: Page) {
   await page.waitForURL(/\/dashboard$/, { timeout: 45_000 });
 }
 
-async function openNotebook(page: Page, pageId = E2E_PAGE_IDS[0]) {
+async function openNotebook(page: Page, pageId: string = E2E_PAGE_IDS[0]) {
   await page.goto(
     `/dashboard/notebooks/${E2E_NOTEBOOK_ID}?page=${pageId}`
   );
@@ -280,6 +282,157 @@ test("signed-in notebook work autosaves and survives navigation and reload", asy
   await expect(page).toHaveURL(`/dashboard/folders/${E2E_FOLDER_ID}`, {
     timeout: 60_000,
   });
+  expect(pageErrors).toEqual([]);
+});
+
+test("a placed visual resizes from every corner and holds its place while it saves", async ({
+  page,
+}) => {
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  await openNotebook(page, E2E_IMAGE_PAGE_ID);
+
+  const moveHandle = page.getByRole("button", { name: `Move ${E2E_IMAGE_ALT}` });
+  const cornerHandles = page.locator("[data-image-resize-handle]");
+  const savedStatus = page.getByRole("status", { name: "All changes saved" });
+
+  // A notebook opens on the pen, which draws over a visual rather than
+  // grabbing it. Escape drops to select, where placed visuals are handled.
+  await expect(moveHandle).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(moveHandle).toBeVisible();
+
+  await moveHandle.click();
+  await expect(cornerHandles).toHaveCount(4);
+  expect(
+    await cornerHandles.evaluateAll((handles) =>
+      handles
+        .map((handle) => handle.getAttribute("data-image-resize-handle"))
+        .sort()
+    )
+  ).toEqual(["bottom-left", "bottom-right", "top-left", "top-right"]);
+  await expect(savedStatus).toBeVisible({ timeout: 15_000 });
+
+  /*
+   * Drags are a fraction of the visual as it is drawn, not a pixel count, so
+   * the gesture stays clear of the page edge whatever the notebook is zoomed
+   * to and the resize maths is what gets tested.
+   */
+  const imageFrame = async () => {
+    await moveHandle.scrollIntoViewIfNeeded();
+    const box = await moveHandle.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThan(0);
+    expect(box!.width).toBeGreaterThan(40);
+    return box!;
+  };
+
+  const dragCorner = async (
+    corner: "top-left" | "top-right" | "bottom-left" | "bottom-right",
+    widthRatio: number,
+    heightRatio: number
+  ) => {
+    const frame = await imageFrame();
+    const handleBox = await page
+      .locator(`[data-image-resize-handle='${corner}']`)
+      .boundingBox();
+    expect(handleBox).not.toBeNull();
+    const fromX = handleBox!.x + handleBox!.width / 2;
+    const fromY = handleBox!.y + handleBox!.height / 2;
+    await page.mouse.move(fromX, fromY);
+    await page.mouse.down();
+    await page.mouse.move(
+      fromX + frame.width * widthRatio,
+      fromY + frame.height * heightRatio,
+      { steps: 8 }
+    );
+    await page.mouse.up();
+  };
+
+  /*
+   * Sample the frame across the whole save round-trip. Dropping the drag
+   * preview at pointer-up used to snap the visual back to its old size and
+   * place until the write returned, so a single after-the-fact assertion would
+   * have passed while the student still saw it jump.
+   */
+  const sampleWhileSaving = async () => {
+    const frames: Array<{ left: number; top: number; width: number }> = [];
+    const deadline = Date.now() + 3_000;
+    while (Date.now() < deadline) {
+      const box = await moveHandle.boundingBox();
+      if (box) frames.push({ left: box.x, top: box.y, width: box.width });
+    }
+    expect(frames.length).toBeGreaterThan(10);
+    await expect(savedStatus).toBeVisible({ timeout: 15_000 });
+    return frames;
+  };
+
+  // Pulling the top-left grip up and out grows the visual and leaves the
+  // opposite corner where the student put it.
+  const beforeGrow = await imageFrame();
+  await dragCorner("top-left", -0.2, -0.2);
+  const grownFrames = await sampleWhileSaving();
+  const grown = await imageFrame();
+  expect(grown.width).toBeGreaterThan(beforeGrow.width * 1.1);
+  expect(
+    Math.abs(grown.x + grown.width - (beforeGrow.x + beforeGrow.width))
+  ).toBeLessThan(4);
+  expect(
+    Math.abs(grown.y + grown.height - (beforeGrow.y + beforeGrow.height))
+  ).toBeLessThan(4);
+  for (const frame of grownFrames) {
+    expect(Math.abs(frame.width - grown.width)).toBeLessThan(4);
+  }
+
+  // The bottom-left grip pins the top-right corner, and dragging it inwards
+  // shrinks rather than grows.
+  const beforeShrink = await imageFrame();
+  await dragCorner("bottom-left", 0.2, -0.2);
+  const shrunkFrames = await sampleWhileSaving();
+  const shrunk = await imageFrame();
+  expect(shrunk.width).toBeLessThan(beforeShrink.width * 0.9);
+  expect(
+    Math.abs(shrunk.x + shrunk.width - (beforeShrink.x + beforeShrink.width))
+  ).toBeLessThan(4);
+  expect(Math.abs(shrunk.y - beforeShrink.y)).toBeLessThan(4);
+  for (const frame of shrunkFrames) {
+    expect(Math.abs(frame.width - shrunk.width)).toBeLessThan(4);
+  }
+
+  // The student's own report: shrink it, drag it to the top left, and it has
+  // to stay there rather than teleport back and jitter into place.
+  const beforeMove = await imageFrame();
+  await page.mouse.move(
+    beforeMove.x + beforeMove.width / 2,
+    beforeMove.y + beforeMove.height / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    beforeMove.x + beforeMove.width * 0.2,
+    beforeMove.y + beforeMove.height * 0.2,
+    { steps: 10 }
+  );
+  await page.mouse.up();
+  const movedFrames = await sampleWhileSaving();
+  const moved = await imageFrame();
+  expect(moved.x).toBeLessThan(beforeMove.x - beforeMove.width * 0.2);
+  expect(moved.y).toBeLessThan(beforeMove.y - beforeMove.height * 0.2);
+  expect(Math.abs(moved.width - beforeMove.width)).toBeLessThan(4);
+  for (const frame of movedFrames) {
+    expect(Math.abs(frame.left - moved.x)).toBeLessThan(4);
+    expect(Math.abs(frame.top - moved.y)).toBeLessThan(4);
+  }
+
+  // Everything above has to be what was written, not just what was drawn.
+  await page.reload();
+  await expect(page.getByRole("img", { name: E2E_IMAGE_ALT })).toBeVisible();
+  await page.keyboard.press("Escape");
+  const reloaded = await imageFrame();
+  expect(Math.abs(reloaded.x - moved.x)).toBeLessThan(4);
+  expect(Math.abs(reloaded.y - moved.y)).toBeLessThan(4);
+  expect(Math.abs(reloaded.width - moved.width)).toBeLessThan(4);
   expect(pageErrors).toEqual([]);
 });
 

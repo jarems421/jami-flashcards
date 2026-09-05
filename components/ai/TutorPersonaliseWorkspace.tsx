@@ -4,6 +4,7 @@ import AppPage from "@/components/layout/AppPage";
 import TutorActiveContextSummary from "@/components/ai/TutorActiveContextSummary";
 import TutorFolderInstructionsForm from "@/components/ai/TutorFolderInstructionsForm";
 import TutorPreferencesForm from "@/components/ai/TutorPreferencesForm";
+import TutorStudyProfileForm from "@/components/ai/TutorStudyProfileForm";
 import {
   Button,
   Card,
@@ -15,17 +16,14 @@ import {
 import { useTutorPersonalisation } from "@/hooks/useTutorPersonalisation";
 
 /**
- * Personalising Jami, given room to breathe.
+ * Personalising Jami, with room for the parts that need it.
  *
- * The same settings exist in a drawer beside a conversation, where they are
- * necessarily compact. This is where a student comes to actually think about
- * them: one question per block, nothing abbreviated, and the two halves --
- * how Jami teaches, and what it should know about a subject -- as separate
- * cards rather than tabs, because on a page there is no reason to hide one to
- * show the other.
+ * The same three things as the drawer, laid out as cards instead of tabs
+ * because on a page there is no reason to hide one to show another. The copy is
+ * the drawer's copy: a student who found the settings verbose in a 32rem panel
+ * did not want the same paragraphs again at 64rem.
  */
 export default function TutorPersonaliseWorkspace() {
-  const personalisation = useTutorPersonalisation();
   const {
     data,
     preferences,
@@ -38,13 +36,16 @@ export default function TutorPersonaliseWorkspace() {
     setSelectedFolderId,
     instructionsDraft,
     setInstructionsDraft,
+    studyLevel,
+    studySubjects,
     feedback,
     clearFeedback,
     reload,
     savePreferences,
     saveInstructions,
+    saveStudyProfile,
     skipGuide,
-  } = personalisation;
+  } = useTutorPersonalisation();
 
   return (
     <AppPage
@@ -64,29 +65,35 @@ export default function TutorPersonaliseWorkspace() {
 
       <PageHero
         eyebrow="Your tutor"
-        title="Tell Jami how you like to be taught"
-        description="Nothing here changes what Jami knows — only how it explains, corrects and checks. Leave anything on its recommended setting and Jami keeps deciding for itself."
+        title="How Jami teaches you"
+        description="Your level, your style, your subject notes. All optional — leave anything and Jami decides."
         aside={
           loading ? null : (
-            <TutorActiveContextSummary
-              activeFolder={null}
-              accountStudyLevel={data?.accountStudyLevel ?? null}
-              activeCount={activeCount}
-            />
+            // Width-capped rather than left to its intrinsic size: the hero's
+            // aside does not shrink, and three chips in a row would take 28rem
+            // out of the headline beside them on a desktop.
+            <div className="w-full lg:w-60">
+              <TutorActiveContextSummary
+                activeFolder={null}
+                accountStudyLevel={studyLevel}
+                accountStudySubjects={studySubjects}
+                activeCount={activeCount}
+              />
+            </div>
           )
         }
       />
 
       {loading ? (
         <>
-          <Skeleton className="h-64 w-full rounded-2xl" />
           <Skeleton className="h-48 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full rounded-2xl" />
         </>
       ) : loadFailed ? (
         <Card padding="lg">
           <SectionHeader
             title="Jami could not load your preferences"
-            description="Nothing has been changed. Try again, and if it keeps failing your existing settings are still in force."
+            description="Nothing has changed. Your existing settings are still in force."
           />
           <div className="mt-5">
             <Button type="button" variant="secondary" onClick={reload}>
@@ -98,18 +105,33 @@ export default function TutorPersonaliseWorkspace() {
         <>
           <Card padding="lg">
             <SectionHeader
-              eyebrow="How Jami helps"
-              title="Five things, and none of them are compulsory"
-              description="Each one applies everywhere — every subject, every notebook, every card. You can always override any of them just by asking in the conversation."
+              eyebrow="Course"
+              title="What you are studying"
+              description="Sets the vocabulary and assumed knowledge Jami works from."
             />
-            <div className="mt-6">
+            <div className="mt-5 max-w-xl">
+              <TutorStudyProfileForm
+                // Remounted whenever a save produces a new level or list, so the
+                // fields restart from it without an effect copying values.
+                key={`${studyLevel ?? "none"}:${studySubjects.join("|")}`}
+                studyLevel={studyLevel}
+                studySubjects={studySubjects}
+                saving={saving}
+                onSave={saveStudyProfile}
+              />
+            </div>
+          </Card>
+
+          <Card padding="lg">
+            <SectionHeader
+              eyebrow="Style"
+              title="How Jami explains things"
+              description="Every one of these has a recommended setting. Change what you care about."
+            />
+            <div className="mt-5">
               <TutorPreferencesForm
-                // Remounted whenever a load or save produces a new document, so
-                // the fields restart from it without an effect copying values.
                 key={preferences.updatedAt}
                 preferences={preferences}
-                studyLevel={data?.accountStudyLevel ?? null}
-                studyLevelSource="account"
                 saving={saving}
                 onSave={savePreferences}
               />
@@ -119,10 +141,10 @@ export default function TutorPersonaliseWorkspace() {
           <Card padding="lg">
             <SectionHeader
               eyebrow="Subject notes"
-              title="What Jami should know about one subject"
-              description="Exam board, the notation your course uses, how you want work marked. Jami reads these whenever you are working inside that folder, and ignores them everywhere else."
+              title="Notes for one folder"
+              description="Exam board, notation, marking style. Used only inside that folder."
             />
-            <div className="mt-6">
+            <div className="mt-5">
               <TutorFolderInstructionsForm
                 key={selectedFolderId}
                 folders={data?.folders ?? []}

@@ -207,6 +207,12 @@ export const MIN_NOTEBOOK_IMAGE_DISPLAY_SIZE = 120;
 
 export type NotebookTextBlockResizeEdge = "top" | "right" | "bottom" | "left";
 
+export type NotebookImageResizeCorner =
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
+
 export function isNotebookType(value: unknown): value is NotebookType {
   return (
     value === "blank" ||
@@ -511,30 +517,66 @@ export function moveNotebookImageRef(
   ])[0]!;
 }
 
+/**
+ * Resize an image by dragging one corner, keeping the opposite corner pinned.
+ *
+ * The aspect ratio is locked, so a drag on any corner reads as one gesture:
+ * whichever axis the pointer commits to further wins, and the other follows.
+ * Dragging the top or left side therefore moves the origin as the box grows,
+ * which is what makes a top-left grip pull the image outwards rather than
+ * shrinking it from the far edge.
+ */
 export function resizeNotebookImageRef(
   image: NotebookImageRef,
   deltaX: number,
-  deltaY: number
+  deltaY: number,
+  corner: NotebookImageResizeCorner = "bottom-right"
 ) {
   const placement = notebookImagePlacement(image);
   const aspectRatio = placement.displayWidth / placement.displayHeight;
-  const requestedWidth = Math.max(
+  const growsRight = corner === "top-right" || corner === "bottom-right";
+  const growsDown = corner === "bottom-left" || corner === "bottom-right";
+  const anchorX = growsRight
+    ? placement.x
+    : placement.x + placement.displayWidth;
+  const anchorY = growsDown
+    ? placement.y
+    : placement.y + placement.displayHeight;
+
+  // Pointer movement towards the anchored corner shrinks the image, so the
+  // grips on the left and top read their axis in reverse.
+  const widthIntent = growsRight ? deltaX : -deltaX;
+  const heightIntent = growsDown ? deltaY : -deltaY;
+  const scaledHeightIntent = heightIntent * aspectRatio;
+  const resizeIntent = Math.abs(widthIntent) >= Math.abs(scaledHeightIntent)
+    ? widthIntent
+    : scaledHeightIntent;
+  const requestedWidth = placement.displayWidth + resizeIntent;
+
+  // Room left on the page, measured outwards from the anchored corner and
+  // expressed as a width so a single clamp covers both axes.
+  const roomForWidth = growsRight
+    ? NOTEBOOK_PAGE_COORDINATE_WIDTH - anchorX
+    : anchorX;
+  const roomForHeight = growsDown
+    ? NOTEBOOK_PAGE_COORDINATE_HEIGHT - anchorY
+    : anchorY;
+  const minWidth = Math.max(
     MIN_NOTEBOOK_IMAGE_DISPLAY_SIZE,
-    placement.displayWidth + Math.max(deltaX, deltaY * aspectRatio)
+    MIN_NOTEBOOK_IMAGE_DISPLAY_SIZE * aspectRatio
   );
-  let displayWidth = Math.min(
-    requestedWidth,
-    NOTEBOOK_PAGE_COORDINATE_WIDTH - placement.x
+  const maxWidth = Math.max(
+    minWidth,
+    Math.min(roomForWidth, roomForHeight * aspectRatio)
   );
-  let displayHeight = displayWidth / aspectRatio;
-  if (placement.y + displayHeight > NOTEBOOK_PAGE_COORDINATE_HEIGHT) {
-    displayHeight = NOTEBOOK_PAGE_COORDINATE_HEIGHT - placement.y;
-    displayWidth = displayHeight * aspectRatio;
-  }
+
+  const displayWidth = Math.min(Math.max(requestedWidth, minWidth), maxWidth);
+  const displayHeight = displayWidth / aspectRatio;
   return normalizeNotebookImageRefs([
     {
       ...image,
-      ...placement,
+      x: growsRight ? anchorX : anchorX - displayWidth,
+      y: growsDown ? anchorY : anchorY - displayHeight,
       displayWidth,
       displayHeight,
     },

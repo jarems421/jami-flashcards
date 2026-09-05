@@ -24,6 +24,14 @@ import {
 type StudyExerciseStageProps = {
   card: Card;
   exercise: ResolvedExercise;
+  /**
+   * The scale a self-graded answer is rated on.
+   *
+   * Simple Study asks the same questions as everything else and then answers
+   * them on two points, because it never moves a schedule and so has nothing
+   * for the middle two of the four to feed.
+   */
+  ratingScale?: "two-point" | "four-point";
   savingRating: CardRating | null;
   /**
    * Commit a rating through the study controller.
@@ -72,6 +80,7 @@ const BLANK = "_____";
 export default function StudyExerciseStage({
   card,
   exercise,
+  ratingScale = "four-point",
   savingRating,
   onCommit,
   onModeAnswered,
@@ -257,7 +266,7 @@ export default function StudyExerciseStage({
                   : "Close enough to be worth your judgement. How well did you actually recall it?"}
               </p>
               <StudyRatingControls
-                scale="four-point"
+                scale={ratingScale}
                 savingRating={savingRating}
                 onRate={(rating) => onCommit(rating, { requeueOnMiss: true })}
               />

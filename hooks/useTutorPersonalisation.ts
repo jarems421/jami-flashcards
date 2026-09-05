@@ -11,8 +11,13 @@ import {
   loadTutorPersonalisation,
   saveFolderTutorInstructions,
   saveTutorPreferences,
+  saveTutorStudyProfile,
   type TutorPersonalisation,
 } from "@/services/ai/tutor-personalisation";
+import type { StudyLevel } from "@/lib/profile/study-level";
+
+/** A stable empty list, so an unloaded panel does not remount its subject form. */
+const EMPTY_SUBJECTS: string[] = [];
 
 export type TutorPersonalisationSavePreferences = Pick<
   TutorPreferences,
@@ -106,6 +111,44 @@ export function useTutorPersonalisation(activeFolderIds?: readonly string[]) {
     if (activeFolderIds?.length !== 1 || !data) return null;
     return data.folders.find((entry) => entry.id === activeFolderIds[0]) ?? null;
   }, [activeFolderIds, data]);
+
+  /*
+   * The level and its subjects, which the Account page used to own.
+   *
+   * Saved on its own rather than folded into `savePreferences`, because it is a
+   * different document -- the user record, not the tutor settings -- and a
+   * student changing their level should not have to press Save on four teaching
+   * choices they did not touch.
+   */
+  const saveStudyProfile = useCallback(
+    async (input: {
+      studyLevel: StudyLevel | null;
+      studySubjects: readonly string[];
+    }) => {
+      setSaving(true);
+      clear();
+      try {
+        const saved = await saveTutorStudyProfile(input);
+        setData((current) =>
+          current
+            ? {
+                ...current,
+                accountStudyLevel: saved.studyLevel,
+                accountStudySubjects: saved.studySubjects,
+              }
+            : current
+        );
+        success("Saved. Jami pitches at this from your next question.");
+        return true;
+      } catch (error) {
+        showThrownError(error, "Jami could not save your study level.");
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [clear, showThrownError, success]
+  );
 
   const savePreferences = useCallback(
     async (input: TutorPersonalisationSavePreferences) => {
@@ -210,6 +253,9 @@ export function useTutorPersonalisation(activeFolderIds?: readonly string[]) {
     reload: () => void load(""),
     savePreferences,
     saveInstructions,
+    saveStudyProfile,
     skipGuide,
+    studyLevel: data?.accountStudyLevel ?? null,
+    studySubjects: data?.accountStudySubjects ?? EMPTY_SUBJECTS,
   };
 }

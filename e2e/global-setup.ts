@@ -20,6 +20,11 @@ import {
   E2E_PHONE_DECK_NAME,
   E2E_FOLDER_ID,
   E2E_GOAL,
+  E2E_IMAGE_ALT,
+  E2E_IMAGE_DATA_URL,
+  E2E_IMAGE_ID,
+  E2E_IMAGE_PAGE_ID,
+  E2E_IMAGE_PLACEMENT,
   E2E_SOURCE,
   E2E_TOPIC,
   E2E_NOTEBOOK_ID,
@@ -91,19 +96,44 @@ export default async function globalSetup() {
       pageStyle: "grid",
       now,
     });
-    const pagePayloads = E2E_PAGE_IDS.map((pageId, index) => ({
-      pageId,
-      payload: buildNotebookPagePayload({
-        notebookId: E2E_NOTEBOOK_ID,
-        folderId: E2E_FOLDER_ID,
-        pageNumber: index + 1,
-        pageType: "blank",
-        pageColor: "white",
-        pageStyle: "grid",
-        status: "blank",
-        now: now + index,
-      }),
-    }));
+    const pagePayloads = [
+      ...E2E_PAGE_IDS.map((pageId, index) => ({
+        pageId,
+        payload: buildNotebookPagePayload({
+          notebookId: E2E_NOTEBOOK_ID,
+          folderId: E2E_FOLDER_ID,
+          pageNumber: index + 1,
+          pageType: "blank",
+          pageColor: "white",
+          pageStyle: "grid",
+          status: "blank",
+          now: now + index,
+        }),
+      })),
+      {
+        pageId: E2E_IMAGE_PAGE_ID,
+        payload: buildNotebookPagePayload({
+          notebookId: E2E_NOTEBOOK_ID,
+          folderId: E2E_FOLDER_ID,
+          pageNumber: E2E_PAGE_IDS.length + 1,
+          pageType: "blank",
+          pageColor: "white",
+          pageStyle: "grid",
+          status: "working",
+          now: now + E2E_PAGE_IDS.length,
+          imageRefs: [
+            {
+              id: E2E_IMAGE_ID,
+              localPreviewUrl: E2E_IMAGE_DATA_URL,
+              width: 1600,
+              height: 900,
+              altText: E2E_IMAGE_ALT,
+              ...E2E_IMAGE_PLACEMENT,
+            },
+          ],
+        }),
+      },
+    ];
 
     await testEnvironment.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
