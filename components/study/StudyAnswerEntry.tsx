@@ -150,8 +150,8 @@ export default function StudyAnswerEntry({
             targetRef={inputRef}
             className={
               multiline
-                ? "absolute bottom-3 right-3"
-                : "absolute right-3 top-1/2 -translate-y-1/2"
+                ? "absolute bottom-2.5 right-2.5"
+                : "absolute right-2.5 top-1/2 -translate-y-1/2"
             }
           />
         </div>

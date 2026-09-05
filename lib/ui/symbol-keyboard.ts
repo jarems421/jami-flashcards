@@ -47,8 +47,6 @@ export type SymbolKey = {
   insert: string;
   /** Announced by screen readers and shown on hover. */
   name: string;
-  /** Switch the field into this index mode once the key has been typed. */
-  then?: IndexMode;
   /** Keys that do something cleverer than typing their own text. */
   action?: "fraction";
 };
@@ -167,8 +165,42 @@ const SETS: RawKey[] = [
   c("|", "Such that"),
 ];
 
+/**
+ * Powers and indices as keys that type themselves.
+ *
+ * These were deliberately absent, because two keys used to put the field into a
+ * mode instead: press the standard-form key and the *next* thing you typed came
+ * out raised. That is a Shift key, and it is invisible -- press it and nothing
+ * happens, which is indistinguishable from a broken button. A student pressing
+ * a key labelled squared expects a squared sign.
+ *
+ * Superscripts first because powers are far more common than chemical
+ * subscripts, and the minus sits with them because a negative power is where a
+ * student most often needs one they cannot type.
+ */
+const INDICES: RawKey[] = [
+  c("²", "Squared"),
+  c("³", "Cubed"),
+  c("⁻", "Negative power"),
+  c("ⁿ", "To the power n"),
+  c("⁰", "To the power zero"),
+  c("¹", "To the power one"),
+  c("⁴", "To the power four"),
+  c("⁵", "To the power five"),
+  c("⁶", "To the power six"),
+  c("⁷", "To the power seven"),
+  c("⁸", "To the power eight"),
+  c("⁹", "To the power nine"),
+  c("₁", "Subscript one"),
+  c("₂", "Subscript two"),
+  c("₃", "Subscript three"),
+  c("₄", "Subscript four"),
+];
+
+
 export const SYMBOL_GROUPS: SymbolGroup[] = [
   group("maths", "Maths", MATHS),
+  group("indices", "Powers", INDICES),
   group("symbols", "Symbols", GREEK),
   group("science", "Science", SCIENCE),
   group("sets", "Sets", SETS),
@@ -177,9 +209,15 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
 /**
  * The bottom row, present whatever tab is showing.
  *
- * Two of these are modes rather than characters, which is why they sit apart
- * from the groups: like Shift, they change what the next keystroke does instead
- * of typing something themselves.
+ * Both type something the moment they are pressed. They used to leave the field
+ * in an index mode afterwards, so the next character a student typed silently
+ * came out raised or lowered -- a hidden Shift that made ordinary typing behave
+ * unpredictably right after a press. The Powers group replaces it: to write a
+ * power now you press the power you want.
+ *
+ * The fraction key still reads back what has just been typed, which is the one
+ * piece of cleverness worth keeping: type 3, press it, and the 3 lifts into
+ * place as the numerator.
  */
 export const INDEX_KEYS: SymbolKey[] = [
   {
@@ -188,14 +226,12 @@ export const INDEX_KEYS: SymbolKey[] = [
     insert: FRACTION_SLASH,
     name: "Fraction",
     action: "fraction",
-    then: "sub",
   },
   {
     id: "index:standard-form",
     label: "×10ⁿ",
     insert: "×10",
     name: "Standard form",
-    then: "super",
   },
 ];
 

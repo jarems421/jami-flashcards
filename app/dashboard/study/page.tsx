@@ -1479,14 +1479,32 @@ export default function StudyPage() {
             },
           ]
         : [
-            { label: "Nudge me", prompt: "Nudge me towards this without giving it away." },
+            /*
+             * The two things a stuck student actually wants, in the one place
+             * they already go when stuck.
+             *
+             * "Nudge me" and "Quiz my thinking" were Jami's own phrasing for
+             * roughly these, sitting a drawer away from the exercise's own
+             * "Give me a hint" and "I don't know" -- two vocabularies for the
+             * same moment, split across two surfaces. These are the words the
+             * card already uses.
+             *
+             * The exercise keeps its own buttons: those grade the attempt, and
+             * skipping a card should not mean opening a drawer to do it.
+             */
+            {
+              label: "Give me a hint",
+              prompt:
+                "Give me one hint towards this without telling me the answer.",
+            },
+            {
+              label: "I don't know",
+              prompt:
+                "I'm stuck on this. Walk me through how to work it out, step by step.",
+            },
             {
               label: "Break it down",
               prompt: "What is this question actually asking? Break it down for me.",
-            },
-            {
-              label: "Quiz my thinking",
-              prompt: "Ask me one short question that helps me work this out myself.",
             },
           ],
     [flipped]

@@ -35,9 +35,10 @@ beforeEach(() => {
 });
 
 describe("the key set", () => {
-  it("offers four groups and no empty one", () => {
+  it("offers five groups and no empty one", () => {
     expect(SYMBOL_GROUPS.map((entry) => entry.label)).toEqual([
       "Maths",
+      "Powers",
       "Symbols",
       "Science",
       "Sets",
@@ -61,11 +62,15 @@ describe("the key set", () => {
   it("stays short enough to scan", () => {
     // Leaner than the set it replaced, which ran to 132 keys. Everything here
     // has to be something a GCSE or A-level student writes and cannot type.
+    //
+    // Raised from 80 when the Powers tab arrived. A complete one is worth its
+    // sixteen keys: a power tab that cannot write 10 to the eight is not one,
+    // and these replaced a hidden mode that typed nothing when pressed.
     const total = SYMBOL_GROUPS.reduce(
       (sum, entry) => sum + entry.keys.length,
       0
     );
-    expect(total).toBeLessThanOrEqual(80);
+    expect(total).toBeLessThanOrEqual(90);
     for (const entry of SYMBOL_GROUPS) {
       expect(
         entry.keys.length,
@@ -88,25 +93,44 @@ describe("the key set", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("carries no preset fractions or index digits", () => {
+  it("offers powers and subscripts as keys that type themselves", () => {
     const labels = ALL_SYMBOL_KEYS.map((entry) => entry.label);
-    for (const dropped of ["½", "⅓", "¼", "¾", "²", "³", "₂", "₃", "₄"]) {
-      expect(labels, `${dropped} should come from a key or mode`).not.toContain(
-        dropped
+    for (const wanted of ["²", "³", "⁻", "ⁿ", "₂", "₃", "₄"]) {
+      expect(labels, `${wanted} should be a key a student can press`).toContain(
+        wanted
       );
     }
   });
 
+  it("still carries no preset fractions", () => {
+    // The fraction key reads back what was typed, which beats a fixed set that
+    // only covers halves and quarters.
+    const labels = ALL_SYMBOL_KEYS.map((entry) => entry.label);
+    for (const dropped of ["½", "⅓", "¼", "¾"]) {
+      expect(labels).not.toContain(dropped);
+    }
+  });
+
+  /*
+   * The whole point of the revamp. Two keys used to arm an index mode instead
+   * of typing, so pressing one did nothing visible and the *next* character
+   * came out raised -- a hidden Shift, indistinguishable from a broken button.
+   */
+  it("types something on every press, and arms no mode", () => {
+    for (const entry of ALL_SYMBOL_KEYS) {
+      expect(entry).not.toHaveProperty("then");
+      const types = entry.insert.length > 0 || entry.action === "fraction";
+      expect(types, `${entry.name} must put something in the field`).toBe(true);
+    }
+  });
+
   it("keeps the general fraction key", () => {
-    const fraction = key("Fraction");
-    expect(fraction.action).toBe("fraction");
-    // Subscript is armed afterwards so the denominator arrives lowered.
-    expect(fraction.then).toBe("sub");
+    expect(key("Fraction").action).toBe("fraction");
   });
 
   it("keeps standard form, which nobody can type", () => {
     expect(INDEX_KEYS.map((entry) => entry.name)).toContain("Standard form");
-    expect(key("Standard form").then).toBe("super");
+    expect(key("Standard form").insert).toBe("×10");
   });
 });
 
