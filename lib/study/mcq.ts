@@ -20,6 +20,22 @@ const REQUIRED_DISTRACTORS = MCQ_OPTION_COUNT - 1;
 const MAX_OPTION_LENGTH = 160;
 
 /**
+ * How far the correct answer's length may stray from the wrong ones.
+ *
+ * The single loudest tell in a multiple-choice question is length. When the
+ * real answer is the full sentence off the back of the card and the three wrong
+ * ones are the phrases a model wrote, the question is answerable without
+ * reading it: pick the long one. It is answerable the other way too -- a
+ * two-word answer sat under three written-out clauses is just as obvious.
+ *
+ * So the correct answer has to sit inside this band of at least one distractor,
+ * measured in words. A question where it is an outlier against all three is not
+ * a hard question with a formatting problem, it is a question that tests
+ * nothing, and it is refused rather than shown.
+ */
+const OPTION_LENGTH_BAND = { min: 0.5, max: 2 };
+
+/**
  * A small deterministic generator.
  *
  * Option order has to survive a refresh, so it is derived from the session seed
@@ -93,6 +109,60 @@ function numericDistractors(answer: string) {
   return distractors;
 }
 
+function wordCount(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * How much an option *looks* like the answer, ignoring what it says.
+ *
+ * Nothing here reads meaning -- that is the model's job during preparation, and
+ * the student's when they write their own. This measures only the surface tells
+ * a student uses to skip the question: length, whether it is written as a
+ * sentence, whether it is capitalised like a term, whether it leads with a
+ * number. Lower is a better match.
+ *
+ * It exists because preparation returns five or six distractors and a question
+ * only needs three. Taking the first three wastes the choice; taking the three
+ * that wear the same clothes as the answer is what makes the four options
+ * indistinguishable until you actually know the material.
+ */
+function shapeDistance(answer: string, option: string) {
+  const answerWords = wordCount(answer);
+  const optionWords = wordCount(option);
+  // Ratio rather than difference: two words against four is a real mismatch,
+  // twenty against twenty-two is not.
+  const lengthRatio =
+    Math.max(answerWords, optionWords) / Math.max(1, Math.min(answerWords, optionWords));
+
+  let distance = (lengthRatio - 1) * 4;
+  const endsSentence = (text: string) => /[.!?]$/.test(text.trim());
+  if (endsSentence(answer) !== endsSentence(option)) distance += 1.5;
+  const startsUpper = (text: string) => /^[A-Z]/.test(text.trim());
+  if (startsUpper(answer) !== startsUpper(option)) distance += 1;
+  const startsNumber = (text: string) => /^[+-]?\d/.test(text.trim());
+  if (startsNumber(answer) !== startsNumber(option)) distance += 2;
+  return distance;
+}
+
+/**
+ * Whether the right answer hides among these three, or stands out from them.
+ *
+ * Only length is checked, because length is the tell that survives everything
+ * else: a student who cannot read the subject can still count words. One
+ * distractor in the same band is enough -- the question is guessable when the
+ * answer is an outlier against *all* of them, not when it happens to be the
+ * longest.
+ */
+function answerBlendsIn(answer: string, distractors: string[]) {
+  const answerWords = wordCount(answer);
+  if (answerWords === 0) return false;
+  return distractors.some((distractor) => {
+    const ratio = wordCount(distractor) / answerWords;
+    return ratio >= OPTION_LENGTH_BAND.min && ratio <= OPTION_LENGTH_BAND.max;
+  });
+}
+
 /**
  * Build a multiple-choice question, or refuse.
  *
@@ -108,7 +178,9 @@ function numericDistractors(answer: string) {
  * different question into one.
  *
  * So a card with nothing prepared and a non-numeric answer gets no question at
- * all, and is asked another way instead.
+ * all, and is asked another way instead. Nor does having three wrong options
+ * settle it: they have to be three the answer can hide among, or the question
+ * is refused here and the card is asked a way that cannot be guessed.
  */
 export function buildMultipleChoiceQuestion(input: {
   card: Card;
@@ -150,7 +222,24 @@ export function buildMultipleChoiceQuestion(input: {
     (input.seed ?? 0) ^ seedFrom(card.id + getCardContentHash(card))
   );
   const correctOptionId = "opt-0";
-  const chosen = distractors.slice(0, REQUIRED_DISTRACTORS);
+  /*
+   * Preparation is asked for five or six so the weakest can be dropped, and
+   * this is where that choice is spent. Ties break on the original order, which
+   * is the order they were written in: author distractors first, then the
+   * model's, so a student's own wrong answers keep their priority.
+   */
+  const chosen = distractors
+    .map((text, position) => ({ text, position }))
+    .sort(
+      (left, right) =>
+        shapeDistance(answerText, left.text) - shapeDistance(answerText, right.text) ||
+        left.position - right.position
+    )
+    .slice(0, REQUIRED_DISTRACTORS)
+    .map((entry) => entry.text);
+
+  if (!answerBlendsIn(answerText, chosen)) return null;
+
   const options = shuffle(
     [
       { id: correctOptionId, text: answerText },

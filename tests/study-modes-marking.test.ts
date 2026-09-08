@@ -12,12 +12,15 @@ import {
 } from "@/lib/study/gap-fill";
 import {
   buildDeterministicExercise,
+  canCarryModeEventually,
   getGapFillEligibility,
   getModeEligibility,
   getTypeAnswerEligibility,
   needsStudyAssetPreparation,
+  resolveExerciseMode,
   resolveSmartMixMode,
 } from "@/lib/study/mode-eligibility";
+import { buildMultipleChoiceQuestion } from "@/lib/study/mcq";
 import {
   resolveAttemptOutcome,
   type StudyMode,
@@ -359,6 +362,128 @@ describe("mode eligibility", () => {
       reason: "needs-preparation",
     });
   });
+
+  /*
+   * The difference between "not yet" and "never".
+   *
+   * Preparation waits for the first few cards and reads the rest behind the
+   * student, so at the moment a session is built almost every card in a fresh
+   * queue still has no distractors. Judging that the same way as an answer that
+   * is a formula emptied the queue, which is why a pinned Multiple Choice
+   * session worked on the second run of a deck and never on the first.
+   */
+  it("keeps an unprepared card in a multiple-choice session", () => {
+    expect(canCarryModeEventually(card(), "multiple-choice")).toBe(true);
+  });
+
+  it("still drops a card that can never carry the mode", () => {
+    expect(
+      canCarryModeEventually(card({ back: "Paris" }), "gap-fill")
+    ).toBe(false);
+    expect(
+      canCarryModeEventually(
+        card({ studySettings: { disabledModes: ["multiple-choice"] } }),
+        "multiple-choice"
+      )
+    ).toBe(false);
+  });
+
+  it("asks an unprepared card the best way it can be asked, not as Classic", () => {
+    const mode = resolveExerciseMode(
+      card(),
+      { kind: "fixed", mode: "multiple-choice" },
+      0
+    );
+    expect(mode).not.toBeNull();
+    expect(mode).not.toBe("classic");
+  });
+});
+
+/*
+ * The wrong options are the question. A set a student can pass by picking the
+ * longest, the shortest, or the only full sentence tests nothing at all, and it
+ * is the failure this deck kept producing: a definition off the back of a card
+ * sat beside three short phrases a model wrote.
+ */
+describe("multiple choice that cannot be guessed on shape", () => {
+  const SENTENCE = "The immediate energy carrier used by every cell.";
+
+  it("refuses a question whose answer is the only full sentence", () => {
+    const question = buildMultipleChoiceQuestion({
+      card: card({
+        back: SENTENCE,
+        studySettings: {
+          mcqDistractors: ["The ribosome", "The nucleus", "The lysosome"],
+        },
+      }),
+    });
+    expect(question).toBeNull();
+  });
+
+  it("refuses a question whose answer is the only short one", () => {
+    const question = buildMultipleChoiceQuestion({
+      card: card({
+        back: "Mitochondria",
+        studySettings: {
+          mcqDistractors: [
+            "The organelle where proteins are folded and packaged for export.",
+            "The structure that holds the cell's genetic material safely.",
+            "The membrane system that transports lipids around the cell.",
+          ],
+        },
+      }),
+    });
+    expect(question).toBeNull();
+  });
+
+  it("builds when the wrong options are written to the same shape", () => {
+    const question = buildMultipleChoiceQuestion({
+      card: card({
+        back: SENTENCE,
+        studySettings: {
+          mcqDistractors: [
+            "The long-term energy store held in the liver.",
+            "The molecule that carries oxygen around the body.",
+            "The template every protein in the cell is read from.",
+          ],
+        },
+      }),
+    });
+    expect(question?.options).toHaveLength(4);
+  });
+
+  /*
+   * Preparation is asked for five or six so the weakest can be dropped. Taking
+   * the first three wasted that choice; the three that match the answer's shape
+   * are what make the four options indistinguishable.
+   */
+  it("spends the spare distractors on the ones that match the answer", () => {
+    const question = buildMultipleChoiceQuestion({
+      card: card({
+        back: SENTENCE,
+        studySettings: {
+          mcqDistractors: [
+            "Glucose",
+            "The nucleus",
+            "The long-term energy store held in the liver.",
+            "The molecule that carries oxygen around the body.",
+            "The template every protein in the cell is read from.",
+          ],
+        },
+      }),
+    });
+    const texts = question?.options.map((option) => option.text) ?? [];
+    expect(texts).toHaveLength(4);
+    expect(texts).not.toContain("Glucose");
+    expect(texts).not.toContain("The nucleus");
+  });
+
+  it("still builds a numeric question, whose options match by construction", () => {
+    const question = buildMultipleChoiceQuestion({
+      card: card({ front: "Gravity at sea level?", back: "9.8 m/s^2" }),
+    });
+    expect(question?.options).toHaveLength(4);
+  });
 });
 
 describe("Smart Mix", () => {
@@ -377,14 +502,70 @@ describe("Smart Mix", () => {
 
   it("brings multiple choice in once the card has been prepared", () => {
     const subject = card({
+      back: "The immediate energy carrier used by every cell.",
       studySettings: {
-        mcqDistractors: ["The ribosome", "The nucleus", "The lysosome"],
+        // Written to the same shape as the answer. Three two-word organelles
+        // beside a full sentence is the question the length guard refuses.
+        mcqDistractors: [
+          "The long-term energy store held in the liver.",
+          "The molecule that carries oxygen around the body.",
+          "The template every protein in the cell is read from.",
+        ],
       },
     });
     const modes = Array.from({ length: 8 }, (_, position) =>
       resolveSmartMixMode(subject, position)
     );
     expect(modes).toContain("multiple-choice");
+  });
+
+  it("asks a definition by its key word rather than by retyping it", () => {
+    const modes = new Set(
+      [0, 1, 2, 3].map((position) =>
+        resolveSmartMixMode(
+          card({ back: "The immediate energy carrier used by every cell." }),
+          position
+        )
+      )
+    );
+    expect(modes).toContain("gap-fill");
+  });
+
+  it("never gaps a number, and offers it as a choice instead", () => {
+    const subject = card({
+      front: "What is the acceleration due to gravity at sea level?",
+      back: "9.8 m/s^2",
+    });
+    const modes = new Set(
+      [0, 1, 2, 3].map((position) => resolveSmartMixMode(subject, position))
+    );
+    expect(modes).not.toContain("gap-fill");
+    expect(modes).toContain("multiple-choice");
+  });
+
+  it("stops asking a card to be typed once the student keeps missing it", () => {
+    const back = "The immediate energy carrier used by every cell.";
+    const known = new Set(
+      [0, 1, 2, 3].map((position) =>
+        resolveSmartMixMode(card({ back, fsrsState: 2 }), position)
+      )
+    );
+    const struggling = new Set(
+      [0, 1, 2, 3].map((position) =>
+        resolveSmartMixMode(card({ back, fsrsState: 3, lapses: 3 }), position)
+      )
+    );
+    expect(known).toContain("type-answer");
+    expect(struggling).not.toContain("type-answer");
+  });
+
+  it("picks different modes for different kinds of answer", () => {
+    const front = "Question?";
+    const chosen = [
+      card({ front, back: "9.8 m/s^2" }),
+      card({ front, back: "The immediate energy carrier used by every cell." }),
+    ].map((subject) => resolveSmartMixMode(subject, 0));
+    expect(new Set(chosen).size).toBe(2);
   });
 
   it("falls back to Classic when nothing else can be built", () => {
@@ -463,12 +644,33 @@ describe("deciding what is worth preparing", () => {
   it("stops sending a card once its options have been written", () => {
     const subject = card({
       studySettings: {
-        mcqDistractors: ["The ribosome", "The nucleus", "The lysosome"],
+        mcqDistractors: [
+          "The long-term energy store held in the liver.",
+          "The molecule that carries oxygen around the body.",
+          "The template every protein in the cell is read from.",
+        ],
       },
     });
     expect(
       needsStudyAssetPreparation(subject, fixed("multiple-choice"))
     ).toBe(false);
+  });
+
+  /*
+   * Written options that make a guessable question are not preparation done.
+   * Three two-word organelles beside a full-sentence answer build nothing, so
+   * the card still wants reading -- which is the honest answer, and the one
+   * that gets the student a question worth asking.
+   */
+  it("still sends a card whose written options give the answer away", () => {
+    const subject = card({
+      studySettings: {
+        mcqDistractors: ["The ribosome", "The nucleus", "The lysosome"],
+      },
+    });
+    expect(
+      needsStudyAssetPreparation(subject, fixed("multiple-choice"))
+    ).toBe(true);
   });
 
   it("sends a long answer for Gap Fill but not a one-word one", () => {

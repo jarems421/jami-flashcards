@@ -575,17 +575,64 @@ describe("the answer-first modes", () => {
 
   /*
    * Multiple choice was practice-only while its wrong options came from
-   * whatever else was in the deck. These two say what replaced that: the
-   * question is not offered at all unless the options were written for the
-   * card, and when it is offered it counts like every other mode.
+   * whatever else was in the deck. What replaced that is that the question is
+   * not offered unless the options were written for the card -- and when it is
+   * offered it counts like every other mode.
+   *
+   * That rule used to be applied at the door, against cards preparation had not
+   * reached yet. Preparation waits for the first few and reads the rest behind
+   * the student, so on a fresh deck that emptied the queue and the mode only
+   * ever worked on the second run. The session opens instead, and a card
+   * reached before its own options land is asked the best way it can be.
    */
-  it("refuses a Multiple Choice session on a deck nobody has prepared", async () => {
+  it("opens a Multiple Choice session on a deck nobody has prepared", async () => {
     await selectMode("Multiple Choice");
     await click("Start Daily Review");
-    expect(currentCardId()).toBeUndefined();
-    expect(document.body.textContent).toContain(
+    expect(currentCardId()).toBe("card-1");
+    expect(document.body.textContent).not.toContain(
       "None of these cards can be studied that way yet"
     );
+  });
+
+  /*
+   * Preparation runs behind the student and merges what it finds into the
+   * session, which changes what a card is eligible for. The exercise stage is
+   * keyed on the mode, so recomputing it on every render meant a card could
+   * change question underneath somebody halfway through answering it -- a gap
+   * fill they were typing into remounting as a multiple choice, taking the
+   * answer with it. The question is fixed for as long as the card is on screen.
+   */
+  it("does not change the question under a student when late assets land", async () => {
+    const distractor = "The main store of genetic information.";
+    /*
+     * Nothing at session start, prepared by the time the queue is read again:
+     * exactly the order a student hits on a deck nobody has studied. Two empty
+     * reads because preparation makes both of them -- what is already cached,
+     * then what its own head start just wrote -- and the session's own read of
+     * the queue is the third.
+     */
+    vi.mocked(loadStudyAssets)
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+      .mockResolvedValue({
+        "card-1": preparedAsset("card-1", [
+          distractor,
+          "Where lipids are packaged for export.",
+          "The site of photosynthesis in a plant.",
+        ]),
+      });
+
+    await selectMode("Multiple Choice");
+    await click("Start Daily Review");
+    expect(currentCardId()).toBe("card-1");
+    // Asked some other way, because its own options had not arrived yet.
+    expect(document.body.textContent).not.toContain(distractor);
+
+    // The session re-reads its assets once the queue is set, which is where the
+    // swap used to happen.
+    await settle();
+    expect(currentCardId()).toBe("card-1");
+    expect(document.body.textContent).not.toContain(distractor);
   });
 
   it("completes a due card once Jami has written the wrong answers", async () => {

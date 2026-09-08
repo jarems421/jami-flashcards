@@ -48,12 +48,13 @@ import {
 } from "@/lib/study/study-mode-preference";
 import {
   getCardContentHash,
+  type ResolvedExercise,
   type StudyMode,
   type StudyModePolicy,
 } from "@/lib/study/study-modes";
 import {
   buildDeterministicExercise,
-  getModeEligibility,
+  canCarryModeEventually,
   resolveExerciseMode,
 } from "@/lib/study/mode-eligibility";
 import { buildSimpleStudyQueue } from "@/lib/study/simple-study";
@@ -764,16 +765,24 @@ export default function StudyPage() {
 
         const now = Date.now();
 
-        // A fixed mode never quietly degrades. Cards that cannot carry it are
-        // dropped here and the student is told how many, rather than finding a
-        // shorter queue than they asked for, or a Classic card in the middle of a
-        // typing session. Judged after preparation, because that is what decides
-        // whether a card can carry multiple choice at all.
+        /*
+         * A fixed mode never quietly degrades: cards that cannot carry it are
+         * dropped here and the student is told how many, rather than finding a
+         * shorter queue than they asked for, or a Classic card in the middle of
+         * a typing session.
+         *
+         * "Cannot carry it" has to mean *ever*, not *yet*. Preparation waits
+         * for the first few cards only, so at this line almost every card in a
+         * fresh queue is still un-prepared -- and testing plain eligibility
+         * dropped all of them, which is why Multiple Choice worked on the
+         * second run of a deck and never the first. The rest are read behind
+         * the student, and one reached before its own assets land is asked the
+         * best way it can be asked instead.
+         */
         const eligibleCards =
           studyModesEnabled && modePolicy.kind === "fixed"
-            ? nextCards.filter(
-                (card) =>
-                  getModeEligibility(asAsked(card), modePolicy.mode, { seed }).eligible
+            ? nextCards.filter((card) =>
+                canCarryModeEventually(asAsked(card), modePolicy.mode, { seed })
               )
             : nextCards;
 
@@ -1165,30 +1174,6 @@ export default function StudyPage() {
       : { ...current, studySettings: settings };
   }, [current, studyAssets]);
 
-  const currentExercise = useMemo(() => {
-    const current = preparedCurrent;
-    if (!current || !sessionKind) return null;
-    // Classic falls through to the flip card below rather than through the
-    // exercise stage. Simple Study runs the modes too: what makes it Simple is
-    // that it answers on two points and never touches a schedule, which is a
-    // property of the rating rather than of the question.
-    if (!studyModesEnabled) return null;
-    const context = { seed: sessionSeedRef.current };
-    const mode = resolveExerciseMode(current, modePolicy, index, context);
-    if (!mode || mode === "classic") return null;
-    return buildDeterministicExercise(
-      current,
-      mode,
-      getCardContentHash(current),
-      context
-    );
-  }, [
-    index,
-    modePolicy,
-    preparedCurrent,
-    sessionKind,
-    studyModesEnabled,
-  ]);
 
   const totalCards = sessionCards.length;
   const remainingCards = current ? totalCards - index : 0;
@@ -1397,6 +1382,63 @@ export default function StudyPage() {
     notifySuccess: success,
     notifyError: showError,
   });
+
+  /*
+   * The question a card is asked, fixed for as long as it is on screen.
+   *
+   * Preparation runs behind the student and merges assets in as they land,
+   * which changes what a card is eligible for. Recomputing on every render
+   * therefore let a card change mode underneath somebody halfway through
+   * answering it: the stage below is keyed on the mode, so a gap fill they were
+   * typing into would remount as a multiple choice and take the answer with it.
+   *
+   * So the exercise is resolved once per presentation and held. The card itself
+   * is not pinned -- `preparedCurrent` keeps flowing to the stage, so aliases
+   * that arrive late still improve the marking of the question already asked.
+   */
+  const pinnedExerciseRef = useRef<{
+    key: string;
+    exercise: ResolvedExercise | null;
+  } | null>(null);
+
+  const currentExercise = useMemo(() => {
+    const current = preparedCurrent;
+    if (!current || !sessionKind) return null;
+    // Classic falls through to the flip card below rather than through the
+    // exercise stage. Simple Study runs the modes too: what makes it Simple is
+    // that it answers on two points and never touches a schedule, which is a
+    // property of the rating rather than of the question.
+    if (!studyModesEnabled) return null;
+
+    // Presentation is in the key so a card sent to the back of the queue comes
+    // round as a genuinely fresh question rather than the one just answered.
+    const key = `${current.id}:${index}:${presentation}:${modePolicy.kind}:${
+      modePolicy.kind === "fixed" ? modePolicy.mode : ""
+    }`;
+    const pinned = pinnedExerciseRef.current;
+    if (pinned?.key === key) return pinned.exercise;
+
+    const context = { seed: sessionSeedRef.current };
+    const mode = resolveExerciseMode(current, modePolicy, index, context);
+    const exercise =
+      !mode || mode === "classic"
+        ? null
+        : buildDeterministicExercise(
+            current,
+            mode,
+            getCardContentHash(current),
+            context
+          );
+    pinnedExerciseRef.current = { key, exercise };
+    return exercise;
+  }, [
+    index,
+    modePolicy,
+    preparedCurrent,
+    presentation,
+    sessionKind,
+    studyModesEnabled,
+  ]);
 
   // Read once per session rather than per card: the whole queue's assets are a
   // single small read, and doing it per card would put a round trip between
