@@ -74,10 +74,31 @@ import {
 import { retrieveSourceChunks } from "@/services/ai/source-index.server";
 
 export const runtime = "nodejs";
+/**
+ * The platform's budget, which has to be at least the one below.
+ *
+ * Without this the function got the account default -- ten to fifteen seconds --
+ * while the route below planned for fifty, so the platform killed the function
+ * mid-stream on any answer that took longer than the shortest ones. The student
+ * saw the reply stop partway and the client, never having received the terminal
+ * event, reported a timeout. Every other AI route here already declares one.
+ */
+export const maxDuration = 60;
 
 /** One attempt, and the whole call including a fall back to the second model. */
 const REQUEST_TIMEOUT_MS = 30_000;
 const REQUEST_DEADLINE_MS = 50_000;
+/**
+ * The answer's reserved share of the deadline.
+ *
+ * Everything before the answer -- reading a document, choosing a route,
+ * researching, asking for a second opinion -- is optional work that improves an
+ * answer. Their timeouts add up to more than the whole deadline, so on the
+ * requests that ran several of them the answer itself was reached with nothing
+ * left and failed instantly on a deadline the optional work had spent. They get
+ * a deadline of their own now, and the answer keeps the rest.
+ */
+const ANSWER_RESERVE_MS = REQUEST_TIMEOUT_MS;
 const MAX_COMBINED_SOURCE_BYTES = 30 * 1024 * 1024;
 /**
  * Above this, a request is worth counting before it is sent. Below it, the
@@ -271,6 +292,8 @@ export async function POST(request: NextRequest) {
   // Captured here so the refund below keeps the narrowing this check performed.
   const budgetGrant = budgetDecision.grant;
   const deadlineAt = startedAt + REQUEST_DEADLINE_MS;
+  // Optional pre-answer work stops here, whatever its own timeout says.
+  const preAnswerDeadlineAt = deadlineAt - ANSWER_RESERVE_MS;
 
   /*
    * Stops the work when the reader goes away.
@@ -349,7 +372,7 @@ export async function POST(request: NextRequest) {
               reasoningEffort: resolved.reasoningEffort,
               role: "documentVision",
               timeoutMs: 24_000,
-              deadlineAt,
+              deadlineAt: preAnswerDeadlineAt,
               signal: cancellation.signal,
               generationConfig: {
                 temperature: 0.1,
@@ -441,14 +464,28 @@ export async function POST(request: NextRequest) {
     ? sanitizeTutorResearchQuery(parsedRequest.message) ??
       (researchUrls.length > 0 ? "official course source" : null)
     : null;
-  const webResearch = sanitizedResearchQuery
-    ? await generateGroundedResearch({
-        sanitizedQuery: sanitizedResearchQuery,
-        ...(researchUrls.length > 0 ? { urls: researchUrls } : {}),
-        timeoutMs: 22_000,
-        signal: cancellation.signal,
-      })
-    : ({ ok: false, reason: "invalid_query" } as const);
+  /*
+   * Research is the one call that cannot be told a deadline, so it is given the
+   * time that is left instead. It asked for twenty-two seconds regardless of
+   * how much of the request had already been spent, which on a slow read left
+   * the answer to start after its own deadline had passed and fail at once.
+   */
+  const researchTimeoutMs = Math.min(
+    22_000,
+    preAnswerDeadlineAt - Date.now()
+  );
+  const webResearch = !sanitizedResearchQuery
+    ? ({ ok: false, reason: "invalid_query" } as const)
+    : researchTimeoutMs <= 0
+      // Reported as its own reason rather than folded into the query check, so
+      // the log says "there was no time left" instead of blaming the sanitiser.
+      ? ({ ok: false, reason: "unavailable" } as const)
+      : await generateGroundedResearch({
+          sanitizedQuery: sanitizedResearchQuery,
+          ...(researchUrls.length > 0 ? { urls: researchUrls } : {}),
+          timeoutMs: researchTimeoutMs,
+          signal: cancellation.signal,
+        });
   if (needsWebResearch && !webResearch.ok) {
     log.warn("research.unavailable", { reason: webResearch.reason });
   }
@@ -626,7 +663,7 @@ ${responseGuidance.instruction}`;
           role: "worker",
           routeReason: "routing_preflight",
           timeoutMs: 7_000,
-          deadlineAt,
+          deadlineAt: preAnswerDeadlineAt,
           signal: cancellation.signal,
           generationConfig: {
             temperature: 0,
@@ -711,7 +748,7 @@ ${responseGuidance.instruction}`;
         role: "juror",
         routeReason: "second_correction",
         timeoutMs: 18_000,
-        deadlineAt,
+        deadlineAt: preAnswerDeadlineAt,
         signal: cancellation.signal,
         generationConfig: { temperature: 0.1, maxOutputTokens: 2_000 },
         request: {
