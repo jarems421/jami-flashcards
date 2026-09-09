@@ -14,6 +14,8 @@ import type { StudyLevel } from "@/lib/profile/study-level";
 import {
   findQuestionStarts,
   readPrintedTariff,
+  readPrintedTariffs,
+  schemeCoversQuestion,
   regionsForQuestion,
   type PdfPageText,
   type QuestionRegion,
@@ -342,6 +344,10 @@ ${SCHEME_RULES}` },
   // Boundaries and tariffs come off the paper itself, not from the model.
   const paperPages = await readPageText(paperFile.bytes);
   const questionStarts = findQuestionStarts(paperPages);
+  const paperText = paperPages
+    .map((page) => page.items.map((item) => item.text).join(" "))
+    .join(" ");
+  const printedTariffs = readPrintedTariffs(paperText);
   const schemeText = (await readPageText(schemeFile.bytes))
     .map((page) => page.items.map((item) => item.text).join(" "))
     .join(" ");
@@ -372,11 +378,14 @@ ${SCHEME_RULES}` },
     const regions = rootLabel
       ? regionsForQuestion({ label: rootLabel, starts: questionStarts, pages: paperPages })
       : [];
-    const printedTariff = regions.length ? readPrintedTariff(textInRegions(paperPages, regions)) : null;
+    // Prefer the tariff that names its own question; fall back to scanning
+    // the question's region for a bare bracketed one.
+    const printedTariff =
+      printedTariffs.get(rootLabel) ??
+      (regions.length ? readPrintedTariff(textInRegions(paperPages, regions)) : null);
     const labelFoundOnPaper = questionStarts.some((start) => start.label === rootLabel);
     // The scheme must actually mention this question, in the scheme document.
-    const schemeMentionsLabel = rootLabel.length > 0 &&
-      new RegExp(`(^|\s)${rootLabel}\s*[.()a-z]`, "i").test(schemeText);
+    const schemeMentionsLabel = schemeCoversQuestion(schemeText, rootLabel);
     const schemeMarkTotal = markSchemeItem ? schemeCriteria(markSchemeItem).reduce((sum, c) => sum + c.marks, 0) : 0;
     const page = Math.round(Number(item.questionPage));
     const issues = [

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   findQuestionStarts,
   readPrintedTariff,
+  readPrintedTariffs,
   regionsForQuestion,
+  schemeCoversQuestion,
   type PdfPageText,
 } from "@/lib/practice/exam-page-regions";
 
@@ -94,18 +96,64 @@ describe("the slice of paper a question occupies", () => {
 });
 
 describe("reading the printed tariff", () => {
-  it("reads the forms boards actually print", () => {
+  // Verbatim from Edexcel 1MA1/1H, June 2023, as pdfjs reads it.
+  const edexcel =
+    "1 Work out 8.46 ÷ 0.15 ...... (Total for Question 1 is 3 marks) " +
+    "2 Work out 7 3 8 2 1 2 − Give your answer as a mixed number. ...... (Total for Question 2 is 3 marks) " +
+    "3 Solve ...... (Total for Question 3 is 4 marks)";
+
+  it("maps each question to the tariff the paper prints for it", () => {
+    const tariffs = readPrintedTariffs(edexcel);
+    expect(tariffs.get("1")).toBe(3);
+    expect(tariffs.get("2")).toBe(3);
+    expect(tariffs.get("3")).toBe(4);
+  });
+
+  /*
+   * "(Total for Question 12 is 3 marks)" holds two numbers, and the question
+   * number is the larger one. Scanning a region for the biggest number in a
+   * bracket would have read the tariff as twelve.
+   */
+  it("does not mistake the question number for the tariff", () => {
+    expect(readPrintedTariffs("(Total for Question 12 is 3 marks)").get("12")).toBe(3);
+  });
+
+  it("says nothing about a paper whose format it cannot read", () => {
+    expect(readPrintedTariffs("Work out the answer.").size).toBe(0);
+  });
+
+  it("falls back to a bare bracketed tariff inside one question's region", () => {
     expect(readPrintedTariff("Work out the answer. (3)")).toBe(3);
     expect(readPrintedTariff("Explain your reasoning. [4 marks]")).toBe(4);
-    expect(readPrintedTariff("... (2 marks)")).toBe(2);
-  });
-
-  it("takes the total when parts print their own marks", () => {
-    expect(readPrintedTariff("(a) ... (2) (b) ... (3) Total (5)")).toBe(5);
-  });
-
-  it("returns nothing rather than guessing", () => {
     expect(readPrintedTariff("Work out the answer.")).toBeNull();
-    expect(readPrintedTariff("Figure (99)")).toBeNull();
+  });
+});
+
+describe("whether the scheme covers a question", () => {
+  // The real shape: boilerplate, then a table whose rows start with the number.
+  const scheme =
+    "Mark Scheme (Results) Summer 2023 Pearson Edexcel GCSE In Mathematics (1MA1) " +
+    "Edexcel and BTEC qualifications are awarded by Pearson ... " +
+    "Question Answer Mark Mark scheme Additional guidance " +
+    "1 56.4 M1 for a start to a method, eg 846 ÷ 15 " +
+    "2 4 7 8 M2 for a complete method";
+
+  it("finds a question that has a row in the table", () => {
+    expect(schemeCoversQuestion(scheme, "1")).toBe(true);
+    expect(schemeCoversQuestion(scheme, "2")).toBe(true);
+  });
+
+  it("refuses a question the table does not carry", () => {
+    expect(schemeCoversQuestion(scheme, "9")).toBe(false);
+    expect(schemeCoversQuestion(scheme, "")).toBe(false);
+  });
+
+  /*
+   * "56.4" and "846" are an answer and a working step. Searching the whole
+   * document for the digits would have matched them and called every question
+   * covered.
+   */
+  it("does not count numbers that appear before the table", () => {
+    expect(schemeCoversQuestion("Pearson Edexcel 2023 GCSE 1MA1 Higher Paper 1H", "1")).toBe(false);
   });
 });

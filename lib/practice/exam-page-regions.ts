@@ -128,15 +128,56 @@ export function regionsForQuestion(input: {
 }
 
 /**
- * The tariff printed against a question, for checking the extracted one.
+ * The tariff each question prints for itself, read from the whole paper.
  *
- * Boards print it as `(3)` or `[3 marks]` near the end of the question. This
- * reads every such marker inside the region and returns the largest, which is
- * the total where a question prints its parts' marks as well.
+ * Boards that name the question in the tariff -- "(Total for Question 3 is 4
+ * marks)" -- give an exact mapping that needs no region at all, which is both
+ * simpler and safer than scanning a cropped area and hoping the only number in
+ * it is the right one.
+ */
+export function readPrintedTariffs(paperText: string): Map<string, number> {
+  const tariffs = new Map<string, number>();
+  const patterns = [
+    // Pearson Edexcel, and OCR in the same words.
+    /\(\s*Total for Question\s+(\d{1,2})[^)]*?\bis\s+(\d{1,2})\s+marks?\s*\)/gi,
+    // AQA prints the question number first and the total on its own line.
+    /\bQuestion\s+(\d{1,2})\s*(?:total)?\s*[:\-]?\s*\[?\s*(\d{1,2})\s+marks?\]?/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const match of paperText.matchAll(pattern)) {
+      const label = match[1];
+      const marks = Number(match[2]);
+      if (marks >= 1 && marks <= 30 && !tariffs.has(label)) tariffs.set(label, marks);
+    }
+  }
+  return tariffs;
+}
+
+/**
+ * The tariff printed inside one question's own region.
+ *
+ * The fallback for papers that print a bare `(3)` or `[3 marks]` without
+ * naming the question. Returns null rather than a guess when the region holds
+ * no tariff marker, because an unverifiable tariff is not a passing one.
  */
 export function readPrintedTariff(text: string): number | null {
   const marks = [...text.matchAll(/[([]\s*(\d{1,2})\s*(?:marks?)?\s*[)\]]/gi)]
     .map((match) => Number(match[1]))
     .filter((value) => value >= 1 && value <= 30);
   return marks.length ? Math.max(...marks) : null;
+}
+
+/**
+ * Whether a mark scheme actually has a row for this question.
+ *
+ * Schemes open with several pages of boilerplate before the table, so the
+ * search starts at the table header. Inside it the question number begins its
+ * row, which is why a bare "appears somewhere in the document" check passed
+ * for numbers that were really part of an answer.
+ */
+export function schemeCoversQuestion(schemeText: string, label: string): boolean {
+  if (!label) return false;
+  const header = schemeText.search(/Question\s+(?:Working\s+)?Answer\s+Mark/i);
+  const table = header >= 0 ? schemeText.slice(header) : schemeText;
+  return new RegExp(`(?:^|\\s)${label}(?:\\s*\\([a-z]+\\))?\\s`, "m").test(table);
 }
