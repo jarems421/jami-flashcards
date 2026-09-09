@@ -83,3 +83,6 @@ scratch/
 
 # Emitted by the workflow runtime during `next build`.
 /app/.well-known/workflow/
+
+# Throwaway diagnostic scripts.
+/.codex/tmp/
