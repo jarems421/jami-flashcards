@@ -13,6 +13,7 @@ import {
 } from "@/lib/workspace/object-card-styles";
 import type { StudyLevel } from "@/lib/profile/study-level";
 import {
+  buildExamCourseSelection,
   examBoardAppliesTo,
   type ExamCourseSelection,
 } from "@/lib/practice/exam-questions";
@@ -82,14 +83,17 @@ export default function FolderEditor({
     try {
       const examCourse: ExamCourseSelection | null =
         studyLevel && examBoardAppliesTo(studyLevel) && examBoard && examQualification && specificationId.trim() && specificationTitle.trim()
-          ? {
+          ? buildExamCourseSelection({
               board: examBoard,
               qualification: examQualification,
-              specificationId: specificationId.trim(),
-              specificationTitle: specificationTitle.trim(),
-              tier: examTier.trim() || undefined,
-              componentIds: courseOptions.find((course) => course.specificationId === specificationId)?.componentIds ?? folder.examCourse?.componentIds ?? [],
-            }
+              specificationId,
+              specificationTitle,
+              tier: examTier,
+              componentIds:
+                courseOptions.find((course) => course.specificationId === specificationId)?.componentIds ??
+                folder.examCourse?.componentIds ??
+                [],
+            })
           : null;
       await updateStudyFolder(userId, folder.id, {
         name,

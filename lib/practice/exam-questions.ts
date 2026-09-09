@@ -217,6 +217,35 @@ export function examBoardAppliesTo(level: StudyLevel | null | undefined) {
   return level === "early-secondary" || level === "gcse-equivalent" || level === "post-16-equivalent";
 }
 
+/**
+ * A course selection with its absent optional fields left out.
+ *
+ * `tier: undefined` is not the same as no tier: Firestore rejects an explicit
+ * undefined outright, neither SDK here enables `ignoreUndefinedProperties`,
+ * and this codebase has been bitten by exactly that before. Writing it meant
+ * every course without a tier -- which is most A-level subjects -- failed to
+ * save, and the student was told their course could not be saved with no way
+ * to tell why.
+ */
+export function buildExamCourseSelection(input: {
+  board: ExamBoardId;
+  qualification: ExamQualification;
+  specificationId: string;
+  specificationTitle: string;
+  tier?: string;
+  componentIds?: string[];
+}): ExamCourseSelection {
+  const tier = input.tier?.trim();
+  return {
+    board: input.board,
+    qualification: input.qualification,
+    specificationId: input.specificationId.trim(),
+    specificationTitle: input.specificationTitle.trim(),
+    componentIds: input.componentIds ?? [],
+    ...(tier ? { tier } : {}),
+  };
+}
+
 export function canServeExamRights(rights: ExamRightsSnapshot) {
   return rights.verified && rights.storageAllowed && rights.studentDisplayAllowed && rights.aiInferenceAllowed && !rights.revoked;
 }

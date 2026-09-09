@@ -8,7 +8,7 @@ import {
   type ExamBoardId,
   type ExamQualification,
 } from "@/lib/practice/exam-formats";
-import type { ExamCourseSelection } from "@/lib/practice/exam-questions";
+import { buildExamCourseSelection } from "@/lib/practice/exam-questions";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getExamCourseOptions } from "@/services/study/exam-practice";
 import { updateStudyFolder } from "@/services/study/folders";
@@ -70,14 +70,14 @@ export default function ExamCourseSetup({
     setSaving(true);
     setError("");
     try {
-      const examCourse: ExamCourseSelection = {
+      const examCourse = buildExamCourseSelection({
         board,
         qualification,
         specificationId: selected.specificationId,
         specificationTitle: selected.specificationTitle,
-        tier: tier || undefined,
+        tier,
         componentIds: selected.componentIds,
-      };
+      });
       await updateStudyFolder(userId, folder.id, { examCourse });
       onSaved({ ...folder, examCourse, updatedAt: Date.now() });
     } catch {
