@@ -94,7 +94,6 @@ let warned = false;
 function complain(error: unknown) {
   if (warned) return;
   warned = true;
-  // eslint-disable-next-line no-console
   console.warn("generation checkpoint unavailable; continuing", String(error).slice(0, 200));
 }
 

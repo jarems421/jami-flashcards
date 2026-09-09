@@ -44,7 +44,6 @@ export function captureGenerationPass(entry: CapturedPass) {
     // Once, so a broken capture path cannot fill a log with the same line.
     if (!warned) {
       warned = true;
-      // eslint-disable-next-line no-console
       console.warn("generation capture failed; continuing", String(error).slice(0, 200));
     }
   }
