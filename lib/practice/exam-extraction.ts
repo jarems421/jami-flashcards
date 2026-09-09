@@ -87,7 +87,6 @@ export function buildExamQuestionsFromExtraction(
     .map((page) => page.items.map((item) => item.text).join(" "))
     .join(" ");
   const printedTariffs = readPrintedTariffs(paperText);
-  const approved = new Set(input.approvedQuestionNumbers.map(String));
 
   /*
    * A paper prints one total per question, and a question may be several
@@ -170,7 +169,6 @@ export function buildExamQuestionsFromExtraction(
       questionComplete: Boolean(prompt) && markSchemeItem !== null && schemeMarkTotal === marks,
       assetsComplete: regions.length > 0,
       specificationCurrent: true,
-      supervisorApproved: approved.has(number),
       issues,
     };
 
@@ -182,8 +180,18 @@ export function buildExamQuestionsFromExtraction(
       continue;
     }
 
-    const publishable =
-      canPublishExamQuestion(verification) && verification.supervisorApproved && issues.length === 0;
+    /*
+     * No second opinion is taken here any more.
+     *
+     * Ingestion used to ask a model to audit its own extraction from the same
+     * PDFs, and gate publication on the answer. That pass was sending
+     * documents to a role whose capability entry declares no document
+     * modality, so it was either failing or judging a paper it had not seen --
+     * and it is now redundant besides: the reviewer is shown the rendered
+     * question and its rendered scheme page, which is a stronger check than
+     * the one being replaced.
+     */
+    const publishable = canPublishExamQuestion(verification) && issues.length === 0;
 
     entries.push({
       page,

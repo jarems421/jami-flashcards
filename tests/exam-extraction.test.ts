@@ -117,9 +117,10 @@ describe("what the pipeline refuses", () => {
     expect(summary.needsReview).toBe(28);
   });
 
-  it("publishes nothing the audit did not approve", () => {
-    const summary = summariseExamExtraction(build({ approvedQuestionNumbers: [] }));
-    expect(summary.published).toBe(0);
+  it("publishes a whole real paper when every check compares cleanly", () => {
+    const summary = summariseExamExtraction(build());
+    expect(summary.published).toBe(28);
+    expect(summary.needsReview).toBe(0);
   });
 
   /*

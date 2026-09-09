@@ -14,7 +14,6 @@ function verification(overrides: Partial<ExamIngestionVerification> = {}): ExamI
     questionComplete: true,
     assetsComplete: true,
     specificationCurrent: true,
-    supervisorApproved: true,
     issues: [],
     ...overrides,
   };
@@ -56,7 +55,7 @@ describe("the publication gate", () => {
    * confident anyone is about the wording, so no opinion clears it.
    */
   it("cannot be talked round by an approving reviewer", () => {
-    const mispaired = verification({ markSchemeLabelMatches: false, supervisorApproved: true });
+    const mispaired = verification({ markSchemeLabelMatches: false });
     expect(canPublishExamQuestion(mispaired)).toBe(false);
   });
 

@@ -59,7 +59,6 @@ export type ExamIngestionVerification = {
   questionComplete: boolean;
   assetsComplete: boolean;
   specificationCurrent: boolean;
-  supervisorApproved: boolean;
   issues: string[];
 };
 
