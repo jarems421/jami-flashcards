@@ -155,3 +155,13 @@ export function buildExamPaperManifest(input: {
     rightsVersion: input.rightsVersion,
   };
 }
+
+/**
+ * One paper, as ingestion accepts it.
+ *
+ * The same shape a discovered candidate is built into, plus the window a
+ * specification is in force for.
+ */
+export type ExamPaperIngestionManifest = ExamPaperManifestDraft & {
+  activeUntil?: number;
+};

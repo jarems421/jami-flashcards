@@ -3,23 +3,19 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import { generateAiText } from "@/lib/ai/provider-router";
-import { isOfficialExamBoardUrl, type ExamBoardId, type ExamQualification } from "@/lib/practice/exam-formats";
+import { isOfficialExamBoardUrl, type ExamBoardId } from "@/lib/practice/exam-formats";
 import { getExamQuestionRights, isExamQuestionBoardEnabled, isExamQuestionSpecificationEnabled } from "@/lib/practice/exam-question-rights";
-import type { ExamDifficulty, ExamIngestionVerification, ExamPaper, ExamQuestion, ExamQuestionSecret } from "@/lib/practice/exam-questions";
-import { canPublishExamQuestion, canServeExamRights } from "@/lib/practice/exam-questions";
-import { normalizeMarkSchemeItem, schemeCriteria, validateMarkSchemeItem } from "@/lib/practice/mark-schemes";
+import { canServeExamRights, type ExamPaper } from "@/lib/practice/exam-questions";
 import { parseJsonObject } from "@/services/ai/practice-paper-generation.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
-import type { StudyLevel } from "@/lib/profile/study-level";
+import { type PdfPageText, type QuestionRegion } from "@/lib/practice/exam-page-regions";
 import {
-  findQuestionStarts,
-  readPrintedTariff,
-  readPrintedTariffs,
-  schemeCoversQuestion,
-  regionsForQuestion,
-  type PdfPageText,
-  type QuestionRegion,
-} from "@/lib/practice/exam-page-regions";
+  buildExamQuestionsFromExtraction,
+  summariseExamExtraction,
+} from "@/lib/practice/exam-extraction";
+import type { ExamPaperIngestionManifest } from "@/lib/practice/exam-ingestion-manifest";
+
+export type { ExamPaperIngestionManifest };
 
 /*
  * Both PDFs are attached inline to two separate vision calls, so a paper costs
@@ -104,13 +100,6 @@ const SCHEME_RULES = [
   "Give one entry for each question number you were asked about, and no others.",
 ].join(" ");
 
-export type ExamPaperIngestionManifest = {
-  board: ExamBoardId; boardLabel: string; qualification: ExamQualification;
-  specificationId: string; specificationTitle: string; specificationVersion: string;
-  subject: string; studyLevel: StudyLevel; componentCode: string; componentTitle: string;
-  year: number; series: string; paperReference: string; activeFrom: number; activeUntil?: number;
-  questionPaperUrl: string; markSchemeUrl: string; rightsKey: string; rightsVersion: number;
-};
 
 async function downloadPdf(board: ExamBoardId, url: string) {
   if (!isOfficialExamBoardUrl(board, url)) throw new Error("Source URL is not on the board allowlist.");
@@ -167,20 +156,6 @@ async function readPageText(bytes: Buffer): Promise<PdfPageText[]> {
     }
     return pages;
   } finally { await task.destroy(); }
-}
-
-/** The text inside one region, for checking a tariff against the paper. */
-function textInRegions(pages: PdfPageText[], regions: QuestionRegion[]) {
-  return regions.flatMap((region) => {
-    const page = pages.find((item) => item.page === region.page);
-    if (!page) return [];
-    return page.items
-      .filter((item) => {
-        const top = (page.height - item.y) / page.height;
-        return top >= region.fromRatio && top <= region.toRatio;
-      })
-      .map((item) => item.text);
-  }).join(" ");
 }
 
 /**
@@ -240,7 +215,17 @@ async function renderPage(bytes: Buffer, pageNumber: number) {
 
 function text(value: unknown, maximum: number) { return typeof value === "string" ? value.trim().slice(0, maximum) : ""; }
 
-export async function ingestExamPaper(manifest: ExamPaperIngestionManifest, options: { dryRun?: boolean } = {}) {
+export async function ingestExamPaper(
+  manifest: ExamPaperIngestionManifest,
+  /*
+   * `captureExtraction` returns the model's own answer alongside the report,
+   * so one real run can be saved as a fixture and the pipeline tested against
+   * it offline forever after. Dry-run only, owner-only, and the reason it
+   * exists is that three prompt changes shipped on the strength of a slow paid
+   * run and two of them were broken.
+   */
+  options: { dryRun?: boolean; captureExtraction?: boolean } = {}
+) {
   const rights = getExamQuestionRights(manifest.rightsKey, manifest.rightsVersion);
   if (!rights || rights.board !== manifest.board || !canServeExamRights(rights)) throw new Error("Verified permission evidence is required before ingestion.");
   if (!isExamQuestionBoardEnabled(manifest.board) || !isExamQuestionSpecificationEnabled(manifest.specificationId)) throw new Error("This board or specification is disabled.");
@@ -357,101 +342,61 @@ ${SCHEME_RULES}` },
   const audit = parseJsonObject(auditText);
   // Boundaries and tariffs come off the paper itself, not from the model.
   const paperPages = await readPageText(paperFile.bytes);
-  const questionStarts = findQuestionStarts(paperPages);
-  const paperText = paperPages
-    .map((page) => page.items.map((item) => item.text).join(" "))
-    .join(" ");
-  const printedTariffs = readPrintedTariffs(paperText);
   const schemeText = (await readPageText(schemeFile.bytes))
     .map((page) => page.items.map((item) => item.text).join(" "))
     .join(" ");
-  const approved = new Set(Array.isArray(audit.approvedQuestionNumbers) ? audit.approvedQuestionNumbers.map(String) : []);
-  const report: Array<{ question: ExamQuestion; secret: ExamQuestionSecret; verification: ExamIngestionVerification; page: number; regions: QuestionRegion[]; schemePageNumber: number }> = [];
-  /*
-   * Candidates that never became questions, and why.
-   *
-   * These used to be dropped with a bare `continue`, which made "0 published,
-   * 0 needing review" indistinguishable between "the paper yielded nothing"
-   * and "every question was thrown away at the last step". A run that extracts
-   * 28 questions and keeps none has to say so.
-   */
-  const rejected: Array<{ questionNumber: string; reasons: string[] }> = [];
-  for (const item of extractedQuestions) {
-    const number = text(item.questionNumber, 80); const prompt = text(item.prompt, 30_000); const pairedScheme = text(item.schemeText, 16_000);
-    const marks = Number.isFinite(Number(item.marks)) ? Math.round(Number(item.marks)) : 0;
-    const questionId = createHash("sha256").update(`${paperId}:${number}`).digest("hex").slice(0, 40);
-    const markSchemeItem = normalizeMarkSchemeItem(item.markSchemeItem, { id: questionId, marks });
-    const schemeIssues = markSchemeItem ? validateMarkSchemeItem(markSchemeItem) : [{ code: "invalid_scheme", detail: "Scheme could not be parsed.", questionId }];
-    /*
-     * The checks below compare things, rather than asking whether a field is
-     * present. "The tariff is a positive number" was true of every wrong
-     * extraction; "the tariff equals the one printed beside this question on
-     * the paper" is the check that was meant.
-     */
-    const rootLabel = number.match(/^\d{1,2}/)?.[0] ?? "";
-    const regions = rootLabel
-      ? regionsForQuestion({ label: rootLabel, starts: questionStarts, pages: paperPages })
-      : [];
-    // Prefer the tariff that names its own question; fall back to scanning
-    // the question's region for a bare bracketed one.
-    const printedTariff =
-      printedTariffs.get(rootLabel) ??
-      (regions.length ? readPrintedTariff(textInRegions(paperPages, regions)) : null);
-    const labelFoundOnPaper = questionStarts.some((start) => start.label === rootLabel);
-    // The scheme must actually mention this question, in the scheme document.
-    const schemeMentionsLabel = schemeCoversQuestion(schemeText, rootLabel);
-    const schemeMarkTotal = markSchemeItem ? schemeCriteria(markSchemeItem).reduce((sum, c) => sum + c.marks, 0) : 0;
-    const page = Math.round(Number(item.questionPage));
-    const issues = [
-      !identityMatches ? "The paper does not identify itself as the one in the manifest." : "",
-      !number ? "Missing question label." : "",
-      !labelFoundOnPaper ? `Question ${number || "?"} was not found in the paper's margin.` : "",
-      !prompt ? "Missing prompt." : "",
-      marks < 1 ? "Invalid tariff." : "",
-      printedTariff !== null && printedTariff !== marks
-        ? `Extracted ${marks} marks but the paper prints ${printedTariff}.`
-        : "",
-      printedTariff === null && regions.length > 0 ? "No tariff is printed against this question." : "",
-      !pairedScheme ? "Missing scheme pairing." : "",
-      !schemeMentionsLabel ? `The mark scheme does not mention question ${number || "?"}.` : "",
-      markSchemeItem && schemeMarkTotal !== marks
-        ? `The scheme awards ${schemeMarkTotal} marks against a ${marks}-mark question.`
-        : "",
-      regions.length === 0 ? "The question's own region of the paper could not be located." : "",
-      ...schemeIssues.map((issue) => issue.detail),
-      ...(audit.issuesByQuestion && typeof audit.issuesByQuestion === "object" && Array.isArray((audit.issuesByQuestion as Record<string, unknown>)[number]) ? ((audit.issuesByQuestion as Record<string, unknown>)[number] as unknown[]).map(String) : []),
-    ].filter(Boolean);
-    const verification: ExamIngestionVerification = {
-      paperIdentityMatches: identityMatches,
-      questionLabelMatches: labelFoundOnPaper,
-      tariffMatches: printedTariff === marks,
-      markSchemeLabelMatches: schemeMentionsLabel && Boolean(pairedScheme),
-      questionComplete: Boolean(prompt) && markSchemeItem !== null && schemeMarkTotal === marks,
-      assetsComplete: regions.length > 0,
-      specificationCurrent: true,
-      supervisorApproved: approved.has(number),
-      issues,
-    };
-    const publishable = canPublishExamQuestion(verification) && verification.supervisorApproved && issues.length === 0;
-    if (!markSchemeItem) {
-      rejected.push({
-        questionNumber: number || "(unlabelled)",
-        reasons: ["The mark scheme could not be read into any supported marking regime.", ...issues],
-      });
-      continue;
-    }
-    const rightsSnapshot = { key: rights.key, version: rights.version, verified: rights.verified, storageAllowed: rights.storageAllowed, studentDisplayAllowed: rights.studentDisplayAllowed, aiInferenceAllowed: rights.aiInferenceAllowed, revoked: rights.revoked };
-    report.push({ page, regions, schemePageNumber: Math.round(Number(item.schemePage)), verification, question: { id: questionId, paperId, subject: manifest.subject, subjectKey: manifest.subject.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""), studyLevel: manifest.studyLevel, label: text(item.label, 120) || `Question ${number}`, prompt, marks, assets: [], topicIds: Array.isArray(item.topicIds) ? item.topicIds.map((value) => text(value, 120)).filter(Boolean).slice(0, 20) : [], difficulty: (["easy", "medium", "hard"].includes(String(item.difficulty)) ? item.difficulty : "medium") as ExamDifficulty, aiDifficulty: (["easy", "medium", "hard"].includes(String(item.difficulty)) ? item.difficulty : "medium") as ExamDifficulty, difficultyScore: item.difficulty === "easy" ? 0.25 : item.difficulty === "hard" ? 0.8 : 0.55, difficultySource: "ai_ingest", origin: "official_past_paper", provenance: { board: manifest.board, boardLabel: manifest.boardLabel, qualification: manifest.qualification, specificationId: manifest.specificationId, specificationTitle: manifest.specificationTitle, componentCode: manifest.componentCode, componentTitle: manifest.componentTitle, year: manifest.year, series: manifest.series, paperReference: manifest.paperReference, questionNumber: number, sourceUrl: manifest.questionPaperUrl, sourceSha256: paperFile.sha256 }, rights: rightsSnapshot, status: publishable ? "published" : "needs_review", review: { status: "pending" as const, notes: [] }, selectionKey: Math.random(), createdAt: now, updatedAt: now }, secret: { questionId, markSchemeItem, officialMarkScheme: pairedScheme, modelAnswer: text(item.exampleAnswer, 8_000), examinerNotes: [], acceptableAlternatives: markSchemeItem.acceptableAlternatives, sourceDocumentHash: schemeFile.sha256 } });
-  }
+  const issuesByQuestion =
+    audit.issuesByQuestion && typeof audit.issuesByQuestion === "object"
+      ? Object.fromEntries(
+          Object.entries(audit.issuesByQuestion as Record<string, unknown>).map(([key, value]) => [
+            key,
+            Array.isArray(value) ? value.map(String) : [],
+          ])
+        )
+      : {};
+  const rightsSnapshot = {
+    key: rights.key, version: rights.version, verified: rights.verified,
+    storageAllowed: rights.storageAllowed, studentDisplayAllowed: rights.studentDisplayAllowed,
+    aiInferenceAllowed: rights.aiInferenceAllowed, revoked: rights.revoked,
+  };
+  const built = buildExamQuestionsFromExtraction({
+    manifest,
+    paperId,
+    paperPages,
+    schemeText,
+    questions: extractedQuestions,
+    identityMatches,
+    approvedQuestionNumbers: Array.isArray(audit.approvedQuestionNumbers)
+      ? audit.approvedQuestionNumbers.map(String)
+      : [],
+    issuesByQuestion,
+    rights: rightsSnapshot,
+    paperSha256: paperFile.sha256,
+    schemeSha256: schemeFile.sha256,
+    now,
+  });
+  const report = built.entries;
+
   if (options.dryRun) {
     return {
       paperId,
-      extracted: extractedQuestions.length,
-      published: report.filter((item) => item.question.status === "published").length,
-      needsReview: report.filter((item) => item.question.status === "needs_review").length,
-      rejected,
+      ...summariseExamExtraction(built),
       identityMatches,
       verification: report.map((item) => ({ questionNumber: item.question.provenance.questionNumber, ...item.verification })),
+      ...(options.captureExtraction
+        ? {
+            capture: {
+              questions: extractedQuestions,
+              identityMatches,
+              approvedQuestionNumbers: Array.isArray(audit.approvedQuestionNumbers)
+                ? audit.approvedQuestionNumbers.map(String)
+                : [],
+              issuesByQuestion,
+              paperSha256: paperFile.sha256,
+              schemeSha256: schemeFile.sha256,
+            },
+          }
+        : {}),
     };
   }
   const paperPath = `internal/examQuestionBank/${manifest.board}/${paperId}/question-paper.pdf`; const schemePath = `internal/examQuestionBank/${manifest.board}/${paperId}/mark-scheme.pdf`;
@@ -521,11 +466,5 @@ ${SCHEME_RULES}` },
   }
   commits.push(batch.commit());
   await Promise.all(commits);
-  return {
-    paperId,
-    extracted: extractedQuestions.length,
-    published: report.filter((item) => item.question.status === "published").length,
-    needsReview: report.filter((item) => item.question.status === "needs_review").length,
-    rejected,
-  };
+  return { paperId, ...summariseExamExtraction(built) };
 }
