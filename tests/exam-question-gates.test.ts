@@ -125,23 +125,40 @@ describe("the licence gate", () => {
     expect(isExamQuestionServable(question({ status: "withdrawn" }))).toBe(false);
   });
 
-  /*
-   * The registry has no board record, so this is the whole point of the gate:
-   * real past-paper material cannot be served until a person adds evidence for
-   * its board, and even then not until a person has checked the question.
-   */
-  it("refuses official past-paper material while no board evidence exists", () => {
+  it("serves a licensed board's question once a person has checked it", () => {
     expect(
       isExamQuestionServable(
         question({ origin: "official_past_paper", humanChecked: true, rights: OFFICIAL_RIGHTS })
       )
+    ).toBe(true);
+  });
+
+  /*
+   * Evidence is recorded per board, and the registry holds the UK domestic
+   * seven. A board nobody has licensed cannot borrow another board's record:
+   * the permission has to name the board whose material is being served.
+   */
+  it("refuses a board with no evidence of its own", () => {
+    expect(
+      isExamQuestionServable(
+        question({
+          origin: "official_past_paper",
+          humanChecked: true,
+          rights: OFFICIAL_RIGHTS,
+          provenance: { ...question().provenance, board: "cambridge_international" },
+        })
+      )
     ).toBe(false);
   });
 
+  /*
+   * A licence makes material lawful to serve. It does not make an AI
+   * extraction of it correct, and a wrong mark scheme marks a student wrongly.
+   */
   it("refuses official material that no person has checked", () => {
     expect(
       isExamQuestionServable(
-        question({ origin: "official_past_paper", humanChecked: false, rights: JAMI_RIGHTS })
+        question({ origin: "official_past_paper", humanChecked: false, rights: OFFICIAL_RIGHTS })
       )
     ).toBe(false);
   });

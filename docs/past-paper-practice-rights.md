@@ -27,9 +27,23 @@ Two known limitations of the current extractor to check during that review:
 - source PDFs are capped at 8 MB each, because both documents are attached
   inline to two separate vision calls.
 
+## Where the agreements live
+
+The agreements are correspondence held by the owner and are deliberately not in
+this repository. `evidenceReference` records that evidence exists and who can
+produce it, not the evidence itself — a pointer into a private mailbox helps no
+reader and is not something to commit. Anyone auditing a board asks the owner,
+who sends the agreement directly.
+
+Recorded on 2026-09-09: the seven UK domestic boards (AQA, Pearson Edexcel,
+OCR, WJEC, Eduqas, CCEA, Qualifications Scotland), each confirmed by the owner
+as covering storage, display to students, and transmission to third-party AI
+providers for marking. International boards are not covered and remain
+unservable.
+
 ## Adding evidence
 
-1. Store the agreement or licence in the owner's controlled evidence system.
+1. Keep the agreement or licence wherever the owner controls it.
 2. Add a new immutable registry version with its evidence reference and review date.
 3. Ingest with that exact key and version. Never edit an old version in place.
 4. Run a dry ingestion report and review every rejection.

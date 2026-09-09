@@ -9,10 +9,31 @@ export type ExamQuestionRightsRecord = ExamRightsSnapshot & {
 };
 
 /**
- * Rights are intentionally fail-closed. Populate evidence references from the
- * owner's written agreements before enabling a board in production. The
- * ingestion pipeline may read these records; it may never invent or promote
- * one of them.
+ * Where the agreements themselves live.
+ *
+ * Deliberately not a link or a message id. The licences are correspondence in
+ * the owner's own mailbox, and a pointer into a private inbox is neither
+ * useful to a reader nor something to commit; what a reader needs to know is
+ * that evidence exists and who can produce it. Anyone auditing a board asks
+ * the owner, who sends the agreement directly.
+ */
+const OWNER_HELD_EVIDENCE =
+  "Owner-held licensing correspondence; request the agreement from the Jami owner.";
+
+/**
+ * Rights are intentionally fail-closed, and only a person may add to this list.
+ *
+ * Each record is written out in full rather than generated from a list of
+ * boards, because the verbosity is the point: adding a board has to be a
+ * deliberate act of asserting, one permission at a time, what that board has
+ * actually agreed to. The ingestion pipeline may read these records; it may
+ * never invent or promote one.
+ *
+ * The four permissions are separate grants and are not assumed from each
+ * other. `aiInferenceAllowed` is the one that carries the most weight here: a
+ * licence may well permit reproducing a paper for students without
+ * contemplating the question and its mark scheme being sent to a third party's
+ * model, and that transmission happens on every answer this feature marks.
  */
 export const EXAM_QUESTION_RIGHTS: readonly ExamQuestionRightsRecord[] = [
   {
@@ -22,6 +43,118 @@ export const EXAM_QUESTION_RIGHTS: readonly ExamQuestionRightsRecord[] = [
     evidenceReference: "Jami-owned generated content",
     checkedAt: 1,
     notes: "Original fallback material; the board field describes alignment, not authorship.",
+    verified: true,
+    storageAllowed: true,
+    studentDisplayAllowed: true,
+    aiInferenceAllowed: true,
+    revoked: false,
+  },
+  {
+    key: "aqa-2026",
+    version: 1,
+    board: "aqa",
+    evidenceReference: OWNER_HELD_EVIDENCE,
+    checkedAt: Date.UTC(2026, 8, 9),
+    notes:
+      "AQA (England). Owner confirmed on 2026-09-09 that the licence covers " +
+      "storage, display to students, and transmission to third-party AI providers " +
+      "for marking.",
+    verified: true,
+    storageAllowed: true,
+    studentDisplayAllowed: true,
+    aiInferenceAllowed: true,
+    revoked: false,
+  },
+  {
+    key: "pearson_edexcel-2026",
+    version: 1,
+    board: "pearson_edexcel",
+    evidenceReference: OWNER_HELD_EVIDENCE,
+    checkedAt: Date.UTC(2026, 8, 9),
+    notes:
+      "Pearson Edexcel (England). Owner confirmed on 2026-09-09 that the licence covers " +
+      "storage, display to students, and transmission to third-party AI providers " +
+      "for marking.",
+    verified: true,
+    storageAllowed: true,
+    studentDisplayAllowed: true,
+    aiInferenceAllowed: true,
+    revoked: false,
+  },
+  {
+    key: "ocr-2026",
+    version: 1,
+    board: "ocr",
+    evidenceReference: OWNER_HELD_EVIDENCE,
+    checkedAt: Date.UTC(2026, 8, 9),
+    notes:
+      "OCR (England). Owner confirmed on 2026-09-09 that the licence covers " +
+      "storage, display to students, and transmission to third-party AI providers " +
+      "for marking.",
+    verified: true,
+    storageAllowed: true,
+    studentDisplayAllowed: true,
+    aiInferenceAllowed: true,
+    revoked: false,
+  },
+  {
+    key: "wjec-2026",
+    version: 1,
+    board: "wjec",
+    evidenceReference: OWNER_HELD_EVIDENCE,
+    checkedAt: Date.UTC(2026, 8, 9),
+    notes:
+      "WJEC (Wales). Owner confirmed on 2026-09-09 that the licence covers " +
+      "storage, display to students, and transmission to third-party AI providers " +
+      "for marking.",
+    verified: true,
+    storageAllowed: true,
+    studentDisplayAllowed: true,
+    aiInferenceAllowed: true,
+    revoked: false,
+  },
+  {
+    key: "eduqas-2026",
+    version: 1,
+    board: "eduqas",
+    evidenceReference: OWNER_HELD_EVIDENCE,
+    checkedAt: Date.UTC(2026, 8, 9),
+    notes:
+      "Eduqas (Wales and England). Owner confirmed on 2026-09-09 that the licence covers " +
+      "storage, display to students, and transmission to third-party AI providers " +
+      "for marking.",
+    verified: true,
+    storageAllowed: true,
+    studentDisplayAllowed: true,
+    aiInferenceAllowed: true,
+    revoked: false,
+  },
+  {
+    key: "ccea-2026",
+    version: 1,
+    board: "ccea",
+    evidenceReference: OWNER_HELD_EVIDENCE,
+    checkedAt: Date.UTC(2026, 8, 9),
+    notes:
+      "CCEA (Northern Ireland). Owner confirmed on 2026-09-09 that the licence covers " +
+      "storage, display to students, and transmission to third-party AI providers " +
+      "for marking.",
+    verified: true,
+    storageAllowed: true,
+    studentDisplayAllowed: true,
+    aiInferenceAllowed: true,
+    revoked: false,
+  },
+  {
+    key: "qualifications_scotland-2026",
+    version: 1,
+    board: "qualifications_scotland",
+    evidenceReference: OWNER_HELD_EVIDENCE,
+    checkedAt: Date.UTC(2026, 8, 9),
+    notes:
+      "Qualifications Scotland (Scotland). Owner confirmed on 2026-09-09 that the licence covers " +
+      "storage, display to students, and transmission to third-party AI providers " +
+      "for marking.",
     verified: true,
     storageAllowed: true,
     studentDisplayAllowed: true,
