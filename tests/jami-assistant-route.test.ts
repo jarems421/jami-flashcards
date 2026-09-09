@@ -26,6 +26,13 @@ const mocks = vi.hoisted(() => {
     retrieveChunks: vi.fn(),
     generateText: vi.fn(),
     streamText: vi.fn(),
+    generateResearch: vi.fn<
+      (input: {
+        sanitizedQuery: string;
+        timeoutMs: number;
+        urls?: readonly string[];
+      }) => Promise<{ ok: boolean; reason: string }>
+    >(async () => ({ ok: false, reason: "not_configured" })),
     refundBudget: vi.fn(),
     persisted: [] as Array<{ kind: string; path: string; data?: unknown }>,
   };
@@ -122,16 +129,14 @@ vi.mock("@/lib/ai/provider-router", () => ({
 }));
 
 vi.mock("@/lib/ai/gemini", () => ({
-  generateGroundedResearch: vi.fn(async () => ({
-    ok: false,
-    reason: "not_configured",
-  })),
+  generateGroundedResearch: mocks.generateResearch,
 }));
 
 // No cleaner mock: the route uses the real cleanAiResponseText so these tests
 // exercise the seam that previously flattened every reply.
 
 let postAssistant: (request: NextRequest) => Promise<Response>;
+let routeMaxDuration: number | undefined;
 
 function request(
   body: Record<string, unknown>,
@@ -180,7 +185,9 @@ async function readStream(response: Response) {
 }
 
 beforeAll(async () => {
-  ({ POST: postAssistant } = await import("@/app/api/ai/assistant/route"));
+  const routeModule = await import("@/app/api/ai/assistant/route");
+  postAssistant = routeModule.POST;
+  routeMaxDuration = routeModule.maxDuration;
 }, 120_000);
 
 beforeEach(() => {
@@ -562,5 +569,53 @@ describe("universal Jami assistant route", () => {
     const failure = records.find((record) => record.event === "provider.failed");
     expect(failure?.error).toMatchObject({ status: 503 });
     expect(failure?.uid).toBe("[redacted]");
+  });
+});
+
+/**
+ * The request budget, which is three numbers that have to agree.
+ *
+ * The platform's limit has to cover the route's own deadline, and the optional
+ * work before the answer has to leave the answer enough of that deadline to
+ * finish in. When they disagreed, a tutor reply either stopped mid-sentence
+ * because the function was killed, or failed at once because the time had gone
+ * on reading and researching.
+ */
+describe("request budget", () => {
+  it("declares a platform duration that covers the route's own deadline", () => {
+    // The route plans for 50s of work and then has to persist the turn. A
+    // function without this ran on the account default, which is 10-15s.
+    expect(routeMaxDuration).toBeGreaterThanOrEqual(50);
+  });
+
+  it("leaves the answer its share of the deadline when research runs first", async () => {
+    mocks.generateResearch.mockResolvedValueOnce({
+      ok: false,
+      reason: "not_configured",
+    });
+
+    await postAssistant(
+      request(
+        validBody({
+          message: "Search the web for the latest exam specification.",
+        })
+      )
+    );
+
+    expect(mocks.generateResearch).toHaveBeenCalledTimes(1);
+    const research = mocks.generateResearch.mock.calls[0][0];
+    // It used to ask for 22s of a 50s deadline no matter how much had already
+    // been spent, which on a slow read left the answer starting after its own
+    // deadline had passed.
+    expect(research.timeoutMs).toBeGreaterThan(0);
+    expect(research.timeoutMs).toBeLessThanOrEqual(20_000);
+
+    const answer = mocks.streamText.mock.calls[0]?.[0] as {
+      deadlineAt: number;
+      timeoutMs: number;
+    };
+    expect(answer.deadlineAt - Date.now()).toBeGreaterThanOrEqual(
+      answer.timeoutMs - 1_000
+    );
   });
 });

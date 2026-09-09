@@ -33,6 +33,20 @@ export type StudyPreparationProgress = {
  * fully prepared long before the student reaches the end of it.
  */
 const PREPARATION_HEAD_START = 3;
+/**
+ * One card a request for the head start, all of them at once.
+ *
+ * The background pass batches for cost, and this one does the opposite on
+ * purpose. Three cards in a single request finish together, so the bar sat at
+ * "0 of 3 ready" for the whole twenty-second wait and then jumped to done --
+ * indistinguishable from a hung screen, which is what it was reported as. Three
+ * requests of one card each land separately and the bar moves three times.
+ *
+ * It is also faster: output tokens dominate the latency of a call, so three
+ * one-card requests in parallel return in roughly the time the slowest single
+ * card takes rather than the sum of all three.
+ */
+const PREPARATION_HEAD_START_CHUNK_SIZE = 1;
 /** The visible wait, and the only clock a student ever sees. */
 const PREPARATION_BUDGET_MS = 20_000;
 /**
@@ -190,8 +204,8 @@ export function useStudyPreparation(input: {
       try {
         await Promise.race([
           runPreparationChunks(headStart, {
-            chunkSize: PREPARATION_HEAD_START,
-            concurrency: 1,
+            chunkSize: PREPARATION_HEAD_START_CHUNK_SIZE,
+            concurrency: PREPARATION_HEAD_START,
             stop,
             onChunkDone: (count) =>
               setPreparation((prev) =>
@@ -209,6 +223,16 @@ export function useStudyPreparation(input: {
         // waiting the next time rather than thrown away.
         window.clearTimeout(expiryTimer);
         skipPreparationRef.current = null;
+        /*
+         * Take the panel down here rather than leaving it to the caller.
+         *
+         * The caller clears it once this whole function returns, which is one
+         * read of the cache later -- so pressing Start now left the overlay up
+         * for a further round trip while the button appeared to have done
+         * nothing. The waiting is over the moment the race settles, whether it
+         * settled by finishing, by expiring or by being skipped.
+         */
+        setPreparation(null);
       }
 
       const refreshed = await loadStudyAssets(headStart.map((card) => card.id));

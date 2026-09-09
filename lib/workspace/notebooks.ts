@@ -162,6 +162,8 @@ export type NotebookPage = {
   linkedQuestionId?: string;
   linkedSourceId?: string;
   linkedPastPaperId?: string;
+  linkedExamAttemptId?: string;
+  linkedExamSessionId?: string;
   /** Monotonic content version used to reject stale editor writes. */
   contentRevision: number;
   createdAt: number;
@@ -919,11 +921,13 @@ export function mapNotebookPageData(
     pageColor: isNotebookPageColor(data.pageColor) ? data.pageColor : "white",
     pageStyle: isNotebookPageStyle(data.pageStyle) ? data.pageStyle : "plain",
     status: isNotebookPageStatus(data.status) ? data.status : "blank",
-    questionPrompt: normalizeOptionalString(data.questionPrompt, 4_000),
+    questionPrompt: normalizeOptionalString(data.questionPrompt, 30_000),
     questionAssets: normalizeQuestionAssets(data.questionAssets),
     linkedQuestionId: normalizeOptionalString(data.linkedQuestionId, 160),
     linkedSourceId: normalizeOptionalString(data.linkedSourceId, 160),
     linkedPastPaperId: normalizeOptionalString(data.linkedPastPaperId, 160),
+    linkedExamAttemptId: normalizeOptionalString(data.linkedExamAttemptId, 160),
+    linkedExamSessionId: normalizeOptionalString(data.linkedExamSessionId, 160),
     contentRevision:
       typeof data.contentRevision === "number" &&
       Number.isFinite(data.contentRevision) &&
@@ -1005,6 +1009,8 @@ export function buildNotebookPagePayload(input: {
   linkedQuestionId?: string;
   linkedSourceId?: string;
   linkedPastPaperId?: string;
+  linkedExamAttemptId?: string;
+  linkedExamSessionId?: string;
   now?: number;
 }) {
   const notebookId = input.notebookId.trim();
@@ -1083,11 +1089,13 @@ export function buildNotebookPagePayload(input: {
     pageColor: input.pageColor ?? "white",
     pageStyle: input.pageStyle ?? "plain",
     status: input.status ?? "blank",
-    questionPrompt: normalizeOptionalString(input.questionPrompt, 4_000) ?? null,
+    questionPrompt: normalizeOptionalString(input.questionPrompt, 30_000) ?? null,
     questionAssets: normalizeQuestionAssets(input.questionAssets),
     linkedQuestionId: normalizeOptionalString(input.linkedQuestionId, 160) ?? null,
     linkedSourceId: normalizeOptionalString(input.linkedSourceId, 160) ?? null,
     linkedPastPaperId: normalizeOptionalString(input.linkedPastPaperId, 160) ?? null,
+    linkedExamAttemptId: normalizeOptionalString(input.linkedExamAttemptId, 160) ?? null,
+    linkedExamSessionId: normalizeOptionalString(input.linkedExamSessionId, 160) ?? null,
     contentRevision: 0,
     createdAt: now,
     updatedAt: now,

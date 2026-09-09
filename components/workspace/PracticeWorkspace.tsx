@@ -8,6 +8,7 @@ import {
   ConfirmDialog,
   EmptyState,
   FeedbackBanner,
+  PageHero,
   SectionHeader,
   Skeleton,
 } from "@/components/ui";
@@ -32,6 +33,7 @@ import FolderObjectCard from "./FolderObjectCard";
 import NotebookEditorDialog from "./NotebookEditorDialog";
 import { NotebookObjectCard } from "./NotebookObjectCard";
 import PracticePaperProgress from "@/components/practice/PracticePaperProgress";
+import { featureFlags } from "@/lib/app/feature-flags";
 
 function notebookTypeLabel(type: Notebook["type"]) {
   if (type === "uploaded_file") return "Uploaded file notebook";
@@ -315,6 +317,16 @@ export default function PracticeWorkspace() {
         </div>
       ) : (
         <>
+          {featureFlags.enablePastPaperPractice ? (
+            <PageHero
+              eyebrow="Past Paper Practice"
+              title="Real questions. One clear step at a time."
+              description="Choose a subject and difficulty mix, show your working, then get a mark and a guided second try."
+              action={<ButtonLink href="/dashboard/practice/questions/new">Start practice</ButtonLink>}
+              secondaryAction={<ButtonLink href="/dashboard/practice/history" variant="ghost">History</ButtonLink>}
+              compact
+            />
+          ) : null}
           <PracticePaperProgress userId={user.uid} />
           <section className="space-y-4">
             <SectionHeader eyebrow="Continue working" title="Recent notebooks" />

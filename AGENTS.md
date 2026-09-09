@@ -17,7 +17,10 @@ During the current Phase 6 notebook-first Practice phase:
 - Folders are broad study spaces. Topics are concepts/subtopics.
 - Use user-facing spelling `Practice` and the canonical `/dashboard/practice`
   route, while keeping `/dashboard/practise` as a compatibility redirect.
-- The legacy question-bank Practice workflow has been removed from the product surface. Do not reintroduce question bank, standalone Add question, answer/working attempt forms, confidence blocks, old Practice Tutor panels, or tiny scratchpad side features.
+- The legacy **per-user** question-bank Practice workflow has been removed and stays removed. Do not reintroduce its standalone Add question form, confidence blocks, or old Practice Tutor panels.
+- Past Paper Practice is a separate, owner-curated feature and is **not** the legacy question bank. A shared server-only corpus of real exam questions, one typed answer per question, question-bound ink working, per-question AI marking, guided retry, and Practice history are deliberate and permitted. Student-authored question-bank entries, per-user question collections, and general-purpose scratchpads detached from a question remain prohibited.
+- Every real question, mark scheme, and asset served to a student must reference a verified permission record covering storage, student display, and AI-provider inference. Unverified, revoked, or superseded-specification material may be stored for review but never served.
+- Past Paper Practice remains question-by-question and does not permit the prohibited full-paper mode. Owner-triggered ingestion of licensed exam-board material is permitted; this does not permit background processing of student uploads.
 - Notebook file upload infrastructure is in scope for uploaded-file/paper notebooks.
 - Do not build Anywhere, background/persistent OCR, automatic PDF indexing, full-paper mode, browser extension, always-on screen watching, voice tutor expansion, or iPad companion. Library Tutor may read up to five deliberately selected sources on demand after the student asks; do not persist extracted source content or process sources in the background.
 - Client-side PDF page counting, raster page rendering, and notebook ink overlays are in scope. Keep the original PDF immutable and do not imply OCR or automatic understanding.

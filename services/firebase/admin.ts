@@ -31,6 +31,25 @@ function getFirebaseAdminApp() {
     return existingApp;
   }
 
+  /*
+   * The emulator has no service account and needs none.
+   *
+   * Three things have to line up before credentials are skipped -- a `demo-`
+   * project, which Firebase reserves for local use and refuses to serve in
+   * production; both emulator hosts, which only the test harness sets; and a
+   * non-production build. Any one of them missing and the real credential path
+   * below is the only way through.
+   */
+  const emulatorProject = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim();
+  if (
+    process.env.NODE_ENV !== "production" &&
+    emulatorProject?.startsWith("demo-") &&
+    process.env.FIRESTORE_EMULATOR_HOST &&
+    process.env.FIREBASE_AUTH_EMULATOR_HOST
+  ) {
+    return initializeApp({ projectId: emulatorProject });
+  }
+
   const { projectId, clientEmail, privateKey } = getRequiredAdminEnv();
 
   return initializeApp({

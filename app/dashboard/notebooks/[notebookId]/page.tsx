@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -175,6 +175,7 @@ const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
 
 export default function NotebookEditorPage() {
   const { user } = useUser();
+  const router = useRouter();
   const params = useParams<{ notebookId?: string | string[] }>();
   const notebookId = Array.isArray(params.notebookId)
     ? params.notebookId[0]
@@ -360,8 +361,8 @@ export default function NotebookEditorPage() {
     [inkHasContent, selectedPage, textBlocks]
   );
   const notebookAssistantQuickActions = useMemo(
-    () => getNotebookAssistantQuickActions({ hasWork: notebookPageHasWork }),
-    [notebookPageHasWork]
+    () => getNotebookAssistantQuickActions({ hasWork: notebookPageHasWork, onPastPaperPractice: notebook?.folderId && notebook.id ? () => router.push(`/dashboard/practice/questions/new?folderId=${encodeURIComponent(notebook.folderId)}&notebookId=${encodeURIComponent(notebook.id)}`) : undefined }),
+    [notebook?.folderId, notebook?.id, notebookPageHasWork, router]
   );
 
   // Each time the page changes, the ink editor remounts and re-deserializes the

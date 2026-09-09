@@ -259,7 +259,10 @@ export default async function main(args: string[]) {
       for (const call of outcome.calls) {
         if (call.jami === null) continue;
         if (call.jami) awarded += 1;
-        if (call.jami !== call.human) call.jami ? (generous += 1) : (harsh += 1);
+        if (call.jami !== call.human) {
+          if (call.jami) generous += 1;
+          else harsh += 1;
+        }
       }
     }
 

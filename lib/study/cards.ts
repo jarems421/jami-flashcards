@@ -487,3 +487,12 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
         : undefined,
   };
 }
+
+/** The soonest card that is not due yet, for "next review in…" on the home screen. */
+export function getNextDueCard(cards: Card[], now = Date.now()): Card | null {
+  return (
+    cards
+      .filter((card) => typeof card.dueDate === "number" && card.dueDate > now)
+      .sort((left, right) => (left.dueDate ?? 0) - (right.dueDate ?? 0))[0] ?? null
+  );
+}

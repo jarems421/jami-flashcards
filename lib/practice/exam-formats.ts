@@ -4,9 +4,63 @@ export type ExamBoardId =
   | "ocr"
   | "eduqas"
   | "wjec"
-  | "ccea";
+  | "ccea"
+  | "qualifications_scotland"
+  | "cambridge_international"
+  | "pearson_international"
+  | "oxford_aqa"
+  | "ib";
 
-export type ExamQualification = "gcse" | "a_level";
+export type ExamQualification =
+  | "gcse"
+  | "igcse"
+  | "a_level"
+  | "international_a_level"
+  | "national_5"
+  | "higher"
+  | "advanced_higher"
+  | "ib_myp"
+  | "ib_diploma";
+export const EXAM_QUALIFICATIONS: readonly ExamQualification[] = [
+  "gcse", "igcse", "a_level", "international_a_level", "national_5",
+  "higher", "advanced_higher", "ib_myp", "ib_diploma",
+];
+
+export function isExamQualification(value: unknown): value is ExamQualification {
+  return typeof value === "string" && EXAM_QUALIFICATIONS.includes(value as ExamQualification);
+}
+
+/** How each board writes its own name. */
+export const EXAM_BOARD_LABELS: Record<ExamBoardId, string> = {
+  aqa: "AQA",
+  pearson_edexcel: "Pearson Edexcel",
+  ocr: "OCR",
+  eduqas: "Eduqas",
+  wjec: "WJEC",
+  ccea: "CCEA",
+  qualifications_scotland: "Qualifications Scotland",
+  cambridge_international: "Cambridge International",
+  pearson_international: "Pearson International",
+  oxford_aqa: "OxfordAQA",
+  ib: "International Baccalaureate",
+};
+
+export function isExamBoardId(value: unknown): value is ExamBoardId {
+  return typeof value === "string" && value in EXAM_BOARD_LABELS;
+}
+
+/** How each qualification is written on the board's own materials. */
+export const EXAM_QUALIFICATION_LABELS: Record<ExamQualification, string> = {
+  gcse: "GCSE",
+  igcse: "IGCSE",
+  a_level: "A level",
+  international_a_level: "International A level",
+  national_5: "National 5",
+  higher: "Higher",
+  advanced_higher: "Advanced Higher",
+  ib_myp: "IB MYP",
+  ib_diploma: "IB Diploma",
+};
 export type ExamFormatProfileStatus = "current" | "announced" | "retired";
 export type ExamFormatVerificationStatus =
   | "verified"
@@ -157,6 +211,11 @@ const BOARD_HOSTS: Record<ExamBoardId, string[]> = {
   eduqas: ["eduqas.co.uk", "wjec.co.uk"],
   wjec: ["wjec.co.uk", "eduqas.co.uk"],
   ccea: ["ccea.org.uk", "apps.ccea.org.uk"],
+  qualifications_scotland: ["sqa.org.uk"],
+  cambridge_international: ["cambridgeinternational.org"],
+  pearson_international: ["qualifications.pearson.com"],
+  oxford_aqa: ["oxfordaqa.com"],
+  ib: ["ibo.org"],
 };
 
 function text(value: unknown, maximum: number) {
@@ -366,7 +425,7 @@ export function normalizeExamFormatProfileVersion(
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
   const now = fallback.now ?? Date.now();
-  const qualification: ExamQualification = raw.qualification === "a_level" ? "a_level" : "gcse";
+  const qualification: ExamQualification = isExamQualification(raw.qualification) ? raw.qualification : "gcse";
   const sources = normalizeSources(fallback.board, raw.sources);
   const durationMinutes = integer(raw.durationMinutes, 600);
   const totalMarks = integer(raw.totalMarks, 1_000);
@@ -410,7 +469,7 @@ export function normalizeExamFormatProfileVersion(
     board: fallback.board,
     boardLabel: text(raw.boardLabel, 120),
     qualification,
-    qualificationLabel: text(raw.qualificationLabel, 120) || (qualification === "gcse" ? "GCSE" : "A level"),
+    qualificationLabel: text(raw.qualificationLabel, 120) || EXAM_QUALIFICATION_LABELS[qualification],
     subject,
     specificationCode,
     specificationTitle: text(raw.specificationTitle, 240) || subject,

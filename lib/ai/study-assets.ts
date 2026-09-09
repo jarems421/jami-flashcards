@@ -21,7 +21,13 @@ export type StudyAsset = {
 };
 
 export const STUDY_ASSET_SCHEMA_VERSION = 2;
-export const STUDY_ASSET_PROMPT_VERSION = 2;
+/**
+ * Bumped when the distractor rules were tightened to demand the same shape as
+ * the answer. Every cached asset written under the old prompt carries the wrong
+ * options this was meant to stop -- short phrases beside a full-sentence answer,
+ * guessable on length alone -- so they are re-read rather than served.
+ */
+export const STUDY_ASSET_PROMPT_VERSION = 3;
 
 /** Below this the asset is discarded rather than used with a warning. */
 export const MIN_ASSET_CONFIDENCE = 0.6;
@@ -110,7 +116,12 @@ distractors -- the wrong options for multiple choice, and the part that matters 
 - Write the mistakes a student actually makes: the neighbouring concept people confuse this with, the right idea at the wrong scale or stage, the common misremembering, the plausible-sounding invention.
 - A student who has not learned this should have no way to tell which is right by looking at the options alone. If one option is obviously the only real answer, you have failed.
 - Never a second correct answer, never a synonym, never a broader or narrower version of the true answer.
-- Match the answer's length, register and grammatical form. A one-word answer gets one-word distractors; a definition gets definitions.
+- MATCH THE ANSWER'S SHAPE, and treat this as a hard requirement rather than a preference. Count the words in the card's answer. Every distractor must be within roughly half to twice that count, carry the same grammatical form, the same register, the same capitalisation, and the same final punctuation.
+  - If the answer is a full sentence ending in a full stop, every distractor is a full sentence ending in a full stop.
+  - If the answer is one word or a short phrase, every distractor is one word or a short phrase.
+  - If the answer names a thing, every distractor names a thing of the same kind. Do not answer "which organelle" with three organelles and one process.
+  Length is the tell students use to skip the question: a set where the true answer is the long, complete, specific one is guessable by somebody who cannot read the subject, and it is worse than no question at all.
+- Be specific in the wrong options too. A distractor that is vague, hedged, or obviously a non-answer ("none of these", "it varies", "a type of cell") gives the game away as surely as a short one.
 - Give ${MIN_DISTRACTORS} or ${MAX_DISTRACTORS} so the weakest can be discarded.
 - misconceptions must have one entry per distractor, keyed by that distractor's exact text, saying in one sentence what a student was probably thinking of. This is shown to them after they choose, so it must teach the difference, not scold.
 - If you cannot write three genuinely wrong-but-tempting options for this card, return an empty distractors array. An empty list costs the student nothing. A guessable question costs them a wrong idea about what they know.
@@ -240,32 +251,4 @@ export function parseStudyAssetResponse(
     if (asset) assets.push(asset);
   }
   return assets;
-}
-
-/** The asset, folded into the author settings the marker already understands. */
-export function applyStudyAssetToSettings(
-  asset: StudyAsset,
-  settings: CardStudySettings | undefined
-): CardStudySettings {
-  // Author settings win throughout. Someone who has said what counts as a right
-  // answer should not be overruled by a model.
-  return {
-    ...settings,
-    acceptedAnswers:
-      settings?.acceptedAnswers && settings.acceptedAnswers.length > 0
-        ? settings.acceptedAnswers
-        : asset.acceptedAliases,
-    requiredConcepts:
-      settings?.requiredConcepts && settings.requiredConcepts.length > 0
-        ? settings.requiredConcepts
-        : asset.requiredConcepts,
-    pinnedGaps:
-      settings?.pinnedGaps && settings.pinnedGaps.length > 0
-        ? settings.pinnedGaps
-        : asset.clozeCandidates,
-    mcqDistractors:
-      settings?.mcqDistractors && settings.mcqDistractors.length > 0
-        ? settings.mcqDistractors
-        : asset.distractors,
-  };
 }

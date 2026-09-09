@@ -9,7 +9,6 @@ const rows = readFileSync(".codex/captures/generation-passes.jsonl", "utf8").tri
 
 const design = rows.filter((r) => r.pass === "paper_design").at(-1);
 const paper = JSON.parse(strip(design.text));
-const byId = new Map(paper.questions.map((q) => [q.id, q]));
 
 // Latest scheme item per question, from this run only (after the design).
 const cutoff = design.at;

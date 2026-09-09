@@ -25,6 +25,7 @@ import {
   normalizeStudyFolderName,
   type StudyFolder,
 } from "@/lib/workspace/study-folders";
+import type { ExamCourseSelection } from "@/lib/practice/exam-questions";
 import {
   normalizeStudyLevel,
   type StudyLevel,
@@ -148,6 +149,7 @@ export async function createStudyFolder(
     color?: string;
     icon?: string;
     topicIds?: string[];
+    examCourse?: ExamCourseSelection;
   }
 ) {
   const normalizedUserId = userId.trim();
@@ -178,6 +180,7 @@ export async function updateStudyFolder(
     color: string;
     icon: string;
     topicIds: string[];
+    examCourse: ExamCourseSelection | null;
     archived: boolean;
   }>
 ) {
@@ -215,6 +218,9 @@ export async function updateStudyFolder(
   }
   if (input.topicIds !== undefined) {
     updates.topicIds = input.topicIds;
+  }
+  if (input.examCourse !== undefined) {
+    updates.examCourse = input.examCourse;
   }
   if (typeof input.archived === "boolean") {
     updates.archived = input.archived;

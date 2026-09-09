@@ -32,6 +32,11 @@ export type JamiAssistantSavedContext =
       surface: "notebook";
       notebookId: string;
       pageId: string;
+    }
+  | {
+      surface: "practice";
+      sessionId: string;
+      attemptId: string;
     };
 
 export type JamiAssistantThread = {
@@ -86,6 +91,11 @@ function normalizeSavedContext(value: unknown): JamiAssistantSavedContext | null
       ? { surface: "notebook", notebookId, pageId }
       : null;
   }
+  if (context.surface === "practice") {
+    const sessionId = normalizeId(context.sessionId);
+    const attemptId = normalizeId(context.attemptId);
+    return sessionId && attemptId ? { surface: "practice", sessionId, attemptId } : null;
+  }
   return null;
 }
 
@@ -97,6 +107,9 @@ export function getJamiAssistantSavedContext(
   }
   if (context.surface === "sources") {
     return { surface: "sources", sourceIds: [...context.sourceIds].sort() };
+  }
+  if (context.surface === "practice") {
+    return { surface: "practice", sessionId: context.sessionId, attemptId: context.attemptId };
   }
   return {
     surface: "notebook",
@@ -130,6 +143,7 @@ export function getJamiAssistantContextKey(
   if (context.surface === "sources") {
     return `sources:${[...context.sourceIds].sort()[0] ?? ""}`;
   }
+  if (context.surface === "practice") return `practice:${context.sessionId}:${context.attemptId}`;
   return `notebook:${context.notebookId}`;
 }
 

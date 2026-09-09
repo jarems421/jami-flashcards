@@ -237,6 +237,9 @@ const eslintConfig = defineConfig([
     // after any browser run.
     "playwright-report/**",
     "test-results/**",
+    // The workflow runtime rewrites this entrypoint on every build; it is a
+    // bundled artifact, not source, and carries its own generated-file marker.
+    "app/.well-known/workflow/**",
   ]),
 ]);
 

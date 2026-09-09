@@ -36,7 +36,9 @@ import {
   mapNotebookData,
   mapNotebookPageData,
 } from "@/lib/workspace/notebooks";
-import { getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
+import { featureFlags } from "@/lib/app/feature-flags";
+import { loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
 
 const MAX_SOURCE_METADATA_CANDIDATES = 200;
 const MAX_SOURCE_CANDIDATES_PER_RELATION =
@@ -544,6 +546,72 @@ async function resolveNotebookContext(input: {
   };
 }
 
+/**
+ * A marked Past Paper Practice answer, handed to the tutor.
+ *
+ * This is the only place the tutor is shown an official mark scheme, so it
+ * re-asks the same question every other consumer asks: is this material still
+ * ours to send? A revoked board, a disabled specification, a withdrawn
+ * question or a switched-off feature all have to stop here, because the
+ * attempt document remembers the scheme long after the right to use it ends.
+ */
+async function resolvePracticeContext(input: {
+  db: AdminDb;
+  uid: string;
+  context: Extract<JamiAssistantContext, { surface: "practice" }>;
+}) {
+  if (!featureFlags.enablePastPaperPractice) {
+    throw new JamiAssistantContextError("This marked answer could not be found.");
+  }
+  const userRef = input.db.collection("users").doc(input.uid);
+  const [sessionSnapshot, attemptSnapshot] = await Promise.all([
+    userRef.collection("examSessions").doc(input.context.sessionId).get(),
+    userRef.collection("examAttempts").doc(input.context.attemptId).get(),
+  ]);
+  const session = sessionSnapshot.data();
+  const attempt = attemptSnapshot.data();
+  if (!sessionSnapshot.exists || !attemptSnapshot.exists || attempt?.sessionId !== input.context.sessionId ||
+    attempt?.status !== "marked" || attempt.answerDeletedAt) {
+    throw new JamiAssistantContextError("This marked answer could not be found.");
+  }
+  const questions = Array.isArray(session?.questions) ? session.questions as Array<Record<string, unknown>> : [];
+  const question = questions.find((item) => item.id === attempt.questionId);
+  if (!question) throw new JamiAssistantContextError("This marked answer could not be found.");
+  const questionId = typeof attempt.questionId === "string" ? attempt.questionId : "";
+  const servable = await loadServableExamQuestion(questionId, input.uid).catch(() => null);
+  if (!servable) {
+    throw new JamiAssistantContextError("This question is no longer available to discuss.");
+  }
+  const result = attempt.result && typeof attempt.result === "object" ? attempt.result as Record<string, unknown> : {};
+  const currentParts: AiContentPart[] = [{
+    text: [
+      "Past Paper Practice marked answer.",
+      `Question: ${String(question.prompt ?? "")}`,
+      `Available marks: ${String(question.marks ?? "")}`,
+      `Student answer: ${String(attempt.answerText ?? "")}`,
+      `Awarded mark: ${String(result.awardedMarks ?? "")}/${String(result.maxMarks ?? "")}`,
+      `Feedback: ${String(result.feedback ?? "")}`,
+      `Example answer: ${String(result.modelAnswer ?? "")}`,
+      `Official mark scheme: ${String(attempt.officialMarkScheme ?? "")}`,
+    ].join("\n").slice(0, 30_000),
+  }];
+  if (typeof attempt.workingSnapshotPath === "string") {
+    const [bytes] = await getAdminStorageBucket().file(attempt.workingSnapshotPath).download();
+    if (bytes.length <= 3 * 1024 * 1024) currentParts.push({ inlineData: { mimeType: "image/png", data: bytes.toString("base64") } });
+  }
+  return {
+    currentId: attemptSnapshot.id,
+    currentLabel: "Marked practice answer",
+    currentParts,
+    relations: {
+      currentSourceIds: [],
+      directSourceIds: [],
+      folderIds: typeof session?.folderId === "string" ? [session.folderId] : [],
+      topicIds: [],
+    } satisfies SourceRelations,
+  };
+}
+
 export async function resolveJamiAssistantContext(input: {
   uid: string;
   message: string;
@@ -560,7 +628,9 @@ export async function resolveJamiAssistantContext(input: {
       ? await resolveLearnContext({ db, uid, context: input.context })
       : input.context.surface === "sources"
         ? await resolveSourcesContext({ db, uid, context: input.context })
-        : await resolveNotebookContext({ db, uid, context: input.context });
+        : input.context.surface === "practice"
+          ? await resolvePracticeContext({ db, uid, context: input.context })
+          : await resolveNotebookContext({ db, uid, context: input.context });
   const [sources, preferences] = await Promise.all([
     selectSources({
       db,

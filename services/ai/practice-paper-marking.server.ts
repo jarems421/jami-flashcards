@@ -89,6 +89,7 @@ export type PracticePaperMarkingInput = {
   signal?: AbortSignal;
   deadlineAt: number;
   maxOutputTokens: number;
+  callTimeoutMs?: number;
   logFallback?: (fields: Record<string, unknown>) => void;
   /** Successful provider calls may not cross this workflow-owned ceiling. */
   maxEstimatedCostUsd?: number;
@@ -386,10 +387,10 @@ async function callMarker(input: PracticePaperMarkingInput & {
     role: input.modelRole,
     ...(providerOverride?.length ? { providerOverride } : {}),
     taskClass: input.role === "verifier" ? "standard" : "important",
-    timeoutMs: providerOverride?.length
+    timeoutMs: input.callTimeoutMs ?? (providerOverride?.length
       ? fallbackTimeoutMs(input.modelRole)
-      : markerTimeoutMs(input.modelRole),
-    fallbackTimeoutMs: fallbackTimeoutMs(input.modelRole),
+      : markerTimeoutMs(input.modelRole)),
+    fallbackTimeoutMs: input.callTimeoutMs ?? fallbackTimeoutMs(input.modelRole),
     deadlineAt: input.deadlineAt,
     signal: input.signal,
     generationConfig: {
@@ -569,6 +570,124 @@ export function comparePracticePaperMarkings(
       ? [question.questionId]
       : [];
   });
+}
+
+/**
+ * Interactive one-question marking. Easy cases return after one strong marker;
+ * high-risk or ambiguous cases receive the same blind comparison discipline as
+ * paper marking without paying that cost for every short recall question.
+ */
+export async function markSingleQuestionAdaptively(
+  input: PracticePaperMarkingInput & { forceVerification?: boolean }
+) {
+  if (input.paper.questions.length !== 1) {
+    throw new Error("Adaptive question marking requires exactly one question.");
+  }
+
+  const diagnostics: AiResponseDiagnostics[] = [];
+  let primaryNeededParseRetry = false;
+  const callTimeoutMs = [...input.answerParts, ...(input.originalPaperParts ?? [])].some((part) => "inlineData" in part) ? 30_000 : 20_000;
+  const runPrimary = () => callMarker({
+    ...input,
+    callTimeoutMs,
+    onParseFailure: (failure) => { primaryNeededParseRetry = true; input.onParseFailure?.(failure); },
+    role: "primary",
+    modelRole: "supervisor",
+  });
+  const runVerifier = () => callMarker({
+    ...input,
+    callTimeoutMs,
+    role: "verifier",
+    modelRole: "worker",
+  });
+
+  let primary: Awaited<ReturnType<typeof callMarker>>;
+  let verifier: Awaited<ReturnType<typeof callMarker>> | undefined;
+  if (input.forceVerification) {
+    [primary, verifier] = await Promise.all([runPrimary(), runVerifier()]);
+  } else {
+    primary = await runPrimary();
+  }
+  diagnostics.push(...primary.diagnostics, ...(verifier?.diagnostics ?? []));
+
+  const primaryQuestion = primary.result.questionResults[0];
+  const needsPostCheck =
+    !verifier &&
+    (primaryNeededParseRetry || primaryQuestion?.confidence === "low" || Boolean(primaryQuestion?.transcriptionNote));
+  if (needsPostCheck) {
+    verifier = await runVerifier();
+    diagnostics.push(...verifier.diagnostics);
+  }
+
+  let result = primary.result;
+  let adjudicated = false;
+  if (verifier) {
+    const disputed = comparePracticePaperMarkings(primary.result, verifier.result);
+    if (disputed.length > 0) {
+      const adjudication = await callMarker({
+        ...input,
+        callTimeoutMs,
+        role: "adjudicator",
+        modelRole: "supervisor",
+        extraPrompt: `Resolve this one disputed question from two independent reports. Neither report has priority.\nReport A: ${JSON.stringify(primary.result.questionResults)}\nReport B: ${JSON.stringify(verifier.result.questionResults)}`,
+      });
+      diagnostics.push(...adjudication.diagnostics);
+      result = adjudication.result;
+      adjudicated = true;
+    }
+  }
+
+  return {
+    result,
+    estimatedCostUsd: successfulCost(diagnostics),
+    audit: {
+      primaryScore: primary.result.questionResults[0]?.awardedMarks ?? 0,
+      verifierScore: verifier?.result.questionResults[0]?.awardedMarks,
+      adaptivelyVerified: Boolean(verifier),
+      adjudicated,
+    },
+  };
+}
+
+/** One student-requested, independent view of an already marked question. */
+export async function reviewSingleQuestionIndependently(
+  input: PracticePaperMarkingInput & { originalResult: PracticePaperResult }
+) {
+  if (input.paper.questions.length !== 1) {
+    throw new Error("Question review requires exactly one question.");
+  }
+  const juror = await callMarker({
+    ...input,
+    role: "third-view",
+    modelRole: "juror",
+    extraPrompt:
+      "Mark this response independently from the official scheme. Do not assume the existing mark is right; identify the student's exact evidence for every award.",
+  });
+  const diagnostics = [...juror.diagnostics];
+  const disputed = comparePracticePaperMarkings(input.originalResult, juror.result);
+  let result = input.originalResult;
+  let reconciled = false;
+  if (disputed.length > 0) {
+    const reconciliation = await callMarker({
+      ...input,
+      role: "adjudicator",
+      modelRole: "supervisor",
+      extraPrompt: `Reconcile the existing result with an independent review. Apply the official scheme and return the complete final report.\nExisting result: ${JSON.stringify(input.originalResult.questionResults)}\nIndependent review: ${JSON.stringify(juror.result.questionResults)}`,
+    });
+    diagnostics.push(...reconciliation.diagnostics);
+    result = reconciliation.result;
+    reconciled = true;
+  }
+  return {
+    result,
+    estimatedCostUsd: successfulCost(diagnostics),
+    audit: {
+      jurorScore: juror.result.questionResults[0]?.awardedMarks ?? 0,
+      reviewedScore: result.questionResults[0]?.awardedMarks ?? 0,
+      changed: disputed.length > 0,
+      reconciled,
+    },
+  };
 }
 
 /**
