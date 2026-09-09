@@ -39,7 +39,7 @@ import StudySessionPreparing from "@/components/study/StudySessionPreparing";
 import FocusedReviewBuilder from "@/components/study/FocusedReviewBuilder";
 import StudyHomeStat from "@/components/study/StudyHomeStat";
 import type { CardRating } from "@/lib/study/scheduler";
-import type { Card } from "@/lib/study/cards";
+import { getNextDueCard, type Card } from "@/lib/study/cards";
 import { isFeatureEnabled } from "@/lib/app/feature-flags";
 import {
   DEFAULT_STUDY_MODE_POLICY,
@@ -57,6 +57,7 @@ import {
   canCarryModeEventually,
   resolveExerciseMode,
 } from "@/lib/study/mode-eligibility";
+import { buildSessionExerciseSnapshots } from "@/lib/study/session-exercises";
 import { buildSimpleStudyQueue } from "@/lib/study/simple-study";
 import {
   getOfflineQueuedReviews,
@@ -123,6 +124,18 @@ const MODE_LABELS: Record<StudyMode, string> = {
 /** Refreshing on every tab focus hammered Firestore on a busy desk. */
 const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
 type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
+
+/**
+ * The card as the markers should see it.
+ *
+ * Prepared aliases, concepts, gaps and distractors are folded in here rather
+ * than written back to the card, so the card the student wrote is never edited
+ * by a model. Author settings still win inside the merge.
+ */
+function askedCard(card: Card, assets: Record<string, StudyAsset>) {
+  const settings = mergeAssetIntoSettings(assets[card.id], card.studySettings);
+  return settings === card.studySettings ? card : { ...card, studySettings: settings };
+}
 
 export default function StudyPage() {
   const searchParams = useSearchParams();
@@ -756,12 +769,7 @@ export default function StudyPage() {
           }
         }
 
-        const asAsked = (card: Card) => {
-          const settings = mergeAssetIntoSettings(assets[card.id], card.studySettings);
-          return settings === card.studySettings
-            ? card
-            : { ...card, studySettings: settings };
-        };
+        const asAsked = (card: Card) => askedCard(card, assets);
 
         const now = Date.now();
 
@@ -1149,30 +1157,11 @@ export default function StudyPage() {
     ? decks.find((deck) => deck.id === current.deckId)
     : undefined;
   const currentDeckColor = getDeckColorPreset(currentDeck?.colorPreset);
-  const nextDueCard = useMemo(
-    () =>
-      cards
-        .filter((card) => typeof card.dueDate === "number" && card.dueDate > Date.now())
-        .sort((left, right) => (left.dueDate ?? 0) - (right.dueDate ?? 0))[0] ?? null,
-    [cards]
+  const nextDueCard = useMemo(() => getNextDueCard(cards), [cards]);
+  const preparedCurrent = useMemo(
+    () => (current ? askedCard(current, studyAssets) : null),
+    [current, studyAssets]
   );
-  /**
-   * The card as the markers should see it.
-   *
-   * Prepared aliases, concepts, gaps and distractors are folded in here rather
-   * than written back to the card, so the card the student wrote is never
-   * edited by a model. Author settings still win inside the merge.
-   */
-  const preparedCurrent = useMemo(() => {
-    if (!current) return null;
-    const settings = mergeAssetIntoSettings(
-      studyAssets[current.id],
-      current.studySettings
-    );
-    return settings === current.studySettings
-      ? current
-      : { ...current, studySettings: settings };
-  }, [current, studyAssets]);
 
 
   const totalCards = sessionCards.length;
@@ -1211,40 +1200,13 @@ export default function StudyPage() {
         modePolicy,
         seed: sessionSeedRef.current,
         modeResults,
-        // Only the exercises still ahead are snapshotted. They carry their own
-        // options and blanks, so a resumed session redraws the same question
-        // without needing Firestore -- and the content hash lets a card that
-        // has been edited since be rebuilt rather than marked against.
-        exercises: sessionCards.slice(index).flatMap((card) => {
-          const context = { seed: sessionSeedRef.current };
-          // Snapshotted from the card as the markers see it. Built from the raw
-          // card instead, a multiple-choice question would find no prepared
-          // distractors and drop itself out of the snapshot, so a resumed
-          // session would silently re-ask it a different way.
-          const settings = mergeAssetIntoSettings(
-            studyAssets[card.id],
-            card.studySettings
-          );
-          const asked =
-            settings === card.studySettings ? card : { ...card, studySettings: settings };
-          const mode = resolveExerciseMode(asked, modePolicy, index, context);
-          if (!mode) return [];
-          const exercise = buildDeterministicExercise(
-            asked,
-            mode,
-            getCardContentHash(asked),
-            context
-          );
-          if (!exercise) return [];
-          return [
-            {
-              cardId: card.id,
-              mode: exercise.mode,
-              contentHash: exercise.cardContentHash,
-              ...(exercise.cloze ? { cloze: exercise.cloze } : {}),
-              ...(exercise.mcq ? { mcq: exercise.mcq } : {}),
-            },
-          ];
+        // Only the questions still ahead are snapshotted; see the module.
+        exercises: buildSessionExerciseSnapshots({
+          cards: sessionCards.slice(index),
+          asAsked: (card) => askedCard(card, studyAssets),
+          modePolicy,
+          index,
+          seed: sessionSeedRef.current,
         }),
       });
 
