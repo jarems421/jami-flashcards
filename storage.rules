@@ -119,6 +119,11 @@ service firebase.storage {
       allow read, write: if false;
     }
 
+    // Working state an ingestion carries between its stages.
+    match /internal/examIngestionJobs/{allPaths=**} {
+      allow read, write: if false;
+    }
+
     match /users/{userId}/examAttemptEvidence/{allPaths=**} {
       allow read, write: if false;
     }

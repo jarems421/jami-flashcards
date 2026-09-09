@@ -15,6 +15,11 @@ import {
 import { EXAM_BOARD_LABELS, type ExamBoardId } from "@/lib/practice/exam-formats";
 import { ENGLAND_MATHS_AND_SCIENCE } from "@/lib/practice/exam-corpus-plan";
 import type { ExamPaperManifestDraft } from "@/lib/practice/exam-ingestion-manifest";
+import {
+  EXAM_INGESTION_STAGE_LABELS,
+  isExamIngestionFinished,
+  type ExamIngestionJob,
+} from "@/lib/practice/exam-ingestion-job";
 import type { ExamQuestionReviewItem } from "@/services/practice/exam-corpus-review.server";
 
 /** Only the boards whose licence is recorded can be ingested under. */
@@ -55,7 +60,7 @@ async function internalRequest(path: string, init?: RequestInit) {
   return data ?? {};
 }
 
-type IngestOutcome = { published: number; needsReview: number; paperId: string };
+type IngestOutcome = { published: number; needsReview: number; paperId: string; extracted: number };
 
 /**
  * The owner's side of the question bank.
@@ -72,6 +77,7 @@ export default function ExamCorpusWorkspace() {
   const [finding, setFinding] = useState(false);
   const [ingesting, setIngesting] = useState("");
   const [outcomes, setOutcomes] = useState<Record<string, IngestOutcome | string>>({});
+  const [stage, setStage] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<ExamQuestionReviewItem[] | null>(null);
   const [deciding, setDeciding] = useState("");
   const [autoReviewing, setAutoReviewing] = useState(false);
@@ -111,25 +117,52 @@ export default function ExamCorpusWorkspace() {
     }
   };
 
+  /*
+   * Ingestion is a job now, and this walks it.
+   *
+   * Each call does one bounded stage, so nothing depends on a whole paper
+   * fitting into one request -- which it did not, reliably: the same paper
+   * finished at 86 seconds and timed out at 103. A stage that fails is retried
+   * on its own rather than discarding the model calls already paid for.
+   */
   const ingest = async (manifest: ExamPaperManifestDraft, dryRun: boolean) => {
     const key = manifest.questionPaperUrl;
     setIngesting(key);
     setError("");
+    setStage((current) => ({ ...current, [key]: "Starting…" }));
     try {
-      const data = await internalRequest("/api/internal/exam-questions/ingest", {
+      const started = await internalRequest("/api/internal/exam-questions/ingest", {
         method: "POST",
         body: JSON.stringify({ manifest, dryRun }),
       });
-      setOutcomes((current) => ({
-        ...current,
-        [key]: {
-          paperId: String(data.paperId ?? ""),
-          published: Number(data.published ?? 0),
-          needsReview: Number(data.needsReview ?? 0),
-        },
-      }));
-      if (!dryRun) await loadPending();
+      let job = started.job as ExamIngestionJob;
+      let guard = 0;
+      while (!isExamIngestionFinished(job) && guard < 60) {
+        guard += 1;
+        setStage((current) => ({ ...current, [key]: EXAM_INGESTION_STAGE_LABELS[job.stage] }));
+        const stepped = await internalRequest(
+          `/api/internal/exam-questions/ingest/${encodeURIComponent(job.id)}`,
+          { method: "POST" }
+        );
+        job = stepped.job as ExamIngestionJob;
+      }
+      setStage((current) => ({ ...current, [key]: "" }));
+      if (job.stage === "failed") {
+        setOutcomes((current) => ({ ...current, [key]: job.error ?? "Ingestion stopped." }));
+      } else {
+        setOutcomes((current) => ({
+          ...current,
+          [key]: {
+            paperId: job.paperId ?? "",
+            extracted: job.extracted ?? 0,
+            published: job.published ?? 0,
+            needsReview: job.needsReview ?? 0,
+          },
+        }));
+        if (!dryRun) await loadPending();
+      }
     } catch (reason) {
+      setStage((current) => ({ ...current, [key]: "" }));
       setOutcomes((current) => ({
         ...current,
         [key]: reason instanceof Error ? reason.message : "Ingestion failed.",
@@ -140,8 +173,8 @@ export default function ExamCorpusWorkspace() {
   };
 
   /*
-   * The reviewer runs in bounded batches and the button repeats it. Walking a
-   * whole corpus behind one click is a bill nobody chose, and stopping halfway
+   * The reviewer runs in bounded batches and this repeats it. Walking a whole
+   * corpus behind one click is a bill nobody chose, and stopping halfway
    * leaves everything already reviewed reviewed.
    */
   const autoReview = async () => {
@@ -285,11 +318,15 @@ export default function ExamCorpusWorkspace() {
                         </Button>
                       </div>
                     </div>
-                    {outcome ? (
+                    {stage[manifest.questionPaperUrl] ? (
+                      <p className="mt-2 text-xs text-text-muted">
+                        {stage[manifest.questionPaperUrl]}…
+                      </p>
+                    ) : outcome ? (
                       <p className="mt-2 text-xs text-text-secondary">
                         {typeof outcome === "string"
                           ? outcome
-                          : `${outcome.published} extracted cleanly · ${outcome.needsReview} flagged`}
+                          : `${outcome.extracted} found · ${outcome.published} clean · ${outcome.needsReview} to review`}
                       </p>
                     ) : null}
                   </div>

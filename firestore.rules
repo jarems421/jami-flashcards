@@ -148,6 +148,7 @@ service cloud.firestore {
     match /examQuestionSecrets/{questionId} { allow read, write: if false; }
     match /examQuestionStats/{questionId} { allow read, write: if false; }
     match /examSourceDiscoveries/{discoveryId} { allow read, write: if false; }
+    match /examIngestionJobs/{jobId} { allow read, write: if false; }
 
     match /users/{userId} {
       allow read: if isSelf(userId);
