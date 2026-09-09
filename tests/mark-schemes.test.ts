@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   meetsExpectedValue,
   normalizeMarkSchemeItem,
+  schemeMarkTotal,
   validateMarkSchemeItem,
   type PracticePaperMarkSchemeItem,
 } from "@/lib/practice/mark-schemes";
@@ -156,9 +157,21 @@ describe("point pool marking", () => {
     expect(codes(parse(pool(6, 3)))).toEqual([]);
   });
 
-  /** A pool with nothing to choose between is additive marking wearing a hat. */
+  /**
+   * A pool with nothing to choose between is additive marking wearing a hat,
+   * so it is stored as what it is. Real schemes arrive this way constantly --
+   * "any one from" written as one point -- and rejecting them held back a
+   * quarter of a real paper over a label rather than over its marking.
+   */
+  it("stores a pool offering everything it holds as additive", () => {
+    expect(parse(pool(3, 3))?.marking).toBe("additive");
+    expect(codes(parse(pool(3, 3)))).toEqual([]);
+  });
+
+  /** The rule still stands for an item that reaches the validator unnormalised. */
   it("rejects a pool offering everything it holds", () => {
-    expect(codes(parse(pool(3, 3)))).toContain("not_a_pool");
+    const item = { ...parse(pool(6, 3))!, awardable: 6 } as PracticePaperMarkSchemeItem;
+    expect(validateMarkSchemeItem(item).map((issue) => issue.code)).toContain("not_a_pool");
   });
 
   it("rejects a pool whose points are worth different amounts", () => {
@@ -333,5 +346,116 @@ describe("expected values", () => {
       unit: "m/s",
       significantFigures: 2,
     });
+  });
+});
+
+/*
+ * Everything here comes from one real AQA paper, where 15 of 46 questions were
+ * held back by schemes that read the page correctly. The model writes what the
+ * scheme prints; these fill in what a printed scheme leaves unsaid.
+ */
+describe("what a printed scheme leaves unsaid", () => {
+  const pooled = (marks: number, count: number) => ({
+    marking: "pointPool",
+    points: Array.from({ length: count }, (_unused, index) => ({
+      id: `p${index + 1}`,
+      marks: 1,
+      code: "P",
+      text: `Point ${index + 1}`,
+    })),
+    ...(marks ? {} : {}),
+  });
+
+  it("works out how many of a pool's points may be awarded", () => {
+    const item = parse(pooled(2, 3), 2);
+    expect(item?.marking).toBe("pointPool");
+    expect(item?.marking === "pointPool" ? item.awardable : 0).toBe(2);
+    expect(codes(item)).toEqual([]);
+  });
+
+  it("keeps a stated count over the inferred one", () => {
+    const item = parse({ ...pooled(2, 4), awardable: 3 }, 3);
+    expect(item?.marking === "pointPool" ? item.awardable : 0).toBe(3);
+  });
+
+  /*
+   * "Any one from A / B / C" arrives as a single point holding the
+   * alternatives. Stored as a pool it is one that offers everything it has,
+   * which is exactly the shape the validator rejects.
+   */
+  it("stores a one-point pool as the additive question it is", () => {
+    const item = parse(pooled(1, 1), 1);
+    expect(item?.marking).toBe("additive");
+    expect(codes(item)).toEqual([]);
+  });
+
+  it("restores the zero band a levels scheme states in prose", () => {
+    const item = parse(
+      {
+        marking: "banded",
+        bands: [
+          { id: "L1", label: "Level 1", minMarks: 1, maxMarks: 3, descriptor: "Simple statements." },
+          { id: "L2", label: "Level 2", minMarks: 4, maxMarks: 6, descriptor: "A detailed account." },
+        ],
+      },
+      6
+    );
+    expect(item?.marking === "banded" ? item.bands.map((band) => band.minMarks) : []).toEqual([0, 1, 4]);
+    expect(codes(item)).toEqual([]);
+  });
+
+  it("leaves bands alone when the scheme prints its own zero band", () => {
+    const item = parse(
+      {
+        marking: "banded",
+        bands: [
+          { id: "L0", label: "Level 0", minMarks: 0, maxMarks: 0, descriptor: "No relevant content." },
+          { id: "L1", label: "Level 1", minMarks: 1, maxMarks: 6, descriptor: "An account." },
+        ],
+      },
+      6
+    );
+    expect(item?.marking === "banded" ? item.bands.length : 0).toBe(2);
+  });
+});
+
+/*
+ * Summing every part of a scheme is right for one regime out of five. It read
+ * "the scheme awards 0 marks against a 6-mark question" for every level-marked
+ * question on a real paper, and 3 against 2 for every pool.
+ */
+describe("the marks a scheme awards", () => {
+  it("adds up an additive question", () => {
+    expect(schemeMarkTotal(parse({ marking: "additive", points: [point(), point({ id: "q1.m2", marks: 2 })] }, 3)!)).toBe(3);
+  });
+
+  it("counts a pool by what it offers, not by what it holds", () => {
+    const item = parse(
+      {
+        marking: "pointPool",
+        awardable: 2,
+        points: [
+          { id: "p1", marks: 1, code: "P", text: "One" },
+          { id: "p2", marks: 1, code: "P", text: "Two" },
+          { id: "p3", marks: 1, code: "P", text: "Three" },
+        ],
+      },
+      2
+    );
+    expect(schemeMarkTotal(item!)).toBe(2);
+  });
+
+  it("counts a banded question by its top band, not by every band added up", () => {
+    const item = parse(
+      {
+        marking: "banded",
+        bands: [
+          { id: "L1", label: "Level 1", minMarks: 1, maxMarks: 3, descriptor: "Simple." },
+          { id: "L2", label: "Level 2", minMarks: 4, maxMarks: 6, descriptor: "Detailed." },
+        ],
+      },
+      6
+    );
+    expect(schemeMarkTotal(item!)).toBe(6);
   });
 });

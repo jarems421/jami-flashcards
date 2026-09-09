@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   findQuestionStarts,
+  normaliseQuestionLabel,
   rootQuestionLabel,
   readPrintedTariff,
   readPrintedTariffs,
@@ -9,7 +10,11 @@ import {
   type PdfPageText,
   type QuestionRegion,
 } from "@/lib/practice/exam-page-regions";
-import { normalizeMarkSchemeItem, schemeCriteria, validateMarkSchemeItem } from "@/lib/practice/mark-schemes";
+import {
+  normalizeMarkSchemeItem,
+  schemeMarkTotal,
+  validateMarkSchemeItem,
+} from "@/lib/practice/mark-schemes";
 import {
   canPublishExamQuestion,
   type ExamDifficulty,
@@ -127,20 +132,56 @@ export function buildExamQuestionsFromExtraction(
      */
     // Normalised, so AQA's "01.1" and Edexcel's "3" both name their question.
     const rootLabel = rootQuestionLabel(number);
-    const regions = rootLabel
-      ? regionsForQuestion({ label: rootLabel, starts: questionStarts, pages: paperPages })
+    /*
+     * A part is its own question on the page when the paper numbers it that
+     * way. AQA prints `01.1` in the margin like any other question, so taking
+     * the root's region gives only the stem -- a sentence of scene-setting
+     * with no tariff in it, which read as "no tariff could be read" on every
+     * question of the paper.
+     */
+    const fullLabel = normaliseQuestionLabel(number) ?? rootLabel;
+    /*
+     * Asked of the board, not of the one label: AQA numbers every part in the
+     * margin, so `08.1` is its own question even on the one page where its
+     * number was not picked up -- and comparing that part against question 8's
+     * ten marks failed it for a tariff the paper prints correctly.
+     */
+    const boardNumbersParts = questionStarts.some(
+      (start) => start.label !== rootLabel && rootQuestionLabel(start.label) === rootLabel
+    );
+    const partIsItsOwnQuestion = fullLabel !== rootLabel && boardNumbersParts;
+    /*
+     * Where to crop: the part's own number when the paper shows one, otherwise
+     * the question it belongs to. The root's region starts at its stem and ends
+     * at the next numbered part, so a part whose number was missed still gets
+     * the right slice of paper rather than none at all.
+     */
+    const startLabel = questionStarts.some((start) => start.label === fullLabel)
+      ? fullLabel
+      : rootLabel;
+    const regions = startLabel
+      ? regionsForQuestion({ label: startLabel, starts: questionStarts, pages: paperPages })
       : [];
-    const printedTariff =
-      printedTariffs.get(rootLabel) ??
-      (regions.length ? readPrintedTariff(textInRegions(paperPages, regions)) : null);
-    // Compared against the whole question's marks, which is the same as this
-    // part's marks whenever the question has only one part.
+
+    /*
+     * Two ways a tariff is printed, and they are compared against different
+     * totals. AQA numbers each part in the margin and prints `[3 marks]` inside
+     * it, so a part is checked against its own region. Edexcel prints one
+     * "(Total for Question 5 is 5 marks)" covering every part and no margin
+     * number for `5(b)`, so its parts are summed and checked against that --
+     * reading the region there finds the largest `(n)` belonging to some other
+     * part, which failed four questions of a real paper.
+     */
+    const regionTariff = regions.length
+      ? readPrintedTariff(textInRegions(paperPages, regions))
+      : null;
+    const documentTariff = printedTariffs.get(rootLabel) ?? null;
     const rootMarks = marksByRoot.get(rootLabel) ?? marks;
-    const labelFoundOnPaper = questionStarts.some((start) => start.label === rootLabel);
+    const printedTariff = partIsItsOwnQuestion ? regionTariff : documentTariff ?? regionTariff;
+    const expectedMarks = partIsItsOwnQuestion ? marks : rootMarks;
+    const labelFoundOnPaper = questionStarts.some((start) => start.label === startLabel);
     const schemeMentionsLabel = schemeCoversQuestion(schemeText, rootLabel);
-    const schemeMarkTotal = markSchemeItem
-      ? schemeCriteria(markSchemeItem).reduce((sum, criterion) => sum + criterion.marks, 0)
-      : 0;
+    const schemeTotal = markSchemeItem ? schemeMarkTotal(markSchemeItem) : 0;
     const page = Math.round(Number(item.questionPage));
 
     const issues = [
@@ -149,14 +190,14 @@ export function buildExamQuestionsFromExtraction(
       !labelFoundOnPaper ? `Question ${number || "?"} was not found in the paper's margin.` : "",
       !prompt ? "Missing prompt." : "",
       marks < 1 ? "Invalid tariff." : "",
-      printedTariff !== null && printedTariff !== rootMarks
-        ? `Extracted ${rootMarks} marks for question ${rootLabel} but the paper prints ${printedTariff}.`
+      printedTariff !== null && printedTariff !== expectedMarks
+        ? `Extracted ${expectedMarks} marks for question ${startLabel} but the paper prints ${printedTariff}.`
         : "",
       printedTariff === null ? "No tariff could be read for this question." : "",
       !pairedScheme ? "Missing scheme pairing." : "",
       !schemeMentionsLabel ? `The mark scheme does not cover question ${number || "?"}.` : "",
-      markSchemeItem && schemeMarkTotal !== marks
-        ? `The scheme awards ${schemeMarkTotal} marks against a ${marks}-mark question.`
+      markSchemeItem && schemeTotal !== marks
+        ? `The scheme awards ${schemeTotal} marks against a ${marks}-mark question.`
         : "",
       regions.length === 0 ? "The question's own region of the paper could not be located." : "",
       ...schemeIssues.map((issue) => issue.detail),
@@ -166,9 +207,9 @@ export function buildExamQuestionsFromExtraction(
     const verification: ExamIngestionVerification = {
       paperIdentityMatches: input.identityMatches,
       questionLabelMatches: labelFoundOnPaper,
-      tariffMatches: printedTariff === rootMarks,
+      tariffMatches: printedTariff !== null && printedTariff === expectedMarks,
       markSchemeLabelMatches: schemeMentionsLabel && Boolean(pairedScheme),
-      questionComplete: Boolean(prompt) && markSchemeItem !== null && schemeMarkTotal === marks,
+      questionComplete: Boolean(prompt) && markSchemeItem !== null && schemeTotal === marks,
       assetsComplete: regions.length > 0,
       specificationCurrent: true,
       issues,

@@ -257,7 +257,25 @@ function normalizeBands(value: unknown, questionId: string, prefix = "L") {
       descriptor,
     });
   });
-  return bands.sort((left, right) => left.minMarks - right.minMarks);
+  const sorted = bands.sort((left, right) => left.minMarks - right.minMarks);
+  /*
+   * The band a printed scheme does not print.
+   *
+   * A levels scheme lists Level 1 upwards and states the zero case in prose --
+   * "No relevant content" -- so a faithful reading of the page starts at 1 and
+   * fails a validator that requires the bands to cover the whole range. The
+   * band is restored rather than the scheme rejected.
+   */
+  if (sorted.length > 0 && sorted[0].minMarks === 1) {
+    sorted.unshift({
+      id: `${questionId}.${prefix}0`,
+      label: "Level 0",
+      minMarks: 0,
+      maxMarks: 0,
+      descriptor: "No relevant content.",
+    });
+  }
+  return sorted;
 }
 
 function normalizeTraits(value: unknown, questionId: string) {
@@ -350,13 +368,37 @@ export function normalizeMarkSchemeItem(
   switch (model) {
     case "additive":
       return { ...common, marking: "additive", points: normalizePoints(value.points, question.id, false) };
-    case "pointPool":
-      return {
-        ...common,
-        marking: "pointPool",
-        points: normalizePoints(value.points, question.id, true),
-        awardable: Math.max(0, integer(value.awardable, 0)),
-      };
+    case "pointPool": {
+      const pool = normalizePoints(value.points, question.id, true);
+      /*
+       * How many of a pool's points a student may be given.
+       *
+       * A model reading "any two from" writes out the points and leaves the
+       * count out -- eleven of the forty-six questions on a real paper, every
+       * one of them held back for it. The paper itself says how many: points
+       * all worth the same `p` on a question worth `m` can only be a pool of
+       * `m / p`, so the count is recovered rather than the scheme discarded.
+       */
+      const stated = Math.max(0, integer(value.awardable, 0));
+      const perPoint = pool[0]?.marks ?? 0;
+      const uniform = pool.length > 0 && pool.every((point) => point.marks === perPoint);
+      const awardable =
+        stated >= 1
+          ? stated
+          : uniform && perPoint > 0 && question.marks % perPoint === 0
+            ? question.marks / perPoint
+            : 0;
+      /*
+       * "Any one from A / B / C" written as a single point is not a pool at
+       * all -- the alternatives are inside that point's own wording. Stored as
+       * a pool it is one that offers everything it holds, which is the shape
+       * the validator exists to reject, so it is stored as what it is.
+       */
+      if (pool.length > 0 && pool.length <= awardable) {
+        return { ...common, marking: "additive", points: pool };
+      }
+      return { ...common, marking: "pointPool", points: pool, awardable };
+    }
     case "banded":
       return { ...common, marking: "banded", bands: normalizeBands(value.bands, question.id) };
     case "weightedTraits":
@@ -510,6 +552,31 @@ export function validateMarkSchemeItem(
   }
 
   return issues;
+}
+
+/**
+ * The marks a scheme actually awards, which is not the sum of everything in it.
+ *
+ * Summing the parts is right for an additive question and wrong for the other
+ * four regimes: a pool of six points offering two awards two, and a banded
+ * question awards its top band rather than every band added together. Checking
+ * a scheme against its question by summing gave "the scheme awards 0 marks
+ * against a 6-mark question" for every level-marked question on a real paper.
+ */
+export function schemeMarkTotal(item: PracticePaperMarkSchemeItem): number {
+  switch (item.marking) {
+    case "additive":
+      return item.points.reduce((sum, point) => sum + point.marks, 0);
+    case "pointPool":
+      return item.awardable * (item.points[0]?.marks ?? 0);
+    case "banded":
+      return item.bands.reduce((most, band) => Math.max(most, band.maxMarks), 0);
+    case "weightedTraits":
+      return item.traits.reduce((sum, trait) => sum + trait.maxMarks, 0);
+    case "competency":
+      // Competencies are met or not met; there is no tariff to add up.
+      return item.maxMarks;
+  }
 }
 
 export function creditUnitCount(item: PracticePaperMarkSchemeItem) {

@@ -69,6 +69,7 @@ const SCHEME_EXAMPLE = JSON.stringify({
       answer: "the full correct answer",
       acceptableAlternatives: ["other wordings the scheme allows"],
       commonMistakes: ["what the scheme explicitly rejects"],
+      awardable: 2,
       points: [{
         id: "m1",
         marks: 1,
@@ -96,7 +97,9 @@ const QUESTION_RULES = [
 const SCHEME_RULES = [
   "Return one JSON object of exactly that shape and nothing else.",
   "Use \"points\" for additive and pointPool marking, and \"bands\" for banded marking. Omit whichever does not apply.",
-  "The marks across points must add up to the question tariff, and every question must carry at least one point or band.",
+  "For additive marking the points must add up to the question tariff, and awardable does not apply.",
+  "For pointPool marking -- a scheme reading \"any two from\" -- give every listed point at equal value, and set awardable to how many of them a student may be credited.",
+  "Every question must carry at least one point or band.",
   "code is M for method, A for accuracy, B for an independent mark, C for communication.",
   "Give one entry for each question number you were asked about, and no others.",
 ].join(" ");

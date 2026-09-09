@@ -95,6 +95,31 @@ describe("a real AQA paper, extracted", () => {
     expect(withRegion.length / entries.length).toBeGreaterThan(0.8);
   });
 
+  /*
+   * The number that matters. Four AQA papers ingested cleanly and published
+   * nothing, and every count in between -- questions extracted, labels found,
+   * regions cropped -- looked healthy while they did it.
+   */
+  it("publishes every question of a whole real paper", () => {
+    const summary = summariseExamExtraction(build());
+    expect(summary.issueSummary).toEqual([]);
+    expect(summary.published).toBe(fixture.capture.questions.length);
+    expect(summary.needsReview).toBe(0);
+  });
+
+  /*
+   * AQA prints `[3 marks]` inside each part and no per-question total, so a
+   * part is checked against its own region. Edexcel prints one total for the
+   * whole question and numbers no parts, so its parts are summed and checked
+   * against that -- reading the region there picks up a neighbouring part's
+   * tariff, which failed four questions of the Edexcel paper.
+   */
+  it("checks a part against its own printed tariff", () => {
+    const { entries } = build();
+    const parts = entries.filter((entry) => entry.verification.tariffMatches);
+    expect(parts.length).toBe(entries.length);
+  });
+
   it("is deterministic", () => {
     expect(JSON.stringify(build())).toBe(JSON.stringify(build()));
   });
