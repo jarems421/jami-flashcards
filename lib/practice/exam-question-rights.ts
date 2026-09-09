@@ -92,7 +92,14 @@ export function isExamQuestionServable(question: ExamQuestion) {
       (official
         ? rights.board === question.provenance.board
         : rights.board === "jami") &&
-      isExamQuestionBoardEnabled(question.provenance.board) &&
+      // The board switch is a rights control, so it covers the board's own
+      // material and not Jami's. A Jami-created question names the board it is
+      // aligned to, which is not the same as being the board's to withdraw --
+      // and switching AQA off must not silently take out the original questions
+      // written to stand in for it.
+      (!official || isExamQuestionBoardEnabled(question.provenance.board)) &&
+      // The specification switch does cover both: a superseded spec makes a
+      // question wrong for the course whoever wrote it.
       isExamQuestionSpecificationEnabled(question.provenance.specificationId),
   );
 }

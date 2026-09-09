@@ -146,9 +146,25 @@ describe("the licence gate", () => {
     ).toBe(false);
   });
 
-  it("stops serving a board the moment its kill switch is set", () => {
+  it("stops serving a board's own material the moment its kill switch is set", () => {
     process.env.EXAM_QUESTION_AQA_ENABLED = "false";
-    expect(isExamQuestionServable(question())).toBe(false);
+    expect(
+      isExamQuestionServable(
+        question({ origin: "official_past_paper", humanChecked: true, rights: OFFICIAL_RIGHTS })
+      )
+    ).toBe(false);
+  });
+
+  /*
+   * The switch is there to stop sending a board's material, and Jami's own
+   * questions are not the board's. Covering them too would mean shipping
+   * .env.example -- which disables every board -- silently breaks the one
+   * content path that works before any licence exists, and breaks it at
+   * marking time, long after the session looked fine.
+   */
+  it("leaves Jami-created questions alone when their board is switched off", () => {
+    process.env.EXAM_QUESTION_AQA_ENABLED = "false";
+    expect(isExamQuestionServable(question())).toBe(true);
   });
 
   it("stops serving one specification without touching the rest of its board", () => {
