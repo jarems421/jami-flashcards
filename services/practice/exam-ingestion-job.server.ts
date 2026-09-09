@@ -141,6 +141,7 @@ export async function advanceExamIngestionJob(jobId: string): Promise<ExamIngest
           published: updated.summary?.published ?? 0,
           needsReview: updated.summary?.needsReview ?? 0,
           rejected: updated.summary?.rejected ?? [],
+          issueSummary: updated.summary?.issueSummary ?? [],
         };
         // A dry run has produced everything it was asked for: the accounting,
         // without touching the bank.

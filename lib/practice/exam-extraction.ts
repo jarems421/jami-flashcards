@@ -277,10 +277,31 @@ export function textInRegions(pages: PdfPageText[], regions: QuestionRegion[]) {
 }
 
 export function summariseExamExtraction(result: ExamExtractionResult) {
+  /*
+   * Why questions were held back, most common first.
+   *
+   * A count on its own says nothing: "0 published, 28 needing review" read
+   * identically whether the mark schemes were empty or the tariffs disagreed,
+   * and finding out which cost a paid run. Numbers in an issue are collapsed
+   * so twenty-eight variations of the same problem read as one problem.
+   */
+  const issueCounts = new Map<string, number>();
+  for (const entry of result.entries) {
+    for (const issue of entry.verification.issues) {
+      const shape = issue.replace(/\d+/g, "N");
+      issueCounts.set(shape, (issueCounts.get(shape) ?? 0) + 1);
+    }
+  }
+  const issueSummary = [...issueCounts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 8)
+    .map(([issue, count]) => ({ issue, count }));
+
   return {
     extracted: result.entries.length + result.rejected.length,
     published: result.entries.filter((entry) => entry.question.status === "published").length,
     needsReview: result.entries.filter((entry) => entry.question.status === "needs_review").length,
     rejected: result.rejected,
+    issueSummary,
   };
 }

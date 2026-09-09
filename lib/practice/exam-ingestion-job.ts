@@ -63,6 +63,8 @@ export type ExamIngestionJob = {
   published?: number;
   needsReview?: number;
   rejected?: Array<{ questionNumber: string; reasons: string[] }>;
+  /** Why questions were held back, most common first. */
+  issueSummary?: Array<{ issue: string; count: number }>;
   /** Why it stopped, when it stopped badly. */
   error?: string;
   attempts: number;
