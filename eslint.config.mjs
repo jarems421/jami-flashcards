@@ -237,6 +237,8 @@ const eslintConfig = defineConfig([
     // after any browser run.
     "playwright-report/**",
     "test-results/**",
+    // Scratch, and gitignored for the same reason.
+    ".codex/tmp/**",
     // The workflow runtime rewrites this entrypoint on every build; it is a
     // bundled artifact, not source, and carries its own generated-file marker.
     "app/.well-known/workflow/**",

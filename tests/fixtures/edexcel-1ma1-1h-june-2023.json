@@ -1,0 +1,7963 @@
+{
+ "note": "Captured from the published Edexcel 1MA1/1H June 2023 paper and its mark scheme. Page layout and the model's extraction only; no PDF bytes.",
+ "manifest": {
+  "board": "pearson_edexcel",
+  "boardLabel": "Pearson Edexcel",
+  "qualification": "gcse",
+  "specificationId": "1MA1",
+  "specificationTitle": "Pearson Edexcel Level 1/Level 2 GCSE in Mathematics (1MA1)",
+  "specificationVersion": "1",
+  "subject": "Mathematics",
+  "studyLevel": "gcse-equivalent",
+  "componentCode": "1MA1/1H",
+  "componentTitle": "Paper 1 (Non-Calculator) Higher",
+  "year": 2023,
+  "series": "June",
+  "paperReference": "1MA1/1H",
+  "activeFrom": 1788975462534,
+  "questionPaperUrl": "https://qualifications.pearson.com/content/dam/pdf/GCSE/Mathematics/2015/Exam-materials/1ma1-1h-que-20230520.pdf",
+  "markSchemeUrl": "https://qualifications.pearson.com/content/dam/pdf/GCSE/Mathematics/2015/Exam-materials/1ma1-1h-rms-20230824.pdf",
+  "rightsKey": "pearson_edexcel-2026",
+  "rightsVersion": 1
+ },
+ "paperPages": [
+  {
+   "page": 1,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A0124*",
+     "x": 217.9,
+     "y": 72.5,
+     "height": 26
+    },
+    {
+     "text": "Turn over",
+     "x": 519.7,
+     "y": 128.6,
+     "height": 12
+    },
+    {
+     "text": "P75148A",
+     "x": 64.5,
+     "y": 81.2,
+     "height": 20
+    },
+    {
+     "text": "©2023 Pearson Education Ltd.",
+     "x": 64.5,
+     "y": 71.3,
+     "height": 6
+    },
+    {
+     "text": "N:1/1/1/1/1/",
+     "x": 64.5,
+     "y": 64.3,
+     "height": 6
+    },
+    {
+     "text": " ",
+     "x": 517.1,
+     "y": 628.1,
+     "height": 12
+    },
+    {
+     "text": "Please check the examination details below before entering your candidate information",
+     "x": 175.2,
+     "y": 822,
+     "height": 9
+    },
+    {
+     "text": "Candidate surname",
+     "x": 148.1,
+     "y": 806,
+     "height": 9
+    },
+    {
+     "text": "Other names",
+     "x": 396.1,
+     "y": 806,
+     "height": 9
+    },
+    {
+     "text": "Centre Number",
+     "x": 142.7,
+     "y": 775.5,
+     "height": 11
+    },
+    {
+     "text": "Candidate Number",
+     "x": 273.8,
+     "y": 775.5,
+     "height": 11
+    },
+    {
+     "text": "Pearson Edexcel Level 1/Level 2 GCSE (9–1)",
+     "x": 140.8,
+     "y": 718.9,
+     "height": 20
+    },
+    {
+     "text": "Friday 19 May 2023",
+     "x": 144.9,
+     "y": 685.2,
+     "height": 22
+    },
+    {
+     "text": "Morning (Time: 1 hour 30 minutes)",
+     "x": 140.8,
+     "y": 653.2,
+     "height": 12
+    },
+    {
+     "text": "1MA1/1H",
+     "x": 413.2,
+     "y": 644.7,
+     "height": 29
+    },
+    {
+     "text": "Paper",
+     "x": 341.8,
+     "y": 659.1,
+     "height": 12
+    },
+    {
+     "text": "reference",
+     "x": 341.8,
+     "y": 645.1,
+     "height": 12
+    },
+    {
+     "text": "Total Marks",
+     "x": 496.2,
+     "y": 524.3,
+     "height": 10
+    },
+    {
+     "text": "Mathematics",
+     "x": 149,
+     "y": 617.3,
+     "height": 24
+    },
+    {
+     "text": "PAPER 1 (Non-Calculator)",
+     "x": 149,
+     "y": 599.3,
+     "height": 18
+    },
+    {
+     "text": "Higher Tier",
+     "x": 149,
+     "y": 581.3,
+     "height": 16
+    },
+    {
+     "text": "You must have:",
+     "x": 146.9,
+     "y": 525.2,
+     "height": 12
+    },
+    {
+     "text": "Ruler graduated in centimetres and millimetres,",
+     "x": 229.8,
+     "y": 525.2,
+     "height": 12
+    },
+    {
+     "text": "protractor, pair of compasses, pen, HB pencil, eraser,",
+     "x": 146.9,
+     "y": 511.2,
+     "height": 12
+    },
+    {
+     "text": "Formulae Sheet (enclosed). Tracing paper may be used.",
+     "x": 146.9,
+     "y": 497.2,
+     "height": 12
+    },
+    {
+     "text": "Instructions",
+     "x": 124.7,
+     "y": 454.7,
+     "height": 14
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 431,
+     "height": 28
+    },
+    {
+     "text": "Use",
+     "x": 139.7,
+     "y": 434,
+     "height": 12
+    },
+    {
+     "text": "black",
+     "x": 160.8,
+     "y": 434,
+     "height": 12
+    },
+    {
+     "text": "ink or ball-point pen.",
+     "x": 192.3,
+     "y": 434,
+     "height": 12
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 416,
+     "height": 28
+    },
+    {
+     "text": "Fill in the boxes",
+     "x": 139.7,
+     "y": 419,
+     "height": 12
+    },
+    {
+     "text": "at the top of this page with your name,",
+     "x": 226.1,
+     "y": 419,
+     "height": 12
+    },
+    {
+     "text": "centre number and candidate number.",
+     "x": 139.7,
+     "y": 404,
+     "height": 12
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 386,
+     "height": 28
+    },
+    {
+     "text": "Answer",
+     "x": 139.7,
+     "y": 389,
+     "height": 12
+    },
+    {
+     "text": "all",
+     "x": 179.5,
+     "y": 389,
+     "height": 12
+    },
+    {
+     "text": "questions.",
+     "x": 195.2,
+     "y": 389,
+     "height": 12
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 371,
+     "height": 28
+    },
+    {
+     "text": "Answer the questions in the spaces provided",
+     "x": 139.7,
+     "y": 374,
+     "height": 12
+    },
+    {
+     "text": "–",
+     "x": 139.7,
+     "y": 359,
+     "height": 12
+    },
+    {
+     "text": "there may be more space than you need",
+     "x": 148.5,
+     "y": 359,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 337.4,
+     "y": 359,
+     "height": 12
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 341,
+     "height": 28
+    },
+    {
+     "text": "You must",
+     "x": 139.7,
+     "y": 344,
+     "height": 12
+    },
+    {
+     "text": "show all your working",
+     "x": 189.2,
+     "y": 344,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 306.9,
+     "y": 344,
+     "height": 12
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 326,
+     "height": 28
+    },
+    {
+     "text": "Diagrams are",
+     "x": 139.7,
+     "y": 329,
+     "height": 12
+    },
+    {
+     "text": "NOT",
+     "x": 207.8,
+     "y": 329,
+     "height": 12
+    },
+    {
+     "text": "accurately drawn, unless otherwise indicated.",
+     "x": 233.9,
+     "y": 329,
+     "height": 12
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 311,
+     "height": 28
+    },
+    {
+     "text": "Calculators may not be used",
+     "x": 139.7,
+     "y": 314,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 290.3,
+     "y": 314,
+     "height": 12
+    },
+    {
+     "text": "Information",
+     "x": 124.7,
+     "y": 284,
+     "height": 14
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 260.4,
+     "height": 28
+    },
+    {
+     "text": "The total mark for this paper is 80",
+     "x": 139.7,
+     "y": 263.4,
+     "height": 12
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 245.4,
+     "height": 28
+    },
+    {
+     "text": "The marks for",
+     "x": 139.7,
+     "y": 248.4,
+     "height": 12
+    },
+    {
+     "text": "each",
+     "x": 210.6,
+     "y": 248.4,
+     "height": 12
+    },
+    {
+     "text": "question are shown in brackets",
+     "x": 238.5,
+     "y": 248.4,
+     "height": 12
+    },
+    {
+     "text": "–",
+     "x": 139.7,
+     "y": 233.4,
+     "height": 12
+    },
+    {
+     "text": "use this as a guide as to how much time to spend on each question",
+     "x": 148.5,
+     "y": 233.4,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 462.2,
+     "y": 233.4,
+     "height": 12
+    },
+    {
+     "text": "Advice",
+     "x": 124.7,
+     "y": 203.4,
+     "height": 14
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 179.7,
+     "height": 28
+    },
+    {
+     "text": "Read each question carefully before you start to answer it.",
+     "x": 139.7,
+     "y": 182.7,
+     "height": 12
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 164.7,
+     "height": 28
+    },
+    {
+     "text": "Try to answer every question.",
+     "x": 139.7,
+     "y": 167.7,
+     "height": 12
+    },
+    {
+     "text": "•",
+     "x": 124.7,
+     "y": 149.7,
+     "height": 28
+    },
+    {
+     "text": "Check your answers if you have time at the end.",
+     "x": 139.7,
+     "y": 152.7,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A0224*",
+     "x": 218,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "2",
+     "x": 80.4,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "Answer ALL questions.",
+     "x": 266.2,
+     "y": 799.7,
+     "height": 12
+    },
+    {
+     "text": "Write your answers in the spaces provided.",
+     "x": 215.8,
+     "y": 775.8,
+     "height": 12
+    },
+    {
+     "text": "You must write down all the stages in your working.",
+     "x": 193.1,
+     "y": 751.8,
+     "height": 12
+    },
+    {
+     "text": "1",
+     "x": 70.9,
+     "y": 727.8,
+     "height": 12
+    },
+    {
+     "text": "Work out",
+     "x": 89.3,
+     "y": 727.8,
+     "height": 12
+    },
+    {
+     "text": "8.46",
+     "x": 146.3,
+     "y": 727.8,
+     "height": 12
+    },
+    {
+     "text": "÷",
+     "x": 170.6,
+     "y": 728.8,
+     "height": 12
+    },
+    {
+     "text": "0.15",
+     "x": 183.2,
+     "y": 727.8,
+     "height": 12
+    },
+    {
+     "text": "......................................................",
+     "x": 468.3,
+     "y": 458.3,
+     "height": 6
+    },
+    {
+     "text": "(Total for Question 1 is 3 marks)",
+     "x": 370.8,
+     "y": 432.3,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 70.9,
+     "y": 398.4,
+     "height": 12
+    },
+    {
+     "text": "Work out",
+     "x": 89.3,
+     "y": 398.4,
+     "height": 12
+    },
+    {
+     "text": "7 ",
+     "x": 147.9,
+     "y": 398.5,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 156.2,
+     "y": 406,
+     "height": 12
+    },
+    {
+     "text": "8",
+     "x": 156,
+     "y": 389.1,
+     "height": 12
+    },
+    {
+     "text": "2 ",
+     "x": 176.2,
+     "y": 398.5,
+     "height": 12
+    },
+    {
+     "text": "1",
+     "x": 184.5,
+     "y": 406,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 184.6,
+     "y": 389.1,
+     "height": 12
+    },
+    {
+     "text": "−",
+     "x": 166.1,
+     "y": 398.5,
+     "height": 12
+    },
+    {
+     "text": "Give your answer as a mixed number.",
+     "x": 89.3,
+     "y": 374.4,
+     "height": 12
+    },
+    {
+     "text": "......................................................",
+     "x": 468.3,
+     "y": 133.2,
+     "height": 6
+    },
+    {
+     "text": "(Total for Question 2 is 3 marks)",
+     "x": 370.8,
+     "y": 107.2,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 3,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A0324*",
+     "x": 218,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "Turn over",
+     "x": 527.1,
+     "y": 42,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 566,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "3",
+     "x": 70.9,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "A cube has a total surface area of 150",
+     "x": 89.3,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "cm",
+     "x": 273.1,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 287.8,
+     "y": 805.2,
+     "height": 7
+    },
+    {
+     "text": "Work out the volume of the cube.",
+     "x": 89.3,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "...................................................... cm",
+     "x": 446.2,
+     "y": 449.8,
+     "height": 6
+    },
+    {
+     "text": "3",
+     "x": 577.6,
+     "y": 455.4,
+     "height": 7
+    },
+    {
+     "text": "(Total for Question 3 is 4 marks)",
+     "x": 370.8,
+     "y": 423.8,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 4,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A0424*",
+     "x": 218,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "4",
+     "x": 80.4,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "4",
+     "x": 70.9,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "The table shows information about the daily rainfall in a town for 60 days.",
+     "x": 89.3,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "Rainfall (",
+     "x": 227.3,
+     "y": 762.4,
+     "height": 12
+    },
+    {
+     "text": "R",
+     "x": 276,
+     "y": 762.4,
+     "height": 12
+    },
+    {
+     "text": "mm)",
+     "x": 287.3,
+     "y": 762.4,
+     "height": 12
+    },
+    {
+     "text": "Frequency",
+     "x": 355.5,
+     "y": 762.4,
+     "height": 12
+    },
+    {
+     "text": "0",
+     "x": 243.7,
+     "y": 733.1,
+     "height": 12
+    },
+    {
+     "text": "",
+     "x": 253,
+     "y": 733.1,
+     "height": 12
+    },
+    {
+     "text": "R",
+     "x": 265.6,
+     "y": 733.1,
+     "height": 12
+    },
+    {
+     "text": "<",
+     "x": 276.3,
+     "y": 733.1,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 288.9,
+     "y": 733.1,
+     "height": 12
+    },
+    {
+     "text": "8",
+     "x": 379.7,
+     "y": 733.9,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 243.7,
+     "y": 704.7,
+     "height": 12
+    },
+    {
+     "text": "",
+     "x": 253,
+     "y": 704.7,
+     "height": 12
+    },
+    {
+     "text": "R",
+     "x": 265.6,
+     "y": 704.7,
+     "height": 12
+    },
+    {
+     "text": "<",
+     "x": 276.3,
+     "y": 704.7,
+     "height": 12
+    },
+    {
+     "text": "10",
+     "x": 288.9,
+     "y": 704.7,
+     "height": 12
+    },
+    {
+     "text": "24",
+     "x": 376.7,
+     "y": 705.6,
+     "height": 12
+    },
+    {
+     "text": "10",
+     "x": 237.7,
+     "y": 676.4,
+     "height": 12
+    },
+    {
+     "text": "",
+     "x": 253,
+     "y": 676.4,
+     "height": 12
+    },
+    {
+     "text": "R",
+     "x": 265.6,
+     "y": 676.4,
+     "height": 12
+    },
+    {
+     "text": "<",
+     "x": 276.3,
+     "y": 676.4,
+     "height": 12
+    },
+    {
+     "text": "15",
+     "x": 288.9,
+     "y": 676.4,
+     "height": 12
+    },
+    {
+     "text": "13",
+     "x": 376.7,
+     "y": 677.2,
+     "height": 12
+    },
+    {
+     "text": "15",
+     "x": 237.7,
+     "y": 648,
+     "height": 12
+    },
+    {
+     "text": "",
+     "x": 253,
+     "y": 648,
+     "height": 12
+    },
+    {
+     "text": "R",
+     "x": 265.6,
+     "y": 648,
+     "height": 12
+    },
+    {
+     "text": "<",
+     "x": 276.3,
+     "y": 648,
+     "height": 12
+    },
+    {
+     "text": "20",
+     "x": 288.9,
+     "y": 648,
+     "height": 12
+    },
+    {
+     "text": "11",
+     "x": 376.9,
+     "y": 648.9,
+     "height": 12
+    },
+    {
+     "text": "20",
+     "x": 237.7,
+     "y": 619.7,
+     "height": 12
+    },
+    {
+     "text": "",
+     "x": 253,
+     "y": 619.7,
+     "height": 12
+    },
+    {
+     "text": "R",
+     "x": 265.6,
+     "y": 619.7,
+     "height": 12
+    },
+    {
+     "text": "<",
+     "x": 276.3,
+     "y": 619.7,
+     "height": 12
+    },
+    {
+     "text": "25",
+     "x": 288.9,
+     "y": 619.7,
+     "height": 12
+    },
+    {
+     "text": "4",
+     "x": 379.7,
+     "y": 620.5,
+     "height": 12
+    },
+    {
+     "text": "Draw a frequency polygon for this information.",
+     "x": 89.3,
+     "y": 578.9,
+     "height": 12
+    },
+    {
+     "text": "0",
+     "x": 180.4,
+     "y": 362.3,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 237.1,
+     "y": 362.3,
+     "height": 12
+    },
+    {
+     "text": "10",
+     "x": 290.8,
+     "y": 362.3,
+     "height": 12
+    },
+    {
+     "text": "15",
+     "x": 347.5,
+     "y": 362.3,
+     "height": 12
+    },
+    {
+     "text": "20",
+     "x": 404.2,
+     "y": 362.3,
+     "height": 12
+    },
+    {
+     "text": "25",
+     "x": 460.8,
+     "y": 362.3,
+     "height": 12
+    },
+    {
+     "text": "30",
+     "x": 167.4,
+     "y": 541.8,
+     "height": 12
+    },
+    {
+     "text": "20",
+     "x": 167.4,
+     "y": 485,
+     "height": 12
+    },
+    {
+     "text": "10",
+     "x": 167.4,
+     "y": 428.3,
+     "height": 12
+    },
+    {
+     "text": "0",
+     "x": 173.4,
+     "y": 371.6,
+     "height": 12
+    },
+    {
+     "text": "Rainfall (",
+     "x": 285.2,
+     "y": 342.7,
+     "height": 12
+    },
+    {
+     "text": "R",
+     "x": 331.1,
+     "y": 342.7,
+     "height": 12
+    },
+    {
+     "text": "mm)",
+     "x": 341.8,
+     "y": 342.7,
+     "height": 12
+    },
+    {
+     "text": "Frequency",
+     "x": 107,
+     "y": 457,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 4 is 2 marks)",
+     "x": 370.7,
+     "y": 312.5,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 5,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A0524*",
+     "x": 218,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "Turn over",
+     "x": 527.1,
+     "y": 42,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 566,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "5",
+     "x": 70.9,
+     "y": 799.1,
+     "height": 12
+    },
+    {
+     "text": "E",
+     "x": 87.6,
+     "y": 799.1,
+     "height": 12
+    },
+    {
+     "text": "= {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}",
+     "x": 99.7,
+     "y": 799.1,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 89.3,
+     "y": 785.1,
+     "height": 12
+    },
+    {
+     "text": "= {odd numbers}",
+     "x": 99.9,
+     "y": 785.1,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 89.3,
+     "y": 771.1,
+     "height": 12
+    },
+    {
+     "text": "= {square numbers}",
+     "x": 99.9,
+     "y": 771.1,
+     "height": 12
+    },
+    {
+     "text": "(a)",
+     "x": 89.3,
+     "y": 747.2,
+     "height": 12
+    },
+    {
+     "text": "Complete the Venn diagram for this information.",
+     "x": 107.7,
+     "y": 747.2,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 200.3,
+     "y": 687.2,
+     "height": 12
+    },
+    {
+     "text": "E",
+     "x": 130.2,
+     "y": 712,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 442.4,
+     "y": 687.8,
+     "height": 12
+    },
+    {
+     "text": "(3)",
+     "x": 524.3,
+     "y": 471.4,
+     "height": 12
+    },
+    {
+     "text": "A number is chosen at random from the universal set",
+     "x": 89.3,
+     "y": 447.4,
+     "height": 12
+    },
+    {
+     "text": "E",
+     "x": 347.1,
+     "y": 447.4,
+     "height": 12
+    },
+    {
+     "text": "(b)",
+     "x": 89.3,
+     "y": 423.5,
+     "height": 12
+    },
+    {
+     "text": "Find the probability that this number is in the set",
+     "x": 107.7,
+     "y": 423.5,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 347.4,
+     "y": 423.5,
+     "height": 12
+    },
+    {
+     "text": "′",
+     "x": 355.2,
+     "y": 423,
+     "height": 13
+    },
+    {
+     "text": "......................................................",
+     "x": 468.3,
+     "y": 324,
+     "height": 6
+    },
+    {
+     "text": "(2)",
+     "x": 524.4,
+     "y": 310,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 5 is 5 marks)",
+     "x": 370.8,
+     "y": 284,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 6,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A0624*",
+     "x": 218,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "6",
+     "x": 80.4,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "6",
+     "x": 70.9,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "The scatter graph shows information about the ages and weights of some babies.",
+     "x": 89.3,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "0",
+     "x": 154.2,
+     "y": 412.8,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 210.9,
+     "y": 412.8,
+     "height": 12
+    },
+    {
+     "text": "4",
+     "x": 267.6,
+     "y": 412.8,
+     "height": 12
+    },
+    {
+     "text": "6",
+     "x": 324.2,
+     "y": 412.8,
+     "height": 12
+    },
+    {
+     "text": "8",
+     "x": 380.9,
+     "y": 412.8,
+     "height": 12
+    },
+    {
+     "text": "10",
+     "x": 434.6,
+     "y": 412.8,
+     "height": 12
+    },
+    {
+     "text": "12",
+     "x": 491.3,
+     "y": 412.8,
+     "height": 12
+    },
+    {
+     "text": "12",
+     "x": 141.3,
+     "y": 762.3,
+     "height": 12
+    },
+    {
+     "text": "10",
+     "x": 141.3,
+     "y": 705.7,
+     "height": 12
+    },
+    {
+     "text": "8",
+     "x": 147.3,
+     "y": 649.2,
+     "height": 12
+    },
+    {
+     "text": "6",
+     "x": 147.3,
+     "y": 592.6,
+     "height": 12
+    },
+    {
+     "text": "4",
+     "x": 147.3,
+     "y": 536,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 147.3,
+     "y": 479.4,
+     "height": 12
+    },
+    {
+     "text": "0",
+     "x": 147.3,
+     "y": 422.8,
+     "height": 12
+    },
+    {
+     "text": "Age (months)",
+     "x": 293.9,
+     "y": 392.9,
+     "height": 12
+    },
+    {
+     "text": "Weight",
+     "x": 96.2,
+     "y": 600.2,
+     "height": 12
+    },
+    {
+     "text": "(kg)",
+     "x": 103.4,
+     "y": 586.2,
+     "height": 12
+    },
+    {
+     "text": "(a)",
+     "x": 89.3,
+     "y": 364.7,
+     "height": 12
+    },
+    {
+     "text": "Describe the relationship between the age and the weight of the babies.",
+     "x": 107.7,
+     "y": 364.7,
+     "height": 12
+    },
+    {
+     "text": "..................................................................................................................................................................................................................................................",
+     "x": 70.9,
+     "y": 322.4,
+     "height": 6
+    },
+    {
+     "text": "..................................................................................................................................................................................................................................................",
+     "x": 70.9,
+     "y": 294.2,
+     "height": 6
+    },
+    {
+     "text": "..................................................................................................................................................................................................................................................",
+     "x": 70.9,
+     "y": 266,
+     "height": 6
+    },
+    {
+     "text": "(1)",
+     "x": 524.4,
+     "y": 252,
+     "height": 12
+    },
+    {
+     "text": "Another baby has a weight of 5.8",
+     "x": 89.3,
+     "y": 228,
+     "height": 12
+    },
+    {
+     "text": "kg",
+     "x": 252.2,
+     "y": 228,
+     "height": 12
+    },
+    {
+     "text": "(b)",
+     "x": 89.3,
+     "y": 204.1,
+     "height": 12
+    },
+    {
+     "text": "Using the scatter graph, find an estimate for the age of this baby.",
+     "x": 107.7,
+     "y": 204.1,
+     "height": 12
+    },
+    {
+     "text": "...................................................... months",
+     "x": 429.4,
+     "y": 161.3,
+     "height": 6
+    },
+    {
+     "text": "(2)",
+     "x": 524.4,
+     "y": 147.3,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 6 is 3 marks)",
+     "x": 370.8,
+     "y": 121.3,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 7,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A0724*",
+     "x": 218,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "Turn over",
+     "x": 527.1,
+     "y": 42,
+     "height": 12
+    },
+    {
+     "text": "7",
+     "x": 566,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "7",
+     "x": 70.9,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "The price of a holiday increases by 20%",
+     "x": 89.3,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "This 20% increase adds £240 to the price of the holiday.",
+     "x": 89.3,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "Work out the price of the holiday before the increase.",
+     "x": 89.3,
+     "y": 761.6,
+     "height": 12
+    },
+    {
+     "text": "£......................................................",
+     "x": 462.3,
+     "y": 549.1,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 7 is 2 marks)",
+     "x": 370.8,
+     "y": 523.2,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 8,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A0824*",
+     "x": 218,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "8",
+     "x": 80.4,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "8",
+     "x": 70.9,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "The diagram shows a solid cylinder on a horizontal floor.",
+     "x": 89.3,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "40",
+     "x": 272.1,
+     "y": 701.4,
+     "height": 12
+    },
+    {
+     "text": "cm",
+     "x": 285.6,
+     "y": 701.4,
+     "height": 12
+    },
+    {
+     "text": "pressure = ",
+     "x": 427,
+     "y": 756.2,
+     "height": 12
+    },
+    {
+     "text": "force",
+     "x": 482.3,
+     "y": 763.7,
+     "height": 12
+    },
+    {
+     "text": "area",
+     "x": 484.4,
+     "y": 746.8,
+     "height": 12
+    },
+    {
+     "text": "The cylinder has a",
+     "x": 89.3,
+     "y": 600.1,
+     "height": 12
+    },
+    {
+     "text": "volume of 1200",
+     "x": 107.7,
+     "y": 576.1,
+     "height": 12
+    },
+    {
+     "text": "cm",
+     "x": 185.8,
+     "y": 576.1,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 200.5,
+     "y": 581.8,
+     "height": 7
+    },
+    {
+     "text": "height of 40",
+     "x": 107.7,
+     "y": 562.1,
+     "height": 12
+    },
+    {
+     "text": "cm.",
+     "x": 167.8,
+     "y": 562.1,
+     "height": 12
+    },
+    {
+     "text": "The cylinder exerts a force of 90 newtons on the floor.",
+     "x": 89.3,
+     "y": 538.1,
+     "height": 12
+    },
+    {
+     "text": "Work out the pressure on the floor due to the cylinder.",
+     "x": 89.3,
+     "y": 514.2,
+     "height": 12
+    },
+    {
+     "text": "...................................................... newtons/cm",
+     "x": 402.9,
+     "y": 131.7,
+     "height": 6
+    },
+    {
+     "text": "2",
+     "x": 577.6,
+     "y": 137.3,
+     "height": 7
+    },
+    {
+     "text": "(Total for Question 8 is 3 marks)",
+     "x": 370.8,
+     "y": 105.7,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 9,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A0924*",
+     "x": 218,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "Turn over",
+     "x": 527.1,
+     "y": 42,
+     "height": 12
+    },
+    {
+     "text": "9",
+     "x": 566,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "9",
+     "x": 70.9,
+     "y": 799.4,
+     "height": 12
+    },
+    {
+     "text": "–5",
+     "x": 177.3,
+     "y": 700.2,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 322,
+     "y": 700.2,
+     "height": 12
+    },
+    {
+     "text": "10",
+     "x": 389.9,
+     "y": 700.2,
+     "height": 12
+    },
+    {
+     "text": "15",
+     "x": 460.7,
+     "y": 700.2,
+     "height": 12
+    },
+    {
+     "text": "O",
+     "x": 242.8,
+     "y": 700.2,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 244.2,
+     "y": 780,
+     "height": 12
+    },
+    {
+     "text": "–5",
+     "x": 239.1,
+     "y": 638,
+     "height": 12
+    },
+    {
+     "text": "–10",
+     "x": 233.2,
+     "y": 567.2,
+     "height": 12
+    },
+    {
+     "text": "–15",
+     "x": 233.2,
+     "y": 496.3,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 394.7,
+     "y": 752.5,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 400.7,
+     "y": 752.5,
+     "height": 12
+    },
+    {
+     "text": "= 3",
+     "x": 409.4,
+     "y": 752.5,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 425.4,
+     "y": 752.5,
+     "height": 12
+    },
+    {
+     "text": "– 22",
+     "x": 434.1,
+     "y": 752.5,
+     "height": 12
+    },
+    {
+     "text": "2 – 2",
+     "x": 438.2,
+     "y": 644,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 462.8,
+     "y": 644,
+     "height": 12
+    },
+    {
+     "text": "=",
+     "x": 471.4,
+     "y": 644,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 481.5,
+     "y": 644,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 481.9,
+     "y": 700.9,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 243.4,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "Use these graphs to solve the simultaneous equations",
+     "x": 89.3,
+     "y": 463.4,
+     "height": 12
+    },
+    {
+     "text": "2 – 2",
+     "x": 286.3,
+     "y": 435.2,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 310.9,
+     "y": 435.2,
+     "height": 12
+    },
+    {
+     "text": "=",
+     "x": 319.5,
+     "y": 435.2,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 329.6,
+     "y": 435.2,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 305.3,
+     "y": 421.2,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 311.3,
+     "y": 421.2,
+     "height": 12
+    },
+    {
+     "text": "= 3",
+     "x": 319.9,
+     "y": 421.2,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 336,
+     "y": 421.2,
+     "height": 12
+    },
+    {
+     "text": "– 22",
+     "x": 344.6,
+     "y": 421.2,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 449.6,
+     "y": 317.9,
+     "height": 12
+    },
+    {
+     "text": "= ......................................................",
+     "x": 458.2,
+     "y": 317.9,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 449.6,
+     "y": 289.7,
+     "height": 12
+    },
+    {
+     "text": "= ......................................................",
+     "x": 458.2,
+     "y": 289.7,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 9 is 1 mark)",
+     "x": 375.4,
+     "y": 263.8,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 10,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A01024*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "10",
+     "x": 77.6,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "10",
+     "x": 70.9,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "Here is a pentagon.",
+     "x": 89.3,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 272.3,
+     "y": 771.7,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 458.7,
+     "y": 644,
+     "height": 12
+    },
+    {
+     "text": "C",
+     "x": 244.7,
+     "y": 568.1,
+     "height": 12
+    },
+    {
+     "text": "D",
+     "x": 185.2,
+     "y": 646.9,
+     "height": 12
+    },
+    {
+     "text": "E",
+     "x": 185.9,
+     "y": 715.9,
+     "height": 12
+    },
+    {
+     "text": "120°",
+     "x": 265.3,
+     "y": 747.1,
+     "height": 12
+    },
+    {
+     "text": "135°",
+     "x": 198.4,
+     "y": 651.4,
+     "height": 12
+    },
+    {
+     "text": "110°",
+     "x": 242.6,
+     "y": 591,
+     "height": 12
+    },
+    {
+     "text": "Angle",
+     "x": 89.3,
+     "y": 536.9,
+     "height": 12
+    },
+    {
+     "text": "AED",
+     "x": 121.9,
+     "y": 536.9,
+     "height": 12
+    },
+    {
+     "text": "= 4",
+     "x": 148.5,
+     "y": 536.9,
+     "height": 12
+    },
+    {
+     "text": "×",
+     "x": 166.1,
+     "y": 536.9,
+     "height": 12
+    },
+    {
+     "text": "angle",
+     "x": 176.9,
+     "y": 536.9,
+     "height": 12
+    },
+    {
+     "text": "ABC",
+     "x": 206.2,
+     "y": 536.9,
+     "height": 12
+    },
+    {
+     "text": "Work out the size of angle",
+     "x": 89.3,
+     "y": 512.9,
+     "height": 12
+    },
+    {
+     "text": "AED",
+     "x": 220.1,
+     "y": 512.9,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 243.4,
+     "y": 512.9,
+     "height": 12
+    },
+    {
+     "text": "You must show all your working.",
+     "x": 89.3,
+     "y": 498.9,
+     "height": 12
+    },
+    {
+     "text": "......................................................",
+     "x": 462.9,
+     "y": 172.7,
+     "height": 6
+    },
+    {
+     "text": "°",
+     "x": 576.3,
+     "y": 180.7,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 10 is 4 marks)",
+     "x": 364.8,
+     "y": 146.7,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 11,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A01124*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "Turn over",
+     "x": 527.1,
+     "y": 42,
+     "height": 12
+    },
+    {
+     "text": "11",
+     "x": 563.2,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "11",
+     "x": 70.9,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": "Write",
+     "x": 89.3,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": "(",
+     "x": 138.5,
+     "y": 796.4,
+     "height": 12
+    },
+    {
+     "text": ")",
+     "x": 170.7,
+     "y": 796.4,
+     "height": 12
+    },
+    {
+     "text": "6",
+     "x": 142.7,
+     "y": 796.4,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 125.1,
+     "y": 779.5,
+     "height": 12
+    },
+    {
+     "text": "4",
+     "x": 166.7,
+     "y": 779.5,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 155.1,
+     "y": 800.4,
+     "height": 7
+    },
+    {
+     "text": "3",
+     "x": 166.1,
+     "y": 800.4,
+     "height": 7
+    },
+    {
+     "text": "2",
+     "x": 175.1,
+     "y": 800.4,
+     "height": 7
+    },
+    {
+     "text": "2",
+     "x": 137.4,
+     "y": 783.5,
+     "height": 7
+    },
+    {
+     "text": "7",
+     "x": 148.6,
+     "y": 783.5,
+     "height": 7
+    },
+    {
+     "text": "3",
+     "x": 188.5,
+     "y": 783.5,
+     "height": 7
+    },
+    {
+     "text": "x y",
+     "x": 149.4,
+     "y": 796.4,
+     "height": 12
+    },
+    {
+     "text": "x y",
+     "x": 131.5,
+     "y": 779.5,
+     "height": 12
+    },
+    {
+     "text": "xy",
+     "x": 173.4,
+     "y": 779.5,
+     "height": 12
+    },
+    {
+     "text": "×",
+     "x": 155.2,
+     "y": 779.5,
+     "height": 12
+    },
+    {
+     "text": "−",
+     "x": 184.8,
+     "y": 783.5,
+     "height": 7
+    },
+    {
+     "text": "in the form",
+     "x": 202.3,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": "ax",
+     "x": 259.6,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 271.9,
+     "y": 794,
+     "height": 7
+    },
+    {
+     "text": "y",
+     "x": 276.4,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 282.7,
+     "y": 794,
+     "height": 7
+    },
+    {
+     "text": "where",
+     "x": 289.1,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 321.7,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": ",",
+     "x": 327.7,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 334,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 343.3,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 364,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": "are integers.",
+     "x": 372.6,
+     "y": 788.3,
+     "height": 12
+    },
+    {
+     "text": ".................................................................................",
+     "x": 411.6,
+     "y": 547.2,
+     "height": 6
+    },
+    {
+     "text": "(Total for Question 11 is 3 marks)",
+     "x": 365.4,
+     "y": 521.2,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 12,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A01224*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "12",
+     "x": 77.6,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "12",
+     "x": 70.9,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "Martha plays a game twice.",
+     "x": 89.3,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "The probability tree diagram shows the probabilities that Martha will win or lose",
+     "x": 89.3,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "each",
+     "x": 89.3,
+     "y": 761.6,
+     "height": 12
+    },
+    {
+     "text": "game.",
+     "x": 114.6,
+     "y": 761.6,
+     "height": 12
+    },
+    {
+     "text": "win",
+     "x": 395,
+     "y": 702.7,
+     "height": 12
+    },
+    {
+     "text": "win",
+     "x": 253.7,
+     "y": 672.7,
+     "height": 12
+    },
+    {
+     "text": "lose",
+     "x": 253.7,
+     "y": 560.4,
+     "height": 12
+    },
+    {
+     "text": "win",
+     "x": 395,
+     "y": 586,
+     "height": 12
+    },
+    {
+     "text": "lose",
+     "x": 395,
+     "y": 642.2,
+     "height": 12
+    },
+    {
+     "text": "lose",
+     "x": 395,
+     "y": 525.8,
+     "height": 12
+    },
+    {
+     "text": "1st game",
+     "x": 253.7,
+     "y": 733.8,
+     "height": 12
+    },
+    {
+     "text": "2nd game",
+     "x": 395,
+     "y": 733.8,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 344.4,
+     "y": 597.9,
+     "height": 12
+    },
+    {
+     "text": "9",
+     "x": 344.2,
+     "y": 581,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 344.4,
+     "y": 713.4,
+     "height": 12
+    },
+    {
+     "text": "9",
+     "x": 344.2,
+     "y": 696.5,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 200.2,
+     "y": 574.5,
+     "height": 12
+    },
+    {
+     "text": "8",
+     "x": 200.1,
+     "y": 557.6,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 200.2,
+     "y": 672.3,
+     "height": 12
+    },
+    {
+     "text": "8",
+     "x": 200.1,
+     "y": 655.4,
+     "height": 12
+    },
+    {
+     "text": "7",
+     "x": 344.2,
+     "y": 529.9,
+     "height": 12
+    },
+    {
+     "text": "9",
+     "x": 344.2,
+     "y": 513,
+     "height": 12
+    },
+    {
+     "text": "7",
+     "x": 344.2,
+     "y": 646.8,
+     "height": 12
+    },
+    {
+     "text": "9",
+     "x": 344.2,
+     "y": 629.9,
+     "height": 12
+    },
+    {
+     "text": "Find the probability that Martha will lose at least one game.",
+     "x": 89.3,
+     "y": 482.1,
+     "height": 12
+    },
+    {
+     "text": "......................................................",
+     "x": 468.3,
+     "y": 269.3,
+     "height": 6
+    },
+    {
+     "text": "(Total for Question 12 is 3 marks)",
+     "x": 364.8,
+     "y": 243.3,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 13,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A01324*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "Turn over",
+     "x": 527.1,
+     "y": 42,
+     "height": 12
+    },
+    {
+     "text": "13",
+     "x": 563.2,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "13",
+     "x": 70.9,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 89.3,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "is directly proportional to",
+     "x": 97.9,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 224.4,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 229.8,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 89.3,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "= 24 when",
+     "x": 97.9,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 152.6,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "= 1.5",
+     "x": 161.2,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "Work out the value of",
+     "x": 89.3,
+     "y": 751.6,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 198.1,
+     "y": 751.6,
+     "height": 12
+    },
+    {
+     "text": "when",
+     "x": 206.8,
+     "y": 751.6,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 236,
+     "y": 751.6,
+     "height": 12
+    },
+    {
+     "text": "= 5",
+     "x": 244.7,
+     "y": 751.6,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 449.6,
+     "y": 567.5,
+     "height": 12
+    },
+    {
+     "text": "= ......................................................",
+     "x": 458.2,
+     "y": 567.5,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 13 is 3 marks)",
+     "x": 364.8,
+     "y": 541.5,
+     "height": 12
+    },
+    {
+     "text": "14",
+     "x": 70.9,
+     "y": 507.6,
+     "height": 12
+    },
+    {
+     "text": "(a)",
+     "x": 89.3,
+     "y": 507.6,
+     "height": 12
+    },
+    {
+     "text": "Write",
+     "x": 107.7,
+     "y": 507.6,
+     "height": 12
+    },
+    {
+     "text": "1",
+     "x": 142.8,
+     "y": 515.8,
+     "height": 12
+    },
+    {
+     "text": "16",
+     "x": 139.3,
+     "y": 498.9,
+     "height": 12
+    },
+    {
+     "text": "in the form 4",
+     "x": 157.2,
+     "y": 507.6,
+     "height": 12
+    },
+    {
+     "text": "n",
+     "x": 220.4,
+     "y": 513.2,
+     "height": 7
+    },
+    {
+     "text": "where",
+     "x": 227.2,
+     "y": 507.6,
+     "height": 12
+    },
+    {
+     "text": "n",
+     "x": 259.8,
+     "y": 507.6,
+     "height": 12
+    },
+    {
+     "text": "is an integer.",
+     "x": 269.1,
+     "y": 507.6,
+     "height": 12
+    },
+    {
+     "text": "......................................................",
+     "x": 468.3,
+     "y": 408.5,
+     "height": 6
+    },
+    {
+     "text": "(1)",
+     "x": 524.4,
+     "y": 394.5,
+     "height": 12
+    },
+    {
+     "text": "(b)",
+     "x": 89.3,
+     "y": 370.6,
+     "height": 12
+    },
+    {
+     "text": "Work out the value of",
+     "x": 107.7,
+     "y": 370.6,
+     "height": 12
+    },
+    {
+     "text": "8",
+     "x": 219.3,
+     "y": 370.6,
+     "height": 12
+    },
+    {
+     "text": "9",
+     "x": 244.1,
+     "y": 370.6,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 225.7,
+     "y": 382.7,
+     "height": 7
+    },
+    {
+     "text": "3",
+     "x": 225.7,
+     "y": 372.9,
+     "height": 7
+    },
+    {
+     "text": "3",
+     "x": 250.9,
+     "y": 382.6,
+     "height": 7
+    },
+    {
+     "text": "2",
+     "x": 250.9,
+     "y": 372.8,
+     "height": 7
+    },
+    {
+     "text": "−",
+     "x": 234.3,
+     "y": 370.6,
+     "height": 12
+    },
+    {
+     "text": "......................................................",
+     "x": 468.3,
+     "y": 129.8,
+     "height": 6
+    },
+    {
+     "text": "(3)",
+     "x": 524.4,
+     "y": 115.8,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 14 is 4 marks)",
+     "x": 364.8,
+     "y": 89.8,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 14,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A01424*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "14",
+     "x": 77.6,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "15",
+     "x": 70.9,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "The equation of line",
+     "x": 89.3,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "L1",
+     "x": 190.5,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "is",
+     "x": 205.3,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 219.9,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "= 2",
+     "x": 228.5,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 244.6,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "– 5",
+     "x": 253.2,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "The equation of line",
+     "x": 89.3,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "L2",
+     "x": 190.5,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "is 6",
+     "x": 205.3,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 225.9,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "+",
+     "x": 234.5,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "kx",
+     "x": 244.6,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "– 12 = 0",
+     "x": 258.5,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "L1",
+     "x": 89.3,
+     "y": 761.6,
+     "height": 12
+    },
+    {
+     "text": "is perpendicular to",
+     "x": 104.1,
+     "y": 761.6,
+     "height": 12
+    },
+    {
+     "text": "L2",
+     "x": 197.3,
+     "y": 761.6,
+     "height": 12
+    },
+    {
+     "text": "Find the value of",
+     "x": 89.3,
+     "y": 737.6,
+     "height": 12
+    },
+    {
+     "text": "k",
+     "x": 175.1,
+     "y": 737.6,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 180.5,
+     "y": 737.6,
+     "height": 12
+    },
+    {
+     "text": "You must show all your working.",
+     "x": 89.3,
+     "y": 723.6,
+     "height": 12
+    },
+    {
+     "text": "k",
+     "x": 449.6,
+     "y": 468.6,
+     "height": 12
+    },
+    {
+     "text": "= ......................................................",
+     "x": 458.2,
+     "y": 468.6,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 15 is 3 marks)",
+     "x": 364.8,
+     "y": 442.7,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 15,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A01524*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "Turn over",
+     "x": 527.1,
+     "y": 42,
+     "height": 12
+    },
+    {
+     "text": "15",
+     "x": 563.2,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "16",
+     "x": 70.9,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "Here is a sphere.",
+     "x": 89.3,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "Surface area of sphere = 4",
+     "x": 335.3,
+     "y": 733.3,
+     "height": 12
+    },
+    {
+     "text": "πr",
+     "x": 463,
+     "y": 733.3,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 475.9,
+     "y": 738.9,
+     "height": 7
+    },
+    {
+     "text": "r",
+     "x": 226.3,
+     "y": 738.6,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 91.7,
+     "y": 661.9,
+     "height": 12
+    },
+    {
+     "text": "8",
+     "x": 91.5,
+     "y": 645,
+     "height": 12
+    },
+    {
+     "text": "of the surface area of this sphere is 75",
+     "x": 103.6,
+     "y": 653.7,
+     "height": 12
+    },
+    {
+     "text": "π",
+     "x": 287.9,
+     "y": 653.7,
+     "height": 12
+    },
+    {
+     "text": "cm",
+     "x": 295.4,
+     "y": 653.7,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 310.1,
+     "y": 659.3,
+     "height": 7
+    },
+    {
+     "text": "Find the diameter of the sphere.",
+     "x": 89.3,
+     "y": 619.7,
+     "height": 12
+    },
+    {
+     "text": "Give your answer in the form",
+     "x": 89.3,
+     "y": 605.7,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 237.5,
+     "y": 605.9,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 251.8,
+     "y": 605.9,
+     "height": 12
+    },
+    {
+     "text": "where",
+     "x": 264,
+     "y": 605.7,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 296.6,
+     "y": 605.7,
+     "height": 12
+    },
+    {
+     "text": "is an integer and",
+     "x": 305.9,
+     "y": 605.7,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 389.1,
+     "y": 605.7,
+     "height": 12
+    },
+    {
+     "text": "is",
+     "x": 398.4,
+     "y": 605.7,
+     "height": 12
+    },
+    {
+     "text": "a prime number.",
+     "x": 409.7,
+     "y": 605.7,
+     "height": 12
+    },
+    {
+     "text": "...................................................... cm",
+     "x": 449.7,
+     "y": 336.6,
+     "height": 6
+    },
+    {
+     "text": "(Total for Question 16 is 4 marks)",
+     "x": 364.8,
+     "y": 310.6,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 16,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A01624*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "16",
+     "x": 77.6,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "17",
+     "x": 70.9,
+     "y": 788.5,
+     "height": 12
+    },
+    {
+     "text": "Make",
+     "x": 89.3,
+     "y": 788.5,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 119.9,
+     "y": 788.5,
+     "height": 12
+    },
+    {
+     "text": "the subject of the formula",
+     "x": 128.5,
+     "y": 788.5,
+     "height": 12
+    },
+    {
+     "text": "y",
+     "x": 262.6,
+     "y": 788.9,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 302.4,
+     "y": 796.4,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 298.8,
+     "y": 779.5,
+     "height": 12
+    },
+    {
+     "text": "\u001f",
+     "x": 272.5,
+     "y": 788.9,
+     "height": 12
+    },
+    {
+     "text": "\u001e",
+     "x": 311.4,
+     "y": 796.4,
+     "height": 12
+    },
+    {
+     "text": "\u001d",
+     "x": 307.8,
+     "y": 779.5,
+     "height": 12
+    },
+    {
+     "text": "4 2",
+     "x": 284.3,
+     "y": 796.4,
+     "height": 12
+    },
+    {
+     "text": "7",
+     "x": 321.4,
+     "y": 796.4,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 292.3,
+     "y": 779.5,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 317.8,
+     "y": 779.5,
+     "height": 12
+    },
+    {
+     "text": "(",
+     "x": 291.4,
+     "y": 796.4,
+     "height": 12
+    },
+    {
+     "text": ")",
+     "x": 327.6,
+     "y": 796.4,
+     "height": 12
+    },
+    {
+     "text": ".................................................................................",
+     "x": 411.6,
+     "y": 490.6,
+     "height": 6
+    },
+    {
+     "text": "(Total for Question 17 is 4 marks)",
+     "x": 364.8,
+     "y": 464.7,
+     "height": 12
+    },
+    {
+     "text": "18",
+     "x": 70.9,
+     "y": 430.7,
+     "height": 12
+    },
+    {
+     "text": "7",
+     "x": 89.3,
+     "y": 430.7,
+     "height": 12
+    },
+    {
+     "text": "kg of carrots and 5",
+     "x": 96.8,
+     "y": 430.7,
+     "height": 12
+    },
+    {
+     "text": "kg of tomatoes cost a total of 480p",
+     "x": 189.5,
+     "y": 430.7,
+     "height": 12
+    },
+    {
+     "text": "cost of 1",
+     "x": 126.1,
+     "y": 406.7,
+     "height": 12
+    },
+    {
+     "text": "kg of carrots",
+     "x": 169.6,
+     "y": 406.7,
+     "height": 12
+    },
+    {
+     "text": ":",
+     "x": 232.3,
+     "y": 406.7,
+     "height": 12
+    },
+    {
+     "text": "cost of 1",
+     "x": 237.2,
+     "y": 406.7,
+     "height": 12
+    },
+    {
+     "text": "kg of tomatoes = 5",
+     "x": 280.6,
+     "y": 406.7,
+     "height": 12
+    },
+    {
+     "text": ":",
+     "x": 373.4,
+     "y": 406.7,
+     "height": 12
+    },
+    {
+     "text": "9",
+     "x": 378.2,
+     "y": 406.7,
+     "height": 12
+    },
+    {
+     "text": "Work out the cost of 1",
+     "x": 89.3,
+     "y": 382.7,
+     "height": 12
+    },
+    {
+     "text": "kg of carrots and the cost of 1",
+     "x": 199,
+     "y": 382.7,
+     "height": 12
+    },
+    {
+     "text": "kg of tomatoes.",
+     "x": 345.5,
+     "y": 382.7,
+     "height": 12
+    },
+    {
+     "text": "carrots ......................................................p",
+     "x": 425.7,
+     "y": 142,
+     "height": 12
+    },
+    {
+     "text": "tomatoes ......................................................p",
+     "x": 415.1,
+     "y": 113.8,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 18 is 4 marks)",
+     "x": 364.8,
+     "y": 87.8,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 17,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A01724*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "17",
+     "x": 563.2,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "Turn over",
+     "x": 527.1,
+     "y": 42,
+     "height": 12
+    },
+    {
+     "text": "19",
+     "x": 70.9,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "The menu in a restaurant has starters, main courses and desserts.",
+     "x": 89.3,
+     "y": 799.6,
+     "height": 12
+    },
+    {
+     "text": "There are 5 starters.",
+     "x": 89.3,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "There are 12 main courses.",
+     "x": 89.3,
+     "y": 761.6,
+     "height": 12
+    },
+    {
+     "text": "There are",
+     "x": 89.3,
+     "y": 747.6,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 138.5,
+     "y": 747.6,
+     "height": 12
+    },
+    {
+     "text": "desserts.",
+     "x": 147.2,
+     "y": 747.6,
+     "height": 12
+    },
+    {
+     "text": "There are 420 different ways to choose one starter, one main course and one dessert.",
+     "x": 89.3,
+     "y": 723.6,
+     "height": 12
+    },
+    {
+     "text": "Work out the value of",
+     "x": 89.3,
+     "y": 699.6,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 198.1,
+     "y": 699.6,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 203.5,
+     "y": 699.6,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 449.6,
+     "y": 586.4,
+     "height": 12
+    },
+    {
+     "text": "= ......................................................",
+     "x": 458.2,
+     "y": 586.4,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 19 is 2 marks)",
+     "x": 364.8,
+     "y": 560.4,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 18,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A01824*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "18",
+     "x": 77.6,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "20",
+     "x": 70.9,
+     "y": 795.8,
+     "height": 12
+    },
+    {
+     "text": "For",
+     "x": 89.3,
+     "y": 795.8,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 109.3,
+     "y": 795.8,
+     "height": 12
+    },
+    {
+     "text": "",
+     "x": 117.9,
+     "y": 795.8,
+     "height": 12
+    },
+    {
+     "text": "0, the functions f and g are such that",
+     "x": 130.5,
+     "y": 795.8,
+     "height": 12
+    },
+    {
+     "text": "f (",
+     "x": 239.6,
+     "y": 756.6,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 249.4,
+     "y": 756.6,
+     "height": 12
+    },
+    {
+     "text": ") = 3",
+     "x": 254.7,
+     "y": 756.6,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 277.4,
+     "y": 756.6,
+     "height": 12
+    },
+    {
+     "text": "+ 4",
+     "x": 285.8,
+     "y": 756.6,
+     "height": 12
+    },
+    {
+     "text": "g (",
+     "x": 337.5,
+     "y": 756.6,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 349.3,
+     "y": 756.6,
+     "height": 12
+    },
+    {
+     "text": ") =",
+     "x": 354.7,
+     "y": 756.6,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 382.9,
+     "y": 764.8,
+     "height": 12
+    },
+    {
+     "text": "+",
+     "x": 392.8,
+     "y": 764.8,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 403.1,
+     "y": 764.8,
+     "height": 12
+    },
+    {
+     "text": "5",
+     "x": 388.5,
+     "y": 747.9,
+     "height": 12
+    },
+    {
+     "text": "(a)",
+     "x": 89.3,
+     "y": 728.4,
+     "height": 12
+    },
+    {
+     "text": "Find",
+     "x": 107.7,
+     "y": 728.4,
+     "height": 12
+    },
+    {
+     "text": "g",
+     "x": 141.7,
+     "y": 728.4,
+     "height": 12
+    },
+    {
+     "text": "– 1",
+     "x": 147.7,
+     "y": 734,
+     "height": 7
+    },
+    {
+     "text": "(",
+     "x": 156.8,
+     "y": 728.3,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 160.8,
+     "y": 728.3,
+     "height": 12
+    },
+    {
+     "text": ")",
+     "x": 166.1,
+     "y": 728.3,
+     "height": 12
+    },
+    {
+     "text": "g",
+     "x": 426.5,
+     "y": 601,
+     "height": 12
+    },
+    {
+     "text": "– 1",
+     "x": 432.5,
+     "y": 606.6,
+     "height": 7
+    },
+    {
+     "text": "(",
+     "x": 441.6,
+     "y": 601,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 445.6,
+     "y": 601,
+     "height": 12
+    },
+    {
+     "text": ") = ......................................................",
+     "x": 450.9,
+     "y": 601,
+     "height": 12
+    },
+    {
+     "text": "(2)",
+     "x": 524.4,
+     "y": 587,
+     "height": 12
+    },
+    {
+     "text": "(b)",
+     "x": 89.3,
+     "y": 563,
+     "height": 12
+    },
+    {
+     "text": "Solve",
+     "x": 107.7,
+     "y": 563,
+     "height": 12
+    },
+    {
+     "text": "gf (",
+     "x": 147,
+     "y": 563,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 162.8,
+     "y": 563,
+     "height": 12
+    },
+    {
+     "text": ") = 3",
+     "x": 168.2,
+     "y": 563,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 449.6,
+     "y": 364.7,
+     "height": 12
+    },
+    {
+     "text": "= ......................................................",
+     "x": 458.2,
+     "y": 364.7,
+     "height": 12
+    },
+    {
+     "text": "(3)",
+     "x": 524.4,
+     "y": 350.7,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 20 is 5 marks)",
+     "x": 364.8,
+     "y": 324.8,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 19,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A01924*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "Turn over",
+     "x": 527.1,
+     "y": 42,
+     "height": 12
+    },
+    {
+     "text": "19",
+     "x": 563.2,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "21",
+     "x": 70.9,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 89.3,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": ",",
+     "x": 96.6,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 102.9,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 113.6,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "D",
+     "x": 134.2,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "are points on a circle with centre",
+     "x": 146.1,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "O",
+     "x": 307.8,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 316.5,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "CDE",
+     "x": 89.3,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "is the tangent to the circle at",
+     "x": 116.6,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "D",
+     "x": 257,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 265.6,
+     "y": 785.5,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 220.9,
+     "y": 657.1,
+     "height": 12
+    },
+    {
+     "text": "D",
+     "x": 377.6,
+     "y": 613.2,
+     "height": 12
+    },
+    {
+     "text": "C",
+     "x": 317.9,
+     "y": 562.7,
+     "height": 12
+    },
+    {
+     "text": "O",
+     "x": 310.5,
+     "y": 687.6,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 285.7,
+     "y": 586.8,
+     "height": 12
+    },
+    {
+     "text": "E",
+     "x": 423.9,
+     "y": 668.7,
+     "height": 12
+    },
+    {
+     "text": "51°",
+     "x": 278,
+     "y": 615.3,
+     "height": 12
+    },
+    {
+     "text": "64°",
+     "x": 311.4,
+     "y": 659.2,
+     "height": 12
+    },
+    {
+     "text": "Work out the size of angle",
+     "x": 89.3,
+     "y": 531.5,
+     "height": 12
+    },
+    {
+     "text": "ADC",
+     "x": 220.1,
+     "y": 531.5,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 244.1,
+     "y": 531.5,
+     "height": 12
+    },
+    {
+     "text": "Write down any circle theorems you use.",
+     "x": 89.3,
+     "y": 517.5,
+     "height": 12
+    },
+    {
+     "text": "......................................................",
+     "x": 462.9,
+     "y": 135,
+     "height": 6
+    },
+    {
+     "text": "°",
+     "x": 576.3,
+     "y": 143,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 21 is 4 marks)",
+     "x": 364.8,
+     "y": 109.1,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 20,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A02024*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "20",
+     "x": 77.6,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "22",
+     "x": 70.9,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "ABCDEFGH",
+     "x": 89.3,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "is a cuboid.",
+     "x": 155.9,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 190.5,
+     "y": 576.1,
+     "height": 12
+    },
+    {
+     "text": "D",
+     "x": 378.7,
+     "y": 575,
+     "height": 12
+    },
+    {
+     "text": "G",
+     "x": 265,
+     "y": 771.7,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 262.7,
+     "y": 642.7,
+     "height": 12
+    },
+    {
+     "text": "E",
+     "x": 382.2,
+     "y": 705.5,
+     "height": 12
+    },
+    {
+     "text": "H",
+     "x": 453.5,
+     "y": 766,
+     "height": 12
+    },
+    {
+     "text": "C",
+     "x": 453,
+     "y": 637.8,
+     "height": 12
+    },
+    {
+     "text": "F",
+     "x": 190.4,
+     "y": 712,
+     "height": 12
+    },
+    {
+     "text": "AF",
+     "x": 89.3,
+     "y": 543.8,
+     "height": 12
+    },
+    {
+     "text": "= 6.8",
+     "x": 107.3,
+     "y": 543.8,
+     "height": 12
+    },
+    {
+     "text": "cm",
+     "x": 133.8,
+     "y": 543.8,
+     "height": 12
+    },
+    {
+     "text": "FC",
+     "x": 89.3,
+     "y": 529.8,
+     "height": 12
+    },
+    {
+     "text": "= 13.6",
+     "x": 107.9,
+     "y": 529.8,
+     "height": 12
+    },
+    {
+     "text": "cm",
+     "x": 140.5,
+     "y": 529.8,
+     "height": 12
+    },
+    {
+     "text": "Work out the size of the angle between",
+     "x": 89.3,
+     "y": 505.9,
+     "height": 12
+    },
+    {
+     "text": "FC",
+     "x": 281.3,
+     "y": 505.9,
+     "height": 12
+    },
+    {
+     "text": "and the plane",
+     "x": 300,
+     "y": 505.9,
+     "height": 12
+    },
+    {
+     "text": "ABCD",
+     "x": 367.8,
+     "y": 505.9,
+     "height": 12
+    },
+    {
+     "text": ".",
+     "x": 399.2,
+     "y": 505.9,
+     "height": 12
+    },
+    {
+     "text": "......................................................",
+     "x": 462.9,
+     "y": 180.1,
+     "height": 6
+    },
+    {
+     "text": "°",
+     "x": 576.3,
+     "y": 188.1,
+     "height": 12
+    },
+    {
+     "text": "(Total for Question 22 is 2 marks)",
+     "x": 364.8,
+     "y": 154.1,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 21,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A02124*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "21",
+     "x": 563.2,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "23",
+     "x": 70.9,
+     "y": 786,
+     "height": 12
+    },
+    {
+     "text": "Write",
+     "x": 89.3,
+     "y": 786,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 128.8,
+     "y": 793.4,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 142.4,
+     "y": 793.4,
+     "height": 12
+    },
+    {
+     "text": "4",
+     "x": 122.2,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 149.4,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 175.5,
+     "y": 793.4,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 179.1,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "−",
+     "x": 131.5,
+     "y": 775.6,
+     "height": 12
+    },
+    {
+     "text": "−",
+     "x": 160.3,
+     "y": 785.9,
+     "height": 12
+    },
+    {
+     "text": "in the form",
+     "x": 191.7,
+     "y": 786,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 251.7,
+     "y": 792.9,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 285.9,
+     "y": 792.9,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 269,
+     "y": 775.9,
+     "height": 12
+    },
+    {
+     "text": "3",
+     "x": 266,
+     "y": 792.9,
+     "height": 12
+    },
+    {
+     "text": "+",
+     "x": 275.9,
+     "y": 792.9,
+     "height": 12
+    },
+    {
+     "text": "where",
+     "x": 298.2,
+     "y": 786,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 330.9,
+     "y": 786,
+     "height": 12
+    },
+    {
+     "text": ",",
+     "x": 336.9,
+     "y": 786,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 343.2,
+     "y": 786,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 352.5,
+     "y": 786,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 373.1,
+     "y": 786,
+     "height": 12
+    },
+    {
+     "text": "are integers.",
+     "x": 381.7,
+     "y": 786,
+     "height": 12
+    },
+    {
+     "text": "......................................................",
+     "x": 468.3,
+     "y": 289.8,
+     "height": 6
+    },
+    {
+     "text": "(Total for Question 23 is 4 marks)",
+     "x": 364.8,
+     "y": 263.8,
+     "height": 12
+    },
+    {
+     "text": "Turn over",
+     "x": 527.1,
+     "y": 42,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 22,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A02224*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "22",
+     "x": 77.6,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "24",
+     "x": 70.9,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "Find the set of possible values of",
+     "x": 89.3,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 252.4,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "for which",
+     "x": 261,
+     "y": 799.5,
+     "height": 12
+    },
+    {
+     "text": "4",
+     "x": 226.5,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 232.5,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "2 ",
+     "x": 237.8,
+     "y": 776.6,
+     "height": 7
+    },
+    {
+     "text": "– 25",
+     "x": 244.3,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "<",
+     "x": 268.3,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "0",
+     "x": 280.6,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 304.6,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "12 – 5",
+     "x": 342,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 372,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "– 3",
+     "x": 380.3,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 395.3,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 400.6,
+     "y": 776.6,
+     "height": 7
+    },
+    {
+     "text": ">",
+     "x": 407.1,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "0",
+     "x": 419.5,
+     "y": 771,
+     "height": 12
+    },
+    {
+     "text": "You must show all your working.",
+     "x": 89.3,
+     "y": 742.7,
+     "height": 12
+    },
+    {
+     "text": "......................................................",
+     "x": 468.3,
+     "y": 189.8,
+     "height": 6
+    },
+    {
+     "text": "(Total for Question 24 is 5 marks)",
+     "x": 364.8,
+     "y": 163.8,
+     "height": 12
+    },
+    {
+     "text": "TOTAL FOR PAPER IS 80 MARKS",
+     "x": 341.2,
+     "y": 132.1,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 23,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A02324*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "23",
+     "x": 563.2,
+     "y": 61.5,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 70.7,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 79.6,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.5,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.4,
+     "y": 43.2,
+     "height": 10
+    },
+    {
+     "text": "BLANK PAGE",
+     "x": 285.2,
+     "y": 442.7,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 24,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "*P75148A02424*",
+     "x": 209.7,
+     "y": 43.1,
+     "height": 26
+    },
+    {
+     "text": "24",
+     "x": 77.6,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 545.5,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 554.4,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 563.3,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 572.2,
+     "y": 42.9,
+     "height": 10
+    },
+    {
+     "text": "BLANK PAGE",
+     "x": 285.2,
+     "y": 442.7,
+     "height": 12
+    }
+   ]
+  },
+  {
+   "page": 25,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "Turn over",
+     "x": 521.9,
+     "y": 128.6,
+     "height": 12
+    },
+    {
+     "text": "*P75148A*",
+     "x": 245.3,
+     "y": 72.2,
+     "height": 26
+    },
+    {
+     "text": "Formulae Sheet",
+     "x": 146.8,
+     "y": 599,
+     "height": 14
+    },
+    {
+     "text": "Do not return this Sheet with the question paper.",
+     "x": 146.8,
+     "y": 585,
+     "height": 12
+    },
+    {
+     "text": "Mathematics",
+     "x": 147.9,
+     "y": 687.8,
+     "height": 24
+    },
+    {
+     "text": "PAPER 1 (Non‑Calculator)",
+     "x": 147.9,
+     "y": 664.6,
+     "height": 18
+    },
+    {
+     "text": "Higher Tier",
+     "x": 147.9,
+     "y": 645.6,
+     "height": 16
+    },
+    {
+     "text": "1MA1/1H",
+     "x": 410.8,
+     "y": 719.5,
+     "height": 29
+    },
+    {
+     "text": "Syllabus",
+     "x": 337.4,
+     "y": 733.1,
+     "height": 12
+    },
+    {
+     "text": "reference",
+     "x": 337.4,
+     "y": 719.1,
+     "height": 12
+    },
+    {
+     "text": "Friday 19 May 2023 – Morning",
+     "x": 148.3,
+     "y": 762.3,
+     "height": 19
+    },
+    {
+     "text": "Pearson Edexcel GCSE (9–1) Mathematics",
+     "x": 140,
+     "y": 797.3,
+     "height": 20
+    },
+    {
+     "text": "P75148A",
+     "x": 64.3,
+     "y": 87.5,
+     "height": 20
+    },
+    {
+     "text": "©2023 Pearson Education Ltd.",
+     "x": 64.3,
+     "y": 76.5,
+     "height": 6
+    },
+    {
+     "text": "1/1/1/1/1/",
+     "x": 64.3,
+     "y": 64.5,
+     "height": 7
+    }
+   ]
+  },
+  {
+   "page": 26,
+   "width": 595,
+   "height": 842,
+   "items": [
+    {
+     "text": "2",
+     "x": 82.3,
+     "y": 61.9,
+     "height": 10
+    },
+    {
+     "text": "P75148A",
+     "x": 542.3,
+     "y": 61.2,
+     "height": 12
+    },
+    {
+     "text": "",
+     "x": 71,
+     "y": 42.7,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 71,
+     "y": 42.7,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 80,
+     "y": 42.7,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 88.9,
+     "y": 42.7,
+     "height": 10
+    },
+    {
+     "text": "",
+     "x": 97.8,
+     "y": 42.7,
+     "height": 10
+    },
+    {
+     "text": "2",
+     "x": 564.5,
+     "y": 62.1,
+     "height": 10
+    },
+    {
+     "text": "W73375A",
+     "x": 65.6,
+     "y": 61.4,
+     "height": 12
+    },
+    {
+     "text": "Higher Tier Formulae Sheet",
+     "x": 71.7,
+     "y": 810.4,
+     "height": 12
+    },
+    {
+     "text": "Perimeter, area and volume",
+     "x": 77.8,
+     "y": 782.2,
+     "height": 12
+    },
+    {
+     "text": "Where",
+     "x": 77.8,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 113.1,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 122.4,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 143.1,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "are the lengths of the parallel sides",
+     "x": 152.4,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 77.8,
+     "y": 744.2,
+     "height": 12
+    },
+    {
+     "text": "h",
+     "x": 98.5,
+     "y": 744.2,
+     "height": 12
+    },
+    {
+     "text": "is their perpendicular separation:",
+     "x": 107.8,
+     "y": 744.2,
+     "height": 12
+    },
+    {
+     "text": "Area of a trapezium =",
+     "x": 96.3,
+     "y": 719.2,
+     "height": 12
+    },
+    {
+     "text": "1",
+     "x": 208.7,
+     "y": 727.4,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 208.9,
+     "y": 710.5,
+     "height": 12
+    },
+    {
+     "text": "(",
+     "x": 221.5,
+     "y": 719.2,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 225.5,
+     "y": 719.2,
+     "height": 12
+    },
+    {
+     "text": "+",
+     "x": 234.8,
+     "y": 719.2,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 244.8,
+     "y": 719.2,
+     "height": 12
+    },
+    {
+     "text": ")",
+     "x": 250.8,
+     "y": 719.2,
+     "height": 12
+    },
+    {
+     "text": "h",
+     "x": 258.1,
+     "y": 719.2,
+     "height": 12
+    },
+    {
+     "text": "Volume of a prism = area of cross section × length",
+     "x": 77.9,
+     "y": 695.2,
+     "height": 12
+    },
+    {
+     "text": "Where",
+     "x": 77.9,
+     "y": 671.3,
+     "height": 12
+    },
+    {
+     "text": "r",
+     "x": 113.1,
+     "y": 671.3,
+     "height": 12
+    },
+    {
+     "text": "is the radius and",
+     "x": 121.1,
+     "y": 671.3,
+     "height": 12
+    },
+    {
+     "text": "d",
+     "x": 203.6,
+     "y": 671.3,
+     "height": 12
+    },
+    {
+     "text": "is the diameter:",
+     "x": 212.9,
+     "y": 671.3,
+     "height": 12
+    },
+    {
+     "text": "Circumference of a circle = 2",
+     "x": 96.3,
+     "y": 646.3,
+     "height": 12
+    },
+    {
+     "text": "πr",
+     "x": 238.8,
+     "y": 646.3,
+     "height": 12
+    },
+    {
+     "text": "=",
+     "x": 252.8,
+     "y": 646.3,
+     "height": 12
+    },
+    {
+     "text": "πd",
+     "x": 262.9,
+     "y": 646.3,
+     "height": 12
+    },
+    {
+     "text": "Area of a circle =",
+     "x": 96.3,
+     "y": 621.3,
+     "height": 12
+    },
+    {
+     "text": "πr",
+     "x": 184.8,
+     "y": 621.3,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 195.5,
+     "y": 626.7,
+     "height": 7
+    },
+    {
+     "text": "Quadratic formula",
+     "x": 339.1,
+     "y": 782.2,
+     "height": 12
+    },
+    {
+     "text": "The solution of",
+     "x": 339.1,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "ax",
+     "x": 416.3,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "2 ",
+     "x": 427.6,
+     "y": 763.6,
+     "height": 7
+    },
+    {
+     "text": "+",
+     "x": 434.4,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "bx",
+     "x": 444.5,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "+",
+     "x": 459.1,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 469.2,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "= 0",
+     "x": 477.8,
+     "y": 758.2,
+     "height": 12
+    },
+    {
+     "text": "where",
+     "x": 339.1,
+     "y": 734.2,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 371.7,
+     "y": 734.2,
+     "height": 12
+    },
+    {
+     "text": "≠ 0",
+     "x": 381,
+     "y": 734.2,
+     "height": 12
+    },
+    {
+     "text": "x",
+     "x": 357.5,
+     "y": 697.5,
+     "height": 12
+    },
+    {
+     "text": "=",
+     "x": 366.1,
+     "y": 697.5,
+     "height": 12
+    },
+    {
+     "text": "\u001f",
+     "x": 378.9,
+     "y": 704.3,
+     "height": 12
+    },
+    {
+     "text": "\u001e",
+     "x": 396,
+     "y": 704.3,
+     "height": 12
+    },
+    {
+     "text": "\u001f",
+     "x": 425.5,
+     "y": 704.3,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 387.9,
+     "y": 704.3,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 412.6,
+     "y": 704.3,
+     "height": 12
+    },
+    {
+     "text": "ac",
+     "x": 440.4,
+     "y": 704.3,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 415.8,
+     "y": 687.4,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 419,
+     "y": 709.7,
+     "height": 6.9
+    },
+    {
+     "text": "4",
+     "x": 434.2,
+     "y": 704.3,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 409.6,
+     "y": 687.4,
+     "height": 12
+    },
+    {
+     "text": "Pythagoras’ Theorem and Trigonometry",
+     "x": 77.9,
+     "y": 601.8,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 101.6,
+     "y": 530.1,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 263.8,
+     "y": 369.3,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 204.3,
+     "y": 550.5,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 206.7,
+     "y": 303.5,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 264.3,
+     "y": 495.6,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 110.7,
+     "y": 310.3,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 298.9,
+     "y": 310.3,
+     "height": 12
+    },
+    {
+     "text": "C",
+     "x": 222,
+     "y": 405.7,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 204.3,
+     "y": 471.4,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 171.6,
+     "y": 369.1,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 101.6,
+     "y": 555.2,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 263.8,
+     "y": 394.4,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 204.3,
+     "y": 575.6,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 206.7,
+     "y": 328.6,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 264.3,
+     "y": 520.7,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 110.7,
+     "y": 335.4,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 298.9,
+     "y": 335.4,
+     "height": 12
+    },
+    {
+     "text": "C",
+     "x": 222,
+     "y": 430.8,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 204.3,
+     "y": 496.5,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 171.6,
+     "y": 394.2,
+     "height": 12
+    },
+    {
+     "text": "In any right-angled triangle where",
+     "x": 339.1,
+     "y": 601.6,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 507.5,
+     "y": 601.6,
+     "height": 12
+    },
+    {
+     "text": ",",
+     "x": 513.5,
+     "y": 601.6,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 519.8,
+     "y": 601.6,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 529.1,
+     "y": 601.6,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 549.7,
+     "y": 601.6,
+     "height": 12
+    },
+    {
+     "text": "are",
+     "x": 558.4,
+     "y": 601.6,
+     "height": 12
+    },
+    {
+     "text": "the length of the sides and",
+     "x": 339.1,
+     "y": 587.6,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 469.5,
+     "y": 587.6,
+     "height": 12
+    },
+    {
+     "text": "is the hypotenuse:",
+     "x": 478.2,
+     "y": 587.6,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 357.5,
+     "y": 563.7,
+     "height": 12
+    },
+    {
+     "text": "2 ",
+     "x": 363.5,
+     "y": 569,
+     "height": 7
+    },
+    {
+     "text": "+",
+     "x": 370.3,
+     "y": 563.7,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 380.4,
+     "y": 563.7,
+     "height": 12
+    },
+    {
+     "text": "2 ",
+     "x": 386.4,
+     "y": 569,
+     "height": 7
+    },
+    {
+     "text": "=",
+     "x": 393.2,
+     "y": 563.7,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 403.2,
+     "y": 563.7,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 408.6,
+     "y": 569,
+     "height": 7
+    },
+    {
+     "text": "In any right-angled triangle",
+     "x": 339.1,
+     "y": 539.7,
+     "height": 12
+    },
+    {
+     "text": "ABC",
+     "x": 474.9,
+     "y": 539.7,
+     "height": 12
+    },
+    {
+     "text": "where",
+     "x": 500.9,
+     "y": 539.7,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 339.1,
+     "y": 525.7,
+     "height": 12
+    },
+    {
+     "text": ",",
+     "x": 345.1,
+     "y": 525.7,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 351.4,
+     "y": 525.7,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 360.7,
+     "y": 525.7,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 381.3,
+     "y": 525.7,
+     "height": 12
+    },
+    {
+     "text": "are the length of the sides and",
+     "x": 389.9,
+     "y": 525.7,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 339.1,
+     "y": 511.7,
+     "height": 12
+    },
+    {
+     "text": "is the hypotenuse:",
+     "x": 347.7,
+     "y": 511.7,
+     "height": 12
+    },
+    {
+     "text": "sin",
+     "x": 358.1,
+     "y": 479.9,
+     "height": 11.1
+    },
+    {
+     "text": "cos",
+     "x": 411,
+     "y": 479.9,
+     "height": 11.1
+    },
+    {
+     "text": "tan",
+     "x": 465,
+     "y": 479.9,
+     "height": 11.1
+    },
+    {
+     "text": "A",
+     "x": 374,
+     "y": 479.9,
+     "height": 11.1
+    },
+    {
+     "text": "a",
+     "x": 392.5,
+     "y": 486.9,
+     "height": 11.1
+    },
+    {
+     "text": "c",
+     "x": 392.8,
+     "y": 471.2,
+     "height": 11.1
+    },
+    {
+     "text": "A",
+     "x": 428.2,
+     "y": 479.9,
+     "height": 11.1
+    },
+    {
+     "text": "b",
+     "x": 446.4,
+     "y": 486.9,
+     "height": 11.1
+    },
+    {
+     "text": "c",
+     "x": 446.8,
+     "y": 471.2,
+     "height": 11.1
+    },
+    {
+     "text": "A",
+     "x": 481.3,
+     "y": 479.9,
+     "height": 11.1
+    },
+    {
+     "text": "a",
+     "x": 499.9,
+     "y": 486.9,
+     "height": 11.1
+    },
+    {
+     "text": "b",
+     "x": 499.8,
+     "y": 471.2,
+     "height": 11.1
+    },
+    {
+     "text": "=",
+     "x": 383,
+     "y": 479.9,
+     "height": 11.1
+    },
+    {
+     "text": "==",
+     "x": 485.3,
+     "y": 479.9,
+     "height": 11.1
+    },
+    {
+     "text": "In any triangle",
+     "x": 339.1,
+     "y": 432.7,
+     "height": 12
+    },
+    {
+     "text": "ABC",
+     "x": 413,
+     "y": 432.7,
+     "height": 12
+    },
+    {
+     "text": "where",
+     "x": 438.9,
+     "y": 432.7,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 471.5,
+     "y": 432.7,
+     "height": 12
+    },
+    {
+     "text": ",",
+     "x": 477.5,
+     "y": 432.7,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 483.8,
+     "y": 432.7,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 493.1,
+     "y": 432.7,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 513.8,
+     "y": 432.7,
+     "height": 12
+    },
+    {
+     "text": "are the length of the sides:",
+     "x": 339.1,
+     "y": 418.6,
+     "height": 12
+    },
+    {
+     "text": "sine rule:",
+     "x": 357.5,
+     "y": 387.6,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 416.8,
+     "y": 394.5,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 424.7,
+     "y": 377.5,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 454.2,
+     "y": 394.5,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 461.6,
+     "y": 377.5,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 492.3,
+     "y": 394.5,
+     "height": 12
+    },
+    {
+     "text": "C",
+     "x": 498.4,
+     "y": 377.5,
+     "height": 12
+    },
+    {
+     "text": "sin",
+     "x": 407.8,
+     "y": 377.5,
+     "height": 12
+    },
+    {
+     "text": "sin",
+     "x": 445.3,
+     "y": 377.5,
+     "height": 12
+    },
+    {
+     "text": "sin",
+     "x": 482.8,
+     "y": 377.5,
+     "height": 12
+    },
+    {
+     "text": "=",
+     "x": 435.4,
+     "y": 386.9,
+     "height": 12
+    },
+    {
+     "text": "=",
+     "x": 503.8,
+     "y": 386.9,
+     "height": 12
+    },
+    {
+     "text": "cosine rule:",
+     "x": 357.5,
+     "y": 351,
+     "height": 12
+    },
+    {
+     "text": "a",
+     "x": 416.8,
+     "y": 351,
+     "height": 12
+    },
+    {
+     "text": "2 ",
+     "x": 422.8,
+     "y": 356.4,
+     "height": 7
+    },
+    {
+     "text": "=",
+     "x": 429.5,
+     "y": 351,
+     "height": 12
+    },
+    {
+     "text": "b",
+     "x": 439.6,
+     "y": 351,
+     "height": 12
+    },
+    {
+     "text": "2 ",
+     "x": 445.6,
+     "y": 356.4,
+     "height": 7
+    },
+    {
+     "text": "+",
+     "x": 452.4,
+     "y": 351,
+     "height": 12
+    },
+    {
+     "text": "c",
+     "x": 462.5,
+     "y": 351,
+     "height": 12
+    },
+    {
+     "text": "2 ",
+     "x": 467.8,
+     "y": 356.4,
+     "height": 7
+    },
+    {
+     "text": "– 2",
+     "x": 474.6,
+     "y": 351,
+     "height": 12
+    },
+    {
+     "text": "bc",
+     "x": 489.9,
+     "y": 351,
+     "height": 12
+    },
+    {
+     "text": "cos",
+     "x": 504.5,
+     "y": 351,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 523.8,
+     "y": 351,
+     "height": 12
+    },
+    {
+     "text": "Area of triangle =",
+     "x": 357.5,
+     "y": 322.8,
+     "height": 12
+    },
+    {
+     "text": "1",
+     "x": 450,
+     "y": 329.6,
+     "height": 12
+    },
+    {
+     "text": "2",
+     "x": 450.2,
+     "y": 312.7,
+     "height": 12
+    },
+    {
+     "text": "a b",
+     "x": 462.7,
+     "y": 322.8,
+     "height": 12
+    },
+    {
+     "text": "sin",
+     "x": 481.3,
+     "y": 322.8,
+     "height": 12
+    },
+    {
+     "text": "C",
+     "x": 498.6,
+     "y": 322.8,
+     "height": 12
+    },
+    {
+     "text": "Compound Interest",
+     "x": 77.9,
+     "y": 289.6,
+     "height": 12
+    },
+    {
+     "text": "Where",
+     "x": 77.9,
+     "y": 265.6,
+     "height": 12
+    },
+    {
+     "text": "P",
+     "x": 113.1,
+     "y": 265.6,
+     "height": 12
+    },
+    {
+     "text": "is the principal amount,",
+     "x": 123.8,
+     "y": 265.6,
+     "height": 12
+    },
+    {
+     "text": "r",
+     "x": 241.3,
+     "y": 265.6,
+     "height": 12
+    },
+    {
+     "text": "is the interest",
+     "x": 249.2,
+     "y": 265.6,
+     "height": 12
+    },
+    {
+     "text": "rate over a given period and",
+     "x": 77.9,
+     "y": 251.6,
+     "height": 12
+    },
+    {
+     "text": "n",
+     "x": 216.9,
+     "y": 251.6,
+     "height": 12
+    },
+    {
+     "text": "is number of times",
+     "x": 226.2,
+     "y": 251.6,
+     "height": 12
+    },
+    {
+     "text": "that the interest is compounded:",
+     "x": 77.9,
+     "y": 237.6,
+     "height": 12
+    },
+    {
+     "text": "Total accrued =",
+     "x": 96.3,
+     "y": 206.6,
+     "height": 12
+    },
+    {
+     "text": "P",
+     "x": 174.7,
+     "y": 206.6,
+     "height": 12
+    },
+    {
+     "text": "1",
+     "x": 191.7,
+     "y": 207.8,
+     "height": 12
+    },
+    {
+     "text": "100",
+     "x": 207.1,
+     "y": 198.5,
+     "height": 12
+    },
+    {
+     "text": "\u001f",
+     "x": 198.7,
+     "y": 207.8,
+     "height": 12
+    },
+    {
+     "text": "\u001e",
+     "x": 186.8,
+     "y": 214.5,
+     "height": 12
+    },
+    {
+     "text": "\u001d",
+     "x": 186.8,
+     "y": 197.1,
+     "height": 12
+    },
+    {
+     "text": "\u001c",
+     "x": 186.8,
+     "y": 204.6,
+     "height": 12
+    },
+    {
+     "text": "\u001b",
+     "x": 227.2,
+     "y": 214.5,
+     "height": 12
+    },
+    {
+     "text": "\u001a",
+     "x": 227.2,
+     "y": 197.1,
+     "height": 12
+    },
+    {
+     "text": "\u0019",
+     "x": 227.2,
+     "y": 204.6,
+     "height": 12
+    },
+    {
+     "text": "r",
+     "x": 214,
+     "y": 215.4,
+     "height": 12
+    },
+    {
+     "text": "n",
+     "x": 232.2,
+     "y": 222.6,
+     "height": 6.9
+    },
+    {
+     "text": "Probability",
+     "x": 339.1,
+     "y": 289.6,
+     "height": 12
+    },
+    {
+     "text": "Where P (",
+     "x": 339.1,
+     "y": 265.6,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 387.9,
+     "y": 265.6,
+     "height": 12
+    },
+    {
+     "text": ") is the probability of outcome",
+     "x": 395.2,
+     "y": 265.6,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 545.7,
+     "y": 265.6,
+     "height": 12
+    },
+    {
+     "text": "and P (",
+     "x": 339.1,
+     "y": 251.6,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 373.2,
+     "y": 251.6,
+     "height": 12
+    },
+    {
+     "text": ") is the probability of outcome",
+     "x": 380.6,
+     "y": 251.6,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 531,
+     "y": 251.6,
+     "height": 12
+    },
+    {
+     "text": ":",
+     "x": 538.3,
+     "y": 251.6,
+     "height": 12
+    },
+    {
+     "text": "P (",
+     "x": 357.5,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 371,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": "or",
+     "x": 381.7,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 395,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": ") = P (",
+     "x": 402.3,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 433.2,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": ") + P (",
+     "x": 440.5,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 471.4,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": ") – P (",
+     "x": 478.7,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 508.8,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 519.5,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 540.1,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": ")",
+     "x": 547.4,
+     "y": 223.4,
+     "height": 12
+    },
+    {
+     "text": "P (",
+     "x": 357.5,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 371,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": "and",
+     "x": 381.7,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 402.3,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": ") = P (",
+     "x": 409.6,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": "A",
+     "x": 440.5,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": "given",
+     "x": 451.1,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 481.1,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": ") P(",
+     "x": 488.4,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": "B",
+     "x": 506.4,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": ")",
+     "x": 513.7,
+     "y": 195.2,
+     "height": 12
+    },
+    {
+     "text": "END OF EXAM AID",
+     "x": 71.8,
+     "y": 169.1,
+     "height": 12
+    }
+   ]
+  }
+ ],
+ "schemeText": "Mark Scheme (Results) Summer 2023 Pearson Edexcel GCSE In Mathematics (1MA1) Higher (Non-Calculator) Paper 1H Edexcel and BTEC Qualifications Edexcel and BTEC qualifications are awarded by Pearson, the UK’s largest awarding body. We provide a wide range of qualifications including academic, vocational, occupational and specific programmes for employers. For further information visit our qualifications websites at www.edexcel.com or www.btec.co.uk . Alternatively, you can get in touch with us using the details on our contact us page at www.edexcel.com/contactus . Pearson: helping people progress, everywhere Pearson aspires to be the world’s leading learning company. Our aim is to help everyone progress in their lives through education. We believe in every kind of learning, for all kinds of people, wherever they are in the world. We’ve been involved in educati on for over 150 years, and by working across 70 countries, in 100 languages, we have built an international reputation for our commitment to high standards and raising achievement through innovation in education. Find out more about how we can help you and your students at: www.pearson.com/uk Summer 2023 Question Paper Log Number P75148 Publications Code 1MA1_1H_2306_MS All the material in this publication is copyright © Pearson Education Ltd 2023 General marking guidance These notes offer general guidance, but the specific notes for examiners appertaining to individual questions take precedence. 1 All candidates must receive the same treatment. Examiners must mark the last candidate in exactly the same way as they mark the first. Where some judgement is required, mark schemes will provide the principles by which marks will be awarded; exemplification/indicative content will not be exhaustive. When examiners are in doubt rega rding the application of the mark scheme to a candidate’s response, the response should be sent to review. 2 All the marks on the mark scheme are designed to be awarded; mark schemes should be applied positively. Examiners should also be prepared to award zero marks if the candidate’s response is not worthy of credit according to the mark scheme. If there is a wrong answer (or no answer) indicated on the answer line always check the working in the body of the script (and on any diagrams), and award any marks appropriate from the mark scheme. Questions where working is not required : In general, the correct answer should be given full marks. Questions that specifically require working : In general, candidates who do not show working on this type of question will get no marks – full details will be given in the mark scheme for each individual question. 3 Crossed out work This should be marked unless the candidate has replaced it with an alternative response. 4 Choice of method If there is a choice of methods shown, mark the method that leads to the answer given on the answer line. If no answer appears on the answer line, mark both methods then award the lower number of marks. 5 Incorrect method If it is clear from the working that the “correct” answer has been obtained from incorrect working, award 0 marks. Send the response to review for your Team Leader to check. 6 Follow through marks Follow through marks which involve a single stage calculation can be awarded without working as you can check the answer, but if ambiguous do not award. Follow through marks which involve more than one stage of calculation can only be awarded on sight of the relevant working, even if it appears obvious that there is only one way you could get the answer given. 7 Ignoring subsequent work It is appropriate to ignore subsequent work when the additional work does not change the answer in a way that is inappropriate for the question or its context. (eg an incorrectly cancelled fraction when the unsimplified fraction would gain full marks). It is not appropriate to ignore subsequent work when the additional work essentially makes the answer incorrect (eg. incorrect algebraic simplification). 8 Probability Probability answers must be given as a fraction, percentage or decimal. If a candidate gives a decimal equivalent to a probability, this should be written to at least 2 decimal places (unless tenths). Incorrect notation should lose the accuracy marks, but be awarded any implied method marks. If a probability fraction is given then cancelled incorrectly, ignore the incorrectly cancelled answer. 9 Linear equations Unless indicated otherwise in the mark scheme, full marks can be gained if the solution alone is given on the answer line, or otherwise unambiguously identified in working (without contradiction elsewhere). Where the correct solution only is shown substituted, but not identified as the solution, the accuracy mark is lost but any method marks can be awarded (embedded answers). 10 Range of answers Unless otherwise stated, when an answer is given as a range (eg 3.5 – 4.2) then this is inclusive of the end points (eg 3.5, 4.2) and all numbers within the range 11 Number in brackets after a calculation Where there is a number in brackets after a calculation eg 2 × 6 (=12) then the mark can be awarded either for the correct method, implied by the calculation or for the correct answer to the calculation. 12 Use of inverted commas Some numbers in the mark scheme will appear inside inverted commas eg “12” × 50 ; the number in inverted commas cannot be any number – it must come from a correct method or process but the candidate may make an arithmetic error in their working. 13 Word in square brackets Where a word is used in square brackets eg [area] × 1.5 : the value used for [area] does not have to come from a correct method or process but is the value that the candidate believes is the area. If there are any constraints on the value that can be used, details will be given in the mark scheme. 14 Misread If a candidate misreads a number from the question. eg uses 252 instead of 255; method or process marks may be awarded provided the question has not been simplified. Examiners should send any instance of a suspected misread to review. Guidance on the use of abbreviations within this mark scheme M method mark awarded for a correct method or partial method P process mark awarded for a correct process as part of a problem solving question A accuracy mark (awarded after a correct method or process; if no method or process is seen then full marks for the question are implied but see individual mark schemes for more details) C communication mark awarded for a fully correct statement(s) with no contradiction or ambiguity B unconditional accuracy mark (no method needed) oe or equivalent cao correct answer only ft follow through (when appropriate as per mark scheme) sc special case dep dependent (on a previous mark) indep independent awrt answer which rounds to isw ignore subsequent working Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 1 56.4 M1 for a start to a method, eg 846 ÷ 15 or 8.46 ÷ 0.15 or 8.46 ÷ 3 × 20 or 282 ÷ 5 that leads to 5 as the first digit or for a complete method with no more than one arithmetic error A start to a repeated subtraction method or a build-up method is acceptable if a correct first digit of 5 is found A1 for digits 564 identified A1 (ft) dep on M1 for correct placement of the decimal point into their final answer An answer of 2 56  5 gets 3 marks 2 4  7 8 M2 for a complete method, eg 7 – 2 + 3 8 − 4 8 condoning error with one numerator or for 59 8 − 5 2 = 59 8 − 20 8 (= 39 8 ) with no more than one error OR for an answer of 4.875 (M1 for finding two fractions with a correct common denominator, with at least one correct corresponding numerator, eg 3 8 , 4 8 or for converting both to improper fractions, eg 59 8 , 5 2 OR for 7.375 – 2.5 ) At least one improper fraction must be correct Both decimals must be correct A1 for 7 4  8 oe eg 14 4 16 Any equivalents must be a mixed number Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 3 125 P1 for process to find area of one face, eg 150 ÷ 6 (= 25) or 6 x 2 = 150 where x is the length of one side P1 for process to find side length, eg √ \"25\" (= 5) P1 for a complete process to find volume, eg “5” × “5” × “5” or “25” × “5” A1 cao 4 Frequency polygon drawn B2 for fully correct frequency polygon with points plotted at the midpoints Joining must be with line segments Accept points plotted within half a small square Ignore any histogram drawn and any part of a frequency polygon outside range of first and last points plotted (2.5, 8), (7.5, 24) (12.5, 13) (17.5, 11) (22.5, 4) (B1 for all points plotted correctly but not joined with line segments or points plotted at correct heights not at midpoints but consistently within each interval and joined with line segments or correct frequency polygon with one point incorrect or correct frequency polygon with first and last points joined directly) for example, at 0, 5, 10,…or at 5, 10, 15,… Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 5 (a) Venn diagram B3 for a fully correct Venn diagram Ignore all entries except the region you are marking for each method mark (B2 for two or three of the four regions correct) (B1 for just one of the four regions correct) (b) 7 10 M1 (ft diagram) for 𝑎 10 where 0 < a < 10 and a is an integer or 7 𝑏 where b > 7 and b is an integer or 1 − 3 10 or 7 : 10 Repeated digits in the diagram should be counted as 2 elements A1 (ft diagram) for 7 10 oe Accept any equivalent fraction, or 0.7 or 70% 4 3 1 2 9 5 7 6 8 10 Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 6 (a) Description C1 for a valid description of the relationship Acceptable examples As age increases, weight increases The older you are the greater the weight Positive correlation Not acceptable examples Positive (relationship) age and weight are in proportion strong correlation or correlation is increasing as the babies get older the heavier they get, negative correlation they are directly proportional, weight goes up as age goes up Accept positive correlation Ignore any comment about strength (b) 2.5 to 4.5 B2 for an answer in the range 2.5 to 4.5 (B1 for a suitable line of best fit drawn or for a point on the grid at ( x , 5.8) where x lies between 2.5 and 4.5 or a horizontal line drawn from 5.8 across to ( x , 5.8) where x is in the range 2.5 to 4.5) 7 1200 M1 for a fully correct method, eg 240 ÷ 0.2 or 240 × 5 oe A1 cao SC B1 for an answer of 960 or 1440 if M0 scored 8 3 P1 for process to find area of base, eg 1200 ÷ 40 (= 30) P1 for process to find pressure, eg 90 ÷ “30” A1 cao Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 9 x = 6 y = −2 B1 cao 10 140 P1 for process to find sum of the interior angles of a pentagon eg 180 × (5 – 2) (= 540) oe Angles must be clearly labelled on the diagram or otherwise identified. Correct method can be implied from angles on the diagram if no ambiguity or contradiction. Ratio must be used correctly if awarded for diagram P1 (dep P1) for process to use ratio 4 : 1, eg labels as 4 x and x or as x and 1 4 x or 110 + 135 + 120 + 4 x + x = “540” or for “540” – 110 – 135 – 120 (= 175) P1 for process to find angle ABC or angle AED eg “175” ÷ (4 + 1) (= 35) or “175” ÷ (4 + 1) × 4 A1 cao A correct answer with no supportive working gets 0 marks Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 11 3 x 7 y 2 M1 for full evaluation of numerator or denominator with at least 2 of 3 terms correct in a product, eg 36 x 10 y 6 or 12 x 3 y 4 or full evaluation of 5 3 2 7 6 3 x y x y or 5 3 3 6 4 x y xy − with at least 2 of 3 terms correct in a product, eg 2 x 3 y –4 or 1.5 x 4 y 6 M1 for correct evaluation of numerator and denominator, eg 36 x 10 y 6 and 12 x 3 y 4 or for full evaluation of numerator and denominator with no more than one error and a final answer of the form ax b y c with two of a , b and c correct or for correct evaluation of 5 3 2 7 6 3 x y x y and 5 3 3 6 4 x y xy − eg 2 x 3 y –4 and 1.5 x 4 y 6 or for full evaluation of 5 3 2 7 6 3 x y x y and 5 3 3 6 4 x y xy − with no more than one error and a final answer of the form ax b y c with two of a , b and c correct A1 for 3 x 7 y 2 oe Accept a = 3, b = 7, c = 2 Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 12 62 72 M1 for one correct product, eg 5 7 8 9  (= 35 72 ) oe or 3 2 8 9  (= 6 72 ) oe or 3 7 8 9  (= 21 72 ) oe or 5 2 8 9  (= 10 72 ) oe M1 for a full method, eg 5 7 3 2 3 7 8 9 8 9 8 9  +  +  oe or 5 2 1 8 9 −  oe A1 for 62 72 oe eg 31 36 13 80 M1 for setting up an equation with a constant term, eg y = kx oe or 24 = k × 1.5 oe or k = 16 or for starting to work with direct proportion, eg 24 ÷ 1.5 (= 16) or 5 ÷ 1.5 (= 3.33…) Condone the use of “ α ” instead of “=” for the M marks M1 for substituting in y = kx , eg y = “16” × 5 or for a complete method, eg 24 ÷ 1.5 × 5 or 5 ÷ 1.5 × 24 A1 cao Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 14 (a) 2 4 − B1 for 2 4 − Accept n = −2 (b) 5 M1 for 5 3 8 = ( ) 5 3 8 or 5 2 or 3 5 8 or 3 32768 or 3 2 9 = ( ) 3 9 or 3 3 or 3 9 or 729 M1 for correctly evaluating 5 3 8 or 3 2 9 , eg 32 or 27 seen A1 cao 15 3 P1 for process to make the y term the subject of 6 y + kx – 12 = 0 eg 6 y = 12 – kx or 2 6 k y x = − P1 for process to find gradient of line perpendicular to L 1 , eg 2 × m = − 1 or 1 2 m = − or for process to find k , eg 2 1 6 k −  = − A1 cao A correct answer with no supportive working gets 0 marks Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 16 10 2 P1 for process to find total surface area of sphere, eg 75 π ÷ 3 × 8 (= 200 π ) or 75 ÷ 3 × 8 (= 200) or for setting up an equation, eg 3 8 × 4 πr 2 = 75 π or 3 8 × 4 r 2 = 75 Could work without π for the three P marks P1 for process to find r 2 , eg 2 \"200 \" ( ) 4 r   = oe or 2 75 8 ( )  4 3 r   =  oe or r 2 = “50” P1 for process to find radius, eg ( r =) \"200 \" 4   oe or \"50\" or 5 2 or for (2 r =) = \"200\" A1 cao 17 3 28 8 5 y x y + = − M1 for clearing the fraction eg y (5 x + 3) = 4(2 x – 7) or 5 xy + 3 y = 8 x – 28 Condone error in expansion of RHS for this mark M1 (dep M1) for isolating x terms in a correct equation eg 3 y + 28 = 8 x – 5 xy M1 (dep on two terms in x ) for factorising eg eg x (8 – 5 y ) = 3 y + 28 A1 for 3 28 8 5 y x y + = − oe eg 3 28 5 8 y x y − − = − Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 18 ( c ) 30 ( t ) 54 P1 for setting up an equation, eg 7 c + 5 t = 480 or c : t = 5 : 9 or 5 9 c t = or 9 c = 5 t or for starting to work with ratio of total costs, eg 7 × 5 (= 35) and 5 × 9 (= 45) or 5 7 14  and 9 5 14  or 35 : 45 or 7 : 9 P1 for a process to eliminate c or t from correct equations, eg 7 c + 9 c = 480 or 5 7 5 480 9 t t  + = or 9 7 5 480 5 c c +  = or for 480 ÷ (“35” + “45”) (= 6) or for a process to find total cost of carrots or total cost of tomatoes, eg 480 ÷ (“7” + “9”) × 7 (= 210) or 480 ÷ (“7” + “9”) × 9 (= 270) P1 for a process to isolate t or c , eg 16 c = 480 or 80 c = 2400 oe or 80 t = 4320 oe or for one value correct eg c = 30 or t = 54 or for a process to find cost of 1 kg of carrots or 1 kg of tomatoes, eg 5 × “6” (= 30) or 9 × “6” (= 54) or “210” ÷ 7 (= 30) or “270” ÷ 5 (= 54) A1 cao Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 19 7 P1 for process to use product rule to find number of desserts, eg 5 × 12 × desserts = 420 or 420 ÷ (5 × 12) oe A1 cao 20 (a) (5 x − 2) 2 M1 for a first step to change the subject of 2 5 x y + = or 2 5 y x + = , eg 5 2 y x = + or 5 2 x y = + A1 oe (b) 55 M1 for method to find gf( x ), eg 3 4 2 5 x + + or method to find 1 g (3) − , eg (5 × 3 – 2) 2 (= 169) M1 for method to solve as far as 2 steps away, eg (5 × 3 – 2) 2 = 3 x + 4 or 3 x + 4 = “169” or for a complete method, eg (“169” – 4) ÷ 3 A1 cao Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 21 71 M1 for method to find angle BAD or angle OAB or angle OBD , eg angle BAD = 64 ÷ 2 (= 32) or angle OAB = 51 or angle OBD = (180 – 64) ÷ 2 (= 58) Angles may be seen on the diagram M1 for method to find angle ADO or angle AXD (where X is a point on the major arc AD ) eg ADO = 180 – 64 – (180 – 51 – “32”) (= 19) or ADO = (180 – 64 – (180 – 2 × “51”)) ÷ 2 (= 19) or angle AXD = 180 – “58” – 51 (= 71) A1 for angle ADC = 71 C1 (dep on M1) for one circle theorem relevant to their method, eg The angle at the centre of a circle is twice the angle at the circumference or The tangent to a circle is perpendicular to the radius (diameter) or Opposite angles of a cyclic quadrilateral add up to 180 or Alternate segment theorem Underlined words need to be shown; reasons need to be linked to their method 22 30 P1 for a correct trig statement using angle ACF , eg 6.8 sin 13.6 x = or x = sin −1 ( 6.8 13.6 ) or sin x = 0.5 or 6.8 13.6 sin sin 90 x = oe Check diagram for working A1 cao Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 23 10 3 27 39 + M1 for method to rationalise one of the fractions, eg 3 3 4 3 4 3 4 3 +  − + (= 12 3 9 16 3 + − ) or 2 3 3 3  (= 2 3 3 ) oe for method to write fractions with a common denominator, eg 3 3 3 2 (4 3) 3(4 3) 3(4 3)   − − − − oe M1 for method to rationalise both of the fractions eg 3 3 4 3 4 3 4 3 +  − + (= 12 3 9 16 3 + − ) and 2 3 3 3  (= 2 3 3 ) oe for writing as a correct single fraction without brackets, eg 9 8 2 3 4 3 3 − + − oe M1 for method to write correct fractions with a common denominator eg 3(12 3 9) 13 2 3 13 3 13 3 +  −   or 36 3 27 26 3 39 39 + − oe for method to rationalise a fraction of the form 3 3 a b c d + − where a , b , c and d are integers, eg 1 2 3 4 3 3 4 3 3 4 3 3 + +  − + or 4 3 3 24 6 3 48 12 3 12 3 9 + + + + − − oe A1 for 10 3 27 39 + oe Paper: 1MA1/1H Question Answer Mark Mark scheme Additional guidance 24 −2.5 < x < 4 3 M1 for method to find the critical values of 4 x 2 – 25 < 0 eg (2 x + 5)(2 x – 5) or critical values −2.5 and 2.5 oe accept use of = or incorrect inequality symbol for 1st and 3rd M marks M1 (dep on M1) for x > −2.5 and x < 2.5 or x > a and x < b where a and b are their critical values and a < b This may be implied by a suitable diagram M1 for method to find the critical values of 12 – 5 x – 3 x 2 > 0 or 3 x 2 + 5 x – 12 < 0 eg (4 – 3 x )( x + 3) or (3 x – 4)( x + 3) 2 5 ( 5) 4 ( 3) 12 2 ( 3) − −  − −  −   − or 2 5 5 4 3 ( 12) 2 3 −  −   −  2 2 5 5 3 12 0 6 6 x       + − − =               oe or critical values −3 and 4 3 oe M1 (dep on previous M1) for x > −3 and x < 4 3 or x > c and x < d where c and d are their critical values and c < d This may be implied by a suitable diagram A1 for −2.5 < x < 4 3 oe eg x < 4 3 , x > −2.5 A correct answer with no supportive working gets 0 marks Modifications to the mark scheme for Modified Large Print (MLP) papers: 1MA1 1H Only mark scheme amendments are shown where the enlargement or modification of the paper requires a change in the mark scheme. Notes apply to both MLP papers and Braille papers unless otherwise stated. The following tolerances should be accepted on marking MLP papers, unless otherwise stated below: Angles: ±5º Measurements of length: ±5 mm PAPER: 1MA1_1H Question Modification Mark scheme notes 4 Table enlarged and left aligned. Black outline and tracking lines added. Values changed in the table: 8 changed to 5; 24 changed to 25; 13 changed to 15; 11 changed to 10; 4 changed to 5 Wording ‘Draw’ removed and replaced with ‘Look at the diagram for Question 4 in the Diagram Booklet. It shows a blank grid. On the grid, draw’. Wording ‘this’ removed and replaced with ‘the’. Axes labels moved to the top of the vertical axis and to the left of the horizontal axis. Right axis labelled. Grid enlarged and small squares removed. Grid lines made black. Open headed arrows. Standard mark scheme but note the change in points to be plotted. 5 Wording added ‘Look at the diagram for Question 5 in the Diagram Booklet. It shows an incomplete Venn diagram.’ Wording added ‘in the Diagram Booklet’. Diagram enlarged. Labels changed to ‘set A’ and ‘set B’. For Braille add “Ans: (i) __ (ii) __ (iii) __ (iv) __” Standard mark scheme 6 Wording added ‘Look at the diagram for Question 6 in the Diagram Booklet. It shows a scatter graph with’. Wording removed ‘The scatter graph shows’. Axes labels moved to the top of the vertical axis and to the left of the horizontal axis. Right axis labelled. Grid enlarged and small squares removed. Grid lines made black. Open headed arrows. Crosses changed to dots. 6 (b) Wording added ‘in the Diagram Booklet’. Value changed from 5.8 kg to 6.0 kg. B2 for an answer in the range 2.5 to 4.5 (B1 for a suitable line of best fit drawn or for a point on the grid at ( x , 6) where x lies between 2.5 and 4.5 or a horizontal line drawn from 6 across to ( x , 6) where x is in the range 2.5 to 4.5) 8 Wording added ‘Look at the diagram for Question 8 in the Diagram Booklet. You may be provided with a model. They are NOT accurate. They show’. Wording removed ‘The diagram shows’. Diagram enlarged. A floor added to the diagram, labelled ‘Floor’ to match the model provided. Label ‘40 cm’ changed to ‘height 40 cm’. Dashed lines made longer and thicker. Formula moved to top left of the diagram and frame removed. Model provided. Standard mark scheme 9 Wording added ‘Look at the diagram for Question 9 in the Diagram Booklet. It shows two intersecting straight lines on a grid.’ Equations moved outside the grid. Grid enlarged. Grid lines made black. Open headed arrows. Graph lines made thicker. Axes labels moved to the top of the vertical axis and to the right of the horizontal axis. Standard mark scheme 10 Wording added ‘Look at the diagram for Question 10 in the Diagram Booklet. It shows a pentagon ABCDE’. Diagram enlarged. Angles moved outside angle arcs and angle arcs made smaller. Wording added ‘Angle EAB = 120°; Angle BCD = 110°; Angle CDE = 135°’ Standard mark scheme 12 Wording added ‘Look at the diagram for Question 12 in the Diagram Booklet. It shows a probability tree diagram’. Diagram enlarged Standard mark scheme 16 Wording added ‘Look at the diagram for Question 16 in the Diagram Booklet. You may be provided with two models. Model 1 is a sphere. Model 2 is made from two hemispheres showing the radius r. They are NOT accurate. The diagram shows a sphere.’ Wording removed ‘Here is a sphere’. Diagram enlarged. Dashed lines made longer and thicker. Radius label moved to the left. Open headed arrows. Formula moved to the top left of the diagram and frame removed. Standard mark scheme 17 Change ‘ x ’ to ‘ y ’. Change ‘ y ’ to ‘ x ’. Standard mark scheme but note the change in letters. 21 Wording added ‘Look at the diagram for Question 21 in the Diagram Booklet.’ Diagram enlarged. Angles moved outside angle arcs and angle arcs made smaller. Centre dot enlarged. Wording added ‘Angle ABO = 51°; Angle BOD = 64°’ Standard mark scheme 22 Wording added ‘Look at the diagram for Question 22 in the Diagram Booklet. You may be provided with a model. They are NOT accurate. They show a cuboid ABCDEFGH.’ Wording removed ‘ABCDEFGH is a cuboid’. Diagram enlarged. Dashed lines made longer and thicker. Dimensions added to the diagram. For Braille: Wedge added at FCA, marked y . Sentence changed to “Work out the size of the angle y, between FC and the plane ABCD.” Standard mark scheme Pearson Education Limited. Registered company number 872828 with its registered office at 80 Strand, London, WC2R 0RL, United Kingdom",
+ "capture": {
+  "questions": [
+   {
+    "questionNumber": "1",
+    "label": "Question 1",
+    "prompt": "Work out 8.46 \\div 0.15",
+    "marks": 3,
+    "questionPage": 2,
+    "schemePage": 6,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "56.4\nM1 for a start to a method, eg 846 ÷ 15 or 8.46 ÷ 0.15 or 8.46 ÷ 3 × 20 or 282 ÷ 5 that leads to 5 as the first digit or for a complete method with no more than one arithmetic error\nA1 for digits 564 identified\nA1 (ft) dep on M1 for correct placement of the decimal point into their final answer",
+    "exampleAnswer": "56.4",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "56.4",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 1,
+       "code": "M",
+       "text": "for a start to a method, eg 846 ÷ 15 or 8.46 ÷ 0.15 or 8.46 ÷ 3 × 20 or 282 ÷ 5 that leads to 5 as the first digit or for a complete method with no more than one arithmetic error",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "for digits 564 identified",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a2",
+       "marks": 1,
+       "code": "A",
+       "text": "(ft) dep on M1 for correct placement of the decimal point into their final answer",
+       "dep": [
+        "m1"
+       ],
+       "ft": true,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "2",
+    "label": "Question 2",
+    "prompt": "Work out 7 \\frac{3}{8} - 2 \\frac{1}{2}\nGive your answer as a mixed number.",
+    "marks": 3,
+    "questionPage": 2,
+    "schemePage": 6,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "4 7/8\nM2 for a complete method, eg 7 – 2 + 3/8 – 4/8 condoning error with one numerator or for 59/8 – 5/2 = 59/8 – 20/8 (= 39/8) with no more than one error OR for an answer of 4.875\n(M1 for finding two fractions with a correct common denominator, with at least one correct corresponding numerator, eg 3/8, 4/8 or for converting both to improper fractions, eg 59/8, 5/2 OR for 7.375 – 2.5)\nA1 for 4 7/8 oe eg 4 14/16",
+    "exampleAnswer": "4 7/8",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "4 7/8",
+     "acceptableAlternatives": [
+      "4.875",
+      "39/8"
+     ],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 2,
+       "code": "M",
+       "text": "for a complete method, eg 7 – 2 + 3/8 – 4/8 condoning error with one numerator or for 59/8 – 5/2 = 59/8 – 20/8 (= 39/8) with no more than one error OR for an answer of 4.875",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "for 4 7/8 oe eg 4 14/16",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "3",
+    "label": "Question 3",
+    "prompt": "A cube has a total surface area of 150 cm²\nWork out the volume of the cube.",
+    "marks": 4,
+    "questionPage": 3,
+    "schemePage": 7,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "125\nP1 for process to find area of one face, eg 150 ÷ 6 (= 25) or 6x^2 = 150\nP1 for process to find side length, eg √\"25\" (= 5)\nP1 for a complete process to find volume, eg “5” × “5” × “5” or “25” × “5”\nA1 cao",
+    "exampleAnswer": "125",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "125",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "p1",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to find area of one face, eg 150 ÷ 6 (= 25) or 6x^2 = 150",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "p2",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to find side length, eg √\"25\" (= 5)",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "p3",
+       "marks": 1,
+       "code": "P",
+       "text": "for a complete process to find volume, eg “5” × “5” × “5” or “25” × “5”",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "4",
+    "label": "Question 4",
+    "prompt": "The table shows information about the daily rainfall in a town for 60 days.\n\nRainfall (R mm) | Frequency\n0 \\le R < 5 | 8\n5 \\le R < 10 | 24\n10 \\le R < 15 | 13\n15 \\le R < 20 | 11\n20 \\le R < 25 | 4\n\nDraw a frequency polygon for this information.",
+    "marks": 2,
+    "questionPage": 4,
+    "schemePage": 7,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "Frequency polygon drawn\nB2 for fully correct frequency polygon with points plotted at the midpoints\n(B1 for all points plotted correctly but not joined with line segments or points plotted at correct heights not at midpoints but consistently within each interval and joined with line segments or correct frequency polygon with one point incorrect or correct frequency polygon with first and last points joined directly)",
+    "exampleAnswer": "Frequency polygon drawn",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "Frequency polygon drawn",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "b1",
+       "marks": 2,
+       "code": "B",
+       "text": "for fully correct frequency polygon with points plotted at the midpoints",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "5(a)",
+    "label": "Question 5 (a)",
+    "prompt": "\\mathcal{E} = \\{1, 2, 3, 4, 5, 6, 7, 8, 9, 10\\}\nA = \\{odd numbers\\}\nB = \\{square numbers\\}\n\n(a) Complete the Venn diagram for this information.",
+    "marks": 3,
+    "questionPage": 5,
+    "schemePage": 8,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "Venn diagram\nB3 for a fully correct Venn diagram\n(B2 for two or three of the four regions correct)\n(B1 for just one of the four regions correct)",
+    "exampleAnswer": "Fully correct Venn diagram",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "Fully correct Venn diagram",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "b1",
+       "marks": 3,
+       "code": "B",
+       "text": "for a fully correct Venn diagram",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "5(b)",
+    "label": "Question 5 (b)",
+    "prompt": "A number is chosen at random from the universal set \\mathcal{E}\n\n(b) Find the probability that this number is in the set B'",
+    "marks": 2,
+    "questionPage": 5,
+    "schemePage": 8,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "7/10\nM1 (ft diagram) for a/10 where 0 < a < 10 and a is an integer or 7/b where b > 7 and b is an integer or 1 – 3/10 or 7 : 10\nA1 (ft diagram) for 7/10 oe",
+    "exampleAnswer": "7/10",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "7/10",
+     "acceptableAlternatives": [
+      "0.7",
+      "70%"
+     ],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 1,
+       "code": "M",
+       "text": "(ft diagram) for a/10 where 0 < a < 10 and a is an integer or 7/b where b > 7 and b is an integer or 1 – 3/10 or 7 : 10",
+       "dep": [],
+       "ft": true,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "(ft diagram) for 7/10 oe",
+       "dep": [],
+       "ft": true,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "6(a)",
+    "label": "Question 6 (a)",
+    "prompt": "The scatter graph shows information about the ages and weights of some babies.\n\n(a) Describe the relationship between the age and the weight of the babies.",
+    "marks": 1,
+    "questionPage": 6,
+    "schemePage": 9,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "Description\nC1 for a valid description of the relationship",
+    "exampleAnswer": "Positive correlation",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "Positive correlation",
+     "acceptableAlternatives": [
+      "As age increases, weight increases",
+      "The older you are the greater the weight"
+     ],
+     "commonMistakes": [
+      "Positive (relationship)",
+      "age and weight are in proportion"
+     ],
+     "points": [
+      {
+       "id": "c1",
+       "marks": 1,
+       "code": "C",
+       "text": "for a valid description of the relationship",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "6(b)",
+    "label": "Question 6 (b)",
+    "prompt": "Another baby has a weight of 5.8 kg\n\n(b) Using the scatter graph, find an estimate for the age of this baby.",
+    "marks": 2,
+    "questionPage": 6,
+    "schemePage": 9,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "2.5 to 4.5\nB2 for an answer in the range 2.5 to 4.5\n(B1 for a suitable line of best fit drawn or for a point on the grid at (x, 5.8) where x lies between 2.5 and 4.5 or a horizontal line drawn from 5.8 across to (x, 5.8) where x is in the range 2.5 to 4.5)",
+    "exampleAnswer": "3.5",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "3.5",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "b1",
+       "marks": 2,
+       "code": "B",
+       "text": "for an answer in the range 2.5 to 4.5",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "7",
+    "label": "Question 7",
+    "prompt": "The price of a holiday increases by 20%\nThis 20% increase adds £240 to the price of the holiday.\nWork out the price of the holiday before the increase.",
+    "marks": 2,
+    "questionPage": 7,
+    "schemePage": 9,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "for a fully correct method, eg 240 ÷ 0.2 or 240 × 5 oe\nc ao\nSC B1 for an answer of 960 or 1440 if M0 scored",
+    "exampleAnswer": "1200",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "1200",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 1,
+       "code": "M",
+       "text": "for a fully correct method, eg 240 ÷ 0.2 or 240 × 5 oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": "1200"
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "8",
+    "label": "Question 8",
+    "prompt": "The diagram shows a solid cylinder on a horizontal floor.\n\nThe cylinder has a\nvolume of 1200 cm³\nheight of 40 cm.\n\nThe cylinder exerts a force of 90 newtons on the floor.\nWork out the pressure on the floor due to the cylinder.",
+    "marks": 3,
+    "questionPage": 8,
+    "schemePage": 9,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "for process to find area of base, eg 1200 ÷ 40 (= 30)\nfor process to find pressure, eg 90 ÷ “30”\nc ao",
+    "exampleAnswer": "3",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "3",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "p1_1",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to find area of base, eg 1200 ÷ 40 (= 30)",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "p1_2",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to find pressure, eg 90 ÷ “30”",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": "3"
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "9",
+    "label": "Question 9",
+    "prompt": "Use these graphs to solve the simultaneous equations\n2 - 2y = x\n2y = 3x - 22",
+    "marks": 1,
+    "questionPage": 9,
+    "schemePage": 10,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "cao",
+    "exampleAnswer": "x = 6, y = −2",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "x = 6, y = −2",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "b1",
+       "marks": 1,
+       "code": "B",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": "x = 6, y = −2"
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "10",
+    "label": "Question 10",
+    "prompt": "Here is a pentagon.\nAngle AED = 4 \\times angle ABC\nWork out the size of angle AED.\nYou must show all your working.",
+    "marks": 4,
+    "questionPage": 10,
+    "schemePage": 10,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "for process to find sum of the interior angles of a pentagon eg 180 × (5 – 2) (= 540) oe\n(dep P1) for process to use ratio 4 : 1, eg labels as 4x and x or as x and 1/4 x or 110 + 135 + 120 + 4x + x = “540” or for “540” – 110 – 135 – 120 (= 175)\nfor process to find angle ABC or angle AED eg “175” ÷ (4 + 1) (= 35) or “175” ÷ (4 + 1) × 4\nc ao",
+    "exampleAnswer": "140",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "140",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "p1_1",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to find sum of the interior angles of a pentagon eg 180 × (5 – 2) (= 540) oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "p1_2",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to use ratio 4 : 1, eg labels as 4x and x or as x and 1/4 x or 110 + 135 + 120 + 4x + x = “540” or for “540” – 110 – 135 – 120 (= 175)",
+       "dep": [
+        "p1_1"
+       ],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "p1_3",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to find angle ABC or angle AED eg “175” ÷ (4 + 1) (= 35) or “175” ÷ (4 + 1) × 4",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": "140"
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "11",
+    "label": "Question 11",
+    "prompt": "Write \\frac{(6x^5 y^3)^2}{3x^2 y^7 \\times 4xy^{-3}} in the form ax^b y^c where a, b and c are integers.",
+    "marks": 3,
+    "questionPage": 11,
+    "schemePage": 11,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "for full evaluation of numerator or denominator with at least 2 of 3 terms correct in a product, eg 36x^10 y^6 or 12x^3 y^4 or full evaluation of 6x^5 y^3 / (3x^2 y^7) or 6x^5 y^3 / (4xy^–3) with at least 2 of 3 terms correct in a product, eg 2x^3 y^–4 or 1.5x^4 y^6\nfor correct evaluation of numerator and denominator, eg 36x^10 y^6 and 12x^3 y^4 or for full evaluation of numerator and denominator with no more than one error and a final answer of the form ax^b y^c with two of a, b and c correct or for correct evaluation of 6x^5 y^3 / (3x^2 y^7) and 6x^5 y^3 / (4xy^–3) eg 2x^3 y^–4 and 1.5x^4 y^6 or for full evaluation of 6x^5 y^3 / (3x^2 y^7) and 6x^5 y^3 / (4xy^–3) with no more than one error and a final answer of the form ax^b y^c with two of a, b and c correct\nfor 3x^7 y^2 oe",
+    "exampleAnswer": "3x^7 y^2",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "3x^7 y^2",
+     "acceptableAlternatives": [
+      "a = 3, b = 7, c = 2"
+     ],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1_1",
+       "marks": 1,
+       "code": "M",
+       "text": "for full evaluation of numerator or denominator with at least 2 of 3 terms correct in a product, eg 36x^10 y^6 or 12x^3 y^4 or full evaluation of 6x^5 y^3 / (3x^2 y^7) or 6x^5 y^3 / (4xy^–3) with at least 2 of 3 terms correct in a product, eg 2x^3 y^–4 or 1.5x^4 y^6",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "m1_2",
+       "marks": 1,
+       "code": "M",
+       "text": "for correct evaluation of numerator and denominator, eg 36x^10 y^6 and 12x^3 y^4 or for full evaluation of numerator and denominator with no more than one error and a final answer of the form ax^b y^c with two of a, b and c correct or for correct evaluation of 6x^5 y^3 / (3x^2 y^7) and 6x^5 y^3 / (4xy^–3) eg 2x^3 y^–4 and 1.5x^4 y^6 or for full evaluation of 6x^5 y^3 / (3x^2 y^7) and 6x^5 y^3 / (4xy^–3) with no more than one error and a final answer of the form ax^b y^c with two of a, b and c correct",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "for 3x^7 y^2 oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [
+        "a = 3, b = 7, c = 2"
+       ],
+       "reject": [],
+       "expected": "3x^7 y^2"
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "12",
+    "label": "Question 12",
+    "prompt": "Martha plays a game twice.\nThe probability tree diagram shows the probabilities that Martha will win or lose each game.\n\nFind the probability that Martha will lose at least one game.",
+    "marks": 3,
+    "questionPage": 12,
+    "schemePage": 12,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "for one correct product, eg 5/8 × 7/9 (= 35/72) oe or 3/8 × 2/9 (= 6/72) oe or 3/7 × ... no wait, 3/8 × 7/9 (= 21/72) oe or 5/8 × 2/9 (= 10/72) oe\nfor a full method, eg 5/8 × 7/9 + 3/8 × 2/9 + 3/7... wait, 3/8 × 7/9 oe or 1 − 5/8 × 2/9 oe\nfor 62/72 oe eg 31/36",
+    "exampleAnswer": "62/72",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "62/72",
+     "acceptableAlternatives": [
+      "31/36"
+     ],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1_1",
+       "marks": 1,
+       "code": "M",
+       "text": "for one correct product, eg 5/8 × 7/9 (= 35/72) oe or 3/8 × 2/9 (= 6/72) oe or 3/8 × 7/9 (= 21/72) oe or 5/8 × 2/9 (= 10/72) oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "m1_2",
+       "marks": 1,
+       "code": "M",
+       "text": "for a full method, eg 5/8 × 7/9 + 3/8 × 2/9 + 3/8 × 7/9 oe or 1 − 5/8 × 2/9 oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "for 62/72 oe eg 31/36",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [
+        "31/36"
+       ],
+       "reject": [],
+       "expected": "62/72"
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "13",
+    "label": "Question 13",
+    "prompt": "y is directly proportional to x.\ny = 24 when x = 1.5\nWork out the value of y when x = 5",
+    "marks": 3,
+    "questionPage": 13,
+    "schemePage": 12,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "for setting up an equation with a constant term, eg y = kx oe or 24 = k × 1.5 oe or k = 16 or for starting to work with direct proportion, eg 24 ÷ 1.5 (= 16) or 5 ÷ 1.5 (= 3.33…)\nfor substituting in y = kx, eg y = “16” × 5 or for a complete method, eg 24 ÷ 1.5 × 5 or 5 ÷ 1.5 × 24\nc ao",
+    "exampleAnswer": "80",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "80",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1_1",
+       "marks": 1,
+       "code": "M",
+       "text": "for setting up an equation with a constant term, eg y = kx oe or 24 = k × 1.5 oe or k = 16 or for starting to work with direct proportion, eg 24 ÷ 1.5 (= 16) or 5 ÷ 1.5 (= 3.33…)",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "m1_2",
+       "marks": 1,
+       "code": "M",
+       "text": "for substituting in y = kx, eg y = “16” × 5 or for a complete method, eg 24 ÷ 1.5 × 5 or 5 ÷ 1.5 × 24",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": ""
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": [],
+       "expected": "80"
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "14(a)",
+    "label": "Question 14 (a)",
+    "prompt": "(a) Write \\frac{1}{16} in the form 4^n where n is an integer.",
+    "marks": 1,
+    "questionPage": 13,
+    "schemePage": 13,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "for 4^−2",
+    "exampleAnswer": "4^−2",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "4^−2",
+     "acceptableAlternatives": [
+      "n = −2",
+      "1/16"
+     ],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "b1",
+       "marks": 1,
+       "code": "B",
+       "text": "for 4^−2",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [
+        "n = −2"
+       ],
+       "reject": [],
+       "expected": "4^−2"
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "14(b)",
+    "label": "Question 14 (b)",
+    "prompt": "(b) Work out the value of 8^{\\frac{5}{3}} - 9^{\\frac{3}{2}}",
+    "marks": 3,
+    "questionPage": 13,
+    "schemePage": 13,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "M1 for 8^{\\frac{5}{3}} = (\\sqrt[3]{8})^5 or 2^5 or \\sqrt[8]{5^3} or \\sqrt[3]{32768} or 9^{\\frac{3}{2}} = (\\sqrt{9})^3 or 3^3 or \\sqrt{9^3} or \\sqrt{729}\nM1 for correctly evaluating 8^{\\frac{5}{3}} or 9^{\\frac{3}{2}}, eg 32 or 27 seen\nA1 cao",
+    "exampleAnswer": "5",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "5",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 1,
+       "code": "M",
+       "text": "for 8^{\\frac{5}{3}} = (\\sqrt[3]{8})^5 or 2^5 or \\sqrt[8]{5^3} or \\sqrt[3]{32768} or 9^{\\frac{3}{2}} = (\\sqrt{9})^3 or 3^3 or \\sqrt{9^3} or \\sqrt{729}",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "m2",
+       "marks": 1,
+       "code": "M",
+       "text": "for correctly evaluating 8^{\\frac{5}{3}} or 9^{\\frac{3}{2}}, eg 32 or 27 seen",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "15",
+    "label": "Question 15",
+    "prompt": "The equation of line L_1 is y = 2x - 5\nThe equation of line L_2 is 6y + kx - 12 = 0\nL_1 is perpendicular to L_2\nFind the value of k.\nYou must show all your working.",
+    "marks": 3,
+    "questionPage": 14,
+    "schemePage": 13,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "P1 for process to make the y term the subject of 6y + kx – 12 = 0 eg 6y = 12 – kx or y = 2 – \\frac{k}{6}x\nP1 for process to find gradient of line perpendicular to L1, eg 2 \\times m = - 1 or m = -\\frac{1}{2} or for process to find k, eg -\\frac{k}{6} \\times 2 = -1\nA1 cao",
+    "exampleAnswer": "3",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "3",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "p1",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to make the y term the subject of 6y + kx – 12 = 0 eg 6y = 12 – kx or y = 2 – \\frac{k}{6}x",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "p2",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to find gradient of line perpendicular to L1, eg 2 \\times m = - 1 or m = -\\frac{1}{2} or for process to find k, eg -\\frac{k}{6} \\times 2 = -1",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "16",
+    "label": "Question 16",
+    "prompt": "Here is a sphere.\n\\frac{3}{8} of the surface area of this sphere is 75\\pi \\text{ cm}^2\nFind the diameter of the sphere.\nGive your answer in the form a\\sqrt{b} where a is an integer and b is a prime number.",
+    "marks": 4,
+    "questionPage": 15,
+    "schemePage": 14,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "P1 for process to find total surface area of sphere, eg 75\\pi \\div 3 \\times 8 (= 200\\pi) or 75 \\div 3 \\times 8 (= 200) or for setting up an equation, eg \\frac{3}{8} \\times 4\\pi r^2 = 75\\pi or \\frac{3}{8} \\times 4r^2 = 75\nP1 for process to find r^2, eg (r^2 =) \\frac{\\text{\\textquotedbl}200\\pi\\text{\\textquotedbl}}{4\\pi} oe or r^2 = \\frac{75\\pi}{4\\pi} \\times \\frac{8}{3} oe or r^2 = \\text{\\textquotedbl}50\\text{\\textquotedbl}\nP1 for process to find radius, eg (r =) \\sqrt{\\frac{\\text{\\textquotedbl}200\\pi\\text{\\textquotedbl}}{4\\pi}} oe or \\sqrt{\\text{\\textquotedbl}50\\text{\\textquotedbl}} or 5\\sqrt{2} or for (2r =) = \\sqrt{\\text{\\textquotedbl}200\\text{\\textquotedbl}}\nA1 cao",
+    "exampleAnswer": "10\\sqrt{2}",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "10\\sqrt{2}",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "p1",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to find total surface area of sphere, eg 75\\pi \\div 3 \\times 8 (= 200\\pi) or 75 \\div 3 \\times 8 (= 200) or for setting up an equation, eg \\frac{3}{8} \\times 4\\pi r^2 = 75\\pi or \\frac{3}{8} \\times 4r^2 = 75",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "p2",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to find r^2, eg (r^2 =) \\frac{\\text{\\textquotedbl}200\\pi\\text{\\textquotedbl}}{4\\pi} oe or r^2 = \\frac{75\\pi}{4\\pi} \\times \\frac{8}{3} oe or r^2 = \\text{\\textquotedbl}50\\text{\\textquotedbl}",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "p3",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to find radius, eg (r =) \\sqrt{\\frac{\\text{\\textquotedbl}200\\pi\\text{\\textquotedbl}}{4\\pi}} oe or \\sqrt{\\text{\\textquotedbl}50\\text{\\textquotedbl}} or 5\\sqrt{2} or for (2r =) = \\sqrt{\\text{\\textquotedbl}200\\text{\\textquotedbl}}",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "17",
+    "label": "Question 17",
+    "prompt": "Make x the subject of the formula y = \\frac{4(2x - 7)}{5x + 3}",
+    "marks": 4,
+    "questionPage": 16,
+    "schemePage": 14,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "M1 for clearing the fraction eg y(5x + 3) = 4(2x – 7) or 5xy + 3y = 8x – 28\nM1 (dep M1) for isolating x terms in a correct equation eg 3y + 28 = 8x – 5xy\nM1 (dep on two terms in x) for factorising eg eg x(8 – 5y) = 3y + 28\nA1 for x = \\frac{3y + 28}{8 - 5y} oe eg x = \\frac{-3y - 28}{5y - 8}",
+    "exampleAnswer": "x = \\frac{3y + 28}{8 - 5y}",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "x = \\frac{3y + 28}{8 - 5y}",
+     "acceptableAlternatives": [
+      "x = \\frac{-3y - 28}{5y - 8}"
+     ],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 1,
+       "code": "M",
+       "text": "for clearing the fraction eg y(5x + 3) = 4(2x – 7) or 5xy + 3y = 8x – 28",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "m2",
+       "marks": 1,
+       "code": "M",
+       "text": "(dep M1) for isolating x terms in a correct equation eg 3y + 28 = 8x – 5xy",
+       "dep": [
+        "m1"
+       ],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "m3",
+       "marks": 1,
+       "code": "M",
+       "text": "(dep on two terms in x) for factorising eg eg x(8 – 5y) = 3y + 28",
+       "dep": [
+        "m2"
+       ],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "for x = \\frac{3y + 28}{8 - 5y} oe eg x = \\frac{-3y - 28}{5y - 8}",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "18",
+    "label": "Question 18",
+    "prompt": "7 kg of carrots and 5 kg of tomatoes cost a total of 480p\ncost of 1 kg of carrots : cost of 1 kg of tomatoes = 5 : 9\nWork out the cost of 1 kg of carrots and the cost of 1 kg of tomatoes.",
+    "marks": 4,
+    "questionPage": 16,
+    "schemePage": 15,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "P1 for setting up an equation, eg 7c + 5t = 480 or c : t = 5 : 9 or \\frac{c}{t} = \\frac{5}{9} or 9c = 5t or for starting to work with ratio of total costs, eg 7 \\times 5 (= 35) and 5 \\times 9 (= 45) or \\frac{5}{7} \\times \\frac{7}{14} and \\frac{9}{5} \\times \\frac{5}{14} or 35 : 45 or 7 : 9\nP1 for a process to eliminate c or t from correct equations, eg 7c + 9c = 480 or \\frac{5}{9}t \\times 7 + 5t = 480 or 7c + \\frac{9}{5}c \\times 5 = 480 or for 480 \\div (“35” + “45”) (= 6) or for a process to find total cost of carrots or total cost of tomatoes, eg 480 \\div (“7” + “9”) \\times 7 (= 210) or 480 \\div (“7” + “9”) \\times 9 (= 270)\nP1 for a process to isolate t or c, eg 16c = 480 or 80c = 2400 oe or 80t = 4320 oe or for one value correct eg c = 30 or t = 54 or for a process to find cost of 1 kg of carrots or 1 kg of tomatoes, eg 5 \\times “6” (= 30) or 9 \\times “6” (= 54) or “210” \\div 7 (= 30) or “270” \\div 5 (= 54)\nA1 cao",
+    "exampleAnswer": "c = 30, t = 54",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "c = 30, t = 54",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "p1",
+       "marks": 1,
+       "code": "P",
+       "text": "for setting up an equation, eg 7c + 5t = 480 or c : t = 5 : 9 or \\frac{c}{t} = \\frac{5}{9} or 9c = 5t or for starting to work with ratio of total costs, eg 7 \\times 5 (= 35) and 5 \\times 9 (= 45) or \\frac{5}{7} \\times \\frac{7}{14} and \\frac{9}{5} \\times \\frac{5}{14} or 35 : 45 or 7 : 9",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "p2",
+       "marks": 1,
+       "code": "P",
+       "text": "for a process to eliminate c or t from correct equations, eg 7c + 9c = 480 or \\frac{5}{9}t \\times 7 + 5t = 480 or 7c + \\frac{9}{5}c \\times 5 = 480 or for 480 \\div (“35” + “45”) (= 6) or for a process to find total cost of carrots or total cost of tomatoes, eg 480 \\div (“7” + “9”) \\times 7 (= 210) or 480 \\div (“7” + “9”) \\times 9 (= 270)",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "p3",
+       "marks": 1,
+       "code": "P",
+       "text": "for a process to isolate t or c, eg 16c = 480 or 80c = 2400 oe or 80t = 4320 oe or for one value correct eg c = 30 or t = 54 or for a process to find cost of 1 kg of carrots or 1 kg of tomatoes, eg 5 \\times “6” (= 30) or 9 \\times “6” (= 54) or “210” \\div 7 (= 30) or “270” \\div 5 (= 54)",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "19",
+    "label": "Question 19",
+    "prompt": "The menu in a restaurant has starters, main courses and desserts.\nThere are 5 starters.\nThere are 12 main courses.\nThere are x desserts.\nThere are 420 different ways to choose one starter, one main course and one dessert.\nWork out the value of x.",
+    "marks": 2,
+    "questionPage": 17,
+    "schemePage": 16,
+    "difficulty": "easy",
+    "topicIds": [],
+    "schemeText": "P1 for process to use product rule to find number of desserts, eg 5 \\times 12 \\times \\text{desserts} = 420 or 420 \\div (5 \\times 12) oe\nA1 cao",
+    "exampleAnswer": "7",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "7",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "p1",
+       "marks": 1,
+       "code": "P",
+       "text": "for process to use product rule to find number of desserts, eg 5 \\times 12 \\times \\text{desserts} = 420 or 420 \\div (5 \\times 12) oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "20(a)",
+    "label": "Question 20 (a)",
+    "prompt": "For x \\ge 0, the functions f and g are such that\nf(x) = 3x + 4, g(x) = \\frac{\\sqrt{x} + 2}{5}\n(a) Find g^{-1}(x)",
+    "marks": 2,
+    "questionPage": 18,
+    "schemePage": 16,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "M1 for a first step to change the subject of y = \\frac{\\sqrt{x} + 2}{5} or x = \\frac{\\sqrt{y} + 2}{5}, eg 5y = \\sqrt{x} + 2 or 5x = \\sqrt{y} + 2\nA1 oe",
+    "exampleAnswer": "(5x - 2)^2",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "(5x - 2)^2",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 1,
+       "code": "M",
+       "text": "for a first step to change the subject of y = \\frac{\\sqrt{x} + 2}{5} or x = \\frac{\\sqrt{y} + 2}{5}, eg 5y = \\sqrt{x} + 2 or 5x = \\sqrt{y} + 2",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "20(b)",
+    "label": "Question 20 (b)",
+    "prompt": "(b) Solve gf(x) = 3",
+    "marks": 3,
+    "questionPage": 18,
+    "schemePage": 16,
+    "difficulty": "hard",
+    "topicIds": [],
+    "schemeText": "M1 for method to find gf(x), eg \\frac{\\sqrt{3x + 4} + 2}{5} or method to find g^{-1}(3), eg (5 \\times 3 – 2)^2 (= 169)\nM1 for method to solve as far as 2 steps away, eg (5 \\times 3 – 2)^2 = 3x + 4 or 3x + 4 = “169” or for a complete method, eg (“169” – 4) \\div 3\nA1 cao",
+    "exampleAnswer": "55",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "55",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 1,
+       "code": "M",
+       "text": "for method to find gf(x), eg \\frac{\\sqrt{3x + 4} + 2}{5} or method to find g^{-1}(3), eg (5 \\times 3 – 2)^2 (= 169)",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "m2",
+       "marks": 1,
+       "code": "M",
+       "text": "for method to solve as far as 2 steps away, eg (5 \\times 3 – 2)^2 = 3x + 4 or 3x + 4 = “169” or for a complete method, eg (“169” – 4) \\div 3",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "21",
+    "label": "Question 21",
+    "prompt": "A, B and D are points on a circle with centre O.\nCDE is the tangent to the circle at D.\nWork out the size of angle ADC.\nWrite down any circle theorems you use.",
+    "marks": 4,
+    "questionPage": 19,
+    "schemePage": 17,
+    "difficulty": "hard",
+    "topicIds": [],
+    "schemeText": "for method to find angle BAD or angle OAB or angle OBD, eg angle BAD = 64 ÷ 2 (= 32) or angle OAB = 51 or angle OBD = (180 – 64) ÷ 2 (= 58)\nfor method to find angle ADO or angle AXD (where X is a point on the major arc AD)\neg ADO = 180 – 64 – (180 – 51 – “32”) (= 19) or ADO = (180 – 64 – (180 – 2 × “51”)) ÷ 2 (= 19) or angle AXD = 180 – “58” – 51 (= 71)\nfor angle ADC = 71\n(dep on M1) for one circle theorem relevant to their method, eg The angle at the centre of a circle is twice the angle at the circumference or The tangent to a circle is perpendicular to the radius (diameter) or Opposite angles of a cyclic quadrilateral add up to 180 or Alternate segment theorem",
+    "exampleAnswer": "71",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "71",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 1,
+       "code": "M",
+       "text": "for method to find angle BAD or angle OAB or angle OBD, eg angle BAD = 64 ÷ 2 (= 32) or angle OAB = 51 or angle OBD = (180 – 64) ÷ 2 (= 58)",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "m2",
+       "marks": 1,
+       "code": "M",
+       "text": "for method to find angle ADO or angle AXD (where X is a point on the major arc AD)\neg ADO = 180 – 64 – (180 – 51 – “32”) (= 19) or ADO = (180 – 64 – (180 – 2 × “51”)) ÷ 2 (= 19) or angle AXD = 180 – “58” – 51 (= 71)",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "for angle ADC = 71",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "c1",
+       "marks": 1,
+       "code": "C",
+       "text": "(dep on M1) for one circle theorem relevant to their method, eg The angle at the centre of a circle is twice the angle at the circumference or The tangent to a circle is perpendicular to the radius (diameter) or Opposite angles of a cyclic quadrilateral add up to 180 or Alternate segment theorem",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "22",
+    "label": "Question 22",
+    "prompt": "ABCDEFGH is a cuboid.\nAF = 6.8 cm\nFC = 13.6 cm\nWork out the size of the angle between FC and the plane ABCD.",
+    "marks": 2,
+    "questionPage": 20,
+    "schemePage": 17,
+    "difficulty": "medium",
+    "topicIds": [],
+    "schemeText": "for a correct trig statement using angle ACF, eg sin x = 6.8 / 13.6 or x = sin⁻¹ (6.8 / 13.6) or sin x = 0.5 or 6.8 / sin x = 13.6 / sin 90 oe\ncao",
+    "exampleAnswer": "30",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "30",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "p1",
+       "marks": 1,
+       "code": "P",
+       "text": "for a correct trig statement using angle ACF, eg sin x = 6.8 / 13.6 or x = sin⁻¹ (6.8 / 13.6) or sin x = 0.5 or 6.8 / sin x = 13.6 / sin 90 oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "cao",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "23",
+    "label": "Question 23",
+    "prompt": "Write \\frac{3\\sqrt{3}}{4 - \\sqrt{3}} - \\frac{2}{\\sqrt{3}} in the form \\frac{a\\sqrt{3} + b}{c} where a, b and c are integers.",
+    "marks": 4,
+    "questionPage": 21,
+    "schemePage": 18,
+    "difficulty": "hard",
+    "topicIds": [],
+    "schemeText": "for method to rationalise one of the fractions, eg (3√3(4 + √3)) / ((4 - √3)(4 + √3)) (= (12√3 + 9) / (16 - 3)) or (2 / √3) × (√3 / √3) (= (2√3) / 3) oe\nfor method to rationalise both of the fractions\nfor method to write correct fractions with a common denominator\nfor (10√3 + 27) / 39 oe",
+    "exampleAnswer": "(10√3 + 27) / 39",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "(10√3 + 27) / 39",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 1,
+       "code": "M",
+       "text": "for method to rationalise one of the fractions, eg (3√3(4 + √3)) / ((4 - √3)(4 + √3)) (= (12√3 + 9) / (16 - 3)) or (2 / √3) × (√3 / √3) (= (2√3) / 3) oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "m2",
+       "marks": 1,
+       "code": "M",
+       "text": "for method to rationalise both of the fractions",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "m3",
+       "marks": 1,
+       "code": "M",
+       "text": "for method to write correct fractions with a common denominator",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "for (10√3 + 27) / 39 oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   },
+   {
+    "questionNumber": "24",
+    "label": "Question 24",
+    "prompt": "Find the set of possible values of x for which\n4x^2 - 25 < 0 and 12 - 5x - 3x^2 > 0\nYou must show all your working.",
+    "marks": 5,
+    "questionPage": 22,
+    "schemePage": 19,
+    "difficulty": "hard",
+    "topicIds": [],
+    "schemeText": "for method to find the critical values of 4x² - 25 < 0 eg (2x + 5)(2x - 5) or critical values -2.5 and 2.5 oe\n(dep on M1) for x > -2.5 and x < 2.5 or x > a and x < b where a and b are their critical values and a < b\nfor method to find the critical values of 12 - 5x - 3x² > 0 or 3x² + 5x - 12 < 0 eg (4 - 3x)(x + 3) or (3x - 4)(x + 3) or critical values -3 and 4/3 oe\n(dep on previous M1) for x > -3 and x < 4/3 or x > c and x < d where c and d are their critical values and c < d\nfor -2.5 < x < 4/3 oe eg x < 4/3, x > -2.5",
+    "exampleAnswer": "-2.5 < x < 4/3",
+    "markSchemeItem": {
+     "marking": "additive",
+     "answer": "-2.5 < x < 4/3",
+     "acceptableAlternatives": [],
+     "commonMistakes": [],
+     "points": [
+      {
+       "id": "m1",
+       "marks": 1,
+       "code": "M",
+       "text": "for method to find the critical values of 4x² - 25 < 0 eg (2x + 5)(2x - 5) or critical values -2.5 and 2.5 oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "m2",
+       "marks": 1,
+       "code": "M",
+       "text": "(dep on M1) for x > -2.5 and x < 2.5 or x > a and x < b where a and b are their critical values and a < b",
+       "dep": [
+        "m1"
+       ],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "m3",
+       "marks": 1,
+       "code": "M",
+       "text": "for method to find the critical values of 12 - 5x - 3x² > 0 or 3x² + 5x - 12 < 0 eg (4 - 3x)(x + 3) or (3x - 4)(x + 3) or critical values -3 and 4/3 oe",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "m4",
+       "marks": 1,
+       "code": "M",
+       "text": "(dep on previous M1) for x > -3 and x < 4/3 or x > c and x < d where c and d are their critical values and c < d",
+       "dep": [
+        "m3"
+       ],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      },
+      {
+       "id": "a1",
+       "marks": 1,
+       "code": "A",
+       "text": "for -2.5 < x < 4/3 oe eg x < 4/3, x > -2.5",
+       "dep": [],
+       "ft": false,
+       "essentialTerms": [],
+       "allow": [],
+       "reject": []
+      }
+     ]
+    }
+   }
+  ],
+  "identityMatches": true,
+  "approvedQuestionNumbers": [
+   "1",
+   "2",
+   "3",
+   "4",
+   "5(a)",
+   "5(b)",
+   "6(a)",
+   "6(b)",
+   "7",
+   "8",
+   "9",
+   "10",
+   "11",
+   "12",
+   "13",
+   "14(a)",
+   "14(b)",
+   "15",
+   "16",
+   "17",
+   "18",
+   "19",
+   "20(a)",
+   "20(b)",
+   "21",
+   "22",
+   "23",
+   "24"
+  ],
+  "issuesByQuestion": {},
+  "paperSha256": "6095527ef65e67ef4277199e08a9b2428d4da030dcb89dfe1aa7d661dcc8694a",
+  "schemeSha256": "1fd25145a7b3d4ebdb3941263f2b186daf881a57bed3e0a8d2e3b5cae8d486c1"
+ }
+}

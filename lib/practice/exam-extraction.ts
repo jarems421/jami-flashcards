@@ -88,6 +88,21 @@ export function buildExamQuestionsFromExtraction(
     .join(" ");
   const printedTariffs = readPrintedTariffs(paperText);
   const approved = new Set(input.approvedQuestionNumbers.map(String));
+
+  /*
+   * A paper prints one total per question, and a question may be several
+   * parts. "(Total for Question 5 is 5 marks)" is the total of 5(a) and 5(b),
+   * so comparing each part against it fails both -- which is what happened on
+   * every multi-part question of a real paper until this existed. What has to
+   * match the printed total is the sum of the parts.
+   */
+  const marksByRoot = new Map<string, number>();
+  for (const item of input.questions) {
+    const label = text(item.questionNumber, 80).match(/^\d{1,2}/)?.[0] ?? "";
+    if (!label) continue;
+    const value = Number.isFinite(Number(item.marks)) ? Math.round(Number(item.marks)) : 0;
+    marksByRoot.set(label, (marksByRoot.get(label) ?? 0) + value);
+  }
   const selectionKey = input.selectionKey ?? Math.random;
 
   const entries: ExamExtractionEntry[] = [];
@@ -117,6 +132,9 @@ export function buildExamQuestionsFromExtraction(
     const printedTariff =
       printedTariffs.get(rootLabel) ??
       (regions.length ? readPrintedTariff(textInRegions(paperPages, regions)) : null);
+    // Compared against the whole question's marks, which is the same as this
+    // part's marks whenever the question has only one part.
+    const rootMarks = marksByRoot.get(rootLabel) ?? marks;
     const labelFoundOnPaper = questionStarts.some((start) => start.label === rootLabel);
     const schemeMentionsLabel = schemeCoversQuestion(schemeText, rootLabel);
     const schemeMarkTotal = markSchemeItem
@@ -130,8 +148,8 @@ export function buildExamQuestionsFromExtraction(
       !labelFoundOnPaper ? `Question ${number || "?"} was not found in the paper's margin.` : "",
       !prompt ? "Missing prompt." : "",
       marks < 1 ? "Invalid tariff." : "",
-      printedTariff !== null && printedTariff !== marks
-        ? `Extracted ${marks} marks but the paper prints ${printedTariff}.`
+      printedTariff !== null && printedTariff !== rootMarks
+        ? `Extracted ${rootMarks} marks for question ${rootLabel} but the paper prints ${printedTariff}.`
         : "",
       printedTariff === null ? "No tariff could be read for this question." : "",
       !pairedScheme ? "Missing scheme pairing." : "",
@@ -147,7 +165,7 @@ export function buildExamQuestionsFromExtraction(
     const verification: ExamIngestionVerification = {
       paperIdentityMatches: input.identityMatches,
       questionLabelMatches: labelFoundOnPaper,
-      tariffMatches: printedTariff === marks,
+      tariffMatches: printedTariff === rootMarks,
       markSchemeLabelMatches: schemeMentionsLabel && Boolean(pairedScheme),
       questionComplete: Boolean(prompt) && markSchemeItem !== null && schemeMarkTotal === marks,
       assetsComplete: regions.length > 0,
