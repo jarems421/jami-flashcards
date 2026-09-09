@@ -50,9 +50,11 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (generationBudget?.allowed) await refundAiBudget(generationBudget.grant).catch(() => undefined);
     if (error instanceof ExamQuestionBankError) {
-      const [code, detail] = error.code.split(":", 2);
-      let missingByDifficulty: unknown;
-      try { missingByDifficulty = detail ? JSON.parse(detail) : undefined; } catch { missingByDifficulty = undefined; }
+      // The shortage detail travels as fields on the error, not encoded into
+      // its code. It was `coverage_gap:{"easy":2}` split on ":", which cuts at
+      // the first colon inside the JSON -- so the parse always failed, the
+      // client never saw a missing mix, and the fallback card never rendered.
+      const code = error.code;
       // A shortage is the signal that this course needs papers. Go and look
       // for them behind the answer rather than making the student wait on a
       // crawl that cannot help the session they are trying to start.
@@ -63,7 +65,10 @@ export async function POST(request: NextRequest) {
           subject: error.course.specificationTitle,
         }).catch(() => undefined);
       }
-      return apiFailure(error.message, error.status, code, { missingByDifficulty, availableMix: error.availableMix });
+      return apiFailure(error.message, error.status, code, {
+        missingByDifficulty: error.missingByDifficulty,
+        availableMix: error.availableMix,
+      });
     }
     return apiFailure("This session could not be created.", 503, "session_create_failed");
   }

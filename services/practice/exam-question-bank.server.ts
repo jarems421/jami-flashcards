@@ -106,7 +106,9 @@ export class ExamQuestionBankError extends Error {
     /** Set on a coverage shortage, so the caller can go looking for papers. */
     readonly course?: ExamCourseSelection,
     /** What the bank could actually supply, for the start-short offer. */
-    readonly availableMix?: Record<ExamDifficulty, number>
+    readonly availableMix?: Record<ExamDifficulty, number>,
+    /** How many of each tier were missing, for the generated-question offer. */
+    readonly missingByDifficulty?: Partial<Record<ExamDifficulty, number>>
   ) {
     super(message);
   }
@@ -206,13 +208,14 @@ export async function createExamSession(input: {
       throw new ExamQuestionBankError(
         "There are not enough matching past-paper questions yet.",
         409,
-        `coverage_gap:${JSON.stringify(missing)}`,
+        "coverage_gap",
         folder.examCourse!,
         {
           easy: Math.min(input.mix.easy, selected.filter((question) => question.difficulty === "easy").length),
           medium: Math.min(input.mix.medium, selected.filter((question) => question.difficulty === "medium").length),
           hard: Math.min(input.mix.hard, selected.filter((question) => question.difficulty === "hard").length),
-        }
+        },
+        missing
       );
     }
   }
