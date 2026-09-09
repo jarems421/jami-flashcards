@@ -107,9 +107,29 @@ async function downloadPdf(board: ExamBoardId, url: string) {
   return { bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
+/**
+ * pdfjs, with its worker guaranteed to be in the same bundle.
+ *
+ * With no real worker available pdfjs falls back to a "fake worker" on the
+ * main thread, which it sets up by dynamically importing its own worker
+ * module. Webpack rewrites that import to a chunk path, and if nothing else in
+ * the bundle references the worker the chunk is never emitted -- so the import
+ * fails at runtime, in production only, with "Setting up fake worker failed:
+ * Cannot find module .next/server/chunks/pdf.worker.mjs".
+ *
+ * Importing it here alongside the main module is what makes webpack emit it.
+ */
+async function loadPdfJs() {
+  const [pdfjs] = await Promise.all([
+    import("pdfjs-dist/legacy/build/pdf.mjs"),
+    import("pdfjs-dist/legacy/build/pdf.worker.mjs").catch(() => null),
+  ]);
+  return pdfjs;
+}
+
 /** The text layer with positions, which is what decides question boundaries. */
 async function readPageText(bytes: Buffer): Promise<PdfPageText[]> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await loadPdfJs();
   const task = pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
   const document = await task.promise;
   try {
@@ -155,7 +175,7 @@ function textInRegions(pages: PdfPageText[], regions: QuestionRegion[]) {
  * excluding the questions either side of it.
  */
 async function renderRegions(bytes: Buffer, regions: QuestionRegion[]) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await loadPdfJs();
   const task = pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
   const document = await task.promise;
   try {
@@ -188,7 +208,7 @@ async function renderRegions(bytes: Buffer, regions: QuestionRegion[]) {
 }
 
 async function renderPage(bytes: Buffer, pageNumber: number) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await loadPdfJs();
   const task = pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
   const document = await task.promise;
   try {
