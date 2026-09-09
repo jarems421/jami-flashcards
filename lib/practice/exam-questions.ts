@@ -91,7 +91,8 @@ export type ExamQuestionProvenance = {
 export type ExamQuestionReviewer = "human" | "ai";
 
 export type ExamQuestionReview = {
-  status: "pending" | "approved" | "rejected";
+  /** `review_failed` is an outage, not a verdict: it stays in the queue. */
+  status: "pending" | "approved" | "rejected" | "review_failed";
   by?: ExamQuestionReviewer;
   /** Set when `by` is "human". */
   reviewerUid?: string;
@@ -233,6 +234,34 @@ export function normalizeDifficultyMix(value: unknown): Record<ExamDifficulty, n
   const mix = { easy: read("easy"), medium: read("medium"), hard: read("hard") };
   const total = mix.easy + mix.medium + mix.hard;
   return total >= 1 && total <= EXAM_SESSION_MAX_QUESTIONS ? mix : null;
+}
+
+/**
+ * The one place that decides whether an extracted question may be published.
+ *
+ * Ingestion, review and selection all ask this, so a question cannot reach a
+ * student through a door that checks less than the others. In particular an
+ * approving reviewer does not override a structural failure: a mispaired mark
+ * scheme or a question whose region could not be found is wrong however
+ * confident anyone is about the wording.
+ */
+export function examQuestionPublicationBlockers(
+  verification: ExamIngestionVerification | undefined
+): string[] {
+  if (!verification) return ["This question has no ingestion verification record."];
+  const failed: string[] = [];
+  if (!verification.paperIdentityMatches) failed.push("The paper does not identify itself as the one ingested.");
+  if (!verification.questionLabelMatches) failed.push("The question label was not found on the paper.");
+  if (!verification.tariffMatches) failed.push("The tariff does not match the one printed on the paper.");
+  if (!verification.markSchemeLabelMatches) failed.push("The mark scheme could not be paired to this question.");
+  if (!verification.questionComplete) failed.push("The question or its scheme is incomplete.");
+  if (!verification.assetsComplete) failed.push("The question's own region of the paper is missing.");
+  if (!verification.specificationCurrent) failed.push("The specification is not current.");
+  return failed;
+}
+
+export function canPublishExamQuestion(verification: ExamIngestionVerification | undefined) {
+  return examQuestionPublicationBlockers(verification).length === 0;
 }
 
 export function isCurrentSpecificationQuestion(question: Pick<ExamQuestion, "status" | "rights">) {

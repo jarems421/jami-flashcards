@@ -1,7 +1,13 @@
 import "server-only";
 
 import { getAdminDb } from "@/services/firebase/admin";
-import { examDocument, type ExamIngestionVerification, type ExamQuestion, type ExamQuestionSecret } from "@/lib/practice/exam-questions";
+import {
+  examDocument,
+  examQuestionPublicationBlockers,
+  type ExamIngestionVerification,
+  type ExamQuestion,
+  type ExamQuestionSecret,
+} from "@/lib/practice/exam-questions";
 import { getExamQuestionRights } from "@/lib/practice/exam-question-rights";
 import {
   buildExamPaperManifest,
@@ -61,7 +67,7 @@ async function listExamQuestionsAwaitingReviewRaw(paperId?: string, limit = REVI
   const db = getAdminDb();
   let query: FirebaseFirestore.Query = db.collection("examQuestions")
     .where("origin", "==", "official_past_paper")
-    .where("review.status", "==", "pending");
+    .where("review.status", "in", ["pending", "review_failed"]);
   if (paperId) query = query.where("paperId", "==", paperId);
   const snapshot = await query.limit(limit).get();
   const questions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ExamQuestion & { verification?: ExamIngestionVerification }));
@@ -122,22 +128,37 @@ export async function reviewPendingExamQuestionsWithAi(input: {
   const pending = await listExamQuestionsAwaitingReviewRaw(input.paperId, Math.max(1, Math.min(25, input.limit)));
   const outcomes = [];
   for (const { question, secret } of pending) {
-    const outcome = await reviewExamQuestionWithAi({ question, secret });
-    await db.collection("examQuestions").doc(question.id).update(examDocument({
-      review: outcome.review,
-      status: outcome.review.status === "approved" ? "published" : "needs_review",
-      updatedAt: Date.now(),
-    }));
+    // The same gate ingestion used. Sending a structurally broken question to
+    // a reviewer only buys an opinion about something already disqualified.
+    const blockers = examQuestionPublicationBlockers(
+      (question as ExamQuestion & { verification?: ExamIngestionVerification }).verification
+    );
+    const outcome = blockers.length > 0
+      ? { questionId: question.id, review: { status: "rejected" as const, by: "ai" as const, at: Date.now(), notes: blockers } }
+      : await reviewExamQuestionWithAi({ question, secret });
+    const ref = db.collection("examQuestions").doc(question.id);
+    await db.runTransaction(async (transaction) => {
+      const current = (await transaction.get(ref)).data() as ExamQuestion | undefined;
+      // A person who decided while the model was still thinking has the last
+      // word; a late verdict must not overwrite them.
+      if (!current || current.review?.by === "human") return;
+      transaction.update(ref, examDocument({
+        review: outcome.review,
+        status: outcome.review.status === "approved" ? "published" : "needs_review",
+        updatedAt: Date.now(),
+      }));
+    });
     outcomes.push(outcome);
   }
   const remaining = (await db.collection("examQuestions")
     .where("origin", "==", "official_past_paper")
-    .where("review.status", "==", "pending")
+    .where("review.status", "in", ["pending", "review_failed"])
     .count().get()).data().count;
   return {
     reviewed: outcomes.length,
     approved: outcomes.filter((item) => item.review.status === "approved").length,
     rejected: outcomes.filter((item) => item.review.status === "rejected").length,
+    failed: outcomes.filter((item) => item.review.status === "review_failed").length,
     remaining,
   };
 }
@@ -154,6 +175,15 @@ export async function decideExamQuestionReview(input: {
     const question = snapshot.data() as ExamQuestion | undefined;
     if (!question) throw new Error("question_not_found");
     if (question.origin !== "official_past_paper") throw new Error("not_reviewable");
+    /*
+     * A reviewer judges the wording; they do not get to wave through a
+     * mispaired scheme or a question whose region was never located. Those
+     * survive any opinion, so accepting one is refused rather than recorded.
+     */
+    const blockers = examQuestionPublicationBlockers(
+      (question as ExamQuestion & { verification?: ExamIngestionVerification }).verification
+    );
+    if (input.decision === "accept" && blockers.length > 0) throw new Error("publication_blocked");
     const now = Date.now();
     transaction.update(ref, examDocument({
       review: {

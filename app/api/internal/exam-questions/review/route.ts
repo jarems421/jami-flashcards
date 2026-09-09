@@ -36,6 +36,14 @@ export async function POST(request: NextRequest) {
     return Response.json({ questionId, decision });
   } catch (error) {
     const code = error instanceof Error ? error.message : "review_failed";
-    return Response.json({ error: code }, { status: code === "question_not_found" ? 404 : 422 });
+    return Response.json(
+      {
+        error: code,
+        message: code === "publication_blocked"
+          ? "This question failed a structural check at ingestion, so it cannot be approved. Re-ingest the paper instead."
+          : undefined,
+      },
+      { status: code === "question_not_found" ? 404 : 422 }
+    );
   }
 }

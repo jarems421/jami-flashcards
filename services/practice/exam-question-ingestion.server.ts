@@ -1,16 +1,23 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { createCanvas } from "@napi-rs/canvas";
+import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import { generateAiText } from "@/lib/ai/provider-router";
 import { isOfficialExamBoardUrl, type ExamBoardId, type ExamQualification } from "@/lib/practice/exam-formats";
 import { getExamQuestionRights, isExamQuestionBoardEnabled, isExamQuestionSpecificationEnabled } from "@/lib/practice/exam-question-rights";
 import type { ExamDifficulty, ExamIngestionVerification, ExamPaper, ExamQuestion, ExamQuestionSecret } from "@/lib/practice/exam-questions";
-import { canServeExamRights } from "@/lib/practice/exam-questions";
-import { normalizeMarkSchemeItem, validateMarkSchemeItem } from "@/lib/practice/mark-schemes";
+import { canPublishExamQuestion, canServeExamRights } from "@/lib/practice/exam-questions";
+import { normalizeMarkSchemeItem, schemeCriteria, validateMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import { parseJsonObject } from "@/services/ai/practice-paper-generation.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import type { StudyLevel } from "@/lib/profile/study-level";
+import {
+  findQuestionStarts,
+  readPrintedTariff,
+  regionsForQuestion,
+  type PdfPageText,
+  type QuestionRegion,
+} from "@/lib/practice/exam-page-regions";
 
 /*
  * Both PDFs are attached inline to two separate vision calls, so a paper costs
@@ -100,6 +107,86 @@ async function downloadPdf(board: ExamBoardId, url: string) {
   return { bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
+/** The text layer with positions, which is what decides question boundaries. */
+async function readPageText(bytes: Buffer): Promise<PdfPageText[]> {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const task = pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
+  const document = await task.promise;
+  try {
+    const pages: PdfPageText[] = [];
+    for (let number = 1; number <= document.numPages; number += 1) {
+      const page = await document.getPage(number);
+      const viewport = page.getViewport({ scale: 1 });
+      const content = await page.getTextContent();
+      pages.push({
+        page: number,
+        width: viewport.width,
+        height: viewport.height,
+        items: content.items.flatMap((item) => {
+          const entry = item as { str?: string; transform?: number[]; height?: number };
+          if (typeof entry.str !== "string" || !entry.str.trim() || !entry.transform) return [];
+          return [{ text: entry.str, x: entry.transform[4], y: entry.transform[5], height: entry.height ?? 10 }];
+        }),
+      });
+    }
+    return pages;
+  } finally { await task.destroy(); }
+}
+
+/** The text inside one region, for checking a tariff against the paper. */
+function textInRegions(pages: PdfPageText[], regions: QuestionRegion[]) {
+  return regions.flatMap((region) => {
+    const page = pages.find((item) => item.page === region.page);
+    if (!page) return [];
+    return page.items
+      .filter((item) => {
+        const top = (page.height - item.y) / page.height;
+        return top >= region.fromRatio && top <= region.toRatio;
+      })
+      .map((item) => item.text);
+  }).join(" ");
+}
+
+/**
+ * A question's own slice of the paper, rather than the whole page it sits on.
+ *
+ * Rendering the page and cropping it keeps the board's own typesetting -- the
+ * diagrams, the answer lines, the layout a student is expected to read -- while
+ * excluding the questions either side of it.
+ */
+async function renderRegions(bytes: Buffer, regions: QuestionRegion[]) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const task = pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
+  const document = await task.promise;
+  try {
+    const slices: Array<{ canvas: Canvas; top: number; height: number }> = [];
+    for (const region of regions) {
+      if (region.page < 1 || region.page > document.numPages) throw new Error("Question page is outside the PDF.");
+      const page = await document.getPage(region.page);
+      const viewport = page.getViewport({ scale: 1.7 });
+      const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+      const context = canvas.getContext("2d");
+      await page.render({ canvas: canvas as unknown as HTMLCanvasElement, canvasContext: context as unknown as CanvasRenderingContext2D, viewport }).promise;
+      const top = Math.floor(region.fromRatio * canvas.height);
+      const height = Math.max(1, Math.ceil((region.toRatio - region.fromRatio) * canvas.height));
+      slices.push({ canvas, top, height });
+    }
+    if (slices.length === 0) throw new Error("The question has no page region to render.");
+    const width = Math.max(...slices.map((slice) => slice.canvas.width));
+    const totalHeight = slices.reduce((sum, slice) => sum + slice.height, 0);
+    const output = createCanvas(width, totalHeight);
+    const context = output.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, totalHeight);
+    let offset = 0;
+    for (const slice of slices) {
+      context.drawImage(slice.canvas, 0, slice.top, slice.canvas.width, slice.height, 0, offset, slice.canvas.width, slice.height);
+      offset += slice.height;
+    }
+    return { bytes: output.toBuffer("image/png"), width: output.width, height: output.height };
+  } finally { await task.destroy(); }
+}
+
 async function renderPage(bytes: Buffer, pageNumber: number) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const task = pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
@@ -164,8 +251,14 @@ ${EXTRACTION_RULES}` },
     ] }] },
   });
   const audit = parseJsonObject(auditText);
+  // Boundaries and tariffs come off the paper itself, not from the model.
+  const paperPages = await readPageText(paperFile.bytes);
+  const questionStarts = findQuestionStarts(paperPages);
+  const schemeText = (await readPageText(schemeFile.bytes))
+    .map((page) => page.items.map((item) => item.text).join(" "))
+    .join(" ");
   const approved = new Set(Array.isArray(audit.approvedQuestionNumbers) ? audit.approvedQuestionNumbers.map(String) : []);
-  const report: Array<{ question: ExamQuestion; secret: ExamQuestionSecret; verification: ExamIngestionVerification; page: number }> = [];
+  const report: Array<{ question: ExamQuestion; secret: ExamQuestionSecret; verification: ExamIngestionVerification; page: number; regions: QuestionRegion[]; schemePageNumber: number }> = [];
   /*
    * Candidates that never became questions, and why.
    *
@@ -176,15 +269,59 @@ ${EXTRACTION_RULES}` },
    */
   const rejected: Array<{ questionNumber: string; reasons: string[] }> = [];
   for (const item of extractedQuestions) {
-    const number = text(item.questionNumber, 80); const prompt = text(item.prompt, 30_000); const schemeText = text(item.schemeText, 16_000);
+    const number = text(item.questionNumber, 80); const prompt = text(item.prompt, 30_000); const pairedScheme = text(item.schemeText, 16_000);
     const marks = Number.isFinite(Number(item.marks)) ? Math.round(Number(item.marks)) : 0;
     const questionId = createHash("sha256").update(`${paperId}:${number}`).digest("hex").slice(0, 40);
     const markSchemeItem = normalizeMarkSchemeItem(item.markSchemeItem, { id: questionId, marks });
     const schemeIssues = markSchemeItem ? validateMarkSchemeItem(markSchemeItem) : [{ code: "invalid_scheme", detail: "Scheme could not be parsed.", questionId }];
+    /*
+     * The checks below compare things, rather than asking whether a field is
+     * present. "The tariff is a positive number" was true of every wrong
+     * extraction; "the tariff equals the one printed beside this question on
+     * the paper" is the check that was meant.
+     */
+    const rootLabel = number.match(/^\d{1,2}/)?.[0] ?? "";
+    const regions = rootLabel
+      ? regionsForQuestion({ label: rootLabel, starts: questionStarts, pages: paperPages })
+      : [];
+    const printedTariff = regions.length ? readPrintedTariff(textInRegions(paperPages, regions)) : null;
+    const labelFoundOnPaper = questionStarts.some((start) => start.label === rootLabel);
+    // The scheme must actually mention this question, in the scheme document.
+    const schemeMentionsLabel = rootLabel.length > 0 &&
+      new RegExp(`(^|\s)${rootLabel}\s*[.()a-z]`, "i").test(schemeText);
+    const schemeMarkTotal = markSchemeItem ? schemeCriteria(markSchemeItem).reduce((sum, c) => sum + c.marks, 0) : 0;
     const page = Math.round(Number(item.questionPage));
-    const issues = [!identityMatches ? "Paper identity mismatch." : "", !number ? "Missing question label." : "", !prompt ? "Missing prompt." : "", marks < 1 ? "Invalid tariff." : "", !schemeText ? "Missing scheme pairing." : "", !Number.isFinite(page) || page < 1 ? "Invalid question page." : "", ...schemeIssues.map((issue) => issue.detail), ...(audit.issuesByQuestion && typeof audit.issuesByQuestion === "object" && Array.isArray((audit.issuesByQuestion as Record<string, unknown>)[number]) ? ((audit.issuesByQuestion as Record<string, unknown>)[number] as unknown[]).map(String) : [])].filter(Boolean);
-    const verification: ExamIngestionVerification = { paperIdentityMatches: identityMatches, questionLabelMatches: Boolean(number), tariffMatches: marks > 0, markSchemeLabelMatches: Boolean(schemeText), questionComplete: Boolean(prompt), assetsComplete: Number.isFinite(page) && page > 0, specificationCurrent: true, supervisorApproved: approved.has(number), issues };
-    const publishable = Object.values(verification).every((value) => Array.isArray(value) ? value.length === 0 : value === true);
+    const issues = [
+      !identityMatches ? "The paper does not identify itself as the one in the manifest." : "",
+      !number ? "Missing question label." : "",
+      !labelFoundOnPaper ? `Question ${number || "?"} was not found in the paper's margin.` : "",
+      !prompt ? "Missing prompt." : "",
+      marks < 1 ? "Invalid tariff." : "",
+      printedTariff !== null && printedTariff !== marks
+        ? `Extracted ${marks} marks but the paper prints ${printedTariff}.`
+        : "",
+      printedTariff === null && regions.length > 0 ? "No tariff is printed against this question." : "",
+      !pairedScheme ? "Missing scheme pairing." : "",
+      !schemeMentionsLabel ? `The mark scheme does not mention question ${number || "?"}.` : "",
+      markSchemeItem && schemeMarkTotal !== marks
+        ? `The scheme awards ${schemeMarkTotal} marks against a ${marks}-mark question.`
+        : "",
+      regions.length === 0 ? "The question's own region of the paper could not be located." : "",
+      ...schemeIssues.map((issue) => issue.detail),
+      ...(audit.issuesByQuestion && typeof audit.issuesByQuestion === "object" && Array.isArray((audit.issuesByQuestion as Record<string, unknown>)[number]) ? ((audit.issuesByQuestion as Record<string, unknown>)[number] as unknown[]).map(String) : []),
+    ].filter(Boolean);
+    const verification: ExamIngestionVerification = {
+      paperIdentityMatches: identityMatches,
+      questionLabelMatches: labelFoundOnPaper,
+      tariffMatches: printedTariff === marks,
+      markSchemeLabelMatches: schemeMentionsLabel && Boolean(pairedScheme),
+      questionComplete: Boolean(prompt) && markSchemeItem !== null && schemeMarkTotal === marks,
+      assetsComplete: regions.length > 0,
+      specificationCurrent: true,
+      supervisorApproved: approved.has(number),
+      issues,
+    };
+    const publishable = canPublishExamQuestion(verification) && verification.supervisorApproved && issues.length === 0;
     if (!markSchemeItem) {
       rejected.push({
         questionNumber: number || "(unlabelled)",
@@ -193,7 +330,7 @@ ${EXTRACTION_RULES}` },
       continue;
     }
     const rightsSnapshot = { key: rights.key, version: rights.version, verified: rights.verified, storageAllowed: rights.storageAllowed, studentDisplayAllowed: rights.studentDisplayAllowed, aiInferenceAllowed: rights.aiInferenceAllowed, revoked: rights.revoked };
-    report.push({ page, verification, question: { id: questionId, paperId, subject: manifest.subject, subjectKey: manifest.subject.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""), studyLevel: manifest.studyLevel, label: text(item.label, 120) || `Question ${number}`, prompt, marks, assets: [], topicIds: Array.isArray(item.topicIds) ? item.topicIds.map((value) => text(value, 120)).filter(Boolean).slice(0, 20) : [], difficulty: (["easy", "medium", "hard"].includes(String(item.difficulty)) ? item.difficulty : "medium") as ExamDifficulty, aiDifficulty: (["easy", "medium", "hard"].includes(String(item.difficulty)) ? item.difficulty : "medium") as ExamDifficulty, difficultyScore: item.difficulty === "easy" ? 0.25 : item.difficulty === "hard" ? 0.8 : 0.55, difficultySource: "ai_ingest", origin: "official_past_paper", provenance: { board: manifest.board, boardLabel: manifest.boardLabel, qualification: manifest.qualification, specificationId: manifest.specificationId, specificationTitle: manifest.specificationTitle, componentCode: manifest.componentCode, componentTitle: manifest.componentTitle, year: manifest.year, series: manifest.series, paperReference: manifest.paperReference, questionNumber: number, sourceUrl: manifest.questionPaperUrl, sourceSha256: paperFile.sha256 }, rights: rightsSnapshot, status: publishable ? "published" : "needs_review", review: { status: "pending" as const, notes: [] }, selectionKey: Math.random(), createdAt: now, updatedAt: now }, secret: { questionId, markSchemeItem, officialMarkScheme: schemeText, modelAnswer: text(item.exampleAnswer, 8_000), examinerNotes: [], acceptableAlternatives: markSchemeItem.acceptableAlternatives, sourceDocumentHash: schemeFile.sha256 } });
+    report.push({ page, regions, schemePageNumber: Math.round(Number(item.schemePage)), verification, question: { id: questionId, paperId, subject: manifest.subject, subjectKey: manifest.subject.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""), studyLevel: manifest.studyLevel, label: text(item.label, 120) || `Question ${number}`, prompt, marks, assets: [], topicIds: Array.isArray(item.topicIds) ? item.topicIds.map((value) => text(value, 120)).filter(Boolean).slice(0, 20) : [], difficulty: (["easy", "medium", "hard"].includes(String(item.difficulty)) ? item.difficulty : "medium") as ExamDifficulty, aiDifficulty: (["easy", "medium", "hard"].includes(String(item.difficulty)) ? item.difficulty : "medium") as ExamDifficulty, difficultyScore: item.difficulty === "easy" ? 0.25 : item.difficulty === "hard" ? 0.8 : 0.55, difficultySource: "ai_ingest", origin: "official_past_paper", provenance: { board: manifest.board, boardLabel: manifest.boardLabel, qualification: manifest.qualification, specificationId: manifest.specificationId, specificationTitle: manifest.specificationTitle, componentCode: manifest.componentCode, componentTitle: manifest.componentTitle, year: manifest.year, series: manifest.series, paperReference: manifest.paperReference, questionNumber: number, sourceUrl: manifest.questionPaperUrl, sourceSha256: paperFile.sha256 }, rights: rightsSnapshot, status: publishable ? "published" : "needs_review", review: { status: "pending" as const, notes: [] }, selectionKey: Math.random(), createdAt: now, updatedAt: now }, secret: { questionId, markSchemeItem, officialMarkScheme: pairedScheme, modelAnswer: text(item.exampleAnswer, 8_000), examinerNotes: [], acceptableAlternatives: markSchemeItem.acceptableAlternatives, sourceDocumentHash: schemeFile.sha256 } });
   }
   if (options.dryRun) {
     return {
@@ -210,10 +347,47 @@ ${EXTRACTION_RULES}` },
   const bucket = getAdminStorageBucket();
   await Promise.all([bucket.file(paperPath).save(paperFile.bytes, { resumable: false, contentType: "application/pdf" }), bucket.file(schemePath).save(schemeFile.bytes, { resumable: false, contentType: "application/pdf" })]);
   for (const item of report) {
-    const rendered = await renderPage(paperFile.bytes, item.page);
-    const assetPath = `internal/examQuestionBank/${manifest.board}/${paperId}/${item.question.id}-page.png`;
+    // The question's own region, not the page it shares with its neighbours.
+    const rendered = item.regions.length
+      ? await renderRegions(paperFile.bytes, item.regions)
+      : await renderPage(paperFile.bytes, item.page);
+    const assetPath = `internal/examQuestionBank/${manifest.board}/${paperId}/${item.question.id}-question.png`;
     await bucket.file(assetPath).save(rendered.bytes, { resumable: false, contentType: "image/png" });
-    item.question.assets = [{ id: "question-page", type: "image", title: "Original question layout", content: "", altText: `Original page for ${item.question.label}`, storagePath: assetPath, mimeType: "image/png", width: rendered.width, height: rendered.height, source: "deterministic", validationStatus: "valid" }];
+    item.question.assets = [{
+      id: "question-extract", type: "image",
+      title: "Original question layout", content: "",
+      altText: `The paper as printed for ${item.question.label}`,
+      storagePath: assetPath, mimeType: "image/png",
+      width: rendered.width, height: rendered.height,
+      source: "deterministic", validationStatus: "valid",
+    }];
+
+    /*
+     * The scheme page, kept beside the question.
+     *
+     * The reviewer's job is to confirm the criteria reproduce the official
+     * scheme. Given only the question it can judge whether the criteria look
+     * plausible, which is a different and much weaker question.
+     */
+    const schemePage = Math.round(Number(item.schemePageNumber));
+    if (Number.isFinite(schemePage) && schemePage >= 1) {
+      try {
+        const schemeRender = await renderPage(schemeFile.bytes, schemePage);
+        const schemePath = `internal/examQuestionBank/${manifest.board}/${paperId}/${item.question.id}-scheme.png`;
+        await bucket.file(schemePath).save(schemeRender.bytes, { resumable: false, contentType: "image/png" });
+        item.question.assets.push({
+          id: "scheme-extract", type: "image",
+          title: "Official mark scheme page", content: "",
+          altText: `The published mark scheme page for ${item.question.label}`,
+          storagePath: schemePath, mimeType: "image/png",
+          width: schemeRender.width, height: schemeRender.height,
+          source: "deterministic", validationStatus: "valid",
+        });
+      } catch {
+        // A scheme page that will not render leaves the reviewer without it,
+        // and the reviewer refuses to approve on the question alone.
+      }
+    }
   }
   const paper: ExamPaper = { id: paperId, ...manifest, questionPaperSha256: paperFile.sha256, markSchemeSha256: schemeFile.sha256, questionPaperStoragePath: paperPath, markSchemeStoragePath: schemePath, rights: { key: rights.key, version: rights.version, verified: rights.verified, storageAllowed: rights.storageAllowed, studentDisplayAllowed: rights.studentDisplayAllowed, aiInferenceAllowed: rights.aiInferenceAllowed, revoked: rights.revoked }, status: report.every((item) => item.question.status === "published") && report.length ? "published" : "needs_review", createdAt: now, updatedAt: now };
   const db = getAdminDb();

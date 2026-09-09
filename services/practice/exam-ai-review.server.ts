@@ -14,27 +14,27 @@ import { getAdminStorageBucket } from "@/services/firebase/admin";
 /**
  * Checking an extracted question against the page it was taken from.
  *
- * This is the review, not a second opinion on it. Every question ingested
- * carries a render of its own source page, so the reviewer is shown the
- * original and asked whether the extraction matches it -- which is a question
- * with an answer on the page, unlike "is this a good question".
+ * This is the review, not a second opinion on it. A question is stored with a
+ * render of its own region of the paper and of the scheme page it was paired
+ * to, so the reviewer is shown both originals and asked whether the extraction
+ * matches them -- a question with an answer on the page, unlike "is this a
+ * good question".
  *
- * It runs on `documentVision` because that is the only role whose capability
- * entry claims image input and which is actually reached through a provider
- * that accepts it. The ingest-time audit pass sends PDFs to `supervisor`,
- * whose own entry declares no document modality; that pass is not trusted here
- * and its verdict is treated as a hint rather than a gate.
+ * A provider that cannot be reached is not a bad question, so it is reported
+ * separately: a rejected question has been judged, a failed one has not, and
+ * conflating them buries real content problems under outages.
  */
 const REVIEW_INSTRUCTION = `You verify that an exam question was extracted correctly from its source page.
 
-You are given the rendered original page and the extracted record. Decide only whether the extraction is faithful. Do not judge whether the question is a good question, and never rewrite it.
+You are given two images -- the question as printed, and the official mark scheme page -- and the extracted record. Decide only whether the extraction is faithful to them. Do not judge whether the question is a good question, and never rewrite it.
 
 Reject when any of these is true:
-- the prompt is not what the page says, or is truncated, or has absorbed a neighbouring question
-- the mark total does not match the tariff printed on the page
-- the question depends on a figure, table, diagram or extract that the prompt does not contain
-- the mark scheme criteria are for a different question, or do not add up to the tariff
-- the question number or label does not match the page
+- the prompt is not what the question image says, or is truncated, or has absorbed a neighbouring question
+- the mark total does not match the tariff printed on the question
+- the question depends on a figure, table, diagram or extract that neither the prompt nor the question image contains
+- the extracted criteria are not what the scheme page awards for this question, or are for a different question
+- the criteria do not add up to the tariff
+- the question number or label does not match
 
 Return ONLY JSON: {"verdict":"approve"|"reject","confidence":0..1,"issues":[string]}
 issues names what is wrong, one short sentence each, and is empty when approving. Be strict: a student is marked against this.`;
@@ -47,17 +47,44 @@ export type ExamAiReviewOutcome = {
 /** Below this the model is not sure enough to be the only thing checking. */
 const MIN_CONFIDENCE = 0.75;
 
-async function sourcePageParts(question: ExamQuestion): Promise<AiContentPart[]> {
+async function renderedAsset(question: ExamQuestion, id: string) {
   const asset = question.assets.find(
-    (item) => item.storagePath?.startsWith("internal/examQuestionBank/") && item.mimeType === "image/png"
+    (item) =>
+      item.id === id &&
+      item.storagePath?.startsWith("internal/examQuestionBank/") &&
+      item.mimeType === "image/png"
   );
-  if (!asset?.storagePath) return [];
+  if (!asset?.storagePath) return null;
   const [bytes] = await getAdminStorageBucket().file(asset.storagePath).download();
-  if (bytes.length > 8 * 1024 * 1024) return [];
-  return [
-    { text: "The rendered original page this question was taken from:" },
-    { inlineData: { mimeType: "image/png", data: bytes.toString("base64") } },
+  if (bytes.length > 8 * 1024 * 1024) return null;
+  return bytes.toString("base64");
+}
+
+/**
+ * Both sides of the comparison: the question as printed, and its scheme page.
+ *
+ * With only the question the reviewer can say whether criteria look plausible
+ * for it, which is not the question being asked. Confirming that the criteria
+ * reproduce the official scheme needs the official scheme.
+ */
+async function sourceParts(question: ExamQuestion): Promise<{
+  parts: AiContentPart[];
+  hasScheme: boolean;
+}> {
+  const [questionImage, schemeImage] = await Promise.all([
+    renderedAsset(question, "question-extract").catch(() => null),
+    renderedAsset(question, "scheme-extract").catch(() => null),
+  ]);
+  if (!questionImage) return { parts: [], hasScheme: false };
+  const parts: AiContentPart[] = [
+    { text: "The question exactly as printed on the paper:" },
+    { inlineData: { mimeType: "image/png", data: questionImage } },
   ];
+  if (schemeImage) {
+    parts.push({ text: "The official mark scheme page for this question:" });
+    parts.push({ inlineData: { mimeType: "image/png", data: schemeImage } });
+  }
+  return { parts, hasScheme: Boolean(schemeImage) };
 }
 
 export async function reviewExamQuestionWithAi(input: {
@@ -71,17 +98,24 @@ export async function reviewExamQuestionWithAi(input: {
     questionId: question.id,
     review: { status: "rejected", by: "ai", at: now, notes: [note] },
   });
+  const failed = (note: string): ExamAiReviewOutcome => ({
+    questionId: question.id,
+    review: { status: "review_failed", by: "ai", at: now, notes: [note] },
+  });
 
   if (!secret) return reject("No mark scheme was stored for this question.");
   const criteria = schemeCriteria(secret.markSchemeItem);
   if (criteria.length === 0) return reject("The mark scheme has no awardable criteria.");
 
-  const pageParts = await sourcePageParts(question).catch(() => []);
+  const { parts: pageParts, hasScheme } = await sourceParts(question).catch(() => ({ parts: [], hasScheme: false }));
   // Without the page there is nothing to check the extraction against, and
   // approving on the extraction's own say-so would be reviewing it against
   // itself.
   if (pageParts.length === 0) {
-    return reject("The rendered source page is missing, so the extraction cannot be verified.");
+    return reject("The rendered question image is missing, so the extraction cannot be verified.");
+  }
+  if (!hasScheme) {
+    return reject("The official mark scheme page is missing, so the criteria cannot be checked against it.");
   }
 
   const record = {
@@ -108,14 +142,14 @@ export async function reviewExamQuestionWithAi(input: {
       },
     });
   } catch {
-    return reject("The reviewer could not be reached; this question was left unapproved.");
+    return failed("The reviewer could not be reached. Nothing is wrong with the question yet.");
   }
 
   let payload: Record<string, unknown>;
   try {
     payload = parseJsonObject(response);
   } catch {
-    return reject("The reviewer returned an unreadable verdict.");
+    return failed("The reviewer returned an unreadable verdict.");
   }
 
   const issues = Array.isArray(payload.issues)
