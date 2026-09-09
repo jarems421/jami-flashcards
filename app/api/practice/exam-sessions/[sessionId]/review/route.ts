@@ -64,7 +64,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const [bankQuestion, secret] = await Promise.all([
       loadServableExamQuestion(questionId, uid),
-      loadExamQuestionSecret(questionId, uid),
+      loadExamQuestionSecret(questionId, uid, question.contentVersion),
     ]);
     const scheme = { ...secret.markSchemeItem, questionId, maxMarks: question.marks } as PracticePaperMarkSchemeItem;
     const paper = buildSingleQuestionPaper({

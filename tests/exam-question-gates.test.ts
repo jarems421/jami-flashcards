@@ -72,6 +72,7 @@ function question(overrides: Partial<ExamQuestion> = {}): ExamQuestion {
     rights: JAMI_RIGHTS,
     status: "published",
     review: { status: "pending" as const, notes: [] },
+    contentVersion: "v1",
     selectionKey: 0.5,
     createdAt: 1,
     updatedAt: 1,

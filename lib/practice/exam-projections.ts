@@ -65,6 +65,7 @@ export function projectExamSessionQuestion(
     difficulty: question.difficulty,
     origin: question.origin,
     provenance: question.provenance,
+    contentVersion: question.contentVersion,
     assets: question.assets.map((asset) => {
       const visible = { ...asset };
       delete visible.storagePath;

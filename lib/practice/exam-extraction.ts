@@ -192,6 +192,10 @@ export function buildExamQuestionsFromExtraction(
      * the one being replaced.
      */
     const publishable = canPublishExamQuestion(verification) && issues.length === 0;
+    const contentVersion = createHash("sha256")
+      .update(JSON.stringify({ prompt, marks, markSchemeItem }))
+      .digest("hex")
+      .slice(0, 16);
 
     entries.push({
       page,
@@ -235,12 +239,14 @@ export function buildExamQuestionsFromExtraction(
         rights: input.rights,
         status: publishable ? "published" : "needs_review",
         review: { status: "pending", notes: [] },
+        contentVersion,
         selectionKey: selectionKey(),
         createdAt: input.now,
         updatedAt: input.now,
       },
       secret: {
         questionId,
+        contentVersion,
         markSchemeItem,
         officialMarkScheme: pairedScheme,
         modelAnswer: text(item.exampleAnswer, 8_000),

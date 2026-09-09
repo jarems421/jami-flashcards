@@ -129,7 +129,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   enterAiSpendContext(aiSpendContextFor(uid, "examQuestionMarking"));
   try {
     const [bankQuestion, secret] = await Promise.all([
-      loadServableExamQuestion(questionId, uid), loadExamQuestionSecret(questionId, uid),
+      loadServableExamQuestion(questionId, uid),
+      loadExamQuestionSecret(questionId, uid, question.contentVersion),
     ]);
     if (secret.markSchemeItem.maxMarks !== question.marks || secret.questionId !== questionId) throw new Error("scheme_mismatch");
     const paper = buildSingleQuestionPaper({
@@ -169,7 +170,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       durationMs: Math.max(0, (frozen.submittedAt ?? Date.now()) - frozen.startedAt),
     });
     return Response.json({ attempt: projectExamAttempt(attemptId, (await ref.get()).data()!) });
-  } catch {
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "";
     const current = (await ref.get()).data();
     if (current?.status === "marked") return Response.json({ attempt: projectExamAttempt(attemptId, current) });
     await db.runTransaction(async (transaction) => {
@@ -179,6 +181,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     });
     await refundAiBudget(budget.grant).catch(() => undefined);
+    /*
+     * A question that changed under a live session is not a transient
+     * failure and retrying will not help, so it says so rather than
+     * inviting the student to try again forever.
+     */
+    if (reason === "question_changed") {
+      return apiFailure(
+        "This question was updated after you started. Your answer is saved, but Jami will not mark it against a different mark scheme.",
+        409,
+        "question_changed"
+      );
+    }
     return apiFailure("Jami couldn't mark this one — your answer is saved.", 503, "marking_failed");
   }
 }

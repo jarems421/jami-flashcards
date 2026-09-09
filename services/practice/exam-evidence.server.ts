@@ -43,15 +43,40 @@ export async function loadServableExamQuestion(questionId: string, uid: string) 
   return question;
 }
 
-/** The answer-bearing half, fetched by id and only ever at marking time. */
-export async function loadExamQuestionSecret(questionId: string, uid: string) {
+/**
+ * The answer-bearing half, matching the question the student was actually
+ * shown.
+ *
+ * A session snapshots a question's wording, but this used to load whatever
+ * scheme currently sat under that id -- so re-ingesting a paper marked a
+ * student against a scheme that no longer belonged to the question in front of
+ * them, silently. When the current scheme is for different content, the
+ * archived revision the session started with is used instead, and if that is
+ * gone the answer is not marked at all rather than marked wrongly.
+ */
+export async function loadExamQuestionSecret(
+  questionId: string,
+  uid: string,
+  contentVersion?: string
+) {
+  const db = getAdminDb();
   const [shared, generated] = await Promise.all([
-    getAdminDb().collection("examQuestionSecrets").doc(questionId).get(),
+    db.collection("examQuestionSecrets").doc(questionId).get(),
     generatedSecrets(uid).doc(questionId).get(),
   ]);
   const snapshot = shared.exists ? shared : generated;
   if (!snapshot.exists) throw new Error("question_secret_missing");
-  return snapshot.data() as ExamQuestionSecret;
+  const secret = snapshot.data() as ExamQuestionSecret;
+  if (!contentVersion || !secret.contentVersion || secret.contentVersion === contentVersion) {
+    return secret;
+  }
+  const archived = await db
+    .collection("examQuestionRevisions")
+    .doc(`${questionId}_${contentVersion}`)
+    .get();
+  const revision = archived.data()?.secret as ExamQuestionSecret | undefined;
+  if (!revision) throw new Error("question_changed");
+  return revision;
 }
 
 export async function examQuestionVisualParts(question: ExamQuestion): Promise<AiContentPart[]> {

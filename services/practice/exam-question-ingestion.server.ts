@@ -482,7 +482,34 @@ export async function writeIngestionResults(state: ExamIngestionState) {
     write(batch);
     operations += 1;
   };
+  /*
+   * A question that changes keeps the version it is replacing.
+   *
+   * Sessions snapshot a question's wording but marking loads its scheme by id,
+   * so re-ingesting a paper used to mark a student against a scheme that no
+   * longer belonged to the question in front of them. Archiving the old pair
+   * lets a session that started before the change be finished honestly.
+   */
+  const existing = await Promise.all(
+    entries.map((item) => db.collection("examQuestions").doc(item.question.id).get())
+  );
+  const existingSecrets = await Promise.all(
+    entries.map((item) => db.collection("examQuestionSecrets").doc(item.question.id).get())
+  );
+
   queue((target) => target.set(db.collection("examPapers").doc(state.paperId), paper));
+  for (const [index, item] of entries.entries()) {
+    const previous = existing[index]?.data();
+    const previousSecret = existingSecrets[index]?.data();
+    if (previous && previousSecret && previous.contentVersion && previous.contentVersion !== item.question.contentVersion) {
+      queue((target) =>
+        target.set(
+          db.collection("examQuestionRevisions").doc(`${item.question.id}_${previous.contentVersion}`),
+          { question: previous, secret: previousSecret, archivedAt: Date.now() }
+        )
+      );
+    }
+  }
   for (const item of entries) {
     queue((target) => target.set(db.collection("examQuestions").doc(item.question.id), { ...item.question, verification: item.verification }));
     queue((target) => target.set(db.collection("examQuestionSecrets").doc(item.question.id), item.secret));

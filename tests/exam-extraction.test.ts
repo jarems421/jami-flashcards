@@ -175,3 +175,48 @@ describe("what the pipeline refuses", () => {
     expect(entries.length + rejected.length).toBe(28);
   });
 });
+
+/**
+ * A question carries a version of its own content, so re-ingesting a paper
+ * cannot silently change what a live session is marked against.
+ */
+describe("content versions", () => {
+  it("gives every question a version, and its scheme the same one", () => {
+    const { entries } = build();
+    expect(entries.every((entry) => entry.question.contentVersion.length > 0)).toBe(true);
+    expect(
+      entries.every((entry) => entry.secret.contentVersion === entry.question.contentVersion)
+    ).toBe(true);
+  });
+
+  it("gives the same content the same version, so an unchanged re-ingest archives nothing", () => {
+    const first = build();
+    const second = build();
+    expect(first.entries.map((entry) => entry.question.contentVersion)).toEqual(
+      second.entries.map((entry) => entry.question.contentVersion)
+    );
+  });
+
+  it("changes the version when the wording changes", () => {
+    const reworded = fixture.capture.questions.map((question) => ({
+      ...question,
+      prompt: `${String(question.prompt)} (reworded)`,
+    }));
+    const before = build().entries[0].question.contentVersion;
+    const after = build({ questions: reworded }).entries[0].question.contentVersion;
+    expect(after).not.toBe(before);
+  });
+
+  it("changes the version when only the mark scheme changes", () => {
+    const rescheme = fixture.capture.questions.map((question) => ({
+      ...question,
+      markSchemeItem: {
+        ...(question.markSchemeItem as Record<string, unknown>),
+        answer: "a different official answer",
+      },
+    }));
+    const before = build().entries[0].question.contentVersion;
+    const after = build({ questions: rescheme }).entries[0].question.contentVersion;
+    expect(after).not.toBe(before);
+  });
+});

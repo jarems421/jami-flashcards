@@ -130,6 +130,16 @@ export type ExamQuestion = {
   rights: ExamRightsSnapshot;
   status: ExamQuestionStatus;
   review: ExamQuestionReview;
+  /**
+   * What this question currently says, as a hash of its own content.
+   *
+   * A session snapshots a question's wording but marking loads the scheme by
+   * id, so re-ingesting a paper used to mark a student against a scheme that
+   * no longer belonged to the question in front of them. The version travels
+   * with the session, and marking will not use a scheme that does not match
+   * it.
+   */
+  contentVersion: string;
   selectionKey: number;
   createdAt: number;
   updatedAt: number;
@@ -137,6 +147,8 @@ export type ExamQuestion = {
 
 export type ExamQuestionSecret = {
   questionId: string;
+  /** Matches the question's, so a scheme cannot drift from its question. */
+  contentVersion: string;
   markSchemeItem: PracticePaperMarkSchemeItem;
   officialMarkScheme: string;
   modelAnswer?: string;
@@ -147,7 +159,15 @@ export type ExamQuestionSecret = {
 
 export type ExamSessionQuestion = Pick<
   ExamQuestion,
-  "id" | "label" | "prompt" | "marks" | "assets" | "difficulty" | "origin" | "provenance"
+  | "id"
+  | "label"
+  | "prompt"
+  | "marks"
+  | "assets"
+  | "difficulty"
+  | "origin"
+  | "provenance"
+  | "contentVersion"
 > & { attemptId: string };
 
 export type ExamSession = {
