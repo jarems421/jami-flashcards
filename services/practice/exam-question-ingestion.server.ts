@@ -281,33 +281,47 @@ ${QUESTION_RULES}` },
     ? questionPass.questions.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
     : [];
 
-  const schemesByNumber = new Map<string, Record<string, unknown>>();
+  /*
+   * The chunks run together, because they are independent and the clock is
+   * not. Four scheme passes in sequence took the request past its budget and
+   * came back "Request timed out" -- having paid for every call that did
+   * finish. Nothing in a chunk depends on another chunk's answer.
+   */
+  const chunks: Array<Array<{ questionNumber: string; marks: number }>> = [];
   for (let at = 0; at < questionList.length; at += SCHEME_CHUNK_SIZE) {
-    const chunk = questionList.slice(at, at + SCHEME_CHUNK_SIZE);
-    const wanted = chunk.map((item) => ({
-      questionNumber: text(item.questionNumber, 80),
-      marks: Math.round(Number(item.marks)) || 0,
-    }));
-    const schemeResponse = await generateAiText({
-      role: "documentVision", taskClass: "visual", timeoutMs: 120_000, deadlineAt: Date.now() + 130_000,
-      generationConfig: { temperature: 0, topP: 0.6, maxOutputTokens: 16_000 },
-      request: { systemInstruction: "Read published mark schemes exactly as printed. Never invent a mark point. Return JSON only.", contents: [{ role: "user", parts: [
-        { text: `Give the mark scheme for exactly these questions: ${JSON.stringify(wanted)}.
+    chunks.push(
+      questionList.slice(at, at + SCHEME_CHUNK_SIZE).map((item) => ({
+        questionNumber: text(item.questionNumber, 80),
+        marks: Math.round(Number(item.marks)) || 0,
+      }))
+    );
+  }
+  const schemeDeadline = Date.now() + 150_000;
+  const chunkResults = await Promise.all(
+    chunks.map(async (wanted) => {
+      const schemeResponse = await generateAiText({
+        role: "documentVision", taskClass: "visual", timeoutMs: 140_000, deadlineAt: schemeDeadline,
+        generationConfig: { temperature: 0, topP: 0.6, maxOutputTokens: 16_000 },
+        request: { systemInstruction: "Read published mark schemes exactly as printed. Never invent a mark point. Return JSON only.", contents: [{ role: "user", parts: [
+          { text: `Give the mark scheme for exactly these questions: ${JSON.stringify(wanted)}.
 
 Shape:
 ${SCHEME_EXAMPLE}
 
 ${SCHEME_RULES}` },
-        { inlineData: { mimeType: "application/pdf", data: schemeFile.bytes.toString("base64") } },
-      ] }] },
-    });
-    const parsed = parseJsonObject(schemeResponse);
-    const schemes = Array.isArray(parsed.schemes) ? parsed.schemes : [];
-    for (const entry of schemes) {
-      if (!entry || typeof entry !== "object") continue;
-      const number = text((entry as Record<string, unknown>).questionNumber, 80);
-      if (number) schemesByNumber.set(number, entry as Record<string, unknown>);
-    }
+          { inlineData: { mimeType: "application/pdf", data: schemeFile.bytes.toString("base64") } },
+        ] }] },
+      });
+      const parsed = parseJsonObject(schemeResponse);
+      return Array.isArray(parsed.schemes) ? parsed.schemes : [];
+    })
+  );
+
+  const schemesByNumber = new Map<string, Record<string, unknown>>();
+  for (const entry of chunkResults.flat()) {
+    if (!entry || typeof entry !== "object") continue;
+    const number = text((entry as Record<string, unknown>).questionNumber, 80);
+    if (number) schemesByNumber.set(number, entry as Record<string, unknown>);
   }
 
   const extraction = {
