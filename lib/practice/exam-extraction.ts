@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   findQuestionStarts,
+  rootQuestionLabel,
   readPrintedTariff,
   readPrintedTariffs,
   regionsForQuestion,
@@ -97,7 +98,7 @@ export function buildExamQuestionsFromExtraction(
    */
   const marksByRoot = new Map<string, number>();
   for (const item of input.questions) {
-    const label = text(item.questionNumber, 80).match(/^\d{1,2}/)?.[0] ?? "";
+    const label = rootQuestionLabel(text(item.questionNumber, 80));
     if (!label) continue;
     const value = Number.isFinite(Number(item.marks)) ? Math.round(Number(item.marks)) : 0;
     marksByRoot.set(label, (marksByRoot.get(label) ?? 0) + value);
@@ -124,7 +125,8 @@ export function buildExamQuestionsFromExtraction(
      * every wrong extraction, including one that read a question number as a
      * tariff.
      */
-    const rootLabel = number.match(/^\d{1,2}/)?.[0] ?? "";
+    // Normalised, so AQA's "01.1" and Edexcel's "3" both name their question.
+    const rootLabel = rootQuestionLabel(number);
     const regions = rootLabel
       ? regionsForQuestion({ label: rootLabel, starts: questionStarts, pages: paperPages })
       : [];

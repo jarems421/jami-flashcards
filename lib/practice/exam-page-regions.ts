@@ -43,10 +43,41 @@ export type QuestionRegion = {
 
 /** How far into the page a number can sit and still be a margin label. */
 const MARGIN_RATIO = 0.18;
+/** Text this long is prose, so where it starts is where the question starts. */
+const BODY_TEXT_MIN_LENGTH = 8;
+/** Slack on the body column, which is a rounded average of real positions. */
+const COLUMN_TOLERANCE = 2;
 /** Lines closer together than this are the same line. */
 const LINE_TOLERANCE = 3;
-/** A question label: 1, 12, 3. — not a year, a mark total or a page number. */
-const LABEL_PATTERN = /^(\d{1,2})\s*[.)]?$/;
+/**
+ * A question label, however the board sets it.
+ *
+ * Edexcel prints a bare `3`. AQA prints `0 1 . 1` — zero padded, sub-part
+ * numbered, and split across separate text runs, one per glyph. Matching a
+ * single run against a number therefore found every Edexcel question and not
+ * one AQA question, and that cascaded: no label meant no region, no region
+ * meant no tariff, and no tariff meant every question on the paper was held
+ * back. Two hundred and sixteen of them.
+ *
+ * So the margin is read a line at a time and its runs joined before matching,
+ * and the label is normalised — `01` and `01.1` become `1` and `1.1` — so the
+ * rest of the pipeline sees one shape whoever printed the paper.
+ */
+const LABEL_PATTERN = /^0*(\d{1,2})(?:[.](\d{1,2}))?[.)]?$/;
+
+export function normaliseQuestionLabel(raw: string): string | null {
+  const match = raw.replace(/\s+/g, "").match(LABEL_PATTERN);
+  if (!match) return null;
+  return match[2] ? `${Number(match[1])}.${Number(match[2])}` : String(Number(match[1]));
+}
+
+/** The root a label belongs to: `1.3` and `1` are both question 1. */
+export function rootQuestionLabel(raw: string): string {
+  const normalised = normaliseQuestionLabel(raw);
+  if (normalised) return normalised.split(".")[0];
+  const digits = raw.replace(/\s+/g, "").match(/^0*(\d{1,2})/);
+  return digits ? String(Number(digits[1])) : "";
+}
 
 function sameLine(a: number, b: number) {
   return Math.abs(a - b) <= LINE_TOLERANCE;
@@ -55,29 +86,89 @@ function sameLine(a: number, b: number) {
 /**
  * The question numbers printed in the left margin, top to bottom.
  *
- * Only whole numbers, and only in the margin: a part label like `(a)` sits
- * inside its question rather than starting a new one, and a bare number in the
- * body of the page is far more likely to be an answer or a figure caption.
+ * Only the margin: a number in the body of the page is far more likely to be
+ * an answer or a figure caption, and a question label always has its question
+ * beside it — a margin number with an empty line to its right is a page
+ * number.
  */
-export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
-  const starts: QuestionStart[] = [];
+/**
+ * Where this page's prose begins, which is where a label must end.
+ *
+ * A fixed gap between glyphs cannot separate the two cases: AQA sets `0` and
+ * `1` 16.7 points apart, and Edexcel's question 18 is followed 18.4 points
+ * later by the `7` of "7 kg of carrots". Any threshold that keeps AQA's label
+ * whole also swallows Edexcel's, and the reverse.
+ *
+ * The page answers it instead. Prose starts at one x and repeats there on
+ * every line -- 114.8 on that AQA paper, 89.3 on that Edexcel one -- and every
+ * label sits left of it.
+ */
+function bodyTextStart(pages: PdfPageText[], fallback: number) {
+  const counts = new Map<number, number>();
   for (const page of pages) {
-    const marginLimit = page.width * MARGIN_RATIO;
-    const candidates = page.items
-      .filter((item) => item.x <= marginLimit)
-      .filter((item) => LABEL_PATTERN.test(item.text.trim()));
-    for (const item of candidates) {
-      const label = item.text.trim().replace(/[.)]$/, "");
-      // A question label has its question beside it. A margin number with an
-      // empty line to its right is a page number, not a question.
-      const hasQuestionBeside = page.items.some(
-        (other) => other !== item && sameLine(other.y, item.y) && other.x > item.x
-      );
-      if (!hasQuestionBeside) continue;
-      starts.push({ label, page: page.page, top: page.height - item.y });
+    for (const item of page.items) {
+      if (item.text.trim().length < BODY_TEXT_MIN_LENGTH) continue;
+      const column = Math.round(item.x);
+      counts.set(column, (counts.get(column) ?? 0) + 1);
     }
   }
-  return starts.sort((left, right) => left.page - right.page || left.top - right.top);
+  let best = fallback;
+  let seen = 0;
+  for (const [column, count] of counts) {
+    if (count > seen || (count === seen && column < best)) {
+      best = column;
+      seen = count;
+    }
+  }
+  return seen > 0 ? best : fallback;
+}
+
+export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
+  const starts: QuestionStart[] = [];
+  // One column for the whole paper: a single page can be dominated by a table
+  // or a run of answer lines, and taking its own modal column then puts the
+  // boundary in the wrong place for that page alone.
+  const fallbackMargin = (pages[0]?.width ?? 600) * MARGIN_RATIO;
+  const bodyStart = bodyTextStart(pages, fallbackMargin);
+  for (const page of pages) {
+    const lines: PdfTextItem[][] = [];
+    for (const item of page.items.filter((candidate) => candidate.x < bodyStart - COLUMN_TOLERANCE)) {
+      const line = lines.find((candidate) => sameLine(candidate[0].y, item.y));
+      if (line) line.push(item);
+      else lines.push([item]);
+    }
+    for (const line of lines) {
+      const joined = line
+        .slice()
+        .sort((left, right) => left.x - right.x)
+        .map((item) => item.text)
+        .join("");
+      const label = normaliseQuestionLabel(joined);
+      if (!label) continue;
+      const y = line[0].y;
+      // A label has its question beside it. A number alone in the margin is a
+      // page number, not a question.
+      const hasQuestionBeside = page.items.some(
+        (other) => sameLine(other.y, y) && other.x >= bodyStart - COLUMN_TOLERANCE
+      );
+      if (!hasQuestionBeside) continue;
+      starts.push({ label, page: page.page, top: page.height - y });
+    }
+  }
+  /*
+   * A question number appears once on a paper, so a repeat is a false
+   * positive -- a figure caption or an answer line that happens to sit in the
+   * margin with text beside it. Keeping the later one would end the earlier
+   * question's region in the wrong place, cutting it short.
+   */
+  const seen = new Set<string>();
+  return starts
+    .sort((left, right) => left.page - right.page || left.top - right.top)
+    .filter((start) => {
+      if (seen.has(start.label)) return false;
+      seen.add(start.label);
+      return true;
+    });
 }
 
 /**

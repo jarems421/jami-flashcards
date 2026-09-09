@@ -22,13 +22,13 @@ describe("finding where questions start", () => {
   const pages = [
     page(1, [
       ["1", 50, 750],
-      ["Work out 3 + 4.", 90, 750],
+      ["Work out 3 + 4.", 120, 750],
       ["2", 50, 500],
-      ["Simplify the expression.", 90, 500],
+      ["Simplify the expression.", 120, 500],
     ]),
     page(2, [
       ["3", 50, 700],
-      ["Solve for x.", 90, 700],
+      ["Solve for x.", 120, 700],
     ]),
   ];
 
@@ -43,7 +43,7 @@ describe("finding where questions start", () => {
   it("ignores numbers in the body of the page", () => {
     // An answer line or a figure caption is not a question start.
     const withBodyNumbers = [
-      page(1, [["1", 50, 750], ["Work out 3 + 4.", 90, 750], ["7", 400, 600], ["12", 300, 400]]),
+      page(1, [["1", 50, 750], ["Work out 3 + 4.", 120, 750], ["7", 400, 600], ["12", 300, 400]]),
     ];
     expect(findQuestionStarts(withBodyNumbers).map((s) => s.label)).toEqual(["1"]);
   });
@@ -51,9 +51,9 @@ describe("finding where questions start", () => {
   it("ignores part labels, which belong to the question above them", () => {
     const withParts = [
       page(1, [
-        ["1", 50, 750], ["Work out 3 + 4.", 90, 750],
-        ["(a)", 60, 700], ["Simplify.", 100, 700],
-        ["(b)", 60, 600], ["Factorise.", 100, 600],
+        ["1", 50, 750], ["Work out 3 + 4.", 120, 750],
+        ["(a)", 60, 700], ["Simplify the thing.", 120, 700],
+        ["(b)", 60, 600], ["Factorise the thing.", 120, 600],
       ]),
     ];
     expect(findQuestionStarts(withParts).map((s) => s.label)).toEqual(["1"]);
@@ -62,8 +62,8 @@ describe("finding where questions start", () => {
 
 describe("the slice of paper a question occupies", () => {
   const pages = [
-    page(1, [["1", 50, 750], ["Work it out.", 90, 750], ["2", 50, 400], ["Simplify.", 90, 400]]),
-    page(2, [["3", 50, 600], ["Solve for x.", 90, 600]]),
+    page(1, [["1", 50, 750], ["Work it out.", 120, 750], ["2", 50, 400], ["Simplify the thing.", 120, 400]]),
+    page(2, [["3", 50, 600], ["Solve for x now.", 120, 600]]),
   ];
   const starts = findQuestionStarts(pages);
 
