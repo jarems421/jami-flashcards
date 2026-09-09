@@ -1,6 +1,34 @@
 {
   "indexes": [
     {
+      "collectionGroup": "examQuestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "subjectKey", "order": "ASCENDING" },
+        { "fieldPath": "studyLevel", "order": "ASCENDING" },
+        { "fieldPath": "provenance.specificationId", "order": "ASCENDING" },
+        { "fieldPath": "difficulty", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "selectionKey", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "examAttempts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sessionId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "examSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "folderId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "sourceChunks",
       "queryScope": "COLLECTION",
       "fields": [

@@ -57,6 +57,7 @@ import {
 import { getActiveTopics } from "@/services/study/topics";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import { deletePracticePaper } from "@/services/study/practice-papers";
+import ExamPracticeHistory from "@/components/practice/ExamPracticeHistory";
 
 const FOLDER_ASSET_PAGE_SIZE = 30;
 
@@ -824,6 +825,7 @@ export default function FolderDetailPage() {
         <div className="flex gap-2 overflow-x-auto rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1">
           {[
             ["notebooks", "Notebooks"],
+            ...(featureFlags.enablePastPaperPractice ? [["practice", "Practice"]] : []),
             ["decks", "Decks"],
             ["sources", "Sources"],
           ].map(([value, label]) => {
@@ -850,6 +852,15 @@ export default function FolderDetailPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <SectionHeader title="Notebooks" />
               <div className="flex flex-wrap gap-2">
+                {featureFlags.enablePastPaperPractice ? (
+                  <ButtonLink
+                    href={`/dashboard/practice/questions/new?folderId=${encodeURIComponent(folder.id)}`}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    Past paper questions
+                  </ButtonLink>
+                ) : null}
                 <ButtonLink
                   href={`/dashboard/practice/new?folder=${encodeURIComponent(folder.id)}`}
                   size="sm"
@@ -945,6 +956,21 @@ export default function FolderDetailPage() {
                 </Button>
               </div>
             ) : null}
+          </section>
+        ) : null}
+
+        {activeTab === "practice" && featureFlags.enablePastPaperPractice ? (
+          <section className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <SectionHeader title="Past Paper Practice" />
+              <ButtonLink
+                href={`/dashboard/practice/questions/new?folderId=${encodeURIComponent(folder.id)}`}
+                size="sm"
+              >
+                Start practice
+              </ButtonLink>
+            </div>
+            <ExamPracticeHistory folderId={folder.id} embedded />
           </section>
         ) : null}
 

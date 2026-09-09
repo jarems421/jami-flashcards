@@ -236,6 +236,27 @@ describe("Storage security rules", () => {
     await assertFails(deleteObject(ref(aliceStorage, evidencePath)));
   });
 
+  it("streams official exam assets through the server and exposes only explicit notebook copies", async () => {
+    const bankPath = "internal/examQuestionBank/aqa/paper-1/question.png";
+    const evidencePath = "users/alice/examAttemptEvidence/attempt-1/working.png";
+    const copyPath = "users/alice/practiceNotebookCopies/export-1/working.png";
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await Promise.all([
+        uploadBytes(ref(context.storage(), bankPath), blob("image/png")),
+        uploadBytes(ref(context.storage(), evidencePath), blob("image/png")),
+        uploadBytes(ref(context.storage(), copyPath), blob("image/png")),
+      ]);
+    });
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const bobStorage = testEnv.authenticatedContext("bob").storage();
+    await assertFails(getBytes(ref(aliceStorage, bankPath)));
+    await assertFails(getBytes(ref(aliceStorage, evidencePath)));
+    await assertSucceeds(getBytes(ref(aliceStorage, copyPath)));
+    await assertFails(getBytes(ref(bobStorage, copyPath)));
+    await assertFails(uploadBytes(ref(aliceStorage, copyPath), blob("image/png")));
+    await assertFails(deleteObject(ref(aliceStorage, copyPath)));
+  });
+
   it("keeps exam-format imports and benchmark artifacts server-only", async () => {
     const importPath = "internal/examFormatImports/import-1/specification.pdf";
     const benchmarkPath = "internal/paperGenerationBenchmarks/run-1/case-1.json";

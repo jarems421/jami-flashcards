@@ -112,5 +112,22 @@ service firebase.storage {
     match /internal/paperGenerationBenchmarks/{allPaths=**} {
       allow read, write: if false;
     }
+
+    // Original exam-board PDFs, exact question crops, schemes and frozen
+    // attempt evidence are streamed only through authenticated server routes.
+    match /internal/examQuestionBank/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/examAttemptEvidence/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Copies explicitly saved into a notebook become ordinary owner-visible
+    // notebook content. Only the authenticated server export route writes them.
+    match /users/{userId}/practiceNotebookCopies/{allPaths=**} {
+      allow read: if isSelf(userId);
+      allow write: if false;
+    }
   }
 }

@@ -65,6 +65,8 @@ describe("AI budget configuration", () => {
         "tutorIllustration",
         "practicePaperGeneration",
         "practicePaperMarking",
+        "examQuestionMarking",
+        "examQuestionReview",
         "sourceFlashcardDrafts",
         "sourcePracticeDrafts",
         "videoCardImport",
@@ -115,6 +117,13 @@ describe("AI budget configuration", () => {
       burstRequestLimit: 3,
       burstScope: "tutorIllustrations",
     });
+    expect(AI_BUDGETS.examQuestionMarking).toMatchObject({
+      dailyRequestLimit: 60,
+      burstRequestLimit: 12,
+      tokenCap: 8_000,
+      inputTokenCap: 32_000,
+    });
+    expect(AI_BUDGETS.examQuestionReview.dailyRequestLimit).toBe(20);
   });
 
   it("exposes a token cap for each action", () => {

@@ -3,6 +3,7 @@ export type FeatureFlagKey =
   | "enableMasteryProgress"
   | "enableFlashcardAi"
   | "enableStudyModes"
+  | "enablePastPaperPractice"
   | "enableTutorPersonalisation";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
@@ -12,6 +13,10 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   // Both features landed with their complete UI, persistence and prompt paths.
   // A direct public environment override can still remove either surface.
   enableStudyModes: true,
+  // The surface is complete independently of the licensed corpus. Keep it
+  // fail-closed until at least one rights-cleared current specification has
+  // been ingested in the target environment.
+  enablePastPaperPractice: false,
   enableTutorPersonalisation: true,
 };
 
@@ -25,6 +30,8 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableMasteryProgress: process.env.NEXT_PUBLIC_ENABLE_MASTERY_PROGRESS,
   enableFlashcardAi: process.env.NEXT_PUBLIC_ENABLE_FLASHCARD_AI,
   enableStudyModes: process.env.NEXT_PUBLIC_ENABLE_STUDY_MODES,
+  enablePastPaperPractice:
+    process.env.NEXT_PUBLIC_ENABLE_PAST_PAPER_PRACTICE,
   enableTutorPersonalisation:
     process.env.NEXT_PUBLIC_ENABLE_TUTOR_PERSONALISATION,
 };
@@ -46,5 +53,6 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableMasteryProgress: isFeatureEnabled("enableMasteryProgress"),
   enableFlashcardAi: isFeatureEnabled("enableFlashcardAi"),
   enableStudyModes: isFeatureEnabled("enableStudyModes"),
+  enablePastPaperPractice: isFeatureEnabled("enablePastPaperPractice"),
   enableTutorPersonalisation: isFeatureEnabled("enableTutorPersonalisation"),
 };

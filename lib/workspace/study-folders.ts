@@ -7,12 +7,17 @@ import {
   type StudyLevel,
 } from "@/lib/profile/study-level";
 import { normalizeFolderTutorInstructions } from "@/lib/ai/tutor-personalisation";
+import {
+  examBoardAppliesTo,
+  type ExamCourseSelection,
+} from "@/lib/practice/exam-questions";
 
 export type StudyFolder = {
   id: string;
   name: string;
   subject?: string;
   studyLevel?: StudyLevel;
+  examCourse?: ExamCourseSelection;
   color?: string;
   icon?: string;
   topicIds: string[];
@@ -35,6 +40,24 @@ export const MAX_STUDY_FOLDER_NAME_LENGTH = 90;
 export const MAX_STUDY_FOLDER_SUBJECT_LENGTH = 120;
 export const MAX_STUDY_FOLDER_TOPIC_IDS = 30;
 
+function normalizeExamCourse(value: unknown): ExamCourseSelection | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const input = value as Record<string, unknown>;
+  const board = typeof input.board === "string" ? input.board.trim() : "";
+  const qualification = typeof input.qualification === "string" ? input.qualification.trim() : "";
+  const specificationId = typeof input.specificationId === "string" ? input.specificationId.trim().slice(0, 160) : "";
+  const specificationTitle = typeof input.specificationTitle === "string" ? input.specificationTitle.trim().slice(0, 240) : "";
+  if (!board || !qualification || !specificationId || !specificationTitle) return undefined;
+  return {
+    board: board as ExamCourseSelection["board"],
+    qualification: qualification as ExamCourseSelection["qualification"],
+    specificationId,
+    specificationTitle,
+    tier: normalizeOptionalString(input.tier, 120),
+    componentIds: normalizeStringArray(input.componentIds, 20, 160),
+  };
+}
+
 export function normalizeStudyFolderName(value: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, MAX_STUDY_FOLDER_NAME_LENGTH);
 }
@@ -49,11 +72,13 @@ export function mapStudyFolderData(
 ): StudyFolder {
   const name = normalizeStudyFolderName(typeof data.name === "string" ? data.name : "");
 
+  const studyLevel = normalizeStudyLevel(data.studyLevel);
   return {
     id,
     name: name || "Untitled folder",
     subject: normalizeStudyFolderSubject(data.subject),
-    studyLevel: normalizeStudyLevel(data.studyLevel),
+    studyLevel,
+    examCourse: examBoardAppliesTo(studyLevel) ? normalizeExamCourse(data.examCourse) : undefined,
     color: normalizeOptionalString(data.color, 80),
     icon: normalizeOptionalString(data.icon, 40),
     topicIds: normalizeStringArray(
@@ -79,6 +104,7 @@ export function buildStudyFolderPayload(
     color?: string;
     icon?: string;
     topicIds?: string[];
+    examCourse?: ExamCourseSelection;
     now?: number;
   }
 ) {
@@ -99,6 +125,7 @@ export function buildStudyFolderPayload(
       MAX_STUDY_FOLDER_TOPIC_IDS,
       120
     ),
+    examCourse: input.examCourse ?? null,
     archived: false,
     createdAt: now,
     updatedAt: now,

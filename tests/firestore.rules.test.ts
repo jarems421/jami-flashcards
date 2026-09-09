@@ -990,6 +990,47 @@ describe("Firestore security rules", () => {
     }
   });
 
+  it("keeps the shared exam bank private and exposes only owner session projections", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await Promise.all([
+        setDoc(doc(adminDb, "examQuestions", "q1"), { prompt: "private bank question" }),
+        setDoc(doc(adminDb, "examQuestionSecrets", "q1"), { answer: "private scheme" }),
+        setDoc(doc(adminDb, "examPapers", "paper1"), { sourcePath: "private" }),
+        setDoc(doc(adminDb, "examSourceDiscoveries", "aqa_8461"), { pairs: [] }),
+        setDoc(doc(adminDb, "users", ALICE, "examGeneratedQuestions", "g1"), { prompt: "filler" }),
+        setDoc(doc(adminDb, "users", ALICE, "examGeneratedSecrets", "g1"), { modelAnswer: "private" }),
+        setDoc(doc(adminDb, "users", ALICE, "examSessions", "session1"), { userId: ALICE, status: "active" }),
+        setDoc(doc(adminDb, "users", ALICE, "examAttempts", "attempt1"), { userId: ALICE, sessionId: "session1", status: "draft" }),
+      ]);
+    });
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    for (const [collectionName, id] of [["examQuestions", "q1"], ["examQuestionSecrets", "q1"], ["examPapers", "paper1"], ["examSourceDiscoveries", "aqa_8461"]]) {
+      await assertFails(getDoc(doc(aliceDb, collectionName, id)));
+      await assertFails(setDoc(doc(aliceDb, collectionName, id), { exposed: true }));
+    }
+    // Jami-created fillers live under the student but are still server-only:
+    // their mark scheme sits beside them, so neither half is client-readable.
+    for (const collectionName of ["examGeneratedQuestions", "examGeneratedSecrets"]) {
+      await assertFails(getDoc(doc(aliceDb, "users", ALICE, collectionName, "g1")));
+      await assertFails(setDoc(doc(aliceDb, "users", ALICE, collectionName, "g1"), { exposed: true }));
+    }
+    // The session carries only the candidate-visible half of each question, so
+    // the owner reads it directly and the workspace renders without a round trip.
+    await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "examSessions", "session1")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "examSessions", "session1")));
+    // An attempt is the opposite: the stored document holds the marking audit,
+    // the idempotency key and the official scheme, so even its owner reads it
+    // through the API projection rather than from Firestore.
+    await assertFails(getDoc(doc(aliceDb, "users", ALICE, "examAttempts", "attempt1")));
+    await assertFails(updateDoc(doc(aliceDb, "users", ALICE, "examAttempts", "attempt1"), { status: "marked" }));
+    const scratchpad = doc(aliceDb, "users", ALICE, "examScratchpads", "attempt1");
+    await assertSucceeds(setDoc(scratchpad, { inkSvg: "<svg/>", updatedAt: 2 }));
+    await testEnv.withSecurityRulesDisabled(async (context) => updateDoc(doc(context.firestore(), "users", ALICE, "examAttempts", "attempt1"), { status: "marked" }));
+    await assertFails(updateDoc(scratchpad, { inkSvg: "<svg>changed</svg>", updatedAt: 3 }));
+  });
+
   it("keeps answer-bearing practice-paper rubrics inaccessible before submission", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const adminDb = context.firestore();

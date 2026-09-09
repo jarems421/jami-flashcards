@@ -140,6 +140,15 @@ service cloud.firestore {
     }
     match /paperGenerationBenchmarkBaselines/{baselineId} { allow read, write: if false; }
 
+    // Licensed Past Paper Practice corpus. Questions are projected into an
+    // authenticated student's session by server routes; clients may never
+    // enumerate the bank or fetch an answer-bearing scheme directly.
+    match /examPapers/{paperId} { allow read, write: if false; }
+    match /examQuestions/{questionId} { allow read, write: if false; }
+    match /examQuestionSecrets/{questionId} { allow read, write: if false; }
+    match /examQuestionStats/{questionId} { allow read, write: if false; }
+    match /examSourceDiscoveries/{discoveryId} { allow read, write: if false; }
+
     match /users/{userId} {
       allow read: if isSelf(userId);
       allow create, update, delete: if isSelf(userId) && !isDemoAccount();
@@ -282,6 +291,49 @@ service cloud.firestore {
       match /practiceSets/{practiceSetId} {
         allow read: if isSelf(userId);
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      match /examSessions/{sessionId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if false;
+      }
+
+      match /examAttempts/{attemptId} {
+        // Owner access uses the API projection; raw documents contain audits.
+        allow read: if false;
+        allow create, update, delete: if false;
+      }
+
+      match /examNotebookExports/{exportId} {
+        allow read, write: if false;
+      }
+
+      // Jami-created stand-ins for questions a thin bank could not supply.
+      // They belong to one session, carry their own mark scheme, and are read
+      // only by the server routes that project or mark them.
+      match /examGeneratedQuestions/{questionId} {
+        allow read, write: if false;
+      }
+
+      match /examGeneratedSecrets/{questionId} {
+        allow read, write: if false;
+      }
+
+      // Ink is the student's own draft, but the related attempt must already
+      // exist and still be editable. Submitting the answer freezes the sheet.
+      match /examScratchpads/{attemptId} {
+        function editableAttempt() {
+          let attempt = get(/databases/$(database)/documents/users/$(userId)/examAttempts/$(attemptId)).data;
+          let session = get(/databases/$(database)/documents/users/$(userId)/examSessions/$(attempt.sessionId)).data;
+          return attempt.status == 'draft' && session.status == 'active' && !('answersDeletedAt' in session);
+        }
+        allow read: if isSelf(userId);
+        allow create, update: if isSelf(userId) && !isDemoAccount() &&
+          editableAttempt() &&
+          request.resource.data.keys().hasOnly(['inkSvg', 'updatedAt']) &&
+          request.resource.data.inkSvg is string &&
+          request.resource.data.inkSvg.size() < 900000;
+        allow delete: if isSelf(userId) && !isDemoAccount() && editableAttempt();
       }
 
       match /pastPapers/{pastPaperId} {

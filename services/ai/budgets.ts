@@ -208,6 +208,10 @@ const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
     "Jami has reached today's practice-paper generation limit. Try again tomorrow.",
   practicePaperMarking:
     "Jami has reached today's paper-marking limit. Try again tomorrow.",
+  examQuestionMarking:
+    "Jami has marked as many answers as it can today. Your work is still saved.",
+  examQuestionReview:
+    "Jami has checked as many marks as it can today. Try again tomorrow.",
   videoCardImport:
     "Jami has reached today's video import limit. Try again tomorrow.",
   autocompleteCard: "Jami has reached today's AI limit. Try again tomorrow.",

@@ -6,6 +6,8 @@ export type AiBudgetAction =
   | "tutorIllustration"
   | "practicePaperGeneration"
   | "practicePaperMarking"
+  | "examQuestionMarking"
+  | "examQuestionReview"
   | "videoCardImport"
   | "sourceFlashcardDrafts"
   | "sourcePracticeDrafts"
@@ -124,6 +126,22 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstScope: "sourceDrafts",
     tokenCap: 24_000,
     inputTokenCap: 250_000,
+  },
+  examQuestionMarking: {
+    dailyRequestLimit: 60,
+    burstRequestLimit: 12,
+    burstWindowMs: 60_000,
+    burstScope: "studyModes",
+    tokenCap: 8_000,
+    inputTokenCap: 32_000,
+  },
+  examQuestionReview: {
+    dailyRequestLimit: 20,
+    burstRequestLimit: 4,
+    burstWindowMs: 60_000,
+    burstScope: "studyModes",
+    tokenCap: 8_000,
+    inputTokenCap: 32_000,
   },
   videoCardImport: {
     dailyRequestLimit: 10,

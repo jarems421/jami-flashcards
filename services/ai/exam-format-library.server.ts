@@ -9,6 +9,7 @@ import {
   buildPracticePaperBrief,
   distinctiveQuestionWindowHashes,
   isOfficialExamBoardUrl,
+  isExamQualification,
   normalizeExamFormatProfileVersion,
   practicePaperFormatContext,
   selectExamFormatVersion,
@@ -40,6 +41,11 @@ const BOARD_CATALOGUES: Record<ExamBoardId, {
   eduqas: { label: "Eduqas", urls: ["https://www.eduqas.co.uk/qualifications/"] },
   wjec: { label: "WJEC", urls: ["https://www.wjec.co.uk/qualifications/"] },
   ccea: { label: "CCEA", urls: ["https://ccea.org.uk/qualifications"] },
+  qualifications_scotland: { label: "Qualifications Scotland", urls: ["https://www.sqa.org.uk/sqa/45717.html"] },
+  cambridge_international: { label: "Cambridge International", urls: ["https://www.cambridgeinternational.org/programmes-and-qualifications/"] },
+  pearson_international: { label: "Pearson International", urls: ["https://qualifications.pearson.com/en/qualifications/edexcel-international-gcses.html"] },
+  oxford_aqa: { label: "OxfordAQA", urls: ["https://www.oxfordaqa.com/qualifications/"] },
+  ib: { label: "International Baccalaureate", urls: ["https://www.ibo.org/programmes/"] },
 };
 
 export type ExamFormatCatalogueEntry = {
@@ -756,13 +762,13 @@ async function persistImportedProfiles(input: {
   contentHash: string;
   profiles: Array<Record<string, unknown>>;
 }) {
-  const boards = new Set<ExamBoardId>(["aqa", "pearson_edexcel", "ocr", "eduqas", "wjec", "ccea"]);
+  const boards = new Set<ExamBoardId>(["aqa", "pearson_edexcel", "ocr", "eduqas", "wjec", "ccea", "qualifications_scotland", "cambridge_international", "pearson_international", "oxford_aqa", "ib"]);
   const now = Date.now();
   const created: Array<{ profileId: string; version: string }> = [];
   for (const raw of input.profiles.slice(0, 200)) {
     const board = boards.has(raw.board as ExamBoardId) ? raw.board as ExamBoardId : null;
-    const qualification = raw.qualification === "gcse" || raw.qualification === "a_level"
-      ? raw.qualification as ExamQualification
+    const qualification = isExamQualification(raw.qualification)
+      ? raw.qualification
       : null;
     const subject = typeof raw.subject === "string" ? raw.subject.trim() : "";
     const specificationCode = typeof raw.specificationCode === "string" ? raw.specificationCode.trim() : "";

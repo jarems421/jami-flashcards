@@ -186,6 +186,18 @@ export default function TutorPage() {
         />
       ) : null}
 
+      {featureFlags.enablePastPaperPractice ? (
+        <Card padding="md" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-text-primary">Past Paper Practice</p>
+            <p className="mt-1 text-sm text-text-muted">
+              Work through real questions one at a time, then ask Jami about the feedback.
+            </p>
+          </div>
+          <ButtonLink href="/dashboard/practice/questions/new" variant="secondary" size="sm">Choose questions</ButtonLink>
+        </Card>
+      ) : null}
+
       {/*
         * Who this is and how to start, on one line.
         *

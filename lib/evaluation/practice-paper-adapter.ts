@@ -7,6 +7,7 @@ import type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
 import { stageOf } from "@/lib/evaluation/marking-corpus";
 import { bandsForReferenceScale, parseBandsFromScheme } from "./mark-scheme-bands.ts";
+import { buildSingleQuestionPaper } from "@/lib/practice/single-question-paper";
 
 /**
  * A corpus record, dressed as a one-question practice paper.
@@ -192,58 +193,29 @@ export function adaptRecordToPaper(
   }
 
   const { subject, level } = describe(record);
-  const now = 0;
-  const paper: PracticePaper = {
+  const markScheme = markSchemeFor(record);
+  const paper = buildSingleQuestionPaper({
     id: `eval-${record.id}`,
-    notebookId: "evaluation",
     folderId: "evaluation",
     title: `Evaluation: ${record.sourceId} ${record.questionId}`,
-    origin: "uploaded",
-    status: "submitted",
-    sourceIds: [],
-    sourceLabels: [],
-    request: "",
-    coverage: "",
-    length: "full",
-    focus: "balanced",
-    durationMinutes: 0,
-    timingMode: "untimed",
-    timingState: "submitted",
-    totalPausedMs: 0,
-    deadlineVersion: 1,
-    tutorEnabled: false,
-    tutorUsed: false,
-    timerEnabled: false,
-    instructions: [],
-    assessmentProfile: {
-      studyLevel: `${level}${record.levelDetail ? ` (${record.levelDetail})` : ""}`,
-      qualificationOrModule: level,
-      awardingBodyOrInstitution: record.sourceId,
-      specificationOrCourse: subject,
-      tierOrComponent: stageOf(record),
-      // The marking prompt branches on the words in this profile, so the
-      // subject is named plainly here rather than left implicit.
-      formatSummary: `Single ${subject} question worth ${record.maxMarks} marks, marked by ${record.regime}.`,
-      confidence: "high",
+    question: {
+      id: QUESTION_ID,
+      label: "Question 1",
+      prompt: record.questionPrompt || "See the mark scheme; the source published no prompt text.",
+      marks: record.maxMarks,
+      assets: [],
     },
-    questions: [
-      {
-        id: QUESTION_ID,
-        label: "Question 1",
-        prompt: record.questionPrompt || "See the mark scheme; the source published no prompt text.",
-        marks: record.maxMarks,
-        assets: [],
-      },
-    ],
-    choiceGroups: [],
-    totalMarks: record.maxMarks,
-    markScheme: markSchemeFor(record),
-    gradeGuidance: { kind: "none", label: "Not applicable", notice: "", boundaries: [] },
-    examinerInsights: [],
-    attemptCount: 1,
-    createdAt: now,
-    updatedAt: now,
-  };
+    markSchemeItem: markScheme.items[0],
+    studyLevel: `${level}${record.levelDetail ? ` (${record.levelDetail})` : ""}`,
+    qualification: level,
+    awardingBody: record.sourceId,
+    specification: subject,
+    component: stageOf(record),
+    formatSummary: `Single ${subject} question worth ${record.maxMarks} marks, marked by ${record.regime}.`,
+    markSchemeKind: markScheme.kind,
+    markSchemeLabel: markScheme.label,
+    markSchemeNotice: markScheme.notice,
+  });
 
   return {
     ok: true,

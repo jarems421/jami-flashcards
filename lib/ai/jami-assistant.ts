@@ -38,6 +38,11 @@ export type JamiAssistantContext =
       sourceIds: string[];
     }
   | {
+      surface: "practice";
+      sessionId: string;
+      attemptId: string;
+    }
+  | {
       surface: "notebook";
       notebookId: string;
       pageId: string;
@@ -652,6 +657,12 @@ function normalizeContext(value: unknown): JamiAssistantContext | null {
           ? Math.max(0, Math.min(20, Math.round(context.imageCount)))
           : 0,
     };
+  }
+
+  if (context.surface === "practice") {
+    const sessionId = normalizeId(context.sessionId);
+    const attemptId = normalizeId(context.attemptId);
+    return sessionId && attemptId ? { surface: "practice", sessionId, attemptId } : null;
   }
 
   return null;
