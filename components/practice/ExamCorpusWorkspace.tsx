@@ -13,6 +13,7 @@ import {
   StudyText,
 } from "@/components/ui";
 import { EXAM_BOARD_LABELS, type ExamBoardId } from "@/lib/practice/exam-formats";
+import { ENGLAND_MATHS_AND_SCIENCE } from "@/lib/practice/exam-corpus-plan";
 import type { ExamPaperManifestDraft } from "@/lib/practice/exam-ingestion-manifest";
 import type { ExamQuestionReviewItem } from "@/services/practice/exam-corpus-review.server";
 
@@ -73,6 +74,8 @@ export default function ExamCorpusWorkspace() {
   const [outcomes, setOutcomes] = useState<Record<string, IngestOutcome | string>>({});
   const [pending, setPending] = useState<ExamQuestionReviewItem[] | null>(null);
   const [deciding, setDeciding] = useState("");
+  const [autoReviewing, setAutoReviewing] = useState(false);
+  const [autoResult, setAutoResult] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -136,6 +139,34 @@ export default function ExamCorpusWorkspace() {
     }
   };
 
+  /*
+   * The reviewer runs in bounded batches and the button repeats it. Walking a
+   * whole corpus behind one click is a bill nobody chose, and stopping halfway
+   * leaves everything already reviewed reviewed.
+   */
+  const autoReview = async () => {
+    setAutoReviewing(true);
+    setError("");
+    try {
+      for (;;) {
+        const data = await internalRequest("/api/internal/exam-questions/review/auto", {
+          method: "POST",
+          body: JSON.stringify({ limit: 10 }),
+        });
+        const remaining = Number(data.remaining ?? 0);
+        setAutoResult(
+          `${Number(data.approved ?? 0)} approved · ${Number(data.rejected ?? 0)} rejected · ${remaining} left`
+        );
+        if (Number(data.reviewed ?? 0) === 0 || remaining === 0) break;
+      }
+      await loadPending();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The review pass could not finish.");
+    } finally {
+      setAutoReviewing(false);
+    }
+  };
+
   const decide = async (questionId: string, decision: "accept" | "reject") => {
     setDeciding(questionId);
     setError("");
@@ -165,7 +196,23 @@ export default function ExamCorpusWorkspace() {
           scheme. Nothing is downloaded or written until you ingest a specific paper. A dry run
           reports what it extracted without storing anything.
         </p>
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="mt-5 flex flex-wrap gap-2">
+          {ENGLAND_MATHS_AND_SCIENCE.filter((target) => target.board === board).map((target) => (
+            <button
+              key={`${target.board}-${target.specificationId}`}
+              type="button"
+              onClick={() => setSpecificationId(target.specificationId)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                specificationId === target.specificationId
+                  ? "bg-accent text-[var(--color-text-inverse)]"
+                  : "bg-[var(--color-glass-subtle)] text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              {target.subject} · {target.level === "gcse" ? "GCSE" : "A level"}
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <Select
             label="Board"
             value={board}
@@ -254,12 +301,20 @@ export default function ExamCorpusWorkspace() {
       </Card>
 
       <div>
-        <h2 className="text-lg font-semibold text-text-primary">Questions waiting on you</h2>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">
-          A licence makes a question lawful to serve. It does not make the extraction of it right,
-          and a mispaired mark scheme marks a student wrongly. Nothing here reaches a student until
-          it is approved.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Questions waiting on review</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">
+              A licence makes a question lawful to serve. It does not make the extraction of it
+              right, and a mispaired mark scheme marks a student wrongly. Each one is checked
+              against a render of its own source page before it can reach a student.
+            </p>
+          </div>
+          <Button variant="secondary" disabled={autoReviewing} onClick={() => void autoReview()}>
+            {autoReviewing ? "Reviewing…" : "Review all with AI"}
+          </Button>
+        </div>
+        {autoResult ? <p className="mt-2 text-sm text-text-secondary">{autoResult}</p> : null}
 
         {pending === null ? (
           <div className="mt-4 grid gap-3">
@@ -287,6 +342,14 @@ export default function ExamCorpusWorkspace() {
                     {item.marks} mark{item.marks === 1 ? "" : "s"} · {item.difficulty}
                   </span>
                 </div>
+
+                {item.review.by ? (
+                  <p className="mt-2 text-xs text-text-muted">
+                    {item.review.by === "ai" ? "Reviewed by Jami" : "Reviewed by you"} ·{" "}
+                    {item.review.status}
+                    {item.review.notes.length ? ` · ${item.review.notes.join(" ")}` : ""}
+                  </p>
+                ) : null}
 
                 {item.verification && item.verification.issues.length > 0 ? (
                   <ul className="mt-3 space-y-1 rounded-2xl border border-error/30 bg-error/10 p-3">

@@ -71,7 +71,12 @@ export async function generateExamGapQuestions(input: {
       difficultySource: "ai_ingest", origin: "jami_generated",
       provenance: { board: input.course.board, boardLabel: "Jami", qualification: input.course.qualification, specificationId: input.course.specificationId, specificationTitle: input.course.specificationTitle, componentCode: "JAMI", componentTitle: "Gap filler", year: new Date().getUTCFullYear(), series: "Original", paperReference: "Not a past paper", questionNumber: String(index + 1), sourceUrl: "", sourceSha256 },
       rights: { key: rights.key, version: rights.version, verified: true, storageAllowed: true, studentDisplayAllowed: true, aiInferenceAllowed: true, revoked: false },
-      status: "published", humanChecked: false, selectionKey: Math.random(), createdAt: now, updatedAt: now,
+      status: "published",
+      review: {
+        status: "approved", by: "ai", at: now,
+        notes: ["Jami-authored rather than extracted; there is no source paper to check it against."],
+      },
+      selectionKey: Math.random(), createdAt: now, updatedAt: now,
     };
     return { question, secret: { questionId: id, markSchemeItem, officialMarkScheme: "", modelAnswer: answer, examinerNotes: [], acceptableAlternatives: [], sourceDocumentHash: sourceSha256 } };
   });

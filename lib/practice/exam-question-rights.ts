@@ -1,5 +1,10 @@
 import type { ExamBoardId } from "@/lib/practice/exam-formats";
-import { canServeExamRights, type ExamQuestion, type ExamRightsSnapshot } from "@/lib/practice/exam-questions";
+import {
+  canServeExamRights,
+  isExamQuestionApproved,
+  type ExamQuestion,
+  type ExamRightsSnapshot,
+} from "@/lib/practice/exam-questions";
 
 export type ExamQuestionRightsRecord = ExamRightsSnapshot & {
   board: ExamBoardId | "jami";
@@ -207,18 +212,19 @@ export function isExamQuestionSpecificationEnabled(specificationId: string) {
 /**
  * Every gate a question passes before a student sees it.
  *
- * Official material additionally waits on `humanChecked`. Extraction and the
- * audit pass are both model work, and licensed exam material is not something
- * to put in front of a student on model output alone -- a person confirms the
- * question, its tariff and its scheme before the status means anything.
- * Jami-created fillers are exempt because nothing was licensed to get wrong.
+ * Official material additionally waits on an approved review. Extraction is
+ * model work and a mispaired scheme marks a student wrongly, so something has
+ * to check the question against the page it came from before it counts --
+ * whether that reviewer is a person or a model is recorded on the question
+ * itself, and either can approve. Jami-created fillers arrive approved,
+ * because nothing was extracted and nothing licensed can be got wrong.
  */
 export function isExamQuestionServable(question: ExamQuestion) {
   const rights = getExamQuestionRights(question.rights.key, question.rights.version);
   const official = question.origin === "official_past_paper";
   return Boolean(
     question.status === "published" &&
-      (!official || question.humanChecked === true) &&
+      (!official || isExamQuestionApproved(question.review)) &&
       canServeExamRights(question.rights) &&
       rights &&
       canServeExamRights(rights) &&

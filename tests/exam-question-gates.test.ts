@@ -32,6 +32,10 @@ const OFFICIAL_RIGHTS = {
 
 const JAMI_RIGHTS = { ...OFFICIAL_RIGHTS, key: "jami-original" };
 
+const PENDING = { status: "pending" as const, notes: [] };
+const APPROVED = { status: "approved" as const, by: "ai" as const, at: 2, notes: [] };
+const REJECTED = { status: "rejected" as const, by: "ai" as const, at: 2, notes: ["Tariff mismatch."] };
+
 function question(overrides: Partial<ExamQuestion> = {}): ExamQuestion {
   return {
     id: "q1",
@@ -67,7 +71,7 @@ function question(overrides: Partial<ExamQuestion> = {}): ExamQuestion {
     },
     rights: JAMI_RIGHTS,
     status: "published",
-    humanChecked: false,
+    review: { status: "pending" as const, notes: [] },
     selectionKey: 0.5,
     createdAt: 1,
     updatedAt: 1,
@@ -128,7 +132,7 @@ describe("the licence gate", () => {
   it("serves a licensed board's question once a person has checked it", () => {
     expect(
       isExamQuestionServable(
-        question({ origin: "official_past_paper", humanChecked: true, rights: OFFICIAL_RIGHTS })
+        question({ origin: "official_past_paper", review: APPROVED, rights: OFFICIAL_RIGHTS })
       )
     ).toBe(true);
   });
@@ -143,7 +147,7 @@ describe("the licence gate", () => {
       isExamQuestionServable(
         question({
           origin: "official_past_paper",
-          humanChecked: true,
+          review: APPROVED,
           rights: OFFICIAL_RIGHTS,
           provenance: { ...question().provenance, board: "cambridge_international" },
         })
@@ -155,10 +159,18 @@ describe("the licence gate", () => {
    * A licence makes material lawful to serve. It does not make an AI
    * extraction of it correct, and a wrong mark scheme marks a student wrongly.
    */
-  it("refuses official material that no person has checked", () => {
+  it("refuses official material the reviewer turned down", () => {
     expect(
       isExamQuestionServable(
-        question({ origin: "official_past_paper", humanChecked: false, rights: OFFICIAL_RIGHTS })
+        question({ origin: "official_past_paper", review: REJECTED, rights: OFFICIAL_RIGHTS })
+      )
+    ).toBe(false);
+  });
+
+  it("refuses official material nobody has reviewed", () => {
+    expect(
+      isExamQuestionServable(
+        question({ origin: "official_past_paper", review: PENDING, rights: OFFICIAL_RIGHTS })
       )
     ).toBe(false);
   });
@@ -167,7 +179,7 @@ describe("the licence gate", () => {
     process.env.EXAM_QUESTION_AQA_ENABLED = "false";
     expect(
       isExamQuestionServable(
-        question({ origin: "official_past_paper", humanChecked: true, rights: OFFICIAL_RIGHTS })
+        question({ origin: "official_past_paper", review: APPROVED, rights: OFFICIAL_RIGHTS })
       )
     ).toBe(false);
   });

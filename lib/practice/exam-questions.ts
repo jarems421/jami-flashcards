@@ -79,6 +79,34 @@ export type ExamQuestionProvenance = {
   sourceSha256: string;
 };
 
+/**
+ * Who signed off an extracted question, and what they said.
+ *
+ * The gate is not "a person looked at it" but "somebody competent approved
+ * it", and `by` records which -- so if model review later turns out to be
+ * unreliable, every question it approved can be found and revoked as a class
+ * rather than hunted for. A question with no review at all is pending, which
+ * is the same as rejected for anything a student can reach.
+ */
+export type ExamQuestionReviewer = "human" | "ai";
+
+export type ExamQuestionReview = {
+  status: "pending" | "approved" | "rejected";
+  by?: ExamQuestionReviewer;
+  /** Set when `by` is "human". */
+  reviewerUid?: string;
+  /** Set when `by` is "ai", so a bad reviewer model is traceable. */
+  model?: string;
+  at?: number;
+  notes: string[];
+};
+
+export function isExamQuestionApproved(
+  review: ExamQuestionReview | undefined | null
+) {
+  return review?.status === "approved";
+}
+
 export type ExamQuestion = {
   id: string;
   paperId: string;
@@ -101,7 +129,7 @@ export type ExamQuestion = {
   provenance: ExamQuestionProvenance;
   rights: ExamRightsSnapshot;
   status: ExamQuestionStatus;
-  humanChecked: boolean;
+  review: ExamQuestionReview;
   selectionKey: number;
   createdAt: number;
   updatedAt: number;

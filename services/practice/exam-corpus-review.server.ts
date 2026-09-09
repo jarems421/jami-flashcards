@@ -10,6 +10,7 @@ import {
   type ExamPaperManifestDraft,
 } from "@/lib/practice/exam-ingestion-manifest";
 import { discoverOfficialExamSources } from "@/services/practice/exam-source-discovery.server";
+import { reviewExamQuestionWithAi } from "@/services/practice/exam-ai-review.server";
 import { isExamQualification, type ExamBoardId } from "@/lib/practice/exam-formats";
 
 const REVIEW_PAGE_SIZE = 25;
@@ -29,7 +30,7 @@ export type ExamQuestionReviewItem = {
   marks: number;
   difficulty: ExamQuestion["difficulty"];
   status: ExamQuestion["status"];
-  humanChecked: boolean;
+  review: ExamQuestion["review"];
   provenance: ExamQuestion["provenance"];
   verification?: ExamIngestionVerification;
   markScheme: {
@@ -56,20 +57,27 @@ function criteriaOf(secret: ExamQuestionSecret | undefined) {
   return [];
 }
 
-/** Everything ingested that a person has not yet accepted or rejected. */
-export async function listExamQuestionsAwaitingReview(paperId?: string) {
+async function listExamQuestionsAwaitingReviewRaw(paperId?: string, limit = REVIEW_PAGE_SIZE) {
   const db = getAdminDb();
   let query: FirebaseFirestore.Query = db.collection("examQuestions")
     .where("origin", "==", "official_past_paper")
-    .where("humanChecked", "==", false);
+    .where("review.status", "==", "pending");
   if (paperId) query = query.where("paperId", "==", paperId);
-  const snapshot = await query.limit(REVIEW_PAGE_SIZE).get();
+  const snapshot = await query.limit(limit).get();
   const questions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ExamQuestion & { verification?: ExamIngestionVerification }));
   const secrets = await Promise.all(
     questions.map((question) => db.collection("examQuestionSecrets").doc(question.id).get())
   );
-  return questions.map((question, index): ExamQuestionReviewItem => {
-    const secret = secrets[index]?.data() as ExamQuestionSecret | undefined;
+  return questions.map((question, index) => ({
+    question,
+    secret: secrets[index]?.data() as ExamQuestionSecret | undefined,
+  }));
+}
+
+/** Everything ingested that nobody has accepted or rejected yet. */
+export async function listExamQuestionsAwaitingReview(paperId?: string) {
+  const rows = await listExamQuestionsAwaitingReviewRaw(paperId);
+  return rows.map(({ question, secret }): ExamQuestionReviewItem => {
     return {
       id: question.id,
       paperId: question.paperId,
@@ -78,7 +86,7 @@ export async function listExamQuestionsAwaitingReview(paperId?: string) {
       marks: question.marks,
       difficulty: question.difficulty,
       status: question.status,
-      humanChecked: question.humanChecked,
+      review: question.review ?? { status: "pending", notes: [] },
       provenance: question.provenance,
       verification: question.verification,
       markScheme: {
@@ -94,12 +102,46 @@ export async function listExamQuestionsAwaitingReview(paperId?: string) {
 /**
  * A person's decision on one extracted question.
  *
- * Accepting is the only path to `humanChecked`, and it is not something the
- * ingestion pipeline can reach: `ingestExamPaper` writes false and has no
- * branch that writes anything else. That is the point of the field -- a
- * licence makes material lawful to serve, and only a person looking at the
- * question decides whether the extraction of it is right.
+ * A person's word overrides the reviewer model in either direction, and is
+ * recorded as such. Ingestion itself can never approve anything: it writes
+ * `pending` and has no branch that writes anything else, so every extracted
+ * question is checked by someone before a student can reach it.
  */
+/**
+ * Run the reviewer over everything still pending, a few at a time.
+ *
+ * Bounded per call rather than looped to exhaustion: each question costs a
+ * vision request, and a run that quietly walks a whole corpus is a bill nobody
+ * chose. The caller repeats until `remaining` is zero and can stop whenever.
+ */
+export async function reviewPendingExamQuestionsWithAi(input: {
+  limit: number;
+  paperId?: string;
+}) {
+  const db = getAdminDb();
+  const pending = await listExamQuestionsAwaitingReviewRaw(input.paperId, Math.max(1, Math.min(25, input.limit)));
+  const outcomes = [];
+  for (const { question, secret } of pending) {
+    const outcome = await reviewExamQuestionWithAi({ question, secret });
+    await db.collection("examQuestions").doc(question.id).update(examDocument({
+      review: outcome.review,
+      status: outcome.review.status === "approved" ? "published" : "needs_review",
+      updatedAt: Date.now(),
+    }));
+    outcomes.push(outcome);
+  }
+  const remaining = (await db.collection("examQuestions")
+    .where("origin", "==", "official_past_paper")
+    .where("review.status", "==", "pending")
+    .count().get()).data().count;
+  return {
+    reviewed: outcomes.length,
+    approved: outcomes.filter((item) => item.review.status === "approved").length,
+    rejected: outcomes.filter((item) => item.review.status === "rejected").length,
+    remaining,
+  };
+}
+
 export async function decideExamQuestionReview(input: {
   questionId: string;
   decision: "accept" | "reject";
@@ -112,12 +154,19 @@ export async function decideExamQuestionReview(input: {
     const question = snapshot.data() as ExamQuestion | undefined;
     if (!question) throw new Error("question_not_found");
     if (question.origin !== "official_past_paper") throw new Error("not_reviewable");
+    const now = Date.now();
     transaction.update(ref, examDocument({
-      humanChecked: input.decision === "accept",
+      review: {
+        status: input.decision === "accept" ? "approved" : "rejected",
+        by: "human" as const,
+        reviewerUid: input.reviewerUid,
+        at: now,
+        notes: [],
+      },
+      // A person overruling the reviewer is the last word, in both directions:
+      // withdrawn rather than needs_review, so it does not come back round.
       status: input.decision === "accept" ? "published" : "withdrawn",
-      reviewedBy: input.reviewerUid,
-      reviewedAt: Date.now(),
-      updatedAt: Date.now(),
+      updatedAt: now,
     }));
   });
 }

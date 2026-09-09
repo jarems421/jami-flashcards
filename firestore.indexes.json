@@ -5,7 +5,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "origin", "order": "ASCENDING" },
-        { "fieldPath": "humanChecked", "order": "ASCENDING" }
+        { "fieldPath": "review.status", "order": "ASCENDING" }
       ]
     },
     {
@@ -13,7 +13,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "origin", "order": "ASCENDING" },
-        { "fieldPath": "humanChecked", "order": "ASCENDING" },
+        { "fieldPath": "review.status", "order": "ASCENDING" },
         { "fieldPath": "paperId", "order": "ASCENDING" }
       ]
     },
