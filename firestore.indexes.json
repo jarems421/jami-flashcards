@@ -4,6 +4,23 @@
       "collectionGroup": "examQuestions",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "origin", "order": "ASCENDING" },
+        { "fieldPath": "humanChecked", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "examQuestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "origin", "order": "ASCENDING" },
+        { "fieldPath": "humanChecked", "order": "ASCENDING" },
+        { "fieldPath": "paperId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "examQuestions",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "subjectKey", "order": "ASCENDING" },
         { "fieldPath": "studyLevel", "order": "ASCENDING" },
         { "fieldPath": "provenance.specificationId", "order": "ASCENDING" },

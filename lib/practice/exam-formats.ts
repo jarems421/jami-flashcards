@@ -45,6 +45,10 @@ export const EXAM_BOARD_LABELS: Record<ExamBoardId, string> = {
   ib: "International Baccalaureate",
 };
 
+export function isExamBoardId(value: unknown): value is ExamBoardId {
+  return typeof value === "string" && value in EXAM_BOARD_LABELS;
+}
+
 /** How each qualification is written on the board's own materials. */
 export const EXAM_QUALIFICATION_LABELS: Record<ExamQualification, string> = {
   gcse: "GCSE",
