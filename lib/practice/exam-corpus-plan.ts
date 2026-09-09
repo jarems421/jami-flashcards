@@ -20,41 +20,129 @@ export type ExamCorpusTarget = {
   subject: string;
   level: "gcse" | "a_level";
   specificationId: string;
+  specificationTitle: string;
+  /** The written components, as the board codes them. */
+  components: Array<{ code: string; title: string; tier?: string }>;
 };
 
 export const ENGLAND_MATHS_AND_SCIENCE: readonly ExamCorpusTarget[] = [
-  // AQA
-  { board: "aqa", subject: "Mathematics", level: "gcse", specificationId: "8300" },
-  { board: "aqa", subject: "Biology", level: "gcse", specificationId: "8461" },
-  { board: "aqa", subject: "Chemistry", level: "gcse", specificationId: "8462" },
-  { board: "aqa", subject: "Physics", level: "gcse", specificationId: "8463" },
-  { board: "aqa", subject: "Combined Science: Trilogy", level: "gcse", specificationId: "8464" },
-  { board: "aqa", subject: "Mathematics", level: "a_level", specificationId: "7357" },
-  { board: "aqa", subject: "Biology", level: "a_level", specificationId: "7402" },
-  { board: "aqa", subject: "Chemistry", level: "a_level", specificationId: "7405" },
-  { board: "aqa", subject: "Physics", level: "a_level", specificationId: "7408" },
-
-  // Pearson Edexcel
-  { board: "pearson_edexcel", subject: "Mathematics", level: "gcse", specificationId: "1MA1" },
-  { board: "pearson_edexcel", subject: "Biology", level: "gcse", specificationId: "1BI0" },
-  { board: "pearson_edexcel", subject: "Chemistry", level: "gcse", specificationId: "1CH0" },
-  { board: "pearson_edexcel", subject: "Physics", level: "gcse", specificationId: "1PH0" },
-  { board: "pearson_edexcel", subject: "Combined Science", level: "gcse", specificationId: "1SC0" },
-  { board: "pearson_edexcel", subject: "Mathematics", level: "a_level", specificationId: "9MA0" },
-  { board: "pearson_edexcel", subject: "Biology A", level: "a_level", specificationId: "9BN0" },
-  { board: "pearson_edexcel", subject: "Chemistry", level: "a_level", specificationId: "9CH0" },
-  { board: "pearson_edexcel", subject: "Physics", level: "a_level", specificationId: "9PH0" },
-
-  // OCR
-  { board: "ocr", subject: "Mathematics", level: "gcse", specificationId: "J560" },
-  { board: "ocr", subject: "Biology A", level: "gcse", specificationId: "J247" },
-  { board: "ocr", subject: "Chemistry A", level: "gcse", specificationId: "J248" },
-  { board: "ocr", subject: "Physics A", level: "gcse", specificationId: "J249" },
-  { board: "ocr", subject: "Combined Science A", level: "gcse", specificationId: "J250" },
-  { board: "ocr", subject: "Mathematics A", level: "a_level", specificationId: "H240" },
-  { board: "ocr", subject: "Biology A", level: "a_level", specificationId: "H420" },
-  { board: "ocr", subject: "Chemistry A", level: "a_level", specificationId: "H432" },
-  { board: "ocr", subject: "Physics A", level: "a_level", specificationId: "H556" },
+  {
+    board: "aqa",
+    subject: "Mathematics",
+    level: "gcse",
+    specificationId: "8300",
+    specificationTitle: "GCSE Mathematics",
+    components: [
+      { code: "1F", title: "Paper 1 Foundation", tier: "Foundation" },
+      { code: "1H", title: "Paper 1 Higher", tier: "Higher" },
+      { code: "2F", title: "Paper 2 Foundation", tier: "Foundation" },
+      { code: "2H", title: "Paper 2 Higher", tier: "Higher" },
+      { code: "3F", title: "Paper 3 Foundation", tier: "Foundation" },
+      { code: "3H", title: "Paper 3 Higher", tier: "Higher" },
+    ],
+  },
+  {
+    board: "aqa",
+    subject: "Biology",
+    level: "gcse",
+    specificationId: "8461",
+    specificationTitle: "GCSE Biology",
+    components: [
+      { code: "1F", title: "Paper 1 Foundation", tier: "Foundation" },
+      { code: "1H", title: "Paper 1 Higher", tier: "Higher" },
+      { code: "2F", title: "Paper 2 Foundation", tier: "Foundation" },
+      { code: "2H", title: "Paper 2 Higher", tier: "Higher" },
+    ],
+  },
+  {
+    board: "aqa",
+    subject: "Chemistry",
+    level: "gcse",
+    specificationId: "8462",
+    specificationTitle: "GCSE Chemistry",
+    components: [
+      { code: "1F", title: "Paper 1 Foundation", tier: "Foundation" },
+      { code: "1H", title: "Paper 1 Higher", tier: "Higher" },
+      { code: "2F", title: "Paper 2 Foundation", tier: "Foundation" },
+      { code: "2H", title: "Paper 2 Higher", tier: "Higher" },
+    ],
+  },
+  {
+    board: "aqa",
+    subject: "Physics",
+    level: "gcse",
+    specificationId: "8463",
+    specificationTitle: "GCSE Physics",
+    components: [
+      { code: "1F", title: "Paper 1 Foundation", tier: "Foundation" },
+      { code: "1H", title: "Paper 1 Higher", tier: "Higher" },
+      { code: "2F", title: "Paper 2 Foundation", tier: "Foundation" },
+      { code: "2H", title: "Paper 2 Higher", tier: "Higher" },
+    ],
+  },
+  {
+    board: "aqa",
+    subject: "Mathematics",
+    level: "a_level",
+    specificationId: "7357",
+    specificationTitle: "A-level Mathematics",
+    components: [
+      { code: "1", title: "Paper 1" },
+      { code: "2", title: "Paper 2" },
+      { code: "3", title: "Paper 3" },
+    ],
+  },
+  {
+    board: "aqa",
+    subject: "Biology",
+    level: "a_level",
+    specificationId: "7402",
+    specificationTitle: "A-level Biology",
+    components: [
+      { code: "1", title: "Paper 1" },
+      { code: "2", title: "Paper 2" },
+      { code: "3", title: "Paper 3" },
+    ],
+  },
+  {
+    board: "aqa",
+    subject: "Chemistry",
+    level: "a_level",
+    specificationId: "7405",
+    specificationTitle: "A-level Chemistry",
+    components: [
+      { code: "1", title: "Paper 1" },
+      { code: "2", title: "Paper 2" },
+      { code: "3", title: "Paper 3" },
+    ],
+  },
+  {
+    board: "aqa",
+    subject: "Physics",
+    level: "a_level",
+    specificationId: "7408",
+    specificationTitle: "A-level Physics",
+    components: [
+      { code: "1", title: "Paper 1" },
+      { code: "2", title: "Paper 2" },
+      { code: "3", title: "Paper 3" },
+    ],
+  },
+  {
+    board: "pearson_edexcel",
+    subject: "Mathematics",
+    level: "gcse",
+    specificationId: "1MA1",
+    specificationTitle: "Pearson Edexcel GCSE Mathematics",
+    components: [
+      { code: "1MA1/1F", title: "Paper 1 Foundation", tier: "Foundation" },
+      { code: "1MA1/1H", title: "Paper 1 Higher", tier: "Higher" },
+      { code: "1MA1/2F", title: "Paper 2 Foundation", tier: "Foundation" },
+      { code: "1MA1/2H", title: "Paper 2 Higher", tier: "Higher" },
+      { code: "1MA1/3F", title: "Paper 3 Foundation", tier: "Foundation" },
+      { code: "1MA1/3H", title: "Paper 3 Higher", tier: "Higher" },
+    ],
+  },
 ];
 
 export function examCorpusTargetsForBoard(board: ExamBoardId) {

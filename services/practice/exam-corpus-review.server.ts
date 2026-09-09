@@ -15,7 +15,7 @@ import {
   type ExamPaperCandidate,
   type ExamPaperManifestDraft,
 } from "@/lib/practice/exam-ingestion-manifest";
-import { discoverOfficialExamSources } from "@/services/practice/exam-source-discovery.server";
+import { findExamPapersByPattern } from "@/services/practice/exam-source-discovery.server";
 import { reviewExamQuestionWithAi } from "@/services/practice/exam-ai-review.server";
 import { isExamQualification, type ExamBoardId } from "@/lib/practice/exam-formats";
 
@@ -237,9 +237,14 @@ export async function findIngestibleExamPapers(input: {
   const rights = getExamQuestionRights(`${input.board}-2026`, 1);
   if (!rights) return { course, manifests: [], discarded: 0 };
 
-  const candidates: ExamPaperCandidate[] = await discoverOfficialExamSources({
+  // Recent series only, so the owner sees something quickly; a full rollout
+  // goes through the batch queue rather than this preview.
+  const thisYear = new Date().getUTCFullYear();
+  const candidates: ExamPaperCandidate[] = await findExamPapersByPattern({
     board: input.board,
     specificationId: input.specificationId,
+    componentCode: course.componentCode,
+    years: [thisYear - 1, thisYear - 2],
   });
   const manifests: ExamPaperManifestDraft[] = [];
   let discarded = 0;

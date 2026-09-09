@@ -13,6 +13,7 @@ import {
   StudyText,
 } from "@/components/ui";
 import { EXAM_BOARD_LABELS, type ExamBoardId } from "@/lib/practice/exam-formats";
+import ExamRolloutPanel from "@/components/practice/ExamRolloutPanel";
 import { ENGLAND_MATHS_AND_SCIENCE } from "@/lib/practice/exam-corpus-plan";
 import type { ExamPaperManifestDraft } from "@/lib/practice/exam-ingestion-manifest";
 import {
@@ -222,8 +223,10 @@ export default function ExamCorpusWorkspace() {
       {error ? <FeedbackBanner type="error" message={error} onDismiss={() => setError("")} /> : null}
       {notice ? <FeedbackBanner type="success" message={notice} onDismiss={() => setNotice("")} /> : null}
 
+      <ExamRolloutPanel onIngested={() => void loadPending()} />
+
       <Card padding="lg">
-        <h2 className="text-lg font-semibold text-text-primary">Find papers for a course</h2>
+        <h2 className="text-lg font-semibold text-text-primary">Find one paper</h2>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">
           Reads the board&apos;s own past-paper pages and pairs each question paper with its mark
           scheme. Nothing is downloaded or written until you ingest a specific paper. A dry run
