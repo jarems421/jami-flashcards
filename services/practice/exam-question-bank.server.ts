@@ -15,9 +15,25 @@ import {
 import { isExamQuestionServable } from "@/lib/practice/exam-question-rights";
 import { normalizeQuestionAssets } from "@/lib/practice/practice-papers";
 import { generateExamGapQuestions } from "@/services/practice/exam-gap-generation.server";
+import { recoverExamDifficultyContributions } from "@/services/practice/exam-difficulty.server";
 import { projectExamAttempt, projectExamSessionQuestion } from "@/lib/practice/exam-projections";
 
-const CANDIDATE_LIMIT = 200;
+/**
+ * How far into the corpus a search will go.
+ *
+ * Tier, component and licence eligibility cannot be expressed as Firestore
+ * filters -- a question with no tier is eligible for every tier, and a course
+ * can list more components than an `in` query accepts -- so they are applied
+ * after the read. Taking a single fixed window and filtering it therefore
+ * missed every eligible question past the two hundredth, and reported a
+ * shortage while the questions to fill it sat unread. Now the window is a page
+ * and the search continues until it has what it was asked for.
+ *
+ * The page cap bounds a pathological case: a specification with thousands of
+ * published questions and none eligible for this student's tier.
+ */
+const CANDIDATE_PAGE = 200;
+const MAX_CANDIDATE_PAGES = 25;
 
 function normalizeSubjectKey(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -55,26 +71,55 @@ async function loadEligibleQuestions(input: {
   course: ExamCourseSelection;
   difficulty: ExamDifficulty;
   topicIds: string[];
+  /** Stop once this many usable questions have been found. */
+  need: number;
+  /**
+   * Questions the student has already seen. They still count as eligible --
+   * a repeat is better than a short session -- but finding one does not end
+   * the search, so the unseen preference survives pagination.
+   */
+  seenIds?: ReadonlySet<string>;
 }) {
-  const snapshot = await getAdminDb()
+  const base = getAdminDb()
     .collection("examQuestions")
     .where("subjectKey", "==", input.subjectKey)
     .where("studyLevel", "==", input.studyLevel)
     .where("provenance.specificationId", "==", input.specificationId)
     .where("difficulty", "==", input.difficulty)
     .where("status", "==", "published")
-    .orderBy("selectionKey", "asc")
-    .limit(CANDIDATE_LIMIT)
-    .get();
-  return snapshot.docs
-    .map((doc) => mapQuestion(doc.id, doc.data()))
-    .filter((item): item is ExamQuestion => Boolean(item))
-    .filter(hasCurrentRights)
-    .filter((question) => questionMatchesExamCourse(question, input.course))
-    .filter((question) =>
-      input.topicIds.length === 0 ||
-      input.topicIds.some((topicId) => question.topicIds.includes(topicId))
+    .orderBy("selectionKey", "asc");
+
+  const questions: ExamQuestion[] = [];
+  let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  let exhausted = false;
+  for (let page = 0; page < MAX_CANDIDATE_PAGES; page += 1) {
+    const snapshot = await (cursor ? base.startAfter(cursor) : base).limit(CANDIDATE_PAGE).get();
+    if (snapshot.empty) {
+      exhausted = true;
+      break;
+    }
+    cursor = snapshot.docs[snapshot.docs.length - 1];
+    questions.push(
+      ...snapshot.docs
+        .map((doc) => mapQuestion(doc.id, doc.data()))
+        .filter((item): item is ExamQuestion => Boolean(item))
+        .filter(hasCurrentRights)
+        .filter((question) => questionMatchesExamCourse(question, input.course))
+        .filter((question) =>
+          input.topicIds.length === 0 ||
+          input.topicIds.some((topicId) => question.topicIds.includes(topicId))
+        )
     );
+    if (snapshot.size < CANDIDATE_PAGE) {
+      exhausted = true;
+      break;
+    }
+    const usable = input.seenIds
+      ? questions.filter((question) => !input.seenIds!.has(question.id)).length
+      : questions.length;
+    if (usable >= input.need) break;
+  }
+  return { questions, exhausted };
 }
 
 async function loadContext(uid: string, folderId: string) {
@@ -121,6 +166,11 @@ export async function getExamQuestionAvailability(input: {
 }) {
   const { folder, subjectKey } = await loadContext(input.uid, input.folderId);
   const topicIds = input.topicIds ?? [];
+  /*
+   * A session holds at most twenty questions, so counting past that answers
+   * nothing the student can act on and costs a scan of the whole corpus. The
+   * count says "at least" instead, and the setup screen shows it that way.
+   */
   const loadDifficulty = (difficulty: ExamDifficulty) => loadEligibleQuestions({
     subjectKey,
     studyLevel: folder.studyLevel!,
@@ -128,6 +178,7 @@ export async function getExamQuestionAvailability(input: {
     course: folder.examCourse!,
     difficulty,
     topicIds,
+    need: EXAM_SESSION_MAX_QUESTIONS,
   });
   const [easy, medium, hard, topicSnapshot] = await Promise.all([
     loadDifficulty("easy"),
@@ -150,7 +201,17 @@ export async function getExamQuestionAvailability(input: {
       studyLevel: folder.studyLevel,
       course: folder.examCourse,
     },
-    counts: { easy: easy.length, medium: medium.length, hard: hard.length },
+    counts: {
+      easy: Math.min(easy.questions.length, EXAM_SESSION_MAX_QUESTIONS),
+      medium: Math.min(medium.questions.length, EXAM_SESSION_MAX_QUESTIONS),
+      hard: Math.min(hard.questions.length, EXAM_SESSION_MAX_QUESTIONS),
+    },
+    /** Whether each count is the whole truth or the point the search stopped. */
+    hasMore: {
+      easy: !easy.exhausted && easy.questions.length >= EXAM_SESSION_MAX_QUESTIONS,
+      medium: !medium.exhausted && medium.questions.length >= EXAM_SESSION_MAX_QUESTIONS,
+      hard: !hard.exhausted && hard.questions.length >= EXAM_SESSION_MAX_QUESTIONS,
+    },
     topics,
     topicIds,
   };
@@ -179,13 +240,15 @@ export async function createExamSession(input: {
   for (const difficulty of ["easy", "medium", "hard"] as const) {
     const wanted = input.mix[difficulty];
     if (!wanted) continue;
-    const candidates = await loadEligibleQuestions({
+    const { questions: candidates } = await loadEligibleQuestions({
       subjectKey,
       studyLevel: folder.studyLevel!,
       specificationId: folder.examCourse!.specificationId,
       course: folder.examCourse!,
       difficulty,
       topicIds: input.topicIds ?? [],
+      need: wanted,
+      seenIds: recentIds,
     });
     const unseen = candidates.filter((question) => !recentIds.has(question.id));
     const seen = candidates.filter((question) => recentIds.has(question.id));
@@ -276,8 +339,20 @@ export async function getExamSession(uid: string, sessionId: string) {
       .where("sessionId", "==", sessionId).orderBy("updatedAt", "desc").get(),
   ]);
   if (!sessionSnapshot.exists) throw new ExamQuestionBankError("Session not found.", 404, "session_not_found");
+  const session = sessionSnapshot.data() as ExamSession;
+  /*
+   * Statistics are written after the marking transaction commits, so a request
+   * that died in between left the attempt marked and uncounted. The attempts
+   * are already loaded here, so noticing costs nothing, and recording one is
+   * idempotent -- the normal case finds none and does no work at all.
+   */
+  await recoverExamDifficultyContributions({
+    uid,
+    studyLevel: session.studyLevel,
+    attempts: attemptsSnapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() })),
+  }).catch(() => undefined);
   return {
-    session: sessionSnapshot.data() as ExamSession,
+    session,
     attempts: attemptsSnapshot.docs.map((doc) => projectExamAttempt(doc.id, doc.data())),
   };
 }

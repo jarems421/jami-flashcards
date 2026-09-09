@@ -8,6 +8,7 @@ import { EXAM_ID_PATTERN } from "@/lib/practice/exam-questions";
 import type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import type { PracticePaperResult } from "@/lib/practice/practice-papers";
 import { checkAiBudget, createAiBudgetLimitResponse, getAiTokenCap, refundAiBudget } from "@/services/ai/budgets";
+import { getAiInputTokenCap } from "@/lib/ai/budgets";
 import { reviewSingleQuestionIndependently } from "@/services/ai/practice-paper-marking.server";
 import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     };
     const review = await reviewSingleQuestionIndependently({
       paper, answerParts, originalResult, originalPaperParts: await examQuestionVisualParts(bankQuestion),
-      maxOutputTokens: getAiTokenCap("examQuestionReview"), deadlineAt: Date.now() + 55_000,
+      maxOutputTokens: getAiTokenCap("examQuestionReview"), inputTokenCap: getAiInputTokenCap("examQuestionReview"), deadlineAt: Date.now() + 55_000,
     });
     const rawResult = review.result.questionResults[0];
     if (!rawResult) throw new Error("review_result_missing");
@@ -126,6 +127,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!current.data()?.reviewUsed && current.data()?.reviewKey === key) transaction.update(attemptRef, { reviewStatus: "failed" });
     });
     await refundAiBudget(budget.grant).catch(() => undefined);
-    return apiFailure(error instanceof Error && error.message === "review_used" ? "This mark has already been checked." : "Jami couldn't check this mark just now.", error instanceof Error && error.message === "review_used" ? 409 : 503, "review_failed");
+    const reason = error instanceof Error ? error.message : "";
+    // A check that cannot fit is not a check that failed: retrying sends the
+    // same request, so the student is told what would make it fit instead.
+    if (reason === "input_too_large") {
+      return apiFailure(
+        "There is too much here for Jami to check in one go. Shorten the answer and ask again.",
+        413,
+        "input_too_large"
+      );
+    }
+    return apiFailure(reason === "review_used" ? "This mark has already been checked." : "Jami couldn't check this mark just now.", reason === "review_used" ? 409 : 503, "review_failed");
   }
 }

@@ -49,6 +49,8 @@ export async function getExamAvailability(folderId: string, topicIds: string[] =
   return request(`/api/practice/exam-questions/availability?${params}`) as Promise<{
     folder: { id: string; name: string; subject: string; course: { board: string; specificationTitle: string } };
     counts: Record<ExamDifficulty, number>;
+    /** A count that stopped at a session's worth rather than at the corpus. */
+    hasMore: Record<ExamDifficulty, boolean>;
     topics: Array<{ id: string; label: string }>;
   }>;
 }

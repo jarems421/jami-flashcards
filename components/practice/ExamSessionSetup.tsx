@@ -45,6 +45,8 @@ export default function ExamSessionSetup({
   const [availability, setAvailability] = useState<{
     folderId: string;
     counts: Record<ExamDifficulty, number>;
+    /** The count stopped at a session's worth; there are more behind it. */
+    hasMore: Record<ExamDifficulty, boolean>;
   } | null>(null);
   const [topics, setTopics] = useState<Array<{ id: string; label: string }>>([]);
   const [topicIds, setTopicIds] = useState<string[]>([]);
@@ -76,7 +78,7 @@ export default function ExamSessionSetup({
     void getExamAvailability(folderId, topicIds)
       .then((result) => {
         if (!active) return;
-        setAvailability({ folderId, counts: result.counts });
+        setAvailability({ folderId, counts: result.counts, hasMore: result.hasMore });
         setTopics(result.topics);
       })
       .catch((reason: unknown) => {
@@ -90,6 +92,7 @@ export default function ExamSessionSetup({
   }, [courseRevision, folderId, topicIds]);
 
   const counts = availability?.folderId === folderId ? availability.counts : null;
+  const hasMore = availability?.folderId === folderId ? availability.hasMore : null;
   const total = totalOf(mix);
   const selectedFolder = folders.find((folder) => folder.id === folderId);
   const ready = Boolean(folderId && selectedFolder?.examCourse && total > 0);
@@ -208,7 +211,7 @@ export default function ExamSessionSetup({
                 <p className="mt-1 text-sm leading-5 text-text-muted">{note}</p>
               </div>
               <span className="shrink-0 rounded-full bg-[var(--color-glass-subtle)] px-2.5 py-1 text-xs font-medium text-text-muted">
-                {counts ? `${counts[id]} ready` : "Checking…"}
+                {counts ? `${counts[id]}${hasMore?.[id] ? "+" : ""} ready` : "Checking…"}
               </span>
             </div>
             <div className="mt-6 flex items-center justify-between rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-2">

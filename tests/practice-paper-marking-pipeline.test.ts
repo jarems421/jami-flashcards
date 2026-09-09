@@ -3,11 +3,15 @@ import { mapPracticePaperData } from "@/lib/practice/practice-papers";
 
 const generateAiText = vi.hoisted(() => vi.fn());
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/ai/provider-router", () => ({ generateAiText }));
+const countAiInputTokens = vi.hoisted(() => vi.fn(async () => 0));
+vi.mock("@/lib/ai/provider-router", () => ({ generateAiText, countAiInputTokens }));
 
-const { buildMarkerRequest, markPracticePaperWithAudit, markerTimeoutMs } = await import(
-  "@/services/ai/practice-paper-marking.server"
-);
+const {
+  buildMarkerRequest,
+  markPracticePaperWithAudit,
+  markSingleQuestionAdaptively,
+  markerTimeoutMs,
+} = await import("@/services/ai/practice-paper-marking.server");
 
 const paper = mapPracticePaperData("paper-1", {
   notebookId: "paper-1",
@@ -517,5 +521,46 @@ describe("how long a marker gets", () => {
     expect(markerTimeoutMs("juror") / 1_000).toBeGreaterThan(
       OBSERVED_P99.juror / MEDIAN_RATE
     );
+  });
+});
+
+/*
+ * The input ceiling was configured for both exam actions and checked by
+ * neither. Marking sends the scheme, the original page, a working image and --
+ * once two markers disagree -- both of their full reports, so the request that
+ * actually goes out is nothing like the answer the student typed.
+ */
+describe("a request too large to send", () => {
+  const single = () => ({
+    ...input(),
+    paper: { ...paper, questions: [paper.questions[0]] },
+    answerParts: [{ text: "an answer" }],
+  });
+
+  beforeEach(() => {
+    generateAiText.mockReset();
+    countAiInputTokens.mockReset();
+    countAiInputTokens.mockResolvedValue(0);
+    generateAiText.mockResolvedValue(report({ q1: 2 }, { questionIds: ["q1"] }));
+  });
+
+  it("is refused before any provider call", async () => {
+    countAiInputTokens.mockResolvedValue(40_000);
+    await expect(
+      markSingleQuestionAdaptively({ ...single(), inputTokenCap: 32_000 })
+    ).rejects.toThrow("input_too_large");
+    expect(generateAiText).not.toHaveBeenCalled();
+  });
+
+  it("sends a request that fits", async () => {
+    countAiInputTokens.mockResolvedValue(31_999);
+    const marked = await markSingleQuestionAdaptively({ ...single(), inputTokenCap: 32_000 });
+    expect(marked.result.questionResults[0].awardedMarks).toBe(2);
+  });
+
+  /** No cap configured is the practice-paper path, which measures nothing. */
+  it("does not count when no ceiling was set", async () => {
+    await markSingleQuestionAdaptively(single());
+    expect(countAiInputTokens).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,7 @@ import { apiFailure, authenticateWriteRequest } from "@/services/auth/authentica
 import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { checkAiBudget, createAiBudgetLimitResponse, getAiTokenCap, refundAiBudget } from "@/services/ai/budgets";
+import { getAiInputTokenCap } from "@/lib/ai/budgets";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { EXAM_ANSWER_MAX_LENGTH, EXAM_ID_PATTERN, examAnswerUnlocksModelAnswer, examDocument, examResultForAttempt, type ExamAttempt, type ExamSession } from "@/lib/practice/exam-questions";
 import type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
@@ -147,7 +148,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       workingImage: bytes ? { inlineData: { mimeType: "image/png", data: bytes.toString("base64") } } : undefined,
     });
     const marked = await markSingleQuestionAdaptively({
-      paper, answerParts, originalPaperParts, maxOutputTokens: getAiTokenCap("examQuestionMarking"), deadlineAt,
+      paper, answerParts, originalPaperParts, maxOutputTokens: getAiTokenCap("examQuestionMarking"), inputTokenCap: getAiInputTokenCap("examQuestionMarking"), deadlineAt,
       forceVerification: needsVerification(secret.markSchemeItem, question.marks, Boolean(bytes)),
     });
     if (!marked.result.questionResults[0]) throw new Error("missing_question_result");
@@ -181,6 +182,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     });
     await refundAiBudget(budget.grant).catch(() => undefined);
+    /*
+     * Too long to send is not "Jami couldn't mark this one". Retrying an
+     * oversized answer produces the same refusal every time, so the student is
+     * told what would change it.
+     */
+    if (reason === "input_too_large") {
+      return apiFailure(
+        "That answer and working are longer than Jami can mark in one go. Shorten the answer, or split the working, and submit again.",
+        413,
+        "input_too_large"
+      );
+    }
     /*
      * A question that changed under a live session is not a transient
      * failure and retrying will not help, so it says so rather than

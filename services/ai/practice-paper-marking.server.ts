@@ -4,6 +4,7 @@ import type { AiContentPart } from "@/lib/ai/content-parts";
 import { parsePracticePaperMarkingModelAnswer } from "@/lib/ai/practice-paper-marking";
 import { classifyMarkingParseFailure } from "@/lib/ai/marking-parse-failure";
 import {
+  countAiInputTokens,
   generateAiText,
   type AiResponseDiagnostics,
 } from "@/lib/ai/provider-router";
@@ -93,6 +94,16 @@ export type PracticePaperMarkingInput = {
   logFallback?: (fields: Record<string, unknown>) => void;
   /** Successful provider calls may not cross this workflow-owned ceiling. */
   maxEstimatedCostUsd?: number;
+  /**
+   * The largest request this workflow may send, in estimated tokens.
+   *
+   * Marking assembles more than the student's answer: the scheme, the original
+   * page, a working image, and -- when two markers disagree -- both of their
+   * full reports. Only the output was ever capped, so a long answer against a
+   * banded scheme could send an adjudication request several times the size of
+   * anything measured, and the first sign of it would be the bill.
+   */
+  inputTokenCap?: number | null;
   /** Server-only checkpoints used by durable workflows after a redeploy/retry. */
   cachedStageResults?: Partial<Record<PracticePaperMarkerStage, PracticePaperMarkerStageResult>>;
   onStageResult?: (
@@ -112,6 +123,20 @@ export type PracticePaperMarkerStageResult = {
   result: PracticePaperResult;
   diagnostics: AiResponseDiagnostics[];
 };
+
+/**
+ * Refused before the provider call rather than after it.
+ *
+ * Named rather than generic so the route can tell a student their answer was
+ * too long to mark -- which is actionable -- instead of "Jami couldn't mark
+ * this one", which is not.
+ */
+export class PracticePaperMarkingInputTooLargeError extends Error {
+  constructor(readonly inputTokens: number, readonly inputTokenCap: number) {
+    super("input_too_large");
+    this.name = "PracticePaperMarkingInputTooLargeError";
+  }
+}
 
 export class PracticePaperMarkingCostLimitError extends Error {
   constructor() {
@@ -383,6 +408,17 @@ async function callMarker(input: PracticePaperMarkingInput & {
 }) {
   const diagnostics: AiResponseDiagnostics[] = [];
   const request = buildMarkerRequest(input);
+  /*
+   * Measured on the request that is actually about to be sent, which is the
+   * only thing that includes the adjudicator's copy of both marker reports.
+   * The count is a local estimate, so this costs nothing.
+   */
+  if (typeof input.inputTokenCap === "number") {
+    const inputTokens = await countAiInputTokens({ role: input.modelRole, request });
+    if (inputTokens > input.inputTokenCap) {
+      throw new PracticePaperMarkingInputTooLargeError(inputTokens, input.inputTokenCap);
+    }
+  }
   const call = (providerOverride?: readonly string[]) => generateAiText({
     role: input.modelRole,
     ...(providerOverride?.length ? { providerOverride } : {}),
@@ -545,9 +581,39 @@ function criterionMap(result: PracticePaperResult, questionId: string) {
     result.questionResults
       .find((question) => question.questionId === questionId)
       ?.criterionResults?.flatMap((criterion) =>
-        criterion.criterionId ? [[criterion.criterionId, criterion.awarded] as const] : []
+        criterion.criterionId
+          ? [
+              [
+                criterion.criterionId,
+                {
+                  awarded: criterion.awarded,
+                  marks: typeof criterion.awardedMarks === "number" ? criterion.awardedMarks : null,
+                },
+              ] as const,
+            ]
+          : []
       ) ?? []
   );
+}
+
+/**
+ * Whether two markers actually agree about one criterion.
+ *
+ * The boolean is exact only where a criterion is worth one mark. On a criterion
+ * worth several, two markers giving 2 and 1 both wrote `awarded: true`, and on
+ * a two-criterion question 2 + 1 against 1 + 2 also totals the same -- so a
+ * real disagreement about where the marks went passed both checks and never
+ * reached reconciliation.
+ *
+ * Where only one marker stated a number, the boolean is all they have in
+ * common, and an unstated number is not a stated zero.
+ */
+function criteriaAgree(
+  left: { awarded: boolean; marks: number | null },
+  right: { awarded: boolean; marks: number | null }
+) {
+  if (left.marks !== null && right.marks !== null) return left.marks === right.marks;
+  return left.awarded === right.awarded;
 }
 
 export function comparePracticePaperMarkings(
@@ -566,7 +632,7 @@ export function comparePracticePaperMarkings(
     const leftCriteria = criterionMap(primary, question.questionId);
     const rightCriteria = criterionMap(verifier, question.questionId);
     const shared = [...leftCriteria.keys()].filter((id) => rightCriteria.has(id));
-    return shared.some((id) => leftCriteria.get(id) !== rightCriteria.get(id))
+    return shared.some((id) => !criteriaAgree(leftCriteria.get(id)!, rightCriteria.get(id)!))
       ? [question.questionId]
       : [];
   });

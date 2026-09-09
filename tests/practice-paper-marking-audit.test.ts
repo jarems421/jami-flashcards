@@ -143,3 +143,42 @@ describe("third-view escalation", () => {
     ).toEqual([]);
   });
 });
+
+/*
+ * A criterion worth several marks says nothing in a boolean. Coursework
+ * sections run to ten marks each, where "awarded" is true at two out of ten and
+ * at nine, so two markers could disagree by seven marks on a criterion and
+ * agree on the question total -- and never reach reconciliation.
+ */
+describe("markers disagreeing about where the marks went", () => {
+  function partial(left: [number, number], right: [number, number]): [PracticePaperResult, PracticePaperResult] {
+    const build = (marks: [number, number]) => {
+      const base = result([3, 3]);
+      base.questionResults[0].criterionResults = [
+        { criterionId: "C1", criterion: "Method", awarded: marks[0] > 0, evidence: "", awardedMarks: marks[0] },
+        { criterionId: "C2", criterion: "Accuracy", awarded: marks[1] > 0, evidence: "", awardedMarks: marks[1] },
+      ];
+      return base;
+    };
+    return [build(left), build(right)];
+  }
+
+  it("catches two markers splitting the same total differently", () => {
+    const [left, right] = partial([2, 1], [1, 2]);
+    expect(comparePracticePaperMarkings(left, right)).toEqual(["q1"]);
+  });
+
+  it("leaves an agreed split alone", () => {
+    const [left, right] = partial([2, 1], [2, 1]);
+    expect(comparePracticePaperMarkings(left, right)).toEqual([]);
+  });
+
+  /** An unstated number is not a stated zero; the boolean is all they share. */
+  it("falls back to the verdict when only one marker counted the marks", () => {
+    const [left, right] = partial([2, 1], [2, 1]);
+    delete right.questionResults[0].criterionResults![0].awardedMarks;
+    expect(comparePracticePaperMarkings(left, right)).toEqual([]);
+    right.questionResults[0].criterionResults![0].awarded = false;
+    expect(comparePracticePaperMarkings(left, right)).toEqual(["q1"]);
+  });
+});
