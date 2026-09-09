@@ -99,7 +99,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
     const rawResult = review.result.questionResults[0];
     if (!rawResult) throw new Error("review_result_missing");
-    const result = examResultForAttempt(rawResult, attempt.answerText);
+    const result = examResultForAttempt(rawResult);
     const delta = result.awardedMarks - attempt.result.awardedMarks;
     const now = Date.now();
     await db.runTransaction(async (transaction) => {

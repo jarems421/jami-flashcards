@@ -254,28 +254,27 @@ export function questionMatchesExamCourse(question: ExamQuestion, course: ExamCo
 }
 
 /**
- * How much of an answer earns sight of the worked one.
+ * Whether a marked attempt may see the worked answer and the official scheme.
  *
- * `attempted` is the marker's judgement and a single character can clear it,
- * which over a shared bank is a harvesting route: open twenty questions, type
- * a full stop into each, collect twenty model answers and mark schemes. So the
- * teaching material is unlocked by evidence of a real try -- a mark on the
- * board, or enough written to have been one.
+ * Anything that reached the marker qualifies. The earlier bar -- a mark, or
+ * forty typed characters -- withheld teaching material from exactly the
+ * students who most needed it: a wrong numeric answer is three characters, and
+ * a page of handwritten working is none at all.
+ *
+ * The harvesting that bar was guarding against is bounded elsewhere and more
+ * appropriately: a session has to be created against a licensed course, every
+ * request is authenticated, and marking is capped per day. An unattempted
+ * response still reveals nothing, because there is nothing to teach about it.
  */
-export const EXAM_MODEL_ANSWER_MIN_LENGTH = 40;
-
 export function examAnswerUnlocksModelAnswer(
-  result: Pick<PracticePaperQuestionResult, "attempted" | "awardedMarks">,
-  answerText: string
+  result: Pick<PracticePaperQuestionResult, "attempted">
 ) {
-  return Boolean(result.attempted) &&
-    (result.awardedMarks > 0 || answerText.trim().length >= EXAM_MODEL_ANSWER_MIN_LENGTH);
+  return Boolean(result.attempted);
 }
 
 /** An unattempted response must not reveal answer-bearing teaching material. */
 export function examResultForAttempt(
-  result: PracticePaperQuestionResult,
-  answerText = ""
+  result: PracticePaperQuestionResult
 ): PracticePaperQuestionResult {
   if (!result.attempted) {
     return {
@@ -285,10 +284,5 @@ export function examResultForAttempt(
       counted: true, attempted: false,
     };
   }
-  // The mark, the criteria and the feedback are always the student's. Only the
-  // worked answer waits for a real attempt.
-  if (examAnswerUnlocksModelAnswer(result, answerText)) return result;
-  const withheld = { ...result };
-  delete withheld.modelAnswer;
-  return withheld;
+  return result;
 }

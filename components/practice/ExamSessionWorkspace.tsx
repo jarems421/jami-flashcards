@@ -66,7 +66,17 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   const { user } = useUser();
   const [data, setData] = useState<SessionData | null>(null);
   const [index, setIndex] = useState(0);
-  const [answer, setAnswer] = useState("");
+  /*
+   * One draft per attempt, never one unqualified answer string.
+   *
+   * With a single `answer` the autosave effect could observe the new attempt's
+   * id beside the previous question's text -- normally the next render fixed
+   * it, but a page hide inside that window wrote one question's answer onto
+   * another, and it survived a reload. Keyed by attempt there is no pairing to
+   * get wrong, and coming back to a question still shows what was typed.
+   */
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [submitting, setSubmitting] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -81,8 +91,10 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [error, setError] = useState("");
   const scratchpad = useRef<ExamScratchpadHandle | null>(null);
-  const pendingDraft = useRef<{ attemptId: string; text: string } | null>(null);
+  const pendingDrafts = useRef(new Map<string, string>());
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushing = useRef(false);
+  const flushAgain = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -123,66 +135,99 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   const isLast = index === questions.length - 1;
 
   /*
-   * The draft is flushed, not cancelled.
+   * Drafts are flushed, not cancelled, and a failed one is kept to try again.
    *
    * A debounce that clears itself on cleanup loses whatever was typed in the
    * last three-quarters of a second every time the student changes question or
-   * closes the tab -- which is exactly when they have just finished a sentence.
-   * So the pending text lives in a ref that outlives the render, and moving
-   * away sends it rather than dropping it.
+   * closes the tab -- which is exactly when they have just finished a
+   * sentence. Pending text lives in a ref that outlives the render, so leaving
+   * sends it. Only one flush runs at a time so a slow save cannot land after a
+   * newer one and put back older text.
    */
-  const flushDraft = useCallback(() => {
+  const flushDrafts = useCallback(async () => {
     if (draftTimer.current) {
       clearTimeout(draftTimer.current);
       draftTimer.current = null;
     }
-    const pending = pendingDraft.current;
-    pendingDraft.current = null;
-    if (!pending) return;
-    void saveExamAnswerDraft(sessionId, pending.attemptId, pending.text).catch(() => undefined);
+    if (flushing.current) {
+      flushAgain.current = true;
+      return;
+    }
+    const entries = [...pendingDrafts.current.entries()];
+    pendingDrafts.current.clear();
+    if (entries.length === 0) return;
+    flushing.current = true;
+    setSaveState("saving");
+    const outcomes = await Promise.all(
+      entries.map(([attemptId, text]) =>
+        saveExamAnswerDraft(sessionId, attemptId, text)
+          .then(() => true)
+          .catch(() => {
+            // Keep it queued rather than dropping it on the floor.
+            if (!pendingDrafts.current.has(attemptId)) pendingDrafts.current.set(attemptId, text);
+            return false;
+          })
+      )
+    );
+    flushing.current = false;
+    setSaveState(outcomes.every(Boolean) ? "saved" : "failed");
+    if (flushAgain.current) {
+      flushAgain.current = false;
+      void flushDrafts();
+    }
   }, [sessionId]);
 
   useEffect(() => {
     if (!activeAttempt || activeAttempt.status !== "draft") return;
-    if (answer === (activeAttempt.answerText ?? "")) return;
-    pendingDraft.current = { attemptId: activeAttempt.id, text: answer };
+    const attemptId = activeAttempt.id;
+    const text = drafts[attemptId];
+    if (text === undefined || text === (activeAttempt.answerText ?? "")) return;
+    pendingDrafts.current.set(attemptId, text);
     if (draftTimer.current) clearTimeout(draftTimer.current);
-    draftTimer.current = setTimeout(flushDraft, DRAFT_SAVE_MS);
-  }, [activeAttempt, answer, flushDraft]);
+    draftTimer.current = setTimeout(() => void flushDrafts(), DRAFT_SAVE_MS);
+  }, [activeAttempt, drafts, flushDrafts]);
 
   useEffect(() => {
-    const onLeave = () => flushDraft();
+    const onLeave = () => void flushDrafts();
     window.addEventListener("pagehide", onLeave);
     return () => {
       window.removeEventListener("pagehide", onLeave);
-      flushDraft();
+      void flushDrafts();
     };
-  }, [flushDraft]);
+  }, [flushDrafts]);
 
-  // The box shows whatever the open attempt already holds, first or retry.
-  useEffect(() => {
-    setAnswer(activeAttempt?.status === "marked" ? "" : activeAttempt?.answerText ?? "");
-  }, [activeAttempt?.answerText, activeAttempt?.id, activeAttempt?.status]);
+  // What the box shows: the local draft if there is one, else what is stored.
+  const answer =
+    !activeAttempt || activeAttempt.status === "marked"
+      ? ""
+      : drafts[activeAttempt.id] ?? activeAttempt.answerText ?? "";
 
   const goTo = useCallback(
     (next: number) => {
-      flushDraft();
+      void flushDrafts();
       setShowWorking(false);
       setHasInk(false);
       setSavedNotebook("");
       setError("");
       setIndex(next);
     },
-    [flushDraft]
+    [flushDrafts]
   );
 
   const submit = async () => {
     if (!question || !activeAttempt) return;
-    flushDraft();
+    await flushDrafts();
     setSubmitting(true);
     setError("");
     try {
       const working = await scratchpad.current?.snapshot();
+      if (working?.hasInk && !working.ok) {
+        setError(
+          "Your working could not be prepared for marking, and Jami will not mark the answer without it. Try again, or clear the sheet to submit the typed answer alone."
+        );
+        setSubmitting(false);
+        return;
+      }
       const response = await submitExamAnswer({
         sessionId,
         questionId: question.id,
@@ -225,15 +270,15 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     setError("");
     try {
       await saveExamAnswerDraft(sessionId, retryId, "");
+      setDrafts((current) => ({ ...current, [retryId]: "" }));
       await refresh();
-      setAnswer("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The retry could not be opened.");
     }
   };
 
   const finish = async () => {
-    flushDraft();
+    void flushDrafts();
     setFinishing(true);
     setError("");
     try {
@@ -416,7 +461,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                   Check again
                 </Button>
               </Card>
-            ) : answering ? (
+            ) : answering && activeAttempt?.status === "marking_failed" ? null : answering ? (
               <>
                 {retryOpen && firstAttempt?.result ? (
                   <Card padding="md" tone="warm">
@@ -449,8 +494,16 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                       Jami couldn&apos;t mark this one
                     </h3>
                     <p className="mt-2 text-sm leading-5 text-text-muted">
-                      Your answer and working are saved. Change anything you want to, then send it again.
+                      Your answer and working were submitted and are safe. Nothing has been changed —
+                      this just runs the marker over them again.
                     </p>
+                    <Button
+                      className="mt-4"
+                      disabled={submitting}
+                      onClick={() => void submit()}
+                    >
+                      {submitting ? "Marking…" : "Retry marking"}
+                    </Button>
                   </Card>
                 ) : null}
 
@@ -462,7 +515,12 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                     maxLength={EXAM_ANSWER_MAX_LENGTH}
                     placeholder="Write your final answer here…"
                     disabled={submitting}
-                    onChange={(event) => setAnswer(event.target.value)}
+                    onChange={(event) => {
+                      const id = activeAttempt?.id;
+                      if (!id) return;
+                      const text = event.target.value;
+                      setDrafts((current) => ({ ...current, [id]: text }));
+                    }}
                   />
                   <div className="mt-3 lg:hidden">
                     <Button
@@ -475,7 +533,15 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                     </Button>
                   </div>
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs text-text-muted">Your answer saves as you write.</p>
+                    <p className="text-xs text-text-muted">
+                      {saveState === "saving"
+                        ? "Saving…"
+                        : saveState === "failed"
+                          ? "Couldn't save just now — your answer is still here and will retry."
+                          : saveState === "saved"
+                            ? "Saved."
+                            : "Your answer saves as you write."}
+                    </p>
                     <Button disabled={submitting} onClick={() => void submit()}>
                       {submitting
                         ? hasInk
@@ -502,8 +568,14 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                       ? () => void beginRetry()
                       : undefined
                   }
+                  /*
+                   * The independent check is of the official first-attempt
+                   * mark, and the route reads that attempt whichever one is on
+                   * screen. Tying the button to the displayed attempt meant a
+                   * retry silently consumed an unused check.
+                   */
                   onReview={
-                    markedAttempt.attemptNumber === 1 && !markedAttempt.reviewUsed
+                    firstAttempt?.status === "marked" && !firstAttempt.reviewUsed
                       ? () => void review()
                       : undefined
                   }

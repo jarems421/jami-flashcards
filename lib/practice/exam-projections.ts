@@ -23,11 +23,11 @@ export function projectExamAttempt(
   value: Record<string, unknown>,
 ): PublicExamAttempt {
   const attempt = value as unknown as ExamAttempt;
-  const answerText = typeof attempt.answerText === "string" ? attempt.answerText : "";
   const result = attempt.status === "marked" && attempt.result
-    ? { ...examResultForAttempt(attempt.result, answerText) } as Partial<PracticePaperQuestionResult>
+    ? { ...examResultForAttempt(attempt.result) } as Partial<PracticePaperQuestionResult>
     : undefined;
-  const unlocked = Boolean(attempt.result) && examAnswerUnlocksModelAnswer(attempt.result!, answerText);
+  const unlocked = attempt.status === "marked" && Boolean(attempt.result) &&
+    examAnswerUnlocksModelAnswer(attempt.result!);
   if (result) {
     delete result.confidence;
     result.criterionResults = result.criterionResults?.map(({ criterion, awarded, awardedMarks, evidence, schemeValue, candidateValue }) => ({ criterion, awarded, awardedMarks, evidence, schemeValue, candidateValue }));

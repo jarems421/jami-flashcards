@@ -254,34 +254,21 @@ describe("what reaches the client", () => {
   });
 });
 
-describe("the model-answer harvest guard", () => {
-  it("unlocks the worked answer once a mark has been earned", () => {
-    expect(examAnswerUnlocksModelAnswer(result({ awardedMarks: 1 }), ".")).toBe(true);
-  });
-
-  it("unlocks it for a real attempt that scored nothing", () => {
-    const written = "Enzymes stop working when it gets too hot because they change shape.";
-    expect(examAnswerUnlocksModelAnswer(result(), written)).toBe(true);
-    expect(examResultForAttempt(result(), written).modelAnswer).toBeDefined();
-  });
-
-  /*
-   * The bank is shared, so a single character clearing `attempted` would be a
-   * harvesting route: open twenty questions, type a full stop into each and
-   * collect twenty worked answers.
-   */
-  it("withholds it from a token answer that earned nothing", () => {
-    expect(examAnswerUnlocksModelAnswer(result(), ".")).toBe(false);
-    const marked = examResultForAttempt(result(), ".");
-    expect(marked.modelAnswer).toBeUndefined();
-    expect(marked.feedback).toBe("Nearly.");
-    expect(marked.awardedMarks).toBe(0);
+describe("teaching material after marking", () => {
+  it("gives the worked answer to any attempt that reached the marker", () => {
+    // A wrong numeric answer is three characters and a page of handwritten
+    // working is none, and both are genuine attempts.
+    expect(examAnswerUnlocksModelAnswer(result())).toBe(true);
+    expect(examAnswerUnlocksModelAnswer(result({ awardedMarks: 0 }))).toBe(true);
+    expect(examResultForAttempt(result()).modelAnswer).toBeDefined();
   });
 
   it("blanks the report entirely when nothing was attempted", () => {
-    const blank = examResultForAttempt(result({ attempted: false }), "");
+    const blank = examResultForAttempt(result({ attempted: false }));
+    expect(examAnswerUnlocksModelAnswer(result({ attempted: false }))).toBe(false);
     expect(blank.modelAnswer).toBeUndefined();
     expect(blank.feedback).toContain("wasn't enough of an answer");
+    expect(blank.awardedMarks).toBe(0);
   });
 });
 

@@ -56,9 +56,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   let working: Awaited<ReturnType<typeof validateExamWorking>> | undefined;
   let frozen: ExamAttempt;
   try {
-    // A failed mark leaves the answer the student's to change, so the sheet is
-    // accepted again too -- otherwise a retry marks work they can no longer see.
-    if ((existing?.status === "draft" || existing?.status === "marking_failed") && body?.workingSnapshot !== undefined) {
+    // Only a draft accepts new evidence. Once submitted, the answer and the
+    // sheet are the record of what was sent, and a failed mark re-runs the
+    // marker over that exact evidence rather than quietly marking something
+    // else -- see the frozen-submission rule in the plan.
+    if (existing?.status === "draft" && body?.workingSnapshot !== undefined) {
       working = await validateExamWorking(body.workingSnapshot);
       uploadedPath = `users/${uid}/examAttemptEvidence/${attemptId}/${randomUUID()}.png`;
       await getAdminStorageBucket().file(uploadedPath).save(working.bytes, {
@@ -77,8 +79,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (attempt.status === "marked") throw new Error("already_marked");
       if (attempt.status === "marking" && Date.now() - attempt.updatedAt < 90_000) throw new Error("already_marking");
       if (number === 2 && (first.data()?.status !== "marked" || !first.data()?.result?.attempted)) throw new Error("retry_not_ready");
-      const editable = attempt.status === "draft" || attempt.status === "marking_failed";
-      if (!editable && attempt.status !== "marking") throw new Error("attempt_locked");
+      const editable = attempt.status === "draft";
+      if (!editable && !["marking", "marking_failed"].includes(attempt.status)) {
+        throw new Error("attempt_locked");
+      }
       // A resubmission that carries no new sheet keeps the one already frozen.
       const keptPath = uploadedPath ?? (editable ? attempt.workingSnapshotPath ?? null : null);
       if (editable && !answerText && !keptPath) throw new Error("answer_required");
@@ -146,12 +150,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       forceVerification: needsVerification(secret.markSchemeItem, question.marks, Boolean(bytes)),
     });
     if (!marked.result.questionResults[0]) throw new Error("missing_question_result");
-    const result = examResultForAttempt(marked.result.questionResults[0], frozen.answerText);
+    const result = examResultForAttempt(marked.result.questionResults[0]);
     await db.runTransaction(async (transaction) => {
       const [current, currentSession] = await Promise.all([transaction.get(ref), transaction.get(sessionRef)]);
       if (current.data()?.idempotencyKey !== key || current.data()?.status !== "marking" || currentSession.data()?.answersDeletedAt) throw new Error("stale_marking");
       transaction.update(ref, examDocument({
-        status: "marked", result, officialMarkScheme: examAnswerUnlocksModelAnswer(result, frozen.answerText) ? secret.officialMarkScheme : null,
+        status: "marked", result, officialMarkScheme: examAnswerUnlocksModelAnswer(result) ? secret.officialMarkScheme : null,
         audit: { ...marked.audit, studentReviewed: false }, markedAt: Date.now(), updatedAt: Date.now(),
       }));
       if (number === 1) transaction.update(sessionRef, {

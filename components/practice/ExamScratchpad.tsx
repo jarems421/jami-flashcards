@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import InkColorPicker from "@/components/workspace/NotebookInkColorPicker";
 import SmoothingSlider from "@/components/workspace/NotebookSmoothingSlider";
 import ThicknessSlider from "@/components/workspace/NotebookThicknessSlider";
+import { Button } from "@/components/ui";
 import ToolbarIconButton from "@/components/workspace/NotebookToolbarIconButton";
 import {
   NotebookInkEditor,
@@ -21,7 +22,11 @@ import {
   saveNotebookPenSmoothingPreference,
 } from "@/lib/workspace/notebook-pen-feel";
 import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
-import { loadExamScratchpad, saveExamScratchpad } from "@/services/study/exam-practice";
+import {
+  ExamScratchpadTooLargeError,
+  loadExamScratchpad,
+  saveExamScratchpad,
+} from "@/services/study/exam-practice";
 
 /** The sheet's own page units, and the size the frozen snapshot is taken at. */
 export const EXAM_WORKING_PAGE_WIDTH = 900;
@@ -33,11 +38,16 @@ const SNAPSHOT_HEIGHT = Math.round(
 const SAVE_DEBOUNCE_MS = 700;
 const SETTINGS_ID = "exam-working-tool-settings";
 
+export type ExamScratchpadSnapshot = {
+  /** Whether there is any ink on the sheet at all. */
+  hasInk: boolean;
+  /** False when there is ink but it could not be turned into an image. */
+  ok: boolean;
+  png?: { mimeType: "image/png"; dataBase64: string; width: number; height: number };
+};
+
 export type ExamScratchpadHandle = {
-  snapshot(): Promise<{
-    svg: string;
-    png?: { mimeType: "image/png"; dataBase64: string; width: number; height: number };
-  }>;
+  snapshot(): Promise<ExamScratchpadSnapshot>;
 };
 
 async function svgToPng(svg: string) {
@@ -101,6 +111,9 @@ export default function ExamScratchpad({
   const editorRef = useRef<NotebookInkEditorHandle | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [initialSvg, setInitialSvg] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [saveProblem, setSaveProblem] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [tool, setTool] = useState<NotebookInkTool>("pen");
   const [openMenu, setOpenMenu] = useState<NotebookInkTool | null>(null);
   const [history, setHistory] = useState({ undo: 0, redo: 0 });
@@ -123,36 +136,63 @@ export default function ExamScratchpad({
         setInitialSvg(svg);
         onInkChange?.(Boolean(svg.trim()));
       })
-      .catch(() => active && setInitialSvg(""));
+      // An empty sheet after a failed read is not an empty sheet: writing to it
+      // would replace working that is still there. Offer a retry instead.
+      .catch(() => active && setLoadFailed(true));
     return () => {
       active = false;
     };
-  }, [attemptId, onInkChange, userId]);
+  }, [attemptId, onInkChange, reloadKey, userId]);
+
+  const writeSheet = useCallback(async () => {
+    if (disabled || !editorRef.current) return true;
+    const svg = editorRef.current.serializeWarm() ?? editorRef.current.serialize() ?? "";
+    if (!svg) return true;
+    try {
+      await saveExamScratchpad(userId, attemptId, svg);
+      setSaveProblem("");
+      return true;
+    } catch (error) {
+      setSaveProblem(
+        error instanceof ExamScratchpadTooLargeError
+          ? "This sheet is too detailed to save. Your last saved working is safe — erase some of it, or submit what you have."
+          : "Your working could not be saved just now. It is still on the page."
+      );
+      return false;
+    }
+  }, [attemptId, disabled, userId]);
 
   const persist = useCallback(() => {
     // Once the answer is frozen the sheet is evidence rather than a draft, and
     // the security rules refuse the write — so it is not attempted.
     if (disabled || !editorRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      const svg = editorRef.current?.serializeWarm() ?? editorRef.current?.serialize() ?? "";
-      void saveExamScratchpad(userId, attemptId, svg).catch(() => undefined);
-    }, SAVE_DEBOUNCE_MS);
-  }, [attemptId, disabled, userId]);
+    saveTimer.current = setTimeout(() => void writeSheet(), SAVE_DEBOUNCE_MS);
+  }, [disabled, writeSheet]);
 
+  // Leaving flushes the sheet rather than cancelling it, for the same reason
+  // the typed draft does: the last stroke is the one most worth keeping.
   useEffect(
     () => () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      void writeSheet();
     },
-    []
+    [writeSheet]
   );
 
   useEffect(() => {
     const handle: ExamScratchpadHandle = {
       snapshot: async () => {
         const svg = (await editorRef.current?.serializeAsync()) ?? "";
-        if (svg) await saveExamScratchpad(userId, attemptId, svg).catch(() => undefined);
-        return { svg, png: await svgToPng(svg) };
+        const hasInk = (editorRef.current?.getHistoryState().undoDepth ?? 0) > 0 || Boolean(svg.trim());
+        if (!hasInk) return { hasInk: false, ok: true };
+        await saveExamScratchpad(userId, attemptId, svg).catch(() => undefined);
+        const png = await svgToPng(svg);
+        // Ink that will not rasterise must not be silently left out of marking.
+        return { hasInk: true, ok: Boolean(png), png };
       },
     };
     onHandle(handle);
@@ -296,8 +336,31 @@ export default function ExamScratchpad({
         </div>
       ) : null}
 
+      {saveProblem ? (
+        <p className="border-b border-[var(--color-border)] bg-error/10 px-3 py-2 text-sm text-text-primary">
+          {saveProblem}
+        </p>
+      ) : null}
+
       <div className="relative aspect-[9/12.4] min-h-[26rem] w-full bg-white">
-        {initialSvg !== null ? (
+        {loadFailed ? (
+          <div className="absolute inset-0 grid place-items-center gap-3 p-6 text-center">
+            <p className="text-sm text-text-secondary">
+              Your saved working could not be opened. It has not been lost — nothing will be written
+              over it until it loads.
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setLoadFailed(false);
+                setReloadKey((value) => value + 1);
+              }}
+            >
+              Try again
+            </Button>
+          </div>
+        ) : initialSvg !== null ? (
           <NotebookInkEditor
             ref={editorRef}
             activeTool={tool}

@@ -3,6 +3,7 @@ import { db } from "@/services/firebase/client";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import type { ExamDifficulty, ExamSession } from "@/lib/practice/exam-questions";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
+import { MAX_NOTEBOOK_INK_SVG_LENGTH } from "@/lib/workspace/notebooks";
 
 /** What the server sends back when a course cannot fill the requested mix. */
 export type ExamCoverageShortage = {
@@ -135,6 +136,34 @@ export async function loadExamScratchpad(userId: string, attemptId: string) {
   return snapshot.exists() && typeof snapshot.data().inkSvg === "string" ? snapshot.data().inkSvg as string : "";
 }
 
+/**
+ * The rules cap the sheet at 900KB and the app keeps a margin under it.
+ *
+ * `MAX_NOTEBOOK_INK_SVG_LENGTH` is the same ceiling the notebook works to.
+ */
+export const EXAM_SCRATCHPAD_MAX_SVG_LENGTH = MAX_NOTEBOOK_INK_SVG_LENGTH;
+
+export class ExamScratchpadTooLargeError extends Error {
+  constructor(readonly length: number) {
+    super("This working sheet is too detailed to save.");
+  }
+}
+
+/**
+ * Saving a sheet of working, whole or not at all.
+ *
+ * This used to `slice(0, 850_000)`, which is the worst thing to do to a
+ * structured document: an SVG cut mid-element is not a smaller drawing, it is
+ * a broken file, and it would have replaced a good one. Over the cap the write
+ * is refused and the caller is told, so what is already stored survives and
+ * the student finds out while they can still do something about it.
+ */
 export async function saveExamScratchpad(userId: string, attemptId: string, inkSvg: string) {
-  await setDoc(doc(db, "users", userId, "examScratchpads", attemptId), { inkSvg: inkSvg.slice(0, 850_000), updatedAt: Date.now() });
+  if (inkSvg.length > EXAM_SCRATCHPAD_MAX_SVG_LENGTH) {
+    throw new ExamScratchpadTooLargeError(inkSvg.length);
+  }
+  await setDoc(doc(db, "users", userId, "examScratchpads", attemptId), {
+    inkSvg,
+    updatedAt: Date.now(),
+  });
 }
