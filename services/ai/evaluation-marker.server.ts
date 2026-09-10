@@ -352,7 +352,10 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
      * bounded run spends without noticing. Where any call in the marking went
      * unaccounted the reservation stands in full, and the run says so.
      */
-    const settle = (accounting: { usd: number; unreportedCalls: number } | undefined) => {
+    const settle = (
+      accounting: { usd: number; unreportedCalls: number } | undefined,
+      outcome: "completed" | "threw"
+    ) => {
       if (reconciled) return;
       reconciled = true;
       if (!accounting || accounting.unreportedCalls > 0) {
@@ -361,7 +364,22 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
         // held, and stays visible as a reservation rather than as spending.
         stats.reportedUsd += accounting?.usd ?? 0;
         stats.retainedReservationUsd += Math.max(0, reserve - (accounting?.usd ?? 0));
-        if (options.haltOnUnreportedCost) halted = "a marking reported no cost for at least one of its calls";
+        /*
+         * A thrown marking stops the run too.
+         *
+         * An earlier version let the run continue through failures, reasoning
+         * that a provider being down bills nothing. That is not established: a
+         * request can be charged for the tokens it generated before it timed
+         * out, and a thrown error proves only that no figure came back. The
+         * rule is about not spending blind, and an unknown bill is exactly
+         * that whether the marking finished or not.
+         */
+        if (options.haltOnUnreportedCost) {
+          halted =
+            outcome === "completed"
+              ? "a marking completed without reporting the cost of at least one of its calls"
+              : "a marking failed with no cost reported, so its billing is unknown";
+        }
         return;
       }
       committedUsd += accounting.usd - reserve;
@@ -487,7 +505,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
         throw lastError;
       };
       const { result, audit, costAccounting } = await attempt();
-      settle(costAccounting);
+      settle(costAccounting, "completed");
 
       if (audit.adjudicatedQuestionIds.length > 0) stats.adjudicated += 1;
       if (audit.thirdViewQuestionIds.length > 0) stats.thirdView += 1;
@@ -546,7 +564,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
        * than being released, so a run of failures cannot spend past the
        * ceiling while reporting that it spent nothing.
        */
-      settle(undefined);
+      settle(undefined, "threw");
       stats.failed += 1;
       const reason = error instanceof Error ? error.message : String(error);
       stats.reasons.push(`${request.record.id} (${request.arm}): ${reason}`);

@@ -234,10 +234,33 @@ describe("the evaluation spend ceiling", () => {
     await mark({ record: record("a"), arm: "control", exemplars: [] } as never);
     await expect(
       mark({ record: record("b"), arm: "control", exemplars: [] } as never)
-    ).rejects.toThrow(/reported no cost/);
+    ).rejects.toThrow(/without reporting the cost/);
     expect(stats.unaccountedMarkings).toBe(1);
     // The budget was nowhere near exhausted; the unknown bill is what stopped it.
     expect(stats.reportedUsd).toBeLessThan(0.4);
+  });
+
+  /*
+   * A failure's billing is unknown, not zero: a request can be charged for the
+   * tokens it generated before it timed out. So it stops the run for the same
+   * reason a silent bill does -- continuing would be spending blind.
+   */
+  it("halts on a failed marking, whose billing is unknown", async () => {
+    markPracticePaperWithAudit.mockReset();
+    markPracticePaperWithAudit.mockRejectedValue(new Error("provider exploded"));
+    const { mark, stats } = createEvaluationMarker({
+      maxRecords: 100,
+      maxSpendUsd: 3.51,
+      reserveUsdPerRecord: 0.351,
+      haltOnUnreportedCost: true,
+    });
+
+    await mark({ record: record("a"), arm: "control", exemplars: [] } as never);
+    await expect(
+      mark({ record: record("b"), arm: "control", exemplars: [] } as never)
+    ).rejects.toThrow(/billing is unknown/);
+    expect(stats.reportedUsd).toBe(0);
+    expect(stats.retainedReservationUsd).toBeCloseTo(0.351);
   });
 
   it("keeps going on an unreported cost when it was not told to stop", async () => {

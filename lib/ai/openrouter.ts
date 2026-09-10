@@ -54,7 +54,16 @@ export class OpenRouterApiError extends Error {
 
 function createAttemptSignal(timeoutMs: number, signal?: AbortSignal) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(TIMEOUT_MESSAGE), timeoutMs);
+  /*
+   * An Error, not the bare string.
+   *
+   * `fetch` rejects with whatever the abort reason is, so aborting with a
+   * string meant the rejection was a string -- and every check downstream asks
+   * `error instanceof Error` before reading a message. The result was that a
+   * deadline timeout arrived unrecognised and was logged as `provider_error`,
+   * which is how two local timeouts were read as a provider outage.
+   */
+  const timeoutId = setTimeout(() => controller.abort(new Error(TIMEOUT_MESSAGE)), timeoutMs);
   const abortFromCaller = () => controller.abort(signal?.reason);
   signal?.addEventListener("abort", abortFromCaller, { once: true });
   if (signal?.aborted) abortFromCaller();

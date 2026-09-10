@@ -196,6 +196,17 @@ function recordFailure(attempt: AiProviderAttempt, error: unknown, latencyMs: nu
     typeof (error as { status?: unknown }).status === "number"
       ? (error as { status: number }).status
       : undefined;
+  const aborted = error instanceof Error && /timed?\s*out|timeout|abort/i.test(error.message);
+  const category =
+    status === 429
+      ? "rate_limited"
+      : typeof status === "number" && status >= 500
+        ? "upstream_failure"
+        : typeof status === "number"
+          ? "rejected"
+          : aborted
+            ? "timeout"
+            : "provider_error";
   usageLog.warn("request.failed", {
     provider: attempt.provider,
     role: attempt.role,
@@ -203,14 +214,19 @@ function recordFailure(attempt: AiProviderAttempt, error: unknown, latencyMs: nu
     modelName: attempt.model,
     latencyMs,
     ...(status === undefined ? {} : { status }),
-    errorCategory:
-      status === 429
-        ? "rate_limited"
-        : typeof status === "number" && status >= 500
-          ? "upstream_failure"
-          : error instanceof Error && /timed?\s*out|timeout/i.test(error.message)
-            ? "timeout"
-            : "provider_error",
+    errorCategory: category,
+    /*
+     * Whether this failure can be assumed free.
+     *
+     * `rejected` means the provider refused before generating anything -- a
+     * 4xx is an argument about the request, not work done -- so it is the one
+     * case where zero cost is established. A timeout or a 5xx says only that
+     * no figure came back: the request may have generated tokens and been
+     * billed for them before it died, and treating that as free is how a run
+     * spends without noticing.
+     */
+    billing:
+      category === "rejected" ? "none" : category === "rate_limited" ? "none" : "unknown",
   });
 }
 
