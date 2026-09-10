@@ -17,6 +17,8 @@ Object.assign(serverEnvironment, {
   // The feature ships fail-closed. The walkthrough is the evidence that it
   // works when it is switched on, so it is switched on here.
   NEXT_PUBLIC_ENABLE_PAST_PAPER_PRACTICE: "true",
+  // Boards are opt-in; the seeded corpus is AQA.
+  EXAM_QUESTION_AQA_ENABLED: "true",
 });
 
 export default defineConfig({

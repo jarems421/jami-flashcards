@@ -127,6 +127,8 @@ function question(index: number, overrides: Record<string, unknown> = {}): Doc {
 }
 
 beforeEach(() => {
+  // Boards are opt-in now, so a fixture corpus needs its board switched on.
+  process.env.EXAM_QUESTION_AQA_ENABLED = "true";
   collections.clear();
   reads.length = 0;
   collections.set("users/student-1/studyFolders", [

@@ -130,7 +130,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   enterAiSpendContext(aiSpendContextFor(uid, "examQuestionMarking"));
   try {
     const [bankQuestion, secret] = await Promise.all([
-      loadServableExamQuestion(questionId, uid),
+      // Both halves from the same ingest: the wording and images the session
+      // started on, and the scheme written for exactly those.
+      loadServableExamQuestion(questionId, uid, question.contentVersion),
       loadExamQuestionSecret(questionId, uid, question.contentVersion),
     ]);
     if (secret.markSchemeItem.maxMarks !== question.marks || secret.questionId !== questionId) throw new Error("scheme_mismatch");

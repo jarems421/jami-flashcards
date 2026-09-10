@@ -194,10 +194,24 @@ const BOARD_SWITCH_NAMES: Record<ExamBoardId, string> = {
   ib: "EXAM_QUESTION_IB_ENABLED",
 };
 
-/** A literal false-like value is an immediate board kill switch. */
+/**
+ * A board serves only when it has been switched on for this deployment.
+ *
+ * This used to default to on, so every board in the registry was servable the
+ * moment a corpus existed for it -- and the registry's records all say the same
+ * thing, in the same words, from the same day: the owner confirmed a licence
+ * and holds the correspondence privately. That is a reasonable way to record a
+ * licence and a poor way to decide that seven boards are ready for students at
+ * once.
+ *
+ * Opt-in makes enabling a board a deliberate, per-board act, which is what
+ * rolling out one validated course at a time requires. An explicit false-like
+ * value still reads as off, so the switch keeps working as an emergency stop
+ * for a board that was turned on.
+ */
 export function isExamQuestionBoardEnabled(board: ExamBoardId) {
   const value = process.env[BOARD_SWITCH_NAMES[board]]?.trim().toLowerCase();
-  return !value || !["0", "false", "off", "disabled"].includes(value);
+  return ["1", "true", "on", "enabled"].includes(value ?? "");
 }
 
 /** Comma-separated specification IDs provide a narrower emergency switch. */

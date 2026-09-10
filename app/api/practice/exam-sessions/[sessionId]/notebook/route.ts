@@ -67,7 +67,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
    */
   let bankQuestion: ExamQuestion;
   try {
-    bankQuestion = await loadServableExamQuestion(question.id, uid);
+    bankQuestion = await loadServableExamQuestion(question.id, uid, question.contentVersion);
   } catch {
     return apiFailure("This question is no longer available to copy.", 410, "question_unavailable");
   }

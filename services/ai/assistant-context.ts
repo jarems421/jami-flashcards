@@ -578,7 +578,11 @@ async function resolvePracticeContext(input: {
   const question = questions.find((item) => item.id === attempt.questionId);
   if (!question) throw new JamiAssistantContextError("This marked answer could not be found.");
   const questionId = typeof attempt.questionId === "string" ? attempt.questionId : "";
-  const servable = await loadServableExamQuestion(questionId, input.uid).catch(() => null);
+  // The version this session was marked on, so Tutor discusses the question the
+  // student actually answered rather than whatever a later ingest replaced it
+  // with.
+  const sessionVersion = typeof question.contentVersion === "string" ? question.contentVersion : undefined;
+  const servable = await loadServableExamQuestion(questionId, input.uid, sessionVersion).catch(() => null);
   if (!servable) {
     throw new JamiAssistantContextError("This question is no longer available to discuss.");
   }

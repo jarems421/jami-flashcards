@@ -26,7 +26,26 @@ export function examGeneratedQuestionRefs(uid: string) {
   return { questions: generatedQuestions(uid), secrets: generatedSecrets(uid) };
 }
 
-export async function loadServableExamQuestion(questionId: string, uid: string) {
+/**
+ * The question a session actually started on, not whatever sits there now.
+ *
+ * A session snapshots the version it began with, and the scheme has honoured
+ * that for a while -- but the question, and with it the images, did not. So
+ * re-ingesting a paper changed the picture a running session displayed, the
+ * picture sent to the marker, and the picture copied into a notebook, while
+ * the scheme it was marked against stayed correctly pinned to the old one.
+ * The two halves of the same question could come from different ingests.
+ *
+ * Rights stay live on purpose. An archived version is historical content, not
+ * a historical licence: if the board's permission is withdrawn, or the
+ * specification is switched off, or the paper is pulled, the old version stops
+ * being servable at the same moment the current one does.
+ */
+export async function loadServableExamQuestion(
+  questionId: string,
+  uid: string,
+  contentVersion?: string
+) {
   const db = getAdminDb();
   const [shared, generated] = await Promise.all([
     db.collection("examQuestions").doc(questionId).get(),
@@ -41,7 +60,20 @@ export async function loadServableExamQuestion(questionId: string, uid: string) 
     if (!paper || paper.status === "withdrawn" || paper.activeFrom > Date.now() ||
       (paper.activeUntil && paper.activeUntil < Date.now())) throw new Error("question_unavailable");
   }
-  return question;
+  if (!contentVersion || !question.contentVersion || question.contentVersion === contentVersion) {
+    return question;
+  }
+  const archived = await db
+    .collection("examQuestionRevisions")
+    .doc(`${questionId}_${contentVersion}`)
+    .get();
+  const revision = archived.data()?.question as ExamQuestion | undefined;
+  // No archive means the version the session holds is simply gone. Serving
+  // today's question in its place is the substitution this exists to prevent.
+  if (!revision) throw new Error("question_changed");
+  const restored = { ...revision, id: questionId } as ExamQuestion;
+  if (!isExamQuestionServable(restored)) throw new Error("question_unavailable");
+  return restored;
 }
 
 /**

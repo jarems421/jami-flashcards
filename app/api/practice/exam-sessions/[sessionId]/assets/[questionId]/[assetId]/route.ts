@@ -17,10 +17,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const db = getAdminDb();
   const sessionSnapshot = await db.collection("users").doc(uid).collection("examSessions").doc(sessionId).get();
   const session = sessionSnapshot.data() as ExamSession | undefined;
-  if (!sessionSnapshot.exists || !session?.questions.some((question) => question.id === questionId && question.assets.some((asset) => asset.id === assetId))) {
+  const sessionQuestion = session?.questions.find(
+    (item) => item.id === questionId && item.assets.some((asset) => asset.id === assetId)
+  );
+  if (!sessionSnapshot.exists || !sessionQuestion) {
     return apiFailure("Asset not found.", 404, "asset_not_found");
   }
-  const question = await loadServableExamQuestion(questionId, uid).catch(() => null);
+  /*
+   * The image this session was built on. Serving whatever sits under the id
+   * today meant a re-ingest changed the picture in front of a student who was
+   * part-way through answering it.
+   */
+  const question = await loadServableExamQuestion(
+    questionId,
+    uid,
+    sessionQuestion.contentVersion
+  ).catch(() => null);
   if (!question) {
     return apiFailure("Asset not found.", 404, "asset_not_found");
   }

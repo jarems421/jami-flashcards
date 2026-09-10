@@ -131,11 +131,45 @@ describe("the licence gate", () => {
   });
 
   it("serves a licensed board's question once a person has checked it", () => {
+    process.env.EXAM_QUESTION_AQA_ENABLED = "true";
     expect(
       isExamQuestionServable(
         question({ origin: "official_past_paper", review: APPROVED, rights: OFFICIAL_RIGHTS })
       )
     ).toBe(true);
+  });
+
+  /*
+   * Boards are opt-in, one at a time.
+   *
+   * This used to default to on, so every board in the registry became servable
+   * the moment a corpus existed for it. The registry's records all say the same
+   * thing in the same words from the same day -- the owner confirmed a licence
+   * and holds the correspondence privately -- which is a reasonable way to
+   * record a licence and no basis for declaring seven boards ready at once.
+   */
+  it("refuses a licensed board nobody has switched on for this deployment", () => {
+    delete process.env.EXAM_QUESTION_AQA_ENABLED;
+    expect(
+      isExamQuestionServable(
+        question({ origin: "official_past_paper", review: APPROVED, rights: OFFICIAL_RIGHTS })
+      )
+    ).toBe(false);
+  });
+
+  /** Switching one board on says nothing about any of the others. */
+  it("does not let one enabled board carry the rest", () => {
+    process.env.EXAM_QUESTION_AQA_ENABLED = "true";
+    expect(
+      isExamQuestionServable(
+        question({
+          origin: "official_past_paper",
+          review: APPROVED,
+          rights: { ...OFFICIAL_RIGHTS, key: "wjec-2026" },
+          provenance: { ...question().provenance, board: "wjec" },
+        })
+      )
+    ).toBe(false);
   });
 
   /*

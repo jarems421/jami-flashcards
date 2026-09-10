@@ -65,7 +65,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   enterAiSpendContext(aiSpendContextFor(uid, "examQuestionReview"));
   try {
     const [bankQuestion, secret] = await Promise.all([
-      loadServableExamQuestion(questionId, uid),
+      loadServableExamQuestion(questionId, uid, question.contentVersion),
       loadExamQuestionSecret(questionId, uid, question.contentVersion),
     ]);
     const scheme = { ...secret.markSchemeItem, questionId, maxMarks: question.marks } as PracticePaperMarkSchemeItem;
