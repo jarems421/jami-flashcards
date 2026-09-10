@@ -3,7 +3,7 @@ import { projectExamSession } from "@/lib/practice/exam-projections";
 import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
 import { getAdminDb } from "@/services/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
-import { EXAM_ID_PATTERN, type ExamSession } from "@/lib/practice/exam-questions";
+import { EXAM_ID_PATTERN, type ExamSession, examOperationIsLive } from "@/lib/practice/exam-questions";
 import { featureFlags } from "@/lib/app/feature-flags";
 
 export const runtime = "nodejs";
@@ -25,7 +25,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!snapshot.exists) throw new Error("missing");
       const session = snapshot.data() as ExamSession;
       if (session.status === "completed") return session;
-      if (attempts.docs.some((doc) => doc.data().status === "marking" || doc.data().reviewStatus === "reviewing")) throw new Error("marking");
+      /*
+       * Only an operation still within its lease blocks finishing. A request
+       * killed mid-mark leaves the attempt reading "marking" for ever, and this
+       * refused on that flag alone -- so one dead request locked a student out
+       * of their own session permanently.
+       */
+      if (attempts.docs.some((doc) => examOperationIsLive(doc.data(), Date.now()))) throw new Error("marking");
       const marked = attempts.docs.filter((doc) => doc.data().attemptNumber === 1 && doc.data().status === "marked");
       const markedIds = new Set(marked.map((doc) => doc.data().questionId));
       const completed = { ...session, status: "completed" as const, answeredCount: marked.length,

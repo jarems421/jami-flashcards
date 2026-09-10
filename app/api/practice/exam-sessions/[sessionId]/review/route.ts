@@ -4,7 +4,7 @@ import { apiFailure, authenticateWriteRequest } from "@/services/auth/authentica
 import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import { buildSingleQuestionAnswerParts, buildSingleQuestionPaper } from "@/lib/practice/single-question-paper";
 import type { ExamAttempt, ExamSession } from "@/lib/practice/exam-questions";
-import { EXAM_ID_PATTERN } from "@/lib/practice/exam-questions";
+import { EXAM_ID_PATTERN, examOperationIsLive } from "@/lib/practice/exam-questions";
 import type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import type { PracticePaperResult } from "@/lib/practice/practice-papers";
 import { checkAiBudget, createAiBudgetLimitResponse, getAiTokenCap, refundAiBudget } from "@/services/ai/budgets";
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const data = current.data();
     if (data?.reviewUsed) return "complete";
     if (data?.answerDeletedAt || currentSession.data()?.answersDeletedAt || data?.status !== "marked") return "unavailable";
-    if (data.reviewStatus === "reviewing" && Date.now() - (data.reviewStartedAt ?? 0) < 90_000) return "busy";
+    if (examOperationIsLive(data, Date.now())) return "busy";
     transaction.update(attemptRef, { reviewStatus: "reviewing", reviewKey: key, reviewStartedAt: Date.now() });
     return "locked";
   });
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // same request, so the student is told what would make it fit instead.
     if (reason === "input_too_large") {
       return apiFailure(
-        "There is too much here for Jami to check in one go. Shorten the answer and ask again.",
+        "There is too much here for Jami to check in one go. Your mark and feedback stand, and your check has not been used up.",
         413,
         "input_too_large"
       );

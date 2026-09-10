@@ -244,6 +244,33 @@ export const EXAM_ANSWER_MAX_LENGTH = 30_000;
 export const EXAM_WORKING_MAX_BYTES = 3 * 1024 * 1024;
 export const EXAM_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
 
+/**
+ * How long a marking or review operation holds its claim on an attempt.
+ *
+ * The route that starts one has 60 seconds to live, so an attempt still
+ * marked `marking` well after that is not in progress -- it is the remains of
+ * a request that was killed mid-flight, and nothing will ever finish it.
+ *
+ * It matters beyond the attempt itself. Finishing a session and deleting its
+ * answers both refuse while anything is being marked, and they read the same
+ * flag, so one dead request used to lock a student out of their own session
+ * permanently with "wait for marking to finish".
+ */
+export const EXAM_OPERATION_LEASE_MS = 90_000;
+
+/** Whether an attempt is genuinely being worked on right now. */
+export function examOperationIsLive(
+  attempt: { status?: unknown; reviewStatus?: unknown; updatedAt?: unknown; reviewStartedAt?: unknown },
+  now: number
+) {
+  const since = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+  if (attempt.status === "marking" && now - since(attempt.updatedAt) < EXAM_OPERATION_LEASE_MS) return true;
+  if (attempt.reviewStatus === "reviewing" && now - since(attempt.reviewStartedAt) < EXAM_OPERATION_LEASE_MS) {
+    return true;
+  }
+  return false;
+}
+
 export function examBoardAppliesTo(level: StudyLevel | null | undefined) {
   return level === "early-secondary" || level === "gcse-equivalent" || level === "post-16-equivalent";
 }

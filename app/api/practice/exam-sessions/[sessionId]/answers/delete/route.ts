@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
-import { EXAM_ID_PATTERN } from "@/lib/practice/exam-questions";
+import { EXAM_ID_PATTERN, examOperationIsLive } from "@/lib/practice/exam-questions";
 import { featureFlags } from "@/lib/app/feature-flags";
 
 export const runtime = "nodejs";
@@ -22,7 +22,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     paths = await db.runTransaction(async (transaction) => {
       const [session, attempts, cleanup] = await Promise.all([transaction.get(ref), transaction.get(user.collection("examAttempts").where("sessionId", "==", sessionId)), transaction.get(cleanupRef)]);
       if (!session.exists) throw new Error("missing");
-      if (attempts.docs.some((doc) => doc.data().status === "marking" || doc.data().reviewStatus === "reviewing")) throw new Error("busy");
+      if (attempts.docs.some((doc) => examOperationIsLive(doc.data(), Date.now()))) throw new Error("busy");
       const paths: string[] = [];
       for (const attempt of attempts.docs) {
         const data = attempt.data();

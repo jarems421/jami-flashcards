@@ -23,7 +23,7 @@ import {
   saveExamAttemptToNotebook,
   submitExamAnswer,
 } from "@/services/study/exam-practice";
-import { EXAM_ANSWER_MAX_LENGTH } from "@/lib/practice/exam-questions";
+import { EXAM_ANSWER_MAX_LENGTH, EXAM_OPERATION_LEASE_MS } from "@/lib/practice/exam-questions";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import type { Notebook } from "@/lib/workspace/notebooks";
@@ -92,6 +92,8 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [error, setError] = useState("");
+  /** Advanced by each poll, so a lease that runs out is noticed on screen. */
+  const [now, setNow] = useState(() => Date.now());
   const scratchpad = useRef<ExamScratchpadHandle | null>(null);
   const pendingDrafts = useRef(new Map<string, string>());
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -149,6 +151,45 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
         : undefined;
   const answering = session?.status === "active" && (!markedAttempt || retryOpen);
   const isLast = index === questions.length - 1;
+  /*
+   * Marking happens inside the request that started it, so a request killed
+   * mid-flight leaves the attempt reading "marking" with nothing left to
+   * finish it. Past its lease it is not in progress, it is stranded, and the
+   * student is offered the one thing that actually helps.
+   */
+  const markingStale =
+    activeAttempt?.status === "marking" &&
+    now - (activeAttempt.updatedAt ?? 0) > EXAM_OPERATION_LEASE_MS;
+  /** Something is being worked on server-side, so the page keeps watching. */
+  const pendingStatus =
+    activeAttempt && (activeAttempt.status === "marking" || activeAttempt.reviewStatus === "reviewing")
+      ? `${activeAttempt.id}:${activeAttempt.status}:${activeAttempt.reviewStatus ?? ""}`
+      : null;
+  /*
+   * A mark in progress resolves itself rather than waiting to be asked. The
+   * only recovery used to be a "Check again" button, so a student who looked
+   * away, or refreshed, sat in front of a spinner that would never move on its
+   * own. Backs off so a long mark is not a tight loop, and stops once the
+   * attempt reaches a settled state.
+   */
+  useEffect(() => {
+    if (pendingStatus === null) return;
+    let cancelled = false;
+    let delay = 2_000;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      await refresh();
+      if (cancelled) return;
+      setNow(Date.now());
+      delay = Math.min(Math.round(delay * 1.6), 15_000);
+      timer = setTimeout(() => void tick(), delay);
+    };
+    timer = setTimeout(() => void tick(), delay);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [pendingStatus, refresh]);
 
   /*
    * Drafts are flushed, not cancelled, and a failed one is kept to try again.
@@ -462,16 +503,34 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                 </p>
               </Card>
             ) : activeAttempt?.status === "marking" && !submitting ? (
-              <Card padding="md">
-                <h3 className="text-base font-semibold text-text-primary">Jami is marking this one</h3>
-                <p className="mt-2 text-sm text-text-muted">
-                  Your answer is saved. This usually takes a few seconds.
-                </p>
-                <Button className="mt-4" variant="secondary" onClick={() => void refresh()}>
-                  Check again
-                </Button>
-              </Card>
-            ) : answering && activeAttempt?.status === "marking_failed" ? (
+              <>
+                <Card padding="md">
+                  <h3 className="text-base font-semibold text-text-primary">
+                    {markingStale ? "This one is taking too long" : "Jami is marking this one"}
+                  </h3>
+                  <p className="mt-2 text-sm leading-5 text-text-muted">
+                    {markingStale
+                      ? "Your answer and working are saved exactly as you sent them. Marking looks like it stopped part way — running it again will not change what is marked."
+                      : "Your answer is saved. This usually takes a few seconds, and this page updates on its own."}
+                  </p>
+                  <Button
+                    className="mt-4"
+                    variant={markingStale ? "primary" : "secondary"}
+                    disabled={submitting}
+                    onClick={() => (markingStale ? void submit() : void refresh())}
+                  >
+                    {markingStale ? "Mark it again" : "Check again"}
+                  </Button>
+                </Card>
+                {markingStale ? (
+                  <ExamSubmittedAnswer
+                    attempt={activeAttempt}
+                    sessionId={sessionId}
+                    title="What was submitted"
+                  />
+                ) : null}
+              </>
+            ) :answering && activeAttempt?.status === "marking_failed" ? (
               /*
                * A failed marking used to render nothing at all -- the retry
                * card was written inside the branch below, which this condition

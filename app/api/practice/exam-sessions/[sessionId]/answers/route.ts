@@ -6,7 +6,7 @@ import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { checkAiBudget, createAiBudgetLimitResponse, getAiTokenCap, refundAiBudget } from "@/services/ai/budgets";
 import { getAiInputTokenCap } from "@/lib/ai/budgets";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
-import { EXAM_ANSWER_MAX_LENGTH, EXAM_ID_PATTERN, examAnswerUnlocksModelAnswer, examDocument, examResultForAttempt, withCriterionTariffs, type ExamAttempt, type ExamSession } from "@/lib/practice/exam-questions";
+import { EXAM_ANSWER_MAX_LENGTH, EXAM_ID_PATTERN, examAnswerUnlocksModelAnswer, examDocument, examResultForAttempt, withCriterionTariffs, type ExamAttempt, type ExamSession, examOperationIsLive } from "@/lib/practice/exam-questions";
 import { schemeCriteria, type PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import { buildSingleQuestionAnswerParts, buildSingleQuestionPaper } from "@/lib/practice/single-question-paper";
 import { markSingleQuestionAdaptively } from "@/services/ai/practice-paper-marking.server";
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const attempt = current.data();
       if (!attempt || state?.status !== "active" || state.answersDeletedAt || attempt.answerDeletedAt) throw new Error("attempt_locked");
       if (attempt.status === "marked") throw new Error("already_marked");
-      if (attempt.status === "marking" && Date.now() - attempt.updatedAt < 90_000) throw new Error("already_marking");
+      if (examOperationIsLive(attempt, Date.now())) throw new Error("already_marking");
       if (number === 2 && (first.data()?.status !== "marked" || !first.data()?.result?.attempted)) throw new Error("retry_not_ready");
       const editable = attempt.status === "draft";
       if (!editable && !["marking", "marking_failed"].includes(attempt.status)) {
@@ -180,10 +180,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const reason = error instanceof Error ? error.message : "";
     const current = (await ref.get()).data();
     if (current?.status === "marked") return Response.json({ attempt: projectExamAttempt(attemptId, current) });
+    /*
+     * An oversized request is the one failure the student can actually act on,
+     * and the only one that never reached a provider -- it is refused while
+     * assembling. So the attempt goes back to being a draft rather than frozen
+     * evidence: retrying identical evidence would fail identically for ever,
+     * and telling someone to shorten an answer the server will not let them
+     * touch is worse than saying nothing.
+     */
+    const failedStatus = reason === "input_too_large" ? "draft" : "marking_failed";
     await db.runTransaction(async (transaction) => {
       const currentAttempt = await transaction.get(ref);
       if (currentAttempt.data()?.idempotencyKey === key && currentAttempt.data()?.status === "marking") {
-        transaction.update(ref, { status: "marking_failed", updatedAt: Date.now() });
+        transaction.update(ref, { status: failedStatus, updatedAt: Date.now() });
       }
     });
     await refundAiBudget(budget.grant).catch(() => undefined);
@@ -194,7 +203,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
      */
     if (reason === "input_too_large") {
       return apiFailure(
-        "That answer and working are longer than Jami can mark in one go. Shorten the answer, or split the working, and submit again.",
+        "That answer and working are longer than Jami can mark in one go. Your answer is open for editing again — shorten it, or erase some working, then submit.",
         413,
         "input_too_large"
       );
