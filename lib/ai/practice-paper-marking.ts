@@ -50,19 +50,30 @@ export function parsePracticePaperMarkingModelAnswer(
      * to a student beside feedback that argues for a different one.
      */
     const item = paper.markScheme?.items?.find((entry) => entry.questionId === question.id);
-    if (item) {
-      const consistency = checkMarkConsistency({
-        item,
-        reportedMarks: awardedMarks,
-        criteria: result.criterionResults ?? [],
-      });
-      if (consistency.status === "inconsistent") return [];
-    }
+    const consistency = item
+      ? checkMarkConsistency({
+          item,
+          reportedMarks: awardedMarks,
+          criteria: result.criterionResults ?? [],
+        })
+      : undefined;
+    if (consistency?.status === "inconsistent") return [];
     return [{
       ...result,
       label: question.label,
       maxMarks: question.marks,
       awardedMarks,
+      // Carried on the result so nothing downstream has to assume a mark was
+      // reconciled, and an unverifiable one cannot pass as a checked one.
+      ...(consistency
+        ? {
+            markConsistency: {
+              status: consistency.status,
+              ...(consistency.status === "consistent" ? { checked: consistency.checked } : {}),
+              ...("detail" in consistency ? { detail: consistency.detail } : {}),
+            },
+          }
+        : {}),
     }];
   });
   if (questionResults.length !== paper.questions.length) return null;

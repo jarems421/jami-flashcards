@@ -24,7 +24,8 @@ import { getAiInputTokenCap, getAiTokenCap } from "@/lib/ai/budgets";
 const CORPUS = resolve("artifacts/corpus");
 const REPORT = resolve("artifacts/evaluation");
 const BUDGET_USD = 3.51;
-const RECORDS = 10;
+/** Five responses under two representations. */
+const RUNS = 10;
 
 function loadAnswerImage(record: MarkingCorpusRecord) {
   if (record.answer.kind !== "image") return [];
@@ -47,30 +48,42 @@ export default async function main(args: string[]) {
   ).records;
 
   /*
-   * One response per question, agreed by both examiners, and preferring a
-   * partial mark so the reference is solid and the marking is not trivial.
-   * Agreed-only is a smoke test's choice: disputed marks, wrong answers,
-   * higher tariffs and the other regimes all belong in the real evaluation.
+   * Five responses, each marked under both scheme representations: ten runs.
+   *
+   *   maths_04, maths_05  the probe's two scoring errors, both partial-credit
+   *   maths_01, maths_02  previously correct, and genuinely paired -- both
+   *                       read as structured, so the arms actually differ
+   *   maths_07            a new structured control, not a previously correct
+   *                       one, chosen because maths_03 reads as unstructured
+   *                       in both arms and so cannot measure a representation
+   *                       change at all
+   *
+   * Every response has two agreeing human marks, so the reference is solid.
+   * maths_03 stays a regression fixture rather than a control.
+   *
+   * This is not a replay of the first probe: both arms run the corrected
+   * parser, with its consistency check and its production deadline. It tests
+   * representation inside the fixed pipeline.
    */
+  const CONTROLS = ["maths_04", "maths_05", "maths_01", "maths_02", "maths_07"] as const;
   const byQuestion = new Map<string, MarkingCorpusRecord[]>();
   for (const record of all) {
     if (record.answer.kind !== "image") continue;
     if (new Set(record.humanMarks).size !== 1) continue;
     byQuestion.set(record.questionId, [...(byQuestion.get(record.questionId) ?? []), record]);
   }
-  const selected = [...byQuestion.keys()]
-    .sort()
-    .slice(0, RECORDS)
-    .map((questionId) => {
-      const list = byQuestion.get(questionId)!;
-      const partial = list.find(
-        (record) => record.humanMarks[0]! > 0 && record.humanMarks[0]! < record.maxMarks
-      );
-      return partial ?? list[0]!;
-    });
+  const selected = CONTROLS.map((questionId) => {
+    const list = byQuestion.get(questionId) ?? [];
+    const partial = list.find(
+      (record) => record.humanMarks[0]! > 0 && record.humanMarks[0]! < record.maxMarks
+    );
+    const chosen = partial ?? list[0];
+    if (!chosen) throw new Error(`${questionId}: no agreed-mark response available.`);
+    return chosen;
+  });
 
-  console.log(`probe: ${selected.length} records across ${selected.length} questions`);
-  console.log(`reserve $${bound.usdPerRecord.toFixed(4)}/record · budget $${BUDGET_USD.toFixed(2)}`);
+  console.log(`probe: ${selected.length} responses x 2 representations = ${selected.length * 2} runs`);
+  console.log(`reserve $${bound.usdPerRecord.toFixed(4)}/run · budget $${BUDGET_USD.toFixed(2)}`);
   console.log(`prices read ${bound.pricesReadOn} · caps enforced: ${bound.capsEnforced}`);
   for (const record of selected) {
     console.log(`  ${record.id.padEnd(20)} ${record.questionId.padEnd(10)} ${referenceMark(record)}/${record.maxMarks}`);
@@ -91,8 +104,10 @@ export default async function main(args: string[]) {
    * given cannot rank interventions.
    */
   const reports = new Map<string, Record<string, unknown>[]>();
+  /** Parse or consistency refusals that forced the marker to try again. */
+  const repairs = new Map<string, string[]>();
   const { mark, stats } = createEvaluationMarker({
-    maxRecords: RECORDS,
+    maxRecords: RUNS,
     maxSpendUsd: BUDGET_USD,
     reserveUsdPerRecord: bound.usdPerRecord,
     haltOnUnreportedCost: true,
@@ -107,6 +122,15 @@ export default async function main(args: string[]) {
     pipeline: "pastPaperPractice",
     loadAnswerImages: async (record) => loadAnswerImage(record),
     onAudit: (audit) => audits.set(String(audit.record), audit as Record<string, unknown>),
+    /*
+     * A parse failure is now also a consistency refusal, and both cost a call.
+     * Recorded per record so the comparison can say whether the corrected
+     * pipeline changed outcomes by repairing or by rejecting.
+     */
+    onParseFailure: (failure) => {
+      const key = String(failure.record ?? "");
+      repairs.set(key, [...(repairs.get(key) ?? []), String(failure.kind ?? "unknown")]);
+    },
     onMarkerReport: (report) => {
       const key = String(report.record);
       reports.set(key, [...(reports.get(key) ?? []), report as unknown as Record<string, unknown>]);
@@ -119,22 +143,45 @@ export default async function main(args: string[]) {
    * saying something different from one measured against the marks the board
    * states.
    */
+  /*
+   * The first probe's scheme shape, reproduced by removing the notation the
+   * parser reads. The scheme's words are unchanged; only its structure is.
+   */
+  const flattened = (record: MarkingCorpusRecord): MarkingCorpusRecord => ({
+    ...record,
+    id: `${record.id}#flat`,
+    markScheme: `Award up to ${record.maxMarks} marks as follows.
+${record.markScheme ?? ""}`,
+  });
+
   const representationOf = (record: MarkingCorpusRecord) => {
     const adapted = adaptRecordToPaper(record, { answerImages: loadAnswerImage(record) });
     return adapted.ok ? adapted.adapted.schemeRepresentation : "unstructured";
   };
 
   const outcomes: Record<string, unknown>[] = [];
-  for (const record of selected) {
+  /*
+   * Runs are paired: each response is marked once with the scheme's structure
+   * read and once with it flattened, so a difference has one variable in it.
+   * `flattenScheme` reproduces the shape the first probe marked against.
+   */
+  const arms = [
+    { arm: "structured" as const, flatten: false },
+    { arm: "flattened" as const, flatten: true },
+  ];
+  const runs = selected.flatMap((record) => arms.map((entry) => ({ record, ...entry })));
+
+  for (const { record, arm, flatten } of runs) {
     const startedAt = Date.now();
     const reportedBefore = stats.reportedUsd;
     const retainedBefore = stats.retainedReservationUsd;
     try {
       // Production sends no exemplars, so the arm that matches it is "none".
-      const response = await mark({ record, arm: "none", exemplars: [] });
+      const response = await mark({ record: flatten ? flattened(record) : record, arm: "none", exemplars: [] });
       const audit = audits.get(record.id) ?? {};
       outcomes.push({
         record: record.id,
+        arm,
         questionId: record.questionId,
         maxMarks: record.maxMarks,
         humanMarks: record.humanMarks,
@@ -147,7 +194,8 @@ export default async function main(args: string[]) {
         disputed: audit.disputed ?? false,
         adjudicated: audit.adjudicated ?? false,
         markerReports: reports.get(record.id) ?? [],
-        schemeRepresentation: representationOf(record),
+        repairAttempts: repairs.get(record.id) ?? [],
+        schemeRepresentation: flatten ? "unstructured" : representationOf(record),
         reportedCostUsd: Number((stats.reportedUsd - reportedBefore).toFixed(6)),
         retainedReservationUsd: Number((stats.retainedReservationUsd - retainedBefore).toFixed(6)),
         latencyMs: Date.now() - startedAt,
@@ -157,6 +205,7 @@ export default async function main(args: string[]) {
       // accuracy of the answers that happened to succeed.
       outcomes.push({
         record: record.id,
+        arm,
         questionId: record.questionId,
         maxMarks: record.maxMarks,
         humanMarks: record.humanMarks,
@@ -182,8 +231,10 @@ export default async function main(args: string[]) {
 
   mkdirSync(REPORT, { recursive: true });
   const report = {
-    probe: "past-paper-practice-10",
+    probe: "past-paper-scheme-representation",
+    design: "5 responses x 2 scheme representations = 10 runs, serial",
     pipeline: "pastPaperPractice",
+    note: "Both arms use the corrected parser, with its consistency check and production deadline. This measures representation inside the fixed pipeline, not a replay of the first probe.",
     source: "medly-gcse (GCSE mock benchmark, CC BY 4.0) — not awarding-body past papers",
     budgetUsd: BUDGET_USD,
     reservePerRecordUsd: bound.usdPerRecord,
@@ -198,6 +249,28 @@ export default async function main(args: string[]) {
   const errors = marked.map((item) => Number(item.awardedMarks) - Number(item.referenceMark));
   const mean = (values: number[]) =>
     values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+
+  /*
+   * Paired, side by side, because that is the only comparison this design
+   * supports. One result per arm says nothing about repeatability, and where
+   * the two arms reached different fallback models the difference cannot be
+   * put down to the scheme.
+   */
+  console.log("");
+  console.log("response        ref   structured   flattened   models agree");
+  for (const record of selected) {
+    const pair = outcomes.filter((item) => item.questionId === record.questionId);
+    const structured = pair.find((item) => item.arm === "structured");
+    const flat = pair.find((item) => item.arm === "flattened");
+    const sameModel =
+      JSON.stringify(structured?.markerReports ?? []) !== "" &&
+      String(structured?.error ?? "") === String(flat?.error ?? "");
+    console.log(
+      `  ${String(record.questionId).padEnd(12)} ${String(referenceMark(record)).padStart(3)}/${record.maxMarks}` +
+        `   ${String(structured?.awardedMarks ?? "-").padStart(9)}   ${String(flat?.awardedMarks ?? "-").padStart(9)}` +
+        `   ${sameModel ? "" : "CHECK ROUTING"}`
+    );
+  }
 
   console.log(`\nattempted ${stats.attempted} · marked ${marked.length} · failed ${stats.failed}`);
   console.log(`known reported cost $${stats.reportedUsd.toFixed(4)} of $${BUDGET_USD.toFixed(2)}`);

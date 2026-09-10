@@ -257,6 +257,26 @@ export type PracticePaperCriterionResult = {
 };
 
 export type PracticePaperQuestionResult = {
+  /**
+   * What reconciling this mark against its own criterion awards established.
+   *
+   * Absent means the question was never checked -- every result stored before
+   * the check existed, and any built outside the marking parser. Present and
+   * `unverifiable` means it was checked and could not be settled, which is a
+   * different thing from passing and must never be reported as one: a marker
+   * that names no criteria has nothing to reconcile, and calling that
+   * agreement would bless exactly the reports showing their working least.
+   *
+   * `checked` records how far a pass actually went. Arithmetic is the strong
+   * case. Bounds means only that a banded mark sits in a band the scheme
+   * defines -- not that it is the right band. Tariff means only that the mark
+   * does not exceed the question's worth.
+   */
+  markConsistency?: {
+    status: "consistent" | "unverifiable";
+    checked?: "arithmetic" | "bounds" | "tariff";
+    detail?: string;
+  };
   questionId: string;
   label: string;
   awardedMarks: number;

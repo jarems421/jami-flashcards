@@ -21,8 +21,27 @@ import type { PracticePaperCriterionResult } from "@/lib/practice/practice-paper
  * scheme, there is nothing to reconcile, and treating that as agreement would
  * quietly bless exactly the reports that show their working least.
  */
+/**
+ * What a passing check actually established, which is not the same in every
+ * regime.
+ *
+ *   arithmetic  the awards were added, capped or combined and match the total.
+ *   bounds      the mark sits inside a band the scheme defines. It says
+ *               nothing about whether that is the right band: choosing between
+ *               them is a judgement about the response, and no arithmetic
+ *               reaches it.
+ *   tariff      the mark does not exceed what the question is worth. For a
+ *               competency scheme that is the only rule there is to check
+ *               here; whether the competency rules were applied correctly is
+ *               untouched by it.
+ *
+ * Recorded so a report cannot call a banded or competency mark "validated" on
+ * the strength of a check that never looked at the reasoning.
+ */
+export type MarkConsistencyScope = "arithmetic" | "bounds" | "tariff";
+
 export type MarkConsistency =
-  | { status: "consistent"; expected: number }
+  | { status: "consistent"; expected: number; checked: MarkConsistencyScope }
   | { status: "inconsistent"; expected: number; detail: string }
   | { status: "unverifiable"; detail: string };
 
@@ -73,7 +92,7 @@ export function checkMarkConsistency(input: {
       (candidate) => reportedMarks >= candidate.minMarks && reportedMarks <= candidate.maxMarks
     );
     return band
-      ? { status: "consistent", expected: reportedMarks }
+      ? { status: "consistent", expected: reportedMarks, checked: "bounds" }
       : {
           status: "inconsistent",
           expected: reportedMarks,
@@ -93,7 +112,10 @@ export function checkMarkConsistency(input: {
         detail: `${reportedMarks} marks exceeds the ${item.maxMarks} this question is worth.`,
       };
     }
-    return { status: "unverifiable", detail: "A competency scheme states no arithmetic to check." };
+    return {
+      status: "unverifiable",
+      detail: "A competency scheme states no arithmetic, so only its tariff was checked.",
+    };
   }
 
   if (item.marking === "weightedTraits") {
@@ -105,7 +127,7 @@ export function checkMarkConsistency(input: {
     }
     const expected = pairs.reduce((sum, pair) => sum + pair.awarded, 0);
     return expected === reportedMarks
-      ? { status: "consistent", expected }
+      ? { status: "consistent", expected, checked: "arithmetic" }
       : {
           status: "inconsistent",
           expected,
@@ -129,7 +151,7 @@ export function checkMarkConsistency(input: {
     const cap = item.awardable * perPoint;
     const expected = Math.min(awarded, cap);
     return expected === reportedMarks
-      ? { status: "consistent", expected }
+      ? { status: "consistent", expected, checked: "arithmetic" }
       : {
           status: "inconsistent",
           expected,
@@ -141,7 +163,7 @@ export function checkMarkConsistency(input: {
   }
 
   return awarded === reportedMarks
-    ? { status: "consistent", expected: awarded }
+    ? { status: "consistent", expected: awarded, checked: "arithmetic" }
     : {
         status: "inconsistent",
         expected: awarded,

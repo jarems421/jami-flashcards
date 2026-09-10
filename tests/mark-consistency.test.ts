@@ -142,6 +142,21 @@ describe("banded marking", () => {
     const result = checkMarkConsistency({ item, reportedMarks: 6, criteria: [] });
     expect(result).toMatchObject({ status: "consistent", expected: 6 });
   });
+
+  /*
+   * The limit of this check, recorded so no report can overstate it. Passing
+   * means the mark sits in a band the scheme defines. Whether it is the right
+   * band is a judgement about the response, and no arithmetic reaches it: a
+   * one-mark answer placed in Level 1 and a three-mark answer placed in Level 1
+   * are indistinguishable here.
+   */
+  it("checks bounds only, and says so rather than claiming validation", () => {
+    const result = checkMarkConsistency({ item, reportedMarks: 1, criteria: [] });
+    expect(result).toMatchObject({ status: "consistent", checked: "bounds" });
+    expect(checkMarkConsistency({ item, reportedMarks: 3, criteria: [] })).toMatchObject({
+      checked: "bounds",
+    });
+  });
 });
 
 describe("weighted traits", () => {
@@ -182,5 +197,16 @@ describe("competency schemes", () => {
 
   it("still refuses a mark beyond the tariff", () => {
     expect(checkMarkConsistency({ item, reportedMarks: 4, criteria: [] }).status).toBe("inconsistent");
+  });
+
+  /*
+   * Within the tariff it is unverifiable, not consistent. Whether the
+   * competency rules were applied correctly is untouched by any check here,
+   * and reporting a pass would say otherwise.
+   */
+  it("never reports a competency mark as consistent", () => {
+    for (const reportedMarks of [0, 1, 2, 3]) {
+      expect(checkMarkConsistency({ item, reportedMarks, criteria: [] }).status).toBe("unverifiable");
+    }
   });
 });

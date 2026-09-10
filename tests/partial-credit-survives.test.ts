@@ -133,6 +133,33 @@ describe("a partial award against a single whole-tariff criterion", () => {
     expect(breakdown.unexplainedShortfall).toBe(false);
   });
 
+  /*
+   * The distinction that must not blur. A mark nobody could reconcile is not a
+   * mark that passed a check, and a report that treated the two the same would
+   * quietly validate exactly the markings that show their working least.
+   */
+  it("marks a reconciled result as checked, and says how far the check went", () => {
+    const result = parsePracticePaperMarkingModelAnswer(markingJson(1, 1), flattenedPaper());
+    expect(result!.questionResults[0]!.markConsistency).toEqual({
+      status: "consistent",
+      checked: "arithmetic",
+    });
+  });
+
+  it("never lets an unverifiable result pass as a validated one", () => {
+    const noCriteria = JSON.parse(markingJson(1, 1));
+    noCriteria.questionResults[0].criterionResults = [];
+    const result = parsePracticePaperMarkingModelAnswer(
+      JSON.stringify(noCriteria),
+      flattenedPaper()
+    );
+    // It is allowed through -- there is nothing to reconcile it against -- but
+    // it carries what it is, and it is not "consistent".
+    expect(result).not.toBeNull();
+    expect(result!.questionResults[0]!.markConsistency?.status).toBe("unverifiable");
+    expect(result!.questionResults[0]!.markConsistency?.checked).toBeUndefined();
+  });
+
   it("clamps only above the tariff, which is the one thing it does change", () => {
     const result = parsePracticePaperMarkingModelAnswer(markingJson(5, 2), flattenedPaper());
     expect(result!.questionResults[0]!.awardedMarks).toBe(2);
