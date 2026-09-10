@@ -95,6 +95,14 @@ export type PracticePaperMarkingInput = {
   /** Successful provider calls may not cross this workflow-owned ceiling. */
   maxEstimatedCostUsd?: number;
   /**
+   * Which per-call timeout policy to run, for comparing them in evaluation.
+   *
+   * `shipped` is what students get. `singleLongAttempt` gives one call most of
+   * the deadline instead of two tight ones. Neither is adopted on the strength
+   * of an argument -- the point is to be able to measure them.
+   */
+  timeoutPolicy?: "shipped" | "singleLongAttempt";
+  /**
    * The largest request this workflow may send, in estimated tokens.
    *
    * Marking assembles more than the student's answer: the scheme, the original
@@ -678,7 +686,33 @@ export async function markSingleQuestionAdaptively(
 
   const diagnostics: AiResponseDiagnostics[] = [];
   let primaryNeededParseRetry = false;
-  const callTimeoutMs = [...input.answerParts, ...(input.originalPaperParts ?? [])].some((part) => "inlineData" in part) ? 30_000 : 20_000;
+  /*
+   * How long one call gets, and what happens when it runs out.
+   *
+   * The shipped policy is two tight attempts: 30 seconds for a marking
+   * carrying images, 20 without. Measured successful image markings ran 9.6 to
+   * 28.6 seconds, so the ceiling sits inside the observed range and some real
+   * markings will hit it -- which is a production question, not a harness one.
+   *
+   * It is a policy rather than a constant so an evaluation can measure one
+   * longer attempt against two shorter ones without changing what students
+   * get. A client abort does not stop the provider, so retrying after one may
+   * be paying twice for the same work; that is the thing worth measuring
+   * before either is adopted.
+   */
+  const hasImages = [...input.answerParts, ...(input.originalPaperParts ?? [])].some(
+    (part) => "inlineData" in part
+  );
+  const policy = input.timeoutPolicy ?? "shipped";
+  const callTimeoutMs =
+    input.callTimeoutMs ??
+    (policy === "singleLongAttempt"
+      ? hasImages
+        ? 50_000
+        : 40_000
+      : hasImages
+        ? 30_000
+        : 20_000);
   const runPrimary = () => callMarker({
     ...input,
     callTimeoutMs,

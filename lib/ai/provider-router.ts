@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AiContentPart } from "@/lib/ai/content-parts";
+import { AiAbortError } from "@/lib/ai/abort";
 import { getAiSpendContext } from "@/lib/ai/spend-context";
 import { createLogger } from "@/lib/observability/logger";
 import {
@@ -196,17 +197,26 @@ function recordFailure(attempt: AiProviderAttempt, error: unknown, latencyMs: nu
     typeof (error as { status?: unknown }).status === "number"
       ? (error as { status: number }).status
       : undefined;
-  const aborted = error instanceof Error && /timed?\s*out|timeout|abort/i.test(error.message);
+  /*
+   * Read from the error's type, never from its wording. Matching prose is what
+   * logged two client-side timeouts as provider failures and sent the
+   * investigation after an outage that had not happened.
+   */
+  const abort = error instanceof AiAbortError ? error.kind : undefined;
   const category =
-    status === 429
-      ? "rate_limited"
-      : typeof status === "number" && status >= 500
-        ? "upstream_failure"
-        : typeof status === "number"
-          ? "rejected"
-          : aborted
-            ? "timeout"
-            : "provider_error";
+    abort === "cancelled"
+      ? "cancelled"
+      : abort === "deadline"
+        ? "deadline"
+        : abort === "call_timeout"
+          ? "call_timeout"
+          : status === 429
+            ? "rate_limited"
+            : typeof status === "number" && status >= 500
+              ? "upstream_failure"
+              : typeof status === "number"
+                ? "rejected"
+                : "provider_error";
   usageLog.warn("request.failed", {
     provider: attempt.provider,
     role: attempt.role,
@@ -216,17 +226,17 @@ function recordFailure(attempt: AiProviderAttempt, error: unknown, latencyMs: nu
     ...(status === undefined ? {} : { status }),
     errorCategory: category,
     /*
-     * Whether this failure can be assumed free.
+     * Billing is unknown on every failure, and stays that way until a usage
+     * record says otherwise.
      *
-     * `rejected` means the provider refused before generating anything -- a
-     * 4xx is an argument about the request, not work done -- so it is the one
-     * case where zero cost is established. A timeout or a 5xx says only that
-     * no figure came back: the request may have generated tokens and been
-     * billed for them before it died, and treating that as free is how a run
-     * spends without noticing.
+     * An earlier version called a 4xx free on the reasoning that the provider
+     * had refused before doing work. That is plausible and it is not evidence:
+     * nothing here observes the provider's accounting, a rejection can follow
+     * work already done, and the only thing this side knows is that no figure
+     * came back. `rejected` is recorded as a category so a later lookup can
+     * settle it -- not as a licence to price it at zero.
      */
-    billing:
-      category === "rejected" ? "none" : category === "rate_limited" ? "none" : "unknown",
+    billing: "unknown",
   });
 }
 

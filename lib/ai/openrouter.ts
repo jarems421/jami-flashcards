@@ -1,9 +1,10 @@
 import "server-only";
 
 import type { AiContentPart } from "@/lib/ai/content-parts";
+import { AiAbortError, type AiAbortKind } from "@/lib/ai/abort";
 
 const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
-const TIMEOUT_MESSAGE = "Request timed out";
+
 
 export type OpenRouterUsage = {
   promptTokens?: number;
@@ -27,6 +28,8 @@ export type OpenRouterCallOptions = {
   quantizations: readonly string[];
   request: OpenRouterRequest;
   timeoutMs: number;
+  /** Whether this attempt's budget is its own or what is left of a deadline. */
+  timeoutKind?: Exclude<AiAbortKind, "cancelled">;
   signal?: AbortSignal;
   reasoning: boolean;
   /** How hard to let it think. Defaults to a bounded `medium`. */
@@ -38,6 +41,22 @@ export type OpenRouterCallOptions = {
   jsonSchema?: unknown;
   onUsage?: (usage: OpenRouterUsage) => void;
   onProvider?: (provider: string) => void;
+  /**
+   * The provider's own identifier for this request, as soon as it is known.
+   *
+   * Reported from the response headers before the body is read, and again from
+   * the payload, because a request that dies mid-body still has one. Without it
+   * a failed call cannot be looked up afterwards and its billing can only be
+   * inferred -- which is exactly the position the last two timeouts left us in.
+   * A timeout before headers arrive genuinely has no id, and that is worth
+   * knowing too.
+   */
+  onRequestId?: (requestId: string) => void;
+  /**
+   * Operational timings only: when the request went out, when headers came
+   * back, when it finished or stopped. No student content passes through here.
+   */
+  onTiming?: (timing: { event: "sent" | "headers" | "completed" | "aborted"; atMs: number }) => void;
 };
 
 export class OpenRouterApiError extends Error {
@@ -52,7 +71,11 @@ export class OpenRouterApiError extends Error {
   }
 }
 
-function createAttemptSignal(timeoutMs: number, signal?: AbortSignal) {
+function createAttemptSignal(
+  timeoutMs: number,
+  signal?: AbortSignal,
+  timeoutKind: Exclude<AiAbortKind, "cancelled"> = "call_timeout"
+) {
   const controller = new AbortController();
   /*
    * An Error, not the bare string.
@@ -63,8 +86,11 @@ function createAttemptSignal(timeoutMs: number, signal?: AbortSignal) {
    * deadline timeout arrived unrecognised and was logged as `provider_error`,
    * which is how two local timeouts were read as a provider outage.
    */
-  const timeoutId = setTimeout(() => controller.abort(new Error(TIMEOUT_MESSAGE)), timeoutMs);
-  const abortFromCaller = () => controller.abort(signal?.reason);
+  const timeoutId = setTimeout(() => controller.abort(new AiAbortError(timeoutKind)), timeoutMs);
+  const abortFromCaller = () =>
+    controller.abort(
+      signal?.reason instanceof AiAbortError ? signal.reason : new AiAbortError("cancelled")
+    );
   signal?.addEventListener("abort", abortFromCaller, { once: true });
   if (signal?.aborted) abortFromCaller();
   return {
@@ -254,8 +280,15 @@ function safeErrorType(value: unknown) {
   return typeof candidate === "string" ? candidate.slice(0, 80) : undefined;
 }
 
+function reportRequestId(source: { get(name: string): string | null }, options: OpenRouterCallOptions) {
+  const id = source.get("x-request-id") ?? source.get("x-openrouter-id");
+  if (id) options.onRequestId?.(id.slice(0, 120));
+}
+
 async function createResponse(options: OpenRouterCallOptions, stream: boolean) {
-  const attempt = createAttemptSignal(options.timeoutMs, options.signal);
+  const attempt = createAttemptSignal(options.timeoutMs, options.signal, options.timeoutKind);
+  const started = Date.now();
+  options.onTiming?.({ event: "sent", atMs: started });
   try {
     const response = await fetch(OPENROUTER_CHAT_URL, {
       method: "POST",
@@ -271,6 +304,11 @@ async function createResponse(options: OpenRouterCallOptions, stream: boolean) {
       signal: attempt.signal,
       cache: "no-store",
     });
+    options.onTiming?.({ event: "headers", atMs: Date.now() });
+    // Present on a rejection as well as a success, which is the case that
+    // matters: a failed call that can be looked up is a failed call whose
+    // billing can be established rather than guessed.
+    reportRequestId(response.headers, options);
     if (!response.ok) {
       let errorType: string | undefined;
       try {
@@ -286,9 +324,18 @@ async function createResponse(options: OpenRouterCallOptions, stream: boolean) {
     }
     return { response, release: attempt.release };
   } catch (error) {
+    // Operational only: when it stopped and whether the stop was ours.
+    options.onTiming?.({
+      event: error instanceof AiAbortError ? "aborted" : "completed",
+      atMs: Date.now(),
+    });
     attempt.release();
     if (options.signal?.aborted) throw error;
-    if (attempt.signal.aborted) throw new Error(TIMEOUT_MESSAGE);
+    if (attempt.signal.aborted) {
+      throw attempt.signal.reason instanceof AiAbortError
+        ? attempt.signal.reason
+        : new AiAbortError("call_timeout");
+    }
     throw error;
   }
 }
@@ -302,6 +349,8 @@ type CompletionPayload = {
   }>;
   usage?: unknown;
   error?: unknown;
+  /** The provider's generation id, which is what a usage lookup needs. */
+  id?: unknown;
 };
 
 function textFromContent(content: unknown) {
@@ -317,6 +366,7 @@ function textFromContent(content: unknown) {
 }
 
 function handleMetadata(payload: CompletionPayload, options: OpenRouterCallOptions) {
+  if (typeof payload.id === "string" && payload.id) options.onRequestId?.(payload.id.slice(0, 120));
   if (payload.usage) options.onUsage?.(normalizeUsage(payload.usage));
   if (typeof payload.provider === "string") {
     options.onProvider?.(payload.provider.slice(0, 100));
