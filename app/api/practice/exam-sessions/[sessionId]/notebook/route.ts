@@ -5,7 +5,7 @@ import { EXAM_ID_PATTERN, type ExamAttempt, type ExamQuestion, type ExamSession 
 import { normalizeQuestionAssets, type PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { isExamQuestionServable } from "@/lib/practice/exam-question-rights";
+import { loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
 
 export const runtime = "nodejs";
 
@@ -57,11 +57,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const prior = await exportRef.get();
   if (prior.exists) return Response.json({ pageId: prior.data()?.pageId, notebookId, alreadySaved: true });
 
-  const bankQuestionSnapshot = await db.collection("examQuestions").doc(question.id).get();
-  const bankQuestion = bankQuestionSnapshot.exists
-    ? { id: bankQuestionSnapshot.id, ...bankQuestionSnapshot.data() } as ExamQuestion
-    : undefined;
-  if (!bankQuestion || !isExamQuestionServable(bankQuestion)) {
+  /*
+   * The same loader marking uses, which is the only one that finds a
+   * Jami-created filler: those live in the student's own collection, so an
+   * export that read the shared bank could not copy the question a gap-filled
+   * session had actually asked -- it returned "no longer available" for a
+   * question sitting on the screen beside the button.
+   */
+  let bankQuestion: ExamQuestion;
+  try {
+    bankQuestion = await loadServableExamQuestion(question.id, uid);
+  } catch {
     return apiFailure("This question is no longer available to copy.", 410, "question_unavailable");
   }
   const bucket = getAdminStorageBucket();

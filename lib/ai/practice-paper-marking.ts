@@ -1,11 +1,13 @@
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 import {
-  calculatePracticePaperPercentage,
-  getPracticePaperGradeLabel,
   normalizePracticePaperResult,
   type PracticePaper,
   type PracticePaperResult,
 } from "@/lib/practice/practice-papers";
+import {
+  calculatePracticePaperPercentage,
+  getPracticePaperGradeLabel,
+} from "@/lib/practice/practice-paper-grades";
 
 function unwrapJson(value: string) {
   const trimmed = value

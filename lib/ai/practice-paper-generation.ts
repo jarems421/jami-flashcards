@@ -6,7 +6,6 @@ import {
   calculatePracticePaperTotalMarks,
   normalizePracticePaperAssessmentProfile,
   normalizePracticePaperChoiceGroups,
-  normalizePracticePaperGradeGuidance,
   normalizePracticePaperMarkScheme,
   normalizePracticePaperQuestions,
   type PracticePaperFocus,
@@ -15,6 +14,9 @@ import {
   type PracticePaperLength,
   type PracticePaperTimingMode,
 } from "@/lib/practice/practice-papers";
+import {
+  normalizePracticePaperGradeGuidance,
+} from "@/lib/practice/practice-paper-grades";
 
 export const MAX_PRACTICE_PAPER_REQUEST_LENGTH = 2_000;
 export const MAX_PRACTICE_PAPER_COVERAGE_LENGTH = 1_000;

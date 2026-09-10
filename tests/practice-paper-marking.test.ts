@@ -5,9 +5,11 @@ import {
 } from "@/lib/ai/practice-paper-marking";
 import { mapPracticePaperData } from "@/lib/practice/practice-papers";
 import {
-  applyPracticePaperMarkCorrection,
   calculatePracticePaperPercentage,
   getPracticePaperGradeLabel,
+} from "@/lib/practice/practice-paper-grades";
+import {
+  applyPracticePaperMarkCorrection,
 } from "@/lib/practice/practice-papers";
 
 const paper = mapPracticePaperData("paper-1", {

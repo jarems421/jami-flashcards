@@ -6,8 +6,8 @@ import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { checkAiBudget, createAiBudgetLimitResponse, getAiTokenCap, refundAiBudget } from "@/services/ai/budgets";
 import { getAiInputTokenCap } from "@/lib/ai/budgets";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
-import { EXAM_ANSWER_MAX_LENGTH, EXAM_ID_PATTERN, examAnswerUnlocksModelAnswer, examDocument, examResultForAttempt, type ExamAttempt, type ExamSession } from "@/lib/practice/exam-questions";
-import type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
+import { EXAM_ANSWER_MAX_LENGTH, EXAM_ID_PATTERN, examAnswerUnlocksModelAnswer, examDocument, examResultForAttempt, withCriterionTariffs, type ExamAttempt, type ExamSession } from "@/lib/practice/exam-questions";
+import { schemeCriteria, type PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import { buildSingleQuestionAnswerParts, buildSingleQuestionPaper } from "@/lib/practice/single-question-paper";
 import { markSingleQuestionAdaptively } from "@/services/ai/practice-paper-marking.server";
 import { featureFlags } from "@/lib/app/feature-flags";
@@ -152,7 +152,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       forceVerification: needsVerification(secret.markSchemeItem, question.marks, Boolean(bytes)),
     });
     if (!marked.result.questionResults[0]) throw new Error("missing_question_result");
-    const result = examResultForAttempt(marked.result.questionResults[0]);
+    // The scheme is in hand here and nowhere downstream, so each criterion
+    // takes its tariff with it.
+    const result = examResultForAttempt(withCriterionTariffs(marked.result.questionResults[0], schemeCriteria(secret.markSchemeItem)));
     await db.runTransaction(async (transaction) => {
       const [current, currentSession] = await Promise.all([transaction.get(ref), transaction.get(sessionRef)]);
       if (current.data()?.idempotencyKey !== key || current.data()?.status !== "marking" || currentSession.data()?.answersDeletedAt) throw new Error("stale_marking");
@@ -163,6 +165,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (number === 1) transaction.update(sessionRef, {
         answeredCount: (currentSession.data()?.answeredCount ?? 0) + 1,
         awardedTotal: (currentSession.data()?.awardedTotal ?? 0) + result.awardedMarks,
+        // What has actually been marked, so a session in progress is scored
+        // against the questions answered rather than the whole paper.
+        assessedTotal: (currentSession.data()?.assessedTotal ?? 0) + result.maxMarks,
         updatedAt: Date.now(),
       });
     });

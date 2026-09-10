@@ -30,7 +30,7 @@ export function projectExamAttempt(
     examAnswerUnlocksModelAnswer(attempt.result!);
   if (result) {
     delete result.confidence;
-    result.criterionResults = result.criterionResults?.map(({ criterion, awarded, awardedMarks, evidence, schemeValue, candidateValue }) => ({ criterion, awarded, awardedMarks, evidence, schemeValue, candidateValue }));
+    result.criterionResults = result.criterionResults?.map(({ criterion, awarded, awardedMarks, maxMarks, evidence, schemeValue, candidateValue }) => ({ criterion, awarded, awardedMarks, maxMarks, evidence, schemeValue, candidateValue }));
   }
   return examDocument({
     id, userId: attempt.userId, sessionId: attempt.sessionId, questionId: attempt.questionId,

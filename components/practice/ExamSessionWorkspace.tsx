@@ -30,6 +30,7 @@ import type { Notebook } from "@/lib/workspace/notebooks";
 import ExamQuestionAssets from "@/components/practice/ExamQuestionAssets";
 import ExamScratchpad, { type ExamScratchpadHandle } from "@/components/practice/ExamScratchpad";
 import ExamQuestionMarkReport from "@/components/practice/ExamQuestionMarkReport";
+import ExamSubmittedAnswer from "@/components/practice/ExamSubmittedAnswer";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 
 const DRAFT_SAVE_MS = 700;
@@ -115,6 +116,20 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
       .catch(() => undefined);
   }, [user?.uid]);
 
+  /*
+   * A session started from a notebook goes back to that notebook by default.
+   * Making the student find it again in a list broke the loop the feature is
+   * built around -- notebook to practice and back -- and picking the wrong one
+   * is a page in the wrong book.
+   */
+  useEffect(() => {
+    const origin = data?.session.originNotebookId;
+    if (!origin || notebookId) return;
+    if (notebooks.some((item) => item.id === origin && item.folderId === data?.session.folderId)) {
+      setNotebookId(origin);
+    }
+  }, [data?.session.folderId, data?.session.originNotebookId, notebookId, notebooks]);
+
   const session = data?.session;
   const questions = useMemo(() => session?.questions ?? [], [session]);
   const question = questions[index];
@@ -144,7 +159,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
    * sends it. Only one flush runs at a time so a slow save cannot land after a
    * newer one and put back older text.
    */
-  const flushDrafts = useCallback(async () => {
+  const flushDrafts = useCallback(async (options?: { keepalive?: boolean }) => {
     if (draftTimer.current) {
       clearTimeout(draftTimer.current);
       draftTimer.current = null;
@@ -160,7 +175,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     setSaveState("saving");
     const outcomes = await Promise.all(
       entries.map(([attemptId, text]) =>
-        saveExamAnswerDraft(sessionId, attemptId, text)
+        saveExamAnswerDraft(sessionId, attemptId, text, options)
           .then(() => true)
           .catch(() => {
             // Keep it queued rather than dropping it on the floor.
@@ -173,7 +188,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     setSaveState(outcomes.every(Boolean) ? "saved" : "failed");
     if (flushAgain.current) {
       flushAgain.current = false;
-      void flushDrafts();
+      void flushDrafts(options);
     }
   }, [sessionId]);
 
@@ -188,7 +203,8 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   }, [activeAttempt, drafts, flushDrafts]);
 
   useEffect(() => {
-    const onLeave = () => void flushDrafts();
+    // Leaving the page is the one flush that has to outlive the document.
+    const onLeave = () => void flushDrafts({ keepalive: true });
     window.addEventListener("pagehide", onLeave);
     return () => {
       window.removeEventListener("pagehide", onLeave);
@@ -461,7 +477,38 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                   Check again
                 </Button>
               </Card>
-            ) : answering && activeAttempt?.status === "marking_failed" ? null : answering ? (
+            ) : answering && activeAttempt?.status === "marking_failed" ? (
+              /*
+               * A failed marking used to render nothing at all -- the retry
+               * card was written inside the branch below, which this condition
+               * skipped, so a student whose marking failed saw the question and
+               * then empty space with no way forward.
+               *
+               * The answer is frozen here, on the server and in the rules, so
+               * it is shown rather than offered for editing: the wording, the
+               * tools, the saved draft and what gets resubmitted all say the
+               * same thing.
+               */
+              <>
+                <Card padding="md" className="border-error/30">
+                  <h3 className="text-base font-semibold text-text-primary">
+                    Jami couldn&apos;t mark this one
+                  </h3>
+                  <p className="mt-2 text-sm leading-5 text-text-muted">
+                    Your answer and working were submitted and are safe. Nothing has been changed —
+                    this just runs the marker over them again.
+                  </p>
+                  <Button className="mt-4" disabled={submitting} onClick={() => void submit()}>
+                    {submitting ? "Marking…" : "Retry marking"}
+                  </Button>
+                </Card>
+                <ExamSubmittedAnswer
+                  attempt={activeAttempt}
+                  sessionId={sessionId}
+                  title="What was submitted"
+                />
+              </>
+            ) : answering ? (
               <>
                 {retryOpen && firstAttempt?.result ? (
                   <Card padding="md" tone="warm">
@@ -485,25 +532,26 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                         ))}
                       </ul>
                     ) : null}
-                  </Card>
-                ) : null}
-
-                {activeAttempt?.status === "marking_failed" ? (
-                  <Card padding="md" className="border-error/30">
-                    <h3 className="text-base font-semibold text-text-primary">
-                      Jami couldn&apos;t mark this one
-                    </h3>
-                    <p className="mt-2 text-sm leading-5 text-text-muted">
-                      Your answer and working were submitted and are safe. Nothing has been changed —
-                      this just runs the marker over them again.
-                    </p>
-                    <Button
-                      className="mt-4"
-                      disabled={submitting}
-                      onClick={() => void submit()}
-                    >
-                      {submitting ? "Marking…" : "Retry marking"}
-                    </Button>
+                    {/*
+                      * Opening the retry used to take the first mark off the
+                      * screen entirely -- the feedback, the worked answer and
+                      * the scheme all went with it, which are the things a
+                      * second attempt is supposed to be guided by. Folded away
+                      * rather than removed, so consulting them costs a click
+                      * and not the draft.
+                      */}
+                    <details className="mt-4 border-t border-[var(--color-border)] pt-3">
+                      <summary className="cursor-pointer text-sm font-semibold text-text-primary">
+                        First try feedback
+                      </summary>
+                      <div className="mt-3">
+                        <ExamQuestionMarkReport
+                          attempt={firstAttempt}
+                          sessionId={sessionId}
+                          onAsk={() => setAssistantOpen(true)}
+                        />
+                      </div>
+                    </details>
                   </Card>
                 ) : null}
 

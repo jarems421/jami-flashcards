@@ -304,6 +304,7 @@ export async function createExamSession(input: {
     currentQuestionId: questions[0]?.id,
     answeredCount: 0,
     awardedTotal: 0,
+    assessedTotal: 0,
     maxTotal: questions.reduce((sum, question) => sum + question.marks, 0),
     originNotebookId: input.originNotebookId,
     createdAt: now,
@@ -357,9 +358,30 @@ export async function getExamSession(uid: string, sessionId: string) {
   };
 }
 
-export async function listExamSessions(uid: string, folderId?: string) {
+/** One page of history. A hundred sessions is a term or two, not a limit. */
+export const EXAM_SESSION_PAGE_SIZE = 40;
+
+/**
+ * A student's practice history, oldest reachable rather than cut off.
+ *
+ * This stopped at a hundred sessions with no way past them, so a student's
+ * earlier work simply stopped existing once they had done enough of it. The
+ * cursor is the last session's `updatedAt`, which is what the list is ordered
+ * by, so paging cannot skip or repeat a session as new ones arrive.
+ */
+export async function listExamSessions(uid: string, folderId?: string, before?: number) {
   let query: FirebaseFirestore.Query = getAdminDb().collection("users").doc(uid).collection("examSessions");
   if (folderId) query = query.where("folderId", "==", folderId);
-  const snapshot = await query.orderBy("updatedAt", "desc").limit(100).get();
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  query = query.orderBy("updatedAt", "desc");
+  if (typeof before === "number" && Number.isFinite(before)) query = query.startAfter(before);
+  const snapshot = await query.limit(EXAM_SESSION_PAGE_SIZE).get();
+  const sessions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const last = sessions.at(-1) as { updatedAt?: number } | undefined;
+  return {
+    sessions,
+    nextCursor:
+      sessions.length === EXAM_SESSION_PAGE_SIZE && typeof last?.updatedAt === "number"
+        ? last.updatedAt
+        : null,
+  };
 }

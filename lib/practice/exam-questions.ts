@@ -185,6 +185,15 @@ export type ExamSession = {
   currentQuestionId?: string;
   answeredCount: number;
   awardedTotal: number;
+  /**
+   * The marks of the questions actually marked so far.
+   *
+   * A session in progress was scored against the whole paper, so one perfect
+   * answer of five questions read as 20% and looked exactly like a completed
+   * session that went badly. Absent on sessions that predate this, where the
+   * full total is the only denominator there is.
+   */
+  assessedTotal?: number;
   maxTotal: number;
   originNotebookId?: string;
   createdAt: number;
@@ -347,6 +356,34 @@ export function examAnswerUnlocksModelAnswer(
   result: Pick<PracticePaperQuestionResult, "attempted">
 ) {
   return Boolean(result.attempted);
+}
+
+/**
+ * Each criterion's tariff, joined on from the scheme after marking.
+ *
+ * A marker reports what it awarded, never what was available, so the report
+ * could only ask whether a criterion scored anything. One mark out of three
+ * therefore counted as a success and never appeared among the things to do
+ * better -- which is how an answer that lost three marks was told nothing
+ * essential was missing.
+ *
+ * Joined by the scheme's own criterion ids, which is why both markers are
+ * handed those ids in the first place. A criterion the marker invented has no
+ * id, no match, and no tariff attached rather than a guessed one.
+ */
+export function withCriterionTariffs(
+  result: PracticePaperQuestionResult,
+  criteria: readonly { id: string; marks: number }[]
+): PracticePaperQuestionResult {
+  if (!result.criterionResults?.length) return result;
+  const marksById = new Map(criteria.map((criterion) => [criterion.id, criterion.marks]));
+  return {
+    ...result,
+    criterionResults: result.criterionResults.map((criterion) => {
+      const marks = criterion.criterionId ? marksById.get(criterion.criterionId) : undefined;
+      return typeof marks === "number" ? { ...criterion, maxMarks: marks } : criterion;
+    }),
+  };
 }
 
 /** An unattempted response must not reveal answer-bearing teaching material. */

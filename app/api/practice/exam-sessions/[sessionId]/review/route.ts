@@ -14,7 +14,8 @@ import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { correctExamDifficultyContribution } from "@/services/practice/exam-difficulty.server";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { examDocument, examResultForAttempt } from "@/lib/practice/exam-questions";
+import { examDocument, examResultForAttempt, withCriterionTariffs } from "@/lib/practice/exam-questions";
+import { schemeCriteria } from "@/lib/practice/mark-schemes";
 import { examQuestionVisualParts, loadExamQuestionSecret, loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
 import { projectExamAttempt } from "@/lib/practice/exam-projections";
 
@@ -100,7 +101,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
     const rawResult = review.result.questionResults[0];
     if (!rawResult) throw new Error("review_result_missing");
-    const result = examResultForAttempt(rawResult);
+    // The scheme is in hand here and nowhere downstream, so each criterion
+    // takes its tariff with it.
+    const result = examResultForAttempt(withCriterionTariffs(rawResult, schemeCriteria(secret.markSchemeItem)));
     const delta = result.awardedMarks - attempt.result.awardedMarks;
     const now = Date.now();
     await db.runTransaction(async (transaction) => {

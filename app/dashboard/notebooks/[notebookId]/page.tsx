@@ -15,7 +15,7 @@ import {
 import AppPage from "@/components/layout/AppPage";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import PracticePaperAttemptBar from "@/components/practice/PracticePaperAttemptBar";
-import PracticePaperAssets from "@/components/practice/PracticePaperAssets";
+import NotebookQuestionOverlay from "@/components/workspace/NotebookQuestionOverlay";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayers";
 import NotebookImageLayer from "@/components/workspace/NotebookImageLayer";
@@ -40,7 +40,6 @@ import NotebookViewport, {
 } from "@/components/workspace/NotebookViewport";
 import {
   ButtonLink,
-  Card,
   ConfirmDialog,
   EmptyState,
   FeedbackBanner,
@@ -2668,19 +2667,8 @@ export default function NotebookEditorPage() {
             onActivePointerUp={handlePageSurfaceTextGestureStop}
             onActivePointerCancel={handlePageSurfaceTextGestureStop}
             overlay={
-              selectedPage?.questionPrompt ? (
-                <div
-                  className={`absolute left-1/2 z-20 w-[min(92vw,36rem)] -translate-x-1/2 ${
-                    toolbarDock === "top" ? "top-[5rem]" : "top-3"
-                  }`}
-                >
-                  <Card tone="warm" padding="sm">
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-text-primary">
-                      {selectedPage.questionPrompt}
-                    </p>
-                    <PracticePaperAssets assets={selectedPage.questionAssets ?? []} />
-                  </Card>
-                </div>
+              selectedPage ? (
+                <NotebookQuestionOverlay page={selectedPage} dockedTop={toolbarDock === "top"} />
               ) : null
             }
             activeContent={

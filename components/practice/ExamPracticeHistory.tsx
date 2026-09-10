@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
-import { ButtonLink, Card, EmptyState, FeedbackBanner, Skeleton } from "@/components/ui";
+import { Button, ButtonLink, Card, EmptyState, FeedbackBanner, Skeleton } from "@/components/ui";
 import { EXAM_BOARD_LABELS } from "@/lib/practice/exam-formats";
 import type { ExamSession } from "@/lib/practice/exam-questions";
 import { listPastPaperPracticeSessions } from "@/services/study/exam-practice";
@@ -23,15 +23,42 @@ export default function ExamPracticeHistory({
   embedded?: boolean;
 }) {
   const [sessions, setSessions] = useState<ExamSession[] | null>(null);
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let active = true;
     void listPastPaperPracticeSessions(folderId)
-      .then(setSessions)
+      .then((page) => {
+        if (!active) return;
+        setSessions(page.sessions);
+        setCursor(page.nextCursor);
+      })
       .catch((reason) =>
+        active &&
         setError(reason instanceof Error ? reason.message : "Practice history could not be loaded.")
       );
+    return () => {
+      active = false;
+    };
   }, [folderId]);
+
+  // Older work is reached rather than lost: the list used to stop at a hundred
+  // sessions with nothing behind them.
+  const loadMore = async () => {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await listPastPaperPracticeSessions(folderId, cursor);
+      setSessions((current) => [...(current ?? []), ...page.sessions]);
+      setCursor(page.nextCursor);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "More practice could not be loaded.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const startHref = `/dashboard/practice/questions/new${
     folderId ? `?folderId=${encodeURIComponent(folderId)}` : ""
@@ -61,10 +88,19 @@ export default function ExamPracticeHistory({
     content = (
       <div className="grid gap-3 md:grid-cols-2">
         {sessions.map((session) => {
-          const percent = session.maxTotal
-            ? Math.round((session.awardedTotal / session.maxTotal) * 100)
-            : 0;
           const complete = session.status === "completed";
+          /*
+           * An unfinished session is scored against what has actually been
+           * marked. Against the whole paper's marks, one perfect answer of five
+           * questions read as 20% -- indistinguishable from a completed session
+           * that went badly.
+           */
+          const denominator = complete
+            ? session.maxTotal
+            : session.assessedTotal ?? session.maxTotal;
+          const percent = denominator
+            ? Math.round((session.awardedTotal / denominator) * 100)
+            : 0;
           return (
             <Card key={session.id} padding="md">
               <div className="flex items-start justify-between gap-4">
@@ -92,10 +128,11 @@ export default function ExamPracticeHistory({
                 <div>
                   <p className="text-3xl font-semibold tracking-tight text-text-primary">
                     {session.awardedTotal}
-                    <span className="text-base font-normal text-text-muted">/{session.maxTotal}</span>
+                    <span className="text-base font-normal text-text-muted">/{denominator}</span>
                   </p>
                   <p className="mt-1 text-xs text-text-muted">
                     {session.answeredCount} of {session.questions.length} marked · {percent}%
+                    {complete ? "" : " so far"}
                   </p>
                 </div>
                 <ButtonLink
@@ -114,6 +151,15 @@ export default function ExamPracticeHistory({
   }
 
   if (embedded) return content;
+  const more =
+    cursor && sessions?.length ? (
+      <div className="mt-4 flex justify-center">
+        <Button type="button" variant="secondary" disabled={loadingMore} onClick={() => void loadMore()}>
+          {loadingMore ? "Loading…" : "Show earlier practice"}
+        </Button>
+      </div>
+    ) : null;
+
   return (
     <AppPage
       title="Practice history"
@@ -126,6 +172,7 @@ export default function ExamPracticeHistory({
         Every question, mark and improvement in one calm place.
       </p>
       {content}
+      {more}
     </AppPage>
   );
 }

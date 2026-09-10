@@ -2,7 +2,8 @@
 
 import { Button, Card, StudyText } from "@/components/ui";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
-import ExamPrivateImage from "@/components/practice/ExamPrivateImage";
+import { breakdownExamMarkReport } from "@/lib/practice/exam-mark-report";
+import ExamSubmittedAnswer from "@/components/practice/ExamSubmittedAnswer";
 
 /**
  * What the mark actually was, and what would have earned more.
@@ -29,15 +30,19 @@ export default function ExamQuestionMarkReport({
   onRetry?: () => void;
   onReview?: () => void;
   onAsk?: () => void;
-  onNext(): void;
-  nextLabel: string;
+  /**
+   * Absent when the report is a reference rather than a step in the session --
+   * during a guided retry, where the first mark has to stay readable without
+   * offering to move the student on from the answer they are writing.
+   */
+  onNext?: () => void;
+  nextLabel?: string;
   reviewing?: boolean;
 }) {
   const result = attempt.result;
   if (!result) return null;
-  const criteria = result.criterionResults ?? [];
-  const earned = criteria.filter((item) => (item.awardedMarks ?? 0) > 0);
-  const missed = criteria.filter((item) => (item.awardedMarks ?? 0) === 0);
+  const { earned, missed, unexplainedShortfall } = breakdownExamMarkReport(result);
+  const guidance = (result.improvements ?? []).filter(Boolean);
   const percent = result.maxMarks ? Math.round((result.awardedMarks / result.maxMarks) * 100) : 0;
   const improved =
     attempt.attemptNumber === 2 && firstAttempt?.result
@@ -75,6 +80,19 @@ export default function ExamQuestionMarkReport({
             {improved === 0 ? " · the same mark this time" : ""}
           </p>
         ) : null}
+        {/*
+          * A checked mark said nothing about having been checked. The button
+          * disappeared, the number sometimes moved, and a student had no way to
+          * tell a correction from a misremembered score.
+          */}
+        {attempt.reviewUsed ? (
+          <p className="mt-3 text-sm font-medium text-text-secondary">
+            {typeof attempt.reviewOriginalScore === "number" &&
+            attempt.reviewOriginalScore !== result.awardedMarks
+              ? `Checked: ${attempt.reviewOriginalScore}/${result.maxMarks} → ${result.awardedMarks}/${result.maxMarks}`
+              : "Checked — your mark stayed the same."}
+          </p>
+        ) : null}
         <p className="mt-4 text-sm leading-6 text-text-secondary">{result.feedback}</p>
       </Card>
 
@@ -107,6 +125,11 @@ export default function ExamQuestionMarkReport({
                 className="rounded-2xl bg-[var(--color-glass-subtle)] p-3"
               >
                 <p className="text-sm font-medium text-text-primary">{item.criterion}</p>
+                {typeof item.maxMarks === "number" && (item.awardedMarks ?? 0) > 0 ? (
+                  <p className="mt-1 text-xs font-medium text-text-secondary">
+                    {item.awardedMarks} of {item.maxMarks} marks
+                  </p>
+                ) : null}
                 {item.schemeValue ? (
                   <p className="mt-1 text-sm leading-5 text-text-muted">
                     The scheme wanted: {item.schemeValue}
@@ -115,6 +138,27 @@ export default function ExamQuestionMarkReport({
               </li>
             ))}
           </ul>
+        ) : unexplainedShortfall ? (
+          <>
+            {guidance.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {guidance.map((item, index) => (
+                  <li
+                    key={`${item}-${index}`}
+                    className="rounded-2xl bg-[var(--color-glass-subtle)] p-3 text-sm leading-5 text-text-primary"
+                  >
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-text-muted">
+                {result.maxMarks - result.awardedMarks} mark
+                {result.maxMarks - result.awardedMarks === 1 ? " was" : "s were"} not awarded. Read
+                the feedback above for where they went.
+              </p>
+            )}
+          </>
         ) : (
           <p className="mt-2 text-sm text-text-muted">Nothing essential was missing.</p>
         )}
@@ -125,19 +169,26 @@ export default function ExamQuestionMarkReport({
         ) : null}
       </Card>
 
-      {attempt.workingIncluded ? (
-        <Card padding="md">
-          <h3 className="text-base font-semibold text-text-primary">The working Jami read</h3>
-          <p className="mt-1 text-sm text-text-muted">
-            This sheet was sent with your answer and marked alongside it.
-          </p>
-          <ExamPrivateImage
-            key={attempt.id}
-            alt="Your frozen working for this question"
-            className="mt-3 border border-[var(--color-border)] bg-white"
-            path={`/api/practice/exam-sessions/${encodeURIComponent(sessionId)}/working/${encodeURIComponent(attempt.id)}`}
-          />
-        </Card>
+      {/*
+        * The evidence the mark was given for, typed answer included. Showing
+        * the working alone meant a mark could only be read against a memory of
+        * what was written, and after a retry the first attempt's words were off
+        * the screen altogether.
+        */}
+      <ExamSubmittedAnswer
+        attempt={attempt}
+        sessionId={sessionId}
+        title="What Jami marked"
+        note="Exactly what was sent, as it was sent."
+      />
+
+      {firstAttempt && firstAttempt.id !== attempt.id ? (
+        <ExamSubmittedAnswer
+          attempt={firstAttempt}
+          sessionId={sessionId}
+          title="Your first attempt"
+          note={`Marked ${firstAttempt.result?.awardedMarks ?? 0}/${firstAttempt.result?.maxMarks ?? 0}.`}
+        />
       ) : null}
 
       {result.transcriptionNote ? (
@@ -170,6 +221,7 @@ export default function ExamQuestionMarkReport({
         </details>
       ) : null}
 
+      {onRetry || onReview || onAsk || onNext ? (
       <div className="flex flex-wrap items-center gap-2">
         {onRetry ? (
           <Button type="button" variant="secondary" onClick={onRetry}>
@@ -186,10 +238,13 @@ export default function ExamQuestionMarkReport({
             Ask Jami
           </Button>
         ) : null}
-        <Button type="button" className="ml-auto" onClick={onNext}>
-          {nextLabel}
-        </Button>
+        {onNext ? (
+          <Button type="button" className="ml-auto" onClick={onNext}>
+            {nextLabel}
+          </Button>
+        ) : null}
       </div>
+      ) : null}
     </div>
   );
 }

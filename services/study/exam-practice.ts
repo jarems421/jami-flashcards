@@ -81,16 +81,37 @@ export async function loadPastPaperPracticeSession(sessionId: string) {
   }>;
 }
 
-export async function listPastPaperPracticeSessions(folderId?: string) {
-  const suffix = folderId ? `?folderId=${encodeURIComponent(folderId)}` : "";
+export async function listPastPaperPracticeSessions(folderId?: string, before?: number) {
+  const params = new URLSearchParams();
+  if (folderId) params.set("folderId", folderId);
+  if (before) params.set("before", String(before));
+  const suffix = params.toString() ? `?${params}` : "";
   const data = await request(`/api/practice/exam-sessions${suffix}`);
-  return data.sessions as ExamSession[];
+  return {
+    sessions: (data.sessions ?? []) as ExamSession[],
+    nextCursor: (data.nextCursor ?? null) as number | null,
+  };
 }
 
-export async function saveExamAnswerDraft(sessionId: string, attemptId: string, answerText: string) {
+/**
+ * `keepalive` is for the save that happens as the page is going away.
+ *
+ * An ordinary fetch started during `pagehide` is cancelled with the document,
+ * so the last thing a student typed before closing the tab was the thing most
+ * likely to be lost. A keepalive request outlives the page. It is only used on
+ * the way out -- the limit is 64KB of body, which an answer stays well under,
+ * and there is no response to read by then anyway.
+ */
+export async function saveExamAnswerDraft(
+  sessionId: string,
+  attemptId: string,
+  answerText: string,
+  options?: { keepalive?: boolean }
+) {
   return request(`/api/practice/exam-sessions/${encodeURIComponent(sessionId)}/drafts`, {
     method: "PATCH",
     body: JSON.stringify({ attemptId, answerText }),
+    ...(options?.keepalive ? { keepalive: true } : {}),
   });
 }
 

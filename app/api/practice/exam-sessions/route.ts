@@ -15,7 +15,14 @@ export async function GET(request: NextRequest) {
   const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   try {
-    return Response.json({ sessions: await listExamSessions(uid, request.nextUrl.searchParams.get("folderId") ?? undefined) });
+    const before = Number(request.nextUrl.searchParams.get("before"));
+    return Response.json(
+      await listExamSessions(
+        uid,
+        request.nextUrl.searchParams.get("folderId") ?? undefined,
+        Number.isFinite(before) && before > 0 ? before : undefined
+      )
+    );
   } catch {
     return apiFailure("Practice history could not be loaded.", 503, "history_failed");
   }
