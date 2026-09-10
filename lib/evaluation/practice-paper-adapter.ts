@@ -60,6 +60,16 @@ const LEVEL_DESCRIPTIONS: Record<string, string> = {
 export type AdaptedPaper = {
   paper: PracticePaper;
   answerParts: AiContentPart[];
+  /**
+   * Whether the scheme's own structure was read, or the whole tariff was left
+   * as one point.
+   *
+   * A whole-tariff fallback is not a faithful extraction of a marking
+   * structure, and results measured against one say something different from
+   * results measured against the marks the board actually states. Reported so
+   * an evaluation can keep them apart rather than averaging across both.
+   */
+  schemeRepresentation: "structured" | "unstructured";
 };
 
 export type AdaptResult =
@@ -230,9 +240,12 @@ export function adaptRecordToPaper(
     markSchemeNotice: markScheme.notice,
   });
 
+  const structuredPoints =
+    "points" in markScheme.items[0]! && markScheme.items[0]!.points.length > 1;
   return {
     ok: true,
     adapted: {
+      schemeRepresentation: structuredPoints ? "structured" : "unstructured",
       paper,
       answerParts: scanned
         ? [

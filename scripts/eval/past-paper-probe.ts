@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { createEvaluationMarker } from "@/services/ai/evaluation-marker.server";
 import { markingCostBound } from "@/lib/evaluation/marking-cost-bound";
 import { referenceMark, type MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
+import { adaptRecordToPaper } from "@/lib/evaluation/practice-paper-adapter";
 import { getAiInputTokenCap, getAiTokenCap } from "@/lib/ai/budgets";
 
 /**
@@ -112,6 +113,17 @@ export default async function main(args: string[]) {
     },
   });
 
+  /*
+   * Recorded per record so structured and unstructured schemes are never
+   * averaged together: a result measured against a whole-tariff fallback is
+   * saying something different from one measured against the marks the board
+   * states.
+   */
+  const representationOf = (record: MarkingCorpusRecord) => {
+    const adapted = adaptRecordToPaper(record, { answerImages: loadAnswerImage(record) });
+    return adapted.ok ? adapted.adapted.schemeRepresentation : "unstructured";
+  };
+
   const outcomes: Record<string, unknown>[] = [];
   for (const record of selected) {
     const startedAt = Date.now();
@@ -135,6 +147,7 @@ export default async function main(args: string[]) {
         disputed: audit.disputed ?? false,
         adjudicated: audit.adjudicated ?? false,
         markerReports: reports.get(record.id) ?? [],
+        schemeRepresentation: representationOf(record),
         reportedCostUsd: Number((stats.reportedUsd - reportedBefore).toFixed(6)),
         retainedReservationUsd: Number((stats.retainedReservationUsd - retainedBefore).toFixed(6)),
         latencyMs: Date.now() - startedAt,
