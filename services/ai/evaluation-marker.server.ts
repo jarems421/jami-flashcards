@@ -129,6 +129,17 @@ export type EvaluationMarkerOptions = {
   maxRecords: number;
   /** Which student-facing marker to measure. Defaults to the paper surface. */
   pipeline?: EvaluationPipeline;
+  /**
+   * A hard ceiling in dollars, checked against what the providers actually
+   * reported rather than against an estimate made beforehand.
+   *
+   * A record ceiling bounds the number of markings, not their price: a run of
+   * handwritten high-tariff responses buys a second marker and an adjudication
+   * on most of them and costs several times what the same count of short typed
+   * answers would. This stops the run rather than discovering the difference on
+   * a bill.
+   */
+  maxSpendUsd?: number;
   /** Per-response wall-clock budget, matching the production deadline shape. */
   timeoutMs?: number;
   /**
@@ -215,6 +226,8 @@ export type EvaluationMarkerStats = {
   thirdView: number;
   /** Markings the provider rate-limited and the run waited out. */
   rateLimited: number;
+  /** What the providers reported this run cost, so far. */
+  spentUsd: number;
   /** Unreadable reports by cause, so a failure rate can be acted on. */
   parseFailures: Record<string, number>;
   reasons: string[];
@@ -232,6 +245,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
     adjudicated: 0,
     thirdView: 0,
     rateLimited: 0,
+    spentUsd: 0,
     parseFailures: {},
     reasons: [],
   };
@@ -243,6 +257,12 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
       // others and the comparison would be meaningless.
       throw new Error(
         `Evaluation call ceiling of ${options.maxRecords} reached. Raise it deliberately or narrow the run.`
+      );
+    }
+    if (options.maxSpendUsd !== undefined && stats.spentUsd >= options.maxSpendUsd) {
+      throw new Error(
+        `Evaluation spend ceiling of $${options.maxSpendUsd.toFixed(2)} reached after ` +
+          `${stats.marked} markings ($${stats.spentUsd.toFixed(2)}). Raise it deliberately or narrow the run.`
       );
     }
     stats.attempted += 1;
@@ -353,7 +373,8 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
         }
         throw lastError;
       };
-      const { result, audit } = await attempt();
+      const { result, audit, estimatedCostUsd } = await attempt();
+      stats.spentUsd += estimatedCostUsd ?? 0;
 
       if (audit.adjudicatedQuestionIds.length > 0) stats.adjudicated += 1;
       if (audit.thirdViewQuestionIds.length > 0) stats.thirdView += 1;
