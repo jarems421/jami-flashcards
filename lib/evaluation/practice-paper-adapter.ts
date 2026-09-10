@@ -7,6 +7,7 @@ import type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
 import { stageOf } from "@/lib/evaluation/marking-corpus";
 import { bandsForReferenceScale, parseBandsFromScheme } from "./mark-scheme-bands.ts";
+import { parsePointsFromScheme } from "./mark-scheme-points.ts";
 import { buildSingleQuestionPaper } from "@/lib/practice/single-question-paper";
 
 /**
@@ -119,22 +120,34 @@ function markSchemeFor(record: MarkingCorpusRecord): PracticePaperMarkScheme {
       bands: published.length > 0 ? published : bandsForReferenceScale(record.maxMarks),
     };
   } else {
+    /*
+     * The separate marks the scheme awards, where its own notation states
+     * them. A single point worth the whole tariff is not a simplification: a
+     * two-mark answer with one criterion met can then only score 0 or 2, so
+     * every partially correct response is wrong by a mark whichever way the
+     * marker goes. That is exactly what the first paid probe measured -- both
+     * of its scoring errors were partial-credit answers where awarding the
+     * reference mark was not available to the marker.
+     */
+    const parsed = parsePointsFromScheme(record.markScheme ?? "", record.maxMarks);
     item = {
       ...common,
       marking: record.regime === "pointPool" ? "pointPool" : "additive",
-      points: [
-        {
-          id: "p1",
-          marks: record.maxMarks,
-          code: "B",
-          text: record.markScheme ?? "Award against the stated standard.",
-          dep: [],
-          ft: false,
-          essentialTerms: [],
-          allow: [],
-          reject: [],
-        },
-      ],
+      points: parsed.length
+        ? parsed
+        : [
+            {
+              id: "p1",
+              marks: record.maxMarks,
+              code: "B",
+              text: record.markScheme ?? "Award against the stated standard.",
+              dep: [],
+              ft: false,
+              essentialTerms: [],
+              allow: [],
+              reject: [],
+            },
+          ],
       ...(record.regime === "pointPool" ? { awardable: record.maxMarks } : {}),
     } as PracticePaperMarkSchemeItem;
   }

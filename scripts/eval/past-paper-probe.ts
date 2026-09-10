@@ -80,20 +80,43 @@ export default async function main(args: string[]) {
   }
 
   const audits = new Map<string, Record<string, unknown>>();
+  /*
+   * What each marker actually decided, kept per record.
+   *
+   * The first probe recorded only the final score, so its two scoring errors
+   * could be seen and not explained: there was no criterion decision and no
+   * quoted evidence to inspect, and the diagnosis had to come from re-reading
+   * the scheme the harness had built. A report that cannot say why a mark was
+   * given cannot rank interventions.
+   */
+  const reports = new Map<string, Record<string, unknown>[]>();
   const { mark, stats } = createEvaluationMarker({
     maxRecords: RECORDS,
     maxSpendUsd: BUDGET_USD,
     reserveUsdPerRecord: bound.usdPerRecord,
     haltOnUnreportedCost: true,
+    /*
+     * Production's deadline, not the evaluator's 420-second default. The first
+     * probe left the default in place, so one dead route burned two minutes on
+     * four thirty-second attempts -- where a student's request would have given
+     * up at 55 seconds. A run that does not share the deadline is not measuring
+     * the same marker.
+     */
+    timeoutMs: 55_000,
     pipeline: "pastPaperPractice",
     loadAnswerImages: async (record) => loadAnswerImage(record),
     onAudit: (audit) => audits.set(String(audit.record), audit as Record<string, unknown>),
+    onMarkerReport: (report) => {
+      const key = String(report.record);
+      reports.set(key, [...(reports.get(key) ?? []), report as unknown as Record<string, unknown>]);
+    },
   });
 
   const outcomes: Record<string, unknown>[] = [];
   for (const record of selected) {
     const startedAt = Date.now();
-    const spentBefore = stats.spentUsd;
+    const reportedBefore = stats.reportedUsd;
+    const retainedBefore = stats.retainedReservationUsd;
     try {
       // Production sends no exemplars, so the arm that matches it is "none".
       const response = await mark({ record, arm: "none", exemplars: [] });
@@ -111,7 +134,9 @@ export default async function main(args: string[]) {
         verified: audit.verifier !== undefined && audit.verifier !== null,
         disputed: audit.disputed ?? false,
         adjudicated: audit.adjudicated ?? false,
-        reportedCostUsd: Number((stats.spentUsd - spentBefore).toFixed(6)),
+        markerReports: reports.get(record.id) ?? [],
+        reportedCostUsd: Number((stats.reportedUsd - reportedBefore).toFixed(6)),
+        retainedReservationUsd: Number((stats.retainedReservationUsd - retainedBefore).toFixed(6)),
         latencyMs: Date.now() - startedAt,
       });
     } catch (error) {
@@ -125,7 +150,8 @@ export default async function main(args: string[]) {
         referenceMark: referenceMark(record),
         awardedMarks: null,
         error: error instanceof Error ? error.message : String(error),
-        reportedCostUsd: Number((stats.spentUsd - spentBefore).toFixed(6)),
+        reportedCostUsd: Number((stats.reportedUsd - reportedBefore).toFixed(6)),
+        retainedReservationUsd: Number((stats.retainedReservationUsd - retainedBefore).toFixed(6)),
         latencyMs: Date.now() - startedAt,
       });
       if (/Evaluation (stopped|spend ceiling)/.test(String(error))) {
@@ -161,7 +187,11 @@ export default async function main(args: string[]) {
     values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 
   console.log(`\nattempted ${stats.attempted} · marked ${marked.length} · failed ${stats.failed}`);
-  console.log(`reported spend $${stats.spentUsd.toFixed(4)} of $${BUDGET_USD.toFixed(2)}`);
+  console.log(`known reported cost $${stats.reportedUsd.toFixed(4)} of $${BUDGET_USD.toFixed(2)}`);
+  console.log(`reservation retained for unaccounted markings $${stats.retainedReservationUsd.toFixed(4)}`);
+  if (stats.retainedReservationUsd > 0) {
+    console.log("actual total cost: NOT ESTABLISHED — a marking reported no cost for at least one call");
+  }
   console.log(`markings with an unreported call: ${stats.unaccountedMarkings}`);
   if (marked.length) {
     console.log(`exact agreement ${exact}/${marked.length}`);

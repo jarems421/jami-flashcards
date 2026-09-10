@@ -96,7 +96,7 @@ describe("the evaluation spend ceiling", () => {
     expect(refused).toMatch(/spend ceiling/);
     // A marking that comes in under its reservation releases the difference,
     // so a cheap run gets more markings -- but never more money.
-    expect(stats.spentUsd).toBeLessThanOrEqual(0.3);
+    expect(stats.reportedUsd).toBeLessThanOrEqual(0.3);
     expect(stats.marked).toBeGreaterThan(3);
   });
 
@@ -152,7 +152,9 @@ describe("the evaluation spend ceiling", () => {
       mark({ record: record("c"), arm: "control", exemplars: [] } as never)
     ).rejects.toThrow(/spend ceiling/);
     expect(stats.failed).toBe(2);
-    expect(stats.spentUsd).toBeCloseTo(0.2);
+    // Nothing was reported, so nothing is measured: it is all held reservation.
+    expect(stats.reportedUsd).toBe(0);
+    expect(stats.retainedReservationUsd).toBeCloseTo(0.2);
   });
 
   /** An expensive marking reconciles upward, and the next one sees it. */
@@ -169,7 +171,7 @@ describe("the evaluation spend ceiling", () => {
     await expect(
       mark({ record: record("b"), arm: "control", exemplars: [] } as never)
     ).rejects.toThrow(/spend ceiling/);
-    expect(stats.spentUsd).toBeCloseTo(0.25);
+    expect(stats.reportedUsd).toBeCloseTo(0.25);
   });
 
   /*
@@ -192,7 +194,8 @@ describe("the evaluation spend ceiling", () => {
       mark({ record: record("c"), arm: "control", exemplars: [] } as never)
     ).rejects.toThrow(/spend ceiling/);
     expect(stats.unaccountedMarkings).toBe(2);
-    expect(stats.spentUsd).toBeCloseTo(0.2);
+    expect(stats.reportedUsd).toBeCloseTo(0);
+    expect(stats.retainedReservationUsd).toBeCloseTo(0.2);
   });
 
   /** A partly reported marking is still unaccounted: the floor is not a total. */
@@ -234,7 +237,7 @@ describe("the evaluation spend ceiling", () => {
     ).rejects.toThrow(/reported no cost/);
     expect(stats.unaccountedMarkings).toBe(1);
     // The budget was nowhere near exhausted; the unknown bill is what stopped it.
-    expect(stats.spentUsd).toBeLessThan(0.4);
+    expect(stats.reportedUsd).toBeLessThan(0.4);
   });
 
   it("keeps going on an unreported cost when it was not told to stop", async () => {

@@ -94,7 +94,7 @@ export type EvaluationPipeline = "wholePaper" | "pastPaperPractice";
  */
 async function markPastPaperPracticeQuestion(
   adapted: { paper: PracticePaper; answerParts: AiContentPart[] },
-  timeoutMs: number
+  deadlineAt: number
 ) {
   const question = adapted.paper.questions[0];
   const scheme = adapted.paper.markScheme?.items?.find(
@@ -107,7 +107,7 @@ async function markPastPaperPracticeQuestion(
   const marked = await markSingleQuestionAdaptively({
     paper: adapted.paper,
     answerParts: adapted.answerParts,
-    deadlineAt: Date.now() + timeoutMs,
+    deadlineAt,
     maxOutputTokens: getAiTokenCap("examQuestionMarking"),
     inputTokenCap: getAiInputTokenCap("examQuestionMarking"),
     forceVerification: examMarkingNeedsVerification(scheme, question.marks, hasWorking),
@@ -263,8 +263,20 @@ export type EvaluationMarkerStats = {
   thirdView: number;
   /** Markings the provider rate-limited and the run waited out. */
   rateLimited: number;
-  /** What this run has committed so far, reported costs and reservations held. */
-  spentUsd: number;
+  /**
+   * What providers actually reported. This is the only measured expenditure.
+   */
+  reportedUsd: number;
+  /**
+   * Reservations still held for markings whose cost never came back.
+   *
+   * Kept apart from `reportedUsd` on purpose. Adding them gives a number that
+   * is neither: it overstates what is known to have been spent and understates
+   * nothing usefully, and the first probe was reported as "$0.3725 spent" when
+   * $0.0218 was measured and the rest was accounting protection for one failed
+   * marking. A total is not established while this is above zero.
+   */
+  retainedReservationUsd: number;
   /**
    * Markings where at least one call reported no cost, so its reservation is
    * still held. A run with any of these has not been fully accounted for.
@@ -297,7 +309,8 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
     adjudicated: 0,
     thirdView: 0,
     rateLimited: 0,
-    spentUsd: 0,
+    reportedUsd: 0,
+    retainedReservationUsd: 0,
     unaccountedMarkings: 0,
     parseFailures: {},
     reasons: [],
@@ -344,12 +357,15 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
       reconciled = true;
       if (!accounting || accounting.unreportedCalls > 0) {
         stats.unaccountedMarkings += 1;
-        stats.spentUsd += Math.max(reserve, accounting?.usd ?? 0);
+        // Whatever it did report is measured; the rest of the reservation is
+        // held, and stays visible as a reservation rather than as spending.
+        stats.reportedUsd += accounting?.usd ?? 0;
+        stats.retainedReservationUsd += Math.max(0, reserve - (accounting?.usd ?? 0));
         if (options.haltOnUnreportedCost) halted = "a marking reported no cost for at least one of its calls";
         return;
       }
       committedUsd += accounting.usd - reserve;
-      stats.spentUsd += accounting.usd;
+      stats.reportedUsd += accounting.usd;
     };
     stats.attempted += 1;
 
@@ -394,19 +410,30 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
      * A timeout recorded as a refusal thins the paired set for no reason.
      */
     const timeoutMs = options.timeoutMs ?? 420_000;
+    /*
+     * One deadline for the whole marking, fixed before the first attempt.
+     *
+     * It used to be computed inside the retry loop, so every rate-limit retry
+     * minted a fresh one and a marking could run for four times the budget it
+     * was given -- which is not the shape production has, where the deadline is
+     * set once at route entry and every attempt is clamped to what is left of
+     * it. The router already honours a deadline across failover and standby;
+     * the bug was handing it a new one.
+     */
+    const deadlineAt = Date.now() + timeoutMs;
     try {
       const attempt = async () => {
         let lastError: unknown;
         for (let index = 0; index <= RATE_LIMIT_BACKOFF_MS.length; index += 1) {
           try {
             if ((options.pipeline ?? "wholePaper") === "pastPaperPractice") {
-              return await markPastPaperPracticeQuestion(adapted.adapted, timeoutMs);
+              return await markPastPaperPracticeQuestion(adapted.adapted, deadlineAt);
             }
             return await markPracticePaperWithAudit({
               paper: adapted.adapted.paper,
               answerParts: adapted.adapted.answerParts,
               exemplarParts: exemplarsToParts(request.exemplars),
-              deadlineAt: Date.now() + timeoutMs,
+              deadlineAt,
               maxOutputTokens: getAiTokenCap("practicePaperMarking"),
               logFallback: options.onFallback,
               ...(options.onMarkerReport
