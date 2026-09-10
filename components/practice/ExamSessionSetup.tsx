@@ -280,10 +280,20 @@ export default function ExamSessionSetup({
               ? `Only ${availableTotal} matching real question${availableTotal === 1 ? "" : "s"} so far`
               : "No matching real questions yet"}
           </h3>
+          {/*
+            * This used to say Jami was looking for more papers in the
+            * background. Nothing was: the search it referred to has no caller,
+            * and even if it ran, a past-paper question reaches students only
+            * after the licence and the extraction have both been checked by a
+            * person. So the card says what is actually true and offers the two
+            * choices that actually exist, rather than implying a wait that
+            * would never end.
+            */}
           <p className="mt-2 max-w-xl text-sm leading-6 text-text-secondary">
-            Jami is looking for more papers on this course in the background. In the meantime you can
-            fill the gap with original Jami-created questions, which are clearly labelled and are not
-            taken from a past paper.
+            More real questions are added for this course as they are licensed and checked, which is
+            not something you can wait for here. You can fill the gap with original Jami-created
+            questions — clearly labelled, and not taken from a past paper — or start with the real
+            ones there are.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Button disabled={starting} onClick={() => void start({ allowGenerated: true })}>

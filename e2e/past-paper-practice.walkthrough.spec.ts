@@ -111,19 +111,29 @@ test("a student can set up, answer, and recover a past-paper session", async ({ 
   await expect(page.getByRole("heading", { name: "Working", level: 2 })).toBeVisible();
   console.log("[desktop] working pane is inline beside the answer");
 
+  /*
+   * A tablet in portrait used to be treated as a phone: the working surface
+   * lived behind a button, so consulting the question meant closing a sheet.
+   * At 834px it should be inline and stacked under the answer.
+   */
   await page.setViewportSize(TABLET_PORTRAIT);
   await expect(page.getByLabel("Your answer")).toBeVisible();
-  console.log("[tablet] answer still visible at 834px");
+  await expect(page.getByRole("heading", { name: "Working", level: 2 })).toBeVisible();
+  await expect(page.getByRole("button", { name: /show your working/i })).toHaveCount(0);
+  console.log("[tablet] working is inline at 834px, with no sheet to open");
 
   await page.setViewportSize(PHONE);
   const openWorking = page.getByRole("button", { name: /working/i }).first();
   await expect(openWorking).toBeVisible();
   console.log("[phone] working opens as a sheet:", await openWorking.innerText());
   await openWorking.click();
-  const done = page.getByRole("button", { name: "Done" });
-  await expect(done).toBeVisible({ timeout: 20_000 });
-  await done.click();
-  console.log("[phone] working sheet opened and closed");
+  const sheet = page.getByRole("dialog", { name: "Your working" });
+  await expect(sheet).toBeVisible({ timeout: 20_000 });
+  console.log("[phone] working sheet is a labelled modal");
+  // Escape closes it, and focus goes back where it came from.
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  console.log("[phone] Escape closed the sheet");
 
   // --- Submit: the provider is absent, so this is the failure path --------
   await page.setViewportSize(DESKTOP);

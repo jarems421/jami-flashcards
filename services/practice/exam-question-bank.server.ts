@@ -13,6 +13,7 @@ import {
   type ExamSession,
 } from "@/lib/practice/exam-questions";
 import { isExamQuestionServable } from "@/lib/practice/exam-question-rights";
+import { servableExamSpecificationTopics } from "@/lib/practice/exam-specification-topics";
 import { normalizeQuestionAssets } from "@/lib/practice/practice-papers";
 import { generateExamGapQuestions } from "@/services/practice/exam-gap-generation.server";
 import { recoverExamDifficultyContributions } from "@/services/practice/exam-difficulty.server";
@@ -180,19 +181,23 @@ export async function getExamQuestionAvailability(input: {
     topicIds,
     need: EXAM_SESSION_MAX_QUESTIONS,
   });
-  const [easy, medium, hard, topicSnapshot] = await Promise.all([
+  const [easy, medium, hard] = await Promise.all([
     loadDifficulty("easy"),
     loadDifficulty("medium"),
     loadDifficulty("hard"),
-    getAdminDb().collection("examSpecificationTopics").doc(folder.examCourse!.specificationId).get(),
   ]);
-  const rawTopics = topicSnapshot.data()?.topics;
-  const topics = Array.isArray(rawTopics) ? rawTopics.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const id = typeof (item as Record<string, unknown>).id === "string" ? (item as Record<string, unknown>).id as string : "";
-    const label = typeof (item as Record<string, unknown>).label === "string" ? (item as Record<string, unknown>).label as string : "";
-    return id && label ? [{ id: id.slice(0, 120), label: label.slice(0, 160) }] : [];
-  }).slice(0, 200) : [];
+  /*
+   * Topics come from the checked-in catalogue, not from the database.
+   *
+   * Nothing ever wrote the collection this used to read, so the drawer was
+   * empty on every course -- and had anything written it, there was no check
+   * that its entries were the specification's own. The catalogue is
+   * owner-controlled and only served once a person has verified it against the
+   * published document, so a course with no verified list offers no topics at
+   * all rather than an invented one.
+   */
+  const catalogue = servableExamSpecificationTopics(folder.examCourse!.specificationId);
+  const topics = (catalogue?.topics ?? []).map((topic) => ({ id: topic.id, label: topic.label }));
   return {
     folder: {
       id: folder.id,

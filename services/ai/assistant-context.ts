@@ -38,7 +38,7 @@ import {
 } from "@/lib/workspace/notebooks";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
+import { examQuestionVisualParts, loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
 
 const MAX_SOURCE_METADATA_CANDIDATES = 200;
 const MAX_SOURCE_CANDIDATES_PER_RELATION =
@@ -599,6 +599,23 @@ async function resolvePracticeContext(input: {
       `Official mark scheme: ${String(attempt.officialMarkScheme ?? "")}`,
     ].join("\n").slice(0, 30_000),
   }];
+  /*
+   * The figure the question is about, not only its wording.
+   *
+   * A graph, a circuit or a table is often the question, and Tutor was handed
+   * the prompt alone -- so it discussed "the diagram" it had never seen and
+   * answered confidently about a shape it was inferring from the text. The
+   * same bounded loader marking uses, so the licence and size limits are the
+   * ones already in force; when the assets cannot be loaded Tutor is told they
+   * are missing rather than left to guess.
+   */
+  try {
+    currentParts.push(...(await examQuestionVisualParts(servable)));
+  } catch {
+    currentParts.push({
+      text: "The figures for this question could not be loaded, so they are not shown here. Say so if the answer depends on them rather than describing them.",
+    });
+  }
   if (typeof attempt.workingSnapshotPath === "string") {
     const [bytes] = await getAdminStorageBucket().file(attempt.workingSnapshotPath).download();
     if (bytes.length <= 3 * 1024 * 1024) currentParts.push({ inlineData: { mimeType: "image/png", data: bytes.toString("base64") } });

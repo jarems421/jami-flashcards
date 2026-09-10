@@ -93,7 +93,18 @@ export default function ExamQuestionMarkReport({
               : "Checked — your mark stayed the same."}
           </p>
         ) : null}
-        <p className="mt-4 text-sm leading-6 text-text-secondary">{result.feedback}</p>
+        {/*
+          * The same maths-aware renderer as the question. Feedback, credited
+          * evidence and criteria all quote the student's own expressions back
+          * at them, and rendering those as plain text meant the same formula
+          * appeared one way in the question and another in the explanation of
+          * why it did not earn a mark.
+          */}
+        <StudyText
+          as="p"
+          text={result.feedback}
+          className="mt-4 text-sm leading-6 text-text-secondary"
+        />
       </Card>
 
       {earned.length > 0 ? (
@@ -105,9 +116,9 @@ export default function ExamQuestionMarkReport({
                 key={`${item.criterion}-${index}`}
                 className="rounded-2xl border border-success/25 bg-success/10 p-3"
               >
-                <p className="text-sm font-medium text-text-primary">{item.criterion}</p>
+                <StudyText as="p" text={item.criterion} className="text-sm font-medium text-text-primary" />
                 {item.evidence ? (
-                  <p className="mt-1 text-sm leading-5 text-text-muted">{item.evidence}</p>
+                  <StudyText as="p" text={item.evidence} className="mt-1 text-sm leading-5 text-text-muted" />
                 ) : null}
               </li>
             ))}
@@ -124,16 +135,18 @@ export default function ExamQuestionMarkReport({
                 key={`${item.criterion}-${index}`}
                 className="rounded-2xl bg-[var(--color-glass-subtle)] p-3"
               >
-                <p className="text-sm font-medium text-text-primary">{item.criterion}</p>
+                <StudyText as="p" text={item.criterion} className="text-sm font-medium text-text-primary" />
                 {typeof item.maxMarks === "number" && (item.awardedMarks ?? 0) > 0 ? (
                   <p className="mt-1 text-xs font-medium text-text-secondary">
                     {item.awardedMarks} of {item.maxMarks} marks
                   </p>
                 ) : null}
                 {item.schemeValue ? (
-                  <p className="mt-1 text-sm leading-5 text-text-muted">
-                    The scheme wanted: {item.schemeValue}
-                  </p>
+                  <StudyText
+                    as="p"
+                    text={`The scheme wanted: ${item.schemeValue}`}
+                    className="mt-1 text-sm leading-5 text-text-muted"
+                  />
                 ) : null}
               </li>
             ))}

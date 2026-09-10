@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import AppPage from "@/components/layout/AppPage";
 import {
   Button,
@@ -95,10 +95,40 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   /** Advanced by each poll, so a lease that runs out is noticed on screen. */
   const [now, setNow] = useState(() => Date.now());
   const scratchpad = useRef<ExamScratchpadHandle | null>(null);
+  const workingSheet = useRef<HTMLDivElement | null>(null);
+  /** Where focus was before the sheet covered the screen, so it can go back. */
+  const focusBeforeWorking = useRef<HTMLElement | null>(null);
   const pendingDrafts = useRef(new Map<string, string>());
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushing = useRef(false);
   const flushAgain = useRef(false);
+
+  /*
+   * Focus follows the sheet, and the page behind it is hidden from screen
+   * readers while it is open -- without this a keyboard user could tab from a
+   * fullscreen working sheet into the answer box underneath it.
+   */
+  useEffect(() => {
+    const main = document.getElementById("exam-session-main");
+    if (!showWorking) {
+      main?.removeAttribute("aria-hidden");
+      focusBeforeWorking.current?.focus?.();
+      focusBeforeWorking.current = null;
+      return;
+    }
+    focusBeforeWorking.current = document.activeElement as HTMLElement | null;
+    main?.setAttribute("aria-hidden", "true");
+    const frame = window.requestAnimationFrame(() => {
+      const sheet = workingSheet.current;
+      if (!sheet) return;
+      sheet.setAttribute("tabindex", "-1");
+      sheet.focus({ preventScroll: true });
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      main?.removeAttribute("aria-hidden");
+    };
+  }, [showWorking]);
 
   const refresh = useCallback(async () => {
     try {
@@ -466,8 +496,21 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
           ) : null}
         </div>
 
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(26rem,1.1fr)]">
-          <div className="space-y-4 lg:sticky lg:top-32">
+        {/*
+          * Two columns only while there is a second thing to put in one.
+          * After marking the working pane is gone, and the grid kept its
+          * shape -- so the report was squeezed into nine-tenths of a column
+          * with an empty half of the screen beside it.
+          */}
+        <div
+          className={`grid items-start gap-4 ${
+            answering ? "lg:grid-cols-[minmax(0,0.9fr)_minmax(26rem,1.1fr)]" : "lg:grid-cols-1"
+          }`}
+        >
+          <div
+            id="exam-session-main"
+            className={`space-y-4 ${answering ? "lg:sticky lg:top-32" : "lg:mx-auto lg:w-full lg:max-w-3xl"}`}
+          >
             <Card padding="lg">
               <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-text-muted">
                 <span className="rounded-full bg-[var(--color-glass-subtle)] px-2.5 py-1 capitalize">
@@ -623,7 +666,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                       setDrafts((current) => ({ ...current, [id]: text }));
                     }}
                   />
-                  <div className="mt-3 lg:hidden">
+                  <div className="mt-3 md:hidden">
                     <Button
                       type="button"
                       variant="secondary"
@@ -721,11 +764,43 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
           </div>
 
           {answering && activeAttempt ? (
+            /*
+             * A dialog by hand, deliberately.
+             *
+             * The shared Dialog renders its children only while open, and the
+             * pad has to stay mounted whether or not the sheet is: it holds the
+             * handle submission asks for, so on a phone a student who never
+             * opened working could not submit at all. So the sheet keeps its
+             * one mount point and takes on the dialog's obligations instead --
+             * a labelled modal role, focus moved in and restored on close,
+             * Escape, and the rest of the page hidden from assistive
+             * technology while it covers the screen.
+             */
             <div
+              ref={workingSheet}
+              {...(showWorking
+                ? {
+                    role: "dialog" as const,
+                    "aria-modal": true,
+                    "aria-label": "Your working",
+                    onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => {
+                      if (event.key !== "Escape") return;
+                      event.stopPropagation();
+                      setShowWorking(false);
+                    },
+                  }
+                : {})}
+              /*
+               * Three layouts, not two. A tablet in portrait is 834px wide and
+               * was treated as a phone: the working surface lived behind a
+               * button, so a student had to open and close a sheet every time
+               * they wanted to look at the question. From `md` up it is inline
+               * and stacked under the answer, and from `lg` it moves beside it.
+               */
               className={`${
                 showWorking
-                  ? "fixed inset-0 z-50 overflow-y-auto bg-[var(--app-background)] p-3"
-                  : "hidden"
+                  ? "fixed inset-0 z-50 overflow-y-auto bg-[var(--app-background)] p-3 pb-[env(safe-area-inset-bottom)]"
+                  : "hidden md:block"
               } lg:static lg:block lg:overflow-visible lg:bg-transparent lg:p-0`}
             >
               <div className="mb-2 flex items-center justify-between gap-3 px-1">
@@ -739,7 +814,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                   type="button"
                   size="sm"
                   variant="ghost"
-                  className="lg:hidden"
+                  className="md:hidden"
                   onClick={() => setShowWorking(false)}
                 >
                   Done

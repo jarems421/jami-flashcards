@@ -15,6 +15,7 @@ import {
   schemeMarkTotal,
   validateMarkSchemeItem,
 } from "@/lib/practice/mark-schemes";
+import { filterCanonicalTopicIds } from "@/lib/practice/exam-specification-topics";
 import {
   canPublishExamQuestion,
   type ExamDifficulty,
@@ -184,6 +185,22 @@ export function buildExamQuestionsFromExtraction(
     const schemeTotal = markSchemeItem ? schemeMarkTotal(markSchemeItem) : 0;
     const page = Math.round(Number(item.questionPage));
 
+    /*
+     * Only topics the specification names. Whatever the model returns is a
+     * suggestion, and an id the catalogue does not hold is not a near miss to
+     * be corrected -- it is a topic that does not exist on this course. Left
+     * unchecked these would have reached students as though the board had
+     * written them, and would have silently narrowed a topic-filtered session
+     * to the wrong questions.
+     */
+    const suggestedTopics = Array.isArray(item.topicIds)
+      ? item.topicIds.map((value) => text(value, 120)).filter(Boolean).slice(0, 20)
+      : [];
+    const { topicIds: canonicalTopics, rejected: rejectedTopics } = filterCanonicalTopicIds(
+      manifest.specificationId,
+      suggestedTopics
+    );
+
     const issues = [
       !input.identityMatches ? "The paper does not identify itself as the one in the manifest." : "",
       !number ? "Missing question label." : "",
@@ -196,6 +213,9 @@ export function buildExamQuestionsFromExtraction(
       printedTariff === null ? "No tariff could be read for this question." : "",
       !pairedScheme ? "Missing scheme pairing." : "",
       !schemeMentionsLabel ? `The mark scheme does not cover question ${number || "?"}.` : "",
+      rejectedTopics.length
+        ? `Topics not on this specification were suggested and dropped: ${rejectedTopics.join(", ")}.`
+        : "",
       markSchemeItem && schemeTotal !== marks
         ? `The scheme awards ${schemeTotal} marks against a ${marks}-mark question.`
         : "",
@@ -277,9 +297,7 @@ export function buildExamQuestionsFromExtraction(
         prompt,
         marks,
         assets: [],
-        topicIds: Array.isArray(item.topicIds)
-          ? item.topicIds.map((value) => text(value, 120)).filter(Boolean).slice(0, 20)
-          : [],
+        topicIds: canonicalTopics,
         difficulty: difficultyOf(item.difficulty),
         aiDifficulty: difficultyOf(item.difficulty),
         difficultyScore:
