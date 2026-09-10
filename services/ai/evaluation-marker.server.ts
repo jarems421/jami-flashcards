@@ -53,6 +53,17 @@ import { examMarkingNeedsVerification } from "@/lib/practice/exam-marking-policy
  */
 const RATE_LIMIT_BACKOFF_MS = [4_000, 12_000, 30_000];
 
+/**
+ * What one marking is assumed to cost until it says otherwise.
+ *
+ * Sized for the most expensive shape this evaluator runs -- a handwritten,
+ * high-tariff response that buys a second marker, disagrees with it, and is
+ * adjudicated, carrying page images on every call. Deliberately generous: an
+ * over-estimate ends a run early, an under-estimate lets it overshoot the
+ * ceiling it was given, and only one of those is recoverable.
+ */
+const DEFAULT_RESERVE_USD = 0.15;
+
 const isRateLimited = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
   return /\b429\b|rate.?limit/i.test(message);
@@ -140,6 +151,22 @@ export type EvaluationMarkerOptions = {
    * a bill.
    */
   maxSpendUsd?: number;
+  /**
+   * What one marking is assumed to cost until it reports otherwise.
+   *
+   * The ceiling is only a ceiling if the money is committed before the call,
+   * not counted after it. Checking the running total on the way in bounds
+   * nothing under concurrency -- eight markings pass the check together and
+   * then all eight spend -- and it ignores that one marking is several calls:
+   * a second marker where the rule asks for one, an adjudication where they
+   * disagree, and a retry for every rate-limited attempt.
+   *
+   * So each marking reserves this much up front and reconciles to its real
+   * cost afterwards. It must be at least as large as the most expensive single
+   * marking, or the reservation understates the commitment and the bound
+   * leaks. Too large only ends a run early, which is the safe direction.
+   */
+  reserveUsdPerRecord?: number;
   /** Per-response wall-clock budget, matching the production deadline shape. */
   timeoutMs?: number;
   /**
@@ -237,6 +264,14 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
   mark: Marker;
   stats: EvaluationMarkerStats;
 } {
+  /**
+   * Money promised, which is what a ceiling has to be checked against.
+   *
+   * A default sized for the most expensive shape this evaluator runs: a
+   * handwritten high-tariff response that buys a second marker, disagrees, and
+   * is adjudicated, with page images on every call.
+   */
+  let committedUsd = 0;
   const stats: EvaluationMarkerStats = {
     attempted: 0,
     marked: 0,
@@ -259,12 +294,27 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
         `Evaluation call ceiling of ${options.maxRecords} reached. Raise it deliberately or narrow the run.`
       );
     }
-    if (options.maxSpendUsd !== undefined && stats.spentUsd >= options.maxSpendUsd) {
+    /*
+     * Committed, not spent. The reservation is taken before the first call of
+     * this marking and released to the real figure afterwards, so concurrent
+     * markings cannot each see room that only one of them can have.
+     */
+    const reserve = options.reserveUsdPerRecord ?? DEFAULT_RESERVE_USD;
+    if (options.maxSpendUsd !== undefined && committedUsd + reserve > options.maxSpendUsd) {
       throw new Error(
-        `Evaluation spend ceiling of $${options.maxSpendUsd.toFixed(2)} reached after ` +
-          `${stats.marked} markings ($${stats.spentUsd.toFixed(2)}). Raise it deliberately or narrow the run.`
+        `Evaluation spend ceiling of $${options.maxSpendUsd.toFixed(2)} reached: ` +
+          `$${committedUsd.toFixed(2)} committed across ${stats.marked} markings, and the next ` +
+          `reserves $${reserve.toFixed(2)}. Raise it deliberately or narrow the run.`
       );
     }
+    committedUsd += reserve;
+    let reconciled = false;
+    const settle = (actual: number) => {
+      if (reconciled) return;
+      reconciled = true;
+      committedUsd += actual - reserve;
+      stats.spentUsd += actual;
+    };
     stats.attempted += 1;
 
     let answerImages: readonly AiContentPart[] = [];
@@ -374,7 +424,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
         throw lastError;
       };
       const { result, audit, estimatedCostUsd } = await attempt();
-      stats.spentUsd += estimatedCostUsd ?? 0;
+      settle(estimatedCostUsd ?? 0);
 
       if (audit.adjudicatedQuestionIds.length > 0) stats.adjudicated += 1;
       if (audit.thirdViewQuestionIds.length > 0) stats.thirdView += 1;
@@ -427,6 +477,13 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
         })),
       };
     } catch (error) {
+      /*
+       * A marking that threw may still have paid for the calls it made before
+       * it did, and there is no figure for them. The reservation stands rather
+       * than being released, so a run of failures cannot spend past the
+       * ceiling while reporting that it spent nothing.
+       */
+      settle(reserve);
       stats.failed += 1;
       const reason = error instanceof Error ? error.message : String(error);
       stats.reasons.push(`${request.record.id} (${request.arm}): ${reason}`);
