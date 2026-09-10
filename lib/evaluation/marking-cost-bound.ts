@@ -1,39 +1,45 @@
 /**
- * The most one marking can cost, derived rather than guessed.
+ * A conservative estimate of what one marking can cost. Not a guarantee.
  *
- * A ceiling checked against reported spend is not a ceiling: the money is
- * already gone by the time it is counted, a provider that reports nothing
- * looks free, and one marking is several calls. To hold a reservation before
- * the first call, the reservation has to be an upper bound on what that
- * marking can possibly cost -- so it is computed from the things that are
- * actually enforced.
+ * It is worth being exact about what this is, because an earlier version of
+ * this comment called it an upper bound and it is not one.
  *
- * Three of the four are hard limits in the shipped code:
+ * Four inputs are genuinely enforced in shipped code:
  *
- *   input     `inputTokenCap` is checked before every provider call and the
- *             call is refused above it, so no request can carry more.
- *   output    `maxOutputTokens` is sent with every request and the provider
- *             stops there.
- *   calls     one marking is at most a primary, one verifier, and one
- *             adjudication. The post-check verifier and the forced verifier
- *             are mutually exclusive, so it is one verifier either way.
+ *   text input   `inputTokenCap` is checked before every provider call and the
+ *                call refused above it.
+ *   output       `maxOutputTokens` is sent with every request.
+ *   calls        one marking is at most a primary, one verifier and one
+ *                adjudication -- the forced and post-check verifiers are
+ *                mutually exclusive.
+ *   retries      three attempts per marker call from the shipped policy, and
+ *                the evaluation's rate-limit loop may repeat a whole marking
+ *                four times. Both are counted, multiplied.
  *
- * The fourth, retries, is bounded by the shipped policy: three attempts per
- * marker call, and the evaluation's own rate-limit loop may repeat a whole
- * marking up to four times.
+ * Four are not, and each could make a real bill exceed this number:
  *
- * The estimate is deliberately pessimistic in two places. The input cap is
- * enforced against a provider-neutral character estimate rather than the
- * provider's own tokeniser, so a margin is applied; and every retry is priced
- * as though it generated a full response, when a rate-limited one generates
- * nothing. An over-estimate ends a run early, an under-estimate lets it spend
- * past the number it was given, and only one of those can be undone.
- */
-
-/**
- * Published per-token prices, read from the provider's public model metadata
- * on 2026-09-10. Prices change: a run that matters should re-read them rather
- * than trust this table, which is why the bound reports the date it used.
+ *   images       the cap is enforced against a character estimate that treats
+ *                image bytes as characters divided by 3.5. That has no
+ *                relationship to how a provider bills an image, which is
+ *                usually by tile or patch. For the handwritten set the images
+ *                are small -- a median of 5.7KB, none close to the cap -- and
+ *                the estimator happens to call a median image about 1,200
+ *                tokens, which is a plausible figure by coincidence rather
+ *                than by modelling.
+ *   tokeniser    even for text, the cap is enforced against characters over
+ *                3.5, not the provider's own tokeniser. The margin below is a
+ *                safety factor, not a proof.
+ *   reasoning    the supervisor runs at medium reasoning effort. Whether those
+ *                tokens are billed inside `max_tokens` or beyond it is a
+ *                provider behaviour that has not been established here.
+ *   routing      failover selects a different endpoint for the *same* model,
+ *                so no other model can be billed -- but per-endpoint prices on
+ *                the same model can differ from the headline rate used below.
+ *
+ * So: reserve against this, report it as an estimate, and expect a small
+ * overshoot to be possible. Closing the four gaps means pinning routes and
+ * modelling image billing, which is a larger piece of work than the experiment
+ * it would be protecting.
  */
 export const MARKING_MODEL_PRICES = {
   /** qwen/qwen3.6-35b-a3b */
@@ -52,6 +58,7 @@ const ATTEMPTS_PER_CALL = 3;
 const RATE_LIMIT_ATTEMPTS = 4;
 
 export type MarkingCostBound = {
+  /** A conservative estimate per marking, not a guaranteed ceiling. */
   usdPerRecord: number;
   pricesReadOn: string;
   breakdown: {
@@ -64,17 +71,17 @@ export type MarkingCostBound = {
 };
 
 /**
- * An upper bound on one marking, for a run that reserves before it calls.
+ * The per-marking estimate a run reserves against.
  *
- * `verified` says whether every input in the bound is enforced somewhere. A
- * bound computed without an input cap is not an upper bound at all, because
- * nothing stops a request growing, and the caller is told so rather than being
- * handed a number that looks like a guarantee.
+ * `capsEnforced` says only that a text input cap and an output cap exist to
+ * compute from. It does not mean the figure cannot be exceeded -- see the four
+ * unmodelled dimensions above -- and it is named for what it checks rather
+ * than being called `verified`, which read as a promise this cannot make.
  */
 export function markingCostBound(input: {
   inputTokenCap: number | null;
   maxOutputTokens: number;
-}): MarkingCostBound & { verified: boolean } {
+}): MarkingCostBound & { capsEnforced: boolean } {
   const inputTokens = (input.inputTokenCap ?? 0) * INPUT_ESTIMATE_MARGIN;
   const supervisorCallUsd =
     inputTokens * MARKING_MODEL_PRICES.supervisor.promptUsdPerToken +
@@ -91,7 +98,7 @@ export function markingCostBound(input: {
   return {
     usdPerRecord,
     pricesReadOn: MARKING_PRICES_READ_ON,
-    verified: typeof input.inputTokenCap === "number" && input.inputTokenCap > 0,
+    capsEnforced: typeof input.inputTokenCap === "number" && input.inputTokenCap > 0,
     breakdown: {
       supervisorCallUsd,
       workerCallUsd,

@@ -47,6 +47,80 @@ describe("medly-gcse", () => {
     expect(result.stats).toMatchObject({ typed: 1, handwritten: 1 });
   });
 
+  /*
+   * The assessment-objective split was recorded only as prose, which reads
+   * correctly and cannot be measured. It is the corpus's one structured
+   * breakdown of a GCSE mark, and it is kept as what it is -- a marker's split
+   * of their own total across strands of the qualification -- rather than
+   * relabelled as criterion decisions, which would let a report claim
+   * criterion-level evidence the corpus does not have.
+   */
+  it("keeps each examiner's assessment-objective split as numbers", () => {
+    const result = parseMedlyGcse({
+      ...base,
+      datasetCsv: csv(
+        "eng_0001,english_01,english,typed,answers/english/eng_0001.txt,8,5,7,AO5:3;AO6:2,AO5:4;AO6:3"
+      ),
+    });
+    expect(result.records[0].assessmentObjectiveMarks).toEqual([
+      [
+        { objective: "AO5", marks: 3 },
+        { objective: "AO6", marks: 2 },
+      ],
+      [
+        { objective: "AO5", marks: 4 },
+        { objective: "AO6", marks: 3 },
+      ],
+    ]);
+    // Indexed to match humanMarks, and each split sums to that marker's total.
+    expect(result.records[0].humanMarks).toEqual([5, 7]);
+    // Still not criterion decisions.
+    expect(result.records[0].criteria).toBeUndefined();
+  });
+
+  it("keeps the prose form beside the numbers", () => {
+    const result = parseMedlyGcse({
+      ...base,
+      datasetCsv: csv(
+        "eng_0001,english_01,english,typed,answers/english/eng_0001.txt,8,5,7,AO5:3;AO6:2,AO5:4;AO6:3"
+      ),
+    });
+    expect(result.records[0].examinerCommentary).toContain("Examiner 1 assessment objectives: AO5:3, AO6:2");
+  });
+
+  /*
+   * A split for one marker and nothing for the other would read as the second
+   * having awarded nothing under every objective, which is a different claim
+   * from having recorded no split.
+   */
+  it("records nothing when only one examiner's split is present", () => {
+    const result = parseMedlyGcse({
+      ...base,
+      datasetCsv: csv(
+        "eng_0001,english_01,english,typed,answers/english/eng_0001.txt,8,5,7,AO5:3;AO6:2,"
+      ),
+    });
+    expect(result.records[0].assessmentObjectiveMarks).toBeUndefined();
+  });
+
+  it("leaves out a split it cannot read rather than guessing a number", () => {
+    const result = parseMedlyGcse({
+      ...base,
+      datasetCsv: csv(
+        "eng_0001,english_01,english,typed,answers/english/eng_0001.txt,8,5,7,AO5:oops;AO6:2,AO5:4;AO6:3"
+      ),
+    });
+    expect(result.records[0].assessmentObjectiveMarks?.[0]).toEqual([{ objective: "AO6", marks: 2 }]);
+  });
+
+  it("records no split at all where the source has none", () => {
+    const result = parseMedlyGcse({
+      ...base,
+      datasetCsv: csv("eng_0001,english_01,english,typed,answers/english/eng_0001.txt,8,5,5,,"),
+    });
+    expect(result.records[0].assessmentObjectiveMarks).toBeUndefined();
+  });
+
   /** The regime is read off the evidence, not assumed from the subject alone. */
   it("calls a question weighted-trait only when the examiners split it by objective", () => {
     const result = parseMedlyGcse({

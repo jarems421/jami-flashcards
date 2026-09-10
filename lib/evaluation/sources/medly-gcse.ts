@@ -72,6 +72,33 @@ function describeAoMarks(value: string | undefined) {
   return trimmed ? trimmed.split(";").map((part) => part.trim()).filter(Boolean).join(", ") : null;
 }
 
+/**
+ * One marker's assessment-objective split, kept as numbers.
+ *
+ * The source writes it as `AO5:16;AO6:7`. It was recorded only as prose
+ * alongside the commentary, which reads correctly and cannot be measured: a
+ * report could see that two markers reached 23 and 38 on the same essay, and
+ * not that one put sixteen of it under AO5 while the other put twenty-four
+ * there. Sixty of the corpus's forty-mark essays carry this and it was the
+ * only structured breakdown of a GCSE mark anywhere in it.
+ */
+function parseAoMarks(value: string | undefined) {
+  const parts = (value ?? "")
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const marks: { objective: string; marks: number }[] = [];
+  for (const part of parts) {
+    const [objective, raw] = part.split(":").map((piece) => piece.trim());
+    const value = Number(raw);
+    // A split that cannot be read is left out rather than guessed at: a wrong
+    // number here would look exactly like an examiner's judgement.
+    if (!objective || !Number.isFinite(value) || value < 0) continue;
+    marks.push({ objective, marks: value });
+  }
+  return marks;
+}
+
 export function parseMedlyGcse(input: MedlyInput): MedlyResult {
   const { records: rows, skipped } = parseCsvRecords(input.datasetCsv);
   const records: MarkingCorpusRecord[] = [];
@@ -172,6 +199,17 @@ export function parseMedlyGcse(input: MedlyInput): MedlyResult {
       .filter(Boolean)
       .join("\n\n");
 
+    /*
+     * Parallel to `humanMarks`, and only when every marker has one -- a split
+     * for the first examiner and nothing for the second would be read as the
+     * second having awarded nothing under every objective.
+     */
+    const aoMarks = [
+      parseAoMarks(row.examiner_1_ao_marks),
+      parseAoMarks(row.examiner_2_ao_marks),
+    ].slice(0, marks.length);
+    const hasAoMarks = aoMarks.length === marks.length && aoMarks.every((entry) => entry.length > 0);
+
     records.push({
       id: `medly:${answerId}`,
       sourceId: "medly-gcse",
@@ -185,6 +223,7 @@ export function parseMedlyGcse(input: MedlyInput): MedlyResult {
       maxMarks: questionMax,
       ...(question.markscheme ? { markScheme: question.markscheme } : {}),
       ...(aoLines.length > 0 ? { examinerCommentary: aoLines.join("\n") } : {}),
+      ...(hasAoMarks ? { assessmentObjectiveMarks: aoMarks } : {}),
     });
   }
 

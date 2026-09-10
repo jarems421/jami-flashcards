@@ -3,12 +3,13 @@ import { markingCostBound } from "@/lib/evaluation/marking-cost-bound";
 import { getAiInputTokenCap, getAiTokenCap } from "@/lib/ai/budgets";
 
 /**
- * The number a run reserves against, and whether it is really a bound.
+ * The number a run reserves against.
  *
- * Reserving before a call only bounds a run if the reservation is an upper
- * bound on what that call can cost. These check the derivation against the
- * caps the product actually ships, so a change to either cap moves the
- * reservation rather than silently invalidating it.
+ * It is a conservative estimate and not a ceiling: image billing, the
+ * provider's own tokeniser, reasoning-token accounting and per-endpoint prices
+ * are all outside it. What these check is that the estimate is derived from
+ * the caps the product actually ships, so changing a cap moves the reservation
+ * instead of silently invalidating it.
  */
 describe("the per-marking cost bound", () => {
   const shipped = markingCostBound({
@@ -16,8 +17,8 @@ describe("the per-marking cost bound", () => {
     maxOutputTokens: getAiTokenCap("examQuestionMarking"),
   });
 
-  it("is verified against enforced caps for the shipped configuration", () => {
-    expect(shipped.verified).toBe(true);
+  it("is computed from the caps the product actually ships", () => {
+    expect(shipped.capsEnforced).toBe(true);
     expect(getAiInputTokenCap("examQuestionMarking")).toBe(32_000);
     expect(getAiTokenCap("examQuestionMarking")).toBe(8_000);
   });
@@ -27,8 +28,8 @@ describe("the per-marking cost bound", () => {
    * growing, so the caller is told the bound is unverified rather than handed
    * a number that looks like one.
    */
-  it("refuses to call itself verified when nothing caps the input", () => {
-    expect(markingCostBound({ inputTokenCap: null, maxOutputTokens: 8_000 }).verified).toBe(false);
+  it("says so when there is no input cap to compute from", () => {
+    expect(markingCostBound({ inputTokenCap: null, maxOutputTokens: 8_000 }).capsEnforced).toBe(false);
   });
 
   it("stays under the amount proposed for the probe", () => {

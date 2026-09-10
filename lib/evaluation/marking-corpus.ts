@@ -142,6 +142,23 @@ export type MarkingCorpusRecord = {
   examinerCommentary?: string;
   /** Present where the source marks criterion by criterion. */
   criteria?: readonly MarkingCriterion[];
+  /**
+   * Each marker's own split of their total across assessment objectives, where
+   * the source records one. Indexed to match `humanMarks`.
+   *
+   * Deliberately not `criteria`. A criterion is one awardable thing with a
+   * stated condition, and a criterion decision says whether this answer met it.
+   * An assessment objective is a strand of the qualification, and a mark
+   * against it is a judgement about the whole response seen through that
+   * strand -- richer than a total and a different kind of thing from a
+   * criterion, so it is stored under its own name rather than relabelled into
+   * a shape that would let a report claim criterion-level evidence it does not
+   * have.
+   *
+   * Worth having because two markers can reach a similar total by different
+   * routes, or the same total from opposite directions, and only this shows it.
+   */
+  assessmentObjectiveMarks?: readonly (readonly { objective: string; marks: number }[])[];
 };
 
 /**
