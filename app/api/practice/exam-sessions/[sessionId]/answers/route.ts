@@ -7,7 +7,8 @@ import { checkAiBudget, createAiBudgetLimitResponse, getAiTokenCap, refundAiBudg
 import { getAiInputTokenCap } from "@/lib/ai/budgets";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { EXAM_ANSWER_MAX_LENGTH, EXAM_ID_PATTERN, examAnswerUnlocksModelAnswer, examDocument, examResultForAttempt, withCriterionTariffs, type ExamAttempt, type ExamSession, examOperationIsLive } from "@/lib/practice/exam-questions";
-import { schemeCriteria, type PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
+import { schemeCriteria } from "@/lib/practice/mark-schemes";
+import { examMarkingNeedsVerification } from "@/lib/practice/exam-marking-policy";
 import { buildSingleQuestionAnswerParts, buildSingleQuestionPaper } from "@/lib/practice/single-question-paper";
 import { markSingleQuestionAdaptively } from "@/services/ai/practice-paper-marking.server";
 import { featureFlags } from "@/lib/app/feature-flags";
@@ -18,12 +19,6 @@ import { validateExamWorking } from "@/services/practice/exam-working.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-function needsVerification(item: PracticePaperMarkSchemeItem, marks: number, working: boolean) {
-  return marks >= 6 || ["banded", "weightedTraits", "competency"].includes(item.marking) ||
-    (working && marks >= 4) ||
-    ((item.marking === "additive" || item.marking === "pointPool") && item.points.some((point) => point.dep.length > 0 || point.ft));
-}
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   const deadlineAt = Date.now() + 55_000;
@@ -151,7 +146,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
     const marked = await markSingleQuestionAdaptively({
       paper, answerParts, originalPaperParts, maxOutputTokens: getAiTokenCap("examQuestionMarking"), inputTokenCap: getAiInputTokenCap("examQuestionMarking"), deadlineAt,
-      forceVerification: needsVerification(secret.markSchemeItem, question.marks, Boolean(bytes)),
+      forceVerification: examMarkingNeedsVerification(secret.markSchemeItem, question.marks, Boolean(bytes)),
     });
     if (!marked.result.questionResults[0]) throw new Error("missing_question_result");
     // The scheme is in hand here and nowhere downstream, so each criterion

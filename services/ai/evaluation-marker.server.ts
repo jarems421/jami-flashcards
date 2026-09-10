@@ -1,14 +1,19 @@
 import "server-only";
 
-import { getAiTokenCap } from "@/lib/ai/budgets";
+import { getAiInputTokenCap, getAiTokenCap } from "@/lib/ai/budgets";
 import {
   adaptRecordToPaper,
   exemplarsToParts,
 } from "@/lib/evaluation/practice-paper-adapter";
 import type { AiContentPart } from "@/lib/ai/content-parts";
+import type { PracticePaper } from "@/lib/practice/practice-papers";
 import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
 import type { Marker, MarkRequest, MarkResponse } from "@/lib/evaluation/experiment";
-import { markPracticePaperWithAudit } from "@/services/ai/practice-paper-marking.server";
+import {
+  markPracticePaperWithAudit,
+  markSingleQuestionAdaptively,
+} from "@/services/ai/practice-paper-marking.server";
+import { examMarkingNeedsVerification } from "@/lib/practice/exam-marking-policy";
 
 /**
  * The evaluation's marker: Jami's real marking path, nothing simulated.
@@ -53,9 +58,77 @@ const isRateLimited = (error: unknown) => {
   return /\b429\b|rate.?limit/i.test(message);
 };
 
+/**
+ * Which marker a run is measuring.
+ *
+ * `wholePaper` is the paper surface: two blind markers on every question, then
+ * adjudication, then a juror. `pastPaperPractice` is what a student answering
+ * one past-paper question actually gets: one marker, a second bought only
+ * where the shipped rule asks for it, adjudication only on a real dispute, and
+ * no juror -- on the shipped single-question output and input caps.
+ *
+ * They are not interchangeable. Reporting a whole-paper figure as Past Paper
+ * Practice readiness flatters the product by an ensemble the student never
+ * receives, and that is precisely what this evaluator did while describing
+ * itself as "Jami's real marking path".
+ */
+export type EvaluationPipeline = "wholePaper" | "pastPaperPractice";
+
+/**
+ * The single-question marker, called exactly as the answers route calls it.
+ *
+ * The shipped output and input caps, the shipped verification trigger, and a
+ * deadline of the same shape -- so a run measures the marker a student is
+ * given rather than a more expensive one that happens to share a prompt.
+ */
+async function markPastPaperPracticeQuestion(
+  adapted: { paper: PracticePaper; answerParts: AiContentPart[] },
+  timeoutMs: number
+) {
+  const question = adapted.paper.questions[0];
+  const scheme = adapted.paper.markScheme?.items?.find(
+    (item: { questionId: string }) => item.questionId === question?.id
+  );
+  if (!question || adapted.paper.questions.length !== 1 || !scheme) {
+    throw new Error("single_question_required");
+  }
+  const hasWorking = adapted.answerParts.some((part) => "inlineData" in part);
+  const marked = await markSingleQuestionAdaptively({
+    paper: adapted.paper,
+    answerParts: adapted.answerParts,
+    deadlineAt: Date.now() + timeoutMs,
+    maxOutputTokens: getAiTokenCap("examQuestionMarking"),
+    inputTokenCap: getAiInputTokenCap("examQuestionMarking"),
+    forceVerification: examMarkingNeedsVerification(scheme, question.marks, hasWorking),
+  });
+  /*
+   * Reported in the whole-paper audit's shape so one set of statistics covers
+   * both runs. `thirdViewQuestionIds` is empty rather than omitted because
+   * this path genuinely has no juror -- a reader comparing the two runs should
+   * see that as a zero, not as a missing field.
+   */
+  const disputed = marked.audit.adjudicated ? [question.id] : [];
+  return {
+    result: marked.result,
+    estimatedCostUsd: marked.estimatedCostUsd,
+    audit: {
+      version: 1 as const,
+      primaryScores: { [question.id]: marked.audit.primaryScore },
+      verifierScores:
+        marked.audit.verifierScore === undefined ? {} : { [question.id]: marked.audit.verifierScore },
+      disputedQuestionIds: disputed,
+      adjudicatedQuestionIds: disputed,
+      thirdViewQuestionIds: [] as string[],
+      createdAt: Date.now(),
+    },
+  };
+}
+
 export type EvaluationMarkerOptions = {
   /** Hard ceiling on marking calls. The run stops rather than exceeding it. */
   maxRecords: number;
+  /** Which student-facing marker to measure. Defaults to the paper surface. */
+  pipeline?: EvaluationPipeline;
   /** Per-response wall-clock budget, matching the production deadline shape. */
   timeoutMs?: number;
   /**
@@ -220,6 +293,9 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
         let lastError: unknown;
         for (let index = 0; index <= RATE_LIMIT_BACKOFF_MS.length; index += 1) {
           try {
+            if ((options.pipeline ?? "wholePaper") === "pastPaperPractice") {
+              return await markPastPaperPracticeQuestion(adapted.adapted, timeoutMs);
+            }
             return await markPracticePaperWithAudit({
               paper: adapted.adapted.paper,
               answerParts: adapted.adapted.answerParts,
