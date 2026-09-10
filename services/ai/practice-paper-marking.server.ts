@@ -703,9 +703,22 @@ export async function markSingleQuestionAdaptively(
   diagnostics.push(...primary.diagnostics, ...(verifier?.diagnostics ?? []));
 
   const primaryQuestion = primary.result.questionResults[0];
+  /*
+   * A mark nobody could reconcile buys the second marker.
+   *
+   * `unverifiable` means the marker gave a total and no criterion awards that
+   * could be checked against the scheme -- so the number rests on nothing that
+   * can be inspected. That is a measurable signal of exactly the kind the
+   * post-check exists for, and a better one than the model's own confidence,
+   * which the corpus work found generous and uninformative.
+   */
+  const primaryUnverifiable = primaryQuestion?.markConsistency?.status === "unverifiable";
   const needsPostCheck =
     !verifier &&
-    (primaryNeededParseRetry || primaryQuestion?.confidence === "low" || Boolean(primaryQuestion?.transcriptionNote));
+    (primaryNeededParseRetry ||
+      primaryUnverifiable ||
+      primaryQuestion?.confidence === "low" ||
+      Boolean(primaryQuestion?.transcriptionNote));
   if (needsPostCheck) {
     verifier = await runVerifier();
     diagnostics.push(...verifier.diagnostics);

@@ -100,6 +100,20 @@ export default function ExamQuestionMarkReport({
           * appeared one way in the question and another in the explanation of
           * why it did not earn a mark.
           */}
+        {/*
+          * A mark that could not be reconciled against its own criteria is
+          * shown as what it is. It has already been through a second marker --
+          * an unreconciled result triggers one -- so this is what is left when
+          * that did not settle it, and presenting it as a finished score would
+          * be the quiet part of the problem: the number rests on reasons that
+          * could not be checked.
+          */}
+        {result.markConsistency?.status === "unverifiable" ? (
+          <p className="mt-4 rounded-2xl border border-warm-accent/30 bg-warm-accent/10 p-3 text-sm leading-5 text-text-secondary">
+            Jami could not check this mark against the scheme point by point, so treat it as a guide
+            rather than a settled score. Asking for a second opinion below is worthwhile here.
+          </p>
+        ) : null}
         <StudyText
           as="p"
           text={result.feedback}
