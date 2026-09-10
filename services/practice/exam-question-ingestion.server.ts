@@ -418,7 +418,16 @@ export async function renderIngestionAsset(
   const rendered = item.regions.length
     ? await renderRegions(paperBytes, item.regions)
     : await renderPage(paperBytes, item.page);
-  const assetPath = `internal/examQuestionBank/${state.manifest.board}/${state.paperId}/${item.question.id}-question.png`;
+  /*
+   * The version is in the path, so a re-ingest writes a new file rather than
+   * over the old one. A fixed path meant re-ingesting a paper replaced the
+   * imagery of every session already running on it -- the student's question
+   * changed picture underneath them, mid-answer, with nothing recording that
+   * it had. The old object stays exactly where the live session's snapshot
+   * points at it.
+   */
+  const version = item.question.contentVersion;
+  const assetPath = `internal/examQuestionBank/${state.manifest.board}/${state.paperId}/${item.question.id}-${version}-question.png`;
   await bucket.file(assetPath).save(rendered.bytes, { resumable: false, contentType: "image/png" });
   const assets = [{
     id: "question-extract", type: "image" as const,
@@ -435,7 +444,7 @@ export async function renderIngestionAsset(
     try {
       const schemeBytes = await sourceBytes(state.schemeStoragePath);
       const schemeRender = await renderPage(schemeBytes, schemePage);
-      const schemeAssetPath = `internal/examQuestionBank/${state.manifest.board}/${state.paperId}/${item.question.id}-scheme.png`;
+      const schemeAssetPath = `internal/examQuestionBank/${state.manifest.board}/${state.paperId}/${item.question.id}-${version}-scheme.png`;
       await bucket.file(schemeAssetPath).save(schemeRender.bytes, { resumable: false, contentType: "image/png" });
       reviewAssets.push({
         id: "scheme-extract", type: "image" as const,

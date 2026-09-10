@@ -197,6 +197,21 @@ describe("content versions", () => {
     );
   });
 
+  /*
+   * A question is very often its picture -- a graph, a circuit, a source
+   * extract. The version used to cover the wording, the tariff and the scheme
+   * only, so a paper whose diagram had been redrawn re-ingested to an
+   * identical version, and the live session that checks its version before
+   * marking had nothing to object to while the image changed underneath it.
+   */
+  it("changes the version when the source document changes, wording or not", () => {
+    const original = build();
+    const reissued = build({ paperSha256: "a-different-paper-entirely" });
+    expect(reissued.entries.map((entry) => entry.question.contentVersion)).not.toEqual(
+      original.entries.map((entry) => entry.question.contentVersion)
+    );
+  });
+
   it("changes the version when the wording changes", () => {
     const reworded = fixture.capture.questions.map((question) => ({
       ...question,

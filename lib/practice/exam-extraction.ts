@@ -235,8 +235,30 @@ export function buildExamQuestionsFromExtraction(
      * the one being replaced.
      */
     const publishable = canPublishExamQuestion(verification) && issues.length === 0;
+    /*
+     * Everything a student is actually shown or marked against, hashed
+     * together.
+     *
+     * This used to cover the wording, the tariff and the scheme, which left
+     * the picture out. A question is very often the picture -- a graph, a
+     * circuit, a source extract -- so re-ingesting a paper whose diagram had
+     * been redrawn produced an identical version, and the live session that
+     * checks its version before marking saw nothing to object to while the
+     * image underneath it silently became a different image.
+     *
+     * The region and page say which part of which page is cut out, and the
+     * paper's own hash says which document it was cut from, so any change to
+     * the source is a change of identity.
+     */
     const contentVersion = createHash("sha256")
-      .update(JSON.stringify({ prompt, marks, markSchemeItem }))
+      .update(JSON.stringify({
+        prompt,
+        marks,
+        markSchemeItem,
+        page,
+        regions,
+        paperSha256: input.paperSha256,
+      }))
       .digest("hex")
       .slice(0, 16);
 
