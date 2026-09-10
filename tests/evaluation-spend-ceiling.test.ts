@@ -212,6 +212,40 @@ describe("the evaluation spend ceiling", () => {
     expect(stats.unaccountedMarkings).toBe(2);
   });
 
+  /*
+   * Without a figure the reservation is all that is known, and every further
+   * marking widens the gap between what was committed and what is being
+   * charged. A run given a budget it must not exceed stops rather than
+   * spending blind.
+   */
+  it("stops the whole run the first time a cost comes back unreported", async () => {
+    markPracticePaperWithAudit.mockReset();
+    markPracticePaperWithAudit.mockResolvedValue(reply(0.02, 1));
+    const { mark, stats } = createEvaluationMarker({
+      maxRecords: 100,
+      maxSpendUsd: 3.51,
+      reserveUsdPerRecord: 0.351,
+      haltOnUnreportedCost: true,
+    });
+
+    await mark({ record: record("a"), arm: "control", exemplars: [] } as never);
+    await expect(
+      mark({ record: record("b"), arm: "control", exemplars: [] } as never)
+    ).rejects.toThrow(/reported no cost/);
+    expect(stats.unaccountedMarkings).toBe(1);
+    // The budget was nowhere near exhausted; the unknown bill is what stopped it.
+    expect(stats.spentUsd).toBeLessThan(0.4);
+  });
+
+  it("keeps going on an unreported cost when it was not told to stop", async () => {
+    markPracticePaperWithAudit.mockReset();
+    markPracticePaperWithAudit.mockResolvedValue(reply(0.02, 1));
+    const { mark, stats } = createEvaluationMarker({ maxRecords: 100, maxSpendUsd: 3.51 });
+    await mark({ record: record("a"), arm: "control", exemplars: [] } as never);
+    await mark({ record: record("b"), arm: "control", exemplars: [] } as never);
+    expect(stats.unaccountedMarkings).toBe(2);
+  });
+
   it("does not bound a run that was given no ceiling", async () => {
     markPracticePaperWithAudit.mockReset();
     markPracticePaperWithAudit.mockResolvedValue(reply(5));

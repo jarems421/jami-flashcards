@@ -32,9 +32,13 @@
  *   reasoning    the supervisor runs at medium reasoning effort. Whether those
  *                tokens are billed inside `max_tokens` or beyond it is a
  *                provider behaviour that has not been established here.
- *   routing      failover selects a different endpoint for the *same* model,
- *                so no other model can be billed -- but per-endpoint prices on
- *                the same model can differ from the headline rate used below.
+ *   routing      this said failover only selects a different endpoint for the
+ *                same model. The first paid run disproved it: after three
+ *                failures the router moved to a standby and called
+ *                `moonshotai/kimi-k3`, a different model at a price this table
+ *                does not hold. Per-endpoint prices on one model vary too. So
+ *                the model billed is not fixed, and pinning it is the work
+ *                this estimate would need to become a bound.
  *
  * So: reserve against this, report it as an estimate, and expect a small
  * overshoot to be possible. Closing the four gaps means pinning routes and

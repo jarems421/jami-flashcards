@@ -142,6 +142,15 @@ export type EvaluationMarkerOptions = {
   /** Which student-facing marker to measure. Defaults to the paper surface. */
   pipeline?: EvaluationPipeline;
   /**
+   * Stop the whole run the first time a marking's cost comes back unreported.
+   *
+   * Without a figure the reservation is all that is known, and every further
+   * marking widens a gap between what was committed and what is actually being
+   * charged. Continuing would be spending blind, so a run that has been given a
+   * budget it must not exceed stops instead and says why.
+   */
+  haltOnUnreportedCost?: boolean;
+  /**
    * A hard ceiling in dollars, checked against what the providers actually
    * reported rather than against an estimate made beforehand.
    *
@@ -278,6 +287,8 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
    * is adjudicated, with page images on every call.
    */
   let committedUsd = 0;
+  /** Set once the run must launch no further calls, with the reason. */
+  let halted = "";
   const stats: EvaluationMarkerStats = {
     attempted: 0,
     marked: 0,
@@ -306,8 +317,12 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
      * this marking and released to the real figure afterwards, so concurrent
      * markings cannot each see room that only one of them can have.
      */
+    if (halted) {
+      throw new Error(`Evaluation stopped before this marking: ${halted}.`);
+    }
     const reserve = options.reserveUsdPerRecord ?? DEFAULT_RESERVE_USD;
     if (options.maxSpendUsd !== undefined && committedUsd + reserve > options.maxSpendUsd) {
+      halted = `the $${options.maxSpendUsd.toFixed(2)} budget is committed`;
       throw new Error(
         `Evaluation spend ceiling of $${options.maxSpendUsd.toFixed(2)} reached: ` +
           `$${committedUsd.toFixed(2)} committed across ${stats.marked} markings, and the next ` +
@@ -330,6 +345,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
       if (!accounting || accounting.unreportedCalls > 0) {
         stats.unaccountedMarkings += 1;
         stats.spentUsd += Math.max(reserve, accounting?.usd ?? 0);
+        if (options.haltOnUnreportedCost) halted = "a marking reported no cost for at least one of its calls";
         return;
       }
       committedUsd += accounting.usd - reserve;
