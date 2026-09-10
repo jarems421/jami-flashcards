@@ -5,6 +5,12 @@ import InkColorPicker from "@/components/workspace/NotebookInkColorPicker";
 import SmoothingSlider from "@/components/workspace/NotebookSmoothingSlider";
 import ThicknessSlider from "@/components/workspace/NotebookThicknessSlider";
 import { Button } from "@/components/ui";
+import {
+  captureExamWorking,
+  examWorkingHasInk,
+  type ExamScratchpadHandle,
+} from "@/lib/practice/exam-working";
+export type { ExamScratchpadHandle } from "@/lib/practice/exam-working";
 import ToolbarIconButton from "@/components/workspace/NotebookToolbarIconButton";
 import {
   NotebookInkEditor,
@@ -38,18 +44,6 @@ const SNAPSHOT_HEIGHT = Math.round(
 const SAVE_DEBOUNCE_MS = 700;
 const SETTINGS_ID = "exam-working-tool-settings";
 
-export type ExamScratchpadSnapshot = {
-  /** Whether there is any ink on the sheet at all. */
-  hasInk: boolean;
-  /** False when there is ink but it could not be turned into an image. */
-  ok: boolean;
-  png?: { mimeType: "image/png"; dataBase64: string; width: number; height: number };
-};
-
-export type ExamScratchpadHandle = {
-  snapshot(): Promise<ExamScratchpadSnapshot>;
-};
-
 async function svgToPng(svg: string) {
   if (!svg.trim()) return undefined;
   const blob = new Blob([svg], { type: "image/svg+xml" });
@@ -75,8 +69,7 @@ async function svgToPng(svg: string) {
       height: SNAPSHOT_HEIGHT,
     };
   } catch {
-    // A sheet that will not rasterise is still saved as ink. It simply is not
-    // sent to the marker, and the answer is marked on its own.
+    // Failure blocks submission; never silently mark the typed answer alone.
     return undefined;
   } finally {
     URL.revokeObjectURL(url);
@@ -134,7 +127,7 @@ export default function ExamScratchpad({
       .then((svg) => {
         if (!active) return;
         setInitialSvg(svg);
-        onInkChange?.(Boolean(svg.trim()));
+        onInkChange?.(examWorkingHasInk(svg));
       })
       // An empty sheet after a failed read is not an empty sheet: writing to it
       // would replace working that is still there. Offer a retry instead.
@@ -148,6 +141,12 @@ export default function ExamScratchpad({
     if (disabled || !editorRef.current) return true;
     const svg = editorRef.current.serializeWarm() ?? editorRef.current.serialize() ?? "";
     if (!svg) return true;
+    /*
+     * The label follows what is on the page, not the undo stack. Drawing a
+     * stroke and erasing it leaves history behind and no ink, and the sheet
+     * would still have claimed it was being sent with the answer.
+     */
+    onInkChange?.(examWorkingHasInk(svg));
     try {
       await saveExamScratchpad(userId, attemptId, svg);
       setSaveProblem("");
@@ -160,7 +159,7 @@ export default function ExamScratchpad({
       );
       return false;
     }
-  }, [attemptId, disabled, userId]);
+  }, [attemptId, disabled, onInkChange, userId]);
 
   const persist = useCallback(() => {
     // Once the answer is frozen the sheet is evidence rather than a draft, and
@@ -185,15 +184,12 @@ export default function ExamScratchpad({
 
   useEffect(() => {
     const handle: ExamScratchpadHandle = {
-      snapshot: async () => {
-        const svg = (await editorRef.current?.serializeAsync()) ?? "";
-        const hasInk = (editorRef.current?.getHistoryState().undoDepth ?? 0) > 0 || Boolean(svg.trim());
-        if (!hasInk) return { hasInk: false, ok: true };
-        await saveExamScratchpad(userId, attemptId, svg).catch(() => undefined);
-        const png = await svgToPng(svg);
-        // Ink that will not rasterise must not be silently left out of marking.
-        return { hasInk: true, ok: Boolean(png), png };
-      },
+      attemptId,
+      snapshot: () => captureExamWorking({
+        serialize: async () => editorRef.current?.serializeAsync(),
+        save: (svg) => saveExamScratchpad(userId, attemptId, svg),
+        rasterize: svgToPng,
+      }),
     };
     onHandle(handle);
     return () => onHandle(null);

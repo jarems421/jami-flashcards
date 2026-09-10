@@ -6,6 +6,7 @@ import { normalizeQuestionAssets, type PracticePaperQuestionAsset } from "@/lib/
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
+import { candidateExamAssets } from "@/lib/practice/exam-assets";
 
 export const runtime = "nodejs";
 
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
   const bucket = getAdminStorageBucket();
   const copiedAssets: PracticePaperQuestionAsset[] = [];
-  for (const asset of normalizeQuestionAssets(bankQuestion?.assets ?? question.assets)) {
+  for (const asset of normalizeQuestionAssets(candidateExamAssets(bankQuestion))) {
     if (!asset.storagePath) { copiedAssets.push(asset); continue; }
     const destination = `users/${uid}/practiceNotebookCopies/${exportId}/asset-${asset.id}`;
     await bucket.file(asset.storagePath).copy(bucket.file(destination));

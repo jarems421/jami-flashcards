@@ -16,7 +16,7 @@ import { isExamQuestionServable } from "@/lib/practice/exam-question-rights";
 import { normalizeQuestionAssets } from "@/lib/practice/practice-papers";
 import { generateExamGapQuestions } from "@/services/practice/exam-gap-generation.server";
 import { recoverExamDifficultyContributions } from "@/services/practice/exam-difficulty.server";
-import { projectExamAttempt, projectExamSessionQuestion } from "@/lib/practice/exam-projections";
+import { projectExamAttempt, projectExamSession, projectExamSessionQuestion } from "@/lib/practice/exam-projections";
 
 /**
  * How far into the corpus a search will go.
@@ -353,7 +353,7 @@ export async function getExamSession(uid: string, sessionId: string) {
     attempts: attemptsSnapshot.docs.map((doc) => ({ id: doc.id, data: doc.data() })),
   }).catch(() => undefined);
   return {
-    session,
+    session: projectExamSession(session),
     attempts: attemptsSnapshot.docs.map((doc) => projectExamAttempt(doc.id, doc.data())),
   };
 }
@@ -375,7 +375,7 @@ export async function listExamSessions(uid: string, folderId?: string, before?: 
   query = query.orderBy("updatedAt", "desc");
   if (typeof before === "number" && Number.isFinite(before)) query = query.startAfter(before);
   const snapshot = await query.limit(EXAM_SESSION_PAGE_SIZE).get();
-  const sessions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const sessions = snapshot.docs.map((doc) => projectExamSession({ ...doc.data(), id: doc.id } as ExamSession));
   const last = sessions.at(-1) as { updatedAt?: number } | undefined;
   return {
     sessions,

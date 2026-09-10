@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { projectExamSession } from "@/lib/practice/exam-projections";
 import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
 import { getAdminDb } from "@/services/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
       return completed;
     });
-    return Response.json({ session });
+    return Response.json({ session: projectExamSession(session) });
   } catch (error) {
     const code = error instanceof Error ? error.message : "finish_failed";
     if (code === "missing") return apiFailure("Session not found.", 404, "session_not_found");

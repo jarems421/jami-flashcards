@@ -97,6 +97,7 @@ export async function correctExamDifficultyContribution(input: {
     const result = attemptSnapshot.data()?.result;
     if (!result || result.maxMarks <= 0) return;
     const nextFraction = Math.max(0, Math.min(1, result.awardedMarks / result.maxMarks));
+    if (!Number.isFinite(nextFraction) || oldFraction === nextFraction) return;
     const count = stats.attemptCount ?? 0;
     const total = (stats.scoreFractionTotal ?? 0) - oldFraction + nextFraction;
     const squared = (stats.squaredFractionTotal ?? 0) - oldFraction * oldFraction + nextFraction * nextFraction;
@@ -132,15 +133,15 @@ export async function correctExamDifficultyContribution(input: {
 }
 
 /**
- * Contributions that were marked but never counted, driven again.
+ * Repair missing first contributions and missed review deltas on session load.
  *
  * The statistics are written after the marking transaction commits, so a
  * request that dies in between leaves an attempt marked and uncounted with
  * nothing to retry it -- and the question's difficulty then rests on a sample
  * that silently excludes it. There is no separate pending record to keep in
- * step: a first attempt that is marked, attempted, and carries no contribution
- * fraction *is* the pending event, and recording one is idempotent, so this can
- * run as often as it likes.
+ * step: a missing contribution or a fraction that differs from the final score
+ * is the pending event. Both writes re-read the latest result transactionally;
+ * repeated recovery must neither double-count nor recalibrate an unchanged mark.
  */
 export async function recoverExamDifficultyContributions(input: {
   uid: string;
@@ -150,18 +151,27 @@ export async function recoverExamDifficultyContributions(input: {
 }) {
   const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
   const pending = input.attempts.filter(({ data }) => {
-    const result = data.result as { attempted?: unknown; maxMarks?: unknown } | undefined;
+    const result = data.result as { attempted?: unknown; awardedMarks?: unknown; maxMarks?: unknown } | undefined;
     return (
       data.status === "marked" &&
       data.attemptNumber === 1 &&
       result?.attempted === true &&
       number(result.maxMarks) > 0 &&
-      typeof data.statsContributionFraction !== "number" &&
+      typeof result.awardedMarks === "number" && Number.isFinite(result.awardedMarks) &&
+      data.statsContributionFraction !== Math.max(0, Math.min(1, result.awardedMarks / number(result.maxMarks))) &&
       typeof data.questionId === "string"
     );
   });
   for (const { id, data } of pending) {
     const result = data.result as { awardedMarks?: unknown; maxMarks?: unknown };
+    if (typeof data.statsContributionFraction === "number") {
+      await correctExamDifficultyContribution({
+        uid: input.uid, attemptId: id, questionId: data.questionId as string,
+        studyLevel: input.studyLevel,
+        newFraction: number(result.awardedMarks) / number(result.maxMarks),
+      }).catch(() => undefined);
+      continue;
+    }
     await recordExamDifficultyContribution({
       uid: input.uid,
       attemptId: id,

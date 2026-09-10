@@ -133,6 +133,23 @@ describe("a mark that was awarded but never counted", () => {
     store.set(QUESTION, { difficulty: "medium" });
   });
 
+  it("repairs a missed review delta once, even when retried with a stale snapshot", async () => {
+    store.set(STATS, { attemptCount: 12, scoreFractionTotal: 6, squaredFractionTotal: 3, difficulty: "medium" });
+    const stale = markedAttempt({ statsContributionFraction: 0.25,
+      result: { attempted: true, awardedMarks: 3, maxMarks: 4 } });
+    store.set(ATTEMPT, stale);
+    const recover = () => recoverExamDifficultyContributions({ uid: "student-1", studyLevel: "gcse",
+      attempts: [{ id: "attempt-1", data: stale }] });
+    await recover();
+    const corrected = { ...store.get(STATS) };
+    expect(corrected.attemptCount).toBe(12);
+    expect(corrected.scoreFractionTotal).toBe(6.5);
+    expect(corrected.squaredFractionTotal).toBe(3.5);
+    expect(store.get(ATTEMPT)?.statsContributionFraction).toBe(0.75);
+    await recover();
+    expect(store.get(STATS)).toEqual(corrected);
+  });
+
   it("is counted when the session is next loaded", async () => {
     store.set(ATTEMPT, markedAttempt());
 

@@ -30,6 +30,7 @@ import type { Notebook } from "@/lib/workspace/notebooks";
 import ExamQuestionAssets from "@/components/practice/ExamQuestionAssets";
 import ExamScratchpad, { type ExamScratchpadHandle } from "@/components/practice/ExamScratchpad";
 import ExamQuestionMarkReport from "@/components/practice/ExamQuestionMarkReport";
+import { requireExamWorkingSnapshot } from "@/lib/practice/exam-working";
 import ExamSubmittedAnswer from "@/components/practice/ExamSubmittedAnswer";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 
@@ -236,14 +237,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     setSubmitting(true);
     setError("");
     try {
-      const working = await scratchpad.current?.snapshot();
-      if (working?.hasInk && !working.ok) {
-        setError(
-          "Your working could not be prepared for marking, and Jami will not mark the answer without it. Try again, or clear the sheet to submit the typed answer alone."
-        );
-        setSubmitting(false);
-        return;
-      }
+      const working = await requireExamWorkingSnapshot(activeAttempt, scratchpad.current);
       const response = await submitExamAnswer({
         sessionId,
         questionId: question.id,

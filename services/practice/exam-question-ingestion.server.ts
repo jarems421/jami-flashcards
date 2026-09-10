@@ -429,6 +429,7 @@ export async function renderIngestionAsset(
     source: "deterministic" as const, validationStatus: "valid" as const,
   }];
 
+  const reviewAssets: typeof assets = [];
   const schemePage = Math.round(Number(item.schemePageNumber));
   if (Number.isFinite(schemePage) && schemePage >= 1) {
     try {
@@ -436,7 +437,7 @@ export async function renderIngestionAsset(
       const schemeRender = await renderPage(schemeBytes, schemePage);
       const schemeAssetPath = `internal/examQuestionBank/${state.manifest.board}/${state.paperId}/${item.question.id}-scheme.png`;
       await bucket.file(schemeAssetPath).save(schemeRender.bytes, { resumable: false, contentType: "image/png" });
-      assets.push({
+      reviewAssets.push({
         id: "scheme-extract", type: "image" as const,
         title: "Official mark scheme page", content: "",
         altText: `The published mark scheme page for ${item.question.label}`,
@@ -450,7 +451,7 @@ export async function renderIngestionAsset(
   }
 
   const next = entries.slice();
-  next[index] = { ...item, question: { ...item.question, assets } };
+  next[index] = { ...item, question: { ...item.question, assets, reviewAssets } };
   return { ...state, entries: next };
 }
 

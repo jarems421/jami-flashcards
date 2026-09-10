@@ -7,6 +7,8 @@ import {
   type ExamSessionQuestion,
 } from "@/lib/practice/exam-questions";
 import type { PracticePaperQuestionResult } from "@/lib/practice/practice-papers";
+import { candidateExamAssets } from "@/lib/practice/exam-assets";
+import type { ExamSession } from "@/lib/practice/exam-questions";
 
 export type PublicExamQuestionResult = Omit<PracticePaperQuestionResult, "confidence">;
 
@@ -53,7 +55,7 @@ export function projectExamAttempt(
  * route, not fetched from a bucket the client can address.
  */
 export function projectExamSessionQuestion(
-  question: ExamQuestion,
+  question: ExamSessionQuestion | ExamQuestion,
   attemptId: string
 ): ExamSessionQuestion {
   return {
@@ -66,10 +68,19 @@ export function projectExamSessionQuestion(
     origin: question.origin,
     provenance: question.provenance,
     contentVersion: question.contentVersion,
-    assets: question.assets.map((asset) => {
+    assets: candidateExamAssets(question).map((asset) => {
       const visible = { ...asset };
       delete visible.storagePath;
       return visible;
     }),
+  };
+}
+
+/** Re-project old snapshots too: persisted sessions may predate the split. */
+export function projectExamSession(session: ExamSession): ExamSession {
+  return {
+    ...session,
+    questions: session.questions.map((question) =>
+      projectExamSessionQuestion(question, question.attemptId)),
   };
 }

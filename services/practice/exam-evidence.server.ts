@@ -1,4 +1,5 @@
 import "server-only";
+import { candidateExamAssets } from "@/lib/practice/exam-assets";
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import type { ExamQuestion, ExamQuestionSecret } from "@/lib/practice/exam-questions";
 import { isExamQuestionServable } from "@/lib/practice/exam-question-rights";
@@ -82,7 +83,7 @@ export async function loadExamQuestionSecret(
 export async function examQuestionVisualParts(question: ExamQuestion): Promise<AiContentPart[]> {
   const parts: AiContentPart[] = [];
   let totalBytes = 0;
-  for (const asset of question.assets) {
+  for (const asset of candidateExamAssets(question)) {
     if (!asset.storagePath) continue;
     if (!asset.storagePath.startsWith("internal/examQuestionBank/") ||
       !["image/png", "image/jpeg", "image/webp"].includes(asset.mimeType ?? "")) throw new Error("question_asset_invalid");

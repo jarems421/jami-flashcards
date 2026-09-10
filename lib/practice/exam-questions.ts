@@ -117,6 +117,8 @@ export type ExamQuestion = {
   prompt: string;
   marks: number;
   assets: PracticePaperQuestionAsset[];
+  /** Server-private extraction evidence, never candidate question material. */
+  reviewAssets?: PracticePaperQuestionAsset[];
   commandWord?: string;
   topicIds: string[];
   tier?: string;

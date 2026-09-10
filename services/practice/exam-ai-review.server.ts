@@ -48,7 +48,7 @@ export type ExamAiReviewOutcome = {
 const MIN_CONFIDENCE = 0.75;
 
 async function renderedAsset(question: ExamQuestion, id: string) {
-  const asset = question.assets.find(
+  const asset = [...(question.reviewAssets ?? []), ...question.assets].find(
     (item) =>
       item.id === id &&
       item.storagePath?.startsWith("internal/examQuestionBank/") &&
