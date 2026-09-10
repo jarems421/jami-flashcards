@@ -14,6 +14,9 @@ Object.assign(serverEnvironment, {
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "1234567890",
   NEXT_PUBLIC_FIREBASE_APP_ID: "1:1234567890:web:notebook-smoke",
   NEXT_PUBLIC_FIREBASE_EMULATORS: "true",
+  // The feature ships fail-closed. The walkthrough is the evidence that it
+  // works when it is switched on, so it is switched on here.
+  NEXT_PUBLIC_ENABLE_PAST_PAPER_PRACTICE: "true",
 });
 
 export default defineConfig({

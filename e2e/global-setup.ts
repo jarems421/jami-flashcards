@@ -5,6 +5,7 @@ import {
   buildNotebookPayload,
 } from "@/lib/workspace/notebooks";
 import { buildStudyFolderPayload } from "@/lib/workspace/study-folders";
+import { seedExamPractice } from "./exam-fixtures";
 import {
   E2E_CARDS,
   E2E_DECK_ID,
@@ -249,6 +250,9 @@ export default async function globalSetup() {
           ),
         ]),
       ]);
+      // Past Paper Practice needs a licensed course, a current catalogue entry
+      // and published questions before any of its screens will render.
+      await seedExamPractice(db, userId, now);
     });
   } finally {
     await testEnvironment.cleanup();
