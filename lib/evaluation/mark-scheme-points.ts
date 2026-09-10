@@ -90,16 +90,36 @@ export function parsePointsFromScheme(
 /**
  * Schemes whose structure cannot be read from their notation alone.
  *
- * An alternative route is not another mark to add, a pool is a choice among
- * marks, and a cap changes what the codes add up to. All three are stated in
- * prose that the line-by-line reading above cannot see, so they are detected
- * and the scheme is left whole -- an honest single point, labelled as such.
+ * A pool is a choice among marks and a cap changes what the codes add up to,
+ * so both are left whole. So is a scheme stating a dependency: `M1dep`, or
+ * "dependent on the previous M1", makes one mark conditional on another, and
+ * the parsed points carry `dep: []`. Leaving that empty avoids inventing a
+ * rule and instead asserts there is none, which is a different falsehood --
+ * so a scheme that states one is not claimed as structured at all. One of the
+ * corpus's own maths schemes does exactly this.
+ *
+ * `oe` and `cao` are deliberately not treated as dependencies. They are
+ * acceptance rules -- "or equivalent", "correct answer only" -- and they
+ * travel with the mark's own wording into the criterion text, so the marker
+ * still sees them. An earlier draft lumped them in with `dep` and would have
+ * discarded a perfectly readable three-mark scheme over an "or equivalent".
+ *
+ * Alternative routes are detected too, and honestly this is precaution rather
+ * than a fix for anything observed: no scheme in the corpus contains one. The
+ * reasoning first given for it -- that two alternative one-mark routes sum to
+ * a one-mark tariff -- was simply wrong arithmetic, they sum to two and the
+ * tariff check already rejects them. It stays because a mixed scheme could in
+ * principle coincide with its tariff, and it costs nothing; it is not evidence
+ * that every alternative form is recognised.
  */
 const ALTERNATIVE_ROUTE = /^\s*(or\b|alternatively\b|alternative (method|approach)\b)/im;
 const POOL_OR_CAP =
   /\b(any (one|two|three|four|five|\d+) from|max(imum)? of \d+|maximum \d+ marks?|up to \d+ marks?)\b/i;
+// `M1dep` runs the code and the rule together, so there is no word boundary
+// before `dep` to anchor on -- the digit form is matched separately.
+const DEPENDENCY = /(\bdep\b|\d\s*dep\b|dependent (on|upon)\b|depends on\b)/i;
 
 export function schemeStructureIsReadable(text: string) {
   if (!text.trim()) return false;
-  return !ALTERNATIVE_ROUTE.test(text) && !POOL_OR_CAP.test(text);
+  return !ALTERNATIVE_ROUTE.test(text) && !POOL_OR_CAP.test(text) && !DEPENDENCY.test(text);
 }

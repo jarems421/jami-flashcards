@@ -14,9 +14,10 @@ import {
  * pipeline untouched -- so this is a fidelity fix, not a proven cause of the
  * probe's two wrong marks.
  *
- * Reconstructing the tariff is necessary and not sufficient: alternative
- * routes, pools and caps all sum plausibly while meaning something else, so
- * those are detected and the scheme is left whole and labelled unstructured.
+ * Reconstructing the tariff is necessary and not sufficient. A pool, a cap or
+ * a stated dependency all mean something the line-by-line reading cannot
+ * carry, so those schemes are left whole and labelled unstructured rather than
+ * claimed as complete structure with a rule quietly dropped.
  */
 const NEWLINE = "\n";
 const lines = (...parts: string[]) => parts.join(NEWLINE);
@@ -106,9 +107,12 @@ describe("reading a published scheme's mark points", () => {
   });
 
   /*
-   * The dangerous case. Two alternative one-mark routes on a one-mark question
-   * sum to the tariff exactly, so the arithmetic check cannot catch them, and
-   * reading them as cumulative would let a marker award both.
+   * Precaution, not a fix for anything observed: no scheme in the corpus
+   * contains an alternative route. The reasoning first given for this -- that
+   * two alternative one-mark routes sum to a one-mark tariff -- was wrong
+   * arithmetic; they sum to two and the tariff check already rejects them.
+   * Detecting the phrase is cheap and is not evidence that every alternative
+   * form is recognised.
    */
   it("refuses a scheme offering alternative routes", () => {
     const scheme = lines("M1 for completing the square.", "", "OR", "", "M1 for differentiating.");
@@ -149,8 +153,37 @@ describe("reading a published scheme's mark points", () => {
     expect(points[0]!.text).toContain("do not award A1");
   });
 
-  /** Dependencies are not stated in the notation, so none are invented. */
-  it("leaves dependencies empty rather than guessing them", () => {
+  /*
+   * Leaving `dep` empty avoids inventing a dependency and instead asserts
+   * there is none, which is a different falsehood. A scheme that states one is
+   * not claimed as structured at all -- one of the corpus's own maths schemes
+   * writes `M1dep` and "Dependent on previous M1".
+   */
+  it("refuses a scheme that states a dependency it cannot represent", () => {
+    expect(schemeStructureIsReadable(lines("M1 for the setup.", "M1dep for isolating r."))).toBe(false);
+    expect(
+      schemeStructureIsReadable(lines("M1 for a method.", "A1 dependent on the previous M1."))
+    ).toBe(false);
+    expect(parsePointsFromScheme(lines("M1 for a method.", "", "A1 dep for the answer."), 2)).toEqual([]);
+  });
+
+  /*
+   * Acceptance rules are not dependencies. "or equivalent" and "correct answer
+   * only" travel with the mark's own wording into the criterion text, so the
+   * marker still sees them -- and an earlier draft that lumped them in with
+   * `dep` would have discarded a readable three-mark scheme over an "oe".
+   */
+  it("keeps a scheme whose only extra notation is an acceptance rule", () => {
+    const points = parsePointsFromScheme(
+      lines("P1 for the multiplier.", "", "P1 for the overall multiplier.", "", "A1 for $25/36$ oe"),
+      3
+    );
+    expect(points).toHaveLength(3);
+    expect(points[2]!.text).toContain("oe");
+    expect(schemeStructureIsReadable("A1 for 9.77 cao.")).toBe(true);
+  });
+
+  it("leaves dependencies empty on the schemes it does accept", () => {
     const points = parsePointsFromScheme(lines("M1 for the method.", "", "A1 for the answer."), 2);
     expect(points.every((point) => point.dep.length === 0)).toBe(true);
   });

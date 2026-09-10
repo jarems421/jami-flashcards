@@ -1,4 +1,5 @@
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
+import { checkMarkConsistency } from "@/lib/practice/mark-consistency";
 import {
   normalizePracticePaperResult,
   type PracticePaper,
@@ -40,11 +41,28 @@ export function parsePracticePaperMarkingModelAnswer(
     const hasEvidence = (result.evidence?.some((item) => item.trim()) ?? false) ||
       (result.criterionResults?.some((criterion) => criterion.evidence.trim()) ?? false);
     if (result.awardedMarks > 0 && !hasEvidence) return [];
+    const awardedMarks = Math.min(question.marks, result.awardedMarks);
+    /*
+     * A total that disagrees with the awards it was built from is not a
+     * marking, it is two answers. Rejecting the question here fails the
+     * whole report, which is what puts it through the parse-retry the marker
+     * already has -- a bounded repair rather than a contradictory score shown
+     * to a student beside feedback that argues for a different one.
+     */
+    const item = paper.markScheme?.items?.find((entry) => entry.questionId === question.id);
+    if (item) {
+      const consistency = checkMarkConsistency({
+        item,
+        reportedMarks: awardedMarks,
+        criteria: result.criterionResults ?? [],
+      });
+      if (consistency.status === "inconsistent") return [];
+    }
     return [{
       ...result,
       label: question.label,
       maxMarks: question.marks,
-      awardedMarks: Math.min(question.marks, result.awardedMarks),
+      awardedMarks,
     }];
   });
   if (questionResults.length !== paper.questions.length) return null;

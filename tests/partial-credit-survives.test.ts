@@ -95,11 +95,15 @@ describe("a partial award against a single whole-tariff criterion", () => {
     expect(question.criterionResults?.[0]?.awardedMarks).toBe(1);
   });
 
-  it("is not recomputed from the criterion, in either direction", () => {
-    // A question total that disagrees with its criterion is left alone: nothing
-    // in the parser reconciles the two.
-    const result = parsePracticePaperMarkingModelAnswer(markingJson(1, 2), flattenedPaper());
-    expect(result!.questionResults[0]!.awardedMarks).toBe(1);
+  /*
+   * This is what the investigation actually turned up. The total and the
+   * criterion awards disagreed and both reached the student -- a score beside
+   * feedback arguing for a different one. It is refused now, which fails the
+   * report and puts it through the marker's existing parse-retry.
+   */
+  it("refuses a total that disagrees with its own criterion awards", () => {
+    expect(parsePracticePaperMarkingModelAnswer(markingJson(1, 2), flattenedPaper())).toBeNull();
+    expect(parsePracticePaperMarkingModelAnswer(markingJson(2, 1), flattenedPaper())).toBeNull();
   });
 
   it("is still 1 of 2 after the exam route attaches criterion tariffs", () => {
