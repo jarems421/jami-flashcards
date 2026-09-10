@@ -149,6 +149,32 @@ function successfulCost(diagnostics: readonly AiResponseDiagnostics[]) {
   return diagnostics.reduce((total, item) => total + (item.estimatedCostUsd ?? 0), 0);
 }
 
+/**
+ * What a marking cost, and how much of that is actually known.
+ *
+ * Summing reported costs treats a call the provider said nothing about as
+ * free, which is indistinguishable from one that genuinely was. A caller
+ * holding money against a ceiling has to tell those apart: releasing a
+ * reservation because the bill has not arrived is how a bounded run spends
+ * without noticing.
+ */
+export type MarkingCostAccounting = {
+  /** The sum of the costs providers actually reported. */
+  usd: number;
+  /** Calls that reported nothing, so `usd` is a floor and not a total. */
+  unreportedCalls: number;
+};
+
+function costAccounting(diagnostics: readonly AiResponseDiagnostics[]): MarkingCostAccounting {
+  let usd = 0;
+  let unreportedCalls = 0;
+  for (const item of diagnostics) {
+    if (typeof item.estimatedCostUsd === "number") usd += item.estimatedCostUsd;
+    else unreportedCalls += 1;
+  }
+  return { usd, unreportedCalls };
+}
+
 function assertCostRoom(input: PracticePaperMarkingInput, diagnostics: readonly AiResponseDiagnostics[]) {
   if (
     input.maxEstimatedCostUsd !== undefined &&
@@ -706,6 +732,7 @@ export async function markSingleQuestionAdaptively(
   return {
     result,
     estimatedCostUsd: successfulCost(diagnostics),
+    costAccounting: costAccounting(diagnostics),
     audit: {
       primaryScore: primary.result.questionResults[0]?.awardedMarks ?? 0,
       verifierScore: verifier?.result.questionResults[0]?.awardedMarks,
@@ -792,6 +819,7 @@ export async function markPracticePaperWithAudit(input: PracticePaperMarkingInpu
   result: PracticePaperResult;
   audit: PracticePaperMarkingAudit;
   estimatedCostUsd: number;
+  costAccounting: MarkingCostAccounting;
 }> {
   // Blind markers run concurrently. The verifier sees the paper, rubric and
   // original answers, but never the primary marker's scores.
@@ -889,6 +917,7 @@ Return the complete final report for every question, preserving agreed questions
   return {
     result,
     estimatedCostUsd: successfulCost(diagnostics),
+    costAccounting: costAccounting(diagnostics),
     audit: {
       version: 1,
       primaryScores: scoreMap(primary.result),

@@ -55,12 +55,13 @@ function record(id: string) {
   } as never;
 }
 
-function reply(costUsd: number) {
+function reply(costUsd: number, unreportedCalls = 0) {
   return {
     result: {
       questionResults: [{ questionId: "q1", awardedMarks: 2, maxMarks: 3, criterionResults: [] }],
     },
     estimatedCostUsd: costUsd,
+    costAccounting: { usd: costUsd, unreportedCalls },
     audit: {
       version: 1,
       primaryScores: { q1: 2 },
@@ -169,6 +170,46 @@ describe("the evaluation spend ceiling", () => {
       mark({ record: record("b"), arm: "control", exemplars: [] } as never)
     ).rejects.toThrow(/spend ceiling/);
     expect(stats.spentUsd).toBeCloseTo(0.25);
+  });
+
+  /*
+   * A provider that reports nothing sums to zero, which is the number a free
+   * call produces. Releasing the reservation on that basis is how a bounded
+   * run spends without noticing, so the reservation stands instead.
+   */
+  it("keeps the reservation when the provider reported no cost", async () => {
+    markPracticePaperWithAudit.mockReset();
+    markPracticePaperWithAudit.mockResolvedValue(reply(0, 1));
+    const { mark, stats } = createEvaluationMarker({
+      maxRecords: 100,
+      maxSpendUsd: 0.2,
+      reserveUsdPerRecord: 0.1,
+    });
+
+    await mark({ record: record("a"), arm: "control", exemplars: [] } as never);
+    await mark({ record: record("b"), arm: "control", exemplars: [] } as never);
+    await expect(
+      mark({ record: record("c"), arm: "control", exemplars: [] } as never)
+    ).rejects.toThrow(/spend ceiling/);
+    expect(stats.unaccountedMarkings).toBe(2);
+    expect(stats.spentUsd).toBeCloseTo(0.2);
+  });
+
+  /** A partly reported marking is still unaccounted: the floor is not a total. */
+  it("does not release a reservation on a partial bill", async () => {
+    markPracticePaperWithAudit.mockReset();
+    markPracticePaperWithAudit.mockResolvedValue(reply(0.02, 1));
+    const { mark, stats } = createEvaluationMarker({
+      maxRecords: 100,
+      maxSpendUsd: 0.2,
+      reserveUsdPerRecord: 0.1,
+    });
+    await mark({ record: record("a"), arm: "control", exemplars: [] } as never);
+    await mark({ record: record("b"), arm: "control", exemplars: [] } as never);
+    await expect(
+      mark({ record: record("c"), arm: "control", exemplars: [] } as never)
+    ).rejects.toThrow(/spend ceiling/);
+    expect(stats.unaccountedMarkings).toBe(2);
   });
 
   it("does not bound a run that was given no ceiling", async () => {

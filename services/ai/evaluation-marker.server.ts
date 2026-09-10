@@ -122,6 +122,7 @@ async function markPastPaperPracticeQuestion(
   return {
     result: marked.result,
     estimatedCostUsd: marked.estimatedCostUsd,
+    costAccounting: marked.costAccounting,
     audit: {
       version: 1 as const,
       primaryScores: { [question.id]: marked.audit.primaryScore },
@@ -253,8 +254,13 @@ export type EvaluationMarkerStats = {
   thirdView: number;
   /** Markings the provider rate-limited and the run waited out. */
   rateLimited: number;
-  /** What the providers reported this run cost, so far. */
+  /** What this run has committed so far, reported costs and reservations held. */
   spentUsd: number;
+  /**
+   * Markings where at least one call reported no cost, so its reservation is
+   * still held. A run with any of these has not been fully accounted for.
+   */
+  unaccountedMarkings: number;
   /** Unreadable reports by cause, so a failure rate can be acted on. */
   parseFailures: Record<string, number>;
   reasons: string[];
@@ -281,6 +287,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
     thirdView: 0,
     rateLimited: 0,
     spentUsd: 0,
+    unaccountedMarkings: 0,
     parseFailures: {},
     reasons: [],
   };
@@ -309,11 +316,24 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
     }
     committedUsd += reserve;
     let reconciled = false;
-    const settle = (actual: number) => {
+    /*
+     * A reservation is released only against a figure that is actually known.
+     *
+     * A provider that reports no cost sums to zero, which is the same number a
+     * free call produces, and releasing the reservation on that basis is how a
+     * bounded run spends without noticing. Where any call in the marking went
+     * unaccounted the reservation stands in full, and the run says so.
+     */
+    const settle = (accounting: { usd: number; unreportedCalls: number } | undefined) => {
       if (reconciled) return;
       reconciled = true;
-      committedUsd += actual - reserve;
-      stats.spentUsd += actual;
+      if (!accounting || accounting.unreportedCalls > 0) {
+        stats.unaccountedMarkings += 1;
+        stats.spentUsd += Math.max(reserve, accounting?.usd ?? 0);
+        return;
+      }
+      committedUsd += accounting.usd - reserve;
+      stats.spentUsd += accounting.usd;
     };
     stats.attempted += 1;
 
@@ -423,8 +443,8 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
         }
         throw lastError;
       };
-      const { result, audit, estimatedCostUsd } = await attempt();
-      settle(estimatedCostUsd ?? 0);
+      const { result, audit, costAccounting } = await attempt();
+      settle(costAccounting);
 
       if (audit.adjudicatedQuestionIds.length > 0) stats.adjudicated += 1;
       if (audit.thirdViewQuestionIds.length > 0) stats.thirdView += 1;
@@ -483,7 +503,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
        * than being released, so a run of failures cannot spend past the
        * ceiling while reporting that it spent nothing.
        */
-      settle(reserve);
+      settle(undefined);
       stats.failed += 1;
       const reason = error instanceof Error ? error.message : String(error);
       stats.reasons.push(`${request.record.id} (${request.arm}): ${reason}`);
