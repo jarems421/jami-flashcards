@@ -76,6 +76,11 @@ function markingJson(awarded: number, criterionAwarded: number) {
 }
 
 describe("a partial award against a single whole-tariff criterion", () => {
+  it("does not let general evidence stand in for a credited criterion's evidence", () => {
+    const report = JSON.parse(markingJson(1, 1));
+    report.questionResults[0].criterionResults[0].evidence = "";
+    expect(parsePracticePaperMarkingModelAnswer(JSON.stringify(report), flattenedPaper())).toBeNull();
+  });
   it("builds exactly the flattened shape the probe marked against", () => {
     const item = flattenedPaper().markScheme!.items[0]!;
     expect(item.marking).toBe("additive");

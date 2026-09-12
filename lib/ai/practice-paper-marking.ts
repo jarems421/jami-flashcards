@@ -43,6 +43,11 @@ export function parsePracticePaperMarkingModelAnswer(
     const hasEvidence = (result.evidence?.some((item) => item.trim()) ?? false) ||
       (result.criterionResults?.some((criterion) => criterion.evidence.trim()) ?? false);
     if (result.awardedMarks > 0 && !hasEvidence) return [];
+    // A quotation attached to one point cannot substantiate every other award.
+    if ((result.criterionResults ?? []).some((criterion) =>
+      (criterion.awardedMarks !== undefined ? criterion.awardedMarks > 0 : criterion.awarded) &&
+      !criterion.evidence.trim()
+    )) return [];
     /*
      * A mark lost has to be explained, the same way a mark given has to be
      * evidenced.

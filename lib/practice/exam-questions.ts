@@ -336,6 +336,7 @@ export type ExamReviewAudit = {
 };
 
 export type ExamReviewJob = {
+  checkpointVersion?: string;
   /**
    * This check's job, told apart from the next one's.
    *
@@ -354,6 +355,7 @@ export type ExamReviewJob = {
 };
 
 export type ExamMarkingJob = {
+  checkpointVersion?: string;
   /**
    * This submission's marking, told apart from the next one's.
    *
@@ -378,6 +380,8 @@ export type ExamMarkingJob = {
 };
 
 export const EXAM_SESSION_MAX_QUESTIONS = 20;
+/** Bump when marking prompts, scheme interpretation or routing policy changes. */
+export const EXAM_MARKING_CHECKPOINT_VERSION = "practice-marking-v2";
 export const EXAM_ANSWER_MAX_LENGTH = 30_000;
 export const EXAM_WORKING_MAX_BYTES = 3 * 1024 * 1024;
 export const EXAM_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;

@@ -16,11 +16,12 @@ import { describe, expect, it } from "vitest";
  * because nothing was measured, and passing because the report stopped being
  * supplied after something was approved.
  */
-function run(baseline: unknown, report?: unknown) {
+function run(baseline: unknown, report?: unknown, release = false) {
   const directory = mkdtempSync(join(tmpdir(), "marking-gate-"));
   const baselinePath = join(directory, "baselines.json");
   writeFileSync(baselinePath, JSON.stringify(baseline));
   const args = ["scripts/check-marking-benchmark.mjs"];
+  if (release) args.push("--release");
   if (report !== undefined) {
     const reportPath = join(directory, "report.json");
     writeFileSync(reportPath, JSON.stringify(report));
@@ -28,7 +29,7 @@ function run(baseline: unknown, report?: unknown) {
   }
   const result = spawnSync(process.execPath, args, {
     encoding: "utf8",
-    env: { ...process.env, MARKING_QUALITY_BASELINES: baselinePath },
+    env: { ...process.env, MARKING_QUALITY_BASELINES: baselinePath, MARKING_QUALITY_REPORT: "", PAST_PAPER_STUDENT_RELEASE: "false" },
   });
   return { status: result.status, out: `${result.stdout}${result.stderr}` };
 }
@@ -77,6 +78,9 @@ function passing(overrides: Record<string, unknown> = {}) {
 }
 
 describe("before anything has been measured", () => {
+  it("refuses an unmeasured registry for a student release", () => {
+    expect(run(baseline(false), undefined, true).status).toBe(1);
+  });
   /*
    * Fails safe by design: the registry ships unmeasured, so this is the state
    * on every checkout. It must not claim the marker is good -- only that
@@ -101,6 +105,19 @@ describe("before anything has been measured", () => {
 });
 
 describe("judging a run against the examiners", () => {
+  it("refuses invalid thresholds and impossible metrics", () => {
+    const invalid = baseline(true);
+    invalid.thresholds = { ...THRESHOLDS, maxAbsoluteMeanBias: undefined } as unknown as typeof THRESHOLDS;
+    expect(run(invalid, passing()).status).toBe(1);
+    expect(run(baseline(true), passing({ withinHumanVariationShare: 1.5 })).status).toBe(1);
+    expect(run(baseline(true), passing({ candidateDisagreement: -1 })).status).toBe(1);
+    expect(run(baseline(true), passing({ records: 30.5 })).status).toBe(1);
+  });
+  it("requires explicit complete cost accounting", () => {
+    for (const unaccountedMarkings of [undefined, -1, "0", null]) {
+      expect(run(baseline(true), passing({ unaccountedMarkings })).status).toBe(1);
+    }
+  });
   it("passes a marker that sits about where the examiners do", () => {
     expect(run(baseline(true), passing()).status).toBe(0);
   });

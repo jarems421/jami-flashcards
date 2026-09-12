@@ -1,4 +1,5 @@
 import "server-only";
+import { failedMarkingExecution } from "@/lib/practice/marking-execution-audit";
 
 import { FieldValue } from "firebase-admin/firestore";
 import { start } from "workflow/api";
@@ -114,7 +115,11 @@ export async function enqueueExamQuestionMarking(uid: string, attemptId: string,
   const { attemptRef } = refsFor(uid, attemptId);
   try {
     const run = await start(markExamQuestionWorkflow, [uid, attemptId, token]);
-    await attemptRef.update({ "marking.runId": run.runId, updatedAt: Date.now() });
+    await getAdminDb().runTransaction(async (transaction) => {
+      const attempt = (await transaction.get(attemptRef)).data() as ExamAttempt | undefined;
+      if (attempt?.status !== "marking" || attempt.marking?.token !== token) return;
+      transaction.update(attemptRef, { "marking.runId": run.runId, updatedAt: Date.now() });
+    });
     return true;
   } catch {
     /*
@@ -147,7 +152,7 @@ async function saveStage(
   const { attemptRef } = refsFor(uid, attemptId);
   await db.runTransaction(async (transaction) => {
     const attempt = (await transaction.get(attemptRef)).data() as ExamAttempt | undefined;
-    if (attempt?.marking?.token !== token) return;
+    if (attempt?.marking?.token !== token || attempt.status !== "marking" || attempt.answerDeletedAt) return;
     transaction.update(attemptRef, {
     [`marking.stages.${stage}`]: examDocument(result),
       // Doubles as the job's heartbeat: an attempt whose stages are still
@@ -177,7 +182,8 @@ export async function failExamQuestionMarking(
   uid: string,
   attemptId: string,
   code: ExamMarkingFailureCode,
-  token: string
+  token: string,
+  error?: unknown
 ) {
   const db = getAdminDb();
   const { attemptRef } = refsFor(uid, attemptId);
@@ -187,13 +193,18 @@ export async function failExamQuestionMarking(
     if (!attempt || attempt.status !== "marking") return undefined;
     // A superseded job does not get to fail the marking that replaced it.
     if (attempt.marking?.token !== token) return undefined;
+    const budgetGrant = attempt.marking?.budgetGrant;
     transaction.update(attemptRef, {
       status: code === "input_too_large" ? "draft" : "marking_failed",
       markingFailure: examMarkingFailure(code, Date.now()),
-      marking: FieldValue.delete(),
+      [`executionAudit.${token}`]: { ...failedMarkingExecution(error), recordedAt: Date.now() },
+      // Keep paid stages for the same frozen evidence; discard only the refunded grant.
+      ...(code === "input_too_large" ? { marking: FieldValue.delete() } : {
+        "marking.budgetGrant": FieldValue.delete(),
+      }),
       updatedAt: Date.now(),
     });
-    return attempt.marking?.budgetGrant;
+    return budgetGrant;
   });
   // The allowance, not the money: a call the provider answered was paid for
   // whatever this does.
@@ -283,6 +294,7 @@ export async function runExamQuestionMarking(uid: string, attemptId: string, tok
       if (
         now?.status !== "marking" ||
         now.marking?.token !== token ||
+        currentSession.data()?.status !== "active" ||
         now.answerDeletedAt ||
         currentSession.data()?.answersDeletedAt
       ) {
@@ -292,6 +304,10 @@ export async function runExamQuestionMarking(uid: string, attemptId: string, tok
         status: "marked", result,
         officialMarkScheme: examAnswerUnlocksModelAnswer(result) ? secret.officialMarkScheme : null,
         audit: { ...marked.audit, studentReviewed: false },
+        [`executionAudit.${token}`]: {
+          status: "complete", costAccounting: marked.costAccounting,
+          models: marked.models, recordedAt: Date.now(),
+        },
         markedAt: Date.now(), updatedAt: Date.now(),
       }));
       transaction.update(attemptRef, { marking: FieldValue.delete(), markingFailure: FieldValue.delete() });
@@ -324,7 +340,8 @@ export async function runExamQuestionMarking(uid: string, attemptId: string, tok
       uid,
       attemptId,
       failureCodeFor(error instanceof Error ? error.message : ""),
-      token
+      token,
+      error
     );
     return "failed" as const;
   }

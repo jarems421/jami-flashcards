@@ -20,6 +20,23 @@ function record(overrides: Partial<MarkingCorpusRecord> = {}): MarkingCorpusReco
 }
 
 describe("dressing a record as a practice paper", () => {
+  it("preserves published AO rubrics without exposing human AO awards", () => {
+    const result = adaptRecordToPaper(record({ regime: "weightedTraits", maxMarks: 6,
+      assessmentObjectiveMarks: [[{ objective: "AO5", marks: 2 }, { objective: "AO6", marks: 1 }]],
+      markScheme: "AO5: Content (4 marks)\nLevel 1: Limited (1-2 marks)\nLevel 2: Clear (3-4 marks)\nAO6: Accuracy (2 marks)\nSCORE OF 1: Some accuracy\nSCORE OF 2: Consistent accuracy" }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const item = result.adapted.paper.markScheme.items[0];
+    expect(item.marking).toBe("weightedTraits");
+    if (item.marking !== "weightedTraits") return;
+    expect(item.traits.map((trait) => [trait.id, trait.maxMarks])).toEqual([["AO5", 4], ["AO6", 2]]);
+    expect(result.adapted.schemeRepresentation).toBe("structured");
+    expect(JSON.stringify(result.adapted)).not.toContain("assessmentObjectiveMarks");
+  });
+
+  it("refuses weighted marking without a recoverable rubric rather than inventing bands", () => {
+    expect(adaptRecordToPaper(record({ regime: "weightedTraits", markScheme: "Assess content and spelling." })).ok).toBe(false);
+  });
   it("makes a one-question paper worth the record's marks", () => {
     const result = adaptRecordToPaper(record());
     expect(result.ok).toBe(true);

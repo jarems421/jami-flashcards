@@ -5,6 +5,7 @@ import { apiFailure, authenticateWriteRequest } from "@/services/auth/authentica
 import type { ExamAttempt, ExamReviewJob, ExamSession } from "@/lib/practice/exam-questions";
 import {
   EXAM_AI_JOB_DEADLINE_MS,
+  EXAM_MARKING_CHECKPOINT_VERSION,
   EXAM_ID_PATTERN,
   examOperationIsLive,
 } from "@/lib/practice/exam-questions";
@@ -95,6 +96,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // untyped map, so a job written here with a field missing compiles
       // cleanly and fails only at runtime, in a background job, on a race.
       review: {
+        checkpointVersion: EXAM_MARKING_CHECKPOINT_VERSION,
+        ...(data.review?.checkpointVersion === EXAM_MARKING_CHECKPOINT_VERSION
+          ? { stages: data.review.stages ?? {} } : {}),
         token: reviewToken,
         startedAt: now,
         deadlineAt: now + EXAM_AI_JOB_DEADLINE_MS,

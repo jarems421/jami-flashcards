@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { EXAM_MARKING_CHECKPOINT_VERSION } from "@/lib/practice/exam-questions";
 import { randomUUID } from "node:crypto";
 import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
@@ -121,11 +122,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         /*
          * Everything the job needs that this request will not be around to
          * give it: how long it may run, and the allowance to hand back if it
-         * never produces a mark. Any checkpoints a previous attempt paid for
-         * are deliberately dropped -- a resubmission is new evidence, and
-         * reusing a report of the old answer would mark the wrong work.
+         * never produces a mark. Failed submissions retain frozen evidence;
+         * only an editable draft invalidates its paid checkpoints.
          */
         marking: {
+          checkpointVersion: EXAM_MARKING_CHECKPOINT_VERSION,
+          ...(!editable && attempt.marking?.checkpointVersion === EXAM_MARKING_CHECKPOINT_VERSION
+            ? { stages: attempt.marking.stages ?? {} } : {}),
           token: markingToken,
           startedAt: now,
           deadlineAt: now + EXAM_AI_JOB_DEADLINE_MS,

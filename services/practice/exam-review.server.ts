@@ -1,4 +1,5 @@
 import "server-only";
+import { failedMarkingExecution } from "@/lib/practice/marking-execution-audit";
 
 import { FieldValue } from "firebase-admin/firestore";
 import { start } from "workflow/api";
@@ -99,7 +100,11 @@ export async function enqueueExamQuestionReview(uid: string, attemptId: string, 
   const { attemptRef } = refsFor(uid, attemptId);
   try {
     const run = await start(reviewExamQuestionWorkflow, [uid, attemptId, token]);
-    await attemptRef.update({ "review.runId": run.runId, reviewStartedAt: Date.now() });
+    await getAdminDb().runTransaction(async (transaction) => {
+      const attempt = (await transaction.get(attemptRef)).data() as ExamAttempt | undefined;
+      if (attempt?.reviewStatus !== "reviewing" || attempt.review?.token !== token) return;
+      transaction.update(attemptRef, { "review.runId": run.runId, reviewStartedAt: Date.now() });
+    });
     return true;
   } catch {
     // A job that never started will never write its own failure, so the
@@ -127,7 +132,7 @@ async function saveStage(
   const { attemptRef } = refsFor(uid, attemptId);
   await db.runTransaction(async (transaction) => {
     const attempt = (await transaction.get(attemptRef)).data() as ExamAttempt | undefined;
-    if (attempt?.review?.token !== token) return;
+    if (attempt?.review?.token !== token || attempt.reviewStatus !== "reviewing" || attempt.answerDeletedAt) return;
     transaction.update(attemptRef, {
       [`review.stages.${stage}`]: examDocument(result),
       // The job's heartbeat: a check whose stages are still arriving is
@@ -155,7 +160,8 @@ export async function failExamQuestionReview(
   uid: string,
   attemptId: string,
   code: ExamMarkingFailureCode,
-  token: string
+  token: string,
+  error?: unknown
 ) {
   const db = getAdminDb();
   const { attemptRef } = refsFor(uid, attemptId);
@@ -165,13 +171,15 @@ export async function failExamQuestionReview(
     if (!attempt || attempt.reviewStatus !== "reviewing") return undefined;
     // A superseded check does not get to fail the one that replaced it.
     if (attempt.review?.token !== token) return undefined;
+    const budgetGrant = attempt.review?.budgetGrant;
     transaction.update(attemptRef, {
       reviewStatus: "failed",
       reviewFailure: examReviewFailure(code, Date.now()),
-      review: FieldValue.delete(),
+      "review.budgetGrant": FieldValue.delete(),
+      [`executionAudit.${token}`]: { ...failedMarkingExecution(error), recordedAt: Date.now() },
       updatedAt: Date.now(),
     });
-    return attempt.review?.budgetGrant;
+    return budgetGrant;
   });
   // The allowance, not the money: a call the provider answered was paid for
   // whatever this does.
@@ -263,6 +271,10 @@ export async function runExamQuestionReview(uid: string, attemptId: string, toke
         reviewOriginalScore: original.awardedMarks,
         audit: { ...(attempt.audit ?? {}), reviewedScore: result.awardedMarks, studentReviewed: true },
         reviewAudit: { ...review.audit, originalResult: original, createdAt: now },
+        [`executionAudit.${token}`]: {
+          status: "complete", costAccounting: review.costAccounting,
+          models: review.models, recordedAt: now,
+        },
         updatedAt: now,
       }));
       transaction.update(attemptRef, { review: FieldValue.delete(), reviewFailure: FieldValue.delete() });
@@ -289,7 +301,8 @@ export async function runExamQuestionReview(uid: string, attemptId: string, toke
       uid,
       attemptId,
       failureCodeFor(error instanceof Error ? error.message : ""),
-      token
+      token,
+      error
     );
     return "failed" as const;
   }

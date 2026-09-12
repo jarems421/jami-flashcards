@@ -43,6 +43,12 @@ jobs:
       - name: Check approved paper-generation baselines
         run: npm run check:paper-benchmark
 
+      - name: Check marking readiness
+        env:
+          PAST_PAPER_STUDENT_RELEASE: ${{ vars.PAST_PAPER_STUDENT_RELEASE }}
+          MARKING_QUALITY_REPORT: ${{ vars.MARKING_QUALITY_REPORT }}
+        run: npm run check:marking-benchmark
+
       - name: Test
         run: npm test
 

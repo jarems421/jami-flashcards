@@ -80,6 +80,38 @@ export function checkMarkConsistency(input: {
   criteria: readonly PracticePaperCriterionResult[];
 }): MarkConsistency {
   const { item, reportedMarks, criteria } = input;
+  const scheme = schemeCriteria(item);
+  const seen = new Set<string>();
+  const awards = new Map<string, number>();
+  for (const criterion of criteria) {
+    if (!criterion.criterionId) continue;
+    const entry = scheme.find((point) => point.id === criterion.criterionId);
+    if (seen.has(criterion.criterionId) || !entry) {
+      return { status: "unverifiable", detail: "Criterion identities are duplicated or not in the scheme." };
+    }
+    seen.add(criterion.criterionId);
+    if (criterion.awardedMarks !== undefined &&
+      (!Number.isFinite(criterion.awardedMarks) || criterion.awardedMarks < 0 || criterion.awardedMarks > entry.marks)) {
+      return { status: "inconsistent", expected: reportedMarks, detail: "A criterion award exceeds its permitted range." };
+    }
+    const award = awardOf(criterion, entry.marks);
+    if (award !== null) awards.set(entry.id, award);
+  }
+  if (item.marking === "additive") {
+    const reportId = new Map(item.points.map((point, index) => [point.id, scheme[index]?.id]));
+    for (const point of item.points) {
+      if ((awards.get(reportId.get(point.id) ?? "") ?? 0) <= 0) continue;
+      for (const dependency of point.dep) {
+        const dependencyId = reportId.get(dependency) ?? "";
+        if (!awards.has(dependencyId)) {
+          return { status: "unverifiable", detail: "An awarded point has an unreported prerequisite." };
+        }
+        if (awards.get(dependencyId) === 0) {
+          return { status: "inconsistent", expected: reportedMarks, detail: "An awarded point requires an uncredited prerequisite." };
+        }
+      }
+    }
+  }
 
   if (item.marking === "banded") {
     /*

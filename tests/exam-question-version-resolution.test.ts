@@ -42,7 +42,7 @@ vi.mock("@/services/firebase/admin", () => ({
   getAdminStorageBucket: () => ({ file: () => ({ download: async () => [Buffer.from("")] }) }),
 }));
 
-const { loadServableExamQuestion } = await import("@/services/practice/exam-evidence.server");
+const { loadServableExamQuestion, loadExamQuestionSecret } = await import("@/services/practice/exam-evidence.server");
 
 const RIGHTS = {
   key: "aqa-2026",
@@ -114,6 +114,20 @@ beforeEach(() => {
 });
 
 describe("a session that started before the paper was re-ingested", () => {
+  it("does not treat absent live version metadata as a match", async () => {
+    store.set("examQuestions/question-1", { ...ORIGINAL, contentVersion: undefined });
+    store.set("examQuestionSecrets/question-1", { questionId: "question-1" });
+    await expect(loadServableExamQuestion("question-1", "student-1", "v1")).rejects.toThrow("question_changed");
+    await expect(loadExamQuestionSecret("question-1", "student-1", "v1")).rejects.toThrow("question_changed");
+  });
+
+  it("refuses an archive whose own version does not match its key", async () => {
+    store.set("examQuestions/question-1", REISSUED);
+    store.set("examQuestionRevisions/question-1_v1", { question: REISSUED, secret: { contentVersion: "v2" } });
+    store.set("examQuestionSecrets/question-1", { contentVersion: "v2" });
+    await expect(loadServableExamQuestion("question-1", "student-1", "v1")).rejects.toThrow("question_changed");
+    await expect(loadExamQuestionSecret("question-1", "student-1", "v1")).rejects.toThrow("question_changed");
+  });
   /** The state after a re-ingest: v2 live, v1 archived beside it. */
   function reingest() {
     store.set("examQuestions/question-1", REISSUED);

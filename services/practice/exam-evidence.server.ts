@@ -60,7 +60,7 @@ export async function loadServableExamQuestion(
     if (!paper || paper.status === "withdrawn" || paper.activeFrom > Date.now() ||
       (paper.activeUntil && paper.activeUntil < Date.now())) throw new Error("question_unavailable");
   }
-  if (!contentVersion || !question.contentVersion || question.contentVersion === contentVersion) {
+  if (!contentVersion || question.contentVersion === contentVersion) {
     return question;
   }
   const archived = await db
@@ -70,7 +70,7 @@ export async function loadServableExamQuestion(
   const revision = archived.data()?.question as ExamQuestion | undefined;
   // No archive means the version the session holds is simply gone. Serving
   // today's question in its place is the substitution this exists to prevent.
-  if (!revision) throw new Error("question_changed");
+  if (!revision || revision.contentVersion !== contentVersion) throw new Error("question_changed");
   const restored = { ...revision, id: questionId } as ExamQuestion;
   if (!isExamQuestionServable(restored)) throw new Error("question_unavailable");
   return restored;
@@ -100,7 +100,7 @@ export async function loadExamQuestionSecret(
   const snapshot = shared.exists ? shared : generated;
   if (!snapshot.exists) throw new Error("question_secret_missing");
   const secret = snapshot.data() as ExamQuestionSecret;
-  if (!contentVersion || !secret.contentVersion || secret.contentVersion === contentVersion) {
+  if (!contentVersion || secret.contentVersion === contentVersion) {
     return secret;
   }
   const archived = await db
@@ -108,7 +108,7 @@ export async function loadExamQuestionSecret(
     .doc(`${questionId}_${contentVersion}`)
     .get();
   const revision = archived.data()?.secret as ExamQuestionSecret | undefined;
-  if (!revision) throw new Error("question_changed");
+  if (!revision || revision.contentVersion !== contentVersion) throw new Error("question_changed");
   return revision;
 }
 

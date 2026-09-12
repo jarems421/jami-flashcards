@@ -8,6 +8,7 @@ import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
 import { stageOf } from "@/lib/evaluation/marking-corpus";
 import { bandsForReferenceScale, parseBandsFromScheme } from "./mark-scheme-bands.ts";
 import { parsePointsFromScheme } from "./mark-scheme-points.ts";
+import { parseTraitsFromScheme } from "./mark-scheme-traits.ts";
 import { buildSingleQuestionPaper } from "@/lib/practice/single-question-paper";
 
 /**
@@ -96,7 +97,9 @@ function markSchemeFor(record: MarkingCorpusRecord): PracticePaperMarkScheme {
   };
 
   let item: PracticePaperMarkSchemeItem;
-  if (record.criteria && record.criteria.length > 0 && record.regime !== "banded") {
+  if (record.regime === "weightedTraits") {
+    item = { ...common, marking: "weightedTraits", traits: parseTraitsFromScheme(record.markScheme ?? "", record.maxMarks) };
+  } else if (record.criteria && record.criteria.length > 0 && record.regime !== "banded") {
     const points = record.criteria.map((criterion, index) => ({
       id: `p${index + 1}`,
       marks: criterion.available,
@@ -112,7 +115,7 @@ function markSchemeFor(record: MarkingCorpusRecord): PracticePaperMarkScheme {
       record.regime === "pointPool"
         ? { ...common, marking: "pointPool", points, awardable: record.maxMarks }
         : { ...common, marking: "additive", points };
-  } else if (record.regime === "banded" || record.regime === "weightedTraits") {
+  } else if (record.regime === "banded") {
     /**
      * Real bands where the source published them, derived ones where it did
      * not — never a single band across the whole scale.
@@ -132,12 +135,9 @@ function markSchemeFor(record: MarkingCorpusRecord): PracticePaperMarkScheme {
   } else {
     /*
      * The separate marks the scheme awards, where its own notation states
-     * them. A single point worth the whole tariff is not a simplification: a
-     * two-mark answer with one criterion met can then only score 0 or 2, so
-     * every partially correct response is wrong by a mark whichever way the
-     * marker goes. That is exactly what the first paid probe measured -- both
-     * of its scoring errors were partial-credit answers where awarding the
-     * reference mark was not available to the marker.
+     * them. Whole-tariff fallbacks still permit partial marks, but lose the
+     * separately testable conditions. That is a representation limitation,
+     * not proof of what caused any particular model error.
      */
     const parsed = parsePointsFromScheme(record.markScheme ?? "", record.maxMarks);
     item = {
@@ -216,6 +216,9 @@ export function adaptRecordToPaper(
   }
 
   const { subject, level } = describe(record);
+  if (record.regime === "weightedTraits" && parseTraitsFromScheme(record.markScheme ?? "", record.maxMarks).length === 0) {
+    return { ok: false, reason: `${record.id}: weighted-trait evaluation requires published AO maxima and complete band descriptors; totals are not a rubric.` };
+  }
   const markScheme = markSchemeFor(record);
   const paper = buildSingleQuestionPaper({
     id: `eval-${record.id}`,
@@ -245,7 +248,7 @@ export function adaptRecordToPaper(
   return {
     ok: true,
     adapted: {
-      schemeRepresentation: structuredPoints ? "structured" : "unstructured",
+      schemeRepresentation: structuredPoints || markScheme.items[0]?.marking === "weightedTraits" ? "structured" : "unstructured",
       paper,
       answerParts: scanned
         ? [

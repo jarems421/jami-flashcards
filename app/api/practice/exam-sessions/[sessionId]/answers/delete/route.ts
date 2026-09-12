@@ -32,6 +32,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
           answerText: "", workingSnapshotPath: null, workingIncluded: false,
           workingWidth: FieldValue.delete(), workingHeight: FieldValue.delete(),
           audit: FieldValue.delete(), reviewAudit: FieldValue.delete(),
+          // Retained failed-job checkpoints contain candidate evidence too.
+          marking: FieldValue.delete(), review: FieldValue.delete(),
           status: data.status === "marked" ? "marked" : "deleted",
           ...(result ? { result: {
             questionId: result.questionId, label: result.label, awardedMarks: result.awardedMarks,

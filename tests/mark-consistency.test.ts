@@ -27,6 +27,18 @@ function criterion(id: string, awardedMarks: number, awarded = awardedMarks > 0)
 }
 
 describe("additive marking", () => {
+  it("refuses accuracy credit whose explicit method prerequisite earned nothing", () => {
+    const dependent = { ...common, maxMarks: 2, marking: "additive" as const,
+      points: [point("method", 1), { ...point("accuracy", 1), dep: ["method"] }] };
+    expect(checkMarkConsistency({ item: dependent, reportedMarks: 1,
+      criteria: [criterion("C1", 0), criterion("C2", 1)] }).status).toBe("inconsistent");
+  });
+
+  it("does not hide an excessive criterion award by clamping it", () => {
+    const single = { ...common, maxMarks: 1, marking: "additive" as const, points: [point("p", 1)] };
+    expect(checkMarkConsistency({ item: single, reportedMarks: 1,
+      criteria: [criterion("C1", 2)] }).status).toBe("inconsistent");
+  });
   const item = {
     ...common,
     maxMarks: 3,

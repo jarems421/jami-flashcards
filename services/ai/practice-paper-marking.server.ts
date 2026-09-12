@@ -879,13 +879,13 @@ export async function reviewSingleQuestionIndependently(
   if (input.paper.questions.length !== 1) {
     throw new Error("Question review requires exactly one question.");
   }
-  const juror = await callMarker({
+  const juror = await checkpointedMarkerCall(input, "juror", () => callMarker({
     ...input,
     role: "third-view",
     modelRole: "juror",
     extraPrompt:
       "Mark this response independently from the official scheme. Do not assume the existing mark is right; identify the student's exact evidence for every award.",
-  });
+  }));
   const diagnostics = [...juror.diagnostics];
   const disputed = comparePracticePaperMarkings(input.originalResult, juror.result);
   let result = input.originalResult;
@@ -896,7 +896,7 @@ export async function reviewSingleQuestionIndependently(
       role: "adjudicator",
       modelRole: "supervisor",
       extraPrompt: `Reconcile the existing result with an independent review. Apply the official scheme and return the complete final report.\nExisting result: ${JSON.stringify(input.originalResult.questionResults)}\nIndependent review: ${JSON.stringify(juror.result.questionResults)}`,
-    }));
+    })).catch((error: unknown) => rethrowWithMarkingCost(error, diagnostics));
     diagnostics.push(...reconciliation.diagnostics);
     result = reconciliation.result;
     reconciled = true;
@@ -910,6 +910,8 @@ export async function reviewSingleQuestionIndependently(
       changed: disputed.length > 0,
       reconciled,
     },
+    costAccounting: costAccounting(diagnostics),
+    models: modelsUsed(diagnostics),
   };
 }
 

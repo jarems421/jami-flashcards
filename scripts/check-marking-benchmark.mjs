@@ -33,6 +33,7 @@ const baselinePath = resolve(
 );
 const reportArgument = process.argv.slice(2).find((argument) => !argument.startsWith("--"));
 const reportPath = reportArgument || process.env.MARKING_QUALITY_REPORT;
+const releaseCheck = process.argv.includes("--release") || process.env.PAST_PAPER_STUDENT_RELEASE === "true";
 
 function fail(message) {
   console.error(`Marking-quality gate failed: ${message}`);
@@ -56,6 +57,10 @@ if (baseline.schemaVersion !== 1 || !baseline.components || !baseline.thresholds
 }
 
 const approved = Object.entries(baseline.components).filter(([, value]) => value?.approved === true);
+if (releaseCheck && approved.length === 0) {
+  fail("release requires an approved measured component; an unmeasured registry is not approval");
+  process.exit();
+}
 if (!reportPath) {
   if (approved.length > 0) {
     fail("an approved marking baseline exists but no current report was supplied");
@@ -80,8 +85,20 @@ if (report.schemaVersion !== 1 || !report.components) {
 }
 
 const thresholds = baseline.thresholds;
+if (!Number.isInteger(thresholds.minRecords) || thresholds.minRecords <= 0 ||
+    !finite(thresholds.minWithinHumanVariationShare) || thresholds.minWithinHumanVariationShare <= 0 || thresholds.minWithinHumanVariationShare > 1 ||
+    !finite(thresholds.maxAbsoluteMeanBias) || thresholds.maxAbsoluteMeanBias < 0 ||
+    !finite(thresholds.maxDistanceOverHuman) || thresholds.maxDistanceOverHuman < 0) {
+  fail("quality thresholds are missing or invalid");
+  process.exit();
+}
 
 for (const [name, component] of approved) {
+  if (component.status !== "measured" || !Array.isArray(component.models) || component.models.length === 0 ||
+      component.models.some((model) => typeof model !== "string" || !model.trim())) {
+    fail(`${name} approval requires measured status and a recorded model set`);
+    continue;
+  }
   const current = report.components[name];
   if (!current) {
     fail(`approved component ${name} is missing from the current report`);
@@ -122,7 +139,7 @@ for (const [name, component] of approved) {
     }
   }
 
-  if (!finite(current.records) || current.records < thresholds.minRecords) {
+  if (!Number.isInteger(current.records) || current.records < thresholds.minRecords) {
     fail(`${name} measured ${current.records} records, below the ${thresholds.minRecords} required`);
     continue;
   }
@@ -132,7 +149,7 @@ for (const [name, component] of approved) {
    * marking whose calls went unreported may have been routed somewhere the run
    * did not intend, so the figures may not describe the marker being gated.
    */
-  if (current.unaccountedMarkings > 0) {
+  if (!finite(current.unaccountedMarkings) || current.unaccountedMarkings !== 0) {
     fail(`${name} has ${current.unaccountedMarkings} markings with unreported cost; the run is not accountable`);
     continue;
   }
@@ -149,13 +166,14 @@ for (const [name, component] of approved) {
    */
   const humanGap = current.humanDisagreement;
   const candidateDistance = current.candidateDisagreement;
-  if (!finite(humanGap) || !finite(candidateDistance) || humanGap <= 0) {
+  if (!finite(humanGap) || !finite(candidateDistance) || humanGap <= 0 || candidateDistance < 0) {
     fail(`${name} reports no double-marked human benchmark to be judged against`);
     continue;
   }
   const humanDistance = humanGap / 2;
 
   if (!finite(current.withinHumanVariationShare) ||
+      current.withinHumanVariationShare > 1 ||
       current.withinHumanVariationShare < thresholds.minWithinHumanVariationShare) {
     fail(
       `${name} landed inside the examiners' own spread on ` +
