@@ -349,12 +349,32 @@ export function readPrintedTariffs(paperText: string): Map<string, number> {
  * The fallback for papers that print a bare `(3)` or `[3 marks]` without
  * naming the question. Returns null rather than a guess when the region holds
  * no tariff marker, because an unverifiable tariff is not a passing one.
+ *
+ * A tariff that says "marks" is believed over one that does not, because a
+ * question's own notation is bracketed too. 8300/1H question 13(b) reads
+ * `f(6) / f(2) is equal to f(3)` and prints `[2 marks]`, and taking the
+ * largest bracketed number on the page made its tariff 6: the question was
+ * held back for disagreeing with a number that was never a tariff. Coordinates
+ * and step labels read the same way.
+ *
+ * Only when nothing in the region says "marks" does a bare bracket count --
+ * that is Edexcel, which prints `(3)` against the right margin and nothing
+ * else.
  */
-export function readPrintedTariff(text: string): number | null {
-  const marks = [...text.matchAll(/[([]\s*(\d{1,2})\s*(?:marks?)?\s*[)\]]/gi)]
+const WORDED_TARIFF = /[([]\s*(\d{1,2})\s*marks?\s*[)\]]/gi;
+const BARE_TARIFF = /[([]\s*(\d{1,2})\s*[)\]]/g;
+
+function tariffsIn(text: string, pattern: RegExp) {
+  return [...text.matchAll(pattern)]
     .map((match) => Number(match[1]))
     .filter((value) => value >= 1 && value <= 30);
-  return marks.length ? Math.max(...marks) : null;
+}
+
+export function readPrintedTariff(text: string): number | null {
+  const worded = tariffsIn(text, WORDED_TARIFF);
+  if (worded.length) return Math.max(...worded);
+  const bare = tariffsIn(text, BARE_TARIFF);
+  return bare.length ? Math.max(...bare) : null;
 }
 
 /**

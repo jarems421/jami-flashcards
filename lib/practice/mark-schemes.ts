@@ -366,8 +366,42 @@ export function normalizeMarkSchemeItem(
   };
 
   switch (model) {
-    case "additive":
-      return { ...common, marking: "additive", points: normalizePoints(value.points, question.id, false) };
+    case "additive": {
+      const points = normalizePoints(value.points, question.id, false);
+      /*
+       * Points that add up to more than the question is worth are a pool.
+       *
+       * "Make two different criticisms of her sketch" is two marks, and AQA
+       * lists three criticisms it will accept -- 8300/1H question 9. Read as
+       * additive that is three marks against a two-mark tariff, so the
+       * question was rejected for a scheme that is perfectly sound; "any two
+       * from three" is one of the commonest shapes in GCSE marking.
+       *
+       * Only independent points of equal value, because that is what makes
+       * the count recoverable and a pool: a scheme whose points build on each
+       * other cannot be picked from, and one whose points differ in value
+       * gives no single `m / p` to divide by. Anything else keeps its
+       * mismatch and is held for review, which is the right answer when the
+       * disagreement might be a misread tariff rather than a pool.
+       */
+      const total = points.reduce((sum, point) => sum + point.marks, 0);
+      const perPoint = points[0]?.marks ?? 0;
+      const poolable =
+        total > question.marks &&
+        points.length > 1 &&
+        perPoint > 0 &&
+        points.every((point) => point.marks === perPoint && (point.dep?.length ?? 0) === 0) &&
+        question.marks % perPoint === 0;
+      if (poolable) {
+        return {
+          ...common,
+          marking: "pointPool",
+          points,
+          awardable: question.marks / perPoint,
+        };
+      }
+      return { ...common, marking: "additive", points };
+    }
     case "pointPool": {
       const pool = normalizePoints(value.points, question.id, true);
       /*
