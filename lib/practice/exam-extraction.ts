@@ -160,8 +160,24 @@ export function buildExamQuestionsFromExtraction(
     const startLabel = questionStarts.some((start) => start.label === fullLabel)
       ? fullLabel
       : rootLabel;
-    const regions = startLabel
+    /*
+     * Two crops, because they answer different questions.
+     *
+     * What the student sees has to carry the stem -- `11 (a) Write down
+     * P(A n B)` is unanswerable without the Venn diagram printed once above
+     * it. What the tariff is read from must not: the stem belongs to every
+     * part, so reading it would let one part's `[3 marks]` verify another's.
+     */
+    const ownRegions = startLabel
       ? regionsForQuestion({ label: startLabel, starts: questionStarts, pages: paperPages })
+      : [];
+    const regions = startLabel
+      ? regionsForQuestion({
+          label: startLabel,
+          starts: questionStarts,
+          pages: paperPages,
+          ...(partIsItsOwnQuestion ? { withStemOf: rootLabel } : {}),
+        })
       : [];
 
     /*
@@ -173,8 +189,8 @@ export function buildExamQuestionsFromExtraction(
      * reading the region there finds the largest `(n)` belonging to some other
      * part, which failed four questions of a real paper.
      */
-    const regionTariff = regions.length
-      ? readPrintedTariff(textInRegions(paperPages, regions))
+    const regionTariff = ownRegions.length
+      ? readPrintedTariff(textInRegions(paperPages, ownRegions))
       : null;
     const documentTariff = printedTariffs.get(rootLabel) ?? null;
     const rootMarks = marksByRoot.get(rootLabel) ?? marks;

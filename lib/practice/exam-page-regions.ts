@@ -49,32 +49,49 @@ const BODY_TEXT_MIN_LENGTH = 8;
 const COLUMN_TOLERANCE = 2;
 /** Lines closer together than this are the same line. */
 const LINE_TOLERANCE = 3;
+/** A column carries prose only if it repeats; one long line is not a column. */
+const MIN_COLUMN_LINES = 3;
+/** How busy a column must be, against the busiest, to count as one. */
+const COLUMN_SHARE = 0.5;
 /**
  * A question label, however the board sets it.
  *
- * Edexcel prints a bare `3`. AQA prints `0 1 . 1` — zero padded, sub-part
- * numbered, and split across separate text runs, one per glyph. Matching a
- * single run against a number therefore found every Edexcel question and not
- * one AQA question, and that cascaded: no label meant no region, no region
- * meant no tariff, and no tariff meant every question on the paper was held
- * back. Two hundred and sixteen of them.
+ * Edexcel prints a bare `3`. AQA science prints `0 1 . 1` -- zero padded,
+ * sub-part numbered, and split across separate text runs, one per glyph.
+ * Matching a single run against a number therefore found every Edexcel
+ * question and not one AQA question, and that cascaded: no label meant no
+ * region, no region meant no tariff, and no tariff meant every question on
+ * the paper was held back. Two hundred and sixteen of them.
+ *
+ * AQA maths is a third shape again, and it was invisible here for the same
+ * reason. It repeats the question number in the margin on every part and puts
+ * the letter beside it -- `11` then `(a)` -- so the joined margin line reads
+ * `11 (a)` and matched nothing. Every multi-part question on three real
+ * papers was rejected: 42 of 42. Worse, a question whose first line is
+ * already a part -- 1, 12 and 13 on 8300/1H -- never printed its number
+ * alone, so it had no start at all and lost its region too.
  *
  * So the margin is read a line at a time and its runs joined before matching,
- * and the label is normalised — `01` and `01.1` become `1` and `1.1` — so the
- * rest of the pipeline sees one shape whoever printed the paper.
+ * and the label is normalised -- `01` and `01.1` become `1` and `1.1`, and
+ * `11 (a)` becomes `11(a)` -- so the rest of the pipeline sees one shape
+ * whoever printed the paper.
  */
-const LABEL_PATTERN = /^0*(\d{1,2})(?:[.](\d{1,2}))?[.)]?$/;
+const LABEL_PATTERN = /^0*(\d{1,2})(?:[.](\d{1,2}))?[.)]?(?:\(([a-z])\))?$/i;
 
 export function normaliseQuestionLabel(raw: string): string | null {
   const match = raw.replace(/\s+/g, "").match(LABEL_PATTERN);
   if (!match) return null;
-  return match[2] ? `${Number(match[1])}.${Number(match[2])}` : String(Number(match[1]));
+  const question = String(Number(match[1]));
+  if (match[2]) return `${question}.${Number(match[2])}`;
+  return match[3] ? `${question}(${match[3].toLowerCase()})` : question;
 }
 
 /** The root a label belongs to: `1.3` and `1` are both question 1. */
 export function rootQuestionLabel(raw: string): string {
   const normalised = normaliseQuestionLabel(raw);
-  if (normalised) return normalised.split(".")[0];
+  // `1.3` and `11(c)` are both their question: everything from the separator on
+  // names the part, whichever separator the board chose.
+  if (normalised) return normalised.replace(/[.(].*$/, "");
   const digits = raw.replace(/\s+/g, "").match(/^0*(\d{1,2})/);
   return digits ? String(Number(digits[1])) : "";
 }
@@ -102,6 +119,17 @@ function sameLine(a: number, b: number) {
  * The page answers it instead. Prose starts at one x and repeats there on
  * every line -- 114.8 on that AQA paper, 89.3 on that Edexcel one -- and every
  * label sits left of it.
+ *
+ * The leftmost such column, not the busiest. A paper's furniture repeats on
+ * every page and its prose does not: AQA's 8300/2H prints its footer at x=475
+ * across 32 pages, which outvoted the 39 lines of actual question text at
+ * x=99. "Margin" then meant everything left of 473, so a whole line joined
+ * into "5 Jess saves 2p, 5p and 10p coins." and normalised to nothing. Four
+ * question starts were found on a paper with twenty-five, and 35 of its 37
+ * questions were held back.
+ *
+ * Body text is left-aligned and furniture sits to its right, so among the
+ * columns busy enough to be columns at all, the leftmost is the prose.
  */
 function bodyTextStart(pages: PdfPageText[], fallback: number) {
   const counts = new Map<number, number>();
@@ -112,15 +140,13 @@ function bodyTextStart(pages: PdfPageText[], fallback: number) {
       counts.set(column, (counts.get(column) ?? 0) + 1);
     }
   }
-  let best = fallback;
-  let seen = 0;
-  for (const [column, count] of counts) {
-    if (count > seen || (count === seen && column < best)) {
-      best = column;
-      seen = count;
-    }
-  }
-  return seen > 0 ? best : fallback;
+  if (counts.size === 0) return fallback;
+  const busiest = Math.max(...counts.values());
+  const threshold = Math.max(MIN_COLUMN_LINES, busiest * COLUMN_SHARE);
+  const columns = [...counts]
+    .filter(([, count]) => count >= threshold)
+    .map(([column]) => column);
+  return columns.length ? Math.min(...columns) : fallback;
 }
 
 export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
@@ -179,31 +205,104 @@ export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
  * its own page carries on to the end of that page and into the next, which is
  * exactly the continuation the whole-page render used to drop.
  */
+/**
+ * The shared opening a question's parts all depend on.
+ *
+ * `11 (a) Write down P(A n B)` is unanswerable on its own: the Venn diagram it
+ * refers to is printed once, above `(a)`, against the bare `11`. Cropping a
+ * part to its own lines therefore hands the student a question with its
+ * subject removed. The stem runs from the question's number to wherever its
+ * first part begins, and is empty when the paper opens straight onto a part.
+ */
+function stemRegions(input: {
+  root: string;
+  starts: QuestionStart[];
+  pages: PdfPageText[];
+  headroom?: number;
+}): QuestionRegion[] {
+  const rootIndex = input.starts.findIndex((start) => start.label === input.root);
+  if (rootIndex === -1) return [];
+  const firstPart = input.starts.findIndex(
+    (start, index) =>
+      index > rootIndex && start.label !== input.root && rootQuestionLabel(start.label) === input.root
+  );
+  if (firstPart === -1) return [];
+  const start = input.starts[rootIndex];
+  const next = input.starts[firstPart];
+  const height = input.pages.find((page) => page.page === start.page)?.height ?? 0;
+  if (!height) return [];
+  const headroom = input.headroom ?? 12;
+  const from = Math.max(0, (start.top - headroom) / height);
+  if (next.page === start.page) {
+    const to = Math.min(1, Math.max(0, next.top - headroom) / height);
+    return to > from ? [{ page: start.page, fromRatio: from, toRatio: to }] : [];
+  }
+  const regions: QuestionRegion[] = [{ page: start.page, fromRatio: from, toRatio: 1 }];
+  for (let page = start.page + 1; page < next.page; page += 1) {
+    regions.push({ page, fromRatio: 0, toRatio: 1 });
+  }
+  const nextHeight = input.pages.find((page) => page.page === next.page)?.height ?? 0;
+  if (nextHeight) {
+    const to = Math.min(1, Math.max(0, next.top - headroom) / nextHeight);
+    if (to > 0.02) regions.push({ page: next.page, fromRatio: 0, toRatio: to });
+  }
+  return regions;
+}
+
 export function regionsForQuestion(input: {
   label: string;
   starts: QuestionStart[];
   pages: PdfPageText[];
-  /** How far below the label to begin, so its own number is included. */
+  /**
+   * How far above the label's baseline to begin, so its own line is whole.
+   *
+   * Applied to both edges. A crop that ends exactly on the next label's
+   * baseline still shows that label's glyphs, which sit above it -- so every
+   * question image carried the first line of the one after it.
+   */
   headroom?: number;
+  /** Prepend this question's stem, for a part that would lose its figure. */
+  withStemOf?: string;
 }): QuestionRegion[] {
   const { starts, pages } = input;
   const index = starts.findIndex((start) => start.label === input.label);
   if (index === -1) return [];
   const start = starts[index];
   const next = starts[index + 1];
-  const headroom = input.headroom ?? 6;
+  const headroom = input.headroom ?? 12;
 
   const pageHeight = (page: number) => pages.find((item) => item.page === page)?.height ?? 0;
   const startHeight = pageHeight(start.page);
   if (!startHeight) return [];
   const from = Math.max(0, (start.top - headroom) / startHeight);
 
+  /*
+   * The stem comes first because it comes first on the page: a part reads as
+   * the question it belongs to followed by what it asks.
+   */
+  const stem =
+    input.withStemOf && input.withStemOf !== input.label
+      ? stemRegions({ root: input.withStemOf, starts, pages, headroom: input.headroom })
+      : [];
+  const withStem = (own: QuestionRegion[]) => {
+    if (!own.length || !stem.length) return own;
+    // The part's crop opens a little above its own label, so trim the stem
+    // where they meet: without it the join repeats a sliver of the page.
+    const last = stem[stem.length - 1];
+    const first = own[0];
+    const trimmed =
+      last.page === first.page && last.toRatio > first.fromRatio
+        ? [...stem.slice(0, -1), { ...last, toRatio: first.fromRatio }]
+        : stem;
+    return [...trimmed.filter((region) => region.toRatio > region.fromRatio), ...own];
+  };
+
   // No following question: the rest of this page, and nothing beyond it.
-  if (!next) return [{ page: start.page, fromRatio: from, toRatio: 1 }];
+  if (!next) return withStem([{ page: start.page, fromRatio: from, toRatio: 1 }]);
 
   if (next.page === start.page) {
-    const to = Math.min(1, next.top / startHeight);
-    return to > from ? [{ page: start.page, fromRatio: from, toRatio: to }] : [];
+    const to = Math.min(1, Math.max(0, next.top - headroom) / startHeight);
+    return to > from ? withStem([{ page: start.page, fromRatio: from, toRatio: to }]) : [];
   }
 
   const regions: QuestionRegion[] = [{ page: start.page, fromRatio: from, toRatio: 1 }];
@@ -212,10 +311,10 @@ export function regionsForQuestion(input: {
   }
   const nextHeight = pageHeight(next.page);
   if (nextHeight) {
-    const to = Math.min(1, next.top / nextHeight);
+    const to = Math.min(1, Math.max(0, next.top - headroom) / nextHeight);
     if (to > 0.02) regions.push({ page: next.page, fromRatio: 0, toRatio: to });
   }
-  return regions;
+  return withStem(regions);
 }
 
 /**

@@ -157,3 +157,97 @@ describe("whether the scheme covers a question", () => {
     expect(schemeCoversQuestion("Pearson Edexcel 2023 GCSE 1MA1 Higher Paper 1H", "1")).toBe(false);
   });
 });
+
+/**
+ * AQA maths, which is neither of the two shapes this was built for.
+ *
+ * Edexcel prints a bare `3`. AQA science prints `01.1` in the margin. AQA
+ * maths repeats the question number on every part and puts the letter beside
+ * it -- `11` then `(a)` -- so the joined margin line reads `11 (a)`. That
+ * matched nothing, and every multi-part question on three real papers was
+ * rejected: 42 of 42.
+ */
+describe("a question numbered like AQA maths", () => {
+  const pages = [
+    page(1, [
+      ["11", 44, 765], ["The Venn diagram represents 100 items.", 100, 765],
+      ["11", 44, 540], ["(a)", 62, 540], ["Write down P(A and B)", 99, 540],
+      ["[1 mark]", 491, 525],
+      ["11", 44, 441], ["(b)", 64, 441], ["Work out P(A')", 99, 441],
+      ["[1 mark]", 491, 429],
+      ["12", 44, 300], ["(a)", 62, 300], ["A different question entirely.", 99, 300],
+    ]),
+  ];
+  const starts = findQuestionStarts(pages);
+
+  it("reads the number and its letter as one part label", () => {
+    expect(starts.map((start) => start.label)).toEqual(["11", "11(a)", "11(b)", "12(a)"]);
+  });
+
+  /*
+   * Question 12 opens straight onto its first part, so its number never
+   * appears alone. Before parts were read at all it therefore had no start of
+   * any kind -- which is how questions 1, 12 and 13 of 8300/1H lost their
+   * regions as well as their parts.
+   */
+  it("still finds a question that opens straight onto a part", () => {
+    expect(starts.some((start) => start.label === "12(a)")).toBe(true);
+  });
+
+  it("crops a part to its own lines, not its whole question", () => {
+    const own = regionsForQuestion({ label: "11(a)", starts, pages, headroom: 0 });
+    expect(own).toEqual([{ page: 1, fromRatio: (800 - 540) / 800, toRatio: (800 - 441) / 800 }]);
+  });
+
+  /*
+   * "Write down P(A and B)" is unanswerable without the Venn diagram, which is
+   * printed once above `(a)` against the bare `11`. A part cropped to its own
+   * lines is a question with its subject removed.
+   */
+  it("carries the question's stem into the part a student sees", () => {
+    const withStem = regionsForQuestion({ label: "11(a)", starts, pages, headroom: 0, withStemOf: "11" });
+    expect(withStem).toEqual([
+      { page: 1, fromRatio: (800 - 765) / 800, toRatio: (800 - 540) / 800 },
+      { page: 1, fromRatio: (800 - 540) / 800, toRatio: (800 - 441) / 800 },
+    ]);
+  });
+
+  it("adds no stem for a question that has none of its own", () => {
+    expect(regionsForQuestion({ label: "12(a)", starts, pages, headroom: 0, withStemOf: "12" }))
+      .toEqual(regionsForQuestion({ label: "12(a)", starts, pages, headroom: 0 }));
+  });
+
+  /*
+   * A label's glyphs sit above its baseline, so a crop ending exactly on the
+   * next label's baseline still shows that label -- every question image
+   * carried the first line of the one after it.
+   */
+  it("stops short of the next label rather than on it", () => {
+    const [region] = regionsForQuestion({ label: "11(a)", starts, pages, headroom: 12 });
+    expect(region.toRatio).toBeLessThan((800 - 441) / 800);
+  });
+});
+
+/**
+ * Which column counts as prose, on a paper whose furniture outnumbers it.
+ *
+ * AQA's 8300/2H prints its footer at x=475 across 32 pages, which outvoted the
+ * 39 lines of actual question text at x=99. "Margin" then meant everything
+ * left of 473, so a whole line joined into "5 Jess saves 2p, 5p and 10p
+ * coins." and normalised to nothing: four question starts were found on a
+ * paper with twenty-five.
+ */
+describe("telling prose from page furniture", () => {
+  it("takes the leftmost busy column, not the busiest", () => {
+    const body = (n: number) => page(n, [
+      [`${n}`, 50, 750],
+      ["A question that is printed in the body column.", 99, 750],
+      ["IB/M/Jun23/8300/2H", 475, 18],
+      ["Do not write outside", 543, 783],
+    ]);
+    // Five pages: the footer and header repeat on each and the prose does not
+    // repeat any harder, so the busiest column is furniture.
+    const pages = [1, 2, 3, 4, 5].map(body);
+    expect(findQuestionStarts(pages).map((start) => start.label)).toEqual(["1", "2", "3", "4", "5"]);
+  });
+});
