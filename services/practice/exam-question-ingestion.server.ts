@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { createCanvas, type Canvas } from "@napi-rs/canvas";
+import { createCanvas, DOMMatrix, ImageData, Path2D, type Canvas } from "@napi-rs/canvas";
 import { generateAiText } from "@/lib/ai/provider-router";
 import { isOfficialExamBoardUrl, type ExamBoardId } from "@/lib/practice/exam-formats";
 import { getExamQuestionRights, isExamQuestionBoardEnabled, isExamQuestionSpecificationEnabled } from "@/lib/practice/exam-question-rights";
@@ -155,7 +155,31 @@ async function downloadPdf(board: ExamBoardId, url: string) {
  *
  * Importing it here alongside the main module is what makes webpack emit it.
  */
+/**
+ * The browser drawing types pdf.js expects to find on its own.
+ *
+ * pdf.js draws a glyph by building its outline as a `Path2D` and handing it to
+ * `ctx.fill(path)`. It reaches for `Path2D` globally, because in a browser it
+ * is simply there -- and in Node it is not, so every text-bearing page failed
+ * with "Value is none of these types `String`, `Path`" from the canvas
+ * binding, which was being handed something that was not its own Path2D.
+ *
+ * The renderer had never run before this: extraction and rendering are
+ * separate stages, and every ingestion attempted so far was a dry run, which
+ * stops after extraction. So the whole feature could reach "23 questions
+ * published" and still have no way to produce a single question image.
+ *
+ * `??=` so a real DOM, if one is ever present, keeps its own implementations.
+ */
+function installCanvasGlobals() {
+  const globals = globalThis as Record<string, unknown>;
+  globals.Path2D ??= Path2D;
+  globals.DOMMatrix ??= DOMMatrix;
+  globals.ImageData ??= ImageData;
+}
+
 async function loadPdfJs() {
+  installCanvasGlobals();
   const [pdfjs] = await Promise.all([
     import("pdfjs-dist/legacy/build/pdf.mjs"),
     import("pdfjs-dist/legacy/build/pdf.worker.mjs").catch(() => null),
