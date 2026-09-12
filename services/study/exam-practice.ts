@@ -1,7 +1,7 @@
 import { auth } from "@/services/firebase/client";
 import { db } from "@/services/firebase/client";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import type { ExamDifficulty, ExamSession } from "@/lib/practice/exam-questions";
+import type { ExamCalculatorChoice, ExamDifficulty, ExamSession } from "@/lib/practice/exam-questions";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { MAX_NOTEBOOK_INK_SVG_LENGTH } from "@/lib/workspace/notebooks";
 
@@ -43,9 +43,14 @@ async function request(path: string, init?: RequestInit) {
   return data ?? {};
 }
 
-export async function getExamAvailability(folderId: string, topicIds: string[] = []) {
+export async function getExamAvailability(
+  folderId: string,
+  topicIds: string[] = [],
+  calculator?: ExamCalculatorChoice
+) {
   const params = new URLSearchParams({ folderId });
   topicIds.forEach((id) => params.append("topicId", id));
+  if (calculator && calculator !== "any") params.set("calculator", calculator);
   return request(`/api/practice/exam-questions/availability?${params}`) as Promise<{
     folder: { id: string; name: string; subject: string; course: { board: string; specificationTitle: string } };
     counts: Record<ExamDifficulty, number>;
@@ -55,11 +60,18 @@ export async function getExamAvailability(folderId: string, topicIds: string[] =
   }>;
 }
 
-export async function getExamCourseOptions(input: { board: string; qualification: string; subject?: string }) {
-  const params = new URLSearchParams({ board: input.board, qualification: input.qualification });
+export async function getExamCourseOptions(input: { board: string; subject?: string }) {
+  const params = new URLSearchParams({ board: input.board });
   if (input.subject) params.set("subject", input.subject);
   const data = await request(`/api/practice/exam-course-options?${params}`);
-  return data.courses as Array<{ specificationId: string; specificationTitle: string; tiers: string[]; componentIds: string[] }>;
+  return data.courses as Array<{
+    specificationId: string;
+    specificationTitle: string;
+    qualification: string;
+    qualificationLabel: string;
+    componentIds: string[];
+    tiers: Array<{ name: string; componentIds: string[] }>;
+  }>;
 }
 
 export async function createPastPaperPracticeSession(input: {
@@ -69,6 +81,7 @@ export async function createPastPaperPracticeSession(input: {
   originNotebookId?: string;
   allowGenerated?: boolean;
   useAvailableOnly?: boolean;
+  calculator?: ExamCalculatorChoice;
 }) {
   const data = await request("/api/practice/exam-sessions", { method: "POST", body: JSON.stringify(input) });
   return data.session as ExamSession;

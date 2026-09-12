@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { apiFailure, authenticateRequest, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { normalizeDifficultyMix } from "@/lib/practice/exam-questions";
+import { isExamCalculatorChoice, normalizeDifficultyMix } from "@/lib/practice/exam-questions";
 import { createExamSession, ExamQuestionBankError, listExamSessions } from "@/services/practice/exam-question-bank.server";
 import { queueOfficialExamSourceDiscovery } from "@/services/practice/exam-source-discovery.server";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
       originNotebookId: typeof body.originNotebookId === "string" ? body.originNotebookId.trim() : undefined,
       allowGenerated,
       useAvailableOnly: body.useAvailableOnly === true,
+      ...(isExamCalculatorChoice(body.calculator) ? { calculator: body.calculator } : {}),
     });
     return Response.json({ session }, { status: 201 });
   } catch (error) {

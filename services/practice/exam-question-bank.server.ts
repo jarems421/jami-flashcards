@@ -11,6 +11,8 @@ import {
   type ExamDifficulty,
   type ExamQuestion,
   type ExamSession,
+  matchesCalculatorChoice,
+  type ExamCalculatorChoice,
 } from "@/lib/practice/exam-questions";
 import { isExamQuestionServable } from "@/lib/practice/exam-question-rights";
 import {
@@ -83,6 +85,8 @@ async function loadEligibleQuestions(input: {
    * the search, so the unseen preference survives pagination.
    */
   seenIds?: ReadonlySet<string>;
+  /** Which papers to draw from, in the terms a student thinks in. */
+  calculator?: ExamCalculatorChoice;
 }) {
   const base = getAdminDb()
     .collection("examQuestions")
@@ -113,6 +117,7 @@ async function loadEligibleQuestions(input: {
           input.topicIds.length === 0 ||
           input.topicIds.some((topicId) => question.topicIds.includes(topicId))
         )
+        .filter((question) => matchesCalculatorChoice(question, input.calculator))
     );
     if (snapshot.size < CANDIDATE_PAGE) {
       exhausted = true;
@@ -190,6 +195,7 @@ export async function getExamQuestionAvailability(input: {
   uid: string;
   folderId: string;
   topicIds?: string[];
+  calculator?: ExamCalculatorChoice;
 }) {
   const { folder, subjectKey } = await loadContext(input.uid, input.folderId);
   const topicIds = canonicalTopicIds(folder.examCourse!.specificationId, input.topicIds ?? []);
@@ -206,6 +212,7 @@ export async function getExamQuestionAvailability(input: {
     difficulty,
     topicIds,
     need: EXAM_SESSION_MAX_QUESTIONS,
+    ...(input.calculator ? { calculator: input.calculator } : {}),
   });
   const [easy, medium, hard] = await Promise.all([
     loadDifficulty("easy"),
@@ -256,6 +263,7 @@ export async function createExamSession(input: {
   originNotebookId?: string;
   allowGenerated?: boolean;
   useAvailableOnly?: boolean;
+  calculator?: ExamCalculatorChoice;
 }) {
   const total = input.mix.easy + input.mix.medium + input.mix.hard;
   if (total < 1 || total > EXAM_SESSION_MAX_QUESTIONS) {
@@ -283,6 +291,7 @@ export async function createExamSession(input: {
       topicIds,
       need: wanted,
       seenIds: recentIds,
+      ...(input.calculator ? { calculator: input.calculator } : {}),
     });
     const unseen = candidates.filter((question) => !recentIds.has(question.id));
     const seen = candidates.filter((question) => recentIds.has(question.id));

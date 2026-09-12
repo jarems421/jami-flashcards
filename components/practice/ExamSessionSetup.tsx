@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
 import { Button, Card, EmptyState, FeedbackBanner, Select, Skeleton } from "@/components/ui";
-import type { ExamDifficulty } from "@/lib/practice/exam-questions";
+import type { ExamCalculatorChoice, ExamDifficulty } from "@/lib/practice/exam-questions";
 import { examBoardAppliesTo } from "@/lib/practice/exam-questions";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getActiveStudyFolders } from "@/services/study/folders";
@@ -20,6 +20,12 @@ const DIFFICULTIES: Array<{ id: ExamDifficulty; label: string; note: string }> =
   { id: "easy", label: "Easy", note: "Things everyone on the course should know" },
   { id: "medium", label: "Medium", note: "Exam-standard, a few steps of reasoning" },
   { id: "hard", label: "Hard", note: "The ones that separate the top grades" },
+];
+
+const CALCULATOR_CHOICES: Array<{ id: ExamCalculatorChoice; label: string }> = [
+  { id: "any", label: "Any paper" },
+  { id: "non_calculator", label: "Non-calculator" },
+  { id: "calculator", label: "Calculator" },
 ];
 
 const MAX_QUESTIONS = 20;
@@ -48,6 +54,15 @@ export default function ExamSessionSetup({
     /** The count stopped at a session's worth; there are more behind it. */
     hasMore: Record<ExamDifficulty, boolean>;
   } | null>(null);
+  /*
+   * The one thing a maths student says out loud about a paper.
+   *
+   * "Non-calculator" is how Paper 1 is known -- AQA prints it on the cover --
+   * and it is the difference between useful practice and being handed the
+   * wrong half of the course. Every other filter here is in the product's
+   * vocabulary; this one is in theirs.
+   */
+  const [calculator, setCalculator] = useState<ExamCalculatorChoice>("any");
   const [topics, setTopics] = useState<Array<{ id: string; label: string }>>([]);
   const [topicIds, setTopicIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +90,7 @@ export default function ExamSessionSetup({
   useEffect(() => {
     if (!folderId) return;
     let active = true;
-    void getExamAvailability(folderId, topicIds)
+    void getExamAvailability(folderId, topicIds, calculator)
       .then((result) => {
         if (!active) return;
         setAvailability({ folderId, counts: result.counts, hasMore: result.hasMore });
@@ -89,7 +104,7 @@ export default function ExamSessionSetup({
     return () => {
       active = false;
     };
-  }, [courseRevision, folderId, topicIds]);
+  }, [calculator, courseRevision, folderId, topicIds]);
 
   const counts = availability?.folderId === folderId ? availability.counts : null;
   const hasMore = availability?.folderId === folderId ? availability.hasMore : null;
@@ -122,6 +137,7 @@ export default function ExamSessionSetup({
         mix,
         topicIds,
         originNotebookId,
+        calculator,
         ...options,
       });
       router.push(`/dashboard/practice/questions/${session.id}`);
@@ -178,6 +194,7 @@ export default function ExamSessionSetup({
             setFolderId(event.target.value);
             setTopicIds([]);
             setTopics([]);
+            setCalculator("any");
             setShortage(null);
           }}
         >
@@ -200,6 +217,31 @@ export default function ExamSessionSetup({
             setCourseRevision((value) => value + 1);
           }}
         />
+      ) : null}
+
+      {selectedFolder?.examCourse ? (
+        <Card padding="md">
+          <h3 className="text-lg font-semibold text-text-primary">Which papers?</h3>
+          <p className="mt-1 text-sm leading-5 text-text-muted">
+            Paper 1 is the non-calculator one. Pick whichever you want to practise.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {CALCULATOR_CHOICES.map(({ id, label }) => (
+              <Button
+                key={id}
+                type="button"
+                variant={calculator === id ? "primary" : "secondary"}
+                aria-pressed={calculator === id}
+                onClick={() => {
+                  setCalculator(id);
+                  setShortage(null);
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        </Card>
       ) : null}
 
       <div className="grid gap-3 md:grid-cols-3">

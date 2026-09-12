@@ -10,6 +10,7 @@ import {
   type PdfPageText,
   type QuestionRegion,
 } from "@/lib/practice/exam-page-regions";
+import { readCalculatorPolicy } from "@/lib/practice/exam-paper-instructions";
 import {
   normalizeMarkSchemeItem,
   schemeMarkTotal,
@@ -94,6 +95,11 @@ export function buildExamQuestionsFromExtraction(
     .map((page) => page.items.map((item) => item.text).join(" "))
     .join(" ");
   const printedTariffs = readPrintedTariffs(paperText);
+  /*
+   * One answer for the whole paper: the cover states it, and it governs every
+   * question printed after it.
+   */
+  const calculatorAllowed = readCalculatorPolicy(paperPages);
 
   /*
    * A paper prints one total per question, and a question may be several
@@ -314,6 +320,7 @@ export function buildExamQuestionsFromExtraction(
         marks,
         assets: [],
         topicIds: canonicalTopics,
+        ...(calculatorAllowed === undefined ? {} : { calculatorAllowed }),
         difficulty: difficultyOf(item.difficulty),
         aiDifficulty: difficultyOf(item.difficulty),
         difficultyScore:

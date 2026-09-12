@@ -19,7 +19,7 @@ import {
 } from "@/lib/practice/exam-questions";
 import {
   EXAM_BOARD_LABELS,
-  EXAM_QUALIFICATION_LABELS,
+  isExamQualification,
   type ExamBoardId,
   type ExamQualification,
 } from "@/lib/practice/exam-formats";
@@ -60,7 +60,14 @@ export default function FolderEditor({
   const [specificationId, setSpecificationId] = useState(folder.examCourse?.specificationId ?? "");
   const [specificationTitle, setSpecificationTitle] = useState(folder.examCourse?.specificationTitle ?? "");
   const [examTier, setExamTier] = useState(folder.examCourse?.tier ?? "");
-  const [courseOptions, setCourseOptions] = useState<Array<{ specificationId: string; specificationTitle: string; tiers: string[]; componentIds: string[] }>>([]);
+  const [courseOptions, setCourseOptions] = useState<Array<{
+    specificationId: string;
+    specificationTitle: string;
+    qualification: string;
+    qualificationLabel: string;
+    componentIds: string[];
+    tiers: Array<{ name: string; componentIds: string[] }>;
+  }>>([]);
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [color, setColor] = useState<ObjectColorId>(normalizeObjectColor(folder.color));
   const [icon, setIcon] = useState<ObjectIconId>(normalizeObjectIcon(folder.icon));
@@ -68,15 +75,18 @@ export default function FolderEditor({
   const [confirmArchive, setConfirmArchive] = useState(false);
 
   useEffect(() => {
-    if (!examBoard || !examQualification) { setCourseOptions([]); return; }
+    if (!examBoard) { setCourseOptions([]); return; }
     let active = true;
     setCoursesLoading(true);
-    void getExamCourseOptions({ board: examBoard, qualification: examQualification, subject }).then((items) => {
+    void getExamCourseOptions({ board: examBoard, subject }).then((items) => {
       if (!active) return;
       setCourseOptions(items);
     }).catch(() => active && setCourseOptions([])).finally(() => active && setCoursesLoading(false));
     return () => { active = false; };
-  }, [examBoard, examQualification, subject]);
+  }, [examBoard, subject]);
+
+  const selectedCourse = courseOptions.find((course) => course.specificationId === specificationId);
+  const selectedTier = selectedCourse?.tiers.find((item) => item.name === examTier);
 
   const save = async () => {
     setSaving(true);
@@ -89,10 +99,16 @@ export default function FolderEditor({
               specificationId,
               specificationTitle,
               tier: examTier,
+              /*
+               * The tier's own papers where the course maps them, so a Higher
+               * student is never drawn a Foundation question. Falls back to
+               * every component when the catalogue cannot say which belongs to
+               * which tier.
+               */
               componentIds:
-                courseOptions.find((course) => course.specificationId === specificationId)?.componentIds ??
-                folder.examCourse?.componentIds ??
-                [],
+                selectedTier?.componentIds.length
+                  ? selectedTier.componentIds
+                  : selectedCourse?.componentIds ?? folder.examCourse?.componentIds ?? [],
             })
           : null;
       await updateStudyFolder(userId, folder.id, {
@@ -176,19 +192,32 @@ export default function FolderEditor({
                       <option key={id} value={id}>{label}</option>
                     ))}
                   </Select>
-                  <Select label="Qualification" value={examQualification} onChange={(event) => setExamQualification(event.target.value as ExamQualification | "")}>
-                    <option value="">Choose qualification</option>
-                    {Object.entries(EXAM_QUALIFICATION_LABELS).map(([id, label]) => (
-                      <option key={id} value={id}>{label}</option>
-                    ))}
+                  <Select
+                    label="Course"
+                    value={specificationId}
+                    disabled={!examBoard || coursesLoading}
+                    onChange={(event) => {
+                      const selected = courseOptions.find((course) => course.specificationId === event.target.value);
+                      setSpecificationId(event.target.value);
+                      setSpecificationTitle(selected?.specificationTitle ?? "");
+                      // The qualification belongs to the course, so it is read
+                      // off the choice rather than asked for separately.
+                      const qualification = selected?.qualification;
+                      setExamQualification(isExamQualification(qualification) ? qualification : "");
+                      setExamTier("");
+                    }}
+                  >
+                    <option value="">{coursesLoading ? "Finding courses…" : "Choose course"}</option>
+                    {folder.examCourse && !courseOptions.some((course) => course.specificationId === folder.examCourse?.specificationId) ? <option value={folder.examCourse.specificationId}>{folder.examCourse.specificationTitle}</option> : null}
+                    {courseOptions.map((course) => <option key={course.specificationId} value={course.specificationId}>{course.qualificationLabel} {course.specificationTitle} ({course.specificationId})</option>)}
                   </Select>
                 </div>
-                <Select label="Current specification" value={specificationId} disabled={!examBoard || !examQualification || coursesLoading} onChange={(event) => { const selected = courseOptions.find((course) => course.specificationId === event.target.value); setSpecificationId(event.target.value); setSpecificationTitle(selected?.specificationTitle ?? ""); setExamTier(""); }}>
-                  <option value="">{coursesLoading ? "Finding courses…" : "Choose course"}</option>
-                  {folder.examCourse && !courseOptions.some((course) => course.specificationId === folder.examCourse?.specificationId) ? <option value={folder.examCourse.specificationId}>{folder.examCourse.specificationTitle}</option> : null}
-                  {courseOptions.map((course) => <option key={course.specificationId} value={course.specificationId}>{course.specificationTitle} · {course.specificationId}</option>)}
-                </Select>
-                {(courseOptions.find((course) => course.specificationId === specificationId)?.tiers.length ?? 0) > 0 ? <Select label="Tier or pathway" value={examTier} onChange={(event) => setExamTier(event.target.value)}><option value="">Choose tier</option>{courseOptions.find((course) => course.specificationId === specificationId)?.tiers.map((tier) => <option key={tier} value={tier}>{tier}</option>)}</Select> : null}
+                {selectedCourse?.tiers.length ? (
+                  <Select label="Tier" value={examTier} onChange={(event) => setExamTier(event.target.value)}>
+                    <option value="">Choose tier</option>
+                    {selectedCourse.tiers.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+                  </Select>
+                ) : null}
               </div>
             ) : null}
           </div>

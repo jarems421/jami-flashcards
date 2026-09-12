@@ -152,6 +152,14 @@ export type ExamQuestion = {
   commandWord?: string;
   topicIds: string[];
   tier?: string;
+  /**
+   * Read off the paper's cover at ingestion, and absent when it said nothing.
+   *
+   * "We do not know" and "no calculator" are different answers, and only one
+   * of them should filter a question out -- so a question with no policy is
+   * offered when a student asks for either kind and withheld when they ask
+   * for a particular one.
+   */
   calculatorAllowed?: boolean;
   difficulty: ExamDifficulty;
   aiDifficulty: ExamDifficulty;
@@ -576,4 +584,20 @@ export function examResultForAttempt(
     };
   }
   return result;
+}
+
+/** What a student asked for, in the words a maths paper prints on its cover. */
+export type ExamCalculatorChoice = "any" | "calculator" | "non_calculator";
+
+export function isExamCalculatorChoice(value: unknown): value is ExamCalculatorChoice {
+  return value === "any" || value === "calculator" || value === "non_calculator";
+}
+
+export function matchesCalculatorChoice(
+  question: Pick<ExamQuestion, "calculatorAllowed">,
+  choice: ExamCalculatorChoice | undefined
+) {
+  if (!choice || choice === "any") return true;
+  if (question.calculatorAllowed === undefined) return false;
+  return choice === "calculator" ? question.calculatorAllowed : !question.calculatorAllowed;
 }
