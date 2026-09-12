@@ -3,12 +3,15 @@ import {
   classifyAnswerShape,
   markTypedAnswer,
   normalizeAnswerText,
+  parseNumericAnswer,
 } from "@/lib/study/answer-marking";
 import {
   markClozeAnswer,
+  markClozeAnswers,
   renderClozeBlank,
   renderClozePrompt,
   selectClozeSpan,
+  selectClozeGaps,
 } from "@/lib/study/gap-fill";
 import {
   buildDeterministicExercise,
@@ -26,6 +29,7 @@ import {
   type StudyMode,
 } from "@/lib/study/study-modes";
 import type { Card } from "@/lib/study/cards";
+import { classifyStudyTask } from "@/lib/study/learning-task";
 
 function card(overrides: Partial<Card> = {}): Card {
   return {
@@ -39,6 +43,19 @@ function card(overrides: Partial<Card> = {}): Card {
     ...overrides,
   };
 }
+
+describe("learning-task classification", () => {
+  it("uses the question as well as the answer to distinguish a calculation from a stated quantity", () => {
+    expect(classifyStudyTask(card({ front: "Calculate the speed.", back: "26 m/s" })).task).toBe("calculation");
+    expect(classifyStudyTask(card({ front: "State the speed of the wave.", back: "26 m/s" })).task).toBe("quantity");
+  });
+
+  it("keeps extended material on Classic unless preparation proves otherwise", () => {
+    const profile = classifyStudyTask(card({ back: Array.from({ length: 60 }, () => "word").join(" ") }));
+    expect(profile.preferredModes).toEqual(["classic"]);
+    expect(profile.suitableModes).toEqual(["classic"]);
+  });
+});
 
 describe("the marking contract", () => {
   it("commits Good only for a clean, unaided match", () => {
@@ -77,17 +94,18 @@ describe("the marking contract", () => {
     }
   });
 
-  it("hands a hinted success back to the student", () => {
+  it("revisits a hinted success without scheduling it", () => {
     expect(resolveAttemptOutcome("correct", { hintUsed: true })).toEqual({
-      kind: "self-grade",
+      kind: "revisit",
       verdict: "correct",
     });
   });
 
-  it("hands every ambiguous verdict back to the student", () => {
-    for (const verdict of ["close", "partial", "needs-self-grade"] as const) {
+  it("hands genuinely uncertain verdicts back to the student and treats partial as Again", () => {
+    for (const verdict of ["close", "needs-self-grade"] as const) {
       expect(resolveAttemptOutcome(verdict).kind).toBe("self-grade");
     }
+    expect(resolveAttemptOutcome("partial")).toEqual({ kind: "commit", rating: "again", verdict: "partial" });
   });
 });
 
@@ -95,10 +113,63 @@ describe("normalising a typed answer", () => {
   it("ignores case, spacing, smart quotes, a leading article and a full stop", () => {
     expect(normalizeAnswerText("  The  Krebs   cycle. ")).toBe("krebs cycle");
     expect(normalizeAnswerText("Ohm’s law")).toBe("ohm's law");
+    expect(normalizeAnswerText("alpha−beta")).toBe("alpha-beta");
   });
 
   it("keeps accents, because they can change the word", () => {
     expect(normalizeAnswerText("resumé")).not.toBe(normalizeAnswerText("resume"));
+  });
+});
+
+describe("domain-aware answer equivalence", () => {
+  it("accepts fractions, thousands separators and supported unit conversions", () => {
+    expect(parseNumericAnswer("1/2")?.value).toBe(0.5);
+    expect(markTypedAnswer({ response: "1,000", expectedAnswer: "1000" }).verdict).toBe("correct");
+    expect(markTypedAnswer({ response: "1000", expectedAnswer: "1,000" }).verdict).toBe("correct");
+    expect(markTypedAnswer({ response: "36 km/h", expectedAnswer: "10 m/s" }).verdict).toBe("correct");
+  });
+
+  it("recognises Unicode bullets as list separators", () => {
+    expect(markTypedAnswer({ response: "red • blue", expectedAnswer: "blue; red" }).verdict).toBe("correct");
+  });
+
+  it("can preserve meaningful case for scientific notation and formulae", () => {
+    expect(markTypedAnswer({ response: "CO", expectedAnswer: "Co", settings: { caseSensitive: true } }).verdict).toBe("needs-self-grade");
+    expect(markTypedAnswer({ response: "Co", expectedAnswer: "Co", settings: { caseSensitive: true } }).verdict).toBe("correct");
+  });
+
+  it("keeps compound units distinct and never accepts an explicit wrong unit", () => {
+    expect(markTypedAnswer({ response: "26 ms", expectedAnswer: "26 m/s" }).verdict).toBe("incorrect");
+    expect(markTypedAnswer({ response: "26", expectedAnswer: "26 m/s" }).verdict).toBe("partial");
+    expect(markTypedAnswer({ response: "26", expectedAnswer: "26 m/s", settings: { requireUnits: false } }).verdict).toBe("correct");
+  });
+});
+
+describe("multi-gap marking", () => {
+  const gaps = [
+    { id: "a", start: 0, end: 12, answer: "kinetic energy", acceptedAnswers: [], concept: "energy store" },
+    { id: "b", start: 20, end: 24, answer: "mass", acceptedAnswers: [], concept: "mass" },
+    { id: "c", start: 30, end: 38, answer: "velocity", acceptedAnswers: ["speed"], concept: "velocity" },
+  ];
+
+  it("marks each gap independently and aggregates mixed outcomes as partial", () => {
+    const result = markClozeAnswers({ a: "kinetic energy", b: "weight", c: "speed" }, gaps);
+    expect(result.verdict).toBe("needs-self-grade");
+    expect(result.outcomes.map((outcome) => outcome.verdict)).toEqual(["correct", "needs-self-grade", "correct"]);
+  });
+
+  it("rotates prepared gap variants without changing their exact offsets", () => {
+    const subject = card({
+      back: "Alpha beta gamma delta epsilon zeta",
+      studySettings: { generatedStudy: {
+        bundleVersion: 3, sourceHash: "hash", gapVariants: [
+          { id: "one", gaps: [{ id: "one-a", start: 6, end: 10, answer: "beta", acceptedAnswers: [], concept: "beta" }] },
+          { id: "two", gaps: [{ id: "two-a", start: 17, end: 22, answer: "delta", acceptedAnswers: [], concept: "delta" }] },
+        ], mcqVariants: [],
+      } },
+    });
+    expect(selectClozeGaps({ front: subject.front, back: subject.back, settings: subject.studySettings, variantIndex: 0 })[0]?.answer).toBe("beta");
+    expect(selectClozeGaps({ front: subject.front, back: subject.back, settings: subject.studySettings, variantIndex: 1 })[0]?.answer).toBe("delta");
   });
 });
 
@@ -117,11 +188,11 @@ describe("marking short factual answers", () => {
     ).toBe("correct");
   });
 
-  it("calls a clear miss incorrect", () => {
+  it("sends an unmatched short answer to semantic checking", () => {
     expect(
       markTypedAnswer({ response: "glycolysis", expectedAnswer: "Krebs cycle" })
         .verdict
-    ).toBe("incorrect");
+    ).toBe("needs-self-grade");
   });
 
   it("treats a typo as close rather than wrong", () => {
@@ -313,11 +384,17 @@ describe("choosing a gap", () => {
     const span = { start: 0, end: 12, answer: "mitochondria" };
     expect(markClozeAnswer("mitochondria", span).verdict).toBe("correct");
     expect(markClozeAnswer("mitochondira", span).verdict).toBe("close");
-    expect(markClozeAnswer("ribosome", span).verdict).toBe("incorrect");
+    expect(markClozeAnswer("ribosome", span).verdict).toBe("needs-self-grade");
   });
 });
 
 describe("mode eligibility", () => {
+  it("treats intentionally empty author variant lists as disabled, not unspecified", () => {
+    const subject = card({ studySettings: { pinnedGaps: [], mcqDistractors: [] } });
+    expect(getModeEligibility(subject, "gap-fill")).toEqual({ eligible: false, reason: "disabled-by-author" });
+    expect(getModeEligibility(subject, "multiple-choice")).toEqual({ eligible: false, reason: "disabled-by-author" });
+    expect(needsStudyAssetPreparation(subject, { kind: "smart" })).toBe(false);
+  });
   it("excludes an answer that is mostly maths from typing", () => {
     const result = getTypeAnswerEligibility(
       card({ back: "$\\int_0^1 x^2 dx = \\frac{1}{3}$" })
@@ -388,14 +465,13 @@ describe("mode eligibility", () => {
     ).toBe(false);
   });
 
-  it("asks an unprepared card the best way it can be asked, not as Classic", () => {
+  it("does not silently substitute a fixed mode while preparation is missing", () => {
     const mode = resolveExerciseMode(
       card(),
       { kind: "fixed", mode: "multiple-choice" },
       0
     );
-    expect(mode).not.toBeNull();
-    expect(mode).not.toBe("classic");
+    expect(mode).toBeNull();
   });
 });
 
@@ -407,6 +483,52 @@ describe("mode eligibility", () => {
  */
 describe("multiple choice that cannot be guessed on shape", () => {
   const SENTENCE = "The immediate energy carrier used by every cell.";
+
+  it("rejects an option that restates the same numeric answer in a sentence", () => {
+    const question = buildMultipleChoiceQuestion({
+      card: card({
+        front: "What is the speed?",
+        back: "26 m/s",
+        studySettings: {
+          mcqDistractors: ["The speed is 26 m/s", "20 m/s", "30 m/s"],
+          mcqExplanations: { "20 m/s": "Too low.", "30 m/s": "Too high." },
+        },
+      }),
+    });
+    expect(question).toBeNull();
+  });
+
+  it("rejects a distractor that is the same quantity in converted units", () => {
+    const question = buildMultipleChoiceQuestion({
+      card: card({
+        front: "What is the speed?",
+        back: "10 m/s",
+        studySettings: {
+          mcqDistractors: ["36 km/h", "8 m/s", "12 m/s"],
+          mcqExplanations: { "36 km/h": "Converted units.", "8 m/s": "Too low.", "12 m/s": "Too high." },
+        },
+      }),
+    });
+    expect(question).toBeNull();
+  });
+
+  it("rotates substantively different prepared option sets", () => {
+    const subject = card({
+      front: "What is the speed?",
+      back: "26 m/s",
+      studySettings: { generatedStudy: {
+        bundleVersion: 3, sourceHash: "hash", gapVariants: [], mcqVariants: [
+          { id: "a", correctAnswer: "26 m/s", distractors: ["20 m/s", "24 m/s", "28 m/s"], explanations: { "26 m/s": "Correct calculation.", "20 m/s": "Too low.", "24 m/s": "A rounding error.", "28 m/s": "Too high." } },
+          { id: "b", correctAnswer: "26 m/s", distractors: ["13 m/s", "52 m/s", "676 m/s"], explanations: { "26 m/s": "Correct calculation.", "13 m/s": "Divided by two.", "52 m/s": "Multiplied by two.", "676 m/s": "Squared the result." } },
+        ],
+      } },
+    });
+    const first = buildMultipleChoiceQuestion({ card: subject, variantIndex: 0 });
+    const second = buildMultipleChoiceQuestion({ card: subject, variantIndex: 1 });
+    expect(first?.variantId).toBe("a");
+    expect(second?.variantId).toBe("b");
+    expect(first?.options.map((option) => option.text).sort()).not.toEqual(second?.options.map((option) => option.text).sort());
+  });
 
   it("refuses a question whose answer is the only full sentence", () => {
     const question = buildMultipleChoiceQuestion({
@@ -478,15 +600,28 @@ describe("multiple choice that cannot be guessed on shape", () => {
     expect(texts).not.toContain("The nucleus");
   });
 
-  it("still builds a numeric question, whose options match by construction", () => {
+  it("requires question-specific preparation for a numeric question", () => {
     const question = buildMultipleChoiceQuestion({
       card: card({ front: "Gravity at sea level?", back: "9.8 m/s^2" }),
     });
-    expect(question?.options).toHaveLength(4);
+    expect(question).toBeNull();
   });
 });
 
 describe("Smart Mix", () => {
+  it("selects Classic regularly and avoids three typing exercises in a row", () => {
+    const counts: Partial<Record<StudyMode, number>> = {};
+    const recent: StudyMode[] = [];
+    const modes = Array.from({ length: 40 }, (_, position) => {
+      const mode = resolveSmartMixMode(card({ id: `card-${position}`, front: `Define ATP ${position}`, back: "The immediate energy carrier used by every cell." }), position, { modeCounts: counts, recentModes: recent, seed: 41 });
+      counts[mode] = (counts[mode] ?? 0) + 1;
+      recent.push(mode);
+      if (recent.length > 8) recent.shift();
+      return mode;
+    });
+    expect(modes.filter((mode) => mode === "classic").length).toBeGreaterThanOrEqual(8);
+    expect(modes.some((mode, index) => mode === "type-answer" && modes[index - 1] === mode && modes[index - 2] === mode)).toBe(false);
+  });
   it("varies the mode across a session rather than repeating one", () => {
     const subject = card();
     const modes = [0, 1, 2, 3].map((position) => resolveSmartMixMode(subject, position));
@@ -519,11 +654,11 @@ describe("Smart Mix", () => {
     expect(modes).toContain("multiple-choice");
   });
 
-  it("asks a definition by its key word rather than by retyping it", () => {
+  it("uses a meaningful author gap instead of inventing one locally", () => {
     const modes = new Set(
       [0, 1, 2, 3].map((position) =>
         resolveSmartMixMode(
-          card({ back: "The immediate energy carrier used by every cell." }),
+          card({ back: "The immediate energy carrier used by every cell.", studySettings: { pinnedGaps: ["energy carrier"] } }),
           position
         )
       )
@@ -531,7 +666,7 @@ describe("Smart Mix", () => {
     expect(modes).toContain("gap-fill");
   });
 
-  it("never gaps a number, and offers it as a choice instead", () => {
+  it("does not invent numeric MCQ distractors or gap a number", () => {
     const subject = card({
       front: "What is the acceleration due to gravity at sea level?",
       back: "9.8 m/s^2",
@@ -540,7 +675,7 @@ describe("Smart Mix", () => {
       [0, 1, 2, 3].map((position) => resolveSmartMixMode(subject, position))
     );
     expect(modes).not.toContain("gap-fill");
-    expect(modes).toContain("multiple-choice");
+    expect(modes).not.toContain("multiple-choice");
   });
 
   it("stops asking a card to be typed once the student keeps missing it", () => {
@@ -561,10 +696,12 @@ describe("Smart Mix", () => {
 
   it("picks different modes for different kinds of answer", () => {
     const front = "Question?";
-    const chosen = [
-      card({ front, back: "9.8 m/s^2" }),
+    const first = resolveSmartMixMode(card({ front, back: "9.8 m/s^2" }), 0);
+    const chosen = [first, resolveSmartMixMode(
       card({ front, back: "The immediate energy carrier used by every cell." }),
-    ].map((subject) => resolveSmartMixMode(subject, 0));
+      1,
+      { modeCounts: { [first]: 1 }, recentModes: [first] }
+    )];
     expect(new Set(chosen).size).toBe(2);
   });
 
@@ -580,7 +717,7 @@ describe("Smart Mix", () => {
 
 describe("building an exercise", () => {
   it("gives Gap Fill the blank as its expected answer", () => {
-    const exercise = buildDeterministicExercise(card(), "gap-fill", "hash-1");
+    const exercise = buildDeterministicExercise(card({ studySettings: { pinnedGaps: ["energy carrier"] } }), "gap-fill", "hash-1");
     expect(exercise?.mode).toBe("gap-fill");
     expect(exercise?.cloze).toBeDefined();
     expect(exercise?.expectedAnswer).toBe(exercise?.cloze?.answer);
@@ -611,11 +748,11 @@ describe("deciding what is worth preparing", () => {
   const SMART = { kind: "smart" } as const;
   const fixed = (mode: StudyMode) => ({ kind: "fixed", mode }) as const;
 
-  it("never sends a numeric answer", () => {
+  it("prepares numeric answers instead of manufacturing generic distractors", () => {
     const subject = card({ back: "9.8 m/s" });
-    expect(needsStudyAssetPreparation(subject, SMART)).toBe(false);
+    expect(needsStudyAssetPreparation(subject, SMART)).toBe(true);
     expect(needsStudyAssetPreparation(subject, fixed("multiple-choice"))).toBe(
-      false
+      true
     );
   });
 
@@ -662,7 +799,7 @@ describe("deciding what is worth preparing", () => {
    * the card still wants reading -- which is the honest answer, and the one
    * that gets the student a question worth asking.
    */
-  it("still sends a card whose written options give the answer away", () => {
+  it("does not overwrite author-supplied options even when they are unusable", () => {
     const subject = card({
       studySettings: {
         mcqDistractors: ["The ribosome", "The nucleus", "The lysosome"],
@@ -670,7 +807,7 @@ describe("deciding what is worth preparing", () => {
     });
     expect(
       needsStudyAssetPreparation(subject, fixed("multiple-choice"))
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("sends a long answer for Gap Fill but not a one-word one", () => {

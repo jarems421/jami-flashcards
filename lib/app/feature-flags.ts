@@ -13,10 +13,17 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   // Both features landed with their complete UI, persistence and prompt paths.
   // A direct public environment override can still remove either surface.
   enableStudyModes: true,
-  // The surface is complete independently of the licensed corpus. Keep it
-  // fail-closed until at least one rights-cleared current specification has
-  // been ingested in the target environment.
-  enablePastPaperPractice: false,
+  /*
+   * On. The surface is complete independently of the licensed corpus, and the
+   * owner runs this deployment as its only user.
+   *
+   * The fail-closed default this replaces was protecting students from a
+   * half-ingested corpus, which is not the situation: the per-board switches
+   * and the per-question review and spot-check gates all still apply, so
+   * turning the surface on exposes exactly the questions that have passed
+   * them and nothing else. A public override still removes the surface.
+   */
+  enablePastPaperPractice: true,
   enableTutorPersonalisation: true,
 };
 

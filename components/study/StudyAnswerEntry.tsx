@@ -23,6 +23,8 @@ type StudyAnswerEntryProps = {
   onUseHint?: () => void;
   onSubmit: (response: string) => void;
   onSkip: () => void;
+  initialResponse?: string;
+  onDraftChange?: (response: string) => void;
 };
 
 const VERDICT_TONE: Record<ExerciseVerdict, { label: string; classes: string }> = {
@@ -52,9 +54,12 @@ export default function StudyAnswerEntry({
   onUseHint,
   onSubmit,
   onSkip,
+  initialResponse = "",
+  onDraftChange,
 }: StudyAnswerEntryProps) {
-  const [response, setResponse] = useState("");
+  const [response, setResponse] = useState(initialResponse);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     // Focus without scrolling: on a phone the keyboard appearing would
@@ -69,7 +74,8 @@ export default function StudyAnswerEntry({
   const tone = marked ? VERDICT_TONE[marked.verdict] : null;
 
   const submit = () => {
-    if (busy || marked) return;
+    if (busy || marked || submittingRef.current) return;
+    submittingRef.current = true;
     onSubmit(response);
   };
 
@@ -106,7 +112,7 @@ export default function StudyAnswerEntry({
             value={response}
             disabled={busy || Boolean(marked)}
             placeholder={placeholder}
-            onChange={(event) => setResponse(event.target.value)}
+            onChange={(event) => { setResponse(event.target.value); onDraftChange?.(event.target.value); }}
             onKeyDown={(event) => {
               // Enter submits, Shift+Enter keeps a new line available for the
               // rare prose answer that wants one.
@@ -130,7 +136,7 @@ export default function StudyAnswerEntry({
             value={response}
             disabled={busy || Boolean(marked)}
             placeholder={placeholder}
-            onChange={(event) => setResponse(event.target.value)}
+            onChange={(event) => { setResponse(event.target.value); onDraftChange?.(event.target.value); }}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
@@ -195,7 +201,11 @@ export default function StudyAnswerEntry({
                 Give me a hint
               </Button>
             ) : null}
-            <Button type="button" variant="ghost" size="md" onClick={onSkip}>
+            <Button type="button" variant="ghost" size="md" onClick={() => {
+              if (submittingRef.current) return;
+              submittingRef.current = true;
+              onSkip();
+            }}>
               I don&apos;t know
             </Button>
           </div>

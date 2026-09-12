@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { Button, StudyText } from "@/components/ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Input, StudyText } from "@/components/ui";
 import StudyAnswerEntry, {
   StudyPromptText,
   type AnswerEntryState,
@@ -12,7 +12,9 @@ import {
   markTypedAnswer,
   type MarkedAnswer,
 } from "@/lib/study/answer-marking";
-import { markClozeAnswer, renderClozePrompt } from "@/lib/study/gap-fill";
+import { markClozeAnswers, renderClozePrompt, renderMultiClozePrompt } from "@/lib/study/gap-fill";
+import type { PresentationViewState } from "@/lib/study/presentation-state";
+import { mergeGapOutcomes } from "@/lib/study/semantic-validation";
 import type { Card } from "@/lib/study/cards";
 import type { CardRating } from "@/lib/study/scheduler";
 import {
@@ -39,19 +41,26 @@ type StudyExerciseStageProps = {
    * A missed card is sent to the back of the session, not dropped: getting it
    * wrong and never seeing it again is the one outcome that teaches nothing.
    */
-  onCommit: (rating: CardRating, options?: { requeueOnMiss?: boolean }) => void;
-  onModeAnswered: (mode: StudyMode, correct: boolean) => void;
+  onCommit: (rating: CardRating, options?: { requeueOnMiss?: boolean }) => void | Promise<void>;
+  onModeAnswered: (mode: StudyMode, verdict: "correct" | "partial" | "incorrect" | "uncertain", assisted: boolean) => void;
+  onRevisitAfterHint?: () => void;
   /**
    * Ask a semantic marker about prose the local tiers could not decide.
    *
    * Optional, and null from it is not a failure -- it means the student rates
    * this one, which is what would have happened anyway.
    */
-  onSemanticCheck?: (response: string) => Promise<{
+  onSemanticCheck?: (response: string, gapResponses?: Record<string, string>) => Promise<{
     verdict: "correct" | "partial" | "incorrect";
     feedback?: string;
     missingConcepts?: string[];
+    gapResults?: MarkedAnswer["gapResults"];
   } | null>;
+  onReportExercise?: (reason: "multiple-correct" | "wrong-grade" | "poor-gap" | "unrelated-options" | "other") => void;
+  draftResponse?: string | Record<string, string>;
+  onDraftChange?: (response: string | Record<string, string>) => void;
+  viewState?: PresentationViewState;
+  onViewStateChange?: (state: PresentationViewState) => void;
 };
 
 type RevealState = {
@@ -62,6 +71,7 @@ type RevealState = {
    * one who decides. Null is the common case: see `resolveAttemptOutcome`.
    */
   rating: CardRating | null;
+  revisit: boolean;
 };
 
 const BLANK = "_____";
@@ -84,13 +94,29 @@ export default function StudyExerciseStage({
   savingRating,
   onCommit,
   onModeAnswered,
+  onRevisitAfterHint,
   onSemanticCheck,
+  onReportExercise,
+  draftResponse,
+  onDraftChange,
+  viewState = {},
+  onViewStateChange,
 }: StudyExerciseStageProps) {
-  const [entryState, setEntryState] = useState<AnswerEntryState>({
-    phase: "answering",
+  const restoredResult: MarkedAnswer | undefined = viewState.result ?? (viewState.phase === "checking"
+    ? { verdict: "needs-self-grade", shape: "short", feedback: "The check was interrupted. Compare your answer and rate it." } : undefined);
+  const [entryState, setEntryState] = useState<AnswerEntryState>(restoredResult ? { phase: "marked", result: restoredResult } : { phase: "answering" });
+  const [reveal, setReveal] = useState<RevealState | null>(() => {
+    if (!restoredResult) return null;
+    const outcome = resolveAttemptOutcome(restoredResult.verdict, { hintUsed: viewState.hintUsed });
+    return { result: restoredResult, response: typeof draftResponse === "string" ? draftResponse : Object.values(draftResponse ?? {}).join(" · "), rating: outcome.kind === "commit" ? outcome.rating : null, revisit: outcome.kind === "revisit" };
   });
-  const [reveal, setReveal] = useState<RevealState | null>(null);
-  const [hintUsed, setHintUsed] = useState(false);
+  const [hintUsed, setHintUsed] = useState(viewState.hintUsed === true);
+  const submittingRef = useRef(Boolean(restoredResult));
+  const [gapResponses, setGapResponses] = useState<Record<string, string>>(
+    draftResponse && typeof draftResponse === "object" ? draftResponse : {}
+  );
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   // Nothing resets state here. The page keys this component on the card and the
   // mode, so a new question arrives as a new component: no cascade of clearing
@@ -100,36 +126,32 @@ export default function StudyExerciseStage({
   const settle = useCallback(
     (result: MarkedAnswer, response: string) => {
       setEntryState({ phase: "marked", result });
-      onModeAnswered(exercise.mode, result.verdict === "correct");
+      onViewStateChange?.({ phase: "marked", hintUsed, result });
+      onModeAnswered(exercise.mode, result.verdict === "needs-self-grade" || result.verdict === "close" ? "uncertain" : result.verdict, hintUsed);
 
       const outcome = resolveAttemptOutcome(result.verdict, { hintUsed });
-      if (outcome.kind === "commit" && outcome.rating === "good") {
-        // A clean, unaided answer needs no discussion. The banner over the card
-        // acknowledges it and the session moves on.
-        onCommit(outcome.rating, { requeueOnMiss: true });
-        return;
-      }
-      // Everything else stops here. A student who got it wrong and is never
-      // shown the answer has learned nothing from the attempt, so the commit
-      // waits for them to have seen it.
       setReveal({
         result,
         response,
         rating: outcome.kind === "commit" ? outcome.rating : null,
+        revisit: outcome.kind === "revisit",
       });
     },
-    [exercise.mode, hintUsed, onCommit, onModeAnswered]
+    [exercise.mode, hintUsed, onModeAnswered, onViewStateChange]
   );
 
   const submit = useCallback(
     (response: string) => {
+      if (submittingRef.current) return;
+      submittingRef.current = true;
+      const gap = exercise.mode === "gap-fill" ? exercise.gaps?.[0] : undefined;
       const result =
-        exercise.mode === "gap-fill" && exercise.cloze
-          ? markClozeAnswer(response, exercise.cloze, card.studySettings)
+        gap
+          ? markClozeAnswers({ [gap.id]: response }, [gap]).outcomes[0]
           : markTypedAnswer({
               response,
               expectedAnswer: exercise.expectedAnswer,
-              settings: card.studySettings,
+              settings: exercise.markingSettings,
             });
 
       // Local marking first, always. The semantic check is only reached for
@@ -141,7 +163,9 @@ export default function StudyExerciseStage({
       }
 
       setEntryState({ phase: "checking" });
-      void onSemanticCheck(response).then((checked) => {
+      onViewStateChange?.({ phase: "checking", hintUsed });
+      void onSemanticCheck(response, gap ? { [gap.id]: response } : undefined).catch(() => null).then((checked) => {
+        if (!mountedRef.current) return;
         if (!checked) {
           settle(result, response);
           return;
@@ -150,27 +174,60 @@ export default function StudyExerciseStage({
           {
             ...result,
             verdict: checked.verdict,
+            evaluationSource: "semantic",
             ...(checked.missingConcepts?.length
               ? { missingItems: checked.missingConcepts }
               : {}),
+            ...(checked.feedback ? { feedback: checked.feedback } : {}),
           },
           response
         );
       });
     },
     [
-      card.studySettings,
-      exercise.cloze,
+      exercise.markingSettings,
+      exercise.gaps,
       exercise.expectedAnswer,
       exercise.mode,
       onSemanticCheck,
+      onViewStateChange,
+      hintUsed,
       settle,
     ]
   );
 
   const skip = useCallback(() => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     settle({ verdict: "incorrect", shape: "short" }, "");
   }, [settle]);
+
+  const submitMultipleGaps = useCallback(() => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    const gaps = exercise.gaps ?? [];
+    const marked = markClozeAnswers(gapResponses, gaps);
+    const local: MarkedAnswer = {
+      verdict: marked.verdict,
+      shape: "short",
+      gapResults: marked.outcomes,
+      missingItems: marked.outcomes
+        .filter((outcome) => outcome.verdict !== "correct")
+        .map((outcome) => gaps.find((gap) => gap.id === outcome.gapId)?.concept ?? "Missing gap"),
+    };
+    const response = gaps.map((gap) => gapResponses[gap.id] ?? "").join(" · ");
+    if (marked.verdict !== "needs-self-grade" || !onSemanticCheck) {
+      settle(local, response);
+      return;
+    }
+    setEntryState({ phase: "checking" });
+    onViewStateChange?.({ phase: "checking", hintUsed });
+    void onSemanticCheck(response, gapResponses).catch(() => null).then((checked) => {
+      if (!mountedRef.current) return;
+      const merged = mergeGapOutcomes(marked.outcomes, checked?.gapResults);
+      settle({ ...local, verdict: merged.verdict, feedback: checked?.feedback, gapResults: merged.outcomes }, response);
+    });
+  }, [exercise.gaps, gapResponses, onSemanticCheck, settle, onViewStateChange, hintUsed]);
 
   if (exercise.mode === "multiple-choice" && exercise.mcq) {
     return (
@@ -181,7 +238,9 @@ export default function StudyExerciseStage({
         <StudyMultipleChoice
           prompt={exercise.prompt}
           question={exercise.mcq}
-          onAnswered={(correct) => onModeAnswered("multiple-choice", correct)}
+          initialChosenId={viewState.chosenId}
+          onSelectionChange={(chosenId) => onViewStateChange?.({ chosenId })}
+          onAnswered={(correct) => onModeAnswered("multiple-choice", correct ? "correct" : "incorrect", false)}
           // Picking the answer is the attempt; reading why the others were
           // wrong is not part of it. The rating is settled the moment they
           // choose and committed when they move on, so the explanation can be
@@ -189,12 +248,87 @@ export default function StudyExerciseStage({
           onContinue={(correct) =>
             onCommit(correct ? "good" : "again", { requeueOnMiss: true })
           }
+          busy={savingRating !== null}
+          onReport={onReportExercise}
         />
       </div>
     );
   }
 
-  const isGapFill = exercise.mode === "gap-fill" && Boolean(exercise.cloze);
+  const gaps = exercise.mode === "gap-fill" ? (exercise.gaps ?? (exercise.cloze ? [{ id: "legacy", ...exercise.cloze, acceptedAnswers: [], concept: exercise.cloze.answer }] : [])) : [];
+  if (exercise.mode === "gap-fill" && gaps.length > 1 && reveal) {
+    return (
+      <div data-study-current-card-id={card.id} className="mx-auto w-full max-w-[62rem] space-y-4">
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-5">
+          <p role="status" className="mb-2 text-sm font-semibold">{reveal.result.verdict === "correct" ? "Correct" : reveal.result.verdict === "partial" ? "Nearly there" : reveal.rating ? "Not quite" : "Check your answer"}</p>
+          {reveal.result.feedback ? <p className="mb-4 text-sm text-text-secondary">{reveal.result.feedback}</p> : null}
+          <div className="my-4 grid gap-3 sm:grid-cols-2">
+            {gaps.map((gap, index) => {
+              const outcome = reveal.result.gapResults?.find((item) => item.gapId === gap.id);
+              const label = outcome?.verdict === "correct" ? "Correct" : outcome?.verdict === "partial" ? "Nearly there" : outcome?.verdict === "incorrect" ? "Not quite" : "Check your answer";
+              return <div key={gap.id} className="min-w-0 rounded-xl border border-[var(--color-border)] p-4">
+                <p className="mb-2 text-xs text-text-muted">Gap {index + 1} · {label}</p>
+                <StudyText as="p" text={gapResponses[gap.id] || "No answer"} className="break-words text-sm text-text-primary" />
+                {outcome?.verdict !== "correct" ? <StudyText as="p" text={`Expected: ${gap.answer}`} className="mt-2 break-words text-sm text-text-secondary" /> : null}
+                {outcome?.feedback ? <p className="mt-2 text-xs text-text-secondary">{outcome.feedback}</p> : null}
+              </div>;
+            })}
+          </div>
+          <p className="mb-3 text-2xs font-semibold uppercase tracking-[0.2em] text-text-muted">The answer</p>
+          <StudyText as="p" text={card.back} className="whitespace-pre-wrap text-base leading-relaxed text-text-primary sm:text-lg" />
+          {reveal.result.missingItems?.length ? <p className="mt-3 text-sm text-text-secondary">Check: {reveal.result.missingItems.join(", ")}</p> : null}
+        </div>
+        {reveal.revisit && onRevisitAfterHint ? (
+          <Button type="button" size="lg" onClick={onRevisitAfterHint}>Continue</Button>
+        ) : reveal.rating ? (
+          <Button type="button" size="lg" disabled={savingRating !== null} onClick={() => onCommit(reveal.rating!, { requeueOnMiss: true })}>Next card</Button>
+        ) : (
+          <StudyRatingControls scale={ratingScale} savingRating={savingRating} onRate={(rating) => onCommit(rating, { requeueOnMiss: true })} />
+        )}
+      </div>
+    );
+  }
+  if (exercise.mode === "gap-fill" && gaps.length > 1 && !reveal) {
+    const prompt = renderMultiClozePrompt(card.back, gaps, BLANK);
+    const complete = gaps.every((gap) => (gapResponses[gap.id] ?? "").trim());
+    return (
+      <div data-study-current-card-id={card.id} className="mx-auto w-full max-w-[62rem] space-y-6">
+        <div className="space-y-3 text-center">
+          <StudyText as="p" text={card.front} className="text-sm text-text-muted" />
+          <StudyText as="p" text={prompt} className="whitespace-pre-wrap text-lg font-medium leading-relaxed text-text-primary sm:text-xl" />
+        </div>
+        <div className="mx-auto grid max-w-2xl gap-3 sm:grid-cols-2">
+          {gaps.map((gap, index) => (
+            <Input
+              key={gap.id}
+              label={`Gap ${index + 1}`}
+              value={gapResponses[gap.id] ?? ""}
+              autoComplete="off"
+              disabled={entryState.phase === "checking" || savingRating !== null}
+              onChange={(event) => setGapResponses((current) => {
+                const next = { ...current, [gap.id]: event.target.value };
+                onDraftChange?.(next);
+                return next;
+              })}
+              onKeyDown={(event) => {
+                if (!event.repeat && event.key === "Enter" && complete && savingRating === null && entryState.phase !== "checking") {
+                  event.preventDefault();
+                  submitMultipleGaps();
+                }
+              }}
+            />
+          ))}
+        </div>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button type="button" variant="secondary" onClick={skip}>I don&apos;t know</Button>
+          <Button type="button" disabled={!complete || savingRating !== null || entryState.phase === "checking"} onClick={submitMultipleGaps}>{entryState.phase === "checking" ? "Checking…" : "Check answer"}</Button>
+        </div>
+        {onReportExercise ? <button type="button" onClick={() => onReportExercise("poor-gap")} className="mx-auto block text-xs text-text-muted underline-offset-4 hover:text-text-secondary hover:underline">Something&apos;s wrong</button> : null}
+      </div>
+    );
+  }
+
+  const isGapFill = exercise.mode === "gap-fill" && gaps.length === 1;
   const promptNode = isGapFill ? (
     <div className="space-y-3">
       <StudyText
@@ -204,7 +338,7 @@ export default function StudyExerciseStage({
       />
       <StudyText
         as="p"
-        text={renderClozePrompt(card.back, exercise.cloze!, BLANK)}
+        text={renderClozePrompt(card.back, gaps[0], BLANK)}
         className="whitespace-pre-wrap text-center text-lg font-medium leading-relaxed text-text-primary sm:text-xl"
       />
     </div>
@@ -214,7 +348,7 @@ export default function StudyExerciseStage({
 
   // The hint is the first letter and the shape of the word. Enough to unstick a
   // student, never enough to hand them the answer.
-  const target = isGapFill ? exercise.cloze!.answer : exercise.expectedAnswer;
+  const target = isGapFill ? gaps[0].answer : exercise.expectedAnswer;
   const hint = buildHint(target);
 
   return (
@@ -230,26 +364,37 @@ export default function StudyExerciseStage({
         state={entryState}
         hint={hint}
         hintUsed={hintUsed}
-        onUseHint={() => setHintUsed(true)}
+        onUseHint={() => { setHintUsed(true); onViewStateChange?.({ hintUsed: true }); }}
         onSubmit={submit}
         onSkip={skip}
+        initialResponse={typeof draftResponse === "string" ? draftResponse : ""}
+        onDraftChange={onDraftChange}
       />
+      {isGapFill && onReportExercise ? <button type="button" onClick={() => onReportExercise("poor-gap")} className="mx-auto block text-xs text-text-muted underline-offset-4 hover:text-text-secondary hover:underline">Something&apos;s wrong</button> : null}
 
       {reveal ? (
         <div className="space-y-4">
           <div className="space-y-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-5">
+            <p role="status" className="text-sm font-semibold text-text-primary">
+              {reveal.result.verdict === "correct" ? "Correct" : reveal.result.verdict === "partial" || reveal.result.verdict === "close" ? "Nearly there" : reveal.result.verdict === "incorrect" ? "Not quite" : "Check your answer"}
+            </p>
+            {reveal.response ? <p className="text-sm text-text-secondary">You wrote: {reveal.response}</p> : null}
             <div className="text-2xs font-semibold uppercase tracking-[0.2em] text-text-muted">
               {isGapFill ? "The missing word" : "The answer"}
             </div>
             <StudyText
               as="p"
-              text={isGapFill ? exercise.cloze!.answer : card.back}
+              text={isGapFill ? gaps[0].answer : card.back}
               className="whitespace-pre-wrap text-base leading-relaxed text-text-primary sm:text-lg"
             />
+            {reveal.result.feedback ? <p className="text-sm text-text-secondary">{reveal.result.feedback}</p> : null}
+            {reveal.result.missingItems?.length ? <p className="text-sm text-text-secondary">Missing: {reveal.result.missingItems.join(", ")}</p> : null}
 
           </div>
 
-          {reveal.rating ? (
+          {reveal.revisit && onRevisitAfterHint ? (
+            <div className="space-y-2"><p className="text-sm text-text-secondary">The hint helped. This card will return once more without help.</p><Button type="button" size="lg" onClick={onRevisitAfterHint}>Continue</Button></div>
+          ) : reveal.rating ? (
             <Button
               type="button"
               size="lg"
@@ -283,7 +428,7 @@ function buildHint(answer: string) {
   if (!trimmed) return undefined;
   const words = trimmed.split(/\s+/);
   if (words.length > 6) {
-    return `${words.length} words, starting with "${words[0]}".`;
+    return `Think about the key relationship or cause. Your wording does not need to match the card.`;
   }
   return words
     .map((word) => (word.length > 1 ? `${word[0]}${"·".repeat(word.length - 1)}` : word))

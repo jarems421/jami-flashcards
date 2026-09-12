@@ -29,9 +29,14 @@
  *   tokeniser    even for text, the cap is enforced against characters over
  *                3.5, not the provider's own tokeniser. The margin below is a
  *                safety factor, not a proof.
- *   reasoning    the supervisor runs at medium reasoning effort. Whether those
- *                tokens are billed inside `max_tokens` or beyond it is a
- *                provider behaviour that has not been established here.
+ *   reasoning    established, and larger than this table assumes. A 40-record
+ *                benchmark put the supervisor's output at a median of 4,634
+ *                tokens against the worker's 1,197 on the identical prompt and
+ *                question -- so roughly three quarters of what the supervisor
+ *                is billed for is thinking, not report, and it is billed inside
+ *                `max_tokens`: eight of its calls stopped dead on the ceiling.
+ *                The estimate below prices the cap, so it covers this; what it
+ *                does not do is predict which calls approach it.
  *   routing      this said failover only selects a different endpoint for the
  *                same model. The first paid run disproved it: after three
  *                failures the router moved to a standby and called

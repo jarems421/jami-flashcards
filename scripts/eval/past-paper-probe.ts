@@ -5,6 +5,7 @@ import { markingCostBound } from "@/lib/evaluation/marking-cost-bound";
 import { referenceMark, type MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
 import { adaptRecordToPaper } from "@/lib/evaluation/practice-paper-adapter";
 import { getAiInputTokenCap, getAiTokenCap } from "@/lib/ai/budgets";
+import { EXAM_AI_JOB_DEADLINE_MS } from "@/lib/practice/exam-questions";
 
 /**
  * Ten handwritten GCSE maths responses, marked by the path a student gets.
@@ -27,6 +28,21 @@ const BUDGET_USD = 3.51;
 /** Five responses under two representations. */
 const RUNS = 10;
 
+/**
+ * A report filename no later run can take.
+ *
+ * This wrote to a fixed `past-paper-probe.json`, so the second probe destroyed
+ * the first one's report on its way to recording a single timeout. The costs,
+ * the per-record latencies and the five markings that had succeeded went with
+ * it, and the only surviving figures were the ones that had already been
+ * quoted in conversation. A run that spends real money and overwrites the
+ * evidence of the last one is not a diagnostic.
+ */
+function reportPath(startedAt: number) {
+  const stamp = new Date(startedAt).toISOString().replace(/[:.]/g, "-").replace(/Z$/, "");
+  return join(REPORT, `past-paper-probe-${stamp}.json`);
+}
+
 function loadAnswerImage(record: MarkingCorpusRecord) {
   if (record.answer.kind !== "image") return [];
   return record.answer.paths.map((path) => ({
@@ -38,6 +54,8 @@ function loadAnswerImage(record: MarkingCorpusRecord) {
 }
 
 export default async function main(args: string[]) {
+  const startedAt = Date.now();
+  const reportFile = reportPath(startedAt);
   const bound = markingCostBound({
     inputTokenCap: getAiInputTokenCap("examQuestionMarking"),
     maxOutputTokens: getAiTokenCap("examQuestionMarking"),
@@ -112,13 +130,15 @@ export default async function main(args: string[]) {
     reserveUsdPerRecord: bound.usdPerRecord,
     haltOnUnreportedCost: true,
     /*
-     * Production's deadline, not the evaluator's 420-second default. The first
-     * probe left the default in place, so one dead route burned two minutes on
-     * four thirty-second attempts -- where a student's request would have given
-     * up at 55 seconds. A run that does not share the deadline is not measuring
-     * the same marker.
+     * Production's deadline, read from production rather than copied.
+     *
+     * It was 55 seconds, which was never a marking budget: it was what fitted
+     * inside one serverless request. Marking is now a durable job and the
+     * deadline is set for marking, so a run that pinned the old number would
+     * be measuring a constraint students no longer have -- and would fail
+     * markings that succeed for them.
      */
-    timeoutMs: 55_000,
+    timeoutMs: EXAM_AI_JOB_DEADLINE_MS,
     pipeline: "pastPaperPractice",
     loadAnswerImages: async (record) => loadAnswerImage(record),
     onAudit: (audit) => audits.set(String(audit.record), audit as Record<string, unknown>),
@@ -231,6 +251,7 @@ ${record.markScheme ?? ""}`,
 
   mkdirSync(REPORT, { recursive: true });
   const report = {
+    startedAt: new Date(startedAt).toISOString(),
     probe: "past-paper-scheme-representation",
     design: "5 responses x 2 scheme representations = 10 runs, serial",
     pipeline: "pastPaperPractice",
@@ -242,7 +263,7 @@ ${record.markScheme ?? ""}`,
     stats: { ...stats },
     outcomes,
   };
-  writeFileSync(join(REPORT, "past-paper-probe.json"), JSON.stringify(report, null, 2));
+  writeFileSync(reportFile, JSON.stringify(report, null, 2));
 
   const marked = outcomes.filter((item) => typeof item.awardedMarks === "number");
   const exact = marked.filter((item) => item.awardedMarks === item.referenceMark).length;
@@ -283,5 +304,5 @@ ${record.markScheme ?? ""}`,
     console.log(`exact agreement ${exact}/${marked.length}`);
     console.log(`signed bias ${mean(errors).toFixed(2)} marks · absolute ${mean(errors.map(Math.abs)).toFixed(2)}`);
   }
-  console.log(`report written to ${join(REPORT, "past-paper-probe.json")}`);
+  console.log(`report written to ${reportFile}`);
 }

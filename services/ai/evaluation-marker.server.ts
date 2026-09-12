@@ -12,8 +12,9 @@ import type { Marker, MarkRequest, MarkResponse } from "@/lib/evaluation/experim
 import {
   markPracticePaperWithAudit,
   markSingleQuestionAdaptively,
+  type PracticePaperMarkingInput,
 } from "@/services/ai/practice-paper-marking.server";
-import { examMarkingNeedsVerification } from "@/lib/practice/exam-marking-policy";
+import { PracticePaperMarkingFailedError } from "@/lib/practice/marker-stages";
 
 /**
  * The evaluation's marker: Jami's real marking path, nothing simulated.
@@ -86,6 +87,19 @@ const isRateLimited = (error: unknown) => {
 export type EvaluationPipeline = "wholePaper" | "pastPaperPractice";
 
 /**
+ * What a run watches while a marking happens, for both pipelines.
+ *
+ * These were wired only to the whole-paper branch, so on the Past Paper
+ * Practice path `stats.parseFailures` was permanently empty and no marker
+ * journal was ever written -- which quietly disabled `mismatch-audit` and
+ * `combination-rules` for the one pipeline students actually get. A missing
+ * observer looks exactly like a clean run.
+ */
+type MarkerObservers = Partial<
+  Pick<PracticePaperMarkingInput, "onMarkerReport" | "onParseFailure" | "logFallback">
+>;
+
+/**
  * The single-question marker, called exactly as the answers route calls it.
  *
  * The shipped output and input caps, the shipped verification trigger, and a
@@ -94,7 +108,8 @@ export type EvaluationPipeline = "wholePaper" | "pastPaperPractice";
  */
 async function markPastPaperPracticeQuestion(
   adapted: { paper: PracticePaper; answerParts: AiContentPart[] },
-  deadlineAt: number
+  deadlineAt: number,
+  observers: MarkerObservers = {}
 ) {
   const question = adapted.paper.questions[0];
   const scheme = adapted.paper.markScheme?.items?.find(
@@ -103,14 +118,15 @@ async function markPastPaperPracticeQuestion(
   if (!question || adapted.paper.questions.length !== 1 || !scheme) {
     throw new Error("single_question_required");
   }
-  const hasWorking = adapted.answerParts.some((part) => "inlineData" in part);
   const marked = await markSingleQuestionAdaptively({
     paper: adapted.paper,
     answerParts: adapted.answerParts,
     deadlineAt,
     maxOutputTokens: getAiTokenCap("examQuestionMarking"),
     inputTokenCap: getAiInputTokenCap("examQuestionMarking"),
-    forceVerification: examMarkingNeedsVerification(scheme, question.marks, hasWorking),
+    // Blind double marking on every answer, exactly as the route does it.
+    forceVerification: true,
+    ...observers,
   });
   /*
    * Reported in the whole-paper audit's shape so one set of statistics covers
@@ -123,6 +139,7 @@ async function markPastPaperPracticeQuestion(
     result: marked.result,
     estimatedCostUsd: marked.estimatedCostUsd,
     costAccounting: marked.costAccounting,
+    models: marked.models,
     audit: {
       version: 1 as const,
       primaryScores: { [question.id]: marked.audit.primaryScore },
@@ -285,6 +302,14 @@ export type EvaluationMarkerStats = {
   /** Unreadable reports by cause, so a failure rate can be acted on. */
   parseFailures: Record<string, number>;
   reasons: string[];
+  /**
+   * Every model that answered during the run, as a set.
+   *
+   * A quality figure describes the marker that produced it. Recorded so a gate
+   * can refuse a baseline measured on models the current run did not use --
+   * a provider updating one underneath us moves severity silently otherwise.
+   */
+  models: string[];
 };
 
 export function createEvaluationMarker(options: EvaluationMarkerOptions): {
@@ -314,6 +339,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
     unaccountedMarkings: 0,
     parseFailures: {},
     reasons: [],
+    models: [],
   };
 
   const mark: Marker = async (request: MarkRequest): Promise<MarkResponse | null> => {
@@ -439,13 +465,39 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
      * the bug was handing it a new one.
      */
     const deadlineAt = Date.now() + timeoutMs;
+    /*
+     * Built once and given to whichever pipeline runs. They used to be written
+     * inline into the whole-paper call, which is how the single-question path
+     * came to have none of them.
+     */
+    const observers: MarkerObservers = {
+      logFallback: options.onFallback,
+      ...(options.onMarkerReport
+        ? {
+            onMarkerReport: (report) =>
+              options.onMarkerReport?.({
+                record: request.record.id,
+                arm: request.arm,
+                ...report,
+              }),
+          }
+        : {}),
+      onParseFailure: (failure) => {
+        stats.parseFailures[failure.kind] = (stats.parseFailures[failure.kind] ?? 0) + 1;
+        options.onParseFailure?.({
+          record: request.record.id,
+          arm: request.arm,
+          ...failure,
+        });
+      },
+    };
     try {
       const attempt = async () => {
         let lastError: unknown;
         for (let index = 0; index <= RATE_LIMIT_BACKOFF_MS.length; index += 1) {
           try {
             if ((options.pipeline ?? "wholePaper") === "pastPaperPractice") {
-              return await markPastPaperPracticeQuestion(adapted.adapted, deadlineAt);
+              return await markPastPaperPracticeQuestion(adapted.adapted, deadlineAt, observers);
             }
             return await markPracticePaperWithAudit({
               paper: adapted.adapted.paper,
@@ -453,40 +505,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
               exemplarParts: exemplarsToParts(request.exemplars),
               deadlineAt,
               maxOutputTokens: getAiTokenCap("practicePaperMarking"),
-              logFallback: options.onFallback,
-              ...(options.onMarkerReport
-                ? {
-                    onMarkerReport: (report: {
-                      role: string;
-                      modelRole: string;
-                      questions: {
-                        questionId: string;
-                        awardedMarks: number;
-                        confidence: string;
-                        criteria: {
-                          criterionId: string;
-                          awarded: boolean;
-                          schemeValue?: string;
-                          candidateValue?: string;
-                          evidence?: string;
-                        }[];
-                      }[];
-                    }) =>
-                      options.onMarkerReport?.({
-                        record: request.record.id,
-                        arm: request.arm,
-                        ...report,
-                      }),
-                  }
-                : {}),
-              onParseFailure: (failure) => {
-                stats.parseFailures[failure.kind] = (stats.parseFailures[failure.kind] ?? 0) + 1;
-                options.onParseFailure?.({
-                  record: request.record.id,
-                  arm: request.arm,
-                  ...failure,
-                });
-              },
+              ...observers,
             });
           } catch (error) {
             lastError = error;
@@ -504,13 +523,17 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
         }
         throw lastError;
       };
-      const { result, audit, costAccounting } = await attempt();
+      const { result, audit, costAccounting, models } = await attempt();
       settle(costAccounting, "completed");
 
       if (audit.adjudicatedQuestionIds.length > 0) stats.adjudicated += 1;
       if (audit.thirdViewQuestionIds.length > 0) stats.thirdView += 1;
 
       const question = result.questionResults[0];
+      for (const model of models ?? []) {
+        if (!stats.models.includes(model)) stats.models.push(model);
+      }
+      stats.models.sort();
       options.onAudit?.({
         record: request.record.id,
         arm: request.arm,
@@ -559,12 +582,24 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
       };
     } catch (error) {
       /*
-       * A marking that threw may still have paid for the calls it made before
-       * it did, and there is no figure for them. The reservation stands rather
-       * than being released, so a run of failures cannot spend past the
-       * ceiling while reporting that it spent nothing.
+       * A marking that threw still paid for the calls it made, and now says so.
+       *
+       * It used to arrive with nothing but a message, so every failure was
+       * treated as unbounded spend and the reservation was held whole -- which
+       * meant a single unreadable report could halt a thirty-record run that
+       * had cost three tenths of a penny.
+       *
+       * `billingKnown` is what makes this safe rather than merely convenient.
+       * It is set only when every attempt came back with a response that
+       * reported its cost; an abort or a silent failover leaves it false, the
+       * accounting is refused, and the reservation stands exactly as before. A
+       * client abort does not stop a provider, so "it threw" is still not
+       * evidence that nothing was billed.
        */
-      settle(undefined, "threw");
+      const failure = error instanceof PracticePaperMarkingFailedError && error.billingKnown
+        ? error.costAccounting
+        : undefined;
+      settle(failure, "threw");
       stats.failed += 1;
       const reason = error instanceof Error ? error.message : String(error);
       stats.reasons.push(`${request.record.id} (${request.arm}): ${reason}`);

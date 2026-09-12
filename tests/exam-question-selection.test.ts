@@ -112,6 +112,8 @@ function question(index: number, overrides: Record<string, unknown> = {}): Doc {
       topicIds: [],
       humanChecked: true,
       review: { status: "approved", reviewedBy: "owner", reviewedAt: 1_700_000_000_000 },
+      // Official material also waits on a person sampling its paper.
+      paperSpotCheckedAt: 1_700_000_000_000,
       rights: {
         key: "aqa-2026", version: 1, verified: true, storageAllowed: true,
         studentDisplayAllowed: true, aiInferenceAllowed: true, revoked: false,

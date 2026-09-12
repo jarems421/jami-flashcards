@@ -1,9 +1,5 @@
 import type { Card } from "@/lib/study/cards";
-import {
-  classifyAnswerShape,
-  normalizeAnswerText,
-  parseNumericAnswer,
-} from "@/lib/study/answer-marking";
+import { markTypedAnswer, normalizeAnswerText, parseNumericAnswer } from "@/lib/study/answer-marking";
 import { getCardContentHash } from "@/lib/study/study-modes";
 
 export type McqOption = { id: string; text: string };
@@ -12,7 +8,26 @@ export type McqQuestion = {
   options: McqOption[];
   correctOptionId: string;
   explanations: Record<string, string>;
+  variantId?: string;
 };
+
+function comparableAnswer(value: string) {
+  return normalizeAnswerText(value)
+    .replace(/^(?:the\s+)?(?:answer|speed|value|result|distance|time|mass|force)\s+(?:is|=)\s+/i, "")
+    .trim();
+}
+
+function equivalentOption(left: string, right: string) {
+  if (markTypedAnswer({ response: left, expectedAnswer: right }).verdict === "correct" ||
+    markTypedAnswer({ response: right, expectedAnswer: left }).verdict === "correct") return true;
+  const a = parseNumericAnswer(comparableAnswer(left));
+  const b = parseNumericAnswer(comparableAnswer(right));
+  if (a && b) {
+    return Math.abs(a.value - b.value) <= Math.max(1e-9, Math.abs(b.value) * 1e-9) &&
+      a.unit.normalize("NFKC").replace(/\s+/g, "") === b.unit.normalize("NFKC").replace(/\s+/g, "");
+  }
+  return comparableAnswer(left) === comparableAnswer(right);
+}
 
 export const MCQ_OPTION_COUNT = 4;
 const REQUIRED_DISTRACTORS = MCQ_OPTION_COUNT - 1;
@@ -68,45 +83,6 @@ function shuffle<T>(items: T[], random: () => number) {
     [result[index], result[swap]] = [result[swap], result[index]];
   }
   return result;
-}
-
-/**
- * Wrong-but-believable numbers, built by moving the real one.
- *
- * The one kind of card that needs no preparation. The perturbations are the
- * mistakes students actually make -- a factor of ten, a doubling, a near miss --
- * and each is unarguably wrong while looking like the sort of thing that could
- * have been right.
- */
-function numericDistractors(answer: string) {
-  const parsed = parseNumericAnswer(answer);
-  if (!parsed) return [];
-
-  const { value, unit } = parsed;
-  const suffix = unit ? ` ${unit}` : "";
-  const decimals = (answer.split(".")[1] ?? "").replace(/[^\d].*$/, "").length;
-  const format = (next: number) =>
-    `${decimals > 0 ? next.toFixed(decimals) : Math.round(next)}${suffix}`;
-
-  const candidates = [
-    value * 10,
-    value / 10,
-    value * 2,
-    value + Math.max(1, Math.abs(value) * 0.1),
-    value - Math.max(1, Math.abs(value) * 0.1),
-  ];
-
-  const seen = new Set([normalizeAnswerText(answer)]);
-  const distractors: string[] = [];
-  for (const candidate of candidates) {
-    if (!Number.isFinite(candidate)) continue;
-    const text = format(candidate);
-    const key = normalizeAnswerText(text);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    distractors.push(text);
-  }
-  return distractors;
 }
 
 function wordCount(text: string) {
@@ -185,35 +161,42 @@ function answerBlendsIn(answer: string, distractors: string[]) {
 export function buildMultipleChoiceQuestion(input: {
   card: Card;
   seed?: number;
+  variantIndex?: number;
+  recentVariantIds?: string[];
 }): McqQuestion | null {
   const { card } = input;
   const answerText = card.back.trim();
   if (!answerText || answerText.length > MAX_OPTION_LENGTH) return null;
 
-  const seen = new Set([normalizeAnswerText(answerText)]);
+  const variants = (card.studySettings?.mcqDistractors !== undefined ? [] : card.studySettings?.generatedStudy?.mcqVariants ?? []).filter(
+    (variant) => !card.studySettings?.generatedStudy?.retiredVariantIds?.includes(variant.id)
+  );
+  const freshVariants = variants.filter((candidate) => !(input.recentVariantIds ?? []).slice(-2).includes(candidate.id));
+  const variantPool = freshVariants.length > 0 ? freshVariants : variants;
+  const variant = variantPool.length > 0
+    ? variantPool[(input.variantIndex ?? 0) % variantPool.length]
+    : undefined;
+  const preparedCorrect = variant?.correctAnswer?.trim();
+  const correctAnswer = preparedCorrect && (
+    equivalentOption(preparedCorrect, answerText) ||
+    (card.studySettings?.acceptedAnswers ?? []).some((alias) => equivalentOption(preparedCorrect, alias))
+  ) ? preparedCorrect : answerText;
+
+  const seen = new Set([normalizeAnswerText(correctAnswer)]);
   const distractors: string[] = [];
 
   const push = (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || trimmed.length > MAX_OPTION_LENGTH) return;
     const key = normalizeAnswerText(trimmed);
-    if (!key || seen.has(key)) return;
+    if (!key || seen.has(key) || equivalentOption(trimmed, correctAnswer) ||
+      (card.studySettings?.acceptedAnswers ?? []).some((alias) => equivalentOption(trimmed, alias))) return;
     seen.add(key);
     distractors.push(trimmed);
   };
 
-  for (const written of card.studySettings?.mcqDistractors ?? []) {
+  for (const written of variant?.distractors ?? card.studySettings?.mcqDistractors ?? []) {
     push(written);
-  }
-
-  if (
-    distractors.length < REQUIRED_DISTRACTORS &&
-    classifyAnswerShape(answerText) === "numeric"
-  ) {
-    for (const candidate of numericDistractors(answerText)) {
-      if (distractors.length >= REQUIRED_DISTRACTORS) break;
-      push(candidate);
-    }
   }
 
   if (distractors.length < REQUIRED_DISTRACTORS) return null;
@@ -232,17 +215,17 @@ export function buildMultipleChoiceQuestion(input: {
     .map((text, position) => ({ text, position }))
     .sort(
       (left, right) =>
-        shapeDistance(answerText, left.text) - shapeDistance(answerText, right.text) ||
+        shapeDistance(correctAnswer, left.text) - shapeDistance(correctAnswer, right.text) ||
         left.position - right.position
     )
     .slice(0, REQUIRED_DISTRACTORS)
     .map((entry) => entry.text);
 
-  if (!answerBlendsIn(answerText, chosen)) return null;
+  if (!answerBlendsIn(correctAnswer, chosen)) return null;
 
   const options = shuffle(
     [
-      { id: correctOptionId, text: answerText },
+      { id: correctOptionId, text: correctAnswer },
       ...chosen.map((text, position) => ({
         id: `opt-${position + 1}`,
         text,
@@ -255,9 +238,9 @@ export function buildMultipleChoiceQuestion(input: {
   // preparation. Keyed by the distractor's text rather than its option id,
   // because the ids are assigned here and the misconceptions were written
   // before the shuffle.
-  const written = card.studySettings?.mcqExplanations ?? {};
+  const written = variant?.explanations ?? card.studySettings?.mcqExplanations ?? {};
   const explanations: Record<string, string> = {
-    [correctOptionId]: "That is the answer on this card.",
+    [correctOptionId]: written[correctAnswer] ?? "This matches the idea the question is testing.",
   };
   for (const option of options) {
     if (option.id === correctOptionId) continue;
@@ -265,5 +248,5 @@ export function buildMultipleChoiceQuestion(input: {
       written[option.text] ?? "Close, but not what this card asks for.";
   }
 
-  return { options, correctOptionId, explanations };
+  return { options, correctOptionId, explanations, ...(variant ? { variantId: variant.id } : {}) };
 }

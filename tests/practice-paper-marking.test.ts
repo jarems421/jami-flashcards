@@ -74,6 +74,67 @@ describe("practice-paper marking response", () => {
     });
   });
 
+  /*
+   * A mark lost has to be explained, the same way a mark given has to be
+   * evidenced.
+   *
+   * Only the awarding side was ever checked, so a report could hand back 1 of 2
+   * and say nothing whatever about the other mark. The student already knows
+   * what they got right; the part they came for is the part that was missing,
+   * and a number on its own is the one thing that cannot be practised against.
+   */
+  it("refuses a report that withholds marks and accounts for none of them", () => {
+    expect(
+      parsePracticePaperMarkingModelAnswer(
+        JSON.stringify({
+          questionResults: [
+            { questionId: "q1", awardedMarks: 1, maxMarks: 2, feedback: "Partial.", evidence: ["Some working"], strengths: [], improvements: [], confidence: "high", attempted: true },
+            { questionId: "q2", awardedMarks: 3, maxMarks: 3, feedback: "Complete.", evidence: ["All three"], strengths: [], improvements: [], confidence: "high", attempted: true },
+          ],
+        }),
+        paper
+      )
+    ).toBeNull();
+  });
+
+  /** Any of the three ways a report can account for a lost mark will do. */
+  it("accepts a shortfall explained by a criterion, an improvement or a next step", () => {
+    const withExplanation = (extra: Record<string, unknown>) =>
+      parsePracticePaperMarkingModelAnswer(
+        JSON.stringify({
+          questionResults: [
+            { questionId: "q1", awardedMarks: 1, maxMarks: 2, feedback: "Partial.", evidence: ["Some working"], strengths: [], improvements: [], confidence: "high", attempted: true, ...extra },
+            { questionId: "q2", awardedMarks: 3, maxMarks: 3, feedback: "Complete.", evidence: ["All three"], strengths: [], improvements: [], confidence: "high", attempted: true },
+          ],
+        }),
+        paper
+      );
+    expect(withExplanation({ nextStep: "Show the substitution." })).not.toBeNull();
+    expect(withExplanation({ improvements: ["State the gradient."] })).not.toBeNull();
+    expect(
+      withExplanation({
+        criterionResults: [
+          { criterionId: "C1", criterion: "states the gradient", awarded: false, awardedMarks: 0, maxMarks: 1, evidence: "", candidateValue: "10" },
+        ],
+      })
+    ).not.toBeNull();
+  });
+
+  /** Full marks need no explanation: nothing was withheld to explain. */
+  it("asks nothing extra of a report that awarded everything", () => {
+    expect(
+      parsePracticePaperMarkingModelAnswer(
+        JSON.stringify({
+          questionResults: [
+            { questionId: "q1", awardedMarks: 2, maxMarks: 2, feedback: "Complete.", evidence: ["Both marks"], strengths: [], improvements: [], confidence: "high", attempted: true },
+            { questionId: "q2", awardedMarks: 3, maxMarks: 3, feedback: "Complete.", evidence: ["All three"], strengths: [], improvements: [], confidence: "high", attempted: true },
+          ],
+        }),
+        paper
+      )
+    ).not.toBeNull();
+  });
+
   it("rejects a report that silently omits a question", () => {
     expect(
       parsePracticePaperMarkingModelAnswer(
@@ -113,9 +174,11 @@ describe("practice-paper marking response", () => {
     });
     const result = parsePracticePaperMarkingModelAnswer(JSON.stringify({
       questionResults: [
-        { questionId: "q1", awardedMarks: 4, maxMarks: 5, evidence: ["Required method"], feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
-        { questionId: "q2", awardedMarks: 3, maxMarks: 10, evidence: ["Partial response"], feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
-        { questionId: "q3", awardedMarks: 8, maxMarks: 10, evidence: ["Developed response"], feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
+        // Each drops marks, so each carries a nextStep: a report that accounts
+        // for none of what it withheld is refused before a student sees it.
+        { questionId: "q1", awardedMarks: 4, maxMarks: 5, evidence: ["Required method"], feedback: "", strengths: [], improvements: [], nextStep: "Show the substitution.", confidence: "high", attempted: true },
+        { questionId: "q2", awardedMarks: 3, maxMarks: 10, evidence: ["Partial response"], feedback: "", strengths: [], improvements: [], nextStep: "Develop the second point.", confidence: "high", attempted: true },
+        { questionId: "q3", awardedMarks: 8, maxMarks: 10, evidence: ["Developed response"], feedback: "", strengths: [], improvements: [], nextStep: "Add a supporting example.", confidence: "high", attempted: true },
       ],
     }), choicePaper);
     expect(result).toMatchObject({ awardedMarks: 12, totalMarks: 15, percentage: 80 });
@@ -148,8 +211,8 @@ describe("practice-paper marking response", () => {
       strengths: [],
       priorities: [],
       questionResults: [
-        { questionId: "q1", awardedMarks: 1, maxMarks: 2, evidence: ["Partial answer"], feedback: "", strengths: [], improvements: [], confidence: "low", attempted: true },
-        { questionId: "q2", awardedMarks: 2, maxMarks: 3, evidence: ["Two credit points"], feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
+        { questionId: "q1", awardedMarks: 1, maxMarks: 2, evidence: ["Partial answer"], feedback: "", strengths: [], improvements: [], nextStep: "Finish the final line.", confidence: "low", attempted: true },
+        { questionId: "q2", awardedMarks: 2, maxMarks: 3, evidence: ["Two credit points"], feedback: "", strengths: [], improvements: [], nextStep: "Add the third point.", confidence: "high", attempted: true },
       ],
     }), paper);
     expect(current).not.toBeNull();
@@ -226,7 +289,9 @@ describe("the comparison behind a criterion verdict", () => {
           criterionResults: [criterion],
           evidence: ["y - 7 = 10(x - 1)"],
           strengths: [],
-          improvements: [],
+          // Awards 1 of 2, so something has to account for the other mark:
+          // a report that does not is refused before it reaches a student.
+          improvements: ["State the gradient before substituting."],
           confidence: "high",
         },
         {

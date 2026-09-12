@@ -2,13 +2,19 @@ import { describe, expect, it } from "vitest";
 import type { Card } from "@/lib/study/cards";
 import {
   buildCustomReviewCards,
+  countCardsByDeck,
+  countCardsByTopic,
   EMPTY_FOCUSED_REVIEW_RECENTS,
   FOCUSED_REVIEW_RECENT_LIMIT,
   getFocusedReviewRecentsKey,
   mergeRecentValues,
+  nameById,
   normalizeFocusedReviewRecents,
   parseIdsParam,
+  resolveRecents,
+  searchByName,
 } from "@/lib/study/focused-review";
+import { getTopicNameKey } from "@/lib/material/topics";
 
 function card(overrides: Partial<Card> = {}): Card {
   return {
@@ -149,5 +155,55 @@ describe("buildCustomReviewCards", () => {
     delete (legacy as { topicIds?: string[] }).topicIds;
     expect(buildCustomReviewCards([legacy], [], ["t-1"])).toEqual([]);
     expect(buildCustomReviewCards([legacy], ["deck-2"], [])).toHaveLength(1);
+  });
+});
+
+describe("filter surface derivations", () => {
+  it("counts a card once per deck and once per Topic, however often it lists one", () => {
+    const cards = [
+      card({ id: "a", deckId: "d1", topicIds: ["t1", "t1", "t2"] }),
+      card({ id: "b", deckId: "d1", topicIds: ["t2"] }),
+      card({ id: "c", deckId: "d2", topicIds: [] }),
+    ];
+    expect(countCardsByDeck(cards).get("d1")).toBe(2);
+    expect(countCardsByDeck(cards).get("d2")).toBe(1);
+    expect(countCardsByTopic(cards).get("t1")).toBe(1);
+    expect(countCardsByTopic(cards).get("t2")).toBe(2);
+  });
+
+  it("offers nothing until a student has typed something", () => {
+    const decks = [{ id: "d1", name: "Biology" }];
+    expect(searchByName(decks, "")).toEqual([]);
+    expect(searchByName(decks, "   ")).toEqual([]);
+    expect(searchByName(decks, "bio")).toHaveLength(1);
+  });
+
+  it("matches Topics through the same key the Topic store compares on", () => {
+    const topics = [{ id: "t1", name: "Cell  Biology" }];
+    expect(searchByName(topics, "cell biology", getTopicNameKey)).toHaveLength(1);
+  });
+
+  it("caps a search at eight so the picker cannot outgrow its panel", () => {
+    const decks = Array.from({ length: 20 }, (_, i) => ({ id: `d${i}`, name: `Deck ${i}` }));
+    expect(searchByName(decks, "deck")).toHaveLength(8);
+  });
+
+  it("drops a recent id whose deck has since been deleted", () => {
+    const decks = [{ id: "d1", name: "Kept" }];
+    expect(resolveRecents(decks, ["gone", "d1"])).toEqual([{ id: "d1", name: "Kept" }]);
+  });
+
+  it("keeps recents in the order they were last reached for", () => {
+    const decks = [{ id: "d1", name: "One" }, { id: "d2", name: "Two" }];
+    expect(resolveRecents(decks, ["d2", "d1"]).map((deck) => deck.id)).toEqual(["d2", "d1"]);
+  });
+
+  it("holds recents to the row's limit", () => {
+    const decks = Array.from({ length: 6 }, (_, i) => ({ id: `d${i}`, name: `D${i}` }));
+    expect(resolveRecents(decks, decks.map((deck) => deck.id))).toHaveLength(FOCUSED_REVIEW_RECENT_LIMIT);
+  });
+
+  it("maps names by id", () => {
+    expect(nameById([{ id: "d1", name: "Biology" }])).toEqual({ d1: "Biology" });
   });
 });

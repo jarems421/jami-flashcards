@@ -25,6 +25,7 @@ import {
   type GoalAnswerContext,
 } from "@/lib/study/goals";
 import type { Star } from "@/lib/constellation/stars";
+import { commitStudyEffect } from "@/services/study/commit-effect";
 
 /** A finished goal and the star it earned, for the session to celebrate. */
 export type GoalReward = { star: Star; goalName: string };
@@ -190,7 +191,8 @@ export async function applyGoalProgressForAnswer(
   userId: string,
   isCorrect: boolean,
   now = Date.now(),
-  context: GoalAnswerContext = {}
+  context: GoalAnswerContext = {},
+  commitId?: string
 ) {
   // Use the same compatibility-aware active set as the read surfaces. A goal
   // created before `status` was persisted must not appear active in Today and
@@ -200,6 +202,31 @@ export async function applyGoalProgressForAnswer(
     QUERY_MS,
     "Load active goals"
   );
+
+  if (commitId) {
+    const completed = await commitStudyEffect({ userId, commitId }, "goals", async (transaction) => {
+      const snapshots = await Promise.all(activeGoals.map((goal) => transaction.get(doc(db, "users", userId, "goals", goal.id))));
+      const completedGoals: Goal[] = [];
+      for (const snapshot of snapshots) {
+        if (!snapshot.exists()) continue;
+        const goal = normalizeGoal(snapshot.id, snapshot.data());
+        const updated = getUpdatedGoalAfterAnswer(goal, isCorrect, now, context);
+        if (updated === goal) continue;
+        transaction.update(snapshot.ref, { progress: updated.progress, status: updated.status });
+        if (goal.status === "active" && updated.status === "completed") completedGoals.push(updated);
+      }
+      return completedGoals;
+    });
+    // Star creation already deduplicates by goal. Keep it outside the transaction
+    // and retry it even when the progress receipt was saved before a failure.
+    const rewards: GoalReward[] = [];
+    for (const goal of completed) {
+      const star = await createStarForGoalIfMissing(userId, goal);
+      if (star) rewards.push({ star, goalName: getGoalDisplayName(goal) });
+    }
+    invalidateDashboardData(userId);
+    return { completedGoals: completed.length, starsEarned: rewards.length, rewards };
+  }
 
   const goalUpdates = activeGoals.map(async (goal) => {
     const updatedGoal = getUpdatedGoalAfterAnswer(goal, isCorrect, now, context);

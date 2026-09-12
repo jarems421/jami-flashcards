@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import process from "node:process";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -263,6 +264,29 @@ if (process.argv.includes("--live")) {
   process.stdout.write(
     "AI release environment is internally consistent. Add --live to validate endpoints.\n"
   );
+}
+
+/*
+ * The quality gate, read rather than asserted.
+ *
+ * `OPENROUTER_QUALITY_GATE_PASSED` above is a boolean an operator sets by hand,
+ * and nothing anywhere checked that a benchmark had actually run, let alone
+ * passed. This shells out to the marking gate so a release cannot be waved
+ * through on a remembered intention.
+ *
+ * It exits clean while every component is unmeasured, which is the honest
+ * position before a run: the gate is not claiming the marker is good, only that
+ * nothing has claimed it is.
+ */
+const marking = spawnSync(process.execPath, ["scripts/check-marking-benchmark.mjs"], {
+  cwd: process.cwd(),
+  encoding: "utf8",
+});
+if (marking.status !== 0) {
+  const detail = `${marking.stderr ?? ""}${marking.stdout ?? ""}`.trim().split("\n")[0];
+  fail(`Marking-quality gate did not pass: ${detail || "see check:marking-benchmark"}`);
+} else if (marking.stdout) {
+  process.stdout.write(marking.stdout);
 }
 
 if (failures.length > 0) {

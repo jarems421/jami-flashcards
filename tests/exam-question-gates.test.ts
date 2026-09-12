@@ -130,13 +130,43 @@ describe("the licence gate", () => {
     expect(isExamQuestionServable(question({ status: "withdrawn" }))).toBe(false);
   });
 
-  it("serves a licensed board's question once a person has checked it", () => {
+  it("serves a licensed board's question once it has passed every gate", () => {
+    process.env.EXAM_QUESTION_AQA_ENABLED = "true";
+    expect(
+      isExamQuestionServable(
+        question({
+          origin: "official_past_paper",
+          review: APPROVED,
+          rights: OFFICIAL_RIGHTS,
+          paperSpotCheckedAt: Date.now(),
+        })
+      )
+    ).toBe(true);
+  });
+
+  /*
+   * Approval and a spot-check catch different faults, so one cannot stand in
+   * for the other.
+   *
+   * The reviewer that approves is a model reading one question against one
+   * rendered page. The faults that matter in extraction run through a whole
+   * paper -- a scheme paired one question out, a region located on the wrong
+   * page, a tariff read off the next line -- and a per-question reviewer is the
+   * wrong shape to see them. Without this gate "we spot-check the corpus" is a
+   * habit somebody keeps rather than a condition anything enforces.
+   */
+  it("refuses an approved question from a paper nobody has sampled", () => {
     process.env.EXAM_QUESTION_AQA_ENABLED = "true";
     expect(
       isExamQuestionServable(
         question({ origin: "official_past_paper", review: APPROVED, rights: OFFICIAL_RIGHTS })
       )
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  /** A Jami-created filler has no extraction to sample and needs none. */
+  it("does not ask a generated question for a spot-check it cannot have", () => {
+    expect(isExamQuestionServable(question({ review: APPROVED }))).toBe(true);
   });
 
   /*

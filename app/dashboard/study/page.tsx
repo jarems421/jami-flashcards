@@ -3,33 +3,16 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { loadPresentationHistory, recordPresentation } from "@/services/study/presentation-history";
+import { readPresentationViewState } from "@/lib/study/presentation-state";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
 import { toggleIdSelection } from "@/lib/app/multi-select";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
-import {
-  buildDailyReviewQueues,
-  DAILY_REVIEW_STATE_DOC_ID,
-  getCardsByIds,
-  getRemainingCarryoverRequiredCards,
-  getRemainingFreshRequiredCards,
-  sortCardsByStudyPriority,
-} from "@/lib/study/daily-review";
+import { buildDailyReviewQueues, DAILY_REVIEW_STATE_DOC_ID, getCardsByIds, getRemainingCarryoverRequiredCards, getRemainingFreshRequiredCards, sortCardsByStudyPriority } from "@/lib/study/daily-review";
 import { getMsUntilNextStudyBoundary, getStudyDayKey } from "@/lib/study/day";
-import {
-  buildCustomReviewCards,
-  EMPTY_FOCUSED_REVIEW_RECENTS,
-  FOCUSED_REVIEW_RECENT_LIMIT,
-  getFocusedReviewRecentsKey,
-  mergeRecentValues,
-  normalizeFocusedReviewRecents,
-  parseIdsParam,
-} from "@/lib/study/focused-review";
-import {
-  formatResetCountdown,
-  getSessionLabel,
-  RATING_LABELS,
-} from "@/lib/study/study-feedback";
+import { buildCustomReviewCards, countCardsByDeck, countCardsByTopic, EMPTY_FOCUSED_REVIEW_RECENTS, getFocusedReviewRecentsKey, mergeRecentValues, nameById, normalizeFocusedReviewRecents, parseIdsParam, resolveRecents, searchByName } from "@/lib/study/focused-review";
+import { formatResetCountdown, getSessionLabel, RATING_LABELS } from "@/lib/study/study-feedback";
 import InlineStudyFeedback from "@/components/study/InlineStudyFeedback";
 import StudyFlashcard from "@/components/study/StudyFlashcard";
 import StudyRatingControls from "@/components/study/StudyRatingControls";
@@ -38,32 +21,17 @@ import StudyModePicker from "@/components/study/StudyModePicker";
 import StudySessionPreparing from "@/components/study/StudySessionPreparing";
 import FocusedReviewBuilder from "@/components/study/FocusedReviewBuilder";
 import StudyHomeStat from "@/components/study/StudyHomeStat";
-import type { CardRating } from "@/lib/study/scheduler";
+import { isSuccessfulRating, type CardRating } from "@/lib/study/scheduler";
 import { getNextDueCard, type Card } from "@/lib/study/cards";
 import { isFeatureEnabled } from "@/lib/app/feature-flags";
-import {
-  DEFAULT_STUDY_MODE_POLICY,
-  readStudyModePolicy,
-  saveStudyModePolicy,
-} from "@/lib/study/study-mode-preference";
-import {
-  getCardContentHash,
-  type ResolvedExercise,
-  type StudyMode,
-  type StudyModePolicy,
-} from "@/lib/study/study-modes";
-import {
-  buildDeterministicExercise,
-  canCarryModeEventually,
-  resolveExerciseMode,
-} from "@/lib/study/mode-eligibility";
+import { DEFAULT_STUDY_MODE_POLICY, readStudyModePolicy, saveStudyModePolicy } from "@/lib/study/study-mode-preference";
+import { getCardContentHash, STUDY_MODE_LABELS, type StudyMode, type StudyModePolicy } from "@/lib/study/study-modes";
+import { countedDraftKey, presentationDraftKey, resolvePresentationId } from "@/lib/study/presentation-identity";
+import { resolveCurrentExercise, type ExercisePin } from "@/lib/study/exercise-resolution";
+import { canCarryModeEventually, getModeEligibility } from "@/lib/study/mode-eligibility";
 import { buildSessionExerciseSnapshots } from "@/lib/study/session-exercises";
 import { buildSimpleStudyQueue } from "@/lib/study/simple-study";
-import {
-  getOfflineQueuedReviews,
-  loadOfflineStudySnapshot,
-  saveOfflineStudySnapshot,
-} from "@/lib/study/offline-study";
+import { getOfflineQueuedReviews, loadOfflineStudySnapshot, saveOfflineStudySnapshot } from "@/lib/study/offline-study";
 import {
   buildPersistedStudySession,
   canRestorePersistedSession,
@@ -80,6 +48,7 @@ import {
   saveClosedStudySessionTombstone,
   savePersistedStudySession,
   type PersistedStudySession,
+  type PersistedStudyExercise,
   type StudyModeResults,
   type StudySessionKind,
 } from "@/lib/study/session";
@@ -88,15 +57,10 @@ import { loadUserCards } from "@/services/study/cards";
 import { syncOfflineStudyReviews } from "@/services/study/offline";
 import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActiveStudySession } from "@/services/study/session";
 import { loadStudyActivity } from "@/services/study/activity";
-import {
-  checkTypedAnswer,
-  loadStudyAssets,
-  mergeAssetIntoSettings,
-} from "@/services/study/study-assets";
+import { checkTypedAnswer, loadStudyAssets, reportStudyVariant, retireStudyAsset, cardWithStudyAsset as askedCard } from "@/services/study/study-assets";
 import type { StudyAsset } from "@/lib/ai/study-assets";
 import { computeStudyStreak } from "@/lib/study/activity";
 import { getDecks } from "@/services/study/decks";
-import type { Deck } from "@/lib/study/decks";
 import { getActiveTopics } from "@/services/study/topics";
 import { getTopicNameKey, type Topic } from "@/lib/material/topics";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
@@ -114,28 +78,8 @@ import {
 
 type SessionKind = StudySessionKind;
 
-const MODE_LABELS: Record<StudyMode, string> = {
-  classic: "Classic",
-  "type-answer": "Type Answer",
-  "gap-fill": "Gap Fill",
-  "multiple-choice": "Multiple Choice",
-};
-
-/** Refreshing on every tab focus hammered Firestore on a busy desk. */
 const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
 type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
-
-/**
- * The card as the markers should see it.
- *
- * Prepared aliases, concepts, gaps and distractors are folded in here rather
- * than written back to the card, so the card the student wrote is never edited
- * by a model. Author settings still win inside the merge.
- */
-function askedCard(card: Card, assets: Record<string, StudyAsset>) {
-  const settings = mergeAssetIntoSettings(assets[card.id], card.studySettings);
-  return settings === card.studySettings ? card : { ...card, studySettings: settings };
-}
 
 export default function StudyPage() {
   const searchParams = useSearchParams();
@@ -182,8 +126,6 @@ export default function StudyPage() {
   } = useStudySessionState();
   const { feedback, success, showError, clear: clearFeedback } = useFeedback();
   const studyModesEnabled = isFeatureEnabled("enableStudyModes");
-  // Read from storage on mount rather than as an initial value, so the server
-  // and the first client render agree and nothing hydrates twice.
   const [modePolicy, setModePolicyState] = useState<StudyModePolicy>(
     DEFAULT_STUDY_MODE_POLICY
   );
@@ -199,10 +141,17 @@ export default function StudyPage() {
     setModePolicyState(readStudyModePolicy(user.uid));
   }, [user.uid]);
   const [modeResults, setModeResults] = useState<StudyModeResults>({});
+  const [recentModes, setRecentModes] = useState<StudyMode[]>([]);
+  const [restoredExercises, setRestoredExercises] = useState<PersistedStudyExercise[]>([]);
+  const [reportedPresentations, setReportedPresentations] = useState<Set<string>>(() => new Set());
+  const [draftResponses, setDraftResponses] = useState<Record<string, string | Record<string, string>>>({});
+  const [variantHistory, setVariantHistory] = useState<Record<string, string[]>>({});
+  const [outcomeHistory, setOutcomeHistory] = useState<Record<string, Array<"correct" | "partial" | "incorrect" | "uncertain">>>({});
   const [studyAssets, setStudyAssets] = useState<Record<string, StudyAsset>>({});
   const {
     progress: preparation,
     clearProgress: clearPreparation,
+    cancel: cancelPreparation,
     skip: skipPreparation,
     prepareSessionAssets,
     prepareRemainingAssets,
@@ -215,9 +164,6 @@ export default function StudyPage() {
       []
     ),
   });
-  // Fixed when a session starts so a shuffled set of choices survives a
-  // refresh. Regenerating it on resume would reorder the options under the
-  // student's finger.
   const sessionSeedRef = useRef(0);
   const handleStarRewardDone = useCallback(
     () => setStarReward(null),
@@ -234,6 +180,8 @@ export default function StudyPage() {
   const lastForegroundRefreshAtRef = useRef(0);
   const remoteCloseKeyRef = useRef<string | null>(null);
   const focusedReviewToggleRef = useRef<HTMLButtonElement>(null);
+  const pinnedExerciseRef = useRef<ExercisePin | null>(null);
+  const countedPresentationsRef = useRef(new Set<string>());
 
   useEffect(() => {
     setSelectedDeckIds(requestedDeckIds);
@@ -251,6 +199,12 @@ export default function StudyPage() {
     setFlipped(false);
     setAnswerFeedback(null);
     setSessionStats(createEmptySessionStats());
+    setRestoredExercises([]);
+    setRecentModes([]);
+    setReportedPresentations(new Set());
+    setDraftResponses({});
+    setVariantHistory({});
+    setOutcomeHistory({});
     autoStartHandledRef.current = false;
     sessionRestoreHandledRef.current = false;
     sessionStartedAtRef.current = null;
@@ -348,9 +302,6 @@ export default function StudyPage() {
       });
       const [nextDecks, nextCards, nextTopics, activeSessionResult] = await Promise.all([
         getDecks(user.uid),
-        // Every card loaded here is a card that may be graded, and grading
-        // computes the next interval from the state it reads. This one read
-        // must come from the server however recently another page asked.
         loadUserCards(user.uid, { force: true }),
         getActiveTopics(user.uid).catch((error) => {
           console.error("Failed to load Topics for Learn filters.", error);
@@ -662,58 +613,23 @@ export default function StudyPage() {
     }
   }, [hasCustomFilters, sessionKind, setFocusedReviewOpen]);
 
-  const deckNamesById = useMemo(
-    () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
-    [decks]
+  const deckNamesById = useMemo(() => nameById(decks), [decks]);
+  const topicNamesById = useMemo(() => nameById(topics), [topics]);
+  const deckCardCounts = useMemo(() => countCardsByDeck(cards), [cards]);
+  const topicCardCounts = useMemo(() => countCardsByTopic(cards), [cards]);
+  const deckSearchResults = useMemo(() => searchByName(decks, deckSearch), [deckSearch, decks]);
+  const topicSearchResults = useMemo(
+    () => searchByName(topics, topicSearch, getTopicNameKey),
+    [topicSearch, topics]
   );
-  const topicNamesById = useMemo(
-    () => Object.fromEntries(topics.map((topic) => [topic.id, topic.name])),
-    [topics]
+  const recentDecks = useMemo(
+    () => resolveRecents(decks, focusedReviewRecents.deckIds),
+    [decks, focusedReviewRecents.deckIds]
   );
-  const deckCardCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const card of cards) {
-      counts.set(card.deckId, (counts.get(card.deckId) ?? 0) + 1);
-    }
-    return counts;
-  }, [cards]);
-  const topicCardCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const card of cards) {
-      for (const topicId of new Set(card.topicIds ?? [])) {
-        counts.set(topicId, (counts.get(topicId) ?? 0) + 1);
-      }
-    }
-    return counts;
-  }, [cards]);
-  const deckSearchResults = useMemo(() => {
-    const query = deckSearch.trim().toLowerCase();
-    if (!query) return [];
-    return decks
-      .filter((deck) => deck.name.toLowerCase().includes(query))
-      .slice(0, 8);
-  }, [deckSearch, decks]);
-  const topicSearchResults = useMemo(() => {
-    const query = getTopicNameKey(topicSearch);
-    if (!query) return [];
-    return topics
-      .filter((topic) => getTopicNameKey(topic.name).includes(query))
-      .slice(0, 8);
-  }, [topicSearch, topics]);
-  const recentDecks = useMemo(() => {
-    const decksById = new Map(decks.map((deck) => [deck.id, deck]));
-    return focusedReviewRecents.deckIds
-      .map((deckId) => decksById.get(deckId) ?? null)
-      .filter((deck): deck is Deck => deck !== null)
-      .slice(0, FOCUSED_REVIEW_RECENT_LIMIT);
-  }, [decks, focusedReviewRecents.deckIds]);
-  const recentTopics = useMemo(() => {
-    const topicsById = new Map(topics.map((topic) => [topic.id, topic]));
-    return focusedReviewRecents.topicIds
-      .map((topicId) => topicsById.get(topicId) ?? null)
-      .filter((topic): topic is Topic => topic !== null)
-      .slice(0, FOCUSED_REVIEW_RECENT_LIMIT);
-  }, [focusedReviewRecents.topicIds, topics]);
+  const recentTopics = useMemo(
+    () => resolveRecents(topics, focusedReviewRecents.topicIds),
+    [topics, focusedReviewRecents.topicIds]
+  );
 
   const toggleDeckFilter = useCallback((deckId: string) => {
     setSelectedDeckIds((prev) => toggleIdSelection(prev, deckId));
@@ -727,10 +643,6 @@ export default function StudyPage() {
 
   const startSession = useCallback(
     (kind: SessionKind, requiredScope: DailyRequiredSessionScope = "all") => {
-      // Sync at the call site, async underneath: every button on this page
-      // calls it directly, and preparation has to finish before the queue is
-      // filtered or a fixed mode would drop the very cards it was about to be
-      // given the material for.
       void (async () => {
         const nextCards =
           kind === "daily-required"
@@ -746,12 +658,14 @@ export default function StudyPage() {
                 : customPreviewCards;
         const seed = Math.floor(Math.random() * 0x7fffffff) || 1;
         sessionSeedRef.current = seed;
+        const history = await loadPresentationHistory(user.uid, nextCards);
+        setVariantHistory(history.variants);
+        setOutcomeHistory(history.outcomes);
+        setRecentModes([]);
+        setDraftResponses({});
+        setRestoredExercises([]);
+        pinnedExerciseRef.current = null;
 
-        // Whether any card needs a model is decided inside
-        // prepareSessionAssets, card by card rather than session by session: a
-        // deck is rarely all one kind of answer. Simple Study is included:
-        // Classic is still its default and needs nothing prepared, so a student
-        // who has not chosen a mode never waits.
         const wantsPreparation = studyModesEnabled;
 
         let assets = studyAssets;
@@ -773,20 +687,6 @@ export default function StudyPage() {
 
         const now = Date.now();
 
-        /*
-         * A fixed mode never quietly degrades: cards that cannot carry it are
-         * dropped here and the student is told how many, rather than finding a
-         * shorter queue than they asked for, or a Classic card in the middle of
-         * a typing session.
-         *
-         * "Cannot carry it" has to mean *ever*, not *yet*. Preparation waits
-         * for the first few cards only, so at this line almost every card in a
-         * fresh queue is still un-prepared -- and testing plain eligibility
-         * dropped all of them, which is why Multiple Choice worked on the
-         * second run of a deck and never the first. The rest are read behind
-         * the student, and one reached before its own assets land is asked the
-         * best way it can be asked instead.
-         */
         const eligibleCards =
           studyModesEnabled && modePolicy.kind === "fixed"
             ? nextCards.filter((card) =>
@@ -849,8 +749,6 @@ export default function StudyPage() {
           pushFocusedReviewRecents(selectedDeckIds, selectedTopicIds);
         }
 
-        // Deliberately not awaited. The session is open and the student is on
-        // card one; this is preparing the cards behind them.
         void prepareRemainingAssets(remainder);
       })();
     },
@@ -936,6 +834,11 @@ export default function StudyPage() {
       let restoredSession = localSession;
       if (remoteSession && (!restoredSession || isIncomingSessionNewer(restoredSession, remoteSession))) {
         restoredSession = remoteSession;
+      }
+      // Server snapshots deliberately omit local responses. Preserve them only
+      // for the same session; presentation IDs keep them bound to their exercise.
+      if (restoredSession && localSession?.sessionId === restoredSession.sessionId) {
+        restoredSession = { ...restoredSession, draftResponses: localSession.draftResponses };
       }
       if (
         restoredSession &&
@@ -1055,6 +958,14 @@ export default function StudyPage() {
       setSessionCards(restored.cards);
       setSessionStats(restoredSession.stats);
       setIndex(restored.index);
+      setModePolicyState(restoredSession.modePolicy ?? DEFAULT_STUDY_MODE_POLICY);
+      setModeResults(restoredSession.modeResults ?? {});
+      setRecentModes(restoredSession.recentModes ?? []);
+      setDraftResponses(restoredSession.draftResponses ?? {});
+      setVariantHistory(restoredSession.variantHistory ?? {});
+      setOutcomeHistory(restoredSession.outcomeHistory ?? {});
+      setRestoredExercises(restoredSession.exercises ?? []);
+      sessionSeedRef.current = restoredSession.seed ?? 0;
       setFlipped(false);
       setSavingRating(null);
       setAnswerFeedback(null);
@@ -1121,14 +1032,7 @@ export default function StudyPage() {
   }, [customPreviewCards.length, loaded, remainingCarryoverRequiredCards.length, remainingOptionalCards.length, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTopicIds.length, sessionRestoreReady, startSession]);
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
-  /**
-   * Days running, read once the session is over.
-   *
-   * A streak belongs where it has just been earned. On the home page it could
-   * only ever be a warning -- you arrive there before studying, so there is
-   * nothing to congratulate and the panel could only say what was at risk.
-   * Here it is the reward for the work that has this moment been done.
-   */
+  useEffect(() => { if (done) cancelPreparation(); }, [done, cancelPreparation]);
   const [daysRunning, setDaysRunning] = useState<number | null>(null);
   const reviewedThisSession = sessionStats.reviewedCards;
 
@@ -1144,8 +1048,6 @@ export default function StudyPage() {
         if (!cancelled) setDaysRunning(computeStudyStreak(activity));
       })
       .catch(() => {
-        // A flourish on a finished session. If it cannot be read the summary
-        // stands without it rather than failing over a decoration.
       });
 
     return () => {
@@ -1200,13 +1102,23 @@ export default function StudyPage() {
         modePolicy,
         seed: sessionSeedRef.current,
         modeResults,
-        // Only the questions still ahead are snapshotted; see the module.
+        recentModes,
+        draftResponses,
+        variantHistory,
+        outcomeHistory,
         exercises: buildSessionExerciseSnapshots({
           cards: sessionCards.slice(index),
           asAsked: (card) => askedCard(card, studyAssets),
           modePolicy,
           index,
           seed: sessionSeedRef.current,
+          modeCounts: Object.fromEntries(Object.entries(modeResults).map(([mode, result]) => [mode, result?.answered ?? 0])) as Partial<Record<StudyMode, number>>,
+          recentModes,
+          firstExercise: pinnedExerciseRef.current?.exercise ?? null,
+          presentationId: pinnedExerciseRef.current?.presentationId,
+          sessionId: sessionIdRef.current ?? undefined,
+          variantHistory,
+          outcomeHistory,
         }),
       });
 
@@ -1221,6 +1133,10 @@ export default function StudyPage() {
       index,
       modePolicy,
       modeResults,
+      recentModes,
+      draftResponses,
+      variantHistory,
+      outcomeHistory,
       selectedDeckIds,
       selectedTopicIds,
       sessionCards,
@@ -1301,17 +1217,10 @@ export default function StudyPage() {
     [setJamiAssistantOpen]
   );
 
-  /**
-   * The one road into scheduling.
-   *
-   * Reveal, then commit. Everything a rating sets off -- FSRS, Daily Review
-   * completion, goals and stars, streak activity, the offline queue, the
-   * in-session retry cadence -- lives behind this controller, so a new exercise
-   * cannot quietly grow its own way of writing a card.
-   */
   const {
     reveal: handleFlip,
     commitReview,
+    revisitAfterHint,
     presentation,
   } = useStudyExerciseController({
     userId: user.uid,
@@ -1319,8 +1228,6 @@ export default function StudyPage() {
     sessionKind,
     flipped,
     setFlipped,
-    // The tutor is told whether the card is flipped, so a drawer left open
-    // across the flip would be answering about the wrong phase.
     onReveal: closeJamiAssistant,
     cards,
     setCards,
@@ -1345,70 +1252,54 @@ export default function StudyPage() {
     notifyError: showError,
   });
 
-  /*
-   * The question a card is asked, fixed for as long as it is on screen.
-   *
-   * Preparation runs behind the student and merges assets in as they land,
-   * which changes what a card is eligible for. Recomputing on every render
-   * therefore let a card change mode underneath somebody halfway through
-   * answering it: the stage below is keyed on the mode, so a gap fill they were
-   * typing into would remount as a multiple choice and take the answer with it.
-   *
-   * So the exercise is resolved once per presentation and held. The card itself
-   * is not pinned -- `preparedCurrent` keeps flowing to the stage, so aliases
-   * that arrive late still improve the marking of the question already asked.
-   */
-  const pinnedExerciseRef = useRef<{
-    key: string;
-    exercise: ResolvedExercise | null;
-  } | null>(null);
-
   const currentExercise = useMemo(() => {
-    const current = preparedCurrent;
-    if (!current || !sessionKind) return null;
-    // Classic falls through to the flip card below rather than through the
-    // exercise stage. Simple Study runs the modes too: what makes it Simple is
-    // that it answers on two points and never touches a schedule, which is a
-    // property of the rating rather than of the question.
-    if (!studyModesEnabled) return null;
-
-    // Presentation is in the key so a card sent to the back of the queue comes
-    // round as a genuinely fresh question rather than the one just answered.
-    const key = `${current.id}:${index}:${presentation}:${modePolicy.kind}:${
-      modePolicy.kind === "fixed" ? modePolicy.mode : ""
-    }`;
-    const pinned = pinnedExerciseRef.current;
-    if (pinned?.key === key) return pinned.exercise;
-
-    const context = { seed: sessionSeedRef.current };
-    const mode = resolveExerciseMode(current, modePolicy, index, context);
-    const exercise =
-      !mode || mode === "classic"
-        ? null
-        : buildDeterministicExercise(
-            current,
-            mode,
-            getCardContentHash(current),
-            context
-          );
-    pinnedExerciseRef.current = { key, exercise };
+    const asked = preparedCurrent;
+    if (!current || !asked || !sessionKind || !studyModesEnabled) return null;
+    const { exercise, pin } = resolveCurrentExercise({
+      card: current,
+      asked,
+      index,
+      presentation,
+      policy: modePolicy,
+      sessionId: sessionIdRef.current ?? "session",
+      seed: sessionSeedRef.current,
+      pinned: pinnedExerciseRef.current,
+      restoredExercises,
+      reportedPresentations,
+      retiredVariantIds: preparedCurrent?.studySettings?.generatedStudy?.retiredVariantIds ?? [],
+      isRetiredDraft: (variantId) => draftResponses[`retired:${variantId}`] === "1",
+      modeCounts: Object.fromEntries(
+        Object.entries(modeResults).map(([mode, result]) => [mode, result?.answered ?? 0])
+      ) as Partial<Record<StudyMode, number>>,
+      presentationIndex: Object.values(modeResults).reduce((sum, result) => sum + (result?.answered ?? 0), 0),
+      recentModes,
+      recentVariantIds: variantHistory[current.id] ?? [],
+      recentOutcomes: outcomeHistory[current.id] ?? [],
+      newId: () => crypto.randomUUID(),
+    });
+    if (pin) pinnedExerciseRef.current = pin;
     return exercise;
   }, [
-    index,
-    modePolicy,
+    current,
     preparedCurrent,
+    index,
     presentation,
+    modePolicy,
+    restoredExercises,
+    modeResults,
+    recentModes,
+    variantHistory,
+    outcomeHistory,
+    reportedPresentations,
+    draftResponses,
     sessionKind,
     studyModesEnabled,
   ]);
 
-  // Read once per session rather than per card: the whole queue's assets are a
-  // single small read, and doing it per card would put a round trip between
-  // every question and the next.
   useEffect(() => {
     if (!studyModesEnabled || sessionCards.length === 0) return;
     let cancelled = false;
-    void loadStudyAssets(sessionCards.map((card) => card.id)).then((assets) => {
+    void loadStudyAssets(sessionCards).then((assets) => {
       if (!cancelled) setStudyAssets((prev) => ({ ...prev, ...assets }));
     });
     return () => {
@@ -1417,42 +1308,104 @@ export default function StudyPage() {
   }, [sessionCards, studyModesEnabled]);
 
   const handleSemanticCheck = useCallback(
-    async (response: string) => {
+    async (response: string, gapResponses?: Record<string, string>) => {
       if (!current) return null;
-      const checked = await checkTypedAnswer({ cardId: current.id, response });
-      // "needs-self-grade" is the caller's default, so it is reported as no
-      // answer rather than as a fourth verdict the stage has to handle.
+      if (!currentExercise?.presentationId) return null;
+      const checked = await checkTypedAnswer({ cardId: current.id, response, sourceHash: currentExercise.cardContentHash, presentationId: currentExercise.presentationId, assetKey: currentExercise.markingSettings?.generatedStudy?.sourceHash, bundleRevision: currentExercise.markingSettings?.generatedStudy?.bundleRevision, ...(gapResponses ? { gapResponses, variantId: currentExercise.variantId } : {}) });
       return checked && checked.verdict !== "needs-self-grade"
         ? { ...checked, verdict: checked.verdict }
         : null;
     },
-    [current]
+    [current, currentExercise]
   );
 
-  const recordModeAnswer = useCallback((mode: StudyMode, correct: boolean) => {
+  const recordModeAnswer = useCallback((mode: StudyMode, verdict: "correct" | "partial" | "incorrect" | "uncertain", assisted: boolean) => {
+    const identity = pinnedExerciseRef.current?.presentationId ?? currentExercise?.presentationId;
+    if (!identity) return;
+    const countedKey = countedDraftKey(identity);
+    if (draftResponses[countedKey] === "1" || countedPresentationsRef.current.has(identity)) return;
+    countedPresentationsRef.current.add(identity);
+    setDraftResponses((previous) => ({ ...previous, [countedKey]: "1" }));
+    if (current) void recordPresentation(user.uid, current.id, { id: identity, sourceHash: getCardContentHash(current), mode, variantId: currentExercise?.variantId, outcome: verdict, assisted, at: Date.now() });
+    setRecentModes((previous) => [...previous, mode].slice(-8));
+    if (current?.id && currentExercise?.variantId) {
+      setVariantHistory((previous) => ({ ...previous, [current.id]: [...(previous[current.id] ?? []), currentExercise.variantId!].slice(-8) }));
+    }
+    if (current?.id) setOutcomeHistory((previous) => ({ ...previous, [current.id]: [...(previous[current.id] ?? []), verdict].slice(-5) }));
     setModeResults((prev) => {
-      const previous = prev[mode] ?? { answered: 0, correct: 0 };
+      const previous = prev[mode] ?? { answered: 0, correct: 0, partial: 0, uncertain: 0, assisted: 0 };
       return {
         ...prev,
         [mode]: {
           answered: previous.answered + 1,
-          correct: previous.correct + (correct ? 1 : 0),
+          correct: previous.correct + (verdict === "correct" ? 1 : 0),
+          partial: (previous.partial ?? 0) + (verdict === "partial" ? 1 : 0),
+          uncertain: (previous.uncertain ?? 0) + (verdict === "uncertain" ? 1 : 0),
+          assisted: (previous.assisted ?? 0) + (assisted ? 1 : 0),
         },
       };
     });
-  }, []);
+  }, [current, currentExercise, user.uid, draftResponses]);
+
+  const handleReportExercise = useCallback((reason: "multiple-correct" | "wrong-grade" | "poor-gap" | "unrelated-options" | "other") => {
+    if (!current || !currentExercise?.variantId) return;
+    if (currentExercise.presentationId) {
+      setDraftResponses((previous) => {
+        const next = { ...previous };
+        delete next[currentExercise.presentationId!];
+        return next;
+      });
+    }
+    setReportedPresentations((previous) => new Set(previous).add(`${current.id}:${presentation}`));
+    const variantId = currentExercise.variantId;
+    setDraftResponses((previous) => ({ ...previous, [`retired:${variantId}`]: "1" }));
+    setRestoredExercises((previous) => previous.filter((item) => item.variantId !== variantId));
+    setStudyAssets((previous) => retireStudyAsset(previous, current.id, variantId));
+    pinnedExerciseRef.current = null;
+    void reportStudyVariant({ cardId: current.id, variantId, bundleVersion: currentExercise.markingSettings?.generatedStudy?.bundleVersion ?? 3, reason }).then(() => prepareRemainingAssets([current])).catch(() => {
+      showError("That question was hidden, but Jami could not save the report just now.");
+    });
+  }, [current, currentExercise, presentation, showError, prepareRemainingAssets]);
 
   const handleRating = useCallback(
     (rating: CardRating, options: { requeueOnMiss?: boolean } = {}) => {
       if (!current) return;
-      void commitReview({
+      const presentationKey = presentationDraftKey({
+        sessionId: sessionIdRef.current ?? "session",
+        index,
+        cardId: current.id,
+        presentation,
+      });
+      const { commitId, persist } = resolvePresentationId({
+        pinnedId: pinnedExerciseRef.current?.presentationId,
+        exerciseId: currentExercise?.presentationId,
+        stored: draftResponses[presentationKey],
+        sessionId: sessionIdRef.current ?? "session",
+        index,
+        cardId: current.id,
+        newId: () => crypto.randomUUID(),
+      });
+      if (persist) setDraftResponses((previous) => ({ ...previous, [presentationKey]: commitId }));
+      /*
+       * Counted once per presentation, never once per attempt to save it. A
+       * failed save leaves the student pressing a rating again, and Smart Mix
+       * counted every press -- inflating the summary and, worse, the recent
+       * outcomes it picks the next mode from.
+       */
+      const countedKey = countedDraftKey(commitId);
+      if (!currentExercise && studyModesEnabled && draftResponses[countedKey] !== "1") {
+        setDraftResponses((previous) => ({ ...previous, [countedKey]: "1" }));
+        recordModeAnswer("classic", isSuccessfulRating(rating) ? "correct" : "incorrect", false);
+      }
+      return commitReview({
+        commitId,
         cardId: current.id,
         rating,
         answeredAt: Date.now(),
         requeueOnMiss: options.requeueOnMiss,
       });
     },
-    [commitReview, current]
+    [commitReview, current, currentExercise, draftResponses, index, presentation, recordModeAnswer, setDraftResponses, studyModesEnabled]
   );
 
   const getLearnAssistantContext = useCallback(async (): Promise<JamiAssistantContext> => {
@@ -1467,9 +1420,6 @@ export default function StudyPage() {
     };
   }, [current, flipped]);
 
-  // Openers so the input is not blank, not a hint ladder. Keeping the answer
-  // back before the flip is handled server-side, where it is actually
-  // enforceable, rather than by asking politely through a chip.
   const learnAssistantQuickActions = useMemo(
     () =>
       flipped
@@ -1482,8 +1432,6 @@ export default function StudyPage() {
             },
           ]
         : [
-            // Match the exercise's help vocabulary; its own buttons still
-            // grade or skip the attempt without opening Tutor.
             {
               label: "Give me a hint",
               prompt:
@@ -1510,8 +1458,6 @@ export default function StudyPage() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      // The answer-first modes own their own keys: the typing field takes the
-      // space bar, and multiple choice binds 1-4 to its options.
       if (currentExercise) return;
       if (event.code === "Space") {
         event.preventDefault();
@@ -1569,6 +1515,7 @@ export default function StudyPage() {
         });
     }
 
+    cancelPreparation();
     clearPersistedStudySession(user.uid);
     sessionStartedAtRef.current = null;
     sessionStudyDayKeyRef.current = null;
@@ -1766,12 +1713,6 @@ export default function StudyPage() {
                   </div>
 
                   <div className="grid gap-4 xl:grid-cols-2">
-                    {/*
-                      The builder opens inside this card and the card takes the
-                      whole row while it is open. It used to render after the
-                      grid, so pressing "Choose decks or Topics" opened a panel
-                      underneath Simple Study, attached to nothing.
-                    */}
                     <SurfaceCard
                       padding="md"
                       className={`flex h-full flex-col ${focusedReviewOpen ? "xl:col-span-2" : ""}`}
@@ -1995,7 +1936,7 @@ export default function StudyPage() {
                             key={mode}
                             className="inline-flex items-center justify-between gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-2.5 py-1"
                           >
-                            <span>{MODE_LABELS[mode]}</span>
+                            <span>{STUDY_MODE_LABELS[mode]}</span>
                             <span className="font-semibold tabular-nums text-text-primary">
                               {result.correct}/{result.answered}
                             </span>
@@ -2085,12 +2026,6 @@ export default function StudyPage() {
                         <span>cards remaining</span>
                       </div>
                     </div>
-                    {/*
-                      The grid has two columns, so progress and the Jami button
-                      share the second one. As separate children the button
-                      became a third grid item, wrapped to its own row and
-                      stretched to a full-width bar.
-                    */}
                     <div className="flex items-end gap-2.5">
                       <div className="min-w-[10rem] flex-1 lg:min-w-[12rem] lg:flex-none">
                         <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
@@ -2124,8 +2059,6 @@ export default function StudyPage() {
                     historyContextLabel={`Flashcard · ${current.front.slice(0, 72)}`}
                     getContext={getLearnAssistantContext}
                     quickActions={learnAssistantQuickActions}
-                    // A card inherits folder context through its deck, so this
-                    // is the deck's folders rather than anything on the card.
                     settingsFolderIds={
                       decks.find((deck) => deck.id === current.deckId)?.folderIds ?? []
                     }
@@ -2135,19 +2068,55 @@ export default function StudyPage() {
                         : "Jami cannot see this card's answer until you flip it, so it can nudge you towards it but never hand it over."
                     }
                   />
+                  {pinnedExerciseRef.current?.recoveryNotice ? <p role="status" className="mx-auto max-w-xl text-center text-sm text-text-secondary">{pinnedExerciseRef.current.recoveryNotice}</p> : null}
                   {currentExercise ? (
                     <StudyExerciseStage
                       key={`${current.id}:${currentExercise.mode}:${currentExercise.cardContentHash}:${presentation}`}
                       card={preparedCurrent ?? current}
                       exercise={currentExercise}
+                      viewState={readPresentationViewState(draftResponses[`state:${currentExercise.presentationId}`])}
+                      onViewStateChange={(state) => setDraftResponses((previous) => ({ ...previous, [`state:${currentExercise.presentationId}`]: JSON.stringify(state) }))}
                       ratingScale={
                         sessionKind === "simple" ? "two-point" : "four-point"
                       }
                       savingRating={savingRating}
-                      onCommit={handleRating}
+                      onCommit={(rating, options) => {
+                        setRestoredExercises((previous) => previous.filter((item) => item.presentationId !== currentExercise.presentationId));
+                        return handleRating(rating, options);
+                      }}
                       onModeAnswered={recordModeAnswer}
+                      onRevisitAfterHint={() => {
+                        if (currentExercise.presentationId) {
+                          setDraftResponses((previous) => {
+                            const next = { ...previous };
+                            delete next[currentExercise.presentationId!];
+                            return next;
+                          });
+                        }
+                        const used = draftResponses[`hint-revisit:${current.id}`] === "1";
+                        setDraftResponses((previous) => ({ ...previous, [`hint-revisit:${current.id}`]: "1" }));
+                        setRestoredExercises((previous) => previous.filter((item) => item.presentationId !== currentExercise.presentationId));
+                        revisitAfterHint(current.id, used);
+                      }}
                       onSemanticCheck={handleSemanticCheck}
+                      onReportExercise={currentExercise.source === "cached-ai" && currentExercise.variantId ? handleReportExercise : undefined}
+                      draftResponse={currentExercise.presentationId ? draftResponses[currentExercise.presentationId] : undefined}
+                      onDraftChange={currentExercise.presentationId ? (response) => setDraftResponses((previous) => ({ ...previous, [currentExercise.presentationId!]: response })) : undefined}
                     />
+                  ) : studyModesEnabled && modePolicy.kind === "fixed" && !getModeEligibility(preparedCurrent ?? current, modePolicy.mode, { seed: sessionSeedRef.current }).eligible ? (
+                    <div className="study-flashcard-face mx-auto flex min-h-[16rem] w-full max-w-[62rem] flex-col items-center justify-center gap-5 rounded-2xl p-6 text-center sm:p-10">
+                      <div className="max-w-lg space-y-2">
+                        <h2 className="text-xl font-semibold text-text-primary">This card isn&apos;t ready for that mode</h2>
+                        <p className="text-sm leading-relaxed text-text-secondary">Use Smart Mix for this session, or continue with the cards that are ready. Jami won&apos;t quietly turn it into a different exercise.</p>
+                      </div>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        <Button type="button" onClick={() => setModePolicy({ kind: "smart" })}>Switch to Smart Mix</Button>
+                        <Button type="button" variant="secondary" onClick={() => {
+                          setSessionCards((previous) => [...previous.slice(0, index), ...previous.slice(index + 1)]);
+                          pinnedExerciseRef.current = null;
+                        }}>Continue available cards</Button>
+                      </div>
+                    </div>
                   ) : (
                     <StudyFlashcard
                       card={current}
@@ -2175,11 +2144,6 @@ export default function StudyPage() {
           ) : null}
         </>
       )}
-      {/*
-        Mounted at the top of the page rather than beside the card: rating a
-        card swaps the card subtree, which was taking the celebration down with
-        it after a few hundred milliseconds.
-      */}
       <StarRewardOverlay reward={starReward} onDone={handleStarRewardDone} />
       {preparation ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--color-surface-base)]/85 px-4 backdrop-blur-sm">

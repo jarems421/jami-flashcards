@@ -53,6 +53,9 @@ function report(scores: Record<string, number>, options: {
         evidence: ["Visible working"],
         strengths: [],
         improvements: [],
+        // Scores below the tariff here, so the report has to account for what
+        // it withheld: the parser refuses a shortfall it explains nowhere.
+        nextStep: "Show the remaining step.",
         confidence: options.lowConfidence?.includes(questionId) ? "low" : "high",
         attempted: true,
       };

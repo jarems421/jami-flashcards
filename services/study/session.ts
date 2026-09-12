@@ -11,6 +11,7 @@ import {
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
+import { studyPresentationFlags } from "@/lib/study/presentation-state";
 
 const LOAD_MS = 30_000;
 const SAVE_MS = 30_000;
@@ -32,6 +33,12 @@ function getSavedAt(value: unknown) {
 
   const savedAt = (value as { savedAt?: unknown }).savedAt;
   return typeof savedAt === "number" && Number.isFinite(savedAt) ? savedAt : 0;
+}
+
+function withoutDraftResponses(session: PersistedStudySession) {
+  const remoteSession = { ...session };
+  delete remoteSession.draftResponses;
+  return { ...remoteSession, presentationFlags: studyPresentationFlags(session.draftResponses) };
 }
 
 function normalizeStoredStudySession(
@@ -110,6 +117,9 @@ export async function loadRemoteActiveStudySession(
 
 export async function saveRemoteActiveStudySession(session: PersistedStudySession) {
   const sessionRef = getActiveStudySessionDoc(session.userId);
+  // Draft answers belong only to the user-scoped local session cache. The
+  // remote resume document stores exercise state, never raw unsubmitted text.
+  const remoteSession = withoutDraftResponses(session);
 
   const saved = await withTimeout(
     runTransaction(db, async (transaction) => {
@@ -131,7 +141,7 @@ export async function saveRemoteActiveStudySession(session: PersistedStudySessio
         return false;
       }
 
-      transaction.set(sessionRef, session);
+      transaction.set(sessionRef, remoteSession);
       return true;
     }),
     SAVE_MS,
@@ -159,6 +169,7 @@ export async function closeRemoteStudySession(
           savedAt: now,
           closedRevision: session.closedRevision ?? session.revision,
         };
+  const remoteClosedSession = withoutDraftResponses(closedSession);
   const sessionRef = getActiveStudySessionDoc(userId);
 
   const saved = await withTimeout(
@@ -181,7 +192,7 @@ export async function closeRemoteStudySession(
         return false;
       }
 
-      transaction.set(sessionRef, closedSession);
+      transaction.set(sessionRef, remoteClosedSession);
       return true;
     }),
     SAVE_MS,

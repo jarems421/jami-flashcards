@@ -90,6 +90,66 @@ Operators must never create a replacement job merely to resume a clarification.
 - Student-facing failures stay generic. Investigate using content-free failure
   category, workflow stage, timing, and run ID in restricted Vercel tooling.
 
+## Past Paper Practice marking and mark checks
+
+Both AI steps a student can trigger are durable jobs, not parts of the request
+that asks for them, and both are bounded by `EXAM_AI_JOB_DEADLINE_MS` and
+declared stranded by `EXAM_OPERATION_LEASE_MS`.
+
+### Marking an answer
+
+Marking one exam question is a durable job, not part of the submit request. The
+request validates the answer, freezes it, takes the daily allowance and
+returns; `markExamQuestionWorkflow` does the marking and writes the result back
+to the attempt. The page already polls a `marking` attempt, so the student sees
+"being marked now" and the mark arrives when it arrives.
+
+It moved because the request could not hold it. Marking is up to three
+sequential provider calls, and `markerTimeoutMs` sizes a single supervisor
+report at 408 seconds from measured p99 output and p5 generation rate; the
+route had 55 seconds for all three and gave the primary 30. The stage that
+overran was reliably the adjudicator -- bought only when two markers disagree
+-- so both paid reports were discarded on exactly the answers that most needed
+them.
+
+- The job's deadline is `EXAM_AI_JOB_DEADLINE_MS` (10 minutes), a chosen bound
+  rather than a measured one. It is not a target: observed markings ran 9.6 to
+  28.6 seconds.
+- Each marker report is checkpointed on the attempt as it arrives, so a resumed
+  job does not buy a report it already has. Their costs still count against the
+  marking's audit and ceiling.
+- Every write a job makes is conditional on `marking.token`. A resubmission
+  issues a new token, and the superseded job can no longer write a mark, a
+  failure, or a checkpoint.
+- An attempt reading `marking` past `EXAM_OPERATION_LEASE_MS` is stranded, not
+  slow. The page offers to mark it again; the evidence is unchanged.
+- Failures are recorded on the attempt as a code and a sentence, because the
+  request that submitted the answer is long gone. `input_too_large` reopens the
+  answer as a draft; `question_changed` and `marking_failed` leave it frozen.
+
+### Checking a mark
+
+A student may ask for one independent check per answer, and
+`reviewExamQuestionWorkflow` runs it the same way. It moved for the same reason
+and a worse ratio: a check is a juror read and then, when it disagrees, a
+supervisor reconciliation -- reports sized at 515 and 408 seconds -- and the
+route gave both of them 55 between them.
+
+- The job's identity is `review.token`, a server-generated value, **not**
+  `reviewKey`. The key is the client's idempotency token and is derived from the
+  session and question, so it is the same string for every check of a given
+  answer; a stranded job whose student asked again would still match it.
+- The juror report is checkpointed, so a resumed check does not buy the
+  expensive half twice.
+- **A check that produced nothing is not spent.** `reviewUsed` stays false, the
+  mark and feedback are untouched, and the daily allowance is refunded. Every
+  route path that does not start a job refunds it too.
+- Failures land on the attempt as `reviewFailure`, in the mark check's own
+  words: the student's mark stands and their check is still available, which is
+  not what the marking sentences say.
+- A finished session does **not** cancel a check, unlike a marking. The mark
+  report stays reachable from history, and a student may ask there.
+
 ## Spend controls
 
 Application quotas are the primary control: 40 Tutor replies per day, six

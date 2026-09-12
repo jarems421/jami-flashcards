@@ -23,6 +23,7 @@ import {
 } from "@/lib/study/activity";
 import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import { reportTutorialAction } from "@/lib/onboarding/tutorial";
+import { commitStudyEffect } from "@/services/study/commit-effect";
 
 const QUERY_MS = 30_000;
 const UPDATE_MS = 30_000;
@@ -34,6 +35,7 @@ export async function recordStudyReview(
     isCorrect?: boolean;
     durationMs?: number;
     sessionKind?: "daily" | "custom";
+    commitId?: string;
   } = {}
 ) {
   const dayKey = getStudyDayKey(reviewedAt);
@@ -66,7 +68,10 @@ export async function recordStudyReview(
   }
 
   await withTimeout(
-    setDoc(
+    options.commitId ? commitStudyEffect({ userId, commitId: options.commitId }, "activity", async (transaction) => {
+      transaction.set(doc(db, "users", userId, "studyActivity", dayKey), updates, { merge: true });
+      return null;
+    }) : setDoc(
       doc(db, "users", userId, "studyActivity", dayKey),
       updates,
       { merge: true }

@@ -10,6 +10,21 @@ import {
 } from "@/lib/ai/provider-router";
 import { failoverProvidersFor, type AiGenerationRole } from "@/lib/ai/provider-policy";
 import { schemeCriteria } from "@/lib/practice/mark-schemes";
+import {
+  PracticePaperMarkingFailedError,
+  type MarkingCostAccounting,
+  type PracticePaperMarkerStage,
+  type PracticePaperMarkerStageResult,
+} from "@/lib/practice/marker-stages";
+import {
+  assertCostRoom,
+  costAccounting,
+  failedStageCost,
+  modelsUsed,
+  PracticePaperMarkingCostLimitError,
+  rethrowWithMarkingCost,
+  successfulCost,
+} from "@/lib/practice/marking-accounting";
 import type {
   PracticePaper,
   PracticePaperMarkingAudit,
@@ -95,13 +110,23 @@ export type PracticePaperMarkingInput = {
   /** Successful provider calls may not cross this workflow-owned ceiling. */
   maxEstimatedCostUsd?: number;
   /**
-   * Which per-call timeout policy to run, for comparing them in evaluation.
+   * Which per-call timeout policy to run.
    *
-   * `shipped` is what students get. `singleLongAttempt` gives one call most of
-   * the deadline instead of two tight ones. Neither is adopted on the strength
-   * of an argument -- the point is to be able to measure them.
+   * `durable` is what students get, and it is the absence of a policy: no
+   * override at all, so every call falls through to `markerTimeoutMs`, the
+   * timeout derived from what the role actually writes and how slowly the
+   * slowest endpoint writes it.
+   *
+   * The other two exist because single-question marking once ran inside the
+   * request that started it, under a 55-second route deadline, and had to
+   * squeeze three sequential provider calls into it. `shipped` was that: two
+   * tight attempts of 30 seconds with images and 20 without. `singleLongAttempt`
+   * was the alternative to measure it against. Both were arithmetic about a
+   * budget that no longer exists -- 30 seconds against a supervisor report the
+   * measurements size at 408 -- and they are kept only so an evaluation can
+   * still reproduce what the deadline used to do to a marking.
    */
-  timeoutPolicy?: "shipped" | "singleLongAttempt";
+  timeoutPolicy?: "durable" | "shipped" | "singleLongAttempt";
   /**
    * The largest request this workflow may send, in estimated tokens.
    *
@@ -120,17 +145,12 @@ export type PracticePaperMarkingInput = {
   ) => Promise<void>;
 };
 
-export type PracticePaperMarkerStage =
-  | "primary"
-  | "verifier"
-  | "adjudication"
-  | "juror"
-  | "final_reconciliation";
-
-export type PracticePaperMarkerStageResult = {
-  result: PracticePaperResult;
-  diagnostics: AiResponseDiagnostics[];
-};
+export {
+  PracticePaperMarkingFailedError,
+  type MarkingCostAccounting,
+  type PracticePaperMarkerStage,
+  type PracticePaperMarkerStageResult,
+} from "@/lib/practice/marker-stages";
 
 /**
  * Refused before the provider call rather than after it.
@@ -143,52 +163,6 @@ export class PracticePaperMarkingInputTooLargeError extends Error {
   constructor(readonly inputTokens: number, readonly inputTokenCap: number) {
     super("input_too_large");
     this.name = "PracticePaperMarkingInputTooLargeError";
-  }
-}
-
-export class PracticePaperMarkingCostLimitError extends Error {
-  constructor() {
-    super("Practice-paper marking reached its configured cost ceiling.");
-    this.name = "PracticePaperMarkingCostLimitError";
-  }
-}
-
-function successfulCost(diagnostics: readonly AiResponseDiagnostics[]) {
-  return diagnostics.reduce((total, item) => total + (item.estimatedCostUsd ?? 0), 0);
-}
-
-/**
- * What a marking cost, and how much of that is actually known.
- *
- * Summing reported costs treats a call the provider said nothing about as
- * free, which is indistinguishable from one that genuinely was. A caller
- * holding money against a ceiling has to tell those apart: releasing a
- * reservation because the bill has not arrived is how a bounded run spends
- * without noticing.
- */
-export type MarkingCostAccounting = {
-  /** The sum of the costs providers actually reported. */
-  usd: number;
-  /** Calls that reported nothing, so `usd` is a floor and not a total. */
-  unreportedCalls: number;
-};
-
-function costAccounting(diagnostics: readonly AiResponseDiagnostics[]): MarkingCostAccounting {
-  let usd = 0;
-  let unreportedCalls = 0;
-  for (const item of diagnostics) {
-    if (typeof item.estimatedCostUsd === "number") usd += item.estimatedCostUsd;
-    else unreportedCalls += 1;
-  }
-  return { usd, unreportedCalls };
-}
-
-function assertCostRoom(input: PracticePaperMarkingInput, diagnostics: readonly AiResponseDiagnostics[]) {
-  if (
-    input.maxEstimatedCostUsd !== undefined &&
-    successfulCost(diagnostics) >= input.maxEstimatedCostUsd
-  ) {
-    throw new PracticePaperMarkingCostLimitError();
   }
 }
 
@@ -389,9 +363,29 @@ Return JSON only:
 
 Return exactly one result for every question ID. Mark every optional answer; the app applies the fixed choice-group rule deterministically. Never invent unreadable work.
 
+Write the feedback for the student who wrote the answer, and keep it short. Effective feedback is specific to the work and to what to do next; length is not a proxy for either, and a student who has to read three paragraphs to find the one useful sentence reads neither. Budgets, all maxima and none of them targets:
+
+- feedback: at most two sentences, on the work and never on the person. Write what the answer did and did not do, never "you clearly understand" or "good effort".
+- criterion: at most twelve words.
+- evidence: the candidate's own words, quoted, at most fifteen.
+- nextStep: one action they can take on the next question, at most twenty words, phrased as an instruction rather than an observation.
+- improvements: at most two, and only where they are not already said by a criterion.
+- strengths: at most one, and only where it names something the work did rather than something the candidate is.
+- summary: one sentence.
+
+Say nothing twice. Where a criterion already says what was missing, do not repeat it in improvements, in feedback and again in summary.
+
+Every mark the candidate did not earn must be explained by a criterionResult that carries both candidateValue -- what they actually produced there, or "" where they produced nothing -- and schemeValue. A student who lost a mark and is told only what the scheme wanted has been told the answer, not what was wrong with theirs.
+
 Where the guide lists criteria for a question, return one criterionResult for each, using the guide's own criterionId. Your wording of the criterion is yours; the id must be the guide's, because two markers are compared on the ids and never on the wording.
 
 For each criterion, fill schemeValue and candidateValue before deciding awarded. These are values, not sentences. schemeValue is the value the guide states for that mark, taken from the illustrative scheme where one is given -- not the name of the mark. Write "-1", not "calculate the y-coordinate". Only where the guide states no value at all should schemeValue name the condition instead. candidateValue is the corresponding thing the candidate actually produced, in their own notation, and must be the same kind of thing as schemeValue so the two can be compared. For example "7" against "10", or "y = 7x - 8" against "y = 10x - 3", or "integrable form" against "divided by the derivative". Where a mark is qualitative, name the required quality in a few words. Never write a sentence in either field and never describe the candidate in the third person. Then decide awarded by comparing the two.
+
+Two things in a scheme's own wording decide marks, and both are easy to read past.
+
+A worked value inside an example illustrates a method; it is not the mark. Where a criterion reads "e.g. 25 \\div 10 (= 2.5)", the 2.5 is what that step produces, not evidence for any later mark. A candidate who produces it has earned that criterion and nothing beyond it. Award a later criterion only on its own terms.
+
+A criterion that states a condition is not earned without it. "with a correct justification", "with supporting calculations", "provided the method is complete", "dependent on the previous mark" -- each makes that criterion conditional, and a right final value on its own does not satisfy any of them. Say in candidateValue what the candidate actually produced, and withhold the criterion when the condition is absent. A correct answer reached by an incomplete method earns the method marks it showed, and no more.
 
 Every criterionResult must carry awardedMarks: how many of that criterion's marks the candidate earned, between zero and the marks the guide gives it. The guide states that number for each criterion. A criterion worth ten marks scored six is awardedMarks 6 with awarded true; scored zero it is awardedMarks 0 with awarded false. Do not copy the criterion's total into awardedMarks, and do not omit it. The question's awardedMarks must equal the sum of its criterionResults' awardedMarks.`;
 }
@@ -441,6 +435,13 @@ async function callMarker(input: PracticePaperMarkingInput & {
   extraPrompt?: string;
 }) {
   const diagnostics: AiResponseDiagnostics[] = [];
+  /*
+   * Attempts that produced no diagnostic of their own. `onResponse` fires only
+   * for a response that came back, so a failover or an abort leaves no trace
+   * here -- and those are exactly the attempts that may have been billed for
+   * work this side never received.
+   */
+  let unseenAttempts = 0;
   const request = buildMarkerRequest(input);
   /*
    * Measured on the request that is actually about to be sent, which is the
@@ -471,7 +472,10 @@ async function callMarker(input: PracticePaperMarkingInput & {
     },
     request,
     onResponse: (value) => diagnostics.push(value),
-    onRetry: (value) => input.logFallback?.({ ...value, markerRole: input.role }),
+    onRetry: (value) => {
+      unseenAttempts += 1;
+      input.logFallback?.({ ...value, markerRole: input.role });
+    },
   });
 
   const diagnose = (raw: string) =>
@@ -558,11 +562,20 @@ async function callMarker(input: PracticePaperMarkingInput & {
       length: failure.length,
     });
   }
-  // Never coerced into a score: a report that could not be read means the
-  // marking did not happen, and the caller records a refusal.
+  /*
+   * Never coerced into a score: a report that could not be read means the
+   * marking did not happen, and the caller records a refusal.
+   *
+   * It carries its bill, though. Every attempt here came back with text -- that
+   * is what made it parseable enough to reject -- so unless one of them failed
+   * over invisibly, what this cost is known rather than merely unpaid-for.
+   */
   if (!result) {
-    throw new Error(
-      `${input.role} marker returned an invalid report (${failure?.kind ?? "unknown"}: ${failure?.detail ?? ""})`
+    const accounting = costAccounting(diagnostics);
+    throw new PracticePaperMarkingFailedError(
+      `${input.role} marker returned an invalid report (${failure?.kind ?? "unknown"}: ${failure?.detail ?? ""})`,
+      accounting,
+      accounting.unreportedCalls === 0 && unseenAttempts === 0
     );
   }
   input.onMarkerReport?.({
@@ -689,51 +702,111 @@ export async function markSingleQuestionAdaptively(
   /*
    * How long one call gets, and what happens when it runs out.
    *
-   * The shipped policy is two tight attempts: 30 seconds for a marking
-   * carrying images, 20 without. Measured successful image markings ran 9.6 to
-   * 28.6 seconds, so the ceiling sits inside the observed range and some real
-   * markings will hit it -- which is a production question, not a harness one.
+   * The default is to say nothing. `markerTimeoutMs` already derives a per-role
+   * timeout from the p99 report length and the p5 generation rate, and nothing
+   * here knows better than that. Overriding it was never a judgement about
+   * marking: it was the 55-second route deadline being divided up, and it gave
+   * the supervisor 30 seconds for a report those same measurements size at 408.
+   * Measured successful image markings ran 9.6 to 28.6 seconds, so the ceiling
+   * sat inside the observed range -- some real markings hit it, and one of them
+   * is why this comment exists.
    *
-   * It is a policy rather than a constant so an evaluation can measure one
-   * longer attempt against two shorter ones without changing what students
-   * get. A client abort does not stop the provider, so retrying after one may
-   * be paying twice for the same work; that is the thing worth measuring
-   * before either is adopted.
+   * The two overrides are kept so an evaluation can still reproduce what the
+   * deadline did to a marking. Neither is what a student gets.
    */
   const hasImages = [...input.answerParts, ...(input.originalPaperParts ?? [])].some(
     (part) => "inlineData" in part
   );
-  const policy = input.timeoutPolicy ?? "shipped";
+  const policy = input.timeoutPolicy ?? "durable";
   const callTimeoutMs =
     input.callTimeoutMs ??
-    (policy === "singleLongAttempt"
-      ? hasImages
-        ? 50_000
-        : 40_000
-      : hasImages
-        ? 30_000
-        : 20_000);
-  const runPrimary = () => callMarker({
-    ...input,
-    callTimeoutMs,
-    onParseFailure: (failure) => { primaryNeededParseRetry = true; input.onParseFailure?.(failure); },
-    role: "primary",
-    modelRole: "supervisor",
+    (policy === "durable"
+      ? undefined
+      : policy === "singleLongAttempt"
+        ? hasImages
+          ? 50_000
+          : 40_000
+        : hasImages
+          ? 30_000
+          : 20_000);
+  /*
+   * Each stage is a checkpoint, because each stage is money.
+   *
+   * A marking that threw after two markers had reported used to lose both of
+   * them. The route wrote `marking_failed`, refunded the student's daily
+   * allowance -- which is not the money that was spent -- and the retry bought
+   * the same two reports again. Under a durable job the stages that already
+   * completed are read back instead, so a resumed marking pays only for the
+   * work still missing.
+   */
+  const runPrimary = () => checkpointedMarkerCall(input, "primary", async () => {
+    let neededParseRetry = false;
+    const completed = await callMarker({
+      ...input,
+      callTimeoutMs,
+      onParseFailure: (failure) => { neededParseRetry = true; input.onParseFailure?.(failure); },
+      role: "primary",
+      modelRole: "supervisor",
+    });
+    return { ...completed, neededParseRetry };
   });
-  const runVerifier = () => callMarker({
+  const runVerifier = () => checkpointedMarkerCall(input, "verifier", () => callMarker({
     ...input,
     callTimeoutMs,
     role: "verifier",
     modelRole: "worker",
-  });
+  }));
 
-  let primary: Awaited<ReturnType<typeof callMarker>>;
-  let verifier: Awaited<ReturnType<typeof callMarker>> | undefined;
+  let primary: PracticePaperMarkerStageResult;
+  let verifier: PracticePaperMarkerStageResult | undefined;
   if (input.forceVerification) {
-    [primary, verifier] = await Promise.all([runPrimary(), runVerifier()]);
+    /*
+     * Settled, not `all`, so a marker that reported stays on the books.
+     *
+     * The two run together, so when one throws the other has often already
+     * answered and been billed. `Promise.all` rejects on the first failure and
+     * drops the other outcome, and with it a provider call that was genuinely
+     * paid for -- the failure was then reported as costing less than it did,
+     * and `haltOnUnreportedCost` had one fewer call to see.
+     *
+     * Either failure still fails the marking. A forced verification is the
+     * guarantee that the mark was checked before the student saw it, and one
+     * report is not that guarantee; the retry buys the missing stage back from
+     * its checkpoint rather than re-running both.
+     */
+    const [primaryOutcome, verifierOutcome] = await Promise.allSettled([runPrimary(), runVerifier()]);
+    if (primaryOutcome.status === "rejected") {
+      return rethrowWithMarkingCost(
+        primaryOutcome.reason,
+        [...diagnostics, ...(verifierOutcome.status === "fulfilled" ? verifierOutcome.value.diagnostics : [])],
+        failedStageCost(verifierOutcome)
+      );
+    }
+    if (verifierOutcome.status === "rejected") {
+      return rethrowWithMarkingCost(verifierOutcome.reason, [
+        ...diagnostics,
+        ...primaryOutcome.value.diagnostics,
+      ]);
+    }
+    primary = primaryOutcome.value;
+    verifier = verifierOutcome.value;
   } else {
-    primary = await runPrimary();
+    try {
+      primary = await runPrimary();
+    } catch (error) {
+      return rethrowWithMarkingCost(error, diagnostics);
+    }
   }
+  primaryNeededParseRetry = primary.neededParseRetry ?? false;
+  /*
+   * A checkpoint brings its diagnostics with it, and they are counted.
+   *
+   * The money was spent on this marking, on an earlier attempt at it. Both
+   * things reading these care about the marking rather than the run: the audit
+   * says what marking this answer cost, and the ceiling says what one marking
+   * may cost before it is stopped. Dropping a resumed stage's cost would let a
+   * marking that failed repeatedly spend without limit, one attempt at a time.
+   */
   diagnostics.push(...primary.diagnostics, ...(verifier?.diagnostics ?? []));
 
   const primaryQuestion = primary.result.questionResults[0];
@@ -754,7 +827,11 @@ export async function markSingleQuestionAdaptively(
       primaryQuestion?.confidence === "low" ||
       Boolean(primaryQuestion?.transcriptionNote));
   if (needsPostCheck) {
-    verifier = await runVerifier();
+    try {
+      verifier = await runVerifier();
+    } catch (error) {
+      return rethrowWithMarkingCost(error, diagnostics);
+    }
     diagnostics.push(...verifier.diagnostics);
   }
 
@@ -763,13 +840,18 @@ export async function markSingleQuestionAdaptively(
   if (verifier) {
     const disputed = comparePracticePaperMarkings(primary.result, verifier.result);
     if (disputed.length > 0) {
-      const adjudication = await callMarker({
+      let adjudication;
+      try {
+        adjudication = await checkpointedMarkerCall(input, "adjudication", () => callMarker({
         ...input,
         callTimeoutMs,
         role: "adjudicator",
         modelRole: "supervisor",
         extraPrompt: `Resolve this one disputed question from two independent reports. Neither report has priority.\nReport A: ${JSON.stringify(primary.result.questionResults)}\nReport B: ${JSON.stringify(verifier.result.questionResults)}`,
-      });
+        }));
+      } catch (error) {
+        return rethrowWithMarkingCost(error, diagnostics);
+      }
       diagnostics.push(...adjudication.diagnostics);
       result = adjudication.result;
       adjudicated = true;
@@ -780,6 +862,7 @@ export async function markSingleQuestionAdaptively(
     result,
     estimatedCostUsd: successfulCost(diagnostics),
     costAccounting: costAccounting(diagnostics),
+    models: modelsUsed(diagnostics),
     audit: {
       primaryScore: primary.result.questionResults[0]?.awardedMarks ?? 0,
       verifierScore: verifier?.result.questionResults[0]?.awardedMarks,
@@ -808,12 +891,12 @@ export async function reviewSingleQuestionIndependently(
   let result = input.originalResult;
   let reconciled = false;
   if (disputed.length > 0) {
-    const reconciliation = await callMarker({
+    const reconciliation = await checkpointedMarkerCall(input, "final_reconciliation", () => callMarker({
       ...input,
       role: "adjudicator",
       modelRole: "supervisor",
       extraPrompt: `Reconcile the existing result with an independent review. Apply the official scheme and return the complete final report.\nExisting result: ${JSON.stringify(input.originalResult.questionResults)}\nIndependent review: ${JSON.stringify(juror.result.questionResults)}`,
-    });
+    }));
     diagnostics.push(...reconciliation.diagnostics);
     result = reconciliation.result;
     reconciled = true;
@@ -867,6 +950,8 @@ export async function markPracticePaperWithAudit(input: PracticePaperMarkingInpu
   audit: PracticePaperMarkingAudit;
   estimatedCostUsd: number;
   costAccounting: MarkingCostAccounting;
+  /** The models that actually answered, which routing can change mid-run. */
+  models: string[];
 }> {
   // Blind markers run concurrently. The verifier sees the paper, rubric and
   // original answers, but never the primary marker's scores.
@@ -895,7 +980,7 @@ export async function markPracticePaperWithAudit(input: PracticePaperMarkingInpu
   ];
 
   if (disputedQuestionIds.length > 0) {
-    assertCostRoom(input, diagnostics);
+    assertCostRoom(input.maxEstimatedCostUsd, diagnostics);
     const disputedFrom = (marking: PracticePaperResult) =>
       marking.questionResults.filter((item) =>
         disputedQuestionIds.includes(item.questionId)
@@ -938,7 +1023,7 @@ Return the complete final report for every question, preserving agreed questions
   // a genuine disagreement between two markers, and silently shipping one of
   // them would bury the conflict rather than settle it.
   try {
-    if (thirdViewQuestionIds.length > 0) assertCostRoom(input, diagnostics);
+    if (thirdViewQuestionIds.length > 0) assertCostRoom(input.maxEstimatedCostUsd, diagnostics);
     const thirdView = await runThirdView({
       input,
       result,
@@ -965,6 +1050,7 @@ Return the complete final report for every question, preserving agreed questions
     result,
     estimatedCostUsd: successfulCost(diagnostics),
     costAccounting: costAccounting(diagnostics),
+    models: modelsUsed(diagnostics),
     audit: {
       version: 1,
       primaryScores: scoreMap(primary.result),
@@ -1030,7 +1116,7 @@ Dispute summary: ${JSON.stringify(thirdViewQuestionIds.map((questionId) => ({
 })))}. Return a complete report shape for these questions only.`,
     }));
     diagnostics.push(...third.diagnostics);
-    assertCostRoom(input, diagnostics);
+    assertCostRoom(input.maxEstimatedCostUsd, diagnostics);
     const final = await checkpointedMarkerCall(input, "final_reconciliation", () => callMarker({
       ...input,
       role: "adjudicator",

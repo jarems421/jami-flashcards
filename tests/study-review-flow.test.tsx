@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StudyPage from "@/app/dashboard/study/page";
 import { getOfflineQueuedReviews } from "@/lib/study/offline-study";
+import { getCardContentHash } from "@/lib/study/study-modes";
 
 /**
  * Characterization tests for the review commit path.
@@ -103,6 +104,14 @@ vi.mock("@/services/study/decks", () => ({
 vi.mock("@/services/study/topics", () => ({
   getActiveTopics: vi.fn().mockResolvedValue([]),
 }));
+vi.mock("@/services/study/presentation-history", () => ({
+  loadPresentationHistory: vi.fn().mockResolvedValue({ variants: {}, outcomes: {} }),
+  recordPresentation: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/services/study/commit-intent", () => ({
+  reserveStudyCommit: vi.fn(async (_uid, intent) => intent),
+  clearStudyCommitDraft: vi.fn(),
+}));
 
 // Preparation runs when a session starts, so every test in this file goes
 // through it. Mocked to return nothing by default, which is the unprepared deck
@@ -159,15 +168,35 @@ const { loadStudyAssets, prepareStudyAssets } = await import(
 );
 
 /** What Jami produces for a card during preparation, trimmed to what is used. */
+/*
+ * A prepared asset in the shape the client will actually use.
+ *
+ * `distractors` and `misconceptions` are the legacy fields, and the client no
+ * longer merges them into usable settings: they reached students without ever
+ * passing the independent review, which is the hole that review exists to
+ * close. An MCQ now comes from a reviewed `mcqVariants` entry, so a fixture
+ * that only carries the old fields produces no question at all -- which is the
+ * gate working, and why this builds both.
+ */
 function preparedAsset(cardId: string, distractors: string[]) {
+  const card = fixtures.cards.find((item) => item.id === cardId)!;
   return {
     cardId,
+    sourceFingerprint: getCardContentHash(card),
     answerShape: "short" as const,
     acceptedAliases: [],
     requiredConcepts: [],
     clozeCandidates: [],
     distractors,
     misconceptions: {},
+    mcqVariants: [{
+      id: `mcq-${cardId}`,
+      correctAnswer: card.back,
+      distractors,
+      explanations: Object.fromEntries(
+        [card.back, ...distractors].map((option) => [option, "Explanation."])
+      ),
+    }],
     confidence: 0.9,
     ambiguous: false,
   };
@@ -386,7 +415,10 @@ describe("committing a Daily Review answer", () => {
         deckId: "deck-1",
         topicIds: [],
         folderIds: ["folder-1"],
-      })
+      }),
+      // The commit identity. One per presentation, carried through every
+      // progress effect so a retry cannot credit the same answer twice.
+      expect.anything()
     );
     expect(vi.mocked(markDailyReviewCardComplete)).toHaveBeenCalledWith(
       "user-1",
@@ -406,7 +438,8 @@ describe("committing a Daily Review answer", () => {
     expect(vi.mocked(recordDailyReviewWeakAttempt)).toHaveBeenCalledWith(
       "user-1",
       first,
-      expect.any(Number)
+      expect.any(Number),
+      expect.anything()
     );
     expect(vi.mocked(markDailyReviewCardComplete)).not.toHaveBeenCalled();
     expect(vi.mocked(recordStudyReview)).toHaveBeenCalledWith(
@@ -496,14 +529,15 @@ describe("the answer-first modes", () => {
     const first = currentCardId();
     await type("something else entirely");
     await click("Check answer");
-    await click("Next card");
+    await click("Missed");
     await type("Where proteins are built.");
     await click("Check answer");
+    await click("Next card");
     expect(currentCardId()).toBe(first);
 
     await type("still unsure");
     await click("Check answer");
-    await click("Next card");
+    await click("Missed");
     expect(currentCardId()).toBe(first);
     expect(document.querySelector<HTMLInputElement>("#study-answer-entry")?.value).toBe("");
     expect(button("Next card")).toBeUndefined();
@@ -518,6 +552,11 @@ describe("the answer-first modes", () => {
     const first = currentCardId();
     await type("The immediate energy carrier of the cell.");
     await click("Check answer");
+
+    // A correct interactive answer stays visible long enough to read the
+    // acknowledgement, then commits through the ordinary controller.
+    expect(vi.mocked(recordStudyReview)).not.toHaveBeenCalled();
+    await click("Next card");
 
     expect(vi.mocked(recordStudyReview)).toHaveBeenCalledWith(
       "user-1",
@@ -542,7 +581,9 @@ describe("the answer-first modes", () => {
     );
     expect(vi.mocked(recordStudyReview)).not.toHaveBeenCalled();
 
-    await click("Next card");
+    // The semantic marker is mocked as unavailable, so this answer is not
+    // silently called wrong. The student supplies the rating instead.
+    await click("Again");
     expect(vi.mocked(recordDailyReviewWeakAttempt)).toHaveBeenCalled();
     expect(currentCardId()).toBe("card-2");
   });
@@ -585,13 +626,12 @@ describe("the answer-first modes", () => {
    * ever worked on the second run. The session opens instead, and a card
    * reached before its own options land is asked the best way it can be.
    */
-  it("opens a Multiple Choice session on a deck nobody has prepared", async () => {
+  it("does not substitute another format when a fresh fixed MCQ has no validated options", async () => {
     await selectMode("Multiple Choice");
     await click("Start Daily Review");
-    expect(currentCardId()).toBe("card-1");
-    expect(document.body.textContent).not.toContain(
-      "None of these cards can be studied that way yet"
-    );
+    expect(document.body.textContent).toContain("This card isn't ready for that mode");
+    expect(button("Switch to Smart Mix")).toBeDefined();
+    expect(button("Continue available cards")).toBeDefined();
   });
 
   /*
@@ -722,7 +762,8 @@ describe("Simple Study answers", () => {
     expect(vi.mocked(recordSimpleStudyResult)).toHaveBeenCalledWith(
       expect.any(String),
       "correct",
-      expect.any(Number)
+      expect.any(Number),
+      expect.anything()
     );
     expect(vi.mocked(updateCardAfterReview)).not.toHaveBeenCalled();
     expect(vi.mocked(recordStudyReview)).not.toHaveBeenCalled();

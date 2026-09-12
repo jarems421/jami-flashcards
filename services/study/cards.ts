@@ -231,7 +231,9 @@ export async function deleteCards(cardIds: readonly string[]) {
 
 export async function updateCardAfterReview(
   cardId: string,
-  command: CardReviewUpdateCommand
+  command: CardReviewUpdateCommand,
+  identity?: import("@/services/study/commit-effect").StudyCommitIdentity,
+  effect = "card"
 ) {
   const updates: Record<string, unknown> = {};
 
@@ -255,14 +257,21 @@ export async function updateCardAfterReview(
     return;
   }
 
-  await updateDoc(doc(db, "cards", cardId), updates);
+  if (identity) {
+    const { commitStudyEffect } = await import("@/services/study/commit-effect");
+    await commitStudyEffect(identity, effect, async (transaction) => {
+      transaction.update(doc(db, "cards", cardId), updates);
+      return null;
+    });
+  } else await updateDoc(doc(db, "cards", cardId), updates);
   invalidateAllDashboardData();
 }
 
 export async function recordSimpleStudyResult(
   cardId: string,
   result: "correct" | "wrong",
-  reviewedAt: number
+  reviewedAt: number,
+  identity?: import("@/services/study/commit-effect").StudyCommitIdentity
 ) {
   await updateCardAfterReview(cardId, {
     values: {
@@ -273,7 +282,7 @@ export async function recordSimpleStudyResult(
       result === "correct"
         ? { simpleStudyCorrectCount: 1 }
         : { simpleStudyWrongCount: 1 },
-  });
+  }, identity);
 }
 
 export async function createCard(input: CreateCardInput): Promise<Card> {

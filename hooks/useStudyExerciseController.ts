@@ -49,6 +49,8 @@ import {
 } from "@/services/study/cards";
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
+import { reserveStudyCommit, clearStudyCommitDraft, type StudyCommitIntent } from "@/services/study/commit-intent";
+import { removeOfflineQueuedReviews } from "@/lib/study/offline-study";
 
 /**
  * One answer, on its way to being recorded.
@@ -60,6 +62,8 @@ import { recordStudyReview } from "@/services/study/activity";
  * the flip-to-answer gap for free.
  */
 export type StudyAttemptCommit = {
+  intent?: StudyCommitIntent;
+  commitId?: string;
   cardId: string;
   rating: CardRating;
   answeredAt: number;
@@ -97,6 +101,7 @@ export type StudyExerciseController = {
   reveal: () => void;
   commitReview: (attempt: StudyAttemptCommit) => Promise<void>;
   continueWithoutScheduling: (result: PracticeResult) => void;
+  revisitAfterHint: (cardId: string, alreadyRevisited?: boolean) => void;
   /**
    * How many times this session has sent a card to the back of the queue.
    *
@@ -192,7 +197,9 @@ export function useStudyExerciseController(
   } = options;
 
   const revealedAtRef = useRef(0);
+  const commitInFlightRef = useRef(false);
   const [presentation, setPresentation] = useState(0);
+  const hintedRevisitsRef = useRef(new Set<string>());
 
   const reveal = useCallback(() => {
     if (!current || flipped) return;
@@ -244,7 +251,7 @@ export function useStudyExerciseController(
       const isCorrect = isSuccessfulRating(rating);
       const isStruggle = isStruggleRating(rating);
       const schedule =
-        sessionKind === "custom" ? null : updateCardSchedule(card, rating);
+        attempt.intent ? attempt.intent.schedule : sessionKind === "custom" ? null : updateCardSchedule(card, rating);
       const cardUpdates: Record<string, number | string> = {};
       let retryResult: { attemptCount: number; parked: boolean } | null = null;
 
@@ -286,6 +293,8 @@ export function useStudyExerciseController(
       }
 
       queueOfflineStudyReview({
+        intent: attempt.intent,
+        commitId: attempt.commitId,
         userId,
         cardId: card.id,
         deckId: card.deckId,
@@ -424,10 +433,12 @@ export function useStudyExerciseController(
   );
 
   const commitSimpleStudy = useCallback(
-    async (card: Card, result: SimpleStudyResult) => {
+    async (card: Card, result: SimpleStudyResult, commitId?: string, intent?: StudyCommitIntent) => {
       if (sessionKind !== "simple" || savingRating) return;
 
-      const now = Date.now();
+      const now = intent?.answeredAt ?? Date.now();
+      const queued = queueOfflineStudyReview({ userId, cardId: card.id, commitId, intent, rating: result === "correct" ? "good" : "again", reviewedAt: now, studyDayKey: getStudyDayKey(now), isCorrect: result === "correct", sessionKind: "simple", cardUpdates: {} });
+      refreshPendingOfflineReviews();
       const nextCard = applySimpleStudyResultToCard(card, result, now);
       const nextCardsSnapshot = cards.map((entry) =>
         entry.id === card.id ? nextCard : entry
@@ -468,12 +479,16 @@ export function useStudyExerciseController(
       setFlipped(false);
 
       try {
-        await recordSimpleStudyResult(card.id, result, now);
+        if (offlineMode || (typeof navigator !== "undefined" && navigator.onLine === false)) return;
+        await recordSimpleStudyResult(card.id, result, now, commitId ? { userId, commitId } : undefined);
+        removeOfflineQueuedReviews(userId, [queued.id]);
+        if (commitId) clearStudyCommitDraft(userId, commitId);
+        refreshPendingOfflineReviews();
       } catch (error) {
         console.warn("Failed to save Simple Study result.", error);
         setOfflineMode(true);
         notifySuccess(
-          "Kept this Simple Study answer in your current session. It will refresh when your connection settles."
+          "Your Simple Study answer is saved on this device and will sync when you reconnect."
         );
       } finally {
         setSavingRating(null);
@@ -485,6 +500,8 @@ export function useStudyExerciseController(
       clearFeedback,
       decks,
       notifySuccess,
+      refreshPendingOfflineReviews,
+      offlineMode,
       savingRating,
       sessionCards.length,
       sessionKind,
@@ -506,14 +523,33 @@ export function useStudyExerciseController(
       // so an answer that took a moment to mark can never be written against
       // whichever card arrived in the meantime.
       if (!current || !sessionKind || current.id !== attempt.cardId) return;
+      if (commitInFlightRef.current) return;
+      commitInFlightRef.current = true;
+      setSavingRating(attempt.rating);
       const card = current;
+      try {
+        const intent = await reserveStudyCommit(userId, {
+          ...attempt, commitId: attempt.commitId ?? crypto.randomUUID(), sessionKind,
+          context: { deckId: card.deckId, topicIds: card.topicIds ?? [], folderIds: folderIdsForCard(card) },
+          schedule: sessionKind === "custom" || sessionKind === "simple" ? null : updateCardSchedule(card, attempt.rating),
+        }, offlineMode || (typeof navigator !== "undefined" && navigator.onLine === false));
+        attempt = { ...intent, intent };
+      } catch {
+        commitInFlightRef.current = false;
+        setSavingRating(null);
+        notifyError("Your answer could not be saved yet. Please try again.");
+        return;
+      }
       const rating = attempt.rating;
 
       if (sessionKind === "simple") {
-        await commitSimpleStudy(
-          card,
-          rating === "again" || rating === "hard" ? "wrong" : "correct"
-        );
+        try {
+          await commitSimpleStudy(card, rating === "again" || rating === "hard" ? "wrong" : "correct", attempt.commitId, attempt.intent);
+        } catch {
+          notifyError("Your answer could not be saved on this device. Please reconnect and try again.");
+        } finally {
+          commitInFlightRef.current = false;
+        }
         return;
       }
 
@@ -532,7 +568,7 @@ export function useStudyExerciseController(
         const isCorrect = isSuccessfulRating(rating);
         const isStruggle = isStruggleRating(rating);
         const schedule =
-          sessionKind === "custom" ? null : updateCardSchedule(card, rating);
+          attempt.intent ? attempt.intent.schedule : sessionKind === "custom" ? null : updateCardSchedule(card, rating);
         const cardReviewUpdate = buildCardReviewUpdateCommand({
           schedule,
           isCorrect,
@@ -541,6 +577,7 @@ export function useStudyExerciseController(
         });
 
         const reviewPromise = recordStudyReview(userId, now, {
+          commitId: attempt.commitId,
           isCorrect,
           durationMs: measureResponseTime(attempt),
           sessionKind: sessionKind === "custom" ? "custom" : "daily",
@@ -549,22 +586,19 @@ export function useStudyExerciseController(
           userId,
           isCorrect,
           now,
-          {
-            deckId: card.deckId,
-            topicIds: card.topicIds ?? [],
-            folderIds: folderIdsForCard(card),
-          }
+          attempt.intent?.context ?? { deckId: card.deckId, topicIds: card.topicIds ?? [], folderIds: folderIdsForCard(card) },
+          attempt.commitId
         );
         const remainingPromises: Promise<unknown>[] = [];
         if (hasCardReviewUpdateCommand(cardReviewUpdate)) {
-          remainingPromises.push(updateCardAfterReview(card.id, cardReviewUpdate));
+          remainingPromises.push(updateCardAfterReview(card.id, cardReviewUpdate, attempt.commitId ? { userId, commitId: attempt.commitId } : undefined));
         }
         let retryResultPromise: Promise<{
           attemptCount: number;
           parked: boolean;
         }> | null = null;
         if (sessionKind === "daily-required" && isStruggle) {
-          retryResultPromise = recordDailyReviewWeakAttempt(userId, card.id, now);
+          retryResultPromise = recordDailyReviewWeakAttempt(userId, card.id, now, attempt.commitId);
           remainingPromises.push(retryResultPromise);
         } else if (sessionKind === "daily-required") {
           remainingPromises.push(
@@ -594,7 +628,7 @@ export function useStudyExerciseController(
               }
             : null;
         if (parkedRiskUpdates) {
-          await updateCardAfterReview(card.id, { values: parkedRiskUpdates });
+          await updateCardAfterReview(card.id, { values: parkedRiskUpdates }, attempt.commitId ? { userId, commitId: attempt.commitId } : undefined, "parked-risk");
         }
         const nextCard: Card = {
           ...card,
@@ -695,6 +729,7 @@ export function useStudyExerciseController(
         // session ends, but with enough cards in between to have genuinely
         // forgotten the answer it was just shown. Parking still wins -- a card
         // that has used up its Daily Review attempts stops for the day.
+        if (attempt.commitId) clearStudyCommitDraft(userId, attempt.commitId);
         if (shouldRequeueAfterMiss({ attempt, isStruggle, retryResult })) {
           requeueCurrentCard(nextCard);
         } else {
@@ -704,6 +739,7 @@ export function useStudyExerciseController(
         console.error(error);
         notifyError("Failed to save that answer. Please try again.");
       } finally {
+        commitInFlightRef.current = false;
         setSavingRating(null);
       }
     },
@@ -759,5 +795,23 @@ export function useStudyExerciseController(
     [bumpSessionRevision, current, goNext, requeueCurrentCard, setSessionStats]
   );
 
-  return { reveal, commitReview, continueWithoutScheduling, presentation };
+  const revisitAfterHint = useCallback((cardId: string, alreadyRevisited?: boolean) => {
+    if (!current || current.id !== cardId) return;
+    if (alreadyRevisited ?? hintedRevisitsRef.current.has(cardId)) {
+      goNext();
+      return;
+    }
+    hintedRevisitsRef.current.add(cardId);
+    bumpSessionRevision();
+    setSessionCards((previous) => {
+      const before = previous.slice(0, index);
+      const after = previous.slice(index + 1);
+      const insertion = Math.min(3, after.length);
+      return [...before, ...after.slice(0, insertion), current, ...after.slice(insertion)];
+    });
+    setFlipped(false);
+    setPresentation((value) => value + 1);
+  }, [bumpSessionRevision, current, goNext, index, setFlipped, setSessionCards]);
+
+  return { reveal, commitReview, continueWithoutScheduling, revisitAfterHint, presentation };
 }

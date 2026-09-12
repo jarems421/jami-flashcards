@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
 import type { CardStudySettings } from "@/lib/study/study-modes";
+import type { StudyLearningTask } from "@/lib/study/learning-task";
+export { STUDY_ASSET_PROMPT_VERSION, STUDY_ASSET_SCHEMA_VERSION } from "@/lib/study/study-asset-versions";
+import { STUDY_ASSET_PROMPT_VERSION, STUDY_ASSET_SCHEMA_VERSION } from "@/lib/study/study-asset-versions";
 
 /**
  * Everything a model is asked to add to one card, in one document.
@@ -10,6 +13,12 @@ import type { CardStudySettings } from "@/lib/study/study-modes";
  */
 export type StudyAsset = {
   cardId: string;
+  /** Attached by the client loader; not part of model output. */
+  cacheKey?: string;
+  sourceFingerprint?: string;
+  repairRequested?: boolean;
+  bundleRevision?: string;
+  validatorVersion?: number;
   answerShape: "numeric" | "list" | "short" | "prose";
   acceptedAliases: string[];
   requiredConcepts: string[];
@@ -18,16 +27,20 @@ export type StudyAsset = {
   misconceptions: Record<string, string>;
   confidence: number;
   ambiguous: boolean;
+  task?: StudyLearningTask;
+  preferredModes?: Array<"classic" | "type-answer" | "gap-fill" | "multiple-choice">;
+  suitableModes?: Array<"classic" | "type-answer" | "gap-fill" | "multiple-choice">;
+  gapVariants?: Array<{ id: string; gaps: Array<{ start: number; end: number; answer: string; acceptedAnswers: string[]; concept: string }> }>;
+  mcqVariants?: Array<{ id: string; correctAnswer: string; distractors: string[]; explanations: Record<string, string> }>;
+  retiredVariantIds?: string[];
 };
 
-export const STUDY_ASSET_SCHEMA_VERSION = 2;
 /**
  * Bumped when the distractor rules were tightened to demand the same shape as
  * the answer. Every cached asset written under the old prompt carries the wrong
  * options this was meant to stop -- short phrases beside a full-sentence answer,
  * guessable on length alone -- so they are re-read rather than served.
  */
-export const STUDY_ASSET_PROMPT_VERSION = 3;
 
 /** Below this the asset is discarded rather than used with a warning. */
 export const MIN_ASSET_CONFIDENCE = 0.6;
@@ -95,7 +108,12 @@ For each card you are given, produce one entry:
   "distractors": string[],
   "misconceptions": { "<distractor text>": "<one short sentence on why a student might pick it>" },
   "confidence": number between 0 and 1,
-  "ambiguous": boolean
+  "ambiguous": boolean,
+  "task": "term" | "definition" | "quantity" | "calculation" | "list" | "process" | "comparison" | "explanation" | "formula" | "quotation" | "extended" | "ambiguous",
+  "preferredModes": ("classic" | "type-answer" | "gap-fill" | "multiple-choice")[],
+  "suitableModes": ("classic" | "type-answer" | "gap-fill" | "multiple-choice")[],
+  "gapVariants": [{ "id": string, "gaps": [{ "answer": string, "acceptedAnswers": string[], "concept": string }] }],
+  "mcqVariants": [{ "id": string, "correctAnswer": string, "distractors": string[], "explanations": { "<option text>": "<why it is right or wrong>" } }]
 }
 
 Rules you must not break:
@@ -104,12 +122,15 @@ Rules you must not break:
 - requiredConcepts are the ideas a correct answer must contain, each a short noun phrase.
 - Set ambiguous true and confidence low when the card is unclear, has more than one defensible answer, or you are guessing.
 - An honest low confidence is worth more than a confident invention.
+- Read the question and answer together. Pick only formats that genuinely suit the learning task. Classic is a normal preferred mode, especially for explanations, definitions, formulae and ambiguous material.
+- Produce up to three substantively different variants for each suitable interactive format. One sound variant is better than three weak ones.
 
 clozeCandidates -- the words worth hiding:
 - Each must be an exact substring of the card's answer, copied character for character.
 - Choose the word that carries the meaning: the term being defined, the quantity, the mechanism, the one word a student who half-knew this would get wrong.
 - Never choose a word the question already contains, and never a word whose absence leaves a sentence anyone could complete from grammar alone.
 - Prefer one word or a short phrase. Hiding half the answer is not a gap, it is the whole question again.
+- gapVariants may contain one to three non-overlapping gaps. Each answer must be an exact source substring. Across a variant, hide no more than one third of the answer. Different variants must test different concepts or combinations, not cosmetic wording.
 
 distractors -- the wrong options for multiple choice, and the part that matters most:
 - Each must be a plausible answer TO THIS QUESTION and definitely wrong. Not a fact about something else, not an answer to a neighbouring topic.
@@ -125,6 +146,7 @@ distractors -- the wrong options for multiple choice, and the part that matters 
 - Give ${MIN_DISTRACTORS} or ${MAX_DISTRACTORS} so the weakest can be discarded.
 - misconceptions must have one entry per distractor, keyed by that distractor's exact text, saying in one sentence what a student was probably thinking of. This is shown to them after they choose, so it must teach the difference, not scold.
 - If you cannot write three genuinely wrong-but-tempting options for this card, return an empty distractors array. An empty list costs the student nothing. A guessable question costs them a wrong idea about what they know.
+- Each mcqVariant needs exactly three distractors and a checked explanation for all four options. Variants must use substantively different misconception sets; shuffling does not make a new variant. A concise correctAnswer is allowed only when it is exactly equivalent to the card answer.
 
 Respond as: { "assets": [ ... ] }`;
 
@@ -161,6 +183,77 @@ function isAnswerShape(value: unknown): value is StudyAsset["answerShape"] {
   );
 }
 
+const TASKS = new Set<StudyLearningTask>([
+  "term", "definition", "quantity", "calculation", "list", "process",
+  "comparison", "explanation", "formula", "quotation", "extended", "ambiguous",
+]);
+const MODES = new Set(["classic", "type-answer", "gap-fill", "multiple-choice"]);
+
+function cleanModes(value: unknown) {
+  return cleanStrings(value, 4).filter((mode) => MODES.has(mode)) as StudyAsset["suitableModes"];
+}
+
+function cleanGapVariants(value: unknown, back: string): NonNullable<StudyAsset["gapVariants"]> {
+  if (!Array.isArray(value)) return [];
+  const variants: NonNullable<StudyAsset["gapVariants"]> = [];
+  for (const raw of value.slice(0, 3)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const item = raw as Record<string, unknown>;
+    const id = typeof item.id === "string" && item.id.trim() ? item.id.trim().slice(0, 80) : `gap-${variants.length + 1}`;
+    if (!Array.isArray(item.gaps)) continue;
+    let searchCursor = 0;
+    const totalWords = back.trim().split(/\s+/).filter(Boolean).length;
+    const maxGaps = totalWords < 4 ? 0 : totalWords <= 12 ? 1 : totalWords <= 35 ? 2 : 3;
+    const gaps = item.gaps.slice(0, maxGaps).flatMap((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+      const gap = candidate as Record<string, unknown>;
+      const answer = typeof gap.answer === "string" ? gap.answer.trim() : "";
+      const start = answer ? back.indexOf(answer, searchCursor) : -1;
+      if (start < 0) return [];
+      searchCursor = start + answer.length;
+      return [{
+        start,
+        end: start + answer.length,
+        answer,
+        acceptedAnswers: cleanStrings(gap.acceptedAnswers, MAX_ALIASES),
+        concept: typeof gap.concept === "string" ? gap.concept.trim().slice(0, MAX_FIELD_LENGTH) : answer,
+      }];
+    });
+    const hiddenWords = gaps.reduce((sum, gap) => sum + gap.answer.split(/\s+/).length, 0);
+    if (gaps.length === 0 || hiddenWords / Math.max(1, totalWords) > 1 / 3) continue;
+    const positions = gaps.map((gap) => ({ start: gap.start, end: gap.end })).sort((a, b) => a.start - b.start);
+    if (positions.some((position, index) => index > 0 && position.start < positions[index - 1].end)) continue;
+    variants.push({ id, gaps });
+  }
+  return variants;
+}
+
+function cleanMcqVariants(value: unknown, answer: string): NonNullable<StudyAsset["mcqVariants"]> {
+  if (!Array.isArray(value)) return [];
+  const variants: NonNullable<StudyAsset["mcqVariants"]> = [];
+  for (const raw of value.slice(0, 3)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const item = raw as Record<string, unknown>;
+    const id = typeof item.id === "string" && item.id.trim() ? item.id.trim().slice(0, 80) : `mcq-${variants.length + 1}`;
+    const correctAnswer = typeof item.correctAnswer === "string" && item.correctAnswer.trim()
+      ? item.correctAnswer.trim().slice(0, MAX_FIELD_LENGTH)
+      : answer.trim();
+    const distractors = cleanStrings(item.distractors, 3).filter(
+      (option) => option.toLocaleLowerCase() !== correctAnswer.toLocaleLowerCase() && option.toLocaleLowerCase() !== answer.trim().toLocaleLowerCase()
+    );
+    if (distractors.length !== 3) continue;
+    const explanations: Record<string, string> = {};
+    if (item.explanations && typeof item.explanations === "object" && !Array.isArray(item.explanations)) {
+      for (const [option, explanation] of Object.entries(item.explanations as Record<string, unknown>)) {
+        if (typeof explanation === "string" && explanation.trim()) explanations[option] = explanation.trim().slice(0, MAX_FIELD_LENGTH);
+      }
+    }
+    if (![correctAnswer, ...distractors].every((option) => Boolean(explanations[option]))) continue;
+    variants.push({ id, correctAnswer, distractors, explanations });
+  }
+  return variants;
+}
+
 /**
  * Turn one model entry into an asset, or refuse it.
  *
@@ -171,7 +264,7 @@ function isAnswerShape(value: unknown): value is StudyAsset["answerShape"] {
  */
 export function validateStudyAsset(
   value: unknown,
-  card: { id: string; back: string }
+  card: { id: string; front?: string; back: string }
 ): StudyAsset | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const data = value as Record<string, unknown>;
@@ -205,6 +298,14 @@ export function validateStudyAsset(
     }
   }
 
+  const task = typeof data.task === "string" && TASKS.has(data.task as StudyLearningTask)
+    ? data.task as StudyLearningTask
+    : undefined;
+  const preferredModes = cleanModes(data.preferredModes);
+  const suitableModes = cleanModes(data.suitableModes);
+  const gapVariants = cleanGapVariants(data.gapVariants, card.back);
+  const mcqVariants = cleanMcqVariants(data.mcqVariants, card.back);
+
   return {
     cardId: card.id,
     answerShape: isAnswerShape(data.answerShape) ? data.answerShape : "short",
@@ -217,12 +318,17 @@ export function validateStudyAsset(
     misconceptions,
     confidence,
     ambiguous: false,
+    ...(task ? { task } : {}),
+    ...(preferredModes?.length ? { preferredModes } : {}),
+    ...(suitableModes?.length ? { suitableModes } : {}),
+    ...(gapVariants.length ? { gapVariants } : {}),
+    ...(mcqVariants.length ? { mcqVariants } : {}),
   };
 }
 
 export function parseStudyAssetResponse(
   text: string,
-  cards: Array<{ id: string; back: string }>
+  cards: Array<{ id: string; front?: string; back: string }>
 ): StudyAsset[] {
   let parsed: unknown;
   try {

@@ -13,6 +13,7 @@ export type OfflineStudySnapshot = {
 };
 
 export type OfflineQueuedReview = {
+  commitId?: string;
   id: string;
   userId: string;
   cardId: string;
@@ -24,7 +25,8 @@ export type OfflineQueuedReview = {
   topicIds?: string[];
   folderIds?: string[];
   durationMs?: number;
-  sessionKind: "daily-required" | "daily-optional" | "custom";
+  sessionKind: "daily-required" | "daily-optional" | "custom" | "simple";
+  intent?: import("@/services/study/commit-intent").StudyCommitIntent;
   cardUpdates: CardReviewValueUpdates;
   clearMemoryRiskOverrideDayKey?: boolean;
 };
@@ -89,10 +91,15 @@ export function getOfflineQueuedReviews(userId: string) {
 export function queueOfflineStudyReview(review: Omit<OfflineQueuedReview, "id">) {
   const queuedReview: OfflineQueuedReview = {
     ...review,
-    id: `${review.reviewedAt}-${review.cardId}-${Math.random().toString(36).slice(2)}`,
+    id: review.commitId ?? `${review.reviewedAt}-${review.cardId}-${Math.random().toString(36).slice(2)}`,
   };
   const current = getOfflineQueuedReviews(review.userId);
+  const existing = current.find((entry) => entry.id === queuedReview.id);
+  if (existing) return existing;
   writeJson(getQueueKey(review.userId), [...current, queuedReview]);
+  if (!getOfflineQueuedReviews(review.userId).some((entry) => entry.id === queuedReview.id)) {
+    throw new Error("This device could not save your answer for syncing.");
+  }
   return queuedReview;
 }
 

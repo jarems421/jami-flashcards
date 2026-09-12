@@ -10,7 +10,6 @@ import {
   Input,
   Select,
   Skeleton,
-  StudyText,
 } from "@/components/ui";
 import { EXAM_BOARD_LABELS, type ExamBoardId } from "@/lib/practice/exam-formats";
 import ExamRolloutPanel from "@/components/practice/ExamRolloutPanel";
@@ -22,6 +21,8 @@ import {
   type ExamIngestionJob,
 } from "@/lib/practice/exam-ingestion-job";
 import type { ExamQuestionReviewItem } from "@/services/practice/exam-corpus-review.server";
+import ExamQuestionReviewCard from "@/components/practice/ExamQuestionReviewCard";
+import ExamSpotCheckPanel from "@/components/practice/ExamSpotCheckPanel";
 
 /** Only the boards whose licence is recorded can be ingested under. */
 const LICENSED_BOARDS: ExamBoardId[] = [
@@ -225,6 +226,13 @@ export default function ExamCorpusWorkspace() {
 
       <ExamRolloutPanel onIngested={() => void loadPending()} />
 
+      {/*
+        * Placed after the review queue in the workflow, not before it: a
+        * spot-check reads what the reviewer approved, so there is nothing to
+        * sample until the queue has been worked through.
+        */}
+      <ExamSpotCheckPanel request={internalRequest} />
+
       <Card padding="lg">
         <h2 className="text-lg font-semibold text-text-primary">Find one paper</h2>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">
@@ -372,95 +380,29 @@ export default function ExamCorpusWorkspace() {
         ) : (
           <div className="mt-4 space-y-4">
             {pending.map((item) => (
-              <Card key={item.id} padding="lg">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="text-xs text-text-muted">
-                    {item.provenance.boardLabel} · {item.provenance.series} {item.provenance.year} ·{" "}
-                    {item.provenance.paperReference} · Q{item.provenance.questionNumber}
-                  </p>
-                  <span className="text-xs font-medium text-text-muted">
-                    {item.marks} mark{item.marks === 1 ? "" : "s"} · {item.difficulty}
-                  </span>
-                </div>
-
-                {item.review.by ? (
-                  <p className="mt-2 text-xs text-text-muted">
-                    {item.review.by === "ai" ? "Reviewed by Jami" : "Reviewed by you"} ·{" "}
-                    {item.review.status}
-                    {item.review.notes.length ? ` · ${item.review.notes.join(" ")}` : ""}
-                  </p>
-                ) : null}
-
-                {item.verification && item.verification.issues.length > 0 ? (
-                  <ul className="mt-3 space-y-1 rounded-2xl border border-error/30 bg-error/10 p-3">
-                    {item.verification.issues.map((issue, index) => (
-                      <li key={index} className="text-sm text-text-primary">
-                        · {issue}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-
-                <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-text-secondary">Question</h3>
-                    <StudyText
-                      as="div"
-                      text={item.prompt}
-                      className="mt-2 whitespace-pre-wrap text-sm leading-6 text-text-primary"
-                    />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-text-secondary">
-                      Paired scheme · {item.markScheme.regime}
-                    </h3>
-                    {item.markScheme.criteria.length > 0 ? (
-                      <ul className="mt-2 space-y-1">
-                        {item.markScheme.criteria.map((criterion) => (
-                          <li key={criterion.id} className="text-sm leading-5 text-text-primary">
-                            <span className="text-text-muted">[{criterion.marks}]</span>{" "}
-                            {criterion.text}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-2 text-sm text-text-muted">
-                        No awardable criteria were parsed. Reject unless the regime explains it.
-                      </p>
-                    )}
-                    {item.markScheme.officialText ? (
-                      <details className="mt-3">
-                        <summary className="cursor-pointer text-xs font-semibold text-text-secondary">
-                          Scheme text as extracted
-                        </summary>
-                        <StudyText
-                          as="div"
-                          text={item.markScheme.officialText}
-                          className="mt-2 whitespace-pre-wrap text-xs leading-5 text-text-muted"
-                        />
-                      </details>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    disabled={deciding === item.id}
-                    onClick={() => void decide(item.id, "accept")}
-                  >
-                    {deciding === item.id ? "Saving…" : "Approve and publish"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={deciding === item.id}
-                    onClick={() => void decide(item.id, "reject")}
-                  >
-                    Withdraw
-                  </Button>
-                </div>
-              </Card>
+              <ExamQuestionReviewCard
+                key={item.id}
+                item={item}
+                actions={
+                  <>
+                    <Button
+                      size="sm"
+                      disabled={deciding === item.id}
+                      onClick={() => void decide(item.id, "accept")}
+                    >
+                      {deciding === item.id ? "Saving…" : "Approve and publish"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={deciding === item.id}
+                      onClick={() => void decide(item.id, "reject")}
+                    >
+                      Withdraw
+                    </Button>
+                  </>
+                }
+              />
             ))}
           </div>
         )}

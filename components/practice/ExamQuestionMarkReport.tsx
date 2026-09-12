@@ -2,16 +2,36 @@
 
 import { Button, Card, StudyText } from "@/components/ui";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
+import { examReviewFailureMessage } from "@/lib/practice/exam-marking-failure";
 import { breakdownExamMarkReport } from "@/lib/practice/exam-mark-report";
 import ExamSubmittedAnswer from "@/components/practice/ExamSubmittedAnswer";
 
 /**
- * What the mark actually was, and what would have earned more.
+ * What the mark was, and -- the part that is actually worth reading -- what to
+ * do differently.
  *
- * The order is deliberate and does not change: the mark first, because that is
- * the question the student asked; then what the scheme credited, so the number
- * is evidenced rather than asserted; then what it wanted and did not get. The
- * worked answer comes last, after they have read why their own fell short.
+ * Shaped by what is known about feedback rather than by what is easy to render:
+ *
+ * Hattie and Timperley (2007) separate feedback into where am I going, how am I
+ * going, and where to next, and find the last of those carries most of the
+ * effect. They also rank its levels: comment on the task and on the process
+ * helps, comment on the person does not. So "what to fix" now comes before
+ * "what earned marks", and nothing here says anything about the student.
+ *
+ * Butler (1988), and Black and Wiliam after her, found a prominent grade
+ * crowds out the comment beside it -- students given both engaged with neither.
+ * This showed the mark three times over: a huge numeral, a percentage, and a
+ * progress bar. It is now shown once, plainly, and the space goes to the part
+ * that can be acted on.
+ *
+ * Shute (2008) on what makes formative feedback work: specific, manageable, and
+ * elaborated rather than verification-only. A missed criterion used to say what
+ * the scheme wanted and stop there, which tells a student the answer and not
+ * what was wrong with theirs. It now sets what they wrote against what was
+ * needed, which is the whole lesson in one line.
+ *
+ * The worked answer stays last, behind a disclosure: it is the thing that ends
+ * thinking, so it comes after they have read why their own fell short.
  */
 export default function ExamQuestionMarkReport({
   attempt,
@@ -39,6 +59,12 @@ export default function ExamQuestionMarkReport({
   nextLabel?: string;
   reviewing?: boolean;
 }) {
+  /*
+   * A check in flight, as the server sees it. `reviewing` is this page's own
+   * click and survives nothing; this survives a refresh, a new tab, and the
+   * student walking away -- which a durable check now outlives.
+   */
+  const checking = attempt.reviewStatus === "reviewing";
   const result = attempt.result;
   if (!result) return null;
   const { earned, missed, unexplainedShortfall } = breakdownExamMarkReport(result);
@@ -55,16 +81,20 @@ export default function ExamQuestionMarkReport({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
           {attempt.attemptNumber === 2 ? "Your second try" : "Your mark"}
         </p>
-        <div className="mt-3 flex flex-wrap items-end gap-x-3 gap-y-1">
-          <span className="text-5xl font-semibold tracking-tight text-text-primary">
+        {/*
+          * Once, not three times. A percentage and a progress bar on a
+          * three-mark question restate the same number in two less precise
+          * ways, and the more prominent the grade the less the comment beside
+          * it is read.
+          */}
+        <div className="mt-2 flex flex-wrap items-end gap-x-2">
+          <span className="text-3xl font-semibold tracking-tight text-text-primary">
             {result.awardedMarks}
           </span>
-          <span className="pb-1 text-lg text-text-muted">/ {result.maxMarks}</span>
-          <span className="pb-1.5 ml-auto text-sm font-medium tabular-nums text-text-muted">
-            {percent}%
-          </span>
+          <span className="pb-0.5 text-lg text-text-muted">/ {result.maxMarks}</span>
         </div>
         <div
+          hidden
           aria-hidden="true"
           className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-glass-strong)]"
         >
@@ -91,6 +121,22 @@ export default function ExamQuestionMarkReport({
             attempt.reviewOriginalScore !== result.awardedMarks
               ? `Checked: ${attempt.reviewOriginalScore}/${result.maxMarks} → ${result.awardedMarks}/${result.maxMarks}`
               : "Checked — your mark stayed the same."}
+          </p>
+        ) : null}
+        {/*
+          * Both of these read the attempt rather than a click. Checking used to
+          * be local state only, so a student who refreshed mid-check was shown
+          * the button again and got a conflict for pressing it, and a check
+          * that failed said nothing at all -- it simply looked unused.
+          */}
+        {attempt.reviewStatus === "reviewing" ? (
+          <p className="mt-3 text-sm font-medium text-text-secondary">
+            Jami is checking this mark. It carries on if you leave this page.
+          </p>
+        ) : null}
+        {attempt.reviewStatus === "failed" ? (
+          <p className="mt-3 text-sm leading-5 text-text-muted">
+            {attempt.reviewFailure?.message ?? examReviewFailureMessage("marking_failed")}
           </p>
         ) : null}
         {/*
@@ -121,27 +167,20 @@ export default function ExamQuestionMarkReport({
         />
       </Card>
 
-      {earned.length > 0 ? (
-        <Card padding="md">
-          <h3 className="text-base font-semibold text-text-primary">What earned marks</h3>
-          <ul className="mt-3 space-y-2">
-            {earned.map((item, index) => (
-              <li
-                key={`${item.criterion}-${index}`}
-                className="rounded-2xl border border-success/25 bg-success/10 p-3"
-              >
-                <StudyText as="p" text={item.criterion} className="text-sm font-medium text-text-primary" />
-                {item.evidence ? (
-                  <StudyText as="p" text={item.evidence} className="mt-1 text-sm leading-5 text-text-muted" />
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
-
+      {/*
+        * Where to next, first. It carries most of the effect of feedback and
+        * used to sit third, under the mark and under a list of what already
+        * went right -- which a student who scored well never scrolled to.
+        */}
       <Card padding="md">
-        <h3 className="text-base font-semibold text-text-primary">What to add next time</h3>
+        <h3 className="text-base font-semibold text-text-primary">
+          {missed.length > 0 || unexplainedShortfall ? "What to fix" : "Nothing was missing"}
+        </h3>
+        {result.nextStep ? (
+          <p className="mt-3 rounded-2xl border border-accent/30 bg-accent/10 p-3 text-sm font-medium leading-5 text-text-primary">
+            {result.nextStep}
+          </p>
+        ) : null}
         {missed.length > 0 ? (
           <ul className="mt-3 space-y-2">
             {missed.map((item, index) => (
@@ -155,46 +194,95 @@ export default function ExamQuestionMarkReport({
                     {item.awardedMarks} of {item.maxMarks} marks
                   </p>
                 ) : null}
-                {item.schemeValue ? (
-                  <StudyText
-                    as="p"
-                    text={`The scheme wanted: ${item.schemeValue}`}
-                    className="mt-1 text-sm leading-5 text-text-muted"
-                  />
+                {/*
+                  * What they wrote, against what was needed.
+                  *
+                  * This showed only the scheme's side, which tells a student
+                  * the answer without telling them what was wrong with theirs
+                  * -- and both halves were already on the criterion and already
+                  * projected to the client. A student who wrote the right value
+                  * under the wrong label learns nothing from "the scheme wanted
+                  * -1" and everything from seeing it beside their own.
+                  */}
+                {item.schemeValue || item.candidateValue ? (
+                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                    <div className="rounded-xl bg-[var(--color-glass-strong)] px-3 py-2">
+                      <p className="text-2xs font-semibold uppercase tracking-wide text-text-muted">
+                        You wrote
+                      </p>
+                      <StudyText
+                        as="p"
+                        text={item.candidateValue?.trim() || "nothing here"}
+                        className="mt-0.5 text-sm leading-5 text-text-primary"
+                      />
+                    </div>
+                    <div className="rounded-xl bg-success/10 px-3 py-2">
+                      <p className="text-2xs font-semibold uppercase tracking-wide text-text-muted">
+                        Needed
+                      </p>
+                      <StudyText
+                        as="p"
+                        text={item.schemeValue?.trim() || item.criterion}
+                        className="mt-0.5 text-sm leading-5 text-text-primary"
+                      />
+                    </div>
+                  </div>
                 ) : null}
               </li>
             ))}
           </ul>
         ) : unexplainedShortfall ? (
-          <>
-            {guidance.length > 0 ? (
-              <ul className="mt-3 space-y-2">
-                {guidance.map((item, index) => (
-                  <li
-                    key={`${item}-${index}`}
-                    className="rounded-2xl bg-[var(--color-glass-subtle)] p-3 text-sm leading-5 text-text-primary"
-                  >
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-sm text-text-muted">
-                {result.maxMarks - result.awardedMarks} mark
-                {result.maxMarks - result.awardedMarks === 1 ? " was" : "s were"} not awarded. Read
-                the feedback above for where they went.
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="mt-2 text-sm text-text-muted">Nothing essential was missing.</p>
-        )}
-        {result.nextStep ? (
-          <p className="mt-4 rounded-2xl bg-[var(--color-glass-subtle)] p-3 text-sm font-medium leading-5 text-text-secondary">
-            Next: {result.nextStep}
+          guidance.length > 0 ? (
+            <ul className="mt-3 space-y-2">
+              {guidance.map((item, index) => (
+                <li
+                  key={`${item}-${index}`}
+                  className="rounded-2xl bg-[var(--color-glass-subtle)] p-3 text-sm leading-5 text-text-primary"
+                >
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-text-muted">
+              {result.maxMarks - result.awardedMarks} mark
+              {result.maxMarks - result.awardedMarks === 1 ? " was" : "s were"} not awarded, and
+              Jami did not say which. Ask for a second opinion below.
+            </p>
+          )
+        ) : !result.nextStep ? (
+          <p className="mt-2 text-sm text-text-muted">
+            Every mark on this question was awarded.
           </p>
         ) : null}
       </Card>
+
+      {/*
+        * What went right, second and quieter. Worth showing -- a student should
+        * be able to see the mark was evidenced rather than asserted -- but it
+        * is the part they already know, so it does not lead and it does not
+        * need a card of its own shouting about it.
+        */}
+      {earned.length > 0 ? (
+        <details className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-text-primary">
+            What earned marks · {earned.length}
+          </summary>
+          <ul className="mt-3 space-y-2">
+            {earned.map((item, index) => (
+              <li
+                key={`${item.criterion}-${index}`}
+                className="rounded-2xl border border-success/25 bg-success/10 p-3"
+              >
+                <StudyText as="p" text={item.criterion} className="text-sm font-medium text-text-primary" />
+                {item.evidence ? (
+                  <StudyText as="p" text={item.evidence} className="mt-1 text-sm leading-5 text-text-muted" />
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       {/*
         * The evidence the mark was given for, typed answer included. Showing
@@ -256,8 +344,17 @@ export default function ExamQuestionMarkReport({
           </Button>
         ) : null}
         {onReview ? (
-          <Button type="button" variant="ghost" disabled={reviewing} onClick={onReview}>
-            {reviewing ? "Checking…" : "Check this mark"}
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={reviewing || checking}
+            onClick={onReview}
+          >
+            {reviewing || checking
+              ? "Checking…"
+              : attempt.reviewStatus === "failed"
+                ? "Try checking again"
+                : "Check this mark"}
           </Button>
         ) : null}
         {onAsk ? (

@@ -1,5 +1,8 @@
+import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import type { PracticePaperQuestionAsset, PracticePaperQuestionResult } from "@/lib/practice/practice-papers";
 import type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
+import type { ExamMarkingFailure } from "@/lib/practice/exam-marking-failure";
+import type { PracticePaperMarkerCheckpoints } from "@/lib/practice/marker-stages";
 import type { ExamBoardId, ExamQualification } from "@/lib/practice/exam-formats";
 import type { StudyLevel } from "@/lib/profile/study-level";
 
@@ -47,8 +50,35 @@ export type ExamPaper = {
   markSchemeStoragePath: string;
   rights: ExamRightsSnapshot;
   status: "discovered" | "extracting" | "needs_review" | "published" | "withdrawn";
+  spotCheck?: ExamPaperSpotCheck;
   createdAt: number;
   updatedAt: number;
+};
+
+/**
+ * A person's sample of what extraction produced from one paper.
+ *
+ * The reviewer that approves questions is a model, and a model approving
+ * licensed board material is a decision somebody has to have looked at. Reading
+ * every question does not scale past the first paper; reading a random handful
+ * catches the faults that matter here, which are systematic -- a scheme paired
+ * one question out, a region located on the wrong page, a tariff read off the
+ * next line -- and show up in any sample rather than in one unlucky question.
+ *
+ * Recorded rather than remembered, because "we checked some of them" is not a
+ * gate. `size` is what was drawn and `rejected` is what was thrown back, so a
+ * paper whose sample went badly is legible afterwards.
+ */
+export type ExamPaperSpotCheck = {
+  sampledAt: number;
+  sampledBy: string;
+  /** How many questions were drawn and looked at. */
+  size: number;
+  /** How many of those the reviewer threw back. */
+  rejected: number;
+  /** The whole paper's question count when the sample was drawn. */
+  population: number;
+  notes?: string;
 };
 
 export type ExamIngestionVerification = {
@@ -142,6 +172,15 @@ export type ExamQuestion = {
    * it.
    */
   contentVersion: string;
+  /**
+   * When this question's paper was last sampled by a person.
+   *
+   * Snapshotted onto the question the way rights are, because the gate that
+   * reads it takes a question and no database. It says the paper's extraction
+   * has been sampled and accepted -- not that this particular question was one
+   * of the ones read, which would be a different and much more expensive claim.
+   */
+  paperSpotCheckedAt?: number;
   selectionKey: number;
   createdAt: number;
   updatedAt: number;
@@ -170,6 +209,16 @@ export type ExamSessionQuestion = Pick<
   | "origin"
   | "provenance"
   | "contentVersion"
+  /*
+   * Carried through the session, not dropped at selection.
+   *
+   * Everything after the picker was topic-blind: the mark report, history and
+   * the Tutor's context all received a question with no idea what it was
+   * about, so "how am I doing on quadratics" was unanswerable even once a
+   * student had filtered to it. The ids are the specification's own published
+   * headings, so there is nothing here to keep from them.
+   */
+  | "topicIds"
 > & { attemptId: string };
 
 export type ExamSession = {
@@ -229,14 +278,95 @@ export type ExamAttempt = {
   statsContributionFraction?: number;
   reviewUsed: boolean;
   reviewStatus?: "reviewing" | "failed" | "complete";
+  /**
+   * The idempotency key of the check in flight, and its job's identity.
+   *
+   * Written by the review route since before the check was durable, and untyped
+   * until the job started depending on it. A student whose check fails may ask
+   * again, so `reviewStatus` alone cannot say whether a job still speaks for
+   * the attempt; this can.
+   */
+  reviewKey?: string;
+  reviewStartedAt?: number;
+  reviewAudit?: ExamReviewAudit;
   reviewOriginalScore?: number;
   answerDeletedAt?: number;
+  /** Why the last marking produced no mark, kept for the page to explain. */
+  markingFailure?: ExamMarkingFailure;
+  /** Why the last mark check produced nothing. Same job, different question. */
+  reviewFailure?: ExamMarkingFailure;
   workingWidth?: number;
   workingHeight?: number;
   startedAt: number;
   submittedAt?: number;
   markedAt?: number;
   updatedAt: number;
+  /**
+   * The durable marking job's own bookkeeping.
+   *
+   * Server-only, like the rest of this document: `examAttempts` denies client
+   * reads outright and `projectExamAttempt` names every field it returns, so
+   * nothing here can reach a student by being added.
+   *
+   * It lives on the attempt rather than in a job collection of its own because
+   * the attempt is already the record of what is being marked, and a second
+   * document tracking the same thing is a second document to keep in step with
+   * it.
+   */
+  marking?: ExamMarkingJob;
+  /** The durable mark check's bookkeeping. Keyed by `reviewKey`, not its own. */
+  review?: ExamReviewJob;
+};
+
+export type ExamReviewAudit = {
+  jurorScore: number;
+  reviewedScore: number;
+  changed: boolean;
+  reconciled: boolean;
+  originalResult?: PracticePaperQuestionResult;
+  createdAt: number;
+};
+
+export type ExamReviewJob = {
+  /**
+   * This check's job, told apart from the next one's.
+   *
+   * Not `reviewKey`. That key is the client's idempotency token and is derived
+   * from the session and question, so it is identical across every check of the
+   * same answer -- which is the whole point of an idempotency key and exactly
+   * what disqualifies it here. A stranded job whose student asked again would
+   * still match it, and could write its result over the newer check's.
+   */
+  token: string;
+  startedAt: number;
+  deadlineAt: number;
+  budgetGrant?: AiBudgetGrant;
+  runId?: string;
+  stages?: PracticePaperMarkerCheckpoints;
+};
+
+export type ExamMarkingJob = {
+  /**
+   * This submission's marking, told apart from the next one's.
+   *
+   * The attempt document is reused across resubmissions, so `status` alone
+   * cannot say whether a job in flight is still the current one. Every write a
+   * job makes is conditional on this still matching.
+   */
+  token: string;
+  runId?: string;
+  startedAt: number;
+  deadlineAt: number;
+  /**
+   * The daily-allowance grant to hand back if the marking never produces a
+   * mark. The request that took it returns long before the marking ends, so
+   * the refund has to travel with the job.
+   */
+  budgetGrant?: AiBudgetGrant;
+  /** Reports already paid for, so a resumed marking does not buy them twice. */
+  stages?: PracticePaperMarkerCheckpoints;
+  /** How many times the job has been picked up, including the first. */
+  attempts: number;
 };
 
 export const EXAM_SESSION_MAX_QUESTIONS = 20;
@@ -245,18 +375,36 @@ export const EXAM_WORKING_MAX_BYTES = 3 * 1024 * 1024;
 export const EXAM_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
 
 /**
- * How long a marking or review operation holds its claim on an attempt.
+ * The longest one AI job on an attempt may run before it is given up on.
  *
- * The route that starts one has 60 seconds to live, so an attempt still
- * marked `marking` well after that is not in progress -- it is the remains of
- * a request that was killed mid-flight, and nothing will ever finish it.
+ * A chosen bound rather than a measured one, and it is worth saying which.
+ * What is measured is what it has to clear. `markerTimeoutMs` sizes a
+ * supervisor's report at 408 seconds and a juror's at 515, from p99 output over
+ * p5 generation rate; marking is up to three such calls in sequence when the
+ * markers disagree, and a mark check is two. Ten minutes covers the ordinary
+ * case many times over -- observed markings ran 9.6 to 28.6 seconds -- without
+ * licensing the pathological one, where retries across every stage could
+ * otherwise run past half an hour with a student watching.
+ *
+ * It replaces 55 seconds, which was never a judgement about marking: it was
+ * what fitted inside one serverless request, and it gave the supervisor 30
+ * seconds for that 408-second report.
+ */
+export const EXAM_AI_JOB_DEADLINE_MS = 600_000;
+
+/**
+ * How long an attempt may claim to be working before it is treated as stranded.
+ *
+ * One clock for both jobs, because both are now durable and neither is bound to
+ * the request that started it. Longer than the deadline they are given, because
+ * a job that reaches its deadline still has to write down that it failed.
  *
  * It matters beyond the attempt itself. Finishing a session and deleting its
- * answers both refuse while anything is being marked, and they read the same
- * flag, so one dead request used to lock a student out of their own session
- * permanently with "wait for marking to finish".
+ * answers both refuse while anything is being worked on and both read this, so
+ * a dead operation used to lock a student out of their own session permanently
+ * with "wait for marking to finish".
  */
-export const EXAM_OPERATION_LEASE_MS = 90_000;
+export const EXAM_OPERATION_LEASE_MS = EXAM_AI_JOB_DEADLINE_MS + 60_000;
 
 /** Whether an attempt is genuinely being worked on right now. */
 export function examOperationIsLive(

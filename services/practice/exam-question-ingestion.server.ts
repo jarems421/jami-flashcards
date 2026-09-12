@@ -6,6 +6,7 @@ import { generateAiText } from "@/lib/ai/provider-router";
 import { isOfficialExamBoardUrl, type ExamBoardId } from "@/lib/practice/exam-formats";
 import { getExamQuestionRights, isExamQuestionBoardEnabled, isExamQuestionSpecificationEnabled } from "@/lib/practice/exam-question-rights";
 import { canServeExamRights, type ExamPaper } from "@/lib/practice/exam-questions";
+import { servableExamSpecificationTopics } from "@/lib/practice/exam-specification-topics";
 import { parseJsonObject } from "@/services/ai/practice-paper-generation.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { type PdfPageText, type QuestionRegion } from "@/lib/practice/exam-page-regions";
@@ -93,6 +94,32 @@ const QUESTION_RULES = [
   "Use the exact question labels and tariffs printed on the paper.",
   "questionPage is the page the question is printed on; schemePage is the page of the mark scheme document that marks it.",
 ].join(" ");
+
+/**
+ * The topic ids this paper's specification actually names.
+ *
+ * Without this the model was asked for `topicIds` and never told what they
+ * were, so it invented plausible-looking strings and `filterCanonicalTopicIds`
+ * dropped every one of them -- which is why every question in the corpus is
+ * stored with an empty list. A closed list costs nothing to send and is the
+ * difference between the field working and the field being theatre.
+ *
+ * A specification with no checked catalogue says so plainly and asks for none,
+ * rather than inviting guesses that are going to be discarded anyway.
+ */
+function topicRulesFor(specificationId: string) {
+  const catalogue = servableExamSpecificationTopics(specificationId);
+  if (!catalogue) {
+    return "Leave topicIds as an empty array: this specification has no checked topic list.";
+  }
+  const list = catalogue.topics.map((topic) => `${topic.id} (${topic.label})`).join("; ");
+  return [
+    "For topicIds choose only from this list, using the id exactly as written:",
+    `${list}.`,
+    "Give one or two ids per question, whichever the question genuinely tests.",
+    "Never invent an id, and leave the array empty rather than guess.",
+  ].join(" ");
+}
 
 const SCHEME_RULES = [
   "Return one JSON object of exactly that shape and nothing else.",
@@ -324,7 +351,9 @@ export async function extractPaperQuestions(state: ExamIngestionState): Promise<
 Shape:
 ${QUESTION_EXAMPLE}
 
-${QUESTION_RULES}` },
+${QUESTION_RULES}
+
+${topicRulesFor(manifest.specificationId)}` },
       { inlineData: { mimeType: "application/pdf", data: paperBytes.toString("base64") } },
       { inlineData: { mimeType: "application/pdf", data: schemeBytes.toString("base64") } },
     ] }] },

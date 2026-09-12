@@ -13,16 +13,43 @@ const firestoreMock = vi.hoisted(() => ({
   collection: vi.fn(),
   deleteDoc: vi.fn(),
   deleteField: vi.fn(() => "DELETE_FIELD"),
-  doc: vi.fn((_db: unknown, collectionName: string, cardId: string) => ({
-    path: `${collectionName}/${cardId}`,
-  })),
+  doc: vi.fn((_db: unknown, ...segments: string[]) => ({ path: segments.join("/") })),
   getDocs: vi.fn(),
   increment: vi.fn((value: number) => ({ increment: value })),
   query: vi.fn(),
   updateDoc: vi.fn(),
   where: vi.fn(),
   writeBatch: vi.fn(),
+  /*
+   * Progress effects now commit through a transaction that writes a receipt
+   * beside the effect, so a retry after a partial failure cannot count the same
+   * answer twice. Without this the mock throws and every sync path reports zero
+   * synced -- which reads as a scheduling bug rather than a missing export.
+   *
+   * The receipt is always absent here: each test starts a fresh store, so the
+   * first attempt is the real one, and replay is covered where it is the
+   * subject rather than incidentally in every other test.
+   */
+  transactionUpdate: vi.fn(),
+  transactionSet: vi.fn(),
+  runTransaction: vi.fn(),
 }));
+
+/*
+ * Wired after the object exists so the transaction can reach its own spies.
+ * `update` is the one that matters: a card write carrying a commit identity now
+ * happens inside the transaction rather than through `updateDoc`, so asserting
+ * the old call would pass only while the receipt was not being written.
+ */
+firestoreMock.runTransaction.mockImplementation(
+  async (_db: unknown, apply: (transaction: unknown) => Promise<unknown>) =>
+    apply({
+      get: async () => ({ exists: () => false, data: () => undefined }),
+      set: firestoreMock.transactionSet,
+      update: firestoreMock.transactionUpdate,
+      delete: vi.fn(),
+    })
+);
 
 vi.mock("firebase/firestore", () => firestoreMock);
 
@@ -109,6 +136,8 @@ beforeEach(() => {
     parked: false,
   });
   firestoreMock.updateDoc.mockResolvedValue(undefined);
+  firestoreMock.transactionUpdate.mockReset();
+  firestoreMock.transactionSet.mockReset();
 });
 
 afterEach(() => {
@@ -140,18 +169,25 @@ describe("offline study synchronization", () => {
     expect(getOfflineQueuedReviews(USER_ID)).toEqual([]);
     expect(mocks.recordStudyReview).toHaveBeenCalledTimes(2);
     expect(mocks.applyGoalProgressForAnswer).toHaveBeenCalledTimes(2);
-    expect(firestoreMock.updateDoc).toHaveBeenCalledWith(
+    expect(firestoreMock.transactionUpdate).toHaveBeenCalledWith(
       { path: "cards/required-struggle" },
       { simpleStudyWrongCount: 2 }
     );
-    expect(firestoreMock.updateDoc).toHaveBeenCalledWith(
+    expect(firestoreMock.transactionUpdate).toHaveBeenCalledWith(
       { path: "cards/optional-success" },
       { reps: 4 }
     );
+    /*
+     * The fourth argument is the commit identity. Every progress effect now
+     * carries one so a retry after a partial save cannot count the same answer
+     * twice; a queued offline review falls back to its own queue id, which is
+     * already unique per attempt.
+     */
     expect(mocks.recordDailyReviewWeakAttempt).toHaveBeenCalledWith(
       USER_ID,
       "required-struggle",
-      NOW
+      NOW,
+      expect.any(String)
     );
     expect(mocks.markDailyReviewCardComplete).toHaveBeenCalledWith(
       USER_ID,
@@ -174,7 +210,7 @@ describe("offline study synchronization", () => {
 
     await syncOfflineStudyReviews(USER_ID);
 
-    expect(firestoreMock.updateDoc).toHaveBeenCalledWith(
+    expect(firestoreMock.transactionUpdate).toHaveBeenCalledWith(
       { path: "cards/card-1" },
       {
         memoryRiskOverrideDayKey: "DELETE_FIELD",

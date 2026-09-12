@@ -9,6 +9,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
+import { commitStudyEffect } from "@/services/study/commit-effect";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
@@ -234,12 +235,15 @@ export async function ensureDailyReviewState(
 export async function recordDailyReviewWeakAttempt(
   userId: string,
   cardId: string,
-  now = Date.now()
+  now = Date.now(),
+  commitId?: string
 ) {
   const stateRef = getStudyStateDoc(userId, DAILY_REVIEW_STATE_DOC_ID);
 
   return withTimeout(
-    runTransaction(db, async (transaction) => {
+    (commitId
+      ? (apply: (transaction: import("firebase/firestore").Transaction) => Promise<{ attemptCount: number; parked: boolean }>) => commitStudyEffect({ userId, commitId }, "daily-retry", apply)
+      : (apply: (transaction: import("firebase/firestore").Transaction) => Promise<{ attemptCount: number; parked: boolean }>) => runTransaction(db, apply))(async (transaction) => {
       const snapshot = await transaction.get(stateRef);
       const state = snapshot.exists()
         ? normalizeDailyReviewState(

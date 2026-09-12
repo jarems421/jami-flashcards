@@ -24,6 +24,7 @@ import {
   submitExamAnswer,
 } from "@/services/study/exam-practice";
 import { EXAM_ANSWER_MAX_LENGTH, EXAM_OPERATION_LEASE_MS } from "@/lib/practice/exam-questions";
+import { examMarkingFailureIsRetryable, examMarkingFailureMessage } from "@/lib/practice/exam-marking-failure";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import type { Notebook } from "@/lib/workspace/notebooks";
@@ -92,6 +93,8 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [error, setError] = useState("");
+  /** Attempt whose reopened-draft refusal the student has read and closed. */
+  const [dismissedFailure, setDismissedFailure] = useState("");
   /** Advanced by each poll, so a lease that runs out is noticed on screen. */
   const [now, setNow] = useState(() => Date.now());
   const scratchpad = useRef<ExamScratchpadHandle | null>(null);
@@ -182,14 +185,23 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   const answering = session?.status === "active" && (!markedAttempt || retryOpen);
   const isLast = index === questions.length - 1;
   /*
-   * Marking happens inside the request that started it, so a request killed
-   * mid-flight leaves the attempt reading "marking" with nothing left to
-   * finish it. Past its lease it is not in progress, it is stranded, and the
-   * student is offered the one thing that actually helps.
+   * A durable job does the marking, and it writes down its own failures, so an
+   * attempt reading "marking" long after its last sign of life is one whose
+   * job did not survive to write anything -- a redeploy mid-call, or a crash.
+   * Past its lease it is not in progress, it is stranded, and the student is
+   * offered the one thing that actually helps.
+   *
+   * The lease is generous because the job's deadline is: each completed
+   * marker report touches the attempt, so a marking still working through its
+   * stages keeps showing progress rather than ageing towards this.
    */
   const markingStale =
     activeAttempt?.status === "marking" &&
     now - (activeAttempt.updatedAt ?? 0) > EXAM_OPERATION_LEASE_MS;
+  /** A failure the same evidence could survive. The others are a dead end. */
+  const markingFailureRetryable = examMarkingFailureIsRetryable(
+    activeAttempt?.markingFailure?.code ?? "marking_failed"
+  );
   /** Something is being worked on server-side, so the page keeps watching. */
   const pendingStatus =
     activeAttempt && (activeAttempt.status === "marking" || activeAttempt.reviewStatus === "reviewing")
@@ -435,6 +447,25 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     >
       <div className="space-y-4">
         {error ? <FeedbackBanner type="error" message={error} onDismiss={() => setError("")} /> : null}
+        {/*
+          * An answer the server refused to send, handed back for editing.
+          *
+          * This used to be a 413 on the submit request, which the page turned
+          * into a banner. The submit request no longer knows: it returns while
+          * the marking is still queued, and the refusal happens later against
+          * an attempt that has been reopened as a draft. So the banner is
+          * driven by the attempt instead of by a response.
+          */}
+        {!error &&
+        activeAttempt?.status === "draft" &&
+        activeAttempt.markingFailure &&
+        dismissedFailure !== activeAttempt.id ? (
+          <FeedbackBanner
+            type="error"
+            message={activeAttempt.markingFailure.message}
+            onDismiss={() => setDismissedFailure(activeAttempt.id)}
+          />
+        ) : null}
 
         {session.status === "completed" ? (
           <Card tone="warm" padding="lg">
@@ -554,7 +585,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                   <p className="mt-2 text-sm leading-5 text-text-muted">
                     {markingStale
                       ? "Your answer and working are saved exactly as you sent them. Marking looks like it stopped part way — running it again will not change what is marked."
-                      : "Your answer is saved. This usually takes a few seconds, and this page updates on its own."}
+                      : "Your answer is saved and is being marked now. This usually takes under a minute, it carries on if you leave this page, and this page updates on its own."}
                   </p>
                   <Button
                     className="mt-4"
@@ -590,13 +621,27 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                   <h3 className="text-base font-semibold text-text-primary">
                     Jami couldn&apos;t mark this one
                   </h3>
+                  {/*
+                    * The reason comes from the attempt, because the request
+                    * that submitted it is long gone by the time the marking
+                    * fails. A question that changed under a live session and a
+                    * marker that fell over are not the same news, and only one
+                    * of them is worth pressing a button about.
+                    */}
                   <p className="mt-2 text-sm leading-5 text-text-muted">
-                    Your answer and working were submitted and are safe. Nothing has been changed —
-                    this just runs the marker over them again.
+                    {activeAttempt.markingFailure?.message ??
+                      examMarkingFailureMessage("marking_failed")}
                   </p>
-                  <Button className="mt-4" disabled={submitting} onClick={() => void submit()}>
-                    {submitting ? "Marking…" : "Retry marking"}
-                  </Button>
+                  {markingFailureRetryable ? (
+                    <>
+                      <p className="mt-2 text-sm leading-5 text-text-muted">
+                        Nothing has been changed — this just runs the marker over them again.
+                      </p>
+                      <Button className="mt-4" disabled={submitting} onClick={() => void submit()}>
+                        {submitting ? "Marking…" : "Retry marking"}
+                      </Button>
+                    </>
+                  ) : null}
                 </Card>
                 <ExamSubmittedAnswer
                   attempt={activeAttempt}

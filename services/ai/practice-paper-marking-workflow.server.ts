@@ -24,10 +24,10 @@ import {
 } from "@/services/ai/practice-paper-evidence.server";
 import {
   markPracticePaperWithAudit,
-  PracticePaperMarkingCostLimitError,
   type PracticePaperMarkerStage,
   type PracticePaperMarkerStageResult,
 } from "@/services/ai/practice-paper-marking.server";
+import { PracticePaperMarkingCostLimitError } from "@/lib/practice/marking-accounting";
 import { getAiTokenCap } from "@/services/ai/budgets";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 

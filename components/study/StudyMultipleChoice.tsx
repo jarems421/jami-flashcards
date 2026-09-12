@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, StudyText } from "@/components/ui";
 import type { McqQuestion } from "@/lib/study/mcq";
 
@@ -10,7 +10,11 @@ type StudyMultipleChoiceProps = {
   prompt: string;
   question: McqQuestion;
   onAnswered: (correct: boolean) => void;
-  onContinue: (correct: boolean) => void;
+  onContinue: (correct: boolean) => void | Promise<void>;
+  busy?: boolean;
+  initialChosenId?: string;
+  onSelectionChange?: (id: string) => void;
+  onReport?: (reason: "multiple-correct" | "wrong-grade" | "poor-gap" | "unrelated-options" | "other") => void;
 };
 
 /**
@@ -30,23 +34,42 @@ export default function StudyMultipleChoice({
   question,
   onAnswered,
   onContinue,
+  busy = false,
+  onReport,
+  initialChosenId,
+  onSelectionChange,
 }: StudyMultipleChoiceProps) {
   // No reset effect: the stage above is keyed on the card, so a new card
   // arrives as a new component with a fresh selection.
-  const [chosenId, setChosenId] = useState<string | null>(null);
+  const [chosenId, setChosenId] = useState<string | null>(question.options.some((option) => option.id === initialChosenId) ? initialChosenId! : null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const continuingRef = useRef(false);
+
+  const continueOnce = useCallback(async (correct: boolean) => {
+    if (busy || continuingRef.current) return;
+    continuingRef.current = true;
+    try {
+      onAnswered(correct);
+      await onContinue(correct);
+    } finally {
+      continuingRef.current = false;
+    }
+  }, [busy, onAnswered, onContinue]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || busy || continuingRef.current) return;
       if (
         event.target instanceof HTMLInputElement ||
-        event.target instanceof HTMLTextAreaElement
+        event.target instanceof HTMLTextAreaElement ||
+        (event.target instanceof HTMLElement && Boolean(event.target.closest("button, [role='dialog'], [contenteditable='true'], select, a")))
       ) {
         return;
       }
       if (chosenId) {
         if (event.key === "Enter" || event.code === "Space") {
           event.preventDefault();
-          onContinue(chosenId === question.correctOptionId);
+          continueOnce(chosenId === question.correctOptionId);
         }
         return;
       }
@@ -55,16 +78,16 @@ export default function StudyMultipleChoice({
       if (!option) return;
       event.preventDefault();
       setChosenId(option.id);
-      onAnswered(option.id === question.correctOptionId);
+      onSelectionChange?.(option.id);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [chosenId, onAnswered, onContinue, question.correctOptionId, question.options]);
+  }, [busy, chosenId, continueOnce, question.correctOptionId, question.options, onSelectionChange]);
 
   const choose = (optionId: string) => {
-    if (chosenId) return;
+    if (chosenId || busy) return;
     setChosenId(optionId);
-    onAnswered(optionId === question.correctOptionId);
+    onSelectionChange?.(optionId);
   };
 
   return (
@@ -123,11 +146,27 @@ export default function StudyMultipleChoice({
           </p>
           <Button
             type="button"
-            onClick={() => onContinue(chosenId === question.correctOptionId)}
+            onClick={() => continueOnce(chosenId === question.correctOptionId)}
+            disabled={busy}
             size="md"
           >
             Next card
           </Button>
+        </div>
+      ) : null}
+      {onReport ? (
+        <div className="text-center">
+          <button type="button" onClick={() => setReportOpen((open) => !open)} aria-expanded={reportOpen} className="text-xs text-text-muted underline-offset-4 hover:text-text-secondary hover:underline">Something&apos;s wrong</button>
+          {reportOpen ? (
+            <div className="mx-auto mt-2 flex max-w-xl flex-wrap justify-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3" aria-label="What is wrong with this question?">
+              {[
+                ["multiple-correct", "More than one answer"],
+                ["wrong-grade", "Wrong answer marked"],
+                ["unrelated-options", "Unrelated options"],
+                ["other", "Something else"],
+              ].map(([reason, label]) => <button key={reason} type="button" onClick={() => onReport(reason as "multiple-correct" | "wrong-grade" | "unrelated-options" | "other")} className="rounded-full border border-[var(--color-border)] px-3 py-1.5 text-xs text-text-secondary hover:bg-[var(--color-glass-medium)]">{label}</button>)}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -67,16 +67,26 @@ export function classifyMarkingParseFailure(input: {
   try {
     payload = JSON.parse(repairModelJsonBackslashes(unwrap(raw)));
   } catch (error) {
-    // A response cut off by the output cap is still invalid JSON, but it is a
-    // different problem with a different fix, and the tell is that it stops
-    // without ever closing.
+    /*
+     * A response that stops without ever closing is a different problem from
+     * one that is malformed, and has a different fix -- but this can only see
+     * that it stopped, not why.
+     *
+     * It used to say "likely cut off by the token cap", which was a good guess
+     * while the supervisor was sitting exactly on its ceiling and a bad one
+     * everywhere else: a benchmark run produced this message for a verifier
+     * whose longest response in the whole run was 1,891 tokens against a
+     * 16,000 ceiling. Anyone reading that went looking for a cap that was not
+     * the cause. The token count is in the provider diagnostics; this says what
+     * it saw and leaves the cause to whoever has them.
+     */
     const opens = (raw.match(/[[{]/g) ?? []).length;
     const closes = (raw.match(/[\]}]/g) ?? []).length;
     return {
       kind: opens > closes ? "truncated" : "invalid_json",
       detail:
         opens > closes
-          ? `Output stops with ${opens - closes} unclosed bracket(s); likely cut off by the token cap.`
+          ? `Output stops with ${opens - closes} unclosed bracket(s), so it ended mid-structure. Check the call's output token count against the cap before assuming that is why.`
           : `Not valid JSON: ${error instanceof Error ? error.message.slice(0, 120) : "parse error"}`,
       length,
     };

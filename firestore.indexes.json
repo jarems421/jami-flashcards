@@ -30,6 +30,25 @@
       ]
     },
     {
+      "collectionGroup": "examQuestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "origin", "order": "ASCENDING" },
+        { "fieldPath": "provenance.specificationId", "order": "ASCENDING" },
+        { "fieldPath": "topicIds", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "examQuestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "origin", "order": "ASCENDING" },
+        { "fieldPath": "provenance.specificationId", "order": "ASCENDING" },
+        { "fieldPath": "topicIds", "order": "ASCENDING" },
+        { "fieldPath": "paperId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "examAttempts",
       "queryScope": "COLLECTION",
       "fields": [

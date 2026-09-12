@@ -1,6 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./fixtures";
-import { E2E_EXAM_FOLDER_ID, E2E_EXAM_QUESTIONS } from "./exam-fixtures";
+import {
+  E2E_EXAM_FOLDER_ID,
+  E2E_EXAM_QUESTIONS,
+  E2E_MARKED_SESSION_ID,
+} from "./exam-fixtures";
 
 /**
  * Past Paper Practice, opened in a browser for the first time.
@@ -168,6 +172,54 @@ test("a student can set up, answer, and recover a past-paper session", async ({ 
     ).toBeVisible();
     console.log("[submit] frozen answer shown with a retry offered");
   }
+
+  /*
+   * --- A marked answer, and the check a student may ask for -----------------
+   *
+   * Seeded rather than earned: without a provider no submission here ever
+   * reaches a mark, so the mark report, the guided retry and the check-a-mark
+   * path had never been rendered in a browser by anything.
+   *
+   * The check itself fails, for the same reason marking does. That is the part
+   * worth running. A durable job has to settle a failure *visibly* -- the mark
+   * standing, the check still available, a sentence saying so -- because the
+   * request that asked for it returned long before the failure happened.
+   */
+  await page.goto(`/dashboard/practice/questions/${E2E_MARKED_SESSION_ID}`);
+  const mark = page.getByText("2/3").first();
+  await expect(mark).toBeVisible({ timeout: 45_000 });
+  console.log("[marked] report rendered");
+
+  for (const [label, size] of [["tablet", TABLET_PORTRAIT], ["phone", PHONE]] as const) {
+    await page.setViewportSize(size);
+    await expect(mark).toBeVisible();
+    const overflow = await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    console.log(`[marked ${label}] horizontal overflow:`, overflow);
+    expect(overflow).toBeLessThanOrEqual(1);
+  }
+  await page.setViewportSize(DESKTOP);
+
+  const check = page.getByRole("button", { name: /check this mark/i });
+  await expect(check).toBeVisible({ timeout: 20_000 });
+  await check.click();
+
+  /*
+   * Either outcome is correct and both are durable. The job may settle before
+   * the page next polls, or the page may catch it mid-flight; what must never
+   * happen is the button going quiet with nothing said.
+   */
+  const checking = page.getByText(/Jami is checking this mark/i);
+  const checkFailed = page.getByText(/check has not been used up/i);
+  await expect(checking.or(checkFailed)).toBeVisible({ timeout: 45_000 });
+  console.log("[check] state shown:", (await checking.isVisible()) ? "checking" : "failed");
+
+  await expect(checkFailed).toBeVisible({ timeout: 120_000 });
+  // The mark stands and the check is not spent, so it can be asked again.
+  await expect(mark).toBeVisible();
+  await expect(page.getByRole("button", { name: /try checking again/i })).toBeVisible();
+  console.log("[check] failed visibly, mark intact, check still offered");
 
   // --- History -----------------------------------------------------------
   await page.goto("/dashboard/practice/history");

@@ -1,4 +1,5 @@
 import type { Card } from "@/lib/study/cards";
+import { studyPresentationFlags } from "@/lib/study/presentation-state";
 import type { DailyReviewState } from "@/lib/study/daily-review-types";
 import { getStudyDayKey } from "@/lib/study/day";
 import type { CardRating } from "@/lib/study/scheduler";
@@ -7,6 +8,7 @@ import {
   SMART_STUDY_MODE_POLICY,
   type StudyMode,
   type StudyModePolicy,
+  type StudyGap,
 } from "@/lib/study/study-modes";
 
 export type StudySessionKind = "daily-required" | "daily-optional" | "custom" | "simple";
@@ -33,10 +35,14 @@ export type StudySessionStats = {
  * exercise is stale and must be rebuilt or dropped rather than marked against.
  */
 export type PersistedStudyExercise = {
+  presentationId?: string;
   cardId: string;
   mode: StudyMode;
   contentHash: string;
   cloze?: { start: number; end: number; answer: string };
+  gaps?: StudyGap[];
+  variantId?: string;
+  markingSettings?: import("@/lib/study/study-modes").CardStudySettings;
   mcq?: {
     options: Array<{ id: string; text: string }>;
     correctOptionId: string;
@@ -45,11 +51,11 @@ export type PersistedStudyExercise = {
 };
 
 export type StudyModeResults = Partial<
-  Record<StudyMode, { answered: number; correct: number }>
+  Record<StudyMode, { answered: number; correct: number; partial?: number; uncertain?: number; assisted?: number }>
 >;
 
 export type PersistedStudySession = {
-  version: 3;
+  version: 4;
   sessionId: string;
   revision: number;
   userId: string;
@@ -73,6 +79,10 @@ export type PersistedStudySession = {
   seed?: number;
   exercises?: PersistedStudyExercise[];
   modeResults?: StudyModeResults;
+  recentModes?: StudyMode[];
+  draftResponses?: Record<string, string | Record<string, string>>;
+  variantHistory?: Record<string, string[]>;
+  outcomeHistory?: Record<string, Array<"correct" | "partial" | "incorrect" | "uncertain">>;
 };
 
 export const ACTIVE_STUDY_SESSION_DOC_ID = "activeSession";
@@ -80,13 +90,13 @@ export const ACTIVE_STUDY_SESSION_PREFIX = "jami:active-study-session:";
 export const CLOSED_STUDY_SESSION_PREFIX = "jami:closed-study-session:";
 // Annotated rather than inferred so it does not widen to `number` when spread
 // into an object literal, which would make every caller's session untypeable.
-export const ACTIVE_STUDY_SESSION_VERSION: PersistedStudySession["version"] = 3;
+export const ACTIVE_STUDY_SESSION_VERSION: PersistedStudySession["version"] = 4;
 /** Every schema this build still knows how to read. */
-const READABLE_SESSION_VERSIONS = [1, 2, 3];
+const READABLE_SESSION_VERSIONS = [1, 2, 3, 4];
 export const ACTIVE_STUDY_SESSION_MAX_AGE_MS = 30 * 60 * 60 * 1000;
 
 export type ClosedStudySessionTombstone = {
-  version: 3;
+  version: 4;
   userId: string;
   sessionId: string;
   revision: number;
@@ -218,6 +228,22 @@ function normalizeClozeSpan(value: unknown) {
   return { start, end, answer };
 }
 
+function normalizeGaps(value: unknown): StudyGap[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 3).flatMap((entry, index) => {
+    const span = normalizeClozeSpan(entry);
+    if (!span || !entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const data = entry as Record<string, unknown>;
+    return [{
+      id: typeof data.id === "string" && data.id.trim() ? data.id.trim() : `gap-${index + 1}`,
+      ...span,
+      acceptedAnswers: normalizeStringList(data.acceptedAnswers),
+      concept: typeof data.concept === "string" && data.concept.trim() ? data.concept.trim() : span.answer,
+      ...(typeof data.requireUnits === "boolean" ? { requireUnits: data.requireUnits } : {}),
+    }];
+  }).sort((a, b) => a.start - b.start).filter((gap, index, gaps) => index === 0 || gap.start >= gaps[index - 1].end);
+}
+
 function normalizeMcqSnapshot(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const data = value as Record<string, unknown>;
@@ -253,32 +279,38 @@ export function normalizePersistedExercises(
 ): PersistedStudyExercise[] {
   if (!Array.isArray(value)) return [];
   const allowed = new Set(cardIds);
-  const seen = new Set<string>();
   const exercises: PersistedStudyExercise[] = [];
 
-  for (const entry of value) {
+  for (const entry of value.slice(0, 500)) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
     const data = entry as Record<string, unknown>;
     const cardId = typeof data.cardId === "string" ? data.cardId.trim() : "";
     const contentHash =
       typeof data.contentHash === "string" ? data.contentHash.trim() : "";
-    if (!cardId || !allowed.has(cardId) || seen.has(cardId)) continue;
+    if (!cardId || !allowed.has(cardId)) continue;
     if (!isStudyMode(data.mode) || !contentHash) continue;
 
     const cloze = normalizeClozeSpan(data.cloze);
+    const gaps = normalizeGaps(data.gaps);
+    if (gaps.length === 0 && cloze) gaps.push({ id: `legacy-${cloze.start}`, ...cloze, acceptedAnswers: [], concept: cloze.answer });
     const mcq = normalizeMcqSnapshot(data.mcq);
     // A mode whose material did not survive normalization is dropped rather
     // than downgraded, so the session rebuilds it instead of asking a
     // half-formed question.
-    if (data.mode === "gap-fill" && !cloze) continue;
+    if (data.mode === "gap-fill" && gaps.length === 0) continue;
     if (data.mode === "multiple-choice" && !mcq) continue;
 
-    seen.add(cardId);
     exercises.push({
+      ...(typeof data.presentationId === "string" && data.presentationId.trim() ? { presentationId: data.presentationId.trim().slice(0, 240) } : {}),
       cardId,
       mode: data.mode,
       contentHash,
       ...(cloze ? { cloze } : {}),
+      ...(gaps.length ? { gaps } : {}),
+      ...(typeof data.variantId === "string" && data.variantId.trim() ? { variantId: data.variantId.trim() } : {}),
+      ...(data.markingSettings && typeof data.markingSettings === "object" && !Array.isArray(data.markingSettings)
+        ? { markingSettings: data.markingSettings as import("@/lib/study/study-modes").CardStudySettings }
+        : {}),
       ...(mcq ? { mcq } : {}),
     });
   }
@@ -295,6 +327,9 @@ export function normalizeModeResults(value: unknown): StudyModeResults {
     results[mode] = {
       answered: normalizeCount(data.answered),
       correct: normalizeCount(data.correct),
+      ...(normalizeCount(data.partial) > 0 ? { partial: normalizeCount(data.partial) } : {}),
+      ...(normalizeCount(data.uncertain) > 0 ? { uncertain: normalizeCount(data.uncertain) } : {}),
+      ...(normalizeCount(data.assisted) > 0 ? { assisted: normalizeCount(data.assisted) } : {}),
     };
   }
   return results;
@@ -349,6 +384,32 @@ export function normalizePersistedStudySession(
   const closedRevision = normalizeCount(data.closedRevision);
   const exercises = normalizePersistedExercises(data.exercises, cardIds);
   const modeResults = normalizeModeResults(data.modeResults);
+  const recentModes = normalizeStringList(data.recentModes).filter(isStudyMode).slice(-8);
+  const draftResponses: Record<string, string | Record<string, string>> = {};
+  if (data.draftResponses && typeof data.draftResponses === "object" && !Array.isArray(data.draftResponses)) {
+    for (const [key, value] of Object.entries(data.draftResponses as Record<string, unknown>).slice(-500)) {
+      if (typeof value === "string") draftResponses[key.slice(0, 240)] = value.slice(0, key.startsWith("state:") ? 16_000 : 4_000);
+      else if (value && typeof value === "object" && !Array.isArray(value)) {
+        draftResponses[key.slice(0, 240)] = Object.fromEntries(Object.entries(value as Record<string, unknown>).slice(0, 3).flatMap(([gapId, answer]) => typeof answer === "string" ? [[gapId.slice(0, 120), answer.slice(0, 500)]] : []));
+      }
+    }
+  }
+  Object.assign(draftResponses, studyPresentationFlags(data.presentationFlags));
+  const variantHistory: Record<string, string[]> = {};
+  if (data.variantHistory && typeof data.variantHistory === "object" && !Array.isArray(data.variantHistory)) {
+    for (const [cardId, ids] of Object.entries(data.variantHistory as Record<string, unknown>).slice(-100)) {
+      const cleaned = normalizeStringList(ids).slice(-8);
+      if (cleaned.length) variantHistory[cardId.slice(0, 120)] = cleaned;
+    }
+  }
+  const outcomeHistory: NonNullable<PersistedStudySession["outcomeHistory"]> = {};
+  if (data.outcomeHistory && typeof data.outcomeHistory === "object" && !Array.isArray(data.outcomeHistory)) {
+    for (const [cardId, outcomes] of Object.entries(data.outcomeHistory as Record<string, unknown>).slice(-100)) {
+      if (!Array.isArray(outcomes)) continue;
+      const cleaned = outcomes.filter((outcome): outcome is "correct" | "partial" | "incorrect" | "uncertain" => outcome === "correct" || outcome === "partial" || outcome === "incorrect" || outcome === "uncertain").slice(-5);
+      if (cleaned.length) outcomeHistory[cardId.slice(0, 120)] = cleaned;
+    }
+  }
 
   return {
     version: ACTIVE_STUDY_SESSION_VERSION,
@@ -376,6 +437,10 @@ export function normalizePersistedStudySession(
     ...(normalizeCount(data.seed) > 0 ? { seed: normalizeCount(data.seed) } : {}),
     ...(exercises.length > 0 ? { exercises } : {}),
     ...(Object.keys(modeResults).length > 0 ? { modeResults } : {}),
+    ...(recentModes.length > 0 ? { recentModes } : {}),
+    ...(Object.keys(draftResponses).length > 0 ? { draftResponses } : {}),
+    ...(Object.keys(variantHistory).length > 0 ? { variantHistory } : {}),
+    ...(Object.keys(outcomeHistory).length > 0 ? { outcomeHistory } : {}),
   };
 }
 
@@ -678,6 +743,10 @@ export function buildPersistedStudySession({
   seed,
   exercises,
   modeResults,
+  recentModes,
+  draftResponses,
+  variantHistory,
+  outcomeHistory,
 }: {
   userId: string;
   sessionId?: string | null;
@@ -695,6 +764,10 @@ export function buildPersistedStudySession({
   seed?: number;
   exercises?: PersistedStudyExercise[];
   modeResults?: StudyModeResults;
+  recentModes?: StudyMode[];
+  draftResponses?: Record<string, string | Record<string, string>>;
+  variantHistory?: Record<string, string[]>;
+  outcomeHistory?: Record<string, Array<"correct" | "partial" | "incorrect" | "uncertain">>;
 }): PersistedStudySession {
   const nextRevision = revision && revision > 0 ? Math.floor(revision) : 1;
   return {
@@ -716,6 +789,10 @@ export function buildPersistedStudySession({
     ...(seed ? { seed } : {}),
     ...(exercises && exercises.length > 0 ? { exercises } : {}),
     ...(modeResults && Object.keys(modeResults).length > 0 ? { modeResults } : {}),
+    ...(recentModes?.length ? { recentModes: recentModes.filter(isStudyMode).slice(-8) } : {}),
+    ...(draftResponses && Object.keys(draftResponses).length ? { draftResponses } : {}),
+    ...(variantHistory && Object.keys(variantHistory).length ? { variantHistory } : {}),
+    ...(outcomeHistory && Object.keys(outcomeHistory).length ? { outcomeHistory } : {}),
   };
 }
 

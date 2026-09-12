@@ -125,3 +125,51 @@ export function parseIdsParam(value: string | null) {
     )
   );
 }
+
+/**
+ * The filter surface's derivations, as plain functions over the loaded data.
+ *
+ * These lived as eight `useMemo` blocks in the study page, which made a set of
+ * pure one-line mappings look like page state. Search selection in particular
+ * -- which deck or Topic a partial name should offer -- is a rule worth being
+ * able to test without rendering a session.
+ */
+export function nameById<T extends { id: string; name: string }>(items: T[]) {
+  return Object.fromEntries(items.map((item) => [item.id, item.name]));
+}
+
+export function countCardsByDeck(cards: Card[]) {
+  const counts = new Map<string, number>();
+  for (const card of cards) counts.set(card.deckId, (counts.get(card.deckId) ?? 0) + 1);
+  return counts;
+}
+
+export function countCardsByTopic(cards: Card[]) {
+  const counts = new Map<string, number>();
+  for (const card of cards) {
+    for (const topicId of new Set(card.topicIds ?? [])) {
+      counts.set(topicId, (counts.get(topicId) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+/** An empty query offers nothing: the picker stays closed until a student types. */
+export function searchByName<T extends { name: string }>(
+  items: T[],
+  query: string,
+  normalise: (value: string) => string = (value) => value.trim().toLowerCase()
+) {
+  const needle = normalise(query);
+  if (!needle) return [];
+  return items.filter((item) => normalise(item.name).includes(needle)).slice(0, 8);
+}
+
+/** Recents are ids; anything since deleted simply drops out of the row. */
+export function resolveRecents<T extends { id: string }>(items: T[], recentIds: string[]) {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  return recentIds
+    .map((id) => byId.get(id))
+    .filter((item): item is T => item !== undefined)
+    .slice(0, FOCUSED_REVIEW_RECENT_LIMIT);
+}

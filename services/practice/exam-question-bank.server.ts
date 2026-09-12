@@ -13,7 +13,10 @@ import {
   type ExamSession,
 } from "@/lib/practice/exam-questions";
 import { isExamQuestionServable } from "@/lib/practice/exam-question-rights";
-import { servableExamSpecificationTopics } from "@/lib/practice/exam-specification-topics";
+import {
+  filterCanonicalTopicIds,
+  servableExamSpecificationTopics,
+} from "@/lib/practice/exam-specification-topics";
 import { normalizeQuestionAssets } from "@/lib/practice/practice-papers";
 import { generateExamGapQuestions } from "@/services/practice/exam-gap-generation.server";
 import { recoverExamDifficultyContributions } from "@/services/practice/exam-difficulty.server";
@@ -160,13 +163,36 @@ export class ExamQuestionBankError extends Error {
   }
 }
 
+/**
+ * The topics a student may filter on, checked against the specification.
+ *
+ * An id nobody recognises used to be accepted and then matched nothing, so a
+ * stale bookmark or a typo produced a full coverage shortage and a card saying
+ * this course needs more papers -- which was untrue, and unfixable by the
+ * student, because nothing told them the topic was the problem.
+ *
+ * An empty selection is not a filter and needs no catalogue.
+ */
+function canonicalTopicIds(specificationId: string, topicIds: readonly string[]) {
+  if (topicIds.length === 0) return [];
+  const { topicIds: known, rejected } = filterCanonicalTopicIds(specificationId, topicIds);
+  if (rejected.length > 0) {
+    throw new ExamQuestionBankError(
+      "Those topics are not on this course any more. Clear them and choose again.",
+      400,
+      "unknown_topics"
+    );
+  }
+  return known;
+}
+
 export async function getExamQuestionAvailability(input: {
   uid: string;
   folderId: string;
   topicIds?: string[];
 }) {
   const { folder, subjectKey } = await loadContext(input.uid, input.folderId);
-  const topicIds = input.topicIds ?? [];
+  const topicIds = canonicalTopicIds(folder.examCourse!.specificationId, input.topicIds ?? []);
   /*
    * A session holds at most twenty questions, so counting past that answers
    * nothing the student can act on and costs a scan of the whole corpus. The
@@ -236,6 +262,9 @@ export async function createExamSession(input: {
     throw new ExamQuestionBankError("Choose between 1 and 20 questions.", 400, "invalid_mix");
   }
   const { folder, subjectKey } = await loadContext(input.uid, input.folderId);
+  // Checked once, here, rather than trusted from the request. A narrowed
+  // session built on an id nobody recognises is an empty session.
+  const topicIds = canonicalTopicIds(folder.examCourse!.specificationId, input.topicIds ?? []);
   const recent = await getAdminDb().collection("users").doc(input.uid)
     .collection("examAttempts").orderBy("updatedAt", "desc").limit(500).get();
   const recentIds = new Set(recent.docs.map((doc) => doc.data().questionId).filter((id): id is string => typeof id === "string"));
@@ -251,7 +280,7 @@ export async function createExamSession(input: {
       specificationId: folder.examCourse!.specificationId,
       course: folder.examCourse!,
       difficulty,
-      topicIds: input.topicIds ?? [],
+      topicIds,
       need: wanted,
       seenIds: recentIds,
     });
@@ -263,7 +292,7 @@ export async function createExamSession(input: {
   }
   if (Object.keys(missing).length > 0) {
     if (input.allowGenerated) {
-      selected.push(...await generateExamGapQuestions({ uid: input.uid, subject: folder.subject!, subjectKey, studyLevel: folder.studyLevel!, course: folder.examCourse!, missing, topicIds: input.topicIds ?? [] }));
+      selected.push(...await generateExamGapQuestions({ uid: input.uid, subject: folder.subject!, subjectKey, studyLevel: folder.studyLevel!, course: folder.examCourse!, missing, topicIds }));
     } else if (input.useAvailableOnly && selected.length > 0) {
       // Starting short is a choice the student made, so the session records the
       // mix it actually holds rather than the one that was asked for.
@@ -303,7 +332,7 @@ export async function createExamSession(input: {
     studyLevel: folder.studyLevel!,
     course: folder.examCourse!,
     requestedMix,
-    topicIds: input.topicIds ?? [],
+    topicIds,
     questions,
     status: "active",
     currentQuestionId: questions[0]?.id,

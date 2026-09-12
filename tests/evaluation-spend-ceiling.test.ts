@@ -38,6 +38,7 @@ vi.mock("@/lib/evaluation/practice-paper-adapter", () => ({
 }));
 
 const { createEvaluationMarker } = await import("@/services/ai/evaluation-marker.server");
+const { PracticePaperMarkingFailedError } = await import("@/lib/practice/marker-stages");
 
 function record(id: string) {
   return {
@@ -260,6 +261,60 @@ describe("the evaluation spend ceiling", () => {
       mark({ record: record("b"), arm: "control", exemplars: [] } as never)
     ).rejects.toThrow(/billing is unknown/);
     expect(stats.reportedUsd).toBe(0);
+    expect(stats.retainedReservationUsd).toBeCloseTo(0.351);
+  });
+
+  /*
+   * A marking that threw but knows its bill does not stop the run.
+   *
+   * An unreadable report is an ordinary marker outcome, not a billing anomaly,
+   * and one of them used to halt a thirty-record benchmark that had spent three
+   * tenths of a penny. The rule was never "stop when a marking fails" -- it was
+   * "stop when the spend is unknown" -- and a failure that reports what every
+   * one of its calls cost is not unknown.
+   */
+  it("continues past a failed marking that reported every call it made", async () => {
+    markPracticePaperWithAudit.mockReset();
+    markPracticePaperWithAudit.mockRejectedValue(
+      new PracticePaperMarkingFailedError("invalid report", { usd: 0.004, unreportedCalls: 0 }, true)
+    );
+    const { mark, stats } = createEvaluationMarker({
+      maxRecords: 100,
+      maxSpendUsd: 3.51,
+      reserveUsdPerRecord: 0.351,
+      haltOnUnreportedCost: true,
+    });
+
+    await mark({ record: record("a"), arm: "control", exemplars: [] } as never);
+    await mark({ record: record("b"), arm: "control", exemplars: [] } as never);
+    expect(stats.failed).toBe(2);
+    expect(stats.unaccountedMarkings).toBe(0);
+    expect(stats.retainedReservationUsd).toBe(0);
+    expect(stats.reportedUsd).toBeCloseTo(0.008);
+  });
+
+  /*
+   * The half that keeps the rule honest. A client abort does not stop a
+   * provider, so a marking whose call vanished may well have been billed for
+   * tokens this side never received -- and saying so is the whole point.
+   */
+  it("still halts when a failed marking cannot vouch for its own bill", async () => {
+    markPracticePaperWithAudit.mockReset();
+    markPracticePaperWithAudit.mockRejectedValue(
+      new PracticePaperMarkingFailedError("aborted", { usd: 0.004, unreportedCalls: 1 }, false)
+    );
+    const { mark, stats } = createEvaluationMarker({
+      maxRecords: 100,
+      maxSpendUsd: 3.51,
+      reserveUsdPerRecord: 0.351,
+      haltOnUnreportedCost: true,
+    });
+
+    await mark({ record: record("a"), arm: "control", exemplars: [] } as never);
+    await expect(
+      mark({ record: record("b"), arm: "control", exemplars: [] } as never)
+    ).rejects.toThrow(/billing is unknown/);
+    expect(stats.unaccountedMarkings).toBe(1);
     expect(stats.retainedReservationUsd).toBeCloseTo(0.351);
   });
 

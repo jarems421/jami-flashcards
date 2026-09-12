@@ -44,13 +44,47 @@ describe("the canonical topic catalogue", () => {
     });
   });
 
+  /*
+   * Exercised against the real function now that a checked catalogue exists.
+   * This used to filter through a stand-in set, because with every catalogue
+   * unverified there was nothing `filterCanonicalTopicIds` could be asked that
+   * did not return empty -- so the test proved a `Set` works rather than that
+   * the pipeline does.
+   */
   it("keeps the specification's own ids and drops the rest", () => {
-    const catalogue = { ...EXAM_SPECIFICATION_TOPICS[0]!, verified: true };
-    // Exercised through a stand-in rather than by flipping a real draft to
-    // verified, which is a claim only a person may make.
-    const known = new Set(catalogue.topics.map((topic) => topic.id));
-    const kept = ["aqa-8461-ecology", "photosynthesis-and-vibes"].filter((id) => known.has(id));
-    expect(kept).toEqual(["aqa-8461-ecology"]);
+    expect(
+      filterCanonicalTopicIds("8300", ["aqa-8300-algebra-sequences", "vibes-and-vectors"])
+    ).toEqual({
+      topicIds: ["aqa-8300-algebra-sequences"],
+      rejected: ["vibes-and-vectors"],
+    });
+  });
+
+  it("serves a catalogue once it has been checked", () => {
+    const catalogue = servableExamSpecificationTopics("8300");
+    expect(catalogue?.specificationId).toBe("8300");
+    expect(catalogue?.topics.length).toBeGreaterThan(0);
+  });
+
+  /*
+   * The grain the specification itself names, guarded so nobody quietly
+   * flattens it back to six. Six topics is a picker where "Algebra" is a third
+   * of the paper; subdividing the three areas that publish no subsections
+   * would be Jami's structure wearing the board's name.
+   */
+  it("covers all six content areas of AQA GCSE Maths at the published grain", () => {
+    const ids = servableExamSpecificationTopics("8300")!.topics.map((topic) => topic.id);
+    // Matched on the area prefix rather than a substring: "mensuration"
+    // contains "ratio", and a looser check counted it as one.
+    const inArea = (area: string) => ids.filter((id) => id.startsWith(`aqa-8300-${area}`));
+    expect(inArea("number")).toHaveLength(3);
+    expect(inArea("algebra")).toHaveLength(4);
+    expect(inArea("geometry")).toHaveLength(3);
+    // Flat in the specification, so flat here.
+    expect(inArea("ratio")).toHaveLength(1);
+    expect(inArea("probability")).toHaveLength(1);
+    expect(inArea("statistics")).toHaveLength(1);
+    expect(ids).toHaveLength(13);
   });
 
   it("gives every topic a stable id that is not the board's section number", () => {

@@ -243,7 +243,22 @@ export default function ExamSessionSetup({
         ))}
       </div>
 
-      {topics.length > 0 ? (
+      {/*
+        * A course with no checked topic list says so.
+        *
+        * This rendered nothing at all, which is indistinguishable from a
+        * feature that does not exist -- and a student who had seen topics on
+        * another course had no way to tell whether they were missing something
+        * or whether Jami was. Topics are fail-closed by design: an unchecked
+        * list is worse than none, because a wrong topic silently narrows
+        * practice to the wrong questions.
+        */}
+      {topics.length === 0 ? (
+        <p className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm text-text-muted">
+          Topics aren&apos;t available for this course yet, so this session draws on the whole
+          specification. Nothing is missing from your practice.
+        </p>
+      ) : (
         <details className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
           <summary className="cursor-pointer text-sm font-semibold text-text-primary">
             Narrow to topics{topicIds.length ? ` · ${topicIds.length} selected` : ""}
@@ -271,7 +286,7 @@ export default function ExamSessionSetup({
             ))}
           </div>
         </details>
-      ) : null}
+      )}
 
       {shortage ? (
         <Card tone="warm" padding="lg">

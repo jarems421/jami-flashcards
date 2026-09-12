@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "version": "2026-09-12.past-paper-practice.v1",
+  "note": "Aggregates only. Never record ids, answers, schemes or marker text here: the corpora this is derived from are third-party and gitignored for that reason.",
+  "components": {
+    "past-paper-practice-gcse-maths": {
+      "approved": false,
+      "status": "unmeasured",
+      "pipeline": "pastPaperPractice",
+      "corpus": "medly-gcse",
+      "subject": "maths",
+      "level": "gcse",
+      "answerKind": "image",
+      "limits": "medly-gcse is a GCSE mock benchmark, not awarding-body past papers; no question file in it names a board. A pass here says the marker applies a scheme correctly on mock GCSE maths. It does not say the marker is ready on real past-paper wording, which is what this feature serves.",
+      "models": [],
+      "_models": "Filled from a run's own report when this is approved. Empty means unmeasured, and the gate skips the check rather than pretending a marker was pinned.",
+      "measured": null
+    }
+  },
+  "thresholds": {
+    "note": "Expressed against the human ceiling measured on the same corpus, never as absolutes. Humans agree exactly on only 72% of this GCSE maths, so a bar like 'above 80% exact' would be asking the marker to beat the examiners it is being compared to. maxDistanceOverHuman compares the marker's distance to the examiners' consensus against half their gap, because half the gap is where each examiner sits from that consensus.",
+    "minWithinHumanVariationShare": 0.9,
+    "maxAbsoluteMeanBias": 0.25,
+    "maxDistanceOverHuman": 1.25,
+    "minRecords": 25
+  }
+}

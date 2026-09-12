@@ -1,15 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { EXAM_OPERATION_LEASE_MS, examOperationIsLive } from "@/lib/practice/exam-questions";
+import {
+  EXAM_AI_JOB_DEADLINE_MS,
+  EXAM_OPERATION_LEASE_MS,
+  examOperationIsLive,
+} from "@/lib/practice/exam-questions";
 
 /**
- * Telling a request that is running from one that was killed.
+ * Telling work that is running from work that was killed.
  *
- * Marking happens inside the request that starts it, so a process killed
- * mid-flight leaves the attempt reading "marking" with nothing left to finish
- * it. Three separate places read that flag -- resubmitting, finishing the
- * session and deleting its answers -- and all three refused on the flag alone,
- * so one dead request locked a student out of their own session for good with
- * "wait for marking to finish".
+ * Three separate places read this -- resubmitting, finishing the session and
+ * deleting its answers -- and all three refused on the status alone, so one
+ * dead request locked a student out of their own session for good with "wait
+ * for marking to finish".
+ *
+ * Both operations are durable jobs now, and share one clock. Judging either by
+ * a request's lifetime would declare healthy work dead and start a second job
+ * beside it -- paying twice, and racing to write the answer. Ninety seconds was
+ * that mistake waiting to happen: a supervisor's report alone is sized at 408
+ * seconds and a juror's at 515.
  */
 const NOW = 1_700_000_000_000;
 
@@ -25,15 +33,33 @@ describe("whether an operation is still running", () => {
   });
 
   /*
-   * The route that starts a mark has 60 seconds to live, so the lease has to
-   * outlast it -- otherwise a slow but healthy mark would be declared dead and
-   * a second one started beside it.
+   * Work that is merely slow is not work that died. A job may take its whole
+   * deadline, and it still has to write down that it failed, so the lease has
+   * to outlast the deadline rather than the request that queued it.
    */
-  it("outlasts the route that starts the work", () => {
-    expect(EXAM_OPERATION_LEASE_MS).toBeGreaterThan(60_000);
+  it("outlasts the deadline the job was given", () => {
+    expect(EXAM_OPERATION_LEASE_MS).toBeGreaterThan(EXAM_AI_JOB_DEADLINE_MS);
+    expect(
+      examOperationIsLive({ status: "marking", updatedAt: NOW - EXAM_AI_JOB_DEADLINE_MS }, NOW)
+    ).toBe(true);
   });
 
-  it("treats an independent review the same way, on its own clock", () => {
+  /*
+   * The number a request-bound lease would have used, for both operations.
+   * Either job is routinely still working at this point, and calling it dead
+   * here is what would buy the same work twice.
+   */
+  it("does not judge a durable job by a request's lifetime", () => {
+    for (const attempt of [
+      { status: "marking", updatedAt: NOW - 120_000 },
+      { reviewStatus: "reviewing", reviewStartedAt: NOW - 120_000 },
+    ]) {
+      expect(examOperationIsLive(attempt, NOW)).toBe(true);
+    }
+  });
+
+  /** A check is durable too, and runs on the same clock from its own start. */
+  it("treats an independent review on its own start time", () => {
     expect(examOperationIsLive({ reviewStatus: "reviewing", reviewStartedAt: NOW - 5_000 }, NOW)).toBe(true);
     expect(
       examOperationIsLive({ reviewStatus: "reviewing", reviewStartedAt: NOW - EXAM_OPERATION_LEASE_MS }, NOW)

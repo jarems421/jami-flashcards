@@ -20,7 +20,7 @@ describe("the per-marking cost bound", () => {
   it("is computed from the caps the product actually ships", () => {
     expect(shipped.capsEnforced).toBe(true);
     expect(getAiInputTokenCap("examQuestionMarking")).toBe(32_000);
-    expect(getAiTokenCap("examQuestionMarking")).toBe(8_000);
+    expect(getAiTokenCap("examQuestionMarking")).toBe(16_000);
   });
 
   /*
@@ -32,8 +32,17 @@ describe("the per-marking cost bound", () => {
     expect(markingCostBound({ inputTokenCap: null, maxOutputTokens: 8_000 }).capsEnforced).toBe(false);
   });
 
-  it("stays under the amount proposed for the probe", () => {
-    expect(shipped.usdPerRecord).toBeLessThanOrEqual(0.4);
+  /*
+   * Bounded, and no longer the number a ten-record probe was budgeted around.
+   *
+   * The output cap doubled to 16,000 after a benchmark truncated one marking in
+   * six at 8,000 and paid for every one of them, so the reserve this computes
+   * rose with it. That is the bound working: it is a function of the caps, and
+   * a reserve that had not moved would have been describing a marker the
+   * product no longer ships.
+   */
+  it("stays within an order of magnitude of a single marking", () => {
+    expect(shipped.usdPerRecord).toBeLessThanOrEqual(1);
     expect(shipped.usdPerRecord).toBeGreaterThan(0.2);
   });
 
@@ -48,7 +57,7 @@ describe("the per-marking cost bound", () => {
   });
 
   it("grows with the caps rather than staying a fixed number", () => {
-    const doubled = markingCostBound({ inputTokenCap: 64_000, maxOutputTokens: 16_000 });
+    const doubled = markingCostBound({ inputTokenCap: 64_000, maxOutputTokens: 32_000 });
     expect(doubled.usdPerRecord).toBeGreaterThan(shipped.usdPerRecord * 1.9);
   });
 });

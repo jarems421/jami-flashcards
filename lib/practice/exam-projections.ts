@@ -14,7 +14,14 @@ export type PublicExamQuestionResult = Omit<PracticePaperQuestionResult, "confid
 
 export type PublicExamAttempt = Omit<
   ExamAttempt,
-  "audit" | "result" | "statsContributionFraction" | "workingSnapshotPath"
+  | "audit"
+  | "result"
+  | "statsContributionFraction"
+  | "workingSnapshotPath"
+  | "marking"
+  | "review"
+  | "reviewKey"
+  | "reviewAudit"
 > & {
   result?: PublicExamQuestionResult;
 };
@@ -41,6 +48,16 @@ export function projectExamAttempt(
     workingIncluded: attempt.workingIncluded, workingWidth: attempt.workingWidth, workingHeight: attempt.workingHeight,
     reviewUsed: attempt.reviewUsed, reviewStatus: attempt.reviewStatus,
     reviewOriginalScore: attempt.reviewOriginalScore, answerDeletedAt: attempt.answerDeletedAt,
+    // Why the last marking produced nothing. Written by the durable job rather
+    // than returned from the submit request, which is long gone by then, and
+    // safe to project: it is the sentence the student is meant to read.
+    markingFailure: attempt.status === "marking_failed" || attempt.status === "draft"
+      ? attempt.markingFailure
+      : undefined,
+    // The mark check's own reason, on the same terms. Cleared the moment a
+    // check succeeds, so a stale sentence cannot sit under a finished check.
+    reviewStartedAt: attempt.reviewStatus === "reviewing" ? attempt.reviewStartedAt : undefined,
+    reviewFailure: attempt.reviewStatus === "failed" ? attempt.reviewFailure : undefined,
     startedAt: attempt.startedAt, submittedAt: attempt.submittedAt, markedAt: attempt.markedAt, updatedAt: attempt.updatedAt,
   }) as PublicExamAttempt;
 }
@@ -68,6 +85,7 @@ export function projectExamSessionQuestion(
     origin: question.origin,
     provenance: question.provenance,
     contentVersion: question.contentVersion,
+    topicIds: question.topicIds ?? [],
     assets: candidateExamAssets(question).map((asset) => {
       const visible = { ...asset };
       delete visible.storagePath;

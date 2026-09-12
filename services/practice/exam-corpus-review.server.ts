@@ -202,6 +202,166 @@ export async function decideExamQuestionReview(input: {
 }
 
 /**
+ * A random handful of what the reviewer approved, for a person to read.
+ *
+ * Random rather than the first N, because extraction faults cluster: the early
+ * questions of a paper are the ones whose regions are easiest to locate, so a
+ * sample taken from the top is a sample of the cases most likely to be right.
+ *
+ * The whole sample is read in memory. A paper is tens of questions, not
+ * thousands, and the alternative -- a random cursor over `selectionKey` -- buys
+ * nothing at this size except a way to be subtly non-uniform.
+ */
+export async function sampleApprovedExamQuestions(input: { paperId: string; size: number }) {
+  const db = getAdminDb();
+  const snapshot = await db.collection("examQuestions")
+    .where("origin", "==", "official_past_paper")
+    .where("paperId", "==", input.paperId)
+    .where("review.status", "==", "approved")
+    .limit(500)
+    .get();
+  const questions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ExamQuestion & { verification?: ExamIngestionVerification }));
+  const shuffled = [...questions];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const pick = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[pick]] = [shuffled[pick]!, shuffled[index]!];
+  }
+  const size = Math.max(1, Math.min(25, input.size));
+  const drawn = shuffled.slice(0, size);
+  const secrets = await Promise.all(
+    drawn.map((question) => db.collection("examQuestionSecrets").doc(question.id).get())
+  );
+  return {
+    population: questions.length,
+    questions: drawn.map((question, index) => {
+      const secret = secrets[index]?.data() as ExamQuestionSecret | undefined;
+      return {
+        id: question.id,
+        paperId: question.paperId,
+        label: question.label,
+        prompt: question.prompt,
+        marks: question.marks,
+        difficulty: question.difficulty,
+        status: question.status,
+        review: question.review,
+        provenance: question.provenance,
+        verification: question.verification,
+        markScheme: {
+          regime: secret?.markSchemeItem.marking ?? "missing",
+          officialText: secret?.officialMarkScheme ?? "",
+          modelAnswer: secret?.modelAnswer,
+          criteria: criteriaOf(secret),
+        },
+      } satisfies ExamQuestionReviewItem;
+    }),
+  };
+}
+
+/**
+ * Pull a batch of questions as a class.
+ *
+ * A spot-check that finds a fault has almost never found *one* fault: the
+ * scheme paired one question out, the region located on the wrong page and the
+ * tariff read off the next line all run through an extraction, so the useful
+ * response is withdrawing the batch rather than hunting the rest one at a time.
+ *
+ * Withdrawn, not sent back for review -- the reviewer already approved these,
+ * so returning them to the queue would hand them to the thing that missed it.
+ */
+export async function revokeExamQuestionBatch(input: {
+  questionIds: readonly string[];
+  reviewerUid: string;
+  reason: string;
+}) {
+  const db = getAdminDb();
+  const ids = [...new Set(input.questionIds)].slice(0, 400);
+  const reason = input.reason.trim().slice(0, 500);
+  if (ids.length === 0 || reason.length < 3) throw new Error("invalid_revocation");
+  const now = Date.now();
+  const batch = db.batch();
+  for (const id of ids) {
+    batch.update(db.collection("examQuestions").doc(id), examDocument({
+      status: "withdrawn",
+      review: {
+        status: "rejected" as const,
+        by: "human" as const,
+        reviewerUid: input.reviewerUid,
+        at: now,
+        notes: [reason],
+      },
+      updatedAt: now,
+    }));
+  }
+  await batch.commit();
+  return { withdrawn: ids.length };
+}
+
+/**
+ * Record that a person sampled a paper, and let its questions be served.
+ *
+ * The stamp goes on every question of the paper rather than on the paper alone,
+ * because the gate that reads it -- `isExamQuestionServable` -- takes a question
+ * and has no database. It says the paper's extraction was sampled and accepted,
+ * which is a claim about the extraction rather than about each question.
+ *
+ * A sample that rejected everything it drew does not count as a pass: the paper
+ * is recorded and nothing is stamped, so it stays unservable until somebody
+ * looks again at whatever is left.
+ */
+export async function recordExamPaperSpotCheck(input: {
+  paperId: string;
+  reviewerUid: string;
+  size: number;
+  rejected: number;
+  notes?: string;
+}) {
+  const db = getAdminDb();
+  const paperRef = db.collection("examPapers").doc(input.paperId);
+  if (!(await paperRef.get()).exists) throw new Error("paper_not_found");
+  const approved = await db.collection("examQuestions")
+    .where("origin", "==", "official_past_paper")
+    .where("paperId", "==", input.paperId)
+    .where("review.status", "==", "approved")
+    .limit(500)
+    .get();
+  const now = Date.now();
+  const spotCheck = {
+    sampledAt: now,
+    sampledBy: input.reviewerUid,
+    size: Math.max(0, Math.round(input.size)),
+    rejected: Math.max(0, Math.round(input.rejected)),
+    population: approved.size,
+    ...(input.notes?.trim() ? { notes: input.notes.trim().slice(0, 500) } : {}),
+  };
+  await paperRef.update(examDocument({ spotCheck, updatedAt: now }));
+  /*
+   * Nothing is stamped when the sample found nothing worth keeping. Recording
+   * the attempt and serving none of it is the honest outcome: the paper has
+   * been looked at, and it did not pass.
+   */
+  if (spotCheck.size === 0 || spotCheck.rejected >= spotCheck.size) {
+    return { ...spotCheck, stamped: 0, passed: false };
+  }
+  let stamped = 0;
+  let batch = db.batch();
+  let operations = 0;
+  const commits: Promise<unknown>[] = [];
+  for (const document of approved.docs) {
+    batch.update(document.ref, examDocument({ paperSpotCheckedAt: now, updatedAt: now }));
+    stamped += 1;
+    operations += 1;
+    if (operations >= 400) {
+      commits.push(batch.commit());
+      batch = db.batch();
+      operations = 0;
+    }
+  }
+  commits.push(batch.commit());
+  await Promise.all(commits);
+  return { ...spotCheck, stamped, passed: true };
+}
+
+/**
  * The papers a course has available, as manifests ingestion will accept.
  *
  * Discovery returns links; the catalogue knows the course. This joins them,

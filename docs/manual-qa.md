@@ -42,6 +42,72 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 16. Save, reload, and confirm typed/stroke/page state survives where persistence is supported.
 17. Confirm the notebook page is the main working surface.
 
+## Past Paper Practice
+
+Behind `enablePastPaperPractice`, and behind a board switch on top of that. Skip
+this section entirely when both are off — a not-found page is the correct
+behaviour, and is itself worth confirming once.
+
+Two AI steps here are durable jobs rather than parts of the request that asks
+for them, so most of what follows is about states that outlive a page. None of
+it can be judged from a screenshot taken at the right moment.
+
+### Setup and session
+
+1. Open `/dashboard/practice/questions/new?folderId=...` for a folder with an exam course.
+2. Confirm the per-difficulty counts read `n ready` or `n+ ready`, not a raw total.
+3. On a course with a checked topic list, confirm `Narrow to topics` appears and selecting one changes the counts.
+4. On a course without one, confirm the explicit "Topics aren't available for this course yet" line appears — **not** an absent control.
+5. Narrow until a shortage is forced. Confirm the shortage card offers Jami-created questions, starting short, or changing the mix.
+6. Start a session and confirm the question, its tariff and any figure render.
+
+### Answering
+
+7. Type an answer, change question, come back: confirm the draft survived.
+8. Type an answer and reload the page mid-sentence: confirm the last words are not lost.
+9. Open the working sheet, draw, and confirm the pen, highlighter, eraser, undo, redo and colours behave as the notebook's do.
+10. Confirm the sheet honours your saved pen-feel preference rather than a hardcoded one.
+11. Submit and confirm the answer and sheet both freeze.
+
+### Marking, which does not happen in the request
+
+12. Confirm the page says the answer is being marked and that it carries on if you leave.
+13. **Leave the page entirely, come back, and confirm the mark arrives anyway.** This is the whole point of the change and cannot be seen any other way.
+14. Confirm the mark report leads with the mark, then what earned it, then what to add next time.
+15. Force a failure (kill the provider key) and confirm the failure card explains *which* failure, and only offers a retry for one that retrying could fix.
+16. Confirm an over-long answer reopens for editing rather than freezing with a dead retry button.
+
+### Checking a mark, which also does not
+
+17. From a marked answer, press `Check this mark`.
+18. Reload while it runs: confirm it still says a check is in progress and the button is not offered again.
+19. Confirm a completed check shows the before and after marks when they differ, and says the mark stood when they do not.
+20. Force a failing check and confirm it says the mark stands, says the check has not been used up, and offers `Try checking again`.
+21. Confirm a second check is refused once one has completed.
+
+### Retry, history and export
+
+22. Take the guided second attempt and confirm the first mark stays readable beside it.
+23. Finish the session and confirm the summary scores what was marked, not the whole paper.
+24. Open `/dashboard/practice/history` and confirm the session reads correctly.
+25. Export a marked question to a notebook and confirm the working image is not squashed — it is portrait, and should stay portrait.
+
+### On an iPad, with a Pencil — the part automation cannot judge
+
+26. Write a full multi-line working-out by hand at natural speed. Confirm no lag, no dropped strokes, no palm marks.
+27. Confirm the nib width feels right at the saved thickness, and that changing it takes effect on the next stroke rather than the next page.
+28. Erase part of a stroke and confirm what disappears is what you meant.
+29. Rest your hand on the page while writing and confirm nothing is drawn.
+30. Rotate the device mid-answer and confirm the sheet and the answer both survive.
+
+### Owner surfaces
+
+31. In `/dashboard/internal/exam-corpus`, ingest a paper as a dry run and confirm it reports what it extracted without storing anything.
+32. Work the review queue and confirm question and paired scheme sit side by side.
+33. Draw a spot-check sample and confirm it differs between draws.
+34. Record a spot-check with nothing rejected and confirm the paper's questions become servable.
+35. Record one rejecting everything drawn and confirm nothing becomes servable and the attempt is still recorded.
+
 ## Phase 7 Notebook Editor V2
 
 1. Open any notebook while signed in.

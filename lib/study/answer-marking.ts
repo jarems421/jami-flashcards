@@ -20,6 +20,10 @@ export type MarkedAnswer = {
   missingItems?: string[];
   /** Set when the value was right but the unit was missing or wrong. */
   unitMismatch?: boolean;
+  feedback?: string;
+  evaluationSource?: "deterministic" | "semantic" | "fallback";
+  assistanceUsed?: boolean;
+  gapResults?: Array<{ gapId: string; verdict: ExerciseVerdict; feedback?: string }>;
 };
 
 const LEADING_ARTICLE = /^(?:the|a|an)\s+/;
@@ -28,7 +32,7 @@ const LEADING_ARTICLE = /^(?:the|a|an)\s+/;
  * "9.8 m/s" is one value with a unit. Getting this wrong sent every compound
  * unit down the list marker and it never reached the numeric one.
  */
-const LIST_SEPARATOR = /\s*(?:,|;|\n|•)\s*|\s+\/\s+/;
+const LIST_SEPARATOR = /\s*(?:,|;|\n|\u2022)\s*|\s+\/\s+/;
 const SHORT_ANSWER_WORD_LIMIT = 6;
 const LIST_ITEM_WORD_LIMIT = 5;
 const MAX_TYPO_EDITS = 3;
@@ -45,9 +49,9 @@ const CHARACTERS_PER_ALLOWED_EDIT = 6;
 export function normalizeAnswerText(value: string) {
   return value
     .normalize("NFKC")
-    .replace(/[‘’‛′]/g, "'")
-    .replace(/[“”″]/g, '"')
-    .replace(/[‐-―−]/g, "-")
+    .replace(/[\u2018\u2019\u201b\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u2033]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase()
@@ -60,7 +64,7 @@ export function normalizeAnswerText(value: string) {
 export function looseNormalizeAnswerText(value: string) {
   return normalizeAnswerText(value)
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^\p{L}\p{N}\s]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -72,12 +76,40 @@ function wordCount(value: string) {
 }
 
 export function parseNumericAnswer(value: string) {
-  const normalized = normalizeAnswerText(value).replace(/,(?=\d{3}\b)/g, "");
+  const normalized = value.normalize("NFKC")
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(?:the\s+)?(?:answer|speed|value|result|distance|time|mass|force)\s+(?:is|=)\s+/i, "")
+    .replace(/,(?=\d{3}\b)/g, "")
+    .replace(/[.!]+$/, "")
+    .trim();
+  if (/[;,]/.test(normalized)) return null;
+  const fraction = /^([+-]?\d+(?:\.\d+)?)\s*\/\s*([+-]?\d+(?:\.\d+)?)\s*(.*)$/i.exec(normalized);
+  if (fraction) {
+    const denominator = Number(fraction[2]);
+    const parsed = Number(fraction[1]) / denominator;
+    if (!Number.isFinite(parsed) || denominator === 0) return null;
+    return { value: parsed, unit: fraction[3].trim() };
+  }
   const match = /^([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)\s*(.*)$/i.exec(normalized);
   if (!match) return null;
   const parsed = Number(match[1]);
   if (!Number.isFinite(parsed)) return null;
   return { value: parsed, unit: match[2].trim() };
+}
+
+const UNIT_SCALE: Record<string, { dimension: string; scale: number }> = {
+  m: { dimension: "length", scale: 1 }, cm: { dimension: "length", scale: 0.01 }, mm: { dimension: "length", scale: 0.001 }, km: { dimension: "length", scale: 1000 },
+  g: { dimension: "mass", scale: 0.001 }, kg: { dimension: "mass", scale: 1 },
+  s: { dimension: "time", scale: 1 }, ms: { dimension: "time", scale: 0.001 }, min: { dimension: "time", scale: 60 }, h: { dimension: "time", scale: 3600 },
+  "m/s": { dimension: "speed", scale: 1 }, "km/h": { dimension: "speed", scale: 1 / 3.6 },
+};
+
+function comparableQuantity(value: { value: number; unit: string }) {
+  const unit = value.unit.normalize("NFKC").replace(/\s+/g, "");
+  const known = UNIT_SCALE[unit];
+  return known ? { value: value.value * known.scale, dimension: known.dimension, known: true } : { value: value.value, dimension: unit, known: false };
 }
 
 export function parseListAnswer(value: string) {
@@ -93,9 +125,9 @@ export function parseListAnswer(value: string) {
 export function classifyAnswerShape(answer: string): AnswerShape {
   const normalized = normalizeAnswerText(answer);
   if (!normalized) return "short";
-  if (parseListAnswer(answer)) return "list";
   const numeric = parseNumericAnswer(answer);
   if (numeric && wordCount(numeric.unit) <= 2) return "numeric";
+  if (parseListAnswer(answer)) return "list";
   return wordCount(normalized) <= SHORT_ANSWER_WORD_LIMIT ? "short" : "prose";
 }
 
@@ -143,21 +175,42 @@ function markNumeric(
   if (!expectedNumber) return null;
   const responseNumber = parseNumericAnswer(response);
   if (!responseNumber) {
-    return { verdict: "incorrect", shape: "numeric" };
+    return { verdict: "needs-self-grade", shape: "numeric" };
+  }
+  if (/[a-zA-Z]/.test(responseNumber.unit) && /\s/.test(responseNumber.unit) && !UNIT_SCALE[responseNumber.unit.replace(/\s+/g, "")]) {
+    return { verdict: "needs-self-grade", shape: "numeric" };
   }
 
   const tolerance = Math.abs(settings?.numericTolerance ?? 0);
-  const withinTolerance =
-    Math.abs(responseNumber.value - expectedNumber.value) <= tolerance;
+  const responseQuantity = comparableQuantity(responseNumber);
+  const expectedQuantity = comparableQuantity(expectedNumber);
+  const convertible = responseQuantity.dimension === expectedQuantity.dimension && (responseQuantity.known || responseNumber.unit === expectedNumber.unit);
+  const expectedScale = UNIT_SCALE[expectedNumber.unit.replace(/\s+/g, "")]?.scale ?? 1;
+  const effectiveTolerance = Math.max(tolerance * (responseNumber.unit ? expectedScale : 1), Math.abs(expectedQuantity.value) * Number.EPSILON * 8, Number.EPSILON);
+  const comparableValue = !responseNumber.unit && expectedNumber.unit
+    ? responseNumber.value
+    : responseQuantity.value;
+  const targetValue = !responseNumber.unit && expectedNumber.unit
+    ? expectedNumber.value
+    : expectedQuantity.value;
+  const withinTolerance = (!responseNumber.unit || convertible) &&
+    Math.abs(comparableValue - targetValue) <= effectiveTolerance;
   if (!withinTolerance) {
     return { verdict: "incorrect", shape: "numeric" };
   }
 
-  const unitsMatch =
-    looseNormalizeAnswerText(responseNumber.unit) ===
-    looseNormalizeAnswerText(expectedNumber.unit);
-  if (settings?.requireUnits && !unitsMatch) {
+  const expectedHasUnit = Boolean(expectedNumber.unit);
+  const responseHasUnit = Boolean(responseNumber.unit);
+  const unitsMatch = convertible;
+  if (responseHasUnit && !unitsMatch) {
+    return { verdict: "incorrect", shape: "numeric", unitMismatch: true };
+  }
+  const requireUnits = settings?.requireUnits ?? expectedHasUnit;
+  if (requireUnits && !responseHasUnit) {
     return { verdict: "partial", shape: "numeric", unitMismatch: true };
+  }
+  if (!requireUnits && !responseHasUnit) {
+    return { verdict: "correct", shape: "numeric" };
   }
   return {
     verdict: unitsMatch ? "correct" : "close",
@@ -182,9 +235,7 @@ function markList(
   const missing: string[] = [];
   for (const item of expectedItems) {
     const position = remaining.findIndex(
-      (candidate) =>
-        candidate === item ||
-        looseNormalizeAnswerText(candidate) === looseNormalizeAnswerText(item)
+      (candidate) => candidate === item
     );
     if (position >= 0) {
       matched.push(item);
@@ -195,7 +246,11 @@ function markList(
   }
 
   if (matched.length === 0) {
-    return { verdict: "incorrect", shape: "list", matchedItems: [], missingItems: missing };
+    return { verdict: "needs-self-grade", shape: "list", matchedItems: [], missingItems: missing };
+  }
+  // Unmatched supplied items may be aliases or paraphrases, not omissions.
+  if (missing.length > 0 && remaining.length > 0) {
+    return { verdict: "needs-self-grade", shape: "list", matchedItems: matched, missingItems: missing };
   }
   if (missing.length > 0 || remaining.length > 0) {
     return {
@@ -226,7 +281,7 @@ function markList(
  * pretending otherwise would schedule cards on the strength of a string
  * comparison.
  */
-export function markTypedAnswer(input: {
+function markTypedAnswerCore(input: {
   response: string;
   expectedAnswer: string;
   settings?: CardStudySettings;
@@ -240,35 +295,26 @@ export function markTypedAnswer(input: {
   const forms = acceptedForms(input.expectedAnswer, input.settings);
   const normalizedResponse = normalizeAnswerText(response);
 
+  if (shape === "numeric" || shape === "list") {
+    if (shape === "list" && input.settings?.caseSensitive && response.normalize("NFKC").trim() !== input.expectedAnswer.normalize("NFKC").trim()) {
+      return { verdict: "needs-self-grade", shape };
+    }
+    const results = forms.map((form) => shape === "numeric" ? markNumeric(response, form, input.settings) : markList(response, form, input.settings)).filter((result): result is MarkedAnswer => result !== null);
+    return results.find((result) => result.verdict === "correct") ?? results.find((result) => result.verdict === "needs-self-grade") ?? results.find((result) => result.verdict === "partial") ?? results[0] ?? { verdict: "needs-self-grade", shape };
+  }
+
   for (const form of forms) {
+    if (input.settings?.caseSensitive && response.normalize("NFKC").trim() === form.normalize("NFKC").trim()) {
+      return { verdict: "correct", shape };
+    }
+    if (input.settings?.caseSensitive) continue;
     if (normalizeAnswerText(form) === normalizedResponse) {
       return { verdict: "correct", shape };
     }
   }
 
-  for (const form of forms) {
-    if (shape === "numeric") {
-      const numeric = markNumeric(response, form, input.settings);
-      if (numeric && numeric.verdict !== "incorrect") return numeric;
-    }
-    if (shape === "list") {
-      const list = markList(response, form, input.settings);
-      if (list && list.verdict !== "incorrect") return list;
-    }
-  }
-
-  // Numbers leave here without meeting the forgiving tiers below. A digit out
-  // of place is not a typo and 9.8 is not 98, so neither dropping punctuation
-  // nor allowing an edit may ever turn one value into another.
-  if (shape === "numeric") {
-    return markNumeric(response, input.expectedAnswer, input.settings) ?? {
-      verdict: "incorrect",
-      shape,
-    };
-  }
-
   const looseResponse = looseNormalizeAnswerText(response);
-  for (const form of forms) {
+  for (const form of input.settings?.caseSensitive ? [] : forms) {
     if (looseResponse && looseNormalizeAnswerText(form) === looseResponse) {
       return { verdict: "close", shape };
     }
@@ -276,7 +322,7 @@ export function markTypedAnswer(input: {
 
   // Typo tolerance is for words. A list marks its items individually, and prose
   // is never called wrong in the first place.
-  if (shape === "short") {
+  if (shape === "short" && !input.settings?.caseSensitive) {
     for (const form of forms) {
       const target = looseNormalizeAnswerText(form);
       const limit = allowedTypoEdits(target.length);
@@ -286,14 +332,19 @@ export function markTypedAnswer(input: {
     }
   }
 
-  if (shape === "list") {
-    return markList(response, input.expectedAnswer, input.settings) ?? {
-      verdict: "incorrect",
-      shape,
-    };
-  }
+  // An unmatched short phrase may be a concise paraphrase. Only structural
+  // checkers above may reject confidently; unresolved meaning goes semantic.
+  return { verdict: "needs-self-grade", shape };
+}
 
-  // Short factual answers are safe to call wrong. Prose is not: it goes back to
-  // the student, and in a later step to a semantic check.
-  return { verdict: shape === "prose" ? "needs-self-grade" : "incorrect", shape };
+export function markTypedAnswer(input: {
+  response: string;
+  expectedAnswer: string;
+  settings?: CardStudySettings;
+}): MarkedAnswer {
+  const result = markTypedAnswerCore(input);
+  return {
+    ...result,
+    evaluationSource: result.verdict === "needs-self-grade" ? "fallback" : "deterministic",
+  };
 }

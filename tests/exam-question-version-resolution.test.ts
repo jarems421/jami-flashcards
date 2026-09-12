@@ -71,6 +71,8 @@ function questionAt(version: string, imagePath: string, prompt: string) {
     origin: "official_past_paper",
     humanChecked: true,
     review: { status: "approved", reviewedBy: "owner", reviewedAt: 1 },
+    // Official material also waits on a person sampling its paper.
+    paperSpotCheckedAt: 1,
     rights: RIGHTS,
     assets: [
       {

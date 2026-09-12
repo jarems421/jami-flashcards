@@ -132,7 +132,29 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstRequestLimit: 12,
     burstWindowMs: 60_000,
     burstScope: "studyModes",
-    tokenCap: 8_000,
+    /*
+     * Sized for what the supervisor emits, not for what the report contains.
+     *
+     * At 8,000 this truncated 8 of 41 supervisor calls in a 40-record
+     * benchmark -- one marking in six -- and every one of those was paid for in
+     * full and thrown away: 18% of the run's spend bought nothing. A cap that
+     * cuts a report off mid-JSON does not save the money, it wastes it.
+     *
+     * The report is not what needs the room. Given the identical prompt on the
+     * identical question, the worker wrote its whole report in a median of
+     * 1,197 tokens while the supervisor used 4,634 and reached 8,000. The
+     * supervisor is a reasoning model and its thinking is billed and counted
+     * against this ceiling, so a terser instruction -- the fix this file's
+     * neighbour anticipated -- would trim the 1,200 and leave the rest.
+     *
+     * 16,000 is chosen to see the distribution rather than to fit it: the old
+     * ceiling censored everything above it, so how far the tail runs is still
+     * unknown. Observed generation ran near 80 tokens/second, so even a
+     * maximal call lands inside the 408-second per-call timeout with room.
+     * If timeouts start appearing here instead, `ROLE_OUTPUT_CEILING` is the
+     * next number to revisit -- it still assumes 7,600.
+     */
+    tokenCap: 16_000,
     inputTokenCap: 32_000,
   },
   examQuestionReview: {

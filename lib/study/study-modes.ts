@@ -19,6 +19,20 @@ export const STUDY_MODES: StudyMode[] = [
   "multiple-choice",
 ];
 
+/**
+ * What each mode is called in front of a student.
+ *
+ * Beside the modes rather than in the page that happened to render them first:
+ * the name of a mode is domain vocabulary, and a second surface needing it
+ * should not have to import a page component to find out.
+ */
+export const STUDY_MODE_LABELS: Record<StudyMode, string> = {
+  classic: "Classic",
+  "type-answer": "Type Answer",
+  "gap-fill": "Gap Fill",
+  "multiple-choice": "Multiple Choice",
+};
+
 export function isStudyMode(value: unknown): value is StudyMode {
   return (
     typeof value === "string" && STUDY_MODES.includes(value as StudyMode)
@@ -38,12 +52,42 @@ export type CardStudySettings = {
   requiredConcepts?: string[];
   numericTolerance?: number;
   requireUnits?: boolean;
+  caseSensitive?: boolean;
   listOrder?: "fixed" | "any";
   pinnedGaps?: string[];
   disabledModes?: StudyMode[];
   mcqDistractors?: string[];
   /** Why a student might pick a given wrong option, keyed by its text. */
   mcqExplanations?: Record<string, string>;
+  /** Prepared, versioned exercise material. Never written back to the card. */
+  generatedStudy?: {
+    bundleVersion: number;
+    sourceHash: string;
+    bundleRevision?: string;
+    validatorVersion?: number;
+    taskProfile?: import("@/lib/study/learning-task").StudyTaskProfile;
+    gapVariants: StudyGapVariant[];
+    mcqVariants: StudyMcqVariant[];
+    retiredVariantIds?: string[];
+  };
+};
+
+export type StudyGap = {
+  id: string;
+  start: number;
+  end: number;
+  answer: string;
+  acceptedAnswers: string[];
+  concept: string;
+  requireUnits?: boolean;
+};
+
+export type StudyGapVariant = { id: string; gaps: StudyGap[] };
+export type StudyMcqVariant = {
+  id: string;
+  correctAnswer: string;
+  distractors: string[];
+  explanations: Record<string, string>;
 };
 
 /** Smart Mix picks per card; a fixed policy pins the whole session to one mode. */
@@ -68,16 +112,18 @@ export type ExerciseVerdict =
   | "needs-self-grade";
 
 export type ResolvedExercise = {
+  presentationId?: string;
   cardId: string;
   cardContentHash: string;
   mode: StudyMode;
   prompt: string;
   expectedAnswer: string;
-  cloze?: {
-    start: number;
-    end: number;
-    answer: string;
-  };
+  gaps?: StudyGap[];
+  /** Read compatibility for sessions saved before multi-gap support. */
+  cloze?: { start: number; end: number; answer: string };
+  variantId?: string;
+  /** Frozen with the presentation so late preparation cannot move the rubric. */
+  markingSettings?: CardStudySettings;
   mcq?: {
     options: Array<{ id: string; text: string }>;
     correctOptionId: string;
@@ -95,6 +141,7 @@ export type ResolvedExercise = {
  */
 export type AttemptOutcome =
   | { kind: "commit"; rating: CardRating; verdict: ExerciseVerdict }
+  | { kind: "revisit"; verdict: ExerciseVerdict }
   | { kind: "self-grade"; verdict: ExerciseVerdict };
 
 /**
@@ -121,11 +168,13 @@ export function resolveAttemptOutcome(
   verdict: ExerciseVerdict,
   options: { hintUsed?: boolean } = {}
 ): AttemptOutcome {
-  if (verdict === "incorrect") {
+  if (verdict === "incorrect" || verdict === "partial") {
     return { kind: "commit", rating: "again", verdict };
   }
-  if (verdict === "correct" && !options.hintUsed) {
-    return { kind: "commit", rating: "good", verdict };
+  if (verdict === "correct") {
+    return options.hintUsed
+      ? { kind: "revisit", verdict }
+      : { kind: "commit", rating: "good", verdict };
   }
   return { kind: "self-grade", verdict };
 }

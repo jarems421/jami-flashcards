@@ -149,6 +149,11 @@ describe("a partial award against a single whole-tariff criterion", () => {
   it("never lets an unverifiable result pass as a validated one", () => {
     const noCriteria = JSON.parse(markingJson(1, 1));
     noCriteria.questionResults[0].criterionResults = [];
+    // Stripping the criteria also strips the only account of the missing mark,
+    // which the parser now refuses on its own. The next step restores that
+    // account without restoring anything to reconcile the total against, which
+    // is the state this test is about.
+    noCriteria.questionResults[0].nextStep = "Compare the spread as well as the centre.";
     const result = parsePracticePaperMarkingModelAnswer(
       JSON.stringify(noCriteria),
       flattenedPaper()
@@ -158,6 +163,26 @@ describe("a partial award against a single whole-tariff criterion", () => {
     expect(result).not.toBeNull();
     expect(result!.questionResults[0]!.markConsistency?.status).toBe("unverifiable");
     expect(result!.questionResults[0]!.markConsistency?.checked).toBeUndefined();
+  });
+
+  /*
+   * The loss rule reads a criterion's tariff from the scheme, not the report.
+   *
+   * A report may omit `maxMarks`, and this scheme's single point is worth the
+   * whole question -- so assuming a tariff of 1 made a part-credited criterion
+   * look fully awarded, and the one thing that did account for the missing mark
+   * went unseen. The whole report was then refused as unexplained.
+   */
+  it("reads a part-credited criterion as explaining its loss, tariff and all", () => {
+    const partial = JSON.parse(markingJson(1, 1));
+    // No improvements and no next step: the criterion is the only account of
+    // the missing mark, so this fails unless its real tariff of 2 is found.
+    partial.questionResults[0].improvements = [];
+    delete partial.questionResults[0].nextStep;
+    expect(partial.questionResults[0].criterionResults[0].maxMarks).toBeUndefined();
+    const result = parsePracticePaperMarkingModelAnswer(JSON.stringify(partial), flattenedPaper());
+    expect(result).not.toBeNull();
+    expect(result!.questionResults[0]!.awardedMarks).toBe(1);
   });
 
   it("clamps only above the tariff, which is the one thing it does change", () => {

@@ -1,8 +1,8 @@
 import type { Card } from "@/lib/study/cards";
-import { selectClozeSpan } from "@/lib/study/gap-fill";
+import { selectClozeGaps } from "@/lib/study/gap-fill";
 import { buildMultipleChoiceQuestion } from "@/lib/study/mcq";
 import { hasMathDelimiters, splitMathRichText } from "@/lib/study/math-text";
-import { classifyAnswerShape } from "@/lib/study/answer-marking";
+import { classifyStudyTask } from "@/lib/study/learning-task";
 import {
   isStudyMode,
   type ResolvedExercise,
@@ -85,12 +85,19 @@ export function getGapFillEligibility(card: Card): ModeEligibility {
   if (authorDisabled(card, "gap-fill")) {
     return { eligible: false, reason: "disabled-by-author" };
   }
-  const span = selectClozeSpan({
+  const gaps = selectClozeGaps({
     front: card.front,
     back: card.back,
     settings: card.studySettings,
   });
-  return span ? ELIGIBLE : { eligible: false, reason: "no-safe-gap" };
+  if (gaps.length > 0) return ELIGIBLE;
+  if (card.studySettings?.pinnedGaps !== undefined) {
+    return { eligible: false, reason: "disabled-by-author" };
+  }
+  const wordCount = card.back.trim().split(/\s+/).filter(Boolean).length;
+  return wordCount < 4 || hasMathDelimiters(card.back)
+    ? { eligible: false, reason: "no-safe-gap" }
+    : { eligible: false, reason: "needs-preparation" };
 }
 
 export function getClassicEligibility(card: Card): ModeEligibility {
@@ -107,6 +114,15 @@ export function getClassicEligibility(card: Card): ModeEligibility {
  */
 export type ModeResolutionContext = {
   seed?: number;
+  presentationId?: string;
+  /** Modes already presented in this session, oldest first. */
+  recentModes?: StudyMode[];
+  /** Running presentation counts. Used for soft balance targets, never quotas. */
+  modeCounts?: Partial<Record<StudyMode, number>>;
+  /** Which presentation of this card this is. Rotates prepared variants. */
+  presentation?: number;
+  recentVariantIds?: string[];
+  recentOutcomes?: Array<"correct" | "partial" | "incorrect" | "uncertain">;
 };
 
 export function getMultipleChoiceEligibility(
@@ -120,7 +136,11 @@ export function getMultipleChoiceEligibility(
   const question = buildMultipleChoiceQuestion({ card, seed: context.seed });
   // Three believable wrong answers or nothing. Padding the list would make a
   // question answerable by elimination, which teaches the wrong skill.
-  return question ? ELIGIBLE : { eligible: false, reason: "needs-preparation" };
+  if (question) return ELIGIBLE;
+  if (card.studySettings?.mcqDistractors !== undefined) {
+    return { eligible: false, reason: "disabled-by-author" };
+  }
+  return { eligible: false, reason: "needs-preparation" };
 }
 
 export function getModeEligibility(
@@ -151,11 +171,18 @@ export function getModeEligibility(
  * modes suit a card equally well.
  */
 const SMART_MIX_ORDER: StudyMode[] = [
-  "type-answer",
-  "gap-fill",
-  "multiple-choice",
   "classic",
+  "gap-fill",
+  "type-answer",
+  "multiple-choice",
 ];
+
+const SMART_MIX_TARGET: Record<StudyMode, number> = {
+  classic: 0.3,
+  "type-answer": 0.25,
+  "gap-fill": 0.3,
+  "multiple-choice": 0.15,
+};
 
 /**
  * How far below the best fit a mode may sit and still be reached for.
@@ -204,37 +231,15 @@ export function scoreModesForCard(
   card: Card,
   context: ModeResolutionContext = {}
 ): Array<{ mode: StudyMode; score: number }> {
-  const shape = classifyAnswerShape(card.back ?? "");
-  const answerWords = (card.back ?? "").trim().split(/\s+/).filter(Boolean).length;
+  const profile = card.studySettings?.generatedStudy?.taskProfile ?? classifyStudyTask(card);
 
   const base: Record<StudyMode, number> = {
-    "type-answer": 0,
-    "gap-fill": 0,
-    "multiple-choice": 0,
-    // Classic is always last of the eligible modes rather than never chosen:
-    // it is what a card falls back to, not something Smart Mix reaches for.
-    classic: -10,
+    "type-answer": profile.suitableModes.includes("type-answer") ? 2 : -100,
+    "gap-fill": profile.suitableModes.includes("gap-fill") ? 2 : -100,
+    "multiple-choice": profile.suitableModes.includes("multiple-choice") ? 2 : -100,
+    classic: 2,
   };
-
-  if (shape === "numeric") {
-    base["multiple-choice"] += 6;
-    base["type-answer"] += 4;
-    base["gap-fill"] -= 6;
-  } else if (shape === "list") {
-    base["type-answer"] += 6;
-    base["gap-fill"] += 4;
-    base["multiple-choice"] += 1;
-  } else if (shape === "short") {
-    base["type-answer"] += 6;
-    base["multiple-choice"] += 4;
-    // A three-word answer has nothing to hide that is not the whole answer.
-    base["gap-fill"] += answerWords >= 6 ? 3 : -4;
-  } else {
-    base["gap-fill"] += 6;
-    base["multiple-choice"] += 3;
-    // Typing a paragraph back is transcription long before it is recall.
-    base["type-answer"] += answerWords > 40 ? -1 : 3;
-  }
+  for (const mode of profile.preferredModes) base[mode] += 3;
 
   /*
    * Recognition before recall, for a card that is not known yet.
@@ -246,8 +251,8 @@ export function scoreModesForCard(
    * steady review (state 2) has earned the harder question.
    */
   const learning = card.fsrsState === 1 || card.fsrsState === 3;
-  const struggling = (card.lapses ?? 0) >= 2;
-  if (learning || struggling) {
+  const recentMiss = (context.recentOutcomes ?? []).slice(-5).some((outcome) => outcome === "incorrect" || outcome === "partial");
+  if (learning || recentMiss) {
     base["multiple-choice"] += 3;
     base["gap-fill"] += 2;
     base["type-answer"] -= 2;
@@ -282,14 +287,41 @@ export function resolveSmartMixMode(
   const scored = scoreModesForCard(card, context);
   if (scored.length === 0) return "classic";
 
-  const best = Math.max(...scored.map((entry) => entry.score));
-  // Best fit first, so a card seen once is asked the way that suits it rather
-  // than the way that happens to come first in the preference order. Ties fall
-  // back to that order, which is why the sort has to be stable.
-  const contenders = scored
-    .filter((entry) => entry.score >= best - MODE_FIT_BAND)
-    .sort((left, right) => right.score - left.score);
-  return contenders[position % contenders.length].mode;
+  const recent = context.recentModes ?? [];
+  const lastThree = recent.slice(-3);
+  let eligible = scored.filter(({ mode }) => {
+    if (mode === "type-answer" && recent.slice(-2).every((item) => item === mode) && recent.length >= 2) return false;
+    if (lastThree.length === 3 && lastThree.every((item) => item === mode)) return false;
+    return true;
+  });
+  if (eligible.length === 0) eligible = scored;
+
+  const best = Math.max(...eligible.map((entry) => entry.score));
+  const suitable = eligible.filter((entry) => entry.score >= best - MODE_FIT_BAND);
+  const fallbackSequence: StudyMode[] = [
+    "classic", "gap-fill", "type-answer", "classic", "gap-fill",
+    "type-answer", "classic", "gap-fill", "multiple-choice", "gap-fill",
+    "type-answer", "classic", "gap-fill", "classic", "multiple-choice",
+    "type-answer", "gap-fill", "classic", "multiple-choice", "type-answer",
+  ];
+  const counts = context.modeCounts ?? fallbackSequence.slice(0, Math.max(0, position)).reduce<Partial<Record<StudyMode, number>>>((result, mode) => {
+    result[mode] = (result[mode] ?? 0) + 1;
+    return result;
+  }, {});
+  const total = Math.max(1, Object.values(counts).reduce((sum, value) => sum + (value ?? 0), 0));
+  suitable.sort((left, right) => {
+    const leftDeficit = SMART_MIX_TARGET[left.mode] - (counts[left.mode] ?? 0) / total;
+    const rightDeficit = SMART_MIX_TARGET[right.mode] - (counts[right.mode] ?? 0) / total;
+    if (rightDeficit !== leftDeficit) return rightDeficit - leftDeficit;
+    if (right.score !== left.score) return right.score - left.score;
+    return SMART_MIX_ORDER.indexOf(left.mode) - SMART_MIX_ORDER.indexOf(right.mode);
+  });
+  const topDeficit = SMART_MIX_TARGET[suitable[0].mode] - (counts[suitable[0].mode] ?? 0) / total;
+  const ties = suitable.filter((entry) => {
+    const deficit = SMART_MIX_TARGET[entry.mode] - (counts[entry.mode] ?? 0) / total;
+    return Math.abs(deficit - topDeficit) < 0.0001 && entry.score === suitable[0].score;
+  });
+  return ties[((context.seed ?? 0) + position) % ties.length].mode;
 }
 
 /**
@@ -348,7 +380,7 @@ export function resolveExerciseMode(
    * pass usually lands before the student gets here at all.
    */
   if (isAwaitingPreparation(eligibility)) {
-    return resolveSmartMixMode(card, position, context);
+    return null;
   }
   // A card that can never carry the mode is dropped from the session and
   // counted, rather than shown as Classic.
@@ -370,32 +402,43 @@ export function buildDeterministicExercise(
   if (!getModeEligibility(card, mode, context).eligible) return null;
 
   const base = {
+    ...(context.presentationId ? { presentationId: context.presentationId } : {}),
     cardId: card.id,
     cardContentHash,
     expectedAnswer: card.back,
-    source: card.studySettings ? ("author" as const) : ("deterministic" as const),
+    source: card.studySettings?.generatedStudy
+      ? ("cached-ai" as const)
+      : card.studySettings
+        ? ("author" as const)
+        : ("deterministic" as const),
+    markingSettings: card.studySettings,
   };
 
   if (mode === "gap-fill") {
-    const cloze = selectClozeSpan({
+    const gaps = selectClozeGaps({
       front: card.front,
       back: card.back,
       settings: card.studySettings,
+      variantIndex: context.presentation ?? 0,
+      recentVariantIds: context.recentVariantIds,
     });
-    if (!cloze) return null;
+    if (gaps.length === 0) return null;
     return {
       ...base,
       mode,
       prompt: card.front,
-      expectedAnswer: cloze.answer,
-      cloze,
+      expectedAnswer: gaps.map((gap) => gap.answer).join(" · "),
+      gaps,
+      cloze: gaps.length === 1 ? gaps[0] : undefined,
+      variantId: card.studySettings?.generatedStudy?.gapVariants.find((variant) => variant.gaps.some((gap) => gap.id === gaps[0]?.id))?.id
+        ?? (card.studySettings?.pinnedGaps !== undefined ? "author-pinned" : undefined),
     };
   }
 
   if (mode === "multiple-choice") {
-    const question = buildMultipleChoiceQuestion({ card, seed: context.seed });
+    const question = buildMultipleChoiceQuestion({ card, seed: context.seed, variantIndex: context.presentation ?? 0, recentVariantIds: context.recentVariantIds });
     if (!question) return null;
-    return { ...base, mode, prompt: card.front, mcq: question };
+    return { ...base, mode, prompt: card.front, mcq: question, ...(question.variantId ? { variantId: question.variantId } : {}) };
   }
 
   if (mode === "type-answer" || mode === "classic") {
@@ -439,12 +482,11 @@ export function needsStudyAssetPreparation(
   if (!hasContent(card)) return false;
 
   const answer = card.back.trim();
-  if (classifyAnswerShape(answer) === "numeric") return false;
   if (mathsShare(answer) > MAX_MATHS_SHARE_OF_ANSWER) return false;
 
-  const mcqIsMissing = () => buildMultipleChoiceQuestion({ card }) === null;
+  const mcqIsMissing = () => card.studySettings?.mcqDistractors === undefined && buildMultipleChoiceQuestion({ card }) === null;
   // A one-word answer has no choice of word to hide, so nothing to improve.
-  const gapHasOptions = () => answer.split(/\s+/).length > 2;
+  const gapHasOptions = () => card.studySettings?.pinnedGaps === undefined && answer.split(/\s+/).length > 2;
 
   if (policy.kind === "smart") return mcqIsMissing() || gapHasOptions();
   switch (policy.mode) {

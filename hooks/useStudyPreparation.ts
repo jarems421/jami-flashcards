@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { StudyAsset } from "@/lib/ai/study-assets";
 import type { Card } from "@/lib/study/cards";
 import { needsStudyAssetPreparation } from "@/lib/study/mode-eligibility";
@@ -140,6 +140,17 @@ export function useStudyPreparation(input: {
   );
   /** Set while preparing so Start now can stop the wait without cancelling it. */
   const skipPreparationRef = useRef<(() => void) | null>(null);
+  const jobsRef = useRef(new Set<{ value: boolean }>());
+  const epochRef = useRef(0);
+  const stoppedRef = useRef(false);
+  const cancel = useCallback(() => {
+    stoppedRef.current = true;
+    epochRef.current += 1;
+    for (const stop of jobsRef.current) stop.value = true;
+    jobsRef.current.clear();
+    skipPreparationRef.current?.();
+  }, []);
+  useEffect(() => { stoppedRef.current = false; return cancel; }, [cancel]);
 
   /**
    * Read the queue's new cards: a few before the session opens, the rest behind
@@ -164,6 +175,9 @@ export function useStudyPreparation(input: {
       remainder: Card[];
     }> => {
       const empty = { assets: {}, remainder: [] as Card[] };
+      cancel();
+      stoppedRef.current = false;
+      const epoch = epochRef.current;
       if (!studyModesEnabled || queue.length === 0) return empty;
       if (typeof navigator !== "undefined" && !navigator.onLine) return empty;
 
@@ -175,9 +189,10 @@ export function useStudyPreparation(input: {
       );
       if (worthPreparing.length === 0) return empty;
 
-      const known = await loadStudyAssets(worthPreparing.map((card) => card.id));
+      const known = await loadStudyAssets(worthPreparing);
+      if (epoch !== epochRef.current) return empty;
       const missing = worthPreparing
-        .filter((card) => !known[card.id])
+        .filter((card) => !known[card.id] || known[card.id].repairRequested)
         .slice(0, MAX_PREPARED_CARDS_PER_SESSION);
       if (missing.length === 0) return { assets: known, remainder: [] };
 
@@ -187,6 +202,7 @@ export function useStudyPreparation(input: {
       setPreparation({ prepared: 0, total: headStart.length });
 
       const stop = { value: false };
+      jobsRef.current.add(stop);
       let expiryTimer = 0;
       const expiry = new Promise<void>((resolve) => {
         expiryTimer = window.setTimeout(() => {
@@ -233,12 +249,14 @@ export function useStudyPreparation(input: {
          * settled by finishing, by expiring or by being skipped.
          */
         setPreparation(null);
+        jobsRef.current.delete(stop);
       }
 
-      const refreshed = await loadStudyAssets(headStart.map((card) => card.id));
+      const refreshed = await loadStudyAssets(headStart);
+      if (epoch !== epochRef.current) return empty;
       return { assets: { ...known, ...refreshed }, remainder };
     },
-    [modePolicy, studyModesEnabled]
+    [modePolicy, studyModesEnabled, cancel]
   );
 
   /**
@@ -249,21 +267,27 @@ export function useStudyPreparation(input: {
    * first is asked a way that needs no preparation.
    */
   const prepareRemainingAssets = useCallback(async (remainder: Card[]) => {
-    if (remainder.length === 0) return;
+    if (remainder.length === 0 || stoppedRef.current) return;
+    const stop = { value: false };
+    const epoch = epochRef.current;
+    jobsRef.current.add(stop);
     try {
       await runPreparationChunks(remainder, {
         chunkSize: PREPARATION_CHUNK_SIZE,
         concurrency: PREPARATION_CONCURRENCY,
-        stop: { value: false },
+        stop,
       });
-      const refreshed = await loadStudyAssets(remainder.map((card) => card.id));
-      onAssetsReady(refreshed);
+      const refreshed = await loadStudyAssets(remainder);
+      if (!stop.value && epoch === epochRef.current) onAssetsReady(refreshed);
     } catch (error) {
       console.warn("Background study preparation stopped.", error);
+    } finally {
+      jobsRef.current.delete(stop);
     }
   }, [onAssetsReady]);
 
   return {
+    cancel,
     /** Non-null only while a student is being kept waiting. */
     progress: preparation,
     clearProgress: useCallback(() => setPreparation(null), []),

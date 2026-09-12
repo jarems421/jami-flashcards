@@ -226,12 +226,15 @@ export function isExamQuestionSpecificationEnabled(specificationId: string) {
 /**
  * Every gate a question passes before a student sees it.
  *
- * Official material additionally waits on an approved review. Extraction is
- * model work and a mispaired scheme marks a student wrongly, so something has
- * to check the question against the page it came from before it counts --
- * whether that reviewer is a person or a model is recorded on the question
- * itself, and either can approve. Jami-created fillers arrive approved,
- * because nothing was extracted and nothing licensed can be got wrong.
+ * Official material waits on two separate checks, because they catch different
+ * things. A review -- by a model or a person, recorded either way -- reads this
+ * question against the page it came from. A spot-check is a person sampling the
+ * paper it came out of, which is the only one of the two that can notice a
+ * fault running through the whole extraction rather than sitting in one
+ * question.
+ *
+ * Jami-created fillers need neither: nothing was extracted, and nothing
+ * licensed can be got wrong.
  */
 export function isExamQuestionServable(question: ExamQuestion) {
   const rights = getExamQuestionRights(question.rights.key, question.rights.version);
@@ -239,6 +242,18 @@ export function isExamQuestionServable(question: ExamQuestion) {
   return Boolean(
     question.status === "published" &&
       (!official || isExamQuestionApproved(question.review)) &&
+      /*
+       * A model may approve a question; a person has to have sampled its paper.
+       *
+       * Approval is a model reading one question against one rendered page, and
+       * the faults worth catching in extraction are systematic -- a scheme
+       * paired one question out, a region located on the wrong page -- which a
+       * per-question reviewer is the wrong shape to notice. Without this, "we
+       * spot-check the corpus" is a habit somebody keeps rather than a
+       * condition anything enforces, and a paper nobody ever got round to
+       * would serve exactly like one that passed.
+       */
+      (!official || typeof question.paperSpotCheckedAt === "number") &&
       canServeExamRights(question.rights) &&
       rights &&
       canServeExamRights(rights) &&

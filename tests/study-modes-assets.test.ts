@@ -81,14 +81,12 @@ describe("building a multiple-choice question", () => {
    * or a tenth lands on the mistakes students actually make, which is more than
    * could ever be said for the answers to neighbouring cards.
    */
-  it("builds believable wrong numbers for a numeric answer", () => {
+  it("refuses to invent generic wrong numbers for a numeric answer", () => {
     const question = buildMultipleChoiceQuestion({
       card: card({ back: "9.8 m/s" }),
       seed: 4,
     });
-    expect(question).not.toBeNull();
-    expect(question!.options).toHaveLength(MCQ_OPTION_COUNT);
-    expect(question!.options.every((option) => /\d/.test(option.text))).toBe(true);
+    expect(question).toBeNull();
   });
 
   it("uses the author's own distractors", () => {
@@ -153,6 +151,19 @@ describe("validating a generated asset", () => {
       subject
     );
     expect(asset?.distractors).toEqual(["The ribosome"]);
+  });
+
+  it("keeps a safe multi-gap variant with exact offsets and rejects over-dense variants", () => {
+    const long = { id: "card-1", back: "Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron" };
+    const asset = validateStudyAsset({
+      cardId: "card-1", confidence: 0.9,
+      gapVariants: [
+        { id: "safe", gaps: [{ answer: "beta", concept: "beta" }, { answer: "theta", concept: "theta" }] },
+        { id: "dense", gaps: [{ answer: "Alpha beta gamma delta epsilon zeta", concept: "too much" }] },
+      ],
+    }, long);
+    expect(asset?.gapVariants?.map((variant) => variant.id)).toEqual(["safe"]);
+    expect(asset?.gapVariants?.[0]?.gaps.map((gap) => long.back.slice(gap.start, gap.end))).toEqual(["beta", "theta"]);
   });
 
   it("refuses a low-confidence asset rather than using it weakly", () => {

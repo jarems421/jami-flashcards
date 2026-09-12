@@ -1,5 +1,6 @@
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 import { checkMarkConsistency } from "@/lib/practice/mark-consistency";
+import { schemeCriteria } from "@/lib/practice/mark-schemes";
 import {
   normalizePracticePaperResult,
   type PracticePaper,
@@ -38,10 +39,57 @@ export function parsePracticePaperMarkingModelAnswer(
     const question = questions.get(result.questionId);
     if (!question || seen.has(result.questionId)) return [];
     seen.add(result.questionId);
+    const awardedMarks = Math.min(question.marks, result.awardedMarks);
     const hasEvidence = (result.evidence?.some((item) => item.trim()) ?? false) ||
       (result.criterionResults?.some((criterion) => criterion.evidence.trim()) ?? false);
     if (result.awardedMarks > 0 && !hasEvidence) return [];
-    const awardedMarks = Math.min(question.marks, result.awardedMarks);
+    /*
+     * A mark lost has to be explained, the same way a mark given has to be
+     * evidenced.
+     *
+     * Only the awarding side was ever checked, so a report could hand a student
+     * 1 of 3 and say nothing whatever about the other two: no criterion naming
+     * them, no improvement, no next step. The page then had to write "2 marks
+     * were not awarded, read the feedback above" and hope the feedback said
+     * something -- which is the product admitting it does not know why either.
+     *
+     * The student already knows what they got right. The part they came for is
+     * the part that was missing, and a number on its own is the one thing that
+     * cannot be practised against. Rejecting here fails the report into the
+     * marker's own retry, which is where a fixable omission belongs.
+     */
+    const item = paper.markScheme?.items?.find((entry) => entry.questionId === question.id);
+    /*
+     * A criterion's tariff comes from the scheme, not from the report.
+     *
+     * A report may omit `maxMarks`, and a scheme point can be worth more than
+     * one -- a flattened scheme is a single point worth the whole question. So
+     * a part-credited criterion looks fully awarded whenever the tariff is
+     * assumed to be 1, and the loss it does explain goes unseen.
+     */
+    const tariffByCriterionId = new Map(
+      item ? schemeCriteria(item).map((entry) => [entry.id, entry.marks] as const) : []
+    );
+    const explainsLoss =
+      (result.criterionResults ?? []).some((criterion) => {
+        const tariff =
+          (criterion.criterionId ? tariffByCriterionId.get(criterion.criterionId) : undefined) ??
+          criterion.maxMarks ??
+          1;
+        const awarded = criterion.awardedMarks ?? (criterion.awarded ? tariff : 0);
+        return (
+          awarded < tariff &&
+          Boolean(
+            criterion.criterion?.trim() ||
+              criterion.candidateValue?.trim() ||
+              criterion.evidence?.trim()
+          )
+        );
+      }) ||
+      (result.improvements?.some((entry) => entry.trim()) ?? false) ||
+      Boolean(result.nextStep?.trim());
+    if (awardedMarks < question.marks && !explainsLoss) return [];
+
     /*
      * A total that disagrees with the awards it was built from is not a
      * marking, it is two answers. Rejecting the question here fails the
@@ -49,7 +97,6 @@ export function parsePracticePaperMarkingModelAnswer(
      * already has -- a bounded repair rather than a contradictory score shown
      * to a student beside feedback that argues for a different one.
      */
-    const item = paper.markScheme?.items?.find((entry) => entry.questionId === question.id);
     const consistency = item
       ? checkMarkConsistency({
           item,

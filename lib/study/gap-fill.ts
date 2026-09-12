@@ -1,12 +1,76 @@
 import { splitMathRichText } from "@/lib/study/math-text";
 import { markTypedAnswer } from "@/lib/study/answer-marking";
-import type { CardStudySettings } from "@/lib/study/study-modes";
+import type { CardStudySettings, StudyGap } from "@/lib/study/study-modes";
 
 export type ClozeSpan = {
   start: number;
   end: number;
   answer: string;
 };
+
+function validPreparedGap(back: string, gap: StudyGap, ranges: Array<[number, number]>) {
+  return Number.isInteger(gap.start) && Number.isInteger(gap.end) && gap.start >= 0 &&
+    gap.end > gap.start && gap.end <= back.length && back.slice(gap.start, gap.end) === gap.answer &&
+    !(gap.start > 0 && /[\p{L}\p{N}]/u.test(back[gap.start - 1]) && /[\p{L}\p{N}]/u.test(back[gap.start])) &&
+    !(gap.end < back.length && /[\p{L}\p{N}]/u.test(back[gap.end - 1]) && /[\p{L}\p{N}]/u.test(back[gap.end])) &&
+    !overlapsProtected(ranges, gap.start, gap.end);
+}
+
+/**
+ * Resolve one stable, validated set of one to three gaps. Prepared variants are
+ * rotated by presentation; author-pinned spans come next; the conservative
+ * local chooser is only a fallback.
+ */
+export function selectClozeGaps(input: {
+  front: string;
+  back: string;
+  settings?: CardStudySettings;
+  variantIndex?: number;
+  recentVariantIds?: string[];
+}): StudyGap[] {
+  const back = input.back ?? "";
+  const ranges = protectedRanges(back);
+  const variants = (input.settings?.generatedStudy?.gapVariants ?? []).filter(
+    (variant) => !input.settings?.generatedStudy?.retiredVariantIds?.includes(variant.id)
+  );
+  if (input.settings?.pinnedGaps === undefined && variants.length > 0) {
+    const fresh = variants.filter((variant) => !(input.recentVariantIds ?? []).slice(-2).includes(variant.id));
+    const pool = fresh.length > 0 ? fresh : variants;
+    const variant = pool[(input.variantIndex ?? 0) % pool.length];
+    const gaps = variant.gaps
+      .filter((gap) => validPreparedGap(back, gap, ranges))
+      .sort((a, b) => a.start - b.start)
+      .slice(0, 3);
+    if (gaps.length !== variant.gaps.length) return [];
+    const hidden = gaps.reduce((sum, gap) => sum + gap.answer.trim().split(/\s+/).length, 0);
+    const words = back.trim().split(/\s+/).filter(Boolean).length;
+    const overlap = gaps.some((gap, index) => index > 0 && gap.start < gaps[index - 1].end);
+    if (gaps.length > 0 && !overlap && hidden / Math.max(1, words) <= 1 / 3) return gaps;
+  }
+
+  const pins = input.settings?.pinnedGaps;
+  if (pins !== undefined) {
+    const pinned: StudyGap[] = [];
+    let cursor = 0;
+    for (const raw of pins.slice(0, 3)) {
+      const answer = raw.trim();
+      const start = answer ? back.indexOf(answer, cursor) : -1;
+      if (start < 0 || overlapsProtected(ranges, start, start + answer.length)) continue;
+      pinned.push({ id: `author-${start}`, start, end: start + answer.length, answer, acceptedAnswers: [], concept: answer });
+      cursor = start + answer.length;
+    }
+    const totalWords = back.trim().split(/\s+/).filter(Boolean).length;
+    const maxGaps = totalWords < 4 ? 0 : totalWords <= 12 ? 1 : totalWords <= 35 ? 2 : 3;
+    const hiddenWords = pinned.reduce((sum, gap) => sum + gap.answer.split(/\s+/).filter(Boolean).length, 0);
+    // An explicitly empty or structurally unsafe author list disables gaps.
+    if (pinned.length > 0 && pinned.length <= maxGaps && hiddenWords / Math.max(1, totalWords) <= 1 / 3) return pinned;
+    return [];
+  }
+
+  // Local word-shape heuristics cannot know which phrase carries the idea.
+  // Without an author choice or a validated prepared variant, Gap Fill waits.
+  return [];
+}
 
 /**
  * Words too common to be worth hiding. Blanking "the" tests nothing and reads
@@ -175,6 +239,17 @@ export function renderClozePrompt(back: string, span: ClozeSpan, blank = "_____"
   return `${back.slice(0, span.start)}${renderClozeBlank(span.answer, blank)}${back.slice(span.end)}`;
 }
 
+export function renderMultiClozePrompt(back: string, gaps: StudyGap[], blank = "_____") {
+  let cursor = 0;
+  let rendered = "";
+  for (const gap of [...gaps].sort((a, b) => a.start - b.start)) {
+    rendered += back.slice(cursor, gap.start);
+    rendered += renderClozeBlank(gap.answer, blank);
+    cursor = gap.end;
+  }
+  return rendered + back.slice(cursor);
+}
+
 /**
  * Mark the blank.
  *
@@ -192,4 +267,30 @@ export function markClozeAnswer(
     expectedAnswer: span.answer,
     settings,
   });
+}
+
+
+export function markClozeAnswers(
+  responses: Record<string, string>,
+  gaps: StudyGap[]
+) {
+  const outcomes = gaps.map((gap) => ({
+    gapId: gap.id,
+    ...markTypedAnswer({
+      response: responses[gap.id] ?? "",
+      expectedAnswer: gap.answer,
+      settings: {
+        acceptedAnswers: gap.acceptedAnswers,
+        ...(gap.requireUnits === undefined ? {} : { requireUnits: gap.requireUnits }),
+      },
+    }),
+  }));
+  const verdict = outcomes.every((outcome) => outcome.verdict === "correct")
+    ? "correct"
+    : outcomes.some((outcome) => outcome.verdict === "needs-self-grade" || outcome.verdict === "close")
+      ? "needs-self-grade"
+      : outcomes.some((outcome) => outcome.verdict === "correct" || outcome.verdict === "close" || outcome.verdict === "partial")
+        ? "partial"
+        : "incorrect";
+  return { verdict, outcomes } as const;
 }

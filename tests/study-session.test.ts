@@ -12,6 +12,7 @@ import {
   isIncomingSessionNewer,
   isStudySessionProgressRegression,
   normalizePersistedStudySession,
+  normalizePersistedExercises,
   saveClosedStudySessionTombstone,
 } from "@/lib/study/session";
 
@@ -60,6 +61,15 @@ afterEach(() => {
 });
 
 describe("study session persistence", () => {
+  it("keeps separate frozen presentations when a missed card appears twice", () => {
+    const exercises = normalizePersistedExercises([
+      { cardId: "a", mode: "type-answer", contentHash: "hash", presentationId: "session:0:a" },
+      { cardId: "a", mode: "type-answer", contentHash: "hash", presentationId: "session:4:a" },
+    ], ["a"]);
+
+    expect(exercises.map((exercise) => exercise.presentationId)).toEqual(["session:0:a", "session:4:a"]);
+  });
+
   it("normalizes quick-fix local sessions without the newer status fields", () => {
     const session = normalizePersistedStudySession(
       {

@@ -117,10 +117,18 @@ describe("AI budget configuration", () => {
       burstRequestLimit: 3,
       burstScope: "tutorIllustrations",
     });
+    /*
+     * 16,000, raised from 8,000 after a benchmark truncated one marking in six
+     * against the old ceiling and paid for every one of them. The report is not
+     * what needs the room: on the identical prompt the worker wrote its whole
+     * report in a median of 1,197 tokens while the supervisor -- a reasoning
+     * model whose thinking is billed inside this cap -- used 5,408 and reached
+     * the ceiling.
+     */
     expect(AI_BUDGETS.examQuestionMarking).toMatchObject({
       dailyRequestLimit: 60,
       burstRequestLimit: 12,
-      tokenCap: 8_000,
+      tokenCap: 16_000,
       inputTokenCap: 32_000,
     });
     expect(AI_BUDGETS.examQuestionReview.dailyRequestLimit).toBe(20);

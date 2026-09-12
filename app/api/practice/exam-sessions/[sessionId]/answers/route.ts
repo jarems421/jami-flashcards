@@ -1,27 +1,35 @@
 import type { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
 import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
-import { enterAiSpendContext } from "@/lib/ai/spend-context";
-import { aiSpendContextFor } from "@/services/ai/spend.server";
-import { checkAiBudget, createAiBudgetLimitResponse, getAiTokenCap, refundAiBudget } from "@/services/ai/budgets";
-import { getAiInputTokenCap } from "@/lib/ai/budgets";
+import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
-import { EXAM_ANSWER_MAX_LENGTH, EXAM_ID_PATTERN, examAnswerUnlocksModelAnswer, examDocument, examResultForAttempt, withCriterionTariffs, type ExamAttempt, type ExamSession, examOperationIsLive } from "@/lib/practice/exam-questions";
-import { schemeCriteria } from "@/lib/practice/mark-schemes";
-import { examMarkingNeedsVerification } from "@/lib/practice/exam-marking-policy";
-import { buildSingleQuestionAnswerParts, buildSingleQuestionPaper } from "@/lib/practice/single-question-paper";
-import { markSingleQuestionAdaptively } from "@/services/ai/practice-paper-marking.server";
+import { EXAM_ANSWER_MAX_LENGTH, EXAM_ID_PATTERN, EXAM_AI_JOB_DEADLINE_MS, examDocument, type ExamAttempt, type ExamMarkingJob, type ExamSession, examOperationIsLive } from "@/lib/practice/exam-questions";
+import { examMarkingFailure } from "@/lib/practice/exam-marking-failure";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { recordExamDifficultyContribution } from "@/services/practice/exam-difficulty.server";
 import { projectExamAttempt } from "@/lib/practice/exam-projections";
-import { examQuestionVisualParts, loadExamQuestionSecret, loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
+import { enqueueExamQuestionMarking } from "@/services/practice/exam-marking.server";
 import { validateExamWorking } from "@/services/practice/exam-working.server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+/** Validation, one upload and a queue write. The marking is no longer here. */
+export const maxDuration = 30;
 
+/**
+ * Freeze the answer, queue the marking, answer the student.
+ *
+ * The marking used to happen here, which meant it had to finish in the 55
+ * seconds this request had left -- a budget set by the serverless function
+ * rather than by anything about marking. Three sequential provider calls do
+ * not fit in it: the marker's own measurements size a single supervisor report
+ * at 408 seconds, and the stage that overran was reliably the adjudicator, the
+ * one bought precisely because the first two markers disagreed.
+ *
+ * So this request now does only the part that must be synchronous -- validate
+ * the evidence, freeze it, take the allowance -- and hands the marking to a
+ * durable job. The response still carries the attempt, now reading `marking`,
+ * which is the state the page already polls.
+ */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
-  const deadlineAt = Date.now() + 55_000;
   if (!featureFlags.enablePastPaperPractice) return apiFailure("Not found", 404, "not_found");
   const uid = await authenticateWriteRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
@@ -46,6 +54,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const existing = (await ref.get()).data();
   // Deterministic attempt identity makes a replay cheap even after a lost response.
   if (existing?.status === "marked") return Response.json({ attempt: projectExamAttempt(attemptId, existing) });
+
+  /*
+   * The allowance is taken before the evidence is frozen, not after.
+   *
+   * Freezing first and then discovering the student is out of allowance left
+   * the attempt submitted, locked against editing, and unmarkable -- so the
+   * order is now: refuse while the answer is still theirs to change.
+   */
+  const budget = await checkAiBudget({ uid, action: "examQuestionMarking" });
+  if (!budget.allowed) return createAiBudgetLimitResponse("examQuestionMarking", budget);
+
+  /*
+   * This submission's marking, named before it exists so every write the job
+   * makes can be checked against it. A student who resubmits gets a new token,
+   * and the job it replaced can no longer touch the attempt.
+   */
+  const markingToken = randomUUID();
   let uploadedPath: string | undefined;
   const supersededPath = typeof existing?.workingSnapshotPath === "string" ? existing.workingSnapshotPath : undefined;
   let keptPath: string | null | undefined;
@@ -92,6 +117,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           submittedAt: attempt.submittedAt ?? now,
         } : {}),
         status: "marking", idempotencyKey: key, updatedAt: now,
+        markingFailure: undefined,
+        /*
+         * Everything the job needs that this request will not be around to
+         * give it: how long it may run, and the allowance to hand back if it
+         * never produces a mark. Any checkpoints a previous attempt paid for
+         * are deliberately dropped -- a resubmission is new evidence, and
+         * reusing a report of the old answer would mark the wrong work.
+         */
+        marking: {
+          token: markingToken,
+          startedAt: now,
+          deadlineAt: now + EXAM_AI_JOB_DEADLINE_MS,
+          budgetGrant: budget.grant,
+          attempts: (attempt.marking?.attempts ?? 0) + 1,
+        } satisfies ExamMarkingJob,
       });
       transaction.set(ref, value);
       // The session read participates in finish/delete conflict detection.
@@ -101,6 +141,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     keptPath = frozen.workingSnapshotPath ?? null;
   } catch (error) {
     const code = error instanceof Error ? error.message : "submission_failed";
+    await refundAiBudget(budget.grant).catch(() => undefined);
     if (code === "already_marked") return Response.json({ attempt: projectExamAttempt(attemptId, (await ref.get()).data()!) });
     return apiFailure(code === "answer_required" ? "Add an answer or some working before submitting." :
       code === "already_marking" ? "Your answer is already being marked." :
@@ -117,106 +158,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
   }
 
-  const budget = await checkAiBudget({ uid, action: "examQuestionMarking" });
-  if (!budget.allowed) {
-    await ref.update({ status: "marking_failed", updatedAt: Date.now() });
-    return createAiBudgetLimitResponse("examQuestionMarking", budget);
+  /*
+   * Queued, not marked. A job that cannot even be started settles the attempt
+   * itself, so the reply reads the document back rather than describing a
+   * state it only assumes.
+   */
+  await enqueueExamQuestionMarking(uid, attemptId, markingToken);
+  const settled = (await ref.get()).data();
+  if (settled?.status === "marking_failed") {
+    return apiFailure(examMarkingFailure("marking_failed", Date.now()).message, 503, "marking_failed");
   }
-  enterAiSpendContext(aiSpendContextFor(uid, "examQuestionMarking"));
-  try {
-    const [bankQuestion, secret] = await Promise.all([
-      // Both halves from the same ingest: the wording and images the session
-      // started on, and the scheme written for exactly those.
-      loadServableExamQuestion(questionId, uid, question.contentVersion),
-      loadExamQuestionSecret(questionId, uid, question.contentVersion),
-    ]);
-    if (secret.markSchemeItem.maxMarks !== question.marks || secret.questionId !== questionId) throw new Error("scheme_mismatch");
-    const paper = buildSingleQuestionPaper({
-      id: `exam-${attemptId}`, folderId: session.folderId, title: `${session.subject} ${question.label}`,
-      question: { id: question.id, label: question.label, prompt: question.prompt, marks: question.marks, assets: question.assets },
-      markSchemeItem: secret.markSchemeItem, studyLevel: session.studyLevel, qualification: session.course.qualification,
-      awardingBody: question.provenance.boardLabel, specification: question.provenance.specificationTitle,
-      component: question.provenance.componentTitle, markSchemeKind: question.origin === "jami_generated" ? "generated" : "official",
-    });
-    const originalPaperParts = await examQuestionVisualParts(bankQuestion);
-    const bytes = frozen.workingSnapshotPath ? (await getAdminStorageBucket().file(frozen.workingSnapshotPath).download())[0] : undefined;
-    const answerParts = buildSingleQuestionAnswerParts({
-      questionId, answerText: frozen.answerText,
-      workingImage: bytes ? { inlineData: { mimeType: "image/png", data: bytes.toString("base64") } } : undefined,
-    });
-    const marked = await markSingleQuestionAdaptively({
-      paper, answerParts, originalPaperParts, maxOutputTokens: getAiTokenCap("examQuestionMarking"), inputTokenCap: getAiInputTokenCap("examQuestionMarking"), deadlineAt,
-      forceVerification: examMarkingNeedsVerification(secret.markSchemeItem, question.marks, Boolean(bytes)),
-    });
-    if (!marked.result.questionResults[0]) throw new Error("missing_question_result");
-    // The scheme is in hand here and nowhere downstream, so each criterion
-    // takes its tariff with it.
-    const result = examResultForAttempt(withCriterionTariffs(marked.result.questionResults[0], schemeCriteria(secret.markSchemeItem)));
-    await db.runTransaction(async (transaction) => {
-      const [current, currentSession] = await Promise.all([transaction.get(ref), transaction.get(sessionRef)]);
-      if (current.data()?.idempotencyKey !== key || current.data()?.status !== "marking" || currentSession.data()?.answersDeletedAt) throw new Error("stale_marking");
-      transaction.update(ref, examDocument({
-        status: "marked", result, officialMarkScheme: examAnswerUnlocksModelAnswer(result) ? secret.officialMarkScheme : null,
-        audit: { ...marked.audit, studentReviewed: false }, markedAt: Date.now(), updatedAt: Date.now(),
-      }));
-      if (number === 1) transaction.update(sessionRef, {
-        answeredCount: (currentSession.data()?.answeredCount ?? 0) + 1,
-        awardedTotal: (currentSession.data()?.awardedTotal ?? 0) + result.awardedMarks,
-        // What has actually been marked, so a session in progress is scored
-        // against the questions answered rather than the whole paper.
-        assessedTotal: (currentSession.data()?.assessedTotal ?? 0) + result.maxMarks,
-        updatedAt: Date.now(),
-      });
-    });
-    if (number === 1 && result.attempted) await recordExamDifficultyContribution({
-      uid, attemptId, questionId, studyLevel: session.studyLevel, fraction: result.awardedMarks / question.marks,
-      durationMs: Math.max(0, (frozen.submittedAt ?? Date.now()) - frozen.startedAt),
-    });
-    return Response.json({ attempt: projectExamAttempt(attemptId, (await ref.get()).data()!) });
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "";
-    const current = (await ref.get()).data();
-    if (current?.status === "marked") return Response.json({ attempt: projectExamAttempt(attemptId, current) });
-    /*
-     * An oversized request is the one failure the student can actually act on,
-     * and the only one that never reached a provider -- it is refused while
-     * assembling. So the attempt goes back to being a draft rather than frozen
-     * evidence: retrying identical evidence would fail identically for ever,
-     * and telling someone to shorten an answer the server will not let them
-     * touch is worse than saying nothing.
-     */
-    const failedStatus = reason === "input_too_large" ? "draft" : "marking_failed";
-    await db.runTransaction(async (transaction) => {
-      const currentAttempt = await transaction.get(ref);
-      if (currentAttempt.data()?.idempotencyKey === key && currentAttempt.data()?.status === "marking") {
-        transaction.update(ref, { status: failedStatus, updatedAt: Date.now() });
-      }
-    });
-    await refundAiBudget(budget.grant).catch(() => undefined);
-    /*
-     * Too long to send is not "Jami couldn't mark this one". Retrying an
-     * oversized answer produces the same refusal every time, so the student is
-     * told what would change it.
-     */
-    if (reason === "input_too_large") {
-      return apiFailure(
-        "That answer and working are longer than Jami can mark in one go. Your answer is open for editing again — shorten it, or erase some working, then submit.",
-        413,
-        "input_too_large"
-      );
-    }
-    /*
-     * A question that changed under a live session is not a transient
-     * failure and retrying will not help, so it says so rather than
-     * inviting the student to try again forever.
-     */
-    if (reason === "question_changed") {
-      return apiFailure(
-        "This question was updated after you started. Your answer is saved, but Jami will not mark it against a different mark scheme.",
-        409,
-        "question_changed"
-      );
-    }
-    return apiFailure("Jami couldn't mark this one — your answer is saved.", 503, "marking_failed");
-  }
+  return Response.json({
+    attempt: projectExamAttempt(attemptId, settled ?? (frozen as unknown as Record<string, unknown>)),
+  });
 }

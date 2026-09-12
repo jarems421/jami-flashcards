@@ -1,7 +1,7 @@
 import type { Card } from "@/lib/study/cards";
 import { buildDeterministicExercise, resolveExerciseMode } from "@/lib/study/mode-eligibility";
 import type { PersistedStudyExercise } from "@/lib/study/session";
-import { getCardContentHash, type StudyModePolicy } from "@/lib/study/study-modes";
+import { getCardContentHash, type ResolvedExercise, type StudyMode, type StudyModePolicy } from "@/lib/study/study-modes";
 
 /**
  * The questions still ahead in a session, snapshotted so a resume redraws them.
@@ -23,27 +23,50 @@ export function buildSessionExerciseSnapshots(input: {
   modePolicy: StudyModePolicy;
   index: number;
   seed: number;
+  modeCounts?: Partial<Record<StudyMode, number>>;
+  recentModes?: StudyMode[];
+  firstExercise?: ResolvedExercise | null;
+  presentationId?: string;
+  sessionId?: string;
+  variantHistory?: Record<string, string[]>;
+  outcomeHistory?: Record<string, Array<"correct" | "partial" | "incorrect" | "uncertain">>;
 }): PersistedStudyExercise[] {
-  return input.cards.flatMap((card) => {
-    const context = { seed: input.seed };
+  const snapshots: PersistedStudyExercise[] = [];
+  const counts = { ...(input.modeCounts ?? {}) };
+  const recent = [...(input.recentModes ?? [])].slice(-8);
+  // Only the displayed presentation is frozen. Future cards are selected when reached.
+  input.cards.slice(0, 1).forEach((card, offset) => {
+    const context = {
+      seed: input.seed,
+      presentation: input.index + offset,
+      presentationId: input.presentationId ?? `${input.sessionId ?? "session"}:${input.index + offset}:${card.id}`,
+      modeCounts: counts,
+      recentModes: recent,
+      recentVariantIds: input.variantHistory?.[card.id] ?? [],
+      recentOutcomes: input.outcomeHistory?.[card.id] ?? [],
+    };
     const asked = input.asAsked(card);
-    const mode = resolveExerciseMode(asked, input.modePolicy, input.index, context);
-    if (!mode) return [];
-    const exercise = buildDeterministicExercise(
-      asked,
-      mode,
-      getCardContentHash(asked),
-      context
-    );
-    if (!exercise) return [];
-    return [
-      {
+    const mode = input.firstExercise?.mode ?? (input.firstExercise === null ? "classic" : resolveExerciseMode(asked, input.modePolicy, input.index + offset, context));
+    if (!mode) return;
+    const sourceHash = getCardContentHash(card);
+    const exercise = offset === 0 && input.firstExercise?.cardId === card.id && input.firstExercise.cardContentHash === sourceHash
+      ? input.firstExercise
+      : buildDeterministicExercise(asked, mode, sourceHash, context);
+    if (!exercise) return;
+    snapshots.push({
+        ...(exercise.presentationId ? { presentationId: exercise.presentationId } : {}),
         cardId: card.id,
         mode: exercise.mode,
         contentHash: exercise.cardContentHash,
         ...(exercise.cloze ? { cloze: exercise.cloze } : {}),
+        ...(exercise.gaps ? { gaps: exercise.gaps } : {}),
+        ...(exercise.variantId ? { variantId: exercise.variantId } : {}),
+        ...(exercise.markingSettings ? { markingSettings: exercise.markingSettings } : {}),
         ...(exercise.mcq ? { mcq: exercise.mcq } : {}),
-      },
-    ];
+      });
+    counts[mode] = (counts[mode] ?? 0) + 1;
+    recent.push(mode);
+    if (recent.length > 8) recent.shift();
   });
+  return snapshots;
 }

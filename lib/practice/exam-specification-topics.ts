@@ -37,7 +37,7 @@ export type ExamSpecificationTopicCatalogue = {
 };
 
 /**
- * Drafts, pending a check against each board's published specification.
+ * The catalogues, checked and unchecked. Only a checked one is served.
  *
  * The ids are deliberately not the board's section numbers. A board can
  * renumber sections between specification versions, and these ids are stored
@@ -45,6 +45,70 @@ export type ExamSpecificationTopicCatalogue = {
  * identifiers and the label carries the wording.
  */
 export const EXAM_SPECIFICATION_TOPICS: readonly ExamSpecificationTopicCatalogue[] = [
+  {
+    /*
+     * AQA GCSE Mathematics (8300), read from the published specification.
+     *
+     * The grain is the finest the specification itself names. Three of its six
+     * content areas have numbered subsections and three do not: 3.3, 3.5 and
+     * 3.6 are flat lists of reference codes (R1-R16, P1-P9, S1-S6), so they
+     * stay single topics rather than being subdivided into groupings AQA does
+     * not publish. Six topics would have made the picker useless -- "Algebra"
+     * is a third of the paper -- and inventing subheadings would have put
+     * Jami's structure in front of a student as though it were the board's.
+     *
+     * Cross-checked against a real higher-tier GCSE maths paper before being
+     * marked verified: all 28 questions of Edexcel 1MA1/1H June 2023 map onto
+     * this list with nothing left over. Two sit on a boundary between two of
+     * these topics -- a percentage increase is both Number and Ratio, a
+     * counting problem is both Number and Probability -- which is a tagging
+     * question and not a gap, since a question may carry more than one id.
+     * Three topics that paper never exercises (sequences, vectors, measures
+     * and accuracy) are in the specification and so are here.
+     */
+    specificationId: "8300",
+    version: 1,
+    verified: true,
+    source:
+      "AQA GCSE Mathematics (8300) published subject content, sections 3.1-3.6, " +
+      "read from aqa.org.uk on 2026-09-12. Subsection headings taken from the " +
+      "3.1, 3.2 and 3.4 pages; 3.3, 3.5 and 3.6 publish no subsections. " +
+      "Cross-checked for coverage against Edexcel 1MA1/1H June 2023 (28 of 28 " +
+      "questions map, no gaps).",
+    topics: [
+      { id: "aqa-8300-number-structure-and-calculation", label: "Number: structure and calculation" },
+      {
+        id: "aqa-8300-number-fractions-decimals-and-percentages",
+        label: "Number: fractions, decimals and percentages",
+      },
+      { id: "aqa-8300-number-measures-and-accuracy", label: "Number: measures and accuracy" },
+      {
+        id: "aqa-8300-algebra-notation-vocabulary-and-manipulation",
+        label: "Algebra: notation, vocabulary and manipulation",
+      },
+      { id: "aqa-8300-algebra-graphs", label: "Algebra: graphs" },
+      {
+        id: "aqa-8300-algebra-solving-equations-and-inequalities",
+        label: "Algebra: solving equations and inequalities",
+      },
+      { id: "aqa-8300-algebra-sequences", label: "Algebra: sequences" },
+      {
+        id: "aqa-8300-ratio-proportion-and-rates-of-change",
+        label: "Ratio, proportion and rates of change",
+      },
+      {
+        id: "aqa-8300-geometry-properties-and-constructions",
+        label: "Geometry and measures: properties and constructions",
+      },
+      {
+        id: "aqa-8300-geometry-mensuration-and-calculation",
+        label: "Geometry and measures: mensuration and calculation",
+      },
+      { id: "aqa-8300-geometry-vectors", label: "Geometry and measures: vectors" },
+      { id: "aqa-8300-probability", label: "Probability" },
+      { id: "aqa-8300-statistics", label: "Statistics" },
+    ],
+  },
   {
     specificationId: "8461",
     version: 1,
