@@ -149,7 +149,29 @@ async function loadContext(uid: string, folderId: string) {
   if (!matches.length || (matches.some((item) => item.tier) && !matches.some((item) => item.tier === folder.examCourse!.tier))) {
     throw new ExamQuestionBankError("Choose a current course and tier for this folder.", 409, "course_required");
   }
-  return { folder, subjectKey: normalizeSubjectKey(folder.subject) };
+  /*
+   * The subject the questions were actually filed under, which is the course's
+   * and not the folder's.
+   *
+   * A folder's subject is whatever the student typed -- "gcse maths", "Maths",
+   * "Mathematics Higher" -- and this used to key the question query off it
+   * directly. Questions are filed under the subject printed on the paper, so a
+   * folder reading "gcse maths" searched `gcse-maths` while all 101 published
+   * AQA questions sat under `mathematics`. Nothing matched, and the student was
+   * told their course needed more papers and offered generated questions
+   * instead, which is the coverage-shortage path doing exactly what it should
+   * with a query that could never have returned anything.
+   *
+   * The catalogue entry is the same source the ingestion manifest took its
+   * subject from, so taking it from the course the folder actually selected is
+   * what makes the two halves agree. The folder's own wording remains the
+   * fallback, because a catalogue entry with no subject should not turn a
+   * working folder into an empty one.
+   */
+  const courseSubject = matches
+    .map((item) => (typeof item.subject === "string" ? item.subject.trim() : ""))
+    .find(Boolean);
+  return { folder, subjectKey: normalizeSubjectKey(courseSubject || folder.subject) };
 }
 
 export class ExamQuestionBankError extends Error {

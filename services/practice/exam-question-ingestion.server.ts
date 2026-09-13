@@ -6,7 +6,13 @@ import { generateAiText } from "@/lib/ai/provider-router";
 import { isOfficialExamBoardUrl, type ExamBoardId } from "@/lib/practice/exam-formats";
 import { getExamQuestionRights, isExamQuestionBoardEnabled, isExamQuestionSpecificationEnabled } from "@/lib/practice/exam-question-rights";
 import { canServeExamRights, type ExamPaper } from "@/lib/practice/exam-questions";
-import { servableExamSpecificationTopics } from "@/lib/practice/exam-specification-topics";
+import {
+  QUESTION_EXAMPLE,
+  QUESTION_RULES,
+  SCHEME_EXAMPLE,
+  SCHEME_RULES,
+  topicRulesFor,
+} from "@/lib/practice/exam-extraction-prompt";
 import { parseJsonObject } from "@/services/ai/practice-paper-generation.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { type PdfPageText, type QuestionRegion } from "@/lib/practice/exam-page-regions";
@@ -31,105 +37,6 @@ const MAX_BATCH_OPERATIONS = 400;
 /** Questions per mark-scheme pass, so no one response has to be enormous. */
 const SCHEME_CHUNK_SIZE = 8;
 
-/*
- * The response shape, as one valid JSON document.
- *
- * Two mistakes have been made here already and both cost a live run. First the
- * schema was `{"marking":"additive|pointPool|...",...}` -- a regime name and an
- * ellipsis -- and a real Edexcel paper came back with all 28 questions correct
- * and not one awardable mark point, because nothing said what a point is.
- * Then the field names were added but a sentence of instructions was glued on
- * the end of the object, which put prose inside the JSON example and dropped
- * extraction to zero questions.
- *
- * So: the example is a single valid JSON value and nothing else, built with
- * JSON.stringify so it cannot drift out of shape, and every instruction lives
- * in the prose after it.
- */
-const QUESTION_EXAMPLE = JSON.stringify({
-  identity: { specificationId: "", componentCode: "", year: 0, series: "", paperReference: "" },
-  questions: [{
-    questionNumber: "3(a)",
-    label: "Question 3 (a)",
-    prompt: "the complete candidate-visible wording",
-    marks: 3,
-    questionPage: 1,
-    schemePage: 1,
-    difficulty: "easy|medium|hard",
-    topicIds: [],
-  }],
-}, null, 2);
-
-const SCHEME_EXAMPLE = JSON.stringify({
-  schemes: [{
-    questionNumber: "3(a)",
-    schemeText: "the exact paired scheme text as printed",
-    exampleAnswer: "an answer that would score full marks",
-    markSchemeItem: {
-      marking: "additive|pointPool|banded|weightedTraits|competency",
-      answer: "the full correct answer",
-      acceptableAlternatives: ["other wordings the scheme allows"],
-      commonMistakes: ["what the scheme explicitly rejects"],
-      awardable: 2,
-      points: [{
-        id: "m1",
-        marks: 1,
-        code: "M",
-        text: "exactly what earns this mark, worded as the scheme words it",
-        dep: [],
-        ft: false,
-        essentialTerms: [],
-        allow: [],
-        reject: [],
-        expected: "the value or expression expected, for a quantitative mark",
-      }],
-      bands: [{ id: "L1", label: "Level 1", minMarks: 1, maxMarks: 2, descriptor: "band descriptor" }],
-    },
-  }],
-}, null, 2);
-
-const QUESTION_RULES = [
-  "Return one JSON object of exactly that shape and nothing else.",
-  "Include every question on the paper, including ones that depend on a figure.",
-  "Use the exact question labels and tariffs printed on the paper.",
-  "questionPage is the page the question is printed on; schemePage is the page of the mark scheme document that marks it.",
-].join(" ");
-
-/**
- * The topic ids this paper's specification actually names.
- *
- * Without this the model was asked for `topicIds` and never told what they
- * were, so it invented plausible-looking strings and `filterCanonicalTopicIds`
- * dropped every one of them -- which is why every question in the corpus is
- * stored with an empty list. A closed list costs nothing to send and is the
- * difference between the field working and the field being theatre.
- *
- * A specification with no checked catalogue says so plainly and asks for none,
- * rather than inviting guesses that are going to be discarded anyway.
- */
-function topicRulesFor(specificationId: string) {
-  const catalogue = servableExamSpecificationTopics(specificationId);
-  if (!catalogue) {
-    return "Leave topicIds as an empty array: this specification has no checked topic list.";
-  }
-  const list = catalogue.topics.map((topic) => `${topic.id} (${topic.label})`).join("; ");
-  return [
-    "For topicIds choose only from this list, using the id exactly as written:",
-    `${list}.`,
-    "Give one or two ids per question, whichever the question genuinely tests.",
-    "Never invent an id, and leave the array empty rather than guess.",
-  ].join(" ");
-}
-
-const SCHEME_RULES = [
-  "Return one JSON object of exactly that shape and nothing else.",
-  "Use \"points\" for additive and pointPool marking, and \"bands\" for banded marking. Omit whichever does not apply.",
-  "For additive marking the points must add up to the question tariff, and awardable does not apply.",
-  "For pointPool marking -- a scheme reading \"any two from\" -- give every listed point at equal value, and set awardable to how many of them a student may be credited.",
-  "Every question must carry at least one point or band.",
-  "code is M for method, A for accuracy, B for an independent mark, C for communication.",
-  "Give one entry for each question number you were asked about, and no others.",
-].join(" ");
 
 
 async function downloadPdf(board: ExamBoardId, url: string) {

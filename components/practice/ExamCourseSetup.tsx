@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button, Card, FeedbackBanner, Select } from "@/components/ui";
-import { EXAM_BOARD_LABELS, isExamQualification, type ExamBoardId } from "@/lib/practice/exam-formats";
+import { EXAM_BOARDS_OFFERED, EXAM_BOARD_LABELS, isExamQualification, type ExamBoardId } from "@/lib/practice/exam-formats";
 import { buildExamCourseSelection } from "@/lib/practice/exam-questions";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getExamCourseOptions } from "@/services/study/exam-practice";
@@ -129,9 +129,9 @@ export default function ExamCourseSetup({
         onChange={(event) => setBoard(event.target.value as ExamBoardId | "")}
       >
         <option value="">Choose your board</option>
-        {Object.entries(EXAM_BOARD_LABELS).map(([id, label]) => (
+        {EXAM_BOARDS_OFFERED.map((id) => (
           <option key={id} value={id}>
-            {label}
+            {EXAM_BOARD_LABELS[id]}
           </option>
         ))}
       </Select>

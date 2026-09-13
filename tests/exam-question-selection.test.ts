@@ -196,3 +196,89 @@ describe("counting the questions a folder can draw on", () => {
     expect(reads.filter((read) => read.path === "examQuestions").length).toBeLessThanOrEqual(75);
   });
 });
+
+/**
+ * The subject a folder searches under, which is the course's and not its own.
+ *
+ * A real AQA GCSE maths folder found none of the 101 published questions and
+ * was offered generated ones instead. The folder's subject read "gcse maths",
+ * because that is what the student typed; the questions were filed under the
+ * subject printed on the paper, "Mathematics". The query asked for
+ * `gcse-maths`, the corpus held `mathematics`, and the coverage-shortage path
+ * then did exactly what it should with a query that could never match.
+ *
+ * The fixtures above never caught it because their folder says "Biology" and
+ * their questions say "biology", which agree by luck of wording.
+ */
+describe("a folder whose subject is not written the way the paper writes it", () => {
+  beforeEach(() => {
+    collections.set("users/student-1/studyFolders", [
+      {
+        id: "folder-maths",
+        data: {
+          name: "Maths",
+          subject: "gcse maths",
+          studyLevel: "gcse-equivalent",
+          examCourse: { ...COURSE, specificationId: "8300", specificationTitle: "GCSE Mathematics (8300)", tier: "higher" },
+        },
+      },
+    ]);
+    collections.set("examFormatCatalogue", [
+      {
+        id: "aqa-8300",
+        data: {
+          board: "aqa", status: "current", qualification: "gcse",
+          specificationCode: "8300", tier: "higher", subject: "Mathematics",
+        },
+      },
+    ]);
+    collections.set("examQuestions", Array.from({ length: 4 }, (_unused, index) =>
+      question(index, {
+        subjectKey: "mathematics",
+        tier: "higher",
+        provenance: {
+          board: "aqa", qualification: "gcse", specificationId: "8300",
+          componentCode: "8300/1H", boardLabel: "AQA",
+          specificationTitle: "GCSE Mathematics (8300)", componentTitle: "Paper 1 Higher",
+        },
+      })
+    ));
+  });
+
+  it("finds the questions the paper filed under its own subject", async () => {
+    const availability = await getExamQuestionAvailability({ uid: "student-1", folderId: "folder-maths" });
+
+    expect(availability.counts.medium).toBe(4);
+  });
+
+  it("searches the subject the course names, not the words the student typed", async () => {
+    await getExamQuestionAvailability({ uid: "student-1", folderId: "folder-maths" });
+
+    expect(reads.some((read) => read.path === "examQuestions" && read.size > 0)).toBe(true);
+  });
+
+  /*
+   * A catalogue entry that names no subject must not empty a folder that was
+   * working: the student's own wording stays the fallback.
+   */
+  it("falls back to the folder's own subject when the course names none", async () => {
+    collections.set("examFormatCatalogue", [
+      { id: "aqa-8300", data: { board: "aqa", status: "current", qualification: "gcse", specificationCode: "8300", tier: "higher" } },
+    ]);
+    collections.set("examQuestions", Array.from({ length: 2 }, (_unused, index) =>
+      question(index, {
+        subjectKey: "gcse-maths",
+        tier: "higher",
+        provenance: {
+          board: "aqa", qualification: "gcse", specificationId: "8300",
+          componentCode: "8300/1H", boardLabel: "AQA",
+          specificationTitle: "GCSE Mathematics (8300)", componentTitle: "Paper 1 Higher",
+        },
+      })
+    ));
+
+    const availability = await getExamQuestionAvailability({ uid: "student-1", folderId: "folder-maths" });
+
+    expect(availability.counts.medium).toBe(2);
+  });
+});

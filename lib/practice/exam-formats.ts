@@ -45,6 +45,36 @@ export const EXAM_BOARD_LABELS: Record<ExamBoardId, string> = {
   ib: "International Baccalaureate",
 };
 
+/**
+ * The boards a student is offered when setting a course up.
+ *
+ * Every board above is one this codebase can read papers from, which is not the
+ * same as one we are rolling out to students. Offering all eleven asked a
+ * sixteen-year-old to pick their board from a list that included four
+ * international awarding bodies they have never sat, and eight of the eleven
+ * had no catalogue entry behind them -- so the honest answers were "AQA" and,
+ * for everyone else, an empty course dropdown.
+ *
+ * The line drawn here is UK school qualifications: the five England and Wales
+ * boards plus the Northern Ireland and Scotland awarding bodies. The
+ * international boards stay defined and stay readable, because the corpus
+ * tooling and the rights records still name them; they are simply not offered
+ * until there is something behind them to offer.
+ *
+ * This is a rollout choice and not a permission. `isExamQuestionBoardEnabled`
+ * remains the gate on serving a question, and a board appearing here has not
+ * been approved for anything by appearing here.
+ */
+export const EXAM_BOARDS_OFFERED: readonly ExamBoardId[] = [
+  "aqa",
+  "pearson_edexcel",
+  "ocr",
+  "eduqas",
+  "wjec",
+  "ccea",
+  "qualifications_scotland",
+];
+
 export function isExamBoardId(value: unknown): value is ExamBoardId {
   return typeof value === "string" && value in EXAM_BOARD_LABELS;
 }
