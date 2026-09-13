@@ -15,6 +15,7 @@ import {
   type ExamCoverageShortage,
 } from "@/services/study/exam-practice";
 import ExamCourseSetup from "@/components/practice/ExamCourseSetup";
+import CreateFolderDialog from "@/components/workspace/CreateFolderDialog";
 
 const DIFFICULTIES: Array<{ id: ExamDifficulty; label: string; note: string }> = [
   { id: "easy", label: "Easy", note: "Things everyone on the course should know" },
@@ -69,7 +70,9 @@ export default function ExamSessionSetup({
   const [starting, setStarting] = useState(false);
   const [shortage, setShortage] = useState<ExamCoverageShortage | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [courseRevision, setCourseRevision] = useState(0);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -111,6 +114,43 @@ export default function ExamSessionSetup({
   const total = totalOf(mix);
   const selectedFolder = folders.find((folder) => folder.id === folderId);
   const ready = Boolean(folderId && selectedFolder?.examCourse && total > 0);
+
+  const selectFolder = (id: string) => {
+    setFolderId(id);
+    setTopicIds([]);
+    setTopics([]);
+    setCalculator("any");
+    setShortage(null);
+  };
+
+  /*
+   * A folder made here is practised here. Its level and course are asked as
+   * it is created, so a school folder arrives ready to pick; any other level
+   * cannot draw exam questions, which is said rather than silently ignored.
+   */
+  const handleFolderCreated = (folder: StudyFolder) => {
+    if (!examBoardAppliesTo(folder.studyLevel)) {
+      setNotice(
+        `“${folder.name}” was created. Set its level to School, GCSE or A level to practise it here.`
+      );
+      return;
+    }
+    setFolders((current) => [folder, ...current.filter((item) => item.id !== folder.id)]);
+    selectFolder(folder.id);
+  };
+
+  const createFolderDialog = (
+    <CreateFolderDialog
+      open={createFolderOpen}
+      userId={user.uid}
+      onClose={() => setCreateFolderOpen(false)}
+      onCreated={handleFolderCreated}
+    />
+  );
+
+  const noticeBanner = notice ? (
+    <FeedbackBanner type="success" message={notice} onDismiss={() => setNotice("")} />
+  ) : null;
 
   const change = (difficulty: ExamDifficulty, delta: number) => {
     setShortage(null);
@@ -160,10 +200,19 @@ export default function ExamSessionSetup({
 
   if (folders.length === 0) {
     return (
-      <EmptyState
-        title="No school folders yet"
-        description="Past Paper Practice works inside a folder set to GCSE, National 5, Higher or A level. Set a folder's study level and exam course, then come back."
-      />
+      <div className="space-y-5">
+        {createFolderDialog}
+        {noticeBanner}
+        <EmptyState
+          title="No school folders yet"
+          description="Past Paper Practice works inside a School, GCSE or A level folder. Create one and choose your exam board and course as you go."
+          action={
+            <Button type="button" onClick={() => setCreateFolderOpen(true)}>
+              Create folder
+            </Button>
+          }
+        />
+      </div>
     );
   }
 
@@ -174,7 +223,9 @@ export default function ExamSessionSetup({
 
   return (
     <div className="space-y-5">
+      {createFolderDialog}
       {error ? <FeedbackBanner type="error" message={error} onDismiss={() => setError("")} /> : null}
+      {noticeBanner}
 
       <Card tone="warm" padding="lg">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
@@ -186,26 +237,30 @@ export default function ExamSessionSetup({
         <p className="mt-2 max-w-xl text-sm leading-6 text-text-muted">
           A short set of real questions, marked one at a time with the official scheme.
         </p>
-        <Select
-          label="Study folder"
-          value={folderId}
-          containerClassName="mt-6 max-w-xl"
-          onChange={(event) => {
-            setFolderId(event.target.value);
-            setTopicIds([]);
-            setTopics([]);
-            setCalculator("any");
-            setShortage(null);
-          }}
-        >
-          <option value="">Choose a folder</option>
-          {folders.map((folder) => (
-            <option key={folder.id} value={folder.id}>
-              {folder.name}
-              {folder.subject ? ` · ${folder.subject}` : ""}
-            </option>
-          ))}
-        </Select>
+        <div className="mt-6 flex max-w-xl flex-col gap-2 sm:flex-row sm:items-end">
+          <Select
+            label="Study folder"
+            value={folderId}
+            containerClassName="min-w-0 flex-1"
+            onChange={(event) => selectFolder(event.target.value)}
+          >
+            <option value="">Choose a folder</option>
+            {folders.map((folder) => (
+              <option key={folder.id} value={folder.id}>
+                {folder.name}
+                {folder.subject ? ` · ${folder.subject}` : ""}
+              </option>
+            ))}
+          </Select>
+          <Button
+            type="button"
+            variant="secondary"
+            className="sm:min-h-[3.25rem]"
+            onClick={() => setCreateFolderOpen(true)}
+          >
+            New folder
+          </Button>
+        </div>
       </Card>
 
       {selectedFolder && !selectedFolder.examCourse ? (

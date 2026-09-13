@@ -281,4 +281,28 @@ describe("a folder whose subject is not written the way the paper writes it", ()
 
     expect(availability.counts.medium).toBe(2);
   });
+
+  /*
+   * The subject detail is optional. A folder given a board, course and tier
+   * with nothing typed in that box was refused as having no course, and the
+   * only way through was typing the course into it.
+   */
+  it("practises a folder whose subject detail was left empty", async () => {
+    collections.set("users/student-1/studyFolders", [
+      {
+        id: "folder-maths",
+        data: {
+          name: "Maths",
+          studyLevel: "gcse-equivalent",
+          // "Higher" as the picker names it, against "higher" in the catalogue and on the questions.
+          examCourse: { ...COURSE, specificationId: "8300", specificationTitle: "GCSE Mathematics", tier: "Higher" },
+        },
+      },
+    ]);
+
+    const availability = await getExamQuestionAvailability({ uid: "student-1", folderId: "folder-maths" });
+
+    expect(availability.counts.medium).toBe(4);
+    expect(availability.folder.subject).toBe("Mathematics");
+  });
 });

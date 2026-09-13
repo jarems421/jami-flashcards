@@ -51,3 +51,20 @@ export function examCourseTiers(
     .map((name) => ({ name, componentIds: [] }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/**
+ * Whether two spellings name the same tier.
+ *
+ * The picker names a tier from its component titles ("Higher"), while the
+ * catalogue and ingested questions carry whatever their source wrote --
+ * "higher", "Higher Tier". Compared exactly, a Higher student's course could
+ * fail the catalogue check or match none of its own questions.
+ */
+export function sameExamTier(left: unknown, right: unknown) {
+  const normalize = (value: unknown) =>
+    typeof value === "string"
+      ? value.trim().toLowerCase().replace(/\s+tier$/, "")
+      : "";
+  const tier = normalize(left);
+  return tier !== "" && tier === normalize(right);
+}

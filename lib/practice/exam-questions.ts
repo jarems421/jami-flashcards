@@ -9,6 +9,7 @@ import {
   type PracticePaperMarkerCheckpoints,
 } from "@/lib/practice/marker-stages";
 import type { ExamBoardId, ExamQualification } from "@/lib/practice/exam-formats";
+import { sameExamTier } from "@/lib/practice/exam-course-tiers";
 import type { StudyLevel } from "@/lib/profile/study-level";
 
 export type ExamDifficulty = "easy" | "medium" | "hard";
@@ -539,7 +540,7 @@ export function questionMatchesExamCourse(question: ExamQuestion, course: ExamCo
     question.provenance.board === course.board &&
     question.provenance.qualification === course.qualification &&
     question.provenance.specificationId === course.specificationId &&
-    (!question.tier || question.tier === course.tier) &&
+    (!question.tier || sameExamTier(question.tier, course.tier)) &&
     (course.componentIds.length === 0 || course.componentIds.includes(question.provenance.componentCode));
 }
 

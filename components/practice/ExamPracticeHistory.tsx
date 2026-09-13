@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, Card, EmptyState, FeedbackBanner, Skeleton } from "@/components/ui";
+import { examCourseName } from "@/lib/practice/exam-course-names";
 import { EXAM_BOARD_LABELS } from "@/lib/practice/exam-formats";
 import type { ExamSession } from "@/lib/practice/exam-questions";
 import { listPastPaperPracticeSessions } from "@/services/study/exam-practice";
@@ -109,11 +110,12 @@ export default function ExamPracticeHistory({
                     {session.folderName} · {dateLabel(session.updatedAt)}
                   </p>
                   <h2 className="mt-2 truncate text-lg font-semibold text-text-primary">
-                    {session.subject}
+                    {examCourseName(session.course)}
                   </h2>
                   <p className="mt-1 truncate text-sm text-text-secondary">
-                    {EXAM_BOARD_LABELS[session.course.board] ?? session.course.board} ·{" "}
-                    {session.course.specificationTitle}
+                    {[EXAM_BOARD_LABELS[session.course.board] ?? session.course.board, session.course.tier]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                 </div>
                 <span

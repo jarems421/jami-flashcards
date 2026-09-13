@@ -10,11 +10,16 @@ import type { StudyFolder } from "@/lib/workspace/study-folders";
 const serviceMocks = vi.hoisted(() => ({
   archiveStudyFolder: vi.fn(),
   updateStudyFolder: vi.fn(),
+  getExamCourseOptions: vi.fn(),
 }));
 
 vi.mock("@/services/study/folders", () => ({
   archiveStudyFolder: serviceMocks.archiveStudyFolder,
   updateStudyFolder: serviceMocks.updateStudyFolder,
+}));
+
+vi.mock("@/services/study/exam-practice", () => ({
+  getExamCourseOptions: serviceMocks.getExamCourseOptions,
 }));
 
 let container: HTMLDivElement;
@@ -93,6 +98,7 @@ async function click(target: HTMLButtonElement) {
 beforeEach(() => {
   serviceMocks.archiveStudyFolder.mockReset().mockResolvedValue(undefined);
   serviceMocks.updateStudyFolder.mockReset().mockResolvedValue(undefined);
+  serviceMocks.getExamCourseOptions.mockReset().mockResolvedValue([]);
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -147,6 +153,43 @@ describe("FolderEditor", () => {
     );
     expect(onError).not.toHaveBeenCalled();
     expect(onArchived).not.toHaveBeenCalled();
+  });
+
+  it("keeps a saved exam course when only the name changes", async () => {
+    const onSaved = vi.fn();
+    const examCourse = {
+      board: "aqa" as const,
+      qualification: "gcse" as const,
+      specificationId: "8300",
+      specificationTitle: "Mathematics",
+      tier: "Higher",
+      componentIds: ["8300/1H"],
+    };
+    // The catalogue no longer lists the course; renaming must not drop it.
+    await render(
+      <FolderEditor
+        userId="user-1"
+        folder={{ ...folder, studyLevel: "gcse-equivalent", examCourse }}
+        onSaved={onSaved}
+        onArchived={vi.fn()}
+        onCancel={vi.fn()}
+        onError={vi.fn()}
+      />
+    );
+    await act(async () => {});
+
+    expect(selectField("Course")?.value).toBe("8300");
+    type(field("Folder name")!, "Maths");
+    await click(button("Save folder")!);
+
+    expect(serviceMocks.updateStudyFolder).toHaveBeenCalledWith(
+      "user-1",
+      "folder-1",
+      expect.objectContaining({ name: "Maths", examCourse })
+    );
+    expect(onSaved).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Maths", examCourse })
+    );
   });
 
   it("archives only after confirmation and reports completion", async () => {

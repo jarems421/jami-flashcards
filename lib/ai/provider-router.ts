@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { AiAbortError } from "@/lib/ai/abort";
+import { estimateAiInputTokens } from "@/lib/ai/input-token-estimate";
 import { getAiSpendContext } from "@/lib/ai/spend-context";
 import { createLogger } from "@/lib/observability/logger";
 import {
@@ -617,12 +618,7 @@ export async function countAiInputTokens(input: {
   role?: AiGenerationRole;
 }) {
   // This conservative provider-neutral estimate is a preflight guard. The
-  // selected provider still enforces its own context window.
-  const characters = (input.request.systemInstruction?.length ?? 0) +
-    input.request.contents.reduce((total, message) => total +
-      message.parts.reduce((sum, part) => sum +
-        ("text" in part
-          ? part.text.length
-          : Math.ceil(part.inlineData.data.length * 0.75)), 0), 0);
-  return Math.ceil(characters / 3.5);
+  // selected provider still enforces its own context window. Images are counted
+  // by their pixels, not their bytes -- see `estimateAiInputTokens`.
+  return estimateAiInputTokens(input.request);
 }

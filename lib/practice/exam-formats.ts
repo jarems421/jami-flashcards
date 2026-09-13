@@ -55,11 +55,12 @@ export const EXAM_BOARD_LABELS: Record<ExamBoardId, string> = {
  * had no catalogue entry behind them -- so the honest answers were "AQA" and,
  * for everyone else, an empty course dropdown.
  *
- * The line drawn here is UK school qualifications: the five England and Wales
- * boards plus the Northern Ireland and Scotland awarding bodies. The
- * international boards stay defined and stay readable, because the corpus
- * tooling and the rights records still name them; they are simply not offered
- * until there is something behind them to offer.
+ * The line drawn here is England's three largest boards, which are the ones
+ * the corpus is being built for. Offering Eduqas, WJEC, CCEA and the Scottish
+ * body as well promised courses nobody is supporting yet. Every other board
+ * stays defined and readable, because the corpus tooling and the rights records
+ * still name them, and a folder already saved against one keeps it; they are
+ * simply not offered to new choices.
  *
  * This is a rollout choice and not a permission. `isExamQuestionBoardEnabled`
  * remains the gate on serving a question, and a board appearing here has not
@@ -67,12 +68,8 @@ export const EXAM_BOARD_LABELS: Record<ExamBoardId, string> = {
  */
 export const EXAM_BOARDS_OFFERED: readonly ExamBoardId[] = [
   "aqa",
-  "pearson_edexcel",
   "ocr",
-  "eduqas",
-  "wjec",
-  "ccea",
-  "qualifications_scotland",
+  "pearson_edexcel",
 ];
 
 export function isExamBoardId(value: unknown): value is ExamBoardId {

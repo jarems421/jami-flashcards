@@ -104,6 +104,7 @@ export function buildStudyFolderPayload(
     color?: string;
     icon?: string;
     topicIds?: string[];
+    studyLevel?: StudyLevel | null;
     examCourse?: ExamCourseSelection;
     now?: number;
   }
@@ -125,6 +126,7 @@ export function buildStudyFolderPayload(
       MAX_STUDY_FOLDER_TOPIC_IDS,
       120
     ),
+    studyLevel: normalizeStudyLevel(input.studyLevel) ?? null,
     examCourse: input.examCourse ?? null,
     archived: false,
     createdAt: now,

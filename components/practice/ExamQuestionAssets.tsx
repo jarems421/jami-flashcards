@@ -5,6 +5,7 @@ import { Button, Dialog } from "@/components/ui";
 import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
 import ExamPrivateImage from "@/components/practice/ExamPrivateImage";
 import PracticePaperAssets from "@/components/practice/PracticePaperAssets";
+import { EXAM_PRINTED_QUESTION_ASSET_ID } from "@/lib/practice/exam-question-display";
 
 /**
  * A question's figures, at a size a student can actually read.
@@ -46,28 +47,47 @@ export default function ExamQuestionAssets({
   return (
     <>
       {structured.length ? <PracticePaperAssets assets={structured} /> : null}
-      {images.map((asset) => (
-        <figure key={`${questionId}:${asset.id}`} className="mt-3">
-          <ExamPrivateImage
-            alt={asset.altText}
-            className="max-h-[34rem]"
-            path={pathFor(asset)}
-          />
-          <figcaption className="mt-1.5 flex justify-end">
+      {/*
+        * Each image sits on its own white sheet, as it was printed, with the
+        * enlarge control in its corner rather than a line of its own under it.
+        * The printed question is the question, so it is never height-capped.
+        */}
+      {images.map((asset) => {
+        const printed = asset.id === EXAM_PRINTED_QUESTION_ASSET_ID;
+        return (
+          <figure
+            key={`${questionId}:${asset.id}`}
+            className="group relative mt-4 overflow-hidden rounded-xl border border-[var(--color-border)] bg-white"
+          >
+            <ExamPrivateImage
+              alt={asset.altText}
+              imageClassName={`rounded-none ${printed ? "" : "max-h-[34rem]"}`}
+              path={pathFor(asset)}
+            />
             <Button
               type="button"
-              size="sm"
-              variant="ghost"
+              size="icon"
+              variant="surface"
+              aria-label={printed ? "Enlarge question" : `Enlarge ${asset.title ? asset.title.toLowerCase() : "figure"}`}
+              className="absolute right-2 top-2 !h-9 !w-9 opacity-90 transition-opacity group-hover:opacity-100"
               onClick={() => {
                 setEnlarged(asset);
                 setZoom(0);
               }}
             >
-              Enlarge{asset.title ? ` ${asset.title.toLowerCase()}` : " figure"}
+              <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" className="h-4 w-4">
+                <path
+                  d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </Button>
-          </figcaption>
-        </figure>
-      ))}
+          </figure>
+        );
+      })}
 
       <Dialog
         open={Boolean(enlarged)}

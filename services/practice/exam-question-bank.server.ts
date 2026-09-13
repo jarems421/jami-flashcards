@@ -15,6 +15,8 @@ import {
   type ExamCalculatorChoice,
 } from "@/lib/practice/exam-questions";
 import { isExamQuestionServable } from "@/lib/practice/exam-question-rights";
+import { examSubjectFromTitle } from "@/lib/practice/exam-course-names";
+import { sameExamTier } from "@/lib/practice/exam-course-tiers";
 import {
   filterCanonicalTopicIds,
   servableExamSpecificationTopics,
@@ -139,14 +141,20 @@ async function loadContext(uid: string, folderId: string) {
   if (!folder.studyLevel || !examBoardAppliesTo(folder.studyLevel)) {
     throw new ExamQuestionBankError("Past Paper Practice is for school qualifications.", 400, "unsupported_level");
   }
-  if (!folder.subject || !folder.examCourse) {
+  /*
+   * The course is what practice needs; the subject detail is the student's own
+   * optional note. Requiring both refused a folder with a board, course and
+   * tier as having no course until something was typed into that box -- and
+   * typing "AQA Mathematics" there was the only way through.
+   */
+  if (!folder.examCourse) {
     throw new ExamQuestionBankError("Add this folder's exam course first.", 409, "course_required");
   }
   const catalogue = await getAdminDb().collection("examFormatCatalogue").where("board", "==", folder.examCourse.board).limit(300).get();
   const matches = catalogue.docs.map((doc) => doc.data()).filter((item) =>
     item.status === "current" && item.qualification === folder.examCourse!.qualification &&
     item.specificationCode === folder.examCourse!.specificationId);
-  if (!matches.length || (matches.some((item) => item.tier) && !matches.some((item) => item.tier === folder.examCourse!.tier))) {
+  if (!matches.length || (matches.some((item) => item.tier) && !matches.some((item) => sameExamTier(item.tier, folder.examCourse!.tier)))) {
     throw new ExamQuestionBankError("Choose a current course and tier for this folder.", 409, "course_required");
   }
   /*
@@ -166,12 +174,18 @@ async function loadContext(uid: string, folderId: string) {
    * subject from, so taking it from the course the folder actually selected is
    * what makes the two halves agree. The folder's own wording remains the
    * fallback, because a catalogue entry with no subject should not turn a
-   * working folder into an empty one.
+   * working folder into an empty one -- and where there is no wording either,
+   * the course's own title with its board and qualification taken off.
    */
   const courseSubject = matches
     .map((item) => (typeof item.subject === "string" ? item.subject.trim() : ""))
     .find(Boolean);
-  return { folder, subjectKey: normalizeSubjectKey(courseSubject || folder.subject) };
+  const subject =
+    courseSubject ||
+    folder.subject ||
+    examSubjectFromTitle(folder.examCourse.specificationTitle) ||
+    folder.examCourse.specificationTitle;
+  return { folder, subject, subjectKey: normalizeSubjectKey(subject) };
 }
 
 export class ExamQuestionBankError extends Error {
@@ -219,7 +233,7 @@ export async function getExamQuestionAvailability(input: {
   topicIds?: string[];
   calculator?: ExamCalculatorChoice;
 }) {
-  const { folder, subjectKey } = await loadContext(input.uid, input.folderId);
+  const { folder, subject, subjectKey } = await loadContext(input.uid, input.folderId);
   const topicIds = canonicalTopicIds(folder.examCourse!.specificationId, input.topicIds ?? []);
   /*
    * A session holds at most twenty questions, so counting past that answers
@@ -257,7 +271,7 @@ export async function getExamQuestionAvailability(input: {
     folder: {
       id: folder.id,
       name: folder.name,
-      subject: folder.subject,
+      subject,
       studyLevel: folder.studyLevel,
       course: folder.examCourse,
     },
@@ -291,7 +305,7 @@ export async function createExamSession(input: {
   if (total < 1 || total > EXAM_SESSION_MAX_QUESTIONS) {
     throw new ExamQuestionBankError("Choose between 1 and 20 questions.", 400, "invalid_mix");
   }
-  const { folder, subjectKey } = await loadContext(input.uid, input.folderId);
+  const { folder, subject, subjectKey } = await loadContext(input.uid, input.folderId);
   // Checked once, here, rather than trusted from the request. A narrowed
   // session built on an id nobody recognises is an empty session.
   const topicIds = canonicalTopicIds(folder.examCourse!.specificationId, input.topicIds ?? []);
@@ -323,7 +337,7 @@ export async function createExamSession(input: {
   }
   if (Object.keys(missing).length > 0) {
     if (input.allowGenerated) {
-      selected.push(...await generateExamGapQuestions({ uid: input.uid, subject: folder.subject!, subjectKey, studyLevel: folder.studyLevel!, course: folder.examCourse!, missing, topicIds }));
+      selected.push(...await generateExamGapQuestions({ uid: input.uid, subject, subjectKey, studyLevel: folder.studyLevel!, course: folder.examCourse!, missing, topicIds }));
     } else if (input.useAvailableOnly && selected.length > 0) {
       // Starting short is a choice the student made, so the session records the
       // mix it actually holds rather than the one that was asked for.
@@ -359,7 +373,7 @@ export async function createExamSession(input: {
     userId: input.uid,
     folderId: folder.id,
     folderName: folder.name,
-    subject: folder.subject!,
+    subject,
     studyLevel: folder.studyLevel!,
     course: folder.examCourse!,
     requestedMix,

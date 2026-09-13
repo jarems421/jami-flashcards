@@ -4,12 +4,30 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CreateFolderDialog from "@/components/workspace/CreateFolderDialog";
+import type { ExamCourseOption } from "@/lib/practice/exam-course-form";
 
 const createStudyFolder = vi.fn();
+const getExamCourseOptions = vi.fn();
 
 vi.mock("@/services/study/folders", () => ({
   createStudyFolder: (...a: unknown[]) => createStudyFolder(...a),
 }));
+
+vi.mock("@/services/study/exam-practice", () => ({
+  getExamCourseOptions: (...a: unknown[]) => getExamCourseOptions(...a),
+}));
+
+const GCSE_MATHS: ExamCourseOption = {
+  specificationId: "8300",
+  specificationTitle: "Mathematics",
+  qualification: "gcse",
+  qualificationLabel: "GCSE",
+  componentIds: ["8300/1F", "8300/1H"],
+  tiers: [
+    { name: "Foundation", componentIds: ["8300/1F"] },
+    { name: "Higher", componentIds: ["8300/1H"] },
+  ],
+};
 
 let container: HTMLDivElement;
 let root: Root;
@@ -36,6 +54,21 @@ const nameField = () =>
 const submitButton = () =>
   document.querySelector<HTMLButtonElement>("button[type=submit]");
 
+function labelled<Element extends HTMLElement>(label: string) {
+  const labelElement = [...document.querySelectorAll("label")].find(
+    (element) => element.textContent === label
+  );
+  return labelElement
+    ? (document.getElementById(labelElement.htmlFor) as Element | null)
+    : null;
+}
+
+function radio(label: string) {
+  return [...document.querySelectorAll<HTMLButtonElement>("[role=radio]")].find(
+    (candidate) => candidate.textContent?.trim() === label
+  );
+}
+
 function type(field: HTMLInputElement, value: string) {
   act(() => {
     Object.getOwnPropertyDescriptor(
@@ -43,6 +76,16 @@ function type(field: HTMLInputElement, value: string) {
       "value"
     )?.set?.call(field, value);
     field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+function choose(field: HTMLSelectElement, value: string) {
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLSelectElement.prototype,
+      "value"
+    )?.set?.call(field, value);
+    field.dispatchEvent(new Event("change", { bubbles: true }));
   });
 }
 
@@ -56,6 +99,7 @@ async function submit() {
 
 beforeEach(() => {
   createStudyFolder.mockReset().mockResolvedValue({ id: "folder-1" });
+  getExamCourseOptions.mockReset().mockResolvedValue([GCSE_MATHS]);
   onClose.mockClear();
   onCreated.mockClear();
   container = document.createElement("div");
@@ -103,7 +147,66 @@ describe("CreateFolderDialog", () => {
     expect(createStudyFolder.mock.calls[0]?.[1]).toMatchObject({
       name: "Physics",
     });
+    // Nothing chosen means nothing written, not an empty course.
+    expect(createStudyFolder.mock.calls[0]?.[1]).not.toHaveProperty("studyLevel");
+    expect(createStudyFolder.mock.calls[0]?.[1]).not.toHaveProperty("examCourse");
     expect(onCreated).toHaveBeenCalledWith({ id: "folder-1" });
+  });
+
+  it("saves the level, course and tier chosen while creating", async () => {
+    await render();
+    type(nameField()!, "Maths");
+    expect(labelled("Exam board")).toBeNull();
+
+    choose(labelled<HTMLSelectElement>("Study level")!, "gcse-equivalent");
+    expect(
+      [...labelled<HTMLSelectElement>("Exam board")!.options].map((option) => option.textContent)
+    ).toEqual(["Choose board", "AQA", "OCR", "Pearson Edexcel"]);
+    choose(labelled<HTMLSelectElement>("Exam board")!, "aqa");
+    await act(async () => {});
+    expect(getExamCourseOptions).toHaveBeenCalledWith({ board: "aqa" });
+
+    const course = labelled<HTMLSelectElement>("Course")!;
+    // Named the way a student says it: no code, no qualification twice.
+    expect([...course.options].map((option) => option.textContent)).toContain("GCSE Maths");
+    choose(course, "8300");
+    // A tiered course is not a course until the tier is chosen.
+    expect(submitButton()?.disabled).toBe(true);
+    expect(document.body.textContent).toContain("Choose your tier");
+
+    await act(async () => {
+      radio("Higher")!.click();
+    });
+    expect(submitButton()?.disabled).toBe(false);
+    expect(document.body.textContent).toContain("AQA · GCSE Maths · Higher");
+
+    await submit();
+    expect(createStudyFolder.mock.calls[0]?.[1]).toMatchObject({
+      name: "Maths",
+      studyLevel: "gcse-equivalent",
+      examCourse: {
+        board: "aqa",
+        qualification: "gcse",
+        specificationId: "8300",
+        specificationTitle: "Mathematics",
+        tier: "Higher",
+        componentIds: ["8300/1H"],
+      },
+    });
+  });
+
+  it("does not ask for an exam course outside school levels", async () => {
+    await render();
+    choose(labelled<HTMLSelectElement>("Study level")!, "undergraduate");
+    expect(labelled("Exam board")).toBeNull();
+
+    type(nameField()!, "Law");
+    await submit();
+    expect(createStudyFolder.mock.calls[0]?.[1]).toMatchObject({
+      name: "Law",
+      studyLevel: "undergraduate",
+    });
+    expect(createStudyFolder.mock.calls[0]?.[1]).not.toHaveProperty("examCourse");
   });
 
   it("cannot be submitted twice from the button", async () => {
@@ -116,9 +219,8 @@ describe("CreateFolderDialog", () => {
     await render();
     type(nameField()!, "Physics");
 
-    // Note the guard here is structural: handleSubmit has no `saving` check,
-    // so it is the disabled fieldset that stops a second press. Removing that
-    // fieldset would create the folder twice.
+    // The submit button sits in the sticky footer, outside the fieldset, so
+    // it is its own disabled state that stops a second press.
     await act(async () => {
       submitButton()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });

@@ -8,6 +8,7 @@ import {
   Card,
   ConfirmDialog,
   FeedbackBanner,
+  ProgressBar,
   Select,
   Skeleton,
   StudyText,
@@ -29,6 +30,7 @@ import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import ExamQuestionAssets from "@/components/practice/ExamQuestionAssets";
+import { examQuestionShowsPrintedPage } from "@/lib/practice/exam-question-display";
 import ExamScratchpad, { type ExamScratchpadHandle } from "@/components/practice/ExamScratchpad";
 import ExamQuestionMarkReport from "@/components/practice/ExamQuestionMarkReport";
 import { requireExamWorkingSnapshot } from "@/lib/practice/exam-working";
@@ -112,15 +114,17 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
    * fullscreen working sheet into the answer box underneath it.
    */
   useEffect(() => {
-    const main = document.getElementById("exam-session-main");
+    // The question and the answer sit in different columns from the sheet, so
+    // each is marked rather than hiding a shared parent that holds the sheet.
+    const behind = Array.from(document.querySelectorAll<HTMLElement>("[data-behind-working]"));
     if (!showWorking) {
-      main?.removeAttribute("aria-hidden");
+      behind.forEach((element) => element.removeAttribute("aria-hidden"));
       focusBeforeWorking.current?.focus?.();
       focusBeforeWorking.current = null;
       return;
     }
     focusBeforeWorking.current = document.activeElement as HTMLElement | null;
-    main?.setAttribute("aria-hidden", "true");
+    behind.forEach((element) => element.setAttribute("aria-hidden", "true"));
     const frame = window.requestAnimationFrame(() => {
       const sheet = workingSheet.current;
       if (!sheet) return;
@@ -129,7 +133,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     });
     return () => {
       window.cancelAnimationFrame(frame);
-      main?.removeAttribute("aria-hidden");
+      behind.forEach((element) => element.removeAttribute("aria-hidden"));
     };
   }, [showWorking]);
 
@@ -437,6 +441,13 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     (item) => (item.awardedMarks ?? 0) === 0
   );
   const notebookChoices = notebooks.filter((item) => item.folderId === session.folderId);
+  /*
+   * The report leads with the mark and carries the question inside it, so the
+   * question card above is only drawn for the states that are still about
+   * answering it.
+   */
+  const showReport =
+    Boolean(markedAttempt) && !answering && !(activeAttempt?.status === "marking" && !submitting);
 
   return (
     <AppPage
@@ -469,16 +480,21 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
 
         {session.status === "completed" ? (
           <Card tone="warm" padding="lg">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
                   Session complete
                 </p>
-                <p className="mt-3 text-4xl font-semibold tracking-tight text-text-primary">
-                  {session.awardedTotal}
-                  <span className="text-lg font-normal text-text-muted"> / {session.maxTotal}</span>
+                <p className="mt-2 flex items-baseline font-semibold tabular-nums tracking-tight text-text-primary">
+                  <span className="text-5xl leading-none">{session.awardedTotal}</span>
+                  <span className="ml-1 text-2xl leading-none text-text-muted">/{session.maxTotal}</span>
                 </p>
-                <p className="mt-2 text-sm text-text-secondary">
+                <ProgressBar
+                  size="sm"
+                  progress={session.maxTotal ? (session.awardedTotal / session.maxTotal) * 100 : 0}
+                  className="mt-4 max-w-sm"
+                />
+                <p className="mt-3 text-sm text-text-muted">
                   First-attempt score · {session.requestedMix.easy} easy · {session.requestedMix.medium} medium ·{" "}
                   {session.requestedMix.hard} hard
                 </p>
@@ -497,35 +513,44 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
           </Card>
         ) : null}
 
-        <div className="sticky top-[4.5rem] z-30 flex items-center gap-2 overflow-x-auto rounded-full border border-[var(--color-border)] bg-[var(--app-background)]/90 p-2 shadow-shell backdrop-blur-xl">
-          {questions.map((item, itemIndex) => {
-            const itemAttempts = attempts.filter((attempt) => attempt.questionId === item.id);
-            return (
-              <button
-                key={item.id}
-                type="button"
-                aria-current={itemIndex === index ? "step" : undefined}
-                aria-label={`Question ${itemIndex + 1} of ${questions.length}`}
-                onClick={() => goTo(itemIndex)}
-                className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold transition ${
-                  itemIndex === index
-                    ? "bg-accent text-[var(--color-text-inverse)] shadow-accent"
-                    : pillTone(itemAttempts)
-                }`}
-              >
-                {itemIndex + 1}
-              </button>
-            );
-          })}
-          <span className="ml-auto shrink-0 px-2 text-xs font-medium text-text-muted">
-            {markedCount} of {questions.length}
+        <nav
+          aria-label="Questions"
+          className="sticky top-[4.5rem] z-30 flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--app-background)]/90 py-2 pl-3 pr-2 shadow-shell backdrop-blur-xl"
+        >
+          <p className="hidden shrink-0 text-sm font-semibold text-text-primary sm:block">
+            Question {index + 1}
+            <span className="font-normal text-text-muted"> of {questions.length}</span>
+          </p>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-0.5 sm:justify-center">
+            {questions.map((item, itemIndex) => {
+              const itemAttempts = attempts.filter((attempt) => attempt.questionId === item.id);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-current={itemIndex === index ? "step" : undefined}
+                  aria-label={`Question ${itemIndex + 1} of ${questions.length}`}
+                  onClick={() => goTo(itemIndex)}
+                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold tabular-nums transition duration-fast ${
+                    itemIndex === index
+                      ? "bg-accent text-[var(--color-text-inverse)] shadow-accent"
+                      : pillTone(itemAttempts)
+                  }`}
+                >
+                  {itemIndex + 1}
+                </button>
+              );
+            })}
+          </div>
+          <span className="shrink-0 text-xs font-medium tabular-nums text-text-muted">
+            {markedCount}/{questions.length} marked
           </span>
           {session.status === "active" ? (
-            <Button size="sm" variant="ghost" disabled={finishing} onClick={() => void finish()}>
+            <Button size="sm" variant="secondary" disabled={finishing} onClick={() => void finish()}>
               {finishing ? "Finishing…" : "Finish"}
             </Button>
           ) : null}
-        </div>
+        </nav>
 
         {/*
           * Two columns only while there is a second thing to put in one.
@@ -533,42 +558,102 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
           * shape -- so the report was squeezed into nine-tenths of a column
           * with an empty half of the screen beside it.
           */}
+        {showReport && markedAttempt ? (
+          <div className="mx-auto w-full max-w-3xl space-y-4">
+            <ExamQuestionMarkReport
+              attempt={markedAttempt}
+              firstAttempt={firstAttempt}
+              sessionId={sessionId}
+              question={
+                <QuestionCard sessionId={sessionId} question={question} number={index + 1} collapsible />
+              }
+              reviewing={reviewing}
+              nextLabel={isLast ? "Finish session" : "Next question"}
+              onNext={() => (isLast ? void finish() : goTo(index + 1))}
+              onRetry={
+                session.status === "active" && markedAttempt.attemptNumber === 1 && !retryAttempt
+                  ? () => void beginRetry()
+                  : undefined
+              }
+              /*
+               * The independent check is of the official first-attempt
+               * mark, and the route reads that attempt whichever one is on
+               * screen. Tying the button to the displayed attempt meant a
+               * retry silently consumed an unused check.
+               */
+              onReview={
+                firstAttempt?.status === "marked" && !firstAttempt.reviewUsed
+                  ? () => void review()
+                  : undefined
+              }
+              onAsk={() => setAssistantOpen(true)}
+            />
+            {notebookChoices.length > 0 ? (
+              <Card tone="subtle" padding="md">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-text-primary">Keep this in a notebook</h3>
+                    <p className="mt-0.5 text-sm text-text-muted">
+                      A marked page with the question, your work and the feedback.
+                    </p>
+                  </div>
+                  {savedNotebook ? (
+                    <p className="shrink-0 text-sm font-semibold text-[var(--color-success-text)]">
+                      Saved to your notebook.
+                    </p>
+                  ) : (
+                    <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                      <Select
+                        aria-label="Notebook"
+                        value={notebookId}
+                        className="sm:min-w-64"
+                        onChange={(event) => setNotebookId(event.target.value)}
+                      >
+                        <option value="">Choose notebook</option>
+                        {notebookChoices.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.title}
+                          </option>
+                        ))}
+                      </Select>
+                      <Button
+                        variant="secondary"
+                        disabled={!notebookId || savingNotebook}
+                        onClick={() => void saveToNotebook()}
+                      >
+                        {savingNotebook ? "Saving…" : "Save to notebook"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            ) : null}
+          </div>
+        ) : (
+        /*
+         * The question on the left, everything the student does about it on
+         * the right: the answer, then the working under it. The answer box used
+         * to sit under the question with the working in the other column, so
+         * one response was split across both sides of the screen.
+         */
         <div
-          className={`grid items-start gap-4 ${
-            answering ? "lg:grid-cols-[minmax(0,0.9fr)_minmax(26rem,1.1fr)]" : "lg:grid-cols-1"
+          className={`grid items-start gap-4 lg:gap-6 ${
+            answering ? "lg:grid-cols-[minmax(0,1fr)_minmax(26rem,1fr)]" : "mx-auto w-full max-w-3xl"
           }`}
         >
           <div
-            id="exam-session-main"
-            className={`space-y-4 ${answering ? "lg:sticky lg:top-32" : "lg:mx-auto lg:w-full lg:max-w-3xl"}`}
+            data-behind-working
+            className={`min-w-0 ${
+              answering
+                ? "lg:sticky lg:top-[8.5rem] lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto lg:rounded-2xl"
+                : ""
+            }`}
           >
-            <Card padding="lg">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-text-muted">
-                <span className="rounded-full bg-[var(--color-glass-subtle)] px-2.5 py-1 capitalize">
-                  {question.difficulty}
-                </span>
-                {question.origin === "jami_generated" ? (
-                  <span className="rounded-full bg-warm-accent/15 px-2.5 py-1 text-warm-accent">
-                    Jami-created
-                  </span>
-                ) : null}
-                <span>
-                  {question.marks} mark{question.marks === 1 ? "" : "s"}
-                </span>
-              </div>
-              <p className="mt-4 text-xs text-text-muted">{provenanceLine(question)}</p>
-              <StudyText
-                as="div"
-                text={question.prompt}
-                className="mt-5 whitespace-pre-wrap text-base leading-8 text-text-primary sm:text-lg"
-              />
-              <ExamQuestionAssets
-                sessionId={sessionId}
-                questionId={question.id}
-                assets={question.assets}
-              />
-            </Card>
+            <QuestionCard sessionId={sessionId} question={question} number={index + 1} />
+          </div>
 
+          <div className="min-w-0 space-y-4">
+          <div data-behind-working className="space-y-4 empty:hidden">
             {session.status === "completed" && !markedAttempt ? (
               <Card padding="md">
                 <h3 className="text-base font-semibold text-text-primary">Not answered</h3>
@@ -653,25 +738,32 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
               <>
                 {retryOpen && firstAttempt?.result ? (
                   <Card padding="md" tone="warm">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
-                      Second try
-                    </p>
-                    <p className="mt-2 text-sm text-text-secondary">
-                      You scored {firstAttempt.result.awardedMarks}/{firstAttempt.result.maxMarks} first
-                      time.
-                      {retryTargets.length ? " Aim to cover:" : ""}
-                    </p>
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
+                        Second try
+                      </p>
+                      <p className="text-sm font-semibold tabular-nums text-text-secondary">
+                        First try {firstAttempt.result.awardedMarks}/{firstAttempt.result.maxMarks}
+                      </p>
+                    </div>
                     {retryTargets.length ? (
-                      <ul className="mt-3 space-y-1.5">
-                        {retryTargets.map((item, itemIndex) => (
-                          <li
-                            key={`${item.criterion}-${itemIndex}`}
-                            className="text-sm leading-5 text-text-primary"
-                          >
-                            · {item.criterion}
-                          </li>
-                        ))}
-                      </ul>
+                      <>
+                        <p className="mt-3 text-sm font-medium text-text-primary">Aim to cover</p>
+                        <ul className="mt-2 space-y-2">
+                          {retryTargets.map((item, itemIndex) => (
+                            <li
+                              key={`${item.criterion}-${itemIndex}`}
+                              className="flex gap-2.5 text-sm leading-6 text-text-primary"
+                            >
+                              <span
+                                aria-hidden="true"
+                                className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                              />
+                              <StudyText as="span" text={item.criterion} />
+                            </li>
+                          ))}
+                        </ul>
+                      </>
                     ) : null}
                     {/*
                       * Opening the retry used to take the first mark off the
@@ -721,8 +813,20 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                       {hasInk ? "Open working" : "Show your working"}
                     </Button>
                   </div>
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs text-text-muted">
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
+                    <p className="flex items-center gap-2 text-xs text-text-muted">
+                      <span
+                        aria-hidden="true"
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          saveState === "failed"
+                            ? "bg-[var(--color-error-mark)]"
+                            : saveState === "saving"
+                              ? "animate-pulse bg-[var(--color-warning-mark)]"
+                              : saveState === "saved"
+                                ? "bg-[var(--color-success-mark)]"
+                                : "bg-[var(--color-border-strong)]"
+                        }`}
+                      />
                       {saveState === "saving"
                         ? "Saving…"
                         : saveState === "failed"
@@ -742,68 +846,6 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                     </Button>
                   </div>
                 </Card>
-              </>
-            ) : markedAttempt ? (
-              <>
-                <ExamQuestionMarkReport
-                  attempt={markedAttempt}
-                  firstAttempt={firstAttempt}
-                  sessionId={sessionId}
-                  reviewing={reviewing}
-                  nextLabel={isLast ? "Finish session" : "Next question"}
-                  onNext={() => (isLast ? void finish() : goTo(index + 1))}
-                  onRetry={
-                    session.status === "active" && markedAttempt.attemptNumber === 1 && !retryAttempt
-                      ? () => void beginRetry()
-                      : undefined
-                  }
-                  /*
-                   * The independent check is of the official first-attempt
-                   * mark, and the route reads that attempt whichever one is on
-                   * screen. Tying the button to the displayed attempt meant a
-                   * retry silently consumed an unused check.
-                   */
-                  onReview={
-                    firstAttempt?.status === "marked" && !firstAttempt.reviewUsed
-                      ? () => void review()
-                      : undefined
-                  }
-                  onAsk={() => setAssistantOpen(true)}
-                />
-                {notebookChoices.length > 0 ? (
-                  <Card padding="md">
-                    <h3 className="text-base font-semibold text-text-primary">Keep this in a notebook</h3>
-                    <p className="mt-1 text-sm text-text-muted">
-                      Makes a separate marked page with the question, your work and the feedback.
-                    </p>
-                    {savedNotebook ? (
-                      <p className="mt-4 text-sm font-medium text-success">Saved to your notebook.</p>
-                    ) : (
-                      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                        <Select
-                          aria-label="Notebook"
-                          value={notebookId}
-                          className="sm:min-w-64"
-                          onChange={(event) => setNotebookId(event.target.value)}
-                        >
-                          <option value="">Choose notebook</option>
-                          {notebookChoices.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.title}
-                            </option>
-                          ))}
-                        </Select>
-                        <Button
-                          variant="secondary"
-                          disabled={!notebookId || savingNotebook}
-                          onClick={() => void saveToNotebook()}
-                        >
-                          {savingNotebook ? "Saving…" : "Save to notebook"}
-                        </Button>
-                      </div>
-                    )}
-                  </Card>
-                ) : null}
               </>
             ) : null}
           </div>
@@ -879,11 +921,13 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
               />
             </div>
           ) : null}
+          </div>
         </div>
+        )}
 
         {session.status === "completed" ? (
-          <div className="flex justify-end">
-            <Button variant="ghost" disabled={deleting} onClick={() => setConfirmDelete(true)}>
+          <div className="flex justify-center border-t border-[var(--color-border)] pt-4 sm:justify-end">
+            <Button variant="ghost" size="sm" disabled={deleting} onClick={() => setConfirmDelete(true)}>
               Delete my answers
             </Button>
           </div>
@@ -929,5 +973,98 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
         ) : null}
       </div>
     </AppPage>
+  );
+}
+
+/**
+ * The question, either in full while it is being answered or folded under the
+ * mark once it has been. Folded, it keeps its number and source visible so the
+ * report still says which question it is about.
+ */
+function QuestionCard({
+  sessionId,
+  question,
+  number,
+  collapsible = false,
+}: {
+  sessionId: string;
+  question: SessionQuestion;
+  number: number;
+  collapsible?: boolean;
+}) {
+  const marks = `${question.marks} mark${question.marks === 1 ? "" : "s"}`;
+  const chips = (
+    <div className="flex flex-wrap items-center gap-2 text-xs font-medium">
+      <span className="rounded-full bg-[var(--color-glass-subtle)] px-2.5 py-1 capitalize text-text-secondary">
+        {question.difficulty}
+      </span>
+      {question.origin === "jami_generated" ? (
+        <span className="rounded-full bg-warm-accent/15 px-2.5 py-1 text-warm-accent">Jami-created</span>
+      ) : null}
+    </div>
+  );
+  // The printed page is the question; its transcription is kept for screen readers.
+  const printed = examQuestionShowsPrintedPage(question);
+  const body = (
+    <>
+      <StudyText
+        as="div"
+        text={question.prompt}
+        className={
+          printed
+            ? "sr-only"
+            : "mt-5 whitespace-pre-wrap text-base leading-8 text-text-primary sm:text-lg"
+        }
+      />
+      <ExamQuestionAssets sessionId={sessionId} questionId={question.id} assets={question.assets} />
+    </>
+  );
+
+  if (collapsible) {
+    return (
+      <details className="app-panel group w-full min-w-0 overflow-hidden rounded-xl sm:rounded-2xl">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 sm:px-6 [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-text-primary">
+              Question {number}
+              <span className="font-normal text-text-muted"> · {marks}</span>
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-text-muted">{provenanceLine(question)}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-text-secondary">
+            <span className="group-open:hidden">Show question</span>
+            <span className="hidden group-open:inline">Hide</span>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 16 16"
+              fill="none"
+              className="h-4 w-4 transition-transform duration-fast group-open:rotate-180"
+            >
+              <path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        </summary>
+        <div className="border-t border-[var(--color-border)] px-4 pb-5 pt-4 sm:px-6">
+          {chips}
+          {body}
+        </div>
+      </details>
+    );
+  }
+
+  return (
+    <Card padding="md">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <h2 className="text-lg font-semibold tracking-tight text-text-primary">Question {number}</h2>
+          {chips}
+        </div>
+        <span className="shrink-0 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1 text-xs font-semibold tabular-nums text-text-primary">
+          {marks}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-text-muted">{provenanceLine(question)}</p>
+      {body}
+    </Card>
   );
 }

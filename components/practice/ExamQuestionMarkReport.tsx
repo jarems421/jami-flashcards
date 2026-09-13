@@ -1,42 +1,34 @@
 "use client";
 
+import { useState, type ReactNode } from "react";
 import { Button, Card, StudyText } from "@/components/ui";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { examReviewFailureMessage } from "@/lib/practice/exam-marking-failure";
-import { breakdownExamMarkReport } from "@/lib/practice/exam-mark-report";
+import { breakdownExamMarkReport, examCriterionMarks } from "@/lib/practice/exam-mark-report";
+import type { PracticePaperCriterionResult } from "@/lib/practice/practice-papers";
 import ExamSubmittedAnswer from "@/components/practice/ExamSubmittedAnswer";
+import { ScoreMeter, scoreBand, type ScoreBandName } from "@/components/practice/ScoreBand";
 
 /**
- * What the mark was, and -- the part that is actually worth reading -- what to
- * do differently.
+ * A marked question, read top to bottom in the order a student asks about it.
  *
- * Shaped by what is known about feedback rather than by what is easy to render:
+ * 1. The mark, once, with how far it is from full marks.
+ * 2. The question, folded away -- it has already been read.
+ * 3. What was sent: the typed answer and the frozen working.
+ * 4. The marking report: every scheme point, what it earned, and why -- with
+ *    what they wrote set against what was needed wherever a mark was lost.
+ * 5. The official scheme and a full-mark answer, behind an explicit reveal,
+ *    because they end thinking and belong after the student's own answer.
  *
- * Hattie and Timperley (2007) separate feedback into where am I going, how am I
- * going, and where to next, and find the last of those carries most of the
- * effect. They also rank its levels: comment on the task and on the process
- * helps, comment on the person does not. So "what to fix" now comes before
- * "what earned marks", and nothing here says anything about the student.
- *
- * Butler (1988), and Black and Wiliam after her, found a prominent grade
- * crowds out the comment beside it -- students given both engaged with neither.
- * This showed the mark three times over: a huge numeral, a percentage, and a
- * progress bar. It is now shown once, plainly, and the space goes to the part
- * that can be acted on.
- *
- * Shute (2008) on what makes formative feedback work: specific, manageable, and
- * elaborated rather than verification-only. A missed criterion used to say what
- * the scheme wanted and stop there, which tells a student the answer and not
- * what was wrong with theirs. It now sets what they wrote against what was
- * needed, which is the whole lesson in one line.
- *
- * The worked answer stays last, behind a disclosure: it is the thing that ends
- * thinking, so it comes after they have read why their own fell short.
+ * The earlier layout scattered this across six cards in an order that put the
+ * student's own answer below the worked solution, so a mark could not be read
+ * against the evidence it was given for without scrolling back and forth.
  */
 export default function ExamQuestionMarkReport({
   attempt,
   firstAttempt,
   sessionId,
+  question,
   onRetry,
   onReview,
   onAsk,
@@ -47,6 +39,8 @@ export default function ExamQuestionMarkReport({
   attempt: PublicExamAttempt;
   firstAttempt?: PublicExamAttempt;
   sessionId: string;
+  /** The question, placed between the mark and the answer it was given for. */
+  question?: ReactNode;
   onRetry?: () => void;
   onReview?: () => void;
   onAsk?: () => void;
@@ -67,308 +61,435 @@ export default function ExamQuestionMarkReport({
   const checking = attempt.reviewStatus === "reviewing";
   const result = attempt.result;
   if (!result) return null;
-  const { earned, missed, unexplainedShortfall } = breakdownExamMarkReport(result);
+
+  const { unexplainedShortfall } = breakdownExamMarkReport(result);
+  const criteria = result.criterionResults ?? [];
   const guidance = (result.improvements ?? []).filter(Boolean);
-  const percent = result.maxMarks ? Math.round((result.awardedMarks / result.maxMarks) * 100) : 0;
-  const improved =
-    attempt.attemptNumber === 2 && firstAttempt?.result
-      ? result.awardedMarks - firstAttempt.result.awardedMarks
-      : null;
+  const earlier = firstAttempt && firstAttempt.id !== attempt.id ? firstAttempt : undefined;
+  const lost = result.maxMarks - result.awardedMarks;
 
   return (
-    <div className="space-y-4">
-      <Card tone="warm" padding="lg">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
-          {attempt.attemptNumber === 2 ? "Your second try" : "Your mark"}
-        </p>
+    <div className="space-y-4 sm:space-y-5">
+      <MarkSummary attempt={attempt} firstAttempt={earlier} />
+
+      {question}
+
+      <ExamSubmittedAnswer attempt={attempt} sessionId={sessionId} title="Your answer and working" />
+      {earlier ? (
+        <ExamSubmittedAnswer
+          attempt={earlier}
+          sessionId={sessionId}
+          title="Your first attempt"
+          note={`Marked ${earlier.result?.awardedMarks ?? 0}/${earlier.result?.maxMarks ?? 0}`}
+        />
+      ) : null}
+
+      <Card padding="md">
+        <ReportHeading
+          eyebrow="Marking report"
+          title="How your marks were awarded"
+          aside={
+            <span className="text-sm font-semibold tabular-nums text-text-secondary">
+              {result.awardedMarks} of {result.maxMarks} mark{result.maxMarks === 1 ? "" : "s"}
+            </span>
+          }
+        />
+
         {/*
-          * Once, not three times. A percentage and a progress bar on a
-          * three-mark question restate the same number in two less precise
-          * ways, and the more prominent the grade the less the comment beside
-          * it is read.
+          * A mark that could not be reconciled against its own criteria is
+          * shown as what it is. It has already been through a second marker,
+          * so presenting it as a settled score would be the quiet part of the
+          * problem: the number rests on reasons that could not be checked.
           */}
-        <div className="mt-2 flex flex-wrap items-end gap-x-2">
-          <span className="text-3xl font-semibold tracking-tight text-text-primary">
-            {result.awardedMarks}
-          </span>
-          <span className="pb-0.5 text-lg text-text-muted">/ {result.maxMarks}</span>
-        </div>
-        <div
-          hidden
-          aria-hidden="true"
-          className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-glass-strong)]"
-        >
-          <div
-            className="h-full rounded-full bg-accent transition-[width] duration-500"
-            style={{ width: `${Math.max(2, percent)}%` }}
+        {result.markConsistency?.status === "unverifiable" ? (
+          <Notice tone="warning" className="mt-4">
+            Jami could not check this mark against the scheme point by point, so treat it as a guide
+            rather than a settled score. Asking for a second opinion is worthwhile here.
+          </Notice>
+        ) : null}
+
+        {result.feedback ? (
+          <StudyText
+            as="p"
+            text={result.feedback}
+            className="mt-4 text-sm leading-7 text-text-secondary"
           />
+        ) : null}
+
+        {result.nextStep ? (
+          <div className="mt-4 rounded-xl border border-accent/25 bg-accent/10 px-4 py-3">
+            <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent">Next step</p>
+            <StudyText
+              as="p"
+              text={result.nextStep}
+              className="mt-1 text-sm font-medium leading-6 text-text-primary"
+            />
+          </div>
+        ) : null}
+
+        {criteria.length > 0 ? (
+          <ol className="mt-5 divide-y divide-[var(--color-border)] border-t border-[var(--color-border)]">
+            {criteria.map((item, index) => (
+              <CriterionRow key={`${item.criterion}-${index}`} item={item} />
+            ))}
+          </ol>
+        ) : null}
+
+        {unexplainedShortfall ? (
+          guidance.length > 0 ? (
+            <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+              <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                Where the other {lost} mark{lost === 1 ? " went" : "s went"}
+              </p>
+              <ul className="mt-2 space-y-2">
+                {guidance.map((item, index) => (
+                  <li key={`${item}-${index}`} className="flex gap-2.5 text-sm leading-6 text-text-primary">
+                    <span aria-hidden="true" className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-warning-mark)]" />
+                    <StudyText as="span" text={item} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <Notice tone="neutral" className="mt-5">
+              {lost} mark{lost === 1 ? " was" : "s were"} not awarded, and Jami did not say which.
+              Ask for a second opinion to find out.
+            </Notice>
+          )
+        ) : criteria.length === 0 ? (
+          <p className="mt-4 text-sm text-text-muted">Every mark on this question was awarded.</p>
+        ) : null}
+
+        {result.transcriptionNote ? (
+          <Notice tone="neutral" className="mt-5" title="How your working was read">
+            {result.transcriptionNote}
+          </Notice>
+        ) : null}
+      </Card>
+
+      {attempt.officialMarkScheme || result.modelAnswer ? (
+        <Card padding="md">
+          <ReportHeading
+            eyebrow="Mark scheme"
+            title="What the scheme awards"
+            description="Open these after reading your report, and compare them with your own answer."
+          />
+          <div className="mt-4 space-y-2">
+            {attempt.officialMarkScheme ? (
+              <Reveal label="Official mark scheme" hint="As published by the exam board">
+                <StudyText
+                  as="div"
+                  text={attempt.officialMarkScheme}
+                  className="whitespace-pre-wrap text-sm leading-7 text-text-secondary"
+                />
+              </Reveal>
+            ) : null}
+            {result.modelAnswer ? (
+              <Reveal label="A full-mark answer" hint="Written by Jami against the scheme">
+                <StudyText
+                  as="div"
+                  text={result.modelAnswer}
+                  className="whitespace-pre-wrap text-sm leading-7 text-text-secondary"
+                />
+              </Reveal>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
+
+      {onRetry || onReview || onAsk || onNext ? (
+        <div className="flex flex-col-reverse gap-3 border-t border-[var(--color-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            {onRetry ? (
+              <Button type="button" variant="secondary" onClick={onRetry}>
+                Try it again
+              </Button>
+            ) : null}
+            {onReview ? (
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={reviewing || checking}
+                onClick={onReview}
+              >
+                {reviewing || checking
+                  ? "Checking…"
+                  : attempt.reviewStatus === "failed"
+                    ? "Try checking again"
+                    : "Check this mark"}
+              </Button>
+            ) : null}
+            {onAsk ? (
+              <Button type="button" variant="ghost" onClick={onAsk}>
+                Ask Jami
+              </Button>
+            ) : null}
+          </div>
+          {onNext ? (
+            <Button type="button" size="lg" className="w-full sm:w-auto" onClick={onNext}>
+              {nextLabel}
+            </Button>
+          ) : null}
         </div>
-        {improved !== null && firstAttempt?.result ? (
-          <p className="mt-4 text-sm text-text-secondary">
-            First try {firstAttempt.result.awardedMarks}/{firstAttempt.result.maxMarks}
+      ) : null}
+    </div>
+  );
+}
+
+/** The mark, once, and what has happened to it since it was given. */
+function MarkSummary({
+  attempt,
+  firstAttempt,
+}: {
+  attempt: PublicExamAttempt;
+  firstAttempt?: PublicExamAttempt;
+}) {
+  const result = attempt.result;
+  if (!result) return null;
+  const tone = scoreBand(result);
+  const first = attempt.attemptNumber === 2 ? firstAttempt?.result : undefined;
+  const improved = first ? result.awardedMarks - first.awardedMarks : null;
+
+  return (
+    <Card tone="warm" padding="lg">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
+            Your mark{attempt.attemptNumber === 2 ? " · second try" : ""}
+          </p>
+          <p className="mt-2 flex items-baseline font-semibold tabular-nums tracking-tight text-text-primary">
+            <span className="text-5xl leading-none sm:text-6xl">{result.awardedMarks}</span>
+            <span className="ml-1 text-2xl leading-none text-text-muted sm:text-3xl">/{result.maxMarks}</span>
+          </p>
+        </div>
+        <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${tone.badge}`}>
+          {tone.caption}
+        </span>
+      </div>
+
+      <ScoreMeter
+        awardedMarks={result.awardedMarks}
+        maxMarks={result.maxMarks}
+        tone={tone}
+        className="mt-5"
+      />
+
+      <div className="mt-4 space-y-1.5 empty:hidden">
+        {first && improved !== null ? (
+          <StatusLine>
+            First try {first.awardedMarks}/{first.maxMarks}
             {improved > 0 ? ` · ${improved} mark${improved === 1 ? "" : "s"} better` : ""}
             {improved === 0 ? " · the same mark this time" : ""}
-          </p>
+          </StatusLine>
         ) : null}
         {/*
-          * A checked mark said nothing about having been checked. The button
-          * disappeared, the number sometimes moved, and a student had no way to
-          * tell a correction from a misremembered score.
+          * A checked mark says it was checked, and what the check did. Without
+          * this the button disappeared and the number sometimes moved, and a
+          * correction could not be told from a misremembered score.
           */}
         {attempt.reviewUsed ? (
-          <p className="mt-3 text-sm font-medium text-text-secondary">
+          <StatusLine>
             {typeof attempt.reviewOriginalScore === "number" &&
             attempt.reviewOriginalScore !== result.awardedMarks
               ? `Checked: ${attempt.reviewOriginalScore}/${result.maxMarks} → ${result.awardedMarks}/${result.maxMarks}`
               : "Checked — your mark stayed the same."}
-          </p>
+          </StatusLine>
         ) : null}
         {/*
-          * Both of these read the attempt rather than a click. Checking used to
-          * be local state only, so a student who refreshed mid-check was shown
-          * the button again and got a conflict for pressing it, and a check
-          * that failed said nothing at all -- it simply looked unused.
+          * Both read the attempt rather than a click, so a refresh mid-check
+          * still says a check is running, and a failed one says so.
           */}
         {attempt.reviewStatus === "reviewing" ? (
-          <p className="mt-3 text-sm font-medium text-text-secondary">
-            Jami is checking this mark. It carries on if you leave this page.
-          </p>
+          <StatusLine pulse>Jami is checking this mark. It carries on if you leave this page.</StatusLine>
         ) : null}
         {attempt.reviewStatus === "failed" ? (
-          <p className="mt-3 text-sm leading-5 text-text-muted">
+          <StatusLine>
             {attempt.reviewFailure?.message ?? examReviewFailureMessage("marking_failed")}
-          </p>
-        ) : null}
-        {/*
-          * The same maths-aware renderer as the question. Feedback, credited
-          * evidence and criteria all quote the student's own expressions back
-          * at them, and rendering those as plain text meant the same formula
-          * appeared one way in the question and another in the explanation of
-          * why it did not earn a mark.
-          */}
-        {/*
-          * A mark that could not be reconciled against its own criteria is
-          * shown as what it is. It has already been through a second marker --
-          * an unreconciled result triggers one -- so this is what is left when
-          * that did not settle it, and presenting it as a finished score would
-          * be the quiet part of the problem: the number rests on reasons that
-          * could not be checked.
-          */}
-        {result.markConsistency?.status === "unverifiable" ? (
-          <p className="mt-4 rounded-2xl border border-warm-accent/30 bg-warm-accent/10 p-3 text-sm leading-5 text-text-secondary">
-            Jami could not check this mark against the scheme point by point, so treat it as a guide
-            rather than a settled score. Asking for a second opinion below is worthwhile here.
-          </p>
-        ) : null}
-        <StudyText
-          as="p"
-          text={result.feedback}
-          className="mt-4 text-sm leading-6 text-text-secondary"
-        />
-      </Card>
-
-      {/*
-        * Where to next, first. It carries most of the effect of feedback and
-        * used to sit third, under the mark and under a list of what already
-        * went right -- which a student who scored well never scrolled to.
-        */}
-      <Card padding="md">
-        <h3 className="text-base font-semibold text-text-primary">
-          {missed.length > 0 || unexplainedShortfall ? "What to fix" : "Nothing was missing"}
-        </h3>
-        {result.nextStep ? (
-          <p className="mt-3 rounded-2xl border border-accent/30 bg-accent/10 p-3 text-sm font-medium leading-5 text-text-primary">
-            {result.nextStep}
-          </p>
-        ) : null}
-        {missed.length > 0 ? (
-          <ul className="mt-3 space-y-2">
-            {missed.map((item, index) => (
-              <li
-                key={`${item.criterion}-${index}`}
-                className="rounded-2xl bg-[var(--color-glass-subtle)] p-3"
-              >
-                <StudyText as="p" text={item.criterion} className="text-sm font-medium text-text-primary" />
-                {typeof item.maxMarks === "number" && (item.awardedMarks ?? 0) > 0 ? (
-                  <p className="mt-1 text-xs font-medium text-text-secondary">
-                    {item.awardedMarks} of {item.maxMarks} marks
-                  </p>
-                ) : null}
-                {/*
-                  * What they wrote, against what was needed.
-                  *
-                  * This showed only the scheme's side, which tells a student
-                  * the answer without telling them what was wrong with theirs
-                  * -- and both halves were already on the criterion and already
-                  * projected to the client. A student who wrote the right value
-                  * under the wrong label learns nothing from "the scheme wanted
-                  * -1" and everything from seeing it beside their own.
-                  */}
-                {item.schemeValue || item.candidateValue ? (
-                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
-                    <div className="rounded-xl bg-[var(--color-glass-strong)] px-3 py-2">
-                      <p className="text-2xs font-semibold uppercase tracking-wide text-text-muted">
-                        You wrote
-                      </p>
-                      <StudyText
-                        as="p"
-                        text={item.candidateValue?.trim() || "nothing here"}
-                        className="mt-0.5 text-sm leading-5 text-text-primary"
-                      />
-                    </div>
-                    <div className="rounded-xl bg-success/10 px-3 py-2">
-                      <p className="text-2xs font-semibold uppercase tracking-wide text-text-muted">
-                        Needed
-                      </p>
-                      <StudyText
-                        as="p"
-                        text={item.schemeValue?.trim() || item.criterion}
-                        className="mt-0.5 text-sm leading-5 text-text-primary"
-                      />
-                    </div>
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : unexplainedShortfall ? (
-          guidance.length > 0 ? (
-            <ul className="mt-3 space-y-2">
-              {guidance.map((item, index) => (
-                <li
-                  key={`${item}-${index}`}
-                  className="rounded-2xl bg-[var(--color-glass-subtle)] p-3 text-sm leading-5 text-text-primary"
-                >
-                  {item}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-2 text-sm text-text-muted">
-              {result.maxMarks - result.awardedMarks} mark
-              {result.maxMarks - result.awardedMarks === 1 ? " was" : "s were"} not awarded, and
-              Jami did not say which. Ask for a second opinion below.
-            </p>
-          )
-        ) : !result.nextStep ? (
-          <p className="mt-2 text-sm text-text-muted">
-            Every mark on this question was awarded.
-          </p>
-        ) : null}
-      </Card>
-
-      {/*
-        * What went right, second and quieter. Worth showing -- a student should
-        * be able to see the mark was evidenced rather than asserted -- but it
-        * is the part they already know, so it does not lead and it does not
-        * need a card of its own shouting about it.
-        */}
-      {earned.length > 0 ? (
-        <details className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-text-primary">
-            What earned marks · {earned.length}
-          </summary>
-          <ul className="mt-3 space-y-2">
-            {earned.map((item, index) => (
-              <li
-                key={`${item.criterion}-${index}`}
-                className="rounded-2xl border border-success/25 bg-success/10 p-3"
-              >
-                <StudyText as="p" text={item.criterion} className="text-sm font-medium text-text-primary" />
-                {item.evidence ? (
-                  <StudyText as="p" text={item.evidence} className="mt-1 text-sm leading-5 text-text-muted" />
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-
-      {/*
-        * The evidence the mark was given for, typed answer included. Showing
-        * the working alone meant a mark could only be read against a memory of
-        * what was written, and after a retry the first attempt's words were off
-        * the screen altogether.
-        */}
-      <ExamSubmittedAnswer
-        attempt={attempt}
-        sessionId={sessionId}
-        title="What Jami marked"
-        note="Exactly what was sent, as it was sent."
-      />
-
-      {firstAttempt && firstAttempt.id !== attempt.id ? (
-        <ExamSubmittedAnswer
-          attempt={firstAttempt}
-          sessionId={sessionId}
-          title="Your first attempt"
-          note={`Marked ${firstAttempt.result?.awardedMarks ?? 0}/${firstAttempt.result?.maxMarks ?? 0}.`}
-        />
-      ) : null}
-
-      {result.transcriptionNote ? (
-        <p className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 text-sm leading-5 text-text-muted">
-          {result.transcriptionNote}
-        </p>
-      ) : null}
-
-      {result.modelAnswer ? (
-        <Card padding="md">
-          <h3 className="text-base font-semibold text-text-primary">An answer that scores full marks</h3>
-          <StudyText
-            as="div"
-            text={result.modelAnswer}
-            className="mt-3 whitespace-pre-wrap text-sm leading-7 text-text-secondary"
-          />
-        </Card>
-      ) : null}
-
-      {attempt.officialMarkScheme ? (
-        <details className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-text-primary">
-            Official mark scheme
-          </summary>
-          <StudyText
-            as="div"
-            text={attempt.officialMarkScheme}
-            className="mt-3 whitespace-pre-wrap text-sm leading-6 text-text-secondary"
-          />
-        </details>
-      ) : null}
-
-      {onRetry || onReview || onAsk || onNext ? (
-      <div className="flex flex-wrap items-center gap-2">
-        {onRetry ? (
-          <Button type="button" variant="secondary" onClick={onRetry}>
-            Try it again
-          </Button>
-        ) : null}
-        {onReview ? (
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={reviewing || checking}
-            onClick={onReview}
-          >
-            {reviewing || checking
-              ? "Checking…"
-              : attempt.reviewStatus === "failed"
-                ? "Try checking again"
-                : "Check this mark"}
-          </Button>
-        ) : null}
-        {onAsk ? (
-          <Button type="button" variant="ghost" onClick={onAsk}>
-            Ask Jami
-          </Button>
-        ) : null}
-        {onNext ? (
-          <Button type="button" className="ml-auto" onClick={onNext}>
-            {nextLabel}
-          </Button>
+          </StatusLine>
         ) : null}
       </div>
-      ) : null}
+    </Card>
+  );
+}
+
+const CRITERION_STATE: Record<
+  Exclude<ScoreBandName, "uncounted">,
+  { label: string; icon: string; disc: string }
+> = {
+  full: {
+    label: "Awarded",
+    icon: "m4.5 8.2 2.4 2.4 4.6-5",
+    disc: "bg-[var(--color-success-muted)] text-[var(--color-success-mark)]",
+  },
+  part: {
+    label: "Partly awarded",
+    icon: "M4.5 8h7",
+    disc: "bg-warning-muted text-[var(--color-warning-mark)]",
+  },
+  none: {
+    label: "Not awarded",
+    icon: "m5.5 5.5 5 5m0-5-5 5",
+    disc: "border border-[var(--color-border-strong)] text-[var(--color-error-mark)]",
+  },
+};
+
+/**
+ * One scheme point: what it earned, and why.
+ *
+ * Where a mark was lost this sets what the student wrote against what was
+ * needed. The scheme's side alone tells a student the answer without telling
+ * them what was wrong with theirs.
+ */
+function CriterionRow({ item }: { item: PracticePaperCriterionResult }) {
+  const { awarded, available } = examCriterionMarks(item);
+  const tone = scoreBand({ awardedMarks: awarded, maxMarks: available });
+  const state = CRITERION_STATE[tone.band === "uncounted" ? "none" : tone.band];
+  const full = tone.band === "full";
+  const compare = !full && Boolean(item.schemeValue?.trim() || item.candidateValue?.trim());
+
+  return (
+    <li className="flex gap-3 py-4 last:pb-0">
+      <span
+        aria-hidden="true"
+        className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ${state.disc}`}
+      >
+        <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5">
+          <path d={state.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <p className="min-w-0 text-sm font-medium leading-6 text-text-primary">
+            <span className="sr-only">{state.label}: </span>
+            <StudyText as="span" text={item.criterion} />
+          </p>
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold tabular-nums ${tone.badge}`}
+          >
+            {awarded}/{available}
+          </span>
+        </div>
+
+        {item.evidence ? (
+          <p className="mt-1 text-sm leading-6 text-text-muted">
+            <span className="font-medium text-text-secondary">{awarded > 0 ? "Why: " : "Marker's note: "}</span>
+            <StudyText as="span" text={item.evidence} />
+          </p>
+        ) : null}
+
+        {compare ? (
+          <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+            <div className="rounded-xl bg-[var(--color-glass-strong)] px-3 py-2">
+              <p className="text-2xs font-semibold uppercase tracking-wide text-text-muted">You wrote</p>
+              <StudyText
+                as="p"
+                text={item.candidateValue?.trim() || "nothing here"}
+                className="mt-0.5 text-sm leading-6 text-text-primary"
+              />
+            </div>
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-success-muted)] px-3 py-2">
+              <p className="text-2xs font-semibold uppercase tracking-wide text-text-muted">Needed</p>
+              <StudyText
+                as="p"
+                text={item.schemeValue?.trim() || item.criterion}
+                className="mt-0.5 text-sm leading-6 text-text-primary"
+              />
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function ReportHeading({
+  eyebrow,
+  title,
+  description,
+  aside,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+  aside?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+      <div className="min-w-0">
+        <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">{eyebrow}</p>
+        <h3 className="mt-1 text-lg font-semibold tracking-tight text-text-primary">{title}</h3>
+        {description ? <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p> : null}
+      </div>
+      {aside}
     </div>
+  );
+}
+
+/** Material held back until the student asks for it. */
+function Reveal({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)]">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition duration-fast hover:bg-[var(--color-glass-medium)]"
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-text-primary">{label}</span>
+          <span className="block text-xs text-text-muted">{hint}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-text-secondary">
+          {open ? "Hide" : "Show"}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 16 16"
+            fill="none"
+            className={`h-4 w-4 transition-transform duration-fast ${open ? "rotate-180" : ""}`}
+          >
+            <path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </button>
+      {open ? <div className="border-t border-[var(--color-border)] px-4 py-4">{children}</div> : null}
+    </div>
+  );
+}
+
+function Notice({
+  tone,
+  title,
+  className = "",
+  children,
+}: {
+  tone: "warning" | "neutral";
+  title?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`rounded-xl border px-4 py-3 text-sm leading-6 ${
+        tone === "warning"
+          ? "border-warning/30 bg-warning-muted text-text-secondary"
+          : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-muted"
+      } ${className}`}
+    >
+      {title ? <p className="text-xs font-semibold text-text-secondary">{title}</p> : null}
+      {children}
+    </div>
+  );
+}
+
+function StatusLine({ pulse = false, children }: { pulse?: boolean; children: ReactNode }) {
+  return (
+    <p className="flex items-start gap-2 text-sm leading-6 text-text-secondary">
+      <span
+        aria-hidden="true"
+        className={`mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent ${pulse ? "animate-pulse" : ""}`}
+      />
+      <span>{children}</span>
+    </p>
   );
 }

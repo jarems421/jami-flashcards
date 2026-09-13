@@ -1,6 +1,7 @@
 import { auth } from "@/services/firebase/client";
 import { db } from "@/services/firebase/client";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import type { ExamCourseOption } from "@/lib/practice/exam-course-form";
 import type { ExamCalculatorChoice, ExamDifficulty, ExamSession } from "@/lib/practice/exam-questions";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { MAX_NOTEBOOK_INK_SVG_LENGTH } from "@/lib/workspace/notebooks";
@@ -64,14 +65,7 @@ export async function getExamCourseOptions(input: { board: string; subject?: str
   const params = new URLSearchParams({ board: input.board });
   if (input.subject) params.set("subject", input.subject);
   const data = await request(`/api/practice/exam-course-options?${params}`);
-  return data.courses as Array<{
-    specificationId: string;
-    specificationTitle: string;
-    qualification: string;
-    qualificationLabel: string;
-    componentIds: string[];
-    tiers: Array<{ name: string; componentIds: string[] }>;
-  }>;
+  return data.courses as ExamCourseOption[];
 }
 
 export async function createPastPaperPracticeSession(input: {

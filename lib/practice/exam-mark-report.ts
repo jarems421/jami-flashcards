@@ -33,6 +33,11 @@ function availableMarks(criterion: PracticePaperCriterionResult) {
   return criterion.awarded ? awardedMarks(criterion) : 1;
 }
 
+/** One criterion's marks as the report reads them: what it earned of what it was worth. */
+export function examCriterionMarks(criterion: PracticePaperCriterionResult) {
+  return { awarded: awardedMarks(criterion), available: availableMarks(criterion) };
+}
+
 export function breakdownExamMarkReport(
   result: Pick<PracticePaperQuestionResult, "awardedMarks" | "maxMarks" | "criterionResults">
 ): ExamMarkReportBreakdown {

@@ -42,10 +42,15 @@ export const CONSTELLATION_BACKGROUND_EVENT =
  * a canvas that clears and repaints its whole backing store on every frame of a
  * stroke. Nobody has profiled that on the device it matters on. Do not put this
  * back without doing so, and without a symptom written down here.
+ *
+ * A past-paper question is worked on the same kind of ink canvas, so it is
+ * excluded on the same grounds -- the sky was still behind it after notebooks
+ * lost theirs, and a student writing there got the stars notebooks were spared.
  */
 export const CONSTELLATION_BACKGROUND_EXCLUDED_PATHS = [
   "/dashboard/constellation",
   "/dashboard/notebooks/",
+  "/dashboard/practice/questions/",
 ];
 
 export function allowsConstellationBackground(pathname: string) {

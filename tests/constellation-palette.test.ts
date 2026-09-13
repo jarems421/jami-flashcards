@@ -194,6 +194,18 @@ describe("the sky is on the document before the first paint", () => {
     ).toEqual(["app-theme-pink", "app-theme-light"]);
   });
 
+  it("keeps the sky off a past-paper question being worked", () => {
+    expect(
+      run(
+        {
+          "jami:app-theme": "pink",
+          "constellation-background-enabled": "true",
+        },
+        "/dashboard/practice/questions/session123"
+      )
+    ).toEqual(["app-theme-pink", "app-theme-light"]);
+  });
+
   it("agrees with the shell about every excluded path", () => {
     // The two ran on different lists for a day, and a notebook opened in one
     // palette and flipped to the other a frame later.

@@ -149,6 +149,7 @@ export async function createStudyFolder(
     color?: string;
     icon?: string;
     topicIds?: string[];
+    studyLevel?: StudyLevel | null;
     examCourse?: ExamCourseSelection;
   }
 ) {

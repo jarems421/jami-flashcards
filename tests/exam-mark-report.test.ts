@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { breakdownExamMarkReport } from "@/lib/practice/exam-mark-report";
+import { breakdownExamMarkReport, examCriterionMarks } from "@/lib/practice/exam-mark-report";
 import type { PracticePaperCriterionResult } from "@/lib/practice/practice-papers";
 
 /**
@@ -95,5 +95,18 @@ describe("sorting a marked question", () => {
     expect(earned.map((item) => item.criterion)).toEqual(["One", "Two"]);
     expect(missed.map((item) => item.criterion)).toEqual(["Three"]);
     expect(unexplainedShortfall).toBe(false);
+  });
+});
+
+describe("a criterion's own marks", () => {
+  it("reads a one-mark verdict as one of one or none of one", () => {
+    expect(examCriterionMarks(criterion({ awarded: true }))).toEqual({ awarded: 1, available: 1 });
+    expect(examCriterionMarks(criterion({ awarded: false }))).toEqual({ awarded: 0, available: 1 });
+  });
+
+  it("keeps the tariff of a partly credited criterion", () => {
+    expect(
+      examCriterionMarks(criterion({ awarded: true, awardedMarks: 2, maxMarks: 5 }))
+    ).toEqual({ awarded: 2, available: 5 });
   });
 });

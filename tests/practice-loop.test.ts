@@ -294,6 +294,7 @@ describe("Jami notebook-first learning foundations", () => {
       name: "  Humanities  ",
       subject: " History ",
       topicIds: ["topic-cold-war", "topic-cold-war"],
+      studyLevel: "gcse-equivalent",
       now: 40,
     });
     const folder = mapStudyFolderData("folder-1", payload);
@@ -302,9 +303,12 @@ describe("Jami notebook-first learning foundations", () => {
       id: "folder-1",
       name: "Humanities",
       subject: "History",
+      studyLevel: "gcse-equivalent",
       topicIds: ["topic-cold-war"],
       archived: false,
     });
+    // No level is written as an explicit null, the same as clearing one in the editor.
+    expect(buildStudyFolderPayload({ name: "Art" }).studyLevel).toBeNull();
     expect(() => buildStudyFolderPayload({ name: "" })).toThrow("Folder name is required");
   });
 

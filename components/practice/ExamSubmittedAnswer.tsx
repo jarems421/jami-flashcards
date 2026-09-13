@@ -31,27 +31,43 @@ export default function ExamSubmittedAnswer({
   if (!answer && !attempt.workingIncluded) return null;
   return (
     <Card padding="md">
-      <h3 className="text-base font-semibold text-text-primary">{title}</h3>
-      {note ? <p className="mt-1 text-sm text-text-muted">{note}</p> : null}
-      {answer ? (
-        <StudyText
-          as="div"
-          text={answer}
-          className="mt-3 whitespace-pre-wrap rounded-2xl bg-[var(--color-glass-subtle)] p-3 text-sm leading-6 text-text-primary"
-        />
-      ) : (
-        <p className="mt-3 text-sm text-text-muted">
-          You submitted handwritten working without a typed answer.
-        </p>
-      )}
-      {attempt.workingIncluded ? (
-        <ExamPrivateImage
-          key={attempt.id}
-          alt="Your frozen working for this question"
-          className="mt-3 border border-[var(--color-border)] bg-white"
-          path={`/api/practice/exam-sessions/${encodeURIComponent(sessionId)}/working/${encodeURIComponent(attempt.id)}`}
-        />
-      ) : null}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h3 className="text-base font-semibold tracking-tight text-text-primary">{title}</h3>
+        {note ? <p className="text-xs font-medium text-text-muted">{note}</p> : null}
+      </div>
+
+      <div className="mt-4 space-y-4">
+        <div>
+          <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+            Typed answer
+          </p>
+          {answer ? (
+            <StudyText
+              as="div"
+              text={answer}
+              className="mt-2 whitespace-pre-wrap rounded-xl border-l-2 border-accent/60 bg-[var(--color-glass-subtle)] px-4 py-3 text-sm leading-7 text-text-primary"
+            />
+          ) : (
+            <p className="mt-2 rounded-xl bg-[var(--color-glass-subtle)] px-4 py-3 text-sm text-text-muted">
+              No typed answer — only handwritten working was sent.
+            </p>
+          )}
+        </div>
+
+        {attempt.workingIncluded ? (
+          <div>
+            <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Working
+            </p>
+            <ExamPrivateImage
+              key={attempt.id}
+              alt="Your frozen working for this question"
+              className="mt-2 overflow-hidden rounded-xl border border-[var(--color-border)] bg-white"
+              path={`/api/practice/exam-sessions/${encodeURIComponent(sessionId)}/working/${encodeURIComponent(attempt.id)}`}
+            />
+          </div>
+        ) : null}
+      </div>
     </Card>
   );
 }
