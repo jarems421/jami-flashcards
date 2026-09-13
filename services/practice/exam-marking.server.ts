@@ -10,7 +10,6 @@ import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
 import {
-  EXAM_AI_JOB_DEADLINE_MS,
   examAnswerUnlocksModelAnswer,
   examDocument,
   examResultForAttempt,
@@ -22,9 +21,11 @@ import {
   examMarkingFailure,
   type ExamMarkingFailureCode,
 } from "@/lib/practice/exam-marking-failure";
-import type {
-  PracticePaperMarkerStage,
-  PracticePaperMarkerStageResult,
+import {
+  EXAM_MARKING_STAGES,
+  markerStageBudgetMs,
+  type PracticePaperMarkerStage,
+  type PracticePaperMarkerStageResult,
 } from "@/lib/practice/marker-stages";
 import { schemeCriteria } from "@/lib/practice/mark-schemes";
 import {
@@ -222,7 +223,19 @@ export async function runExamQuestionMarking(uid: string, attemptId: string, tok
   const question = session.questions.find((item) => item.id === attempt.questionId);
   if (!question) return "cancelled" as const;
   const job = attempt.marking;
-  const deadlineAt = job?.deadlineAt ?? Date.now() + EXAM_AI_JOB_DEADLINE_MS;
+  /*
+   * A resumed job gets time for the work it has left, not the clock it was
+   * given first.
+   *
+   * `deadlineAt` is an absolute timestamp, so inheriting it meant a retry of a
+   * marking that died near its deadline began with no budget at all and could
+   * never finish. Retries are now the expected path rather than the unlucky
+   * one -- failure keeps the stages it paid for -- so the budget is recomputed
+   * from the stages still missing, and the stored deadline is honoured only
+   * while it still leaves room for them.
+   */
+  const remaining = markerStageBudgetMs(EXAM_MARKING_STAGES, job?.stages);
+  const deadlineAt = Math.max(job?.deadlineAt ?? 0, Date.now() + remaining);
 
   enterAiSpendContext(aiSpendContextFor(uid, "examQuestionMarking"));
   try {

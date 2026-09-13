@@ -277,6 +277,23 @@ export type PracticePaperQuestionResult = {
     checked?: "arithmetic" | "bounds" | "tariff";
     detail?: string;
   };
+  /**
+   * Whether the quotations behind the award came from the student.
+   *
+   * Deliberately separate from `markConsistency`: one says the arithmetic
+   * reconciles, the other says the evidence is the candidate's. A report can
+   * add up perfectly while quoting the question back at itself, and reporting
+   * that as a checked mark is the conflation this exists to prevent.
+   *
+   * `ungrounded` never overturns a mark on its own -- a marker paraphrasing a
+   * correct answer is ungrounded and right -- so it is recorded rather than
+   * enforced. `unverifiable` covers handwriting, which cannot be searched.
+   */
+  evidenceGrounding?: {
+    status: "grounded" | "ungrounded" | "unverifiable";
+    unmatched?: string[];
+    detail?: string;
+  };
   questionId: string;
   label: string;
   awardedMarks: number;

@@ -2,7 +2,12 @@ import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import type { PracticePaperQuestionAsset, PracticePaperQuestionResult } from "@/lib/practice/practice-papers";
 import type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import type { ExamMarkingFailure } from "@/lib/practice/exam-marking-failure";
-import type { PracticePaperMarkerCheckpoints } from "@/lib/practice/marker-stages";
+import {
+  EXAM_MARKING_STAGES,
+  EXAM_REVIEW_STAGES,
+  markerStageBudgetMs,
+  type PracticePaperMarkerCheckpoints,
+} from "@/lib/practice/marker-stages";
 import type { ExamBoardId, ExamQualification } from "@/lib/practice/exam-formats";
 import type { StudyLevel } from "@/lib/profile/study-level";
 
@@ -389,20 +394,30 @@ export const EXAM_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
 /**
  * The longest one AI job on an attempt may run before it is given up on.
  *
- * A chosen bound rather than a measured one, and it is worth saying which.
- * What is measured is what it has to clear. `markerTimeoutMs` sizes a
- * supervisor's report at 408 seconds and a juror's at 515, from p99 output over
- * p5 generation rate; marking is up to three such calls in sequence when the
- * markers disagree, and a mark check is two. Ten minutes covers the ordinary
- * case many times over -- observed markings ran 9.6 to 28.6 seconds -- without
- * licensing the pathological one, where retries across every stage could
- * otherwise run past half an hour with a student watching.
+ * Derived from the stages a job has to hold, rather than chosen.
+ *
+ * Ten minutes was a judgement, and the arithmetic did not support it. A
+ * marking is two blind markers together and then an adjudicator -- 408 seconds
+ * of supervisor twice over -- and a mark check is a 515-second juror then a
+ * 408-second reconciliation. Those are 816 and 923 against a 600-second
+ * budget, so the two paths that exist to recover from disagreement were the
+ * two that could not finish. The expensive path had least room exactly when it
+ * was needed.
+ *
+ * Taking the longer of the two makes the bound a consequence of the
+ * measurements rather than a number beside them, and it moves on its own when
+ * `markerTimeoutMs` does. It does not license a half-hour wait: a job asks for
+ * what its remaining stages need, so a resumed marking holding both reports
+ * asks only for its adjudicator. See `markerStageBudgetMs`.
  *
  * It replaces 55 seconds, which was never a judgement about marking: it was
  * what fitted inside one serverless request, and it gave the supervisor 30
  * seconds for that 408-second report.
  */
-export const EXAM_AI_JOB_DEADLINE_MS = 600_000;
+export const EXAM_AI_JOB_DEADLINE_MS = Math.max(
+  markerStageBudgetMs(EXAM_MARKING_STAGES),
+  markerStageBudgetMs(EXAM_REVIEW_STAGES)
+);
 
 /**
  * How long an attempt may claim to be working before it is treated as stranded.

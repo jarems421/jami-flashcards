@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { EXAM_AI_JOB_DEADLINE_MS } from "@/lib/practice/exam-questions";
+import { EXAM_MARKING_STAGES, markerStageBudgetMs, markerTimeoutMs } from "@/lib/practice/marker-stages";
 
 /**
  * What a marking job may and may not write.
@@ -189,9 +191,38 @@ describe("a marking that is still the current one", () => {
   });
 
   it("marks against the deadline the job was given, not the request's", async () => {
+    const future = Date.now() + EXAM_AI_JOB_DEADLINE_MS;
+    seed({ attempt: { marking: { token: TOKEN, startedAt: Date.now(), deadlineAt: future, attempts: 1 } } });
     await runExamQuestionMarking("student", "attempt-1", TOKEN);
     const [call] = mocks.markSingleQuestionAdaptively.mock.calls[0];
-    expect(call.deadlineAt).toBe(2 + 600_000);
+    expect(call.deadlineAt).toBe(future);
+  });
+
+  /*
+   * `deadlineAt` is an absolute timestamp, so a retry of a marking that died
+   * near its deadline used to begin with no budget at all and could never
+   * finish. Retries are the expected path now that failure keeps the stages it
+   * paid for, so an expired clock is replaced by what the missing stages need.
+   */
+  it("does not make a resumed marking work against a clock that has run out", async () => {
+    await runExamQuestionMarking("student", "attempt-1", TOKEN);
+    const [call] = mocks.markSingleQuestionAdaptively.mock.calls[0];
+    expect(call.deadlineAt).toBeGreaterThan(Date.now());
+    expect(call.deadlineAt).toBeLessThanOrEqual(
+      Date.now() + markerStageBudgetMs(EXAM_MARKING_STAGES)
+    );
+  });
+
+  /** A resume pays only for what is missing, so it asks only for that. */
+  it("asks for the adjudicator's time alone when both reports are already paid for", async () => {
+    const stages = {
+      primary: { result: { questionResults: [] }, diagnostics: [] },
+      verifier: { result: { questionResults: [] }, diagnostics: [] },
+    };
+    seed({ attempt: { marking: { token: TOKEN, startedAt: 2, deadlineAt: 2, attempts: 2, stages } } });
+    await runExamQuestionMarking("student", "attempt-1", TOKEN);
+    const [call] = mocks.markSingleQuestionAdaptively.mock.calls[0];
+    expect(call.deadlineAt).toBeLessThanOrEqual(Date.now() + markerTimeoutMs("supervisor"));
   });
 
   it("hands the marker the reports a previous run already paid for", async () => {

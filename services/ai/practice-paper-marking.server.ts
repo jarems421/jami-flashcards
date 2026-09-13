@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { AiContentPart } from "@/lib/ai/content-parts";
+import { candidateTextFromParts } from "@/lib/ai/evidence-grounding";
 import { parsePracticePaperMarkingModelAnswer } from "@/lib/ai/practice-paper-marking";
 import { classifyMarkingParseFailure } from "@/lib/ai/marking-parse-failure";
 import {
@@ -11,6 +12,7 @@ import {
 import { failoverProvidersFor, type AiGenerationRole } from "@/lib/ai/provider-policy";
 import { schemeCriteria } from "@/lib/practice/mark-schemes";
 import {
+  markerTimeoutMs,
   PracticePaperMarkingFailedError,
   type MarkingCostAccounting,
   type PracticePaperMarkerStage,
@@ -204,38 +206,9 @@ async function checkpointedMarkerCall(
  * coursework markings took 272 minutes for eight records.
  */
 
-/** Output tokens a role's report reaches, p99 over every logged marking call. */
-const ROLE_OUTPUT_CEILING: Record<string, number> = {
-  worker: 1_636,
-  supervisor: 7_600,
-  juror: 9_598,
-  default: 7_600,
-};
-
-/**
- * The slowest sustained generation observed, p5 over 3,880 calls.
- *
- * Deliberately the slow tail rather than the median. A timeout sized on the
- * median is wrong half the time by construction, and being wrong here does not
- * mean waiting longer -- it means discarding a finished piece of work.
- */
-const FLOOR_TOKENS_PER_SECOND = 23.3;
-
-/** Room for a report longer than any yet seen, without licensing a stuck call. */
-const TIMEOUT_SAFETY = 1.25;
-
-export function markerTimeoutMs(modelRole: string) {
-  const tokens = ROLE_OUTPUT_CEILING[modelRole] ?? ROLE_OUTPUT_CEILING.default;
-  return Math.ceil((tokens / FLOOR_TOKENS_PER_SECOND) * TIMEOUT_SAFETY) * 1_000;
-}
-
-/**
- * The same number for a fallback endpoint, because the floor rate already is
- * the fallback on a bad day. Two constants existed to say that the second
- * endpoint is slower; measuring the slow one directly says it better, and the
- * whole marking's deadline still bounds every attempt.
- */
 const fallbackTimeoutMs = markerTimeoutMs;
+
+export { markerTimeoutMs };
 
 /**
  * The criteria each question offers, keyed by question, taken from the scheme
@@ -526,8 +499,18 @@ async function callMarker(input: PracticePaperMarkingInput & {
   const attemptsFor = (kind: string | undefined) =>
     isEmpty(kind) ? 3 : kind === "truncated" ? 1 : 2;
 
+  /*
+   * What the student typed, so a quotation can be looked for in it. Taken from
+   * the parts this marker was actually shown rather than from the attempt, so
+   * the check covers the evidence the report could have drawn on.
+   */
+  const candidate = {
+    text: candidateTextFromParts(input.answerParts),
+    hasUntypedWorking: input.answerParts.some((part) => "inlineData" in part),
+  };
+
   let generated = await call();
-  let result = parsePracticePaperMarkingModelAnswer(generated, input.paper);
+  let result = parsePracticePaperMarkingModelAnswer(generated, input.paper, candidate);
   let failure = result ? null : diagnose(generated);
 
   for (let attempt = 1; !result && attempt < attemptsFor(failure?.kind); attempt += 1) {
@@ -549,7 +532,7 @@ async function callMarker(input: PracticePaperMarkingInput & {
     // A sticky empty response is the one failure a different endpoint fixes.
     const failover = isEmpty(failure?.kind) ? failoverProvidersFor(input.modelRole) : [];
     generated = await call(failover);
-    result = parsePracticePaperMarkingModelAnswer(generated, input.paper);
+    result = parsePracticePaperMarkingModelAnswer(generated, input.paper, candidate);
     failure = result ? null : diagnose(generated);
   }
   if (!result && failure) {

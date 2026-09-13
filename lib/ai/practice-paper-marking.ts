@@ -1,4 +1,5 @@
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
+import { checkEvidenceGrounding } from "@/lib/ai/evidence-grounding";
 import { checkMarkConsistency } from "@/lib/practice/mark-consistency";
 import { schemeCriteria } from "@/lib/practice/mark-schemes";
 import {
@@ -23,7 +24,15 @@ function unwrapJson(value: string) {
 
 export function parsePracticePaperMarkingModelAnswer(
   value: string,
-  paper: PracticePaper
+  paper: PracticePaper,
+  /**
+   * What the student actually typed, when it is available.
+   *
+   * Optional because the parser is also used where no answer is in hand --
+   * replaying a stored report, or a test. Absent, grounding is simply not
+   * recorded, which is honest: nothing was checked.
+   */
+  candidate?: { text: string; hasUntypedWorking: boolean }
 ): PracticePaperResult | null {
   let payload: unknown;
   try {
@@ -110,6 +119,19 @@ export function parsePracticePaperMarkingModelAnswer(
         })
       : undefined;
     if (consistency?.status === "inconsistent") return [];
+    /*
+     * Recorded, never enforced. A quotation the answer does not contain is a
+     * reason to look again -- it may be a paraphrase of a correct answer, or
+     * the question quoted back at itself -- and the difference is not one the
+     * parser can settle.
+     */
+    const grounding = candidate
+      ? checkEvidenceGrounding({
+          criteria: result.criterionResults ?? [],
+          candidateText: candidate.text,
+          hasUntypedWorking: candidate.hasUntypedWorking,
+        })
+      : undefined;
     return [{
       ...result,
       label: question.label,
@@ -126,6 +148,7 @@ export function parsePracticePaperMarkingModelAnswer(
             },
           }
         : {}),
+      ...(grounding ? { evidenceGrounding: grounding } : {}),
     }];
   });
   if (questionResults.length !== paper.questions.length) return null;
