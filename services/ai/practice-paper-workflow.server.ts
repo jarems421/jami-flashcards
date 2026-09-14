@@ -30,6 +30,9 @@ import {
 } from "@/lib/practice/exam-formats";
 import { getPracticePaperJobProgress } from "@/lib/practice/practice-paper-jobs";
 import { buildNotebookPagePayload, buildNotebookPayload } from "@/lib/workspace/notebooks";
+import { createLogger } from "@/lib/observability/logger";
+import type { PracticePaperCorpusCalibration } from "@/lib/practice/paper-corpus-calibration";
+import { loadPaperCorpusCalibration } from "@/services/ai/paper-corpus-calibration.server";
 import { createPracticePaperBooklet } from "@/services/ai/practice-paper-booklet.server";
 import { runPracticePaperGenerationForWorkflow } from "@/services/ai/practice-paper-generation.server";
 import {
@@ -58,6 +61,8 @@ type PrivateJobArtifact = {
     profile?: ExamFormatProfileVersion;
     brief?: PracticePaperBrief;
     promptContext?: string;
+    /** Which real papers shaped the prompt context, kept for the finished paper. */
+    calibration?: PracticePaperCorpusCalibration;
     completedAt: number;
   };
   generation?: {
@@ -469,6 +474,23 @@ async function prepareQueuedPracticePaperResearchMetered(
     subject: research.subject,
     studyLevel: research.studyLevel,
   });
+  /*
+   * Real past papers for this course, when the corpus holds reviewed ones: how
+   * the board spreads marks, splits questions and words them. It rides with the
+   * format context, so every path that designs from that context gets it. A
+   * failure costs the paper its calibration, never the paper.
+   */
+  const calibration = await loadPaperCorpusCalibration({
+    uid,
+    folderId: state.job.request.folderId,
+    profile: format?.profile,
+  }).catch((error: unknown) => {
+    createLogger({ route: "ai.practice-paper-workflow", uid }).warn("practice_paper_calibration_failed", {
+      error: error instanceof Error ? error.message.slice(0, 500) : "unknown",
+    });
+    return null;
+  });
+  const promptContext = [format?.promptContext, calibration?.context].filter(Boolean).join("\n\n") || undefined;
   const latestJob = await state.jobRef.get();
   if (!latestJob.exists || latestJob.data()?.cancellationRequested === true) {
     return "cancelled";
@@ -480,7 +502,8 @@ async function prepareQueuedPracticePaperResearchMetered(
       resolved: true,
       profile: format?.profile,
       brief: format?.brief,
-      promptContext: format?.promptContext,
+      promptContext,
+      calibration: calibration?.record,
       completedAt: now,
     }),
     updatedAt: now,
@@ -754,7 +777,15 @@ async function finalizeQueuedPracticePaperMetered(
     folderId: state.job.request.folderId,
     paper: generated,
     now,
-  }).catch(() => null);
+  }).catch((error: unknown) => {
+    // Logged, because the fallback is otherwise silent: a paper that should
+    // have been a booklet would just quietly open as question pages.
+    createLogger({ route: "ai.practice-paper-workflow", uid, jobId }).warn("practice_paper_booklet_failed", {
+      paperId: state.job.paperId,
+      error: error instanceof Error ? error.message.slice(0, 500) : "unknown",
+    });
+    return null;
+  });
   const batch = db.batch();
   batch.set(notebookRef, buildNotebookPayload({
     folderId: state.job.request.folderId,
@@ -798,6 +829,10 @@ async function finalizeQueuedPracticePaperMetered(
   batch.set(paperRef, buildPracticePaperPayload({
     notebookId: state.job.paperId,
     ...(booklet ? { pdfLayout: booklet.layout } : {}),
+    // Only when the calibrated context was actually used; a custom format drops it.
+    ...(state.artifact.format?.calibration && state.jobData.customFormatAllowed !== true
+      ? { corpusCalibration: state.artifact.format.calibration }
+      : {}),
     folderId: state.job.request.folderId,
     title: generated.title,
     origin: "generated",

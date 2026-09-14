@@ -91,6 +91,13 @@ export default function PracticePaperDetailsDialog({
               {paper.assessmentProfile.formatSummary ? (
                 <Detail label="Format Jami followed" value={paper.assessmentProfile.formatSummary} />
               ) : null}
+              {paper.corpusCalibration ? (
+                <Detail
+                  label="Matched to real papers"
+                  value={`${paper.corpusCalibration.boardLabel} ${paper.corpusCalibration.specificationTitle} · ${paper.corpusCalibration.papers} past paper${paper.corpusCalibration.papers === 1 ? "" : "s"}, ${paper.corpusCalibration.questions} questions`}
+                  note="Question style, mark spread and topic balance were matched to these. Every question here is original."
+                />
+              ) : null}
             </dl>
             <div className="mt-4 border-t border-[var(--color-border)] pt-4">
               <p className="text-xs font-medium text-text-secondary">Sources that shaped this paper</p>

@@ -49,6 +49,7 @@ describe("OpenRouter adapter", () => {
     const body = buildOpenRouterRequestBody(baseInput, false);
     expect(body.provider).toEqual({
       only: ["Xiaomi", "Parasail"],
+      order: ["Xiaomi", "Parasail"],
       allow_fallbacks: true,
       require_parameters: true,
       data_collection: "deny",

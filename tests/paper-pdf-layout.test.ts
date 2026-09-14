@@ -26,6 +26,7 @@ describe("paperSubjectGroup", () => {
 describe("inferPaperQuestionKind", () => {
   it("reads what the question asks for from its wording", () => {
     expect(inferPaperQuestionKind(question("Tick one box.", 1))).toBe("choice");
+    expect(inferPaperQuestionKind(question("Which of the following best describes identification?", 1))).toBe("choice");
     expect(inferPaperQuestionKind(question("Complete the table.", 2))).toBe("draw");
     expect(inferPaperQuestionKind(question("Calculate the resultant force.", 3))).toBe("calculation");
     expect(inferPaperQuestionKind(question("Evaluate the use of wind turbines.", 6))).toBe("extended");

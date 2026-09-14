@@ -53,13 +53,23 @@ const COMMON = new Set([
   "each", "both", "also", "such", "used", "does",
 ]);
 
+/**
+ * The words -- and figures -- that say what a text is about.
+ *
+ * Figures of two digits or more count. A maths scheme is working, not prose:
+ * "120 ÷ 8 = 15, 15 × 5 = 75" under "Share £120 between Aisha and Brendan in
+ * the ratio 3 : 5" shares no word of five letters with its question, so every
+ * correct maths scheme looked off-topic, failed two repair rounds and threw
+ * its whole paper away. The £120 is what they share. Single digits stay out:
+ * "3" and "5" turn up in almost any scheme.
+ */
 const distinctive = (text: string) =>
   new Set(
     String(text ?? "")
       .toLowerCase()
       .replace(/[^a-z0-9 ]/g, " ")
       .split(/\s+/)
-      .filter((word) => word.length >= 5 && !COMMON.has(word))
+      .filter((word) => (word.length >= 5 && !COMMON.has(word)) || /^\d{2,}$/.test(word))
   );
 
 /** Everything the scheme says, wherever the marking model puts it. */

@@ -261,3 +261,13 @@ describe("practice-paper model response", () => {
     expect(new Set(parsed.questions[0].assets.map((asset) => asset.id)).size).toBe(2);
   });
 });
+
+describe("a paper designed with no sources supplied", () => {
+  it("drops source references the designer invented rather than rejecting the paper", () => {
+    const parsed = parsePracticePaperModelAnswer(
+      JSON.stringify({ ...readyPayload, sourceRefs: ["Edexcel 1MA1/1H Past Papers 2020-2024"] }),
+      { allowedSourceRefs: [], length: "full" }
+    );
+    expect(parsed).toEqual(expect.objectContaining({ status: "ready", sourceRefs: [] }));
+  });
+});

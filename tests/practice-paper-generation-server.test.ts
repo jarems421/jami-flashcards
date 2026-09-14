@@ -560,3 +560,24 @@ describe("reading the bands a model actually returns", () => {
     expect(band).toBe("undefined-undefined");
   });
 });
+
+describe("a mark-scheme batch whose marking is a bare list of points", () => {
+  it("reads the list as an additive scheme and keeps numbered dependencies", () => {
+    const questions = [{ id: "q3", label: "Question 3", prompt: "Share £120 in the ratio 3 : 5.", marks: 2, assets: [] }];
+    const items = normalizeGeneratedMarkSchemeBatch([{
+      questionId: "q3",
+      maxMarks: 2,
+      answer: "£45 and £75",
+      acceptableAlternatives: [],
+      commonMistakes: [],
+      marking: [
+        { id: 1, marks: 1, code: "M", text: "120 ÷ 8 = 15", dep: [], ft: [], essentialTerms: [], allow: [], reject: [] },
+        { id: 2, marks: 1, code: "A", text: "£45 and £75", dep: [1], ft: [], essentialTerms: [], allow: [], reject: [] },
+      ],
+    }], questions);
+    expect(items).toEqual([expect.objectContaining({ questionId: "q3", marking: "additive" })]);
+    const points = (items?.[0] as { points?: Array<{ id: string; dep?: string[] }> }).points ?? [];
+    expect(points.map((point) => point.id)).toEqual(["p1", "p2"]);
+    expect(points[1]?.dep).toEqual(["p1"]);
+  });
+});

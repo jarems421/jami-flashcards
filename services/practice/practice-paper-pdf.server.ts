@@ -189,7 +189,10 @@ class BookletWriter {
     const { doc } = this;
     doc.save();
     doc.font("body").fontSize(8).fillColor("#666666");
-    doc.text(`Jami practice paper · ${this.footerTitle}`.slice(0, 110), LEFT, PAPER_PAGE_HEIGHT_FOOTER, { lineBreak: false });
+    const footer = `Jami practice paper · ${this.footerTitle}`;
+    // Cut at a word, not through one: "Practice Pa" reads as a typo.
+    const shortened = footer.length > 105 ? `${footer.slice(0, 105).replace(/\s+\S*$/, "")}…` : footer;
+    doc.text(shortened, LEFT, PAPER_PAGE_HEIGHT_FOOTER, { lineBreak: false });
     doc.text(String(this.pages.length), RIGHT - 40, PAPER_PAGE_HEIGHT_FOOTER, { width: 40, align: "right", lineBreak: false });
     doc.restore();
     doc.font("body").fontSize(BODY_SIZE).fillColor("#111111");
@@ -398,19 +401,34 @@ function fitFigure(aspect: number, maxWidth = FIGURE_MAX_WIDTH, maxHeight = FIGU
 async function drawTable(writer: BookletWriter, rows: string[][], questionId: string) {
   const { doc } = writer;
   const columns = Math.max(...rows.map((row) => row.length));
-  const width = Math.min(BODY_WIDTH, columns * 120);
-  const x = BODY_X + (BODY_WIDTH - width) / 2;
-  const cellWidth = width / columns;
+  /*
+   * Each column as wide as its longest cell wants, scaled down only when the
+   * table would not fit. Equal columns gave a one-letter "Option" column the
+   * same width as the sentences beside it, which then wrapped to five lines.
+   */
+  const natural = Array.from({ length: columns }, (_, column) =>
+    Math.max(60, ...rows.map((row, rowIndex) => {
+      doc.font(rowIndex === 0 ? "bold" : "body").fontSize(10);
+      return doc.widthOfString(row[column] ?? "") + 16;
+    }))
+  );
+  const naturalWidth = natural.reduce((sum, value) => sum + value, 0);
+  const scale = naturalWidth > BODY_WIDTH ? BODY_WIDTH / naturalWidth : 1;
+  const widths = natural.map((value) => Math.max(48, value * scale));
+  const width = widths.reduce((sum, value) => sum + value, 0);
+  const x = BODY_X + Math.max(0, (BODY_WIDTH - width) / 2);
+  const offsets = widths.map((_, column) => widths.slice(0, column).reduce((sum, value) => sum + value, 0));
   for (const [rowIndex, row] of rows.entries()) {
     doc.font(rowIndex === 0 ? "bold" : "body").fontSize(10);
-    const height = Math.max(22, ...row.map((cell) => doc.heightOfString(cell, { width: cellWidth - 10 }) + 10));
+    const height = Math.max(22, ...row.map((cell, column) => doc.heightOfString(cell, { width: (widths[column] ?? 60) - 10 }) + 10));
     writer.ensure(height, questionId);
     doc.save().lineWidth(0.7).strokeColor("#111111");
     for (let column = 0; column < columns; column += 1) {
-      doc.rect(x + column * cellWidth, writer.y, cellWidth, height).stroke();
+      const cellWidth = widths[column] ?? 60;
+      doc.rect(x + offsets[column], writer.y, cellWidth, height).stroke();
       const cell = row[column] ?? "";
       doc.font(rowIndex === 0 ? "bold" : "body").fontSize(10).fillColor("#111111")
-        .text(cell, x + column * cellWidth + 5, writer.y + 5, { width: cellWidth - 10, align: "center" });
+        .text(cell, x + offsets[column] + 5, writer.y + 5, { width: cellWidth - 10, align: "center" });
     }
     doc.restore();
     writer.y += height;

@@ -19,6 +19,7 @@ import {
 } from "@/lib/practice/exam-formats";
 import { normalizeManualCorrectionAudits, normalizePracticePaperMarkRange, type PracticePaperManualCorrectionAudit, type PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
 import { normalizePracticePaperPdfLayout, type PracticePaperPdfLayout } from "@/lib/practice/paper-pdf-layout";
+import { normalizePracticePaperCorpusCalibration, type PracticePaperCorpusCalibration } from "@/lib/practice/paper-corpus-calibration";
 export { mapPracticePaperMarkingJobData } from "@/lib/practice/practice-paper-marking-types";
 export { mapPracticePaperJobData } from "@/lib/practice/practice-paper-jobs";
 export type { PracticePaperEvidenceIssue, PracticePaperEvidenceManifest, PracticePaperEvidencePage, PracticePaperManualCorrectionAudit, PracticePaperMarkingJob, PracticePaperMarkingJobKind, PracticePaperMarkingJobStage, PracticePaperMarkingJobStatus, PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
@@ -434,6 +435,7 @@ export type PracticePaper = {
   instructions: string[];
   companionDocuments?: PracticePaperCompanionDocument[];
   pdfLayout?: PracticePaperPdfLayout;
+  corpusCalibration?: PracticePaperCorpusCalibration;
   assessmentProfile: PracticePaperAssessmentProfile;
   questions: PracticePaperQuestion[];
   choiceGroups: PracticePaperChoiceGroup[];
@@ -1121,6 +1123,7 @@ export function mapPracticePaperData(
     instructions: normalizeTextList(data.instructions, 20),
     companionDocuments: normalizePracticePaperCompanionDocuments(data.companionDocuments),
     pdfLayout: normalizePracticePaperPdfLayout(data.pdfLayout),
+    corpusCalibration: normalizePracticePaperCorpusCalibration(data.corpusCalibration),
     assessmentProfile: normalizePracticePaperAssessmentProfile(data.assessmentProfile),
     questions,
     choiceGroups,
@@ -1171,6 +1174,7 @@ export function buildPracticePaperPayload(
     ),
     companionDocuments: normalizePracticePaperCompanionDocuments(input.companionDocuments),
     pdfLayout: normalizePracticePaperPdfLayout(input.pdfLayout) ?? null,
+    corpusCalibration: normalizePracticePaperCorpusCalibration(input.corpusCalibration) ?? null,
     questions: normalizePracticePaperQuestions(input.questions),
     choiceGroups: normalizePracticePaperChoiceGroups(
       input.choiceGroups,

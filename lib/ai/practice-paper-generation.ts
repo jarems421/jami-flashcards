@@ -148,7 +148,11 @@ export function canonicalizeGeneratedMarkSchemeItems(value: unknown[]) {
     const nestedCompetency = nestedMarking?.competency && typeof nestedMarking.competency === "object"
       ? nestedMarking.competency as Record<string, unknown>
       : null;
-    const points = item.points ?? nestedMarking?.points ?? nestedAdditive?.points ?? nestedPointPool?.points;
+    // A bare list under `marking` is its points. A GCSE maths batch came back as
+    // "marking": [{ "id": 1, "marks": 1, "code": "M", ... }] -- no model named,
+    // but plainly an additive scheme -- and the whole paper failed as unreadable.
+    const points = item.points ?? nestedMarking?.points ?? nestedAdditive?.points ?? nestedPointPool?.points ??
+      (Array.isArray(item.marking) ? item.marking : undefined);
     const bands = canonicalBands(item.bands ?? item.levels ?? nestedMarking?.bands ?? nestedMarking?.levels ?? nestedBanded?.bands ?? nestedBanded?.levels);
     const traits = canonicalTraits(item.traits ?? nestedMarking?.traits ?? nestedWeightedTraits?.traits);
     const competencies = item.competencies ?? nestedMarking?.competencies ?? nestedCompetency?.competencies;
@@ -172,9 +176,12 @@ export function canonicalizeGeneratedMarkSchemeItems(value: unknown[]) {
       ? points.map((point) => {
           if (!point || typeof point !== "object") return point;
           const entry = point as Record<string, unknown>;
+          // Numbered ids ("id": 1, "dep": [1]) are named, so a dependency is kept rather than dropped as not text.
+          const pointId = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? `p${value}` : value);
           return {
             ...entry,
-            dep: list(entry.dep),
+            id: pointId(entry.id),
+            dep: list(entry.dep).map(pointId),
             ft: entry.ft === true,
             essentialTerms: list(entry.essentialTerms),
             allow: list(entry.allow),
@@ -611,7 +618,13 @@ export function parsePracticePaperModelAnswer(
     return null;
   }
   const allowedRefs = new Set(input.allowedSourceRefs);
-  const sourceRefs = normalizeTextList(payload.sourceRefs, 15);
+  /*
+   * With no sources supplied there is nothing to cite. Asked to work without
+   * them, the designer invented plausible titles -- "Edexcel 1MA1/1H Past
+   * Papers 2020-2024" -- and a sound paper was thrown away for it. Those are
+   * dropped. With sources supplied, citing one that was not is still a fault.
+   */
+  const sourceRefs = allowedRefs.size === 0 ? [] : normalizeTextList(payload.sourceRefs, 15);
   if (sourceRefs.some((reference) => !allowedRefs.has(reference))) return null;
 
   if (payload.status === "needs_clarification") {

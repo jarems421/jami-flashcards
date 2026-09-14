@@ -50,7 +50,7 @@ export function inferPaperQuestionKind(
   question: Pick<PracticePaperQuestion, "prompt" | "marks">
 ): PaperQuestionKind {
   const prompt = question.prompt.toLowerCase();
-  if (/\btick (one|two|three) box|\bshade (one|two) circle|\bcircle the correct|\bwhich one of the following\b/.test(prompt)) {
+  if (/\btick (one|two|three) box|\bshade (one|two) circle|\bcircle the correct|\bwhich (?:one )?of (?:the following|these)\b/.test(prompt)) {
     return "choice";
   }
   if (/\b(draw|sketch|plot)\b|\bcomplete (the )?(table|graph|diagram|figure|chart)\b|\bon the grid\b|\blabel (the )?(diagram|figure)\b/.test(prompt)) {

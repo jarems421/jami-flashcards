@@ -38,7 +38,7 @@ import {
   isAnyAiProviderConfigured,
   type AiResponseDiagnostics,
 } from "@/lib/ai/provider-router";
-import type { AiGenerationRole, AiTaskClass } from "@/lib/ai/provider-policy";
+import type { AiGenerationRole, AiReasoningEffort, AiTaskClass } from "@/lib/ai/provider-policy";
 import { prepareSourceForTutor } from "@/lib/ai/source-ingestion";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { mapSourceData, type Source } from "@/lib/material/sources";
@@ -74,6 +74,25 @@ export const maxDuration = 300;
 const REQUEST_TIMEOUT_MS = 60_000;
 const REQUEST_DEADLINE_MS = 260_000;
 const DURABLE_REQUEST_TIMEOUT_MS = 150_000;
+/**
+ * How long a pass may go without a single token -- reasoning included -- before
+ * the attempt is abandoned for the next endpoint.
+ *
+ * Without it a hung upstream held the design pass for the whole 150-second call
+ * timeout, twice in one run, before failing: five and a half minutes to design
+ * one paper. A thinking model streams its reasoning, so a model that is working
+ * is never mistaken for one that is stuck.
+ */
+const PAPER_PASS_STALL_TIMEOUT_MS = 45_000;
+/**
+ * The longest one mark-scheme batch may take before its endpoint is abandoned.
+ *
+ * A batch writes a scheme for two or three questions: 8 to 17 seconds on the
+ * worker's usual endpoint. One run sent a batch to a slower endpoint that
+ * thought for 113 seconds, streaming the whole time, so the stall watchdog
+ * never fired and the 150-second call timeout let it run.
+ */
+const MARK_SCHEME_BATCH_TIMEOUT_MS = 45_000;
 const MAX_DURABLE_REQUEST_TIMEOUT_MS = 600_000;
 const DURABLE_REQUEST_DEADLINE_MS = 720_000;
 const MAX_DURABLE_REQUEST_DEADLINE_MS = 2_400_000;
@@ -720,6 +739,17 @@ export async function runPracticePaperGenerationRequest(
       temperature: number;
       maxOutputTokens?: number;
       /**
+       * How much the model may think before answering. Left unset, the role's
+       * own level applies. The supervisor model reasons by default, and on a
+       * structured pass that reasoning is mostly waiting: one mark-scheme batch
+       * thought for 116 seconds, hit its output cap and returned 46 characters.
+       */
+      reasoningEffort?: AiReasoningEffort;
+      /** Silence after which an attempt moves to the next endpoint. */
+      stallTimeoutMs?: number;
+      /** A tighter call timeout than the pipeline default, for passes known to be short. */
+      timeoutMs?: number;
+      /**
        * What this call is about, so a rerun can recognise work already paid
        * for. Absent means the pass is always re-run.
        */
@@ -737,8 +767,10 @@ export async function runPracticePaperGenerationRequest(
         : generateAiText)({
         role: input.role,
         taskClass: input.taskClass,
-        timeoutMs: providerTimeoutMs,
-        fallbackTimeoutMs: providerTimeoutMs,
+        ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+        stallTimeoutMs: input.stallTimeoutMs ?? PAPER_PASS_STALL_TIMEOUT_MS,
+        timeoutMs: input.timeoutMs ?? providerTimeoutMs,
+        fallbackTimeoutMs: input.timeoutMs ?? providerTimeoutMs,
         deadlineAt: startedAt + requestDeadlineMs,
         signal: request.signal,
         generationConfig: {
@@ -840,6 +872,7 @@ export async function runPracticePaperGenerationRequest(
     if (!draft) {
       paperPass = await runPass({
         name: "paper_design_structured_retry",
+        reasoningEffort: "low",
         taskClass: "important",
         role: "supervisor",
         systemInstruction: `${systemInstruction}\nThe previous response was structurally invalid. Return one complete JSON object with every required candidate-paper field, keep markScheme.items empty, and include no prose outside the JSON.`,
@@ -1027,10 +1060,24 @@ export async function runPracticePaperGenerationRequest(
     }
 
     await updateInternalJobStage(uid, auth.internalJobId, "building_mark_scheme");
+    /*
+     * Mark schemes and the paper checks run on the worker by default.
+     *
+     * Measured on one Edexcel GCSE paper: the supervisor, a reasoning model that
+     * ignores a low effort setting, spent 22-141s a batch -- about 80% of each
+     * reply hidden reasoning -- and timed batches out; the worker wrote all
+     * twelve batches in about 50s, and the scheme passed validation after one
+     * repair round. The design pass keeps the supervisor. Set either variable
+     * to "false" to put that work back on the supervisor.
+     */
     const markSchemeRole: AiGenerationRole =
-      process.env.PRACTICE_PAPER_MARK_SCHEME_WORKER_ENABLED === "true"
-        ? "worker"
-        : "supervisor";
+      process.env.PRACTICE_PAPER_MARK_SCHEME_WORKER_ENABLED === "false"
+        ? "supervisor"
+        : "worker";
+    const paperCheckRole: AiGenerationRole =
+      process.env.PRACTICE_PAPER_AUDIT_WORKER_ENABLED === "false"
+        ? "supervisor"
+        : "worker";
     const markSchemeInstruction = `You are Jami's senior mark-scheme designer. The supplied questions, assets and marks are fixed. Build a rigorous guide from the approved sources. Award method and partial credit where appropriate, include acceptable alternatives, and avoid unnecessary wording requirements.
 
 Return only {"items":[...]}. Never repeat the paper, questions, assets, instructions or assessment profile. Return exactly one item for every supplied question, and no items for any other question. Every item needs questionId, maxMarks, answer, acceptableAlternatives and commonMistakes. Choose its marking model using the board's conventions:
@@ -1071,13 +1118,39 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
         }).length,
       };
     };
-    for (let index = 0; index < questionBatches.length; index += 1) {
-      const wave = questionBatches.slice(index, index + 1);
-      const passes = await Promise.all(wave.map(async (questions, offset) => ({
-        questions,
-        batchNumber: index + offset + 1,
-        pass: await runPass({
-          name: `mark_scheme_batch_${index + offset + 1}`,
+    /*
+     * Batches in parallel waves. Each batch is its own independent call, and
+     * run one at a time a 25-question paper made thirteen calls in a row -- the
+     * longest wait in the whole pipeline. Capped, because the provider
+     * rate-limits and a burst of retries costs more than it saves.
+     */
+    const markSchemeConcurrency = Math.max(
+      1,
+      Math.min(8, Number.parseInt(process.env.PRACTICE_PAPER_MARK_SCHEME_CONCURRENCY ?? "", 10) || 4)
+    );
+    /*
+     * A pool rather than waves: each slot takes the next batch the moment it
+     * frees. In waves one slow endpoint held its finished neighbours -- a batch
+     * that took 113 seconds kept three 10-second batches, and everything queued
+     * behind them, waiting.
+     */
+    const batchResults: Array<{
+      questions: (typeof questionBatches)[number];
+      batchNumber: number;
+      pass: Awaited<ReturnType<typeof runPass>>;
+    }> = [];
+    let nextBatch = 0;
+    const runMarkSchemeSlot = async () => {
+      while (nextBatch < questionBatches.length) {
+        const batchIndex = nextBatch;
+        nextBatch += 1;
+        const questions = questionBatches[batchIndex];
+        batchResults[batchIndex] = {
+          questions,
+          batchNumber: batchIndex + 1,
+          pass: await runPass({
+          name: `mark_scheme_batch_${batchIndex + 1}`,
+          reasoningEffort: "low",
           // The questions, not the batch number. High-tariff questions are
           // split into batches of their own, so the same position covers
           // different questions between runs.
@@ -1102,10 +1175,17 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
             },
           ],
           temperature: 0.1,
-          maxOutputTokens: 6_000,
+          maxOutputTokens: 8_000,
+          timeoutMs: MARK_SCHEME_BATCH_TIMEOUT_MS,
         }),
-      })));
-      for (const result of passes) {
+        };
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(markSchemeConcurrency, questionBatches.length) }, () => runMarkSchemeSlot())
+    );
+    {
+      for (const result of batchResults) {
         let payload: Record<string, unknown> | null = null;
         try {
           payload = parseJsonObject(result.pass.text);
@@ -1123,8 +1203,9 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
           });
           const retry = await runPass({
             name: `mark_scheme_batch_${result.batchNumber}_structured_retry`,
+            reasoningEffort: "low",
             taskClass: "important",
-            role: markSchemeRole === "worker" ? "supervisor" : markSchemeRole,
+            role: markSchemeRole,
             systemInstruction: `${markSchemeInstruction}\nThe previous batch was truncated or structurally unreadable. Use each supplied question id exactly, use only the named marking values, include every required field, and return one concise complete JSON object.`,
             contents: [{
               role: "user" as const,
@@ -1188,12 +1269,14 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
         affectedIds.size === 0 || affectedIds.has(question.id)
       );
       const repairBatches = partitionMarkSchemeQuestions(repairQuestions);
-      for (let index = 0; index < repairBatches.length; index += 1) {
-        const wave = repairBatches.slice(index, index + 1);
+      // In waves, like the first draft: one repair at a time was most of an eight-minute stage.
+      for (let index = 0; index < repairBatches.length; index += markSchemeConcurrency) {
+        const wave = repairBatches.slice(index, index + markSchemeConcurrency);
         const passes = await Promise.all(wave.map(async (questions, offset) => {
           const questionIds = new Set(questions.map((question) => question.id));
           return runPass({
             name: `mark_scheme_targeted_repair_${repairRound}_${index + offset + 1}`,
+            reasoningEffort: "low",
             taskClass: "important",
             role: markSchemeRole,
             systemInstruction: `${markSchemeInstruction}\nCorrect every listed structural fault. Return replacement items only for the supplied affected questions.`,
@@ -1234,10 +1317,26 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
       };
       schemeFaults = markSchemeIssues(schemeCandidate, { alignment: true });
     }
+    /*
+     * A scheme whose only remaining fault is the topic check goes on to the
+     * audit instead of failing the paper. That check is a word-overlap guess
+     * (see scheme-alignment.ts), and a leftover false flag threw the whole paper
+     * away: the workflow retried the step, redesigned the paper and built a new
+     * scheme, so a job bounced between designing and marking for minutes.
+     * Structural faults -- marks that do not sum, unreadable items -- still fail it.
+     */
+    const onlyTopicFlags =
+      schemeFaults.length > 0 && schemeFaults.every((issue) => issue.code === "scheme_off_topic");
+    if (onlyTopicFlags) {
+      log.warn("mark_scheme.topic_flags_deferred_to_audit", {
+        issueCount: schemeFaults.length,
+        questionIds: schemeFaults.map((issue) => issue.questionId ?? ""),
+      });
+    }
     if (
       !schemeCandidate ||
       !sameFixedPaper(draft, schemeCandidate) ||
-      schemeFaults.length > 0
+      (schemeFaults.length > 0 && !onlyTopicFlags)
     ) {
       log.warn("mark_scheme.validation_exhausted", {
         issueCount: schemeFaults.length,
@@ -1273,8 +1372,9 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
     });
     const auditPass = await runPass({
       name: "paper_audit",
+      reasoningEffort: "low",
       taskClass: "important",
-      role: "supervisor",
+      role: paperCheckRole,
       systemInstruction: `You are Jami's senior independent assessment supervisor. Check the complete paper and marking guide for factual correctness, answerability, coverage, source alignment, duplicated or ambiguous questions, impossible assets, mark-total errors, choice-rule errors, timing realism, rubric correctness and whether it is genuinely a complete sitting. Do not rewrite the paper. Return JSON only as {"pass":true,"issues":[]} or {"pass":false,"issues":[{"code":"short_code","severity":"warning"|"error","detail":"specific evidence and required correction","questionId":"optional"}]}. Only report substantiated issues.`,
       contents: [{
         role: "user" as const,
@@ -1364,8 +1464,9 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
 
       const reAuditPass = await runPass({
         name: "paper_reaudit",
+        reasoningEffort: "low",
         taskClass: "important",
-        role: "supervisor",
+        role: paperCheckRole,
         systemInstruction: `You are Jami's senior independent assessment supervisor. Verify whether the supplied repair resolves the earlier issues without introducing new factual, answerability, coverage, timing, ambiguity, scoring, rubric or source-fidelity problems. Do not rewrite the paper. Return JSON only as {"pass":true,"issues":[]} or {"pass":false,"issues":[{"code":"short_code","severity":"warning"|"error","detail":"specific evidence","questionId":"optional"}]}.`,
         contents: [{
           role: "user" as const,

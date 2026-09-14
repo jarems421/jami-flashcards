@@ -184,6 +184,10 @@ export function buildOpenRouterRequestBody(
     stream,
     provider: {
       only: [...options.providerAllowlist],
+      // Tried in the order the allowlist gives, not balanced across it: the
+      // worker's first endpoint answered a mark-scheme batch in 9-13 seconds
+      // where a later one spent 113 seconds thinking on the same request.
+      order: [...options.providerAllowlist],
       allow_fallbacks: true,
       require_parameters: true,
       data_collection: "deny" as const,

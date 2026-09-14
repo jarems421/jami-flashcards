@@ -62,6 +62,19 @@ describe("catching a scheme written for another question", () => {
     ).not.toContain("scheme_off_topic");
   });
 
+  /** A maths scheme is working, not prose: the question's own figures are what it shares. */
+  it("does not refuse a maths scheme written as working", () => {
+    expect(
+      codes(
+        question({
+          prompt: "Share £120 between Aisha and Brendan in the ratio 3 : 5. Work out how much money Brendan receives.",
+          marks: 2,
+        }),
+        item({ answer: "£75", points: [{ id: "p1", marks: 1, code: "M", text: "120 ÷ 8 = 15" }, { id: "p2", marks: 1, code: "A", text: "15 × 5 = 75" }] })
+      )
+    ).not.toContain("scheme_off_topic");
+  });
+
   /**
    * q3: a study-group remark, marked against recycling and a head student.
    * Its prose overlap alone clears the bar; the invented figures are what give
