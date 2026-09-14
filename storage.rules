@@ -27,6 +27,11 @@ service firebase.storage {
         );
     }
 
+    function isAllowedCardImage() {
+      return request.resource.size <= 10 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
     function isAllowedVideoImport() {
       return request.resource.size <= 500 * 1024 * 1024 &&
         request.resource.contentType.matches('(video/mp4|video/mpeg|video/quicktime|video/webm)');
@@ -43,6 +48,25 @@ service firebase.storage {
     match /users/{userId}/notebookFiles/{notebookId}/{fileName} {
       allow read: if isSelf(userId);
       allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedNotebookFile();
+      allow delete: if isSelf(userId) && !isDemoAccount();
+    }
+
+    // Pictures a student puts on the front or back of a card. Private, images
+    // only, and removed by the app when the card or the image on it goes.
+    match /users/{userId}/cardImages/{fileId}/{fileName} {
+      allow read: if isSelf(userId);
+      allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedCardImage();
+      allow delete: if isSelf(userId) && !isDemoAccount();
+    }
+
+    // A photo a student chose as the app's background, resized to a JPEG in the
+    // browser before upload. Private; each of their devices reads it through
+    // the download URL the app resolves while they are signed in.
+    match /users/{userId}/appBackgrounds/{fileId}/{fileName} {
+      allow read: if isSelf(userId);
+      allow create, update: if isSelf(userId) && !isDemoAccount() &&
+        request.resource.size <= 15 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/(jpeg|png|webp)');
       allow delete: if isSelf(userId) && !isDemoAccount();
     }
 

@@ -1,4 +1,4 @@
-import { getCardContentKey, type Card } from "@/lib/study/cards";
+import { getCardDuplicateKey, type Card } from "@/lib/study/cards";
 
 export type CardQualityWarning = {
   id: string;
@@ -72,10 +72,12 @@ export function getCardQualityWarnings(
   return warnings;
 }
 
-export function getCardContentDuplicateCounts(cards: Pick<Card, "front" | "back">[]) {
+export function getCardContentDuplicateCounts(
+  cards: Array<Pick<Card, "front" | "back"> & Partial<Pick<Card, "frontImage" | "backImage">>>
+) {
   const counts = new Map<string, number>();
   for (const card of cards) {
-    const key = getCardContentKey(card.front, card.back);
+    const key = getCardDuplicateKey(card);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return counts;

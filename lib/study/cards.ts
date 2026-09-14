@@ -1,3 +1,4 @@
+import { normalizeCardImage, type CardImage } from "@/lib/study/card-images";
 import { normalizeStudyTextInput } from "@/lib/study/display-text";
 import { normalizeStringArray } from "@/lib/material/content";
 import type { CardStudySettings } from "@/lib/study/study-modes";
@@ -15,6 +16,12 @@ export type Card = {
   userId: string;
   front: string;
   back: string;
+  /**
+   * A picture on either side, added by hand. A side needs text, an image, or
+   * both; a card carrying any image is studied by flipping it.
+   */
+  frontImage?: CardImage;
+  backImage?: CardImage;
   createdAt: number;
   tags: string[];
   topicIds?: string[];
@@ -151,6 +158,46 @@ export function getCardContentKey(front: string, back: string): string {
   const frontKey = normalizeImportCell(front).replace(/\s+/g, " ").toLowerCase();
   const backKey = normalizeImportCell(back).replace(/\s+/g, " ").toLowerCase();
   return `${frontKey}\u001f${backKey}`;
+}
+
+/**
+ * Why a card's two sides cannot be saved, or null.
+ *
+ * Takes already-normalised text. Each side needs text, an image or both --
+ * a photo of a diagram is a whole prompt on its own.
+ */
+export function getCardFacesError(input: {
+  front: string;
+  back: string;
+  hasFrontImage?: boolean;
+  hasBackImage?: boolean;
+}) {
+  if ((!input.front && !input.hasFrontImage) || (!input.back && !input.hasBackImage)) {
+    return "Both front and back are required.";
+  }
+  if (input.front.length > MAX_FRONT_LENGTH || input.back.length > MAX_BACK_LENGTH) {
+    return `Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`;
+  }
+  return null;
+}
+
+export function cardHasImages(card: Partial<Pick<Card, "frontImage" | "backImage">>) {
+  return Boolean(card.frontImage || card.backImage);
+}
+
+/**
+ * What makes two cards the same card, for duplicate warnings.
+ *
+ * Text alone called every image-only card a duplicate of every other, since
+ * they all have the same empty text. Image paths are added only where there
+ * are images, so a text-only card keys exactly as it always did.
+ */
+export function getCardDuplicateKey(
+  card: Pick<Card, "front" | "back"> & Partial<Pick<Card, "frontImage" | "backImage">>
+) {
+  const textKey = getCardContentKey(card.front, card.back);
+  if (!cardHasImages(card)) return textKey;
+  return `${textKey}${card.frontImage?.storagePath ?? ""}${card.backImage?.storagePath ?? ""}`;
 }
 
 function getImportCellKey(value: string): string {
@@ -429,17 +476,22 @@ export function exportCardsToSeparatedText(
 }
 
 export function mapCardData(id: string, data: Record<string, unknown>): Card {
+  const userId =
+    typeof data.userId === "string"
+      ? data.userId
+      : typeof data.uid === "string"
+        ? data.uid
+        : "";
+  const frontImage = normalizeCardImage(data.frontImage, userId);
+  const backImage = normalizeCardImage(data.backImage, userId);
   return {
     id,
     deckId: typeof data.deckId === "string" ? data.deckId : "",
-    userId:
-      typeof data.userId === "string"
-        ? data.userId
-        : typeof data.uid === "string"
-          ? data.uid
-          : "",
+    userId,
     front: typeof data.front === "string" ? data.front : "",
     back: typeof data.back === "string" ? data.back : "",
+    ...(frontImage ? { frontImage } : {}),
+    ...(backImage ? { backImage } : {}),
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     tags: normalizeCardTags(data.tags),
     topicIds: normalizeStringArray(data.topicIds, MAX_CARD_LEGACY_TOPIC_IDS, 120),

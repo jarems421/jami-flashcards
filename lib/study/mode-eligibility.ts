@@ -1,4 +1,4 @@
-import type { Card } from "@/lib/study/cards";
+import { cardHasImages, type Card } from "@/lib/study/cards";
 import { selectClozeGaps } from "@/lib/study/gap-fill";
 import { buildMultipleChoiceQuestion } from "@/lib/study/mcq";
 import { hasMathDelimiters, splitMathRichText } from "@/lib/study/math-text";
@@ -22,7 +22,11 @@ export type ModeIneligibilityReason =
   | "answer-is-maths"
   | "answer-too-long"
   | "no-safe-gap"
-  | "needs-preparation";
+  | "needs-preparation"
+  /** The answer is a picture, which only flipping the card can show. */
+  | "image-answer"
+  /** The question is a picture, and this mode needs material Jami cannot write without seeing it. */
+  | "image-prompt";
 
 export type ModeEligibility =
   | { eligible: true }
@@ -62,11 +66,31 @@ function authorDisabled(card: Card, mode: StudyMode) {
     .includes(mode);
 }
 
+/**
+ * Something to ask and a written answer to mark against.
+ *
+ * The question may be a picture -- a flag, a diagram to label -- because the
+ * exercise shows it above the answer box. The answer has to be words, since
+ * that is what every mode here marks.
+ */
 function hasContent(card: Card) {
-  return Boolean(card.front?.trim() && card.back?.trim());
+  return Boolean((card.front?.trim() || card.frontImage) && card.back?.trim());
+}
+
+/**
+ * A picture answer is only ever flipped.
+ *
+ * Typing, gapping and choosing are all marked against the back's words, and a
+ * picture on the back is part of the answer those words would be missing: a
+ * student marked correct for typing the caption has not recalled the diagram.
+ */
+function imageAnswerRefusal(card: Card): ModeEligibility | null {
+  return card.backImage ? { eligible: false, reason: "image-answer" } : null;
 }
 
 export function getTypeAnswerEligibility(card: Card): ModeEligibility {
+  const image = imageAnswerRefusal(card);
+  if (image) return image;
   if (!hasContent(card)) return { eligible: false, reason: "empty-card" };
   if (authorDisabled(card, "type-answer")) {
     return { eligible: false, reason: "disabled-by-author" };
@@ -81,6 +105,8 @@ export function getTypeAnswerEligibility(card: Card): ModeEligibility {
 }
 
 export function getGapFillEligibility(card: Card): ModeEligibility {
+  const image = imageAnswerRefusal(card);
+  if (image) return image;
   if (!hasContent(card)) return { eligible: false, reason: "empty-card" };
   if (authorDisabled(card, "gap-fill")) {
     return { eligible: false, reason: "disabled-by-author" };
@@ -94,14 +120,23 @@ export function getGapFillEligibility(card: Card): ModeEligibility {
   if (card.studySettings?.pinnedGaps !== undefined) {
     return { eligible: false, reason: "disabled-by-author" };
   }
+  /*
+   * Preparation reads a card's words and cannot see its picture, so a picture
+   * question is never sent. Waiting for gaps that will not arrive would keep the
+   * card in a Gap Fill session showing "not ready" every time it came round.
+   */
+  if (card.frontImage) return { eligible: false, reason: "image-prompt" };
   const wordCount = card.back.trim().split(/\s+/).filter(Boolean).length;
   return wordCount < 4 || hasMathDelimiters(card.back)
     ? { eligible: false, reason: "no-safe-gap" }
     : { eligible: false, reason: "needs-preparation" };
 }
 
+/** A flip card needs each side to show something: text, an image or both. */
 export function getClassicEligibility(card: Card): ModeEligibility {
-  return hasContent(card) ? ELIGIBLE : { eligible: false, reason: "empty-card" };
+  const front = card.front?.trim() || card.frontImage;
+  const back = card.back?.trim() || card.backImage;
+  return front && back ? ELIGIBLE : { eligible: false, reason: "empty-card" };
 }
 
 /**
@@ -129,6 +164,8 @@ export function getMultipleChoiceEligibility(
   card: Card,
   context: ModeResolutionContext = {}
 ): ModeEligibility {
+  const image = imageAnswerRefusal(card);
+  if (image) return image;
   if (!hasContent(card)) return { eligible: false, reason: "empty-card" };
   if (authorDisabled(card, "multiple-choice")) {
     return { eligible: false, reason: "disabled-by-author" };
@@ -140,6 +177,8 @@ export function getMultipleChoiceEligibility(
   if (card.studySettings?.mcqDistractors !== undefined) {
     return { eligible: false, reason: "disabled-by-author" };
   }
+  // Wrong options written without seeing the picture could be right for it.
+  if (card.frontImage) return { eligible: false, reason: "image-prompt" };
   return { eligible: false, reason: "needs-preparation" };
 }
 
@@ -479,7 +518,9 @@ export function needsStudyAssetPreparation(
   card: Card,
   policy: StudyModePolicy
 ): boolean {
-  if (!hasContent(card)) return false;
+  // Preparation reads words and cannot see a picture, so an image card is
+  // never sent: its questions come only from what the student wrote.
+  if (!hasContent(card) || cardHasImages(card)) return false;
 
   const answer = card.back.trim();
   if (mathsShare(answer) > MAX_MATHS_SHARE_OF_ANSWER) return false;

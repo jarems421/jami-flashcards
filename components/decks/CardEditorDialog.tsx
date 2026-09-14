@@ -4,6 +4,7 @@ import { useRef } from "react";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
+import CardImageField from "@/components/decks/CardImageField";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import TopicPicker from "@/components/topics/TopicPicker";
 import {
@@ -19,6 +20,7 @@ import type { CardDraft } from "@/hooks/useCardEditing";
 import { featureFlags } from "@/lib/app/feature-flags";
 import type { Topic } from "@/lib/material/topics";
 import { getCardQualityWarnings } from "@/lib/study/card-quality";
+import { isUnchangedCardImageDraft } from "@/lib/study/card-images";
 import {
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
@@ -79,6 +81,8 @@ export default function CardEditorDialog({
   const dirty = card
     ? draft.front !== card.front ||
       draft.back !== card.back ||
+      !isUnchangedCardImageDraft(draft.frontImage, card.frontImage) ||
+      !isUnchangedCardImageDraft(draft.backImage, card.backImage) ||
       !hasSameTopics(draft.topicIds, card.topicIds ?? [])
     : false;
 
@@ -147,6 +151,12 @@ export default function CardEditorDialog({
                 maxLength={MAX_FRONT_LENGTH}
                 disabled={saving}
               />
+              <CardImageField
+                label="Front image"
+                value={draft.frontImage}
+                disabled={saving}
+                onChange={(frontImage) => onDraftChange({ frontImage })}
+              />
               <CardBackEditor
                 label="Back"
                 value={draft.back}
@@ -171,6 +181,12 @@ export default function CardEditorDialog({
                     />
                   ) : null
                 }
+              />
+              <CardImageField
+                label="Back image"
+                value={draft.backImage}
+                disabled={saving}
+                onChange={(backImage) => onDraftChange({ backImage })}
               />
               <TopicPicker
                 userId={userId}

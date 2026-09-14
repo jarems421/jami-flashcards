@@ -16,6 +16,8 @@ import {
   type DeckIconPresetId,
 } from "@/lib/study/deck-style";
 import type { Deck } from "@/lib/study/decks";
+import { normalizeCardImage } from "@/lib/study/card-images";
+import { deleteCardImageFiles } from "@/services/study/card-images";
 import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 import {
   addDoc,
@@ -422,12 +424,22 @@ export const deleteDeck = async (
   );
   const cardDocuments = cardsSnapshot.docs;
   const invalidateDeckData = () => invalidateDeckCaches(normalizedUserId);
+  // Read while the cards still exist, removed once they do not: an image left
+  // behind by a deleted deck is a private file nothing will ever point at.
+  const cardImages = cardDocuments.flatMap((cardDoc) => {
+    const data = cardDoc.data() as Record<string, unknown>;
+    return [
+      normalizeCardImage(data.frontImage, normalizedUserId),
+      normalizeCardImage(data.backImage, normalizedUserId),
+    ];
+  });
 
   await deleteSnapshotsInBatches(
     cardDocuments,
     "Delete deck cards",
     invalidateDeckData
   );
+  await deleteCardImageFiles(cardImages);
 
   await deleteUserDeckHistory(
     normalizedUserId,

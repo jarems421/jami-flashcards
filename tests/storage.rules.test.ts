@@ -77,6 +77,57 @@ describe("Storage security rules", () => {
     await assertFails(uploadBytes(ref(bobStorage, filePath), blob("application/pdf")));
   });
 
+  it("keeps card images private to their owner, and images only", async () => {
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const bobStorage = testEnv.authenticatedContext("bob").storage();
+    const demoStorage = testEnv
+      .authenticatedContext("alice", { demo: true })
+      .storage();
+    const imagePath = "users/alice/cardImages/file-1/heart.png";
+
+    await assertSucceeds(uploadBytes(ref(aliceStorage, imagePath), blob("image/png")));
+    await assertSucceeds(getBytes(ref(aliceStorage, imagePath)));
+    await assertFails(getBytes(ref(bobStorage, imagePath)));
+    await assertFails(
+      uploadBytes(ref(bobStorage, "users/alice/cardImages/file-2/x.png"), blob("image/png"))
+    );
+    await assertFails(
+      uploadBytes(
+        ref(aliceStorage, "users/alice/cardImages/file-3/notes.pdf"),
+        blob("application/pdf")
+      )
+    );
+    await assertFails(
+      uploadBytes(ref(demoStorage, "users/alice/cardImages/file-4/x.png"), blob("image/png"))
+    );
+    await assertFails(deleteObject(ref(demoStorage, imagePath)));
+    await assertSucceeds(deleteObject(ref(aliceStorage, imagePath)));
+  });
+
+  it("keeps a photo background private to its owner, and images only", async () => {
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const bobStorage = testEnv.authenticatedContext("bob").storage();
+    const demoStorage = testEnv
+      .authenticatedContext("alice", { demo: true })
+      .storage();
+    const photoPath = "users/alice/appBackgrounds/file-1/background.jpg";
+
+    await assertSucceeds(uploadBytes(ref(aliceStorage, photoPath), blob("image/jpeg")));
+    await assertSucceeds(getBytes(ref(aliceStorage, photoPath)));
+    await assertFails(getBytes(ref(bobStorage, photoPath)));
+    await assertFails(
+      uploadBytes(ref(bobStorage, "users/alice/appBackgrounds/file-2/background.jpg"), blob("image/jpeg"))
+    );
+    await assertFails(
+      uploadBytes(ref(aliceStorage, "users/alice/appBackgrounds/file-3/notes.pdf"), blob("application/pdf"))
+    );
+    await assertFails(
+      uploadBytes(ref(demoStorage, "users/alice/appBackgrounds/file-4/background.jpg"), blob("image/jpeg"))
+    );
+    await assertFails(deleteObject(ref(demoStorage, photoPath)));
+    await assertSucceeds(deleteObject(ref(aliceStorage, photoPath)));
+  });
+
   it("blocks shared demo accounts from notebook uploads", async () => {
     const demoStorage = testEnv
       .authenticatedContext("alice", { demo: true })

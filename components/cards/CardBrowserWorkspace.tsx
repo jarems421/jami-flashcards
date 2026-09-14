@@ -18,7 +18,7 @@ import { useCardEditing } from "@/hooks/useCardEditing";
 import type { Topic } from "@/lib/material/topics";
 import type { Source } from "@/lib/material/sources";
 import { getCardContentDuplicateCounts } from "@/lib/study/card-quality";
-import { getCardContentKey, type Card } from "@/lib/study/cards";
+import { getCardDuplicateKey, type Card } from "@/lib/study/cards";
 import type { Deck } from "@/lib/study/decks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 
@@ -186,9 +186,7 @@ export default function CardBrowserWorkspace({
         }
         duplicateCount={
           previewCard
-            ? duplicateCounts.get(
-                getCardContentKey(previewCard.front, previewCard.back)
-              )
+            ? duplicateCounts.get(getCardDuplicateKey(previewCard))
             : undefined
         }
         sourceNames={(previewCard?.sourceIds ?? []).flatMap((sourceId) => {
@@ -213,9 +211,7 @@ export default function CardBrowserWorkspace({
         }
         duplicateCount={
           editingCard
-            ? duplicateCounts.get(
-                getCardContentKey(editingCard.front, editingCard.back)
-              )
+            ? duplicateCounts.get(getCardDuplicateKey(editingCard))
             : undefined
         }
         saving={editingCard ? editing.rows.isSaving(editingCard.id) : false}

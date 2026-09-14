@@ -146,7 +146,7 @@ export default function JamiAssistantHistory({
         </h3>
         <button
           type="button"
-          className="shrink-0 rounded-full bg-accent px-3.5 py-2 text-xs font-semibold text-white transition duration-fast hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+          className="shrink-0 rounded-full bg-accent px-3.5 py-2 text-xs font-semibold text-accent-on transition duration-fast hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
           onClick={onNew}
         >
           New chat
@@ -212,7 +212,7 @@ export default function JamiAssistantHistory({
                     <button
                       type="submit"
                       disabled={busy || !editingTitle.trim()}
-                      className="rounded-full bg-accent px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-full bg-accent px-3 py-2 text-xs font-semibold text-accent-on disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Save
                     </button>

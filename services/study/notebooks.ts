@@ -65,19 +65,6 @@ const WRITE_MS = 30_000;
 /** Firestore caps a batch at 500 operations. */
 const PAGE_DELETE_BATCH_LIMIT = 400;
 
-export class NotebookPageConflictError extends Error {
-  readonly code = "notebook-page-conflict";
-  readonly remoteRevision: number;
-
-  constructor(remoteRevision: number) {
-    super(
-      "This page changed on another device. Your work is safe in a local draft; reopen the notebook to choose which version to keep."
-    );
-    this.name = "NotebookPageConflictError";
-    this.remoteRevision = remoteRevision;
-  }
-}
-
 function notebooksCollection(userId: string) {
   return collection(db, "users", userId, "notebooks");
 }
@@ -635,7 +622,6 @@ export async function updateNotebookPageImages(
     notebookId: string;
     pageId: string;
     imageRefs: NotebookImageRef[];
-    baseContentRevision: number;
   }
 ) {
   const normalizedUserId = userId.trim();
@@ -644,6 +630,17 @@ export async function updateNotebookPageImages(
   if (!normalizedUserId || !notebookId || !pageId) {
     throw new Error("Missing notebook image target.");
   }
+  /*
+   * Images live in their own field, which an ink or text save never writes, so
+   * this neither checks nor bumps the page's content revision.
+   *
+   * It used to do both. Every move bumped the revision, so an autosave already
+   * in flight was rejected as a conflict, and a second move started before the
+   * first landed was rejected too -- the image snapped back to where it began
+   * and the student was told the page had changed on another device, when the
+   * only other writer was themselves. The editor queues image writes, so the
+   * last one asked for is the one that lands.
+   */
   const imageRefs = normalizeNotebookImageRefs(input.imageRefs);
   if (
     imageRefs.length !== input.imageRefs.length ||
@@ -660,16 +657,12 @@ export async function updateNotebookPageImages(
       if (data.notebookId !== notebookId) {
         throw new Error("This page does not belong to the open notebook.");
       }
-      const remoteRevision =
+      const contentRevision =
         typeof data.contentRevision === "number" && Number.isFinite(data.contentRevision)
           ? Math.max(0, Math.round(data.contentRevision))
           : 0;
-      if (remoteRevision !== Math.max(0, Math.round(input.baseContentRevision))) {
-        throw new NotebookPageConflictError(remoteRevision);
-      }
-      const contentRevision = remoteRevision + 1;
       const updatedAt = Date.now();
-      transaction.update(pageRef, { imageRefs, contentRevision, updatedAt });
+      transaction.update(pageRef, { imageRefs, updatedAt });
       return { contentRevision, updatedAt };
     }),
     WRITE_MS,
@@ -690,7 +683,6 @@ export async function saveNotebookPageSnapshot(
     pageColor: NotebookPageColor;
     pageStyle: NotebookPageStyle;
     status: NotebookPageStatus;
-    baseContentRevision: number;
   }
 ) {
   const normalizedUserId = userId.trim();
@@ -703,10 +695,6 @@ export async function saveNotebookPageSnapshot(
   const snapshot = prepareNotebookPageSnapshotForPersistence(input);
   const inkData = snapshot.inkData;
   if (!inkData) throw new Error("This page has no drawing snapshot to save.");
-  const baseContentRevision =
-    Number.isFinite(input.baseContentRevision) && input.baseContentRevision >= 0
-      ? Math.round(input.baseContentRevision)
-      : 0;
   const pageRef = doc(db, "users", normalizedUserId, "notebookPages", pageId);
   const notebookRef = doc(db, "users", normalizedUserId, "notebooks", notebookId);
 
@@ -724,9 +712,13 @@ export async function saveNotebookPageSnapshot(
         pageData.contentRevision >= 0
           ? Math.round(pageData.contentRevision)
           : 0;
-      if (remoteRevision !== baseContentRevision) {
-        throw new NotebookPageConflictError(remoteRevision);
-      }
+      /*
+       * The last save wins, from whichever device made it. A notebook belongs
+       * to one student, and they work on one device at a time, so a page that
+       * moved on since this device last saw it was moved by them -- refusing
+       * the save only stranded their latest work behind a conflict prompt.
+       * The revision still advances, so a reader can tell the page changed.
+       */
 
       const now = Date.now();
       const contentRevision = remoteRevision + 1;

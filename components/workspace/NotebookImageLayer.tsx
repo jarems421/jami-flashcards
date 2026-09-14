@@ -10,6 +10,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
 import {
   moveNotebookImageRef,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
@@ -56,6 +57,14 @@ const RESIZE_CORNERS: Array<{
     cursorClass: "cursor-nesw-resize",
   },
 ];
+
+/**
+ * Screen pixels a pointer has to travel before a press counts as a drag.
+ *
+ * Without it every tap to select an image saved a move of a pixel or two, and
+ * each of those writes was one more chance to race the page's autosave.
+ */
+const DRAG_THRESHOLD_PX = 3;
 
 function placement(image: NotebookImageRef) {
   return {
@@ -104,7 +113,7 @@ function NotebookPlacedImage({ image }: { image: NotebookImageRef }) {
     >
       {assetUrl ? (
         <Image
-          alt={image.altText || "Notebook illustration"}
+          alt={image.altText || "Notebook image"}
           src={assetUrl}
           fill
           unoptimized
@@ -122,14 +131,18 @@ function NotebookPlacedImage({ image }: { image: NotebookImageRef }) {
 }
 
 type Gesture = {
-  imageId: string;
   kind: "move" | "resize";
   corner?: NotebookImageResizeCorner;
   pointerId: number;
   startClientX: number;
   startClientY: number;
+  /** The layer's size when the press began; zoom does not change mid-drag. */
+  layerWidth: number;
+  layerHeight: number;
   original: NotebookImageRef;
 };
+
+type Pending = Record<string, { commitId: number; image: NotebookImageRef }>;
 
 type Props = {
   images: NotebookImageRef[];
@@ -137,7 +150,18 @@ type Props = {
   selectedImageId?: string | null;
   onSelect?: (imageId: string | null) => void;
   onCommit?: (images: NotebookImageRef[]) => void | Promise<void>;
+  onDelete?: (imageId: string) => void;
 };
+
+function geometryFor(gesture: Gesture, clientX: number, clientY: number) {
+  const deltaX =
+    ((clientX - gesture.startClientX) / gesture.layerWidth) * NOTEBOOK_PAGE_COORDINATE_WIDTH;
+  const deltaY =
+    ((clientY - gesture.startClientY) / gesture.layerHeight) * NOTEBOOK_PAGE_COORDINATE_HEIGHT;
+  return gesture.kind === "move"
+    ? moveNotebookImageRef(gesture.original, deltaX, deltaY)
+    : resizeNotebookImageRef(gesture.original, deltaX, deltaY, gesture.corner);
+}
 
 function NotebookImageLayer({
   images,
@@ -145,72 +169,71 @@ function NotebookImageLayer({
   selectedImageId = null,
   onSelect,
   onCommit,
+  onDelete,
 }: Props) {
   const layerRef = useRef<HTMLDivElement | null>(null);
-  const [gesture, setGesture] = useState<Gesture | null>(null);
+  /*
+   * The gesture and the latest pointer position live in refs, and the preview
+   * is committed at most once a frame. Holding the gesture in state meant the
+   * first moves after a press read the previous render's null gesture and were
+   * dropped, and a render per raw pointer event -- several a frame with a
+   * Pencil -- is what made a drag stutter behind the pointer.
+   */
+  const gestureRef = useRef<Gesture | null>(null);
+  const pointRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const frameRef = useRef<number | null>(null);
   const [draft, setDraft] = useState<NotebookImageRef | null>(null);
   /*
-   * Where the image was left, held until the save round-trip lands.
+   * Where each image was left, held until its save lands.
    *
-   * A commit flushes the page and then writes to Firestore, so the `images`
-   * prop keeps the pre-drag geometry for a few hundred milliseconds after the
-   * pointer lifts. Dropping the drag preview at pointer-up made the image snap
-   * back to its old size and place for that window, then jump forwards again
-   * once the write returned.
+   * The page's images keep their previous geometry until the write returns, so
+   * dropping the preview at pointer-up snapped the image back for that window
+   * and forward again after. Kept per image, so moving a second image while the
+   * first is still saving does not put the first one back.
    */
-  const [pending, setPending] = useState<NotebookImageRef | null>(null);
+  const [pending, setPending] = useState<Pending>({});
+  const pendingRef = useRef<Pending>({});
+  const imagesRef = useRef(images);
   const commitIdRef = useRef(0);
+
+  useEffect(() => {
+    imagesRef.current = images;
+    pendingRef.current = pending;
+  });
+
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    },
+    []
+  );
+
   const displayedImages = images.map((image) => {
     if (draft?.id === image.id) return draft;
-    return pending?.id === image.id ? pending : image;
+    return pending[image.id]?.image ?? image;
   });
 
   const commitImage = useCallback(
     (next: NotebookImageRef) => {
-      setPending(next);
       const commitId = (commitIdRef.current += 1);
-      void Promise.resolve(
-        onCommit?.(
-          images.map((image) => {
-            if (image.id === next.id) return next;
-            return pending?.id === image.id ? pending : image;
-          })
-        )
-      )
+      const nextPending = { ...pendingRef.current, [next.id]: { commitId, image: next } };
+      pendingRef.current = nextPending;
+      setPending(nextPending);
+      const list = imagesRef.current.map((image) => nextPending[image.id]?.image ?? image);
+      void Promise.resolve(onCommit?.(list))
         .catch(() => undefined)
         .finally(() => {
-          // A newer gesture owns the preview by now; leave its value alone. A
-          // rejected save clears too, so the image falls back to what is stored.
-          if (commitIdRef.current === commitId) setPending(null);
+          // A newer commit of this image owns the preview; leave it. A rejected
+          // save clears too, so the image falls back to what is stored.
+          setPending((current) => {
+            if (current[next.id]?.commitId !== commitId) return current;
+            const rest = { ...current };
+            delete rest[next.id];
+            return rest;
+          });
         });
     },
-    [images, onCommit, pending]
-  );
-
-  const updateGesture = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (!gesture || event.pointerId !== gesture.pointerId) return null;
-      const bounds = layerRef.current?.getBoundingClientRect();
-      if (!bounds?.width || !bounds.height) return null;
-      const deltaX =
-        ((event.clientX - gesture.startClientX) / bounds.width) *
-        NOTEBOOK_PAGE_COORDINATE_WIDTH;
-      const deltaY =
-        ((event.clientY - gesture.startClientY) / bounds.height) *
-        NOTEBOOK_PAGE_COORDINATE_HEIGHT;
-      const next =
-        gesture.kind === "move"
-          ? moveNotebookImageRef(gesture.original, deltaX, deltaY)
-          : resizeNotebookImageRef(
-              gesture.original,
-              deltaX,
-              deltaY,
-              gesture.corner
-            );
-      setDraft(next);
-      return next;
-    },
-    [gesture]
+    [onCommit]
   );
 
   const startGesture = useCallback(
@@ -220,38 +243,80 @@ function NotebookImageLayer({
       corner?: NotebookImageResizeCorner
     ) => {
       event.stopPropagation();
+      const bounds = layerRef.current?.getBoundingClientRect();
+      if (!bounds?.width || !bounds.height) return;
       event.currentTarget.setPointerCapture(event.pointerId);
-      setGesture({
-        imageId: image.id,
+      pointRef.current = null;
+      gestureRef.current = {
         kind: corner ? "resize" : "move",
         ...(corner ? { corner } : {}),
         pointerId: event.pointerId,
         startClientX: event.clientX,
         startClientY: event.clientY,
+        layerWidth: bounds.width,
+        layerHeight: bounds.height,
         // The displayed image, so a drag that starts mid-save continues from
         // what the student can see rather than from the last stored geometry.
         original: image,
-      });
+      };
     },
     []
   );
 
+  const moveGesture = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const gesture = gestureRef.current;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    event.stopPropagation();
+    pointRef.current = { clientX: event.clientX, clientY: event.clientY };
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      const current = gestureRef.current;
+      const point = pointRef.current;
+      if (!current || !point) return;
+      setDraft(geometryFor(current, point.clientX, point.clientY));
+    });
+  }, []);
+
   const finishGesture = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
+      const gesture = gestureRef.current;
       if (!gesture || event.pointerId !== gesture.pointerId) return;
-      const next = updateGesture(event) ?? draft ?? gesture.original;
+      event.stopPropagation();
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
-      setGesture(null);
+      gestureRef.current = null;
+      // A cancelled pointer reports no useful position, so the last one seen
+      // stands in for it.
+      const point =
+        event.type === "pointercancel"
+          ? pointRef.current
+          : { clientX: event.clientX, clientY: event.clientY };
+      pointRef.current = null;
       setDraft(null);
-      commitImage(next);
+      if (!point) return;
+      const travelled = Math.hypot(
+        point.clientX - gesture.startClientX,
+        point.clientY - gesture.startClientY
+      );
+      if (travelled < DRAG_THRESHOLD_PX) return;
+      commitImage(geometryFor(gesture, point.clientX, point.clientY));
     },
-    [commitImage, draft, gesture, updateGesture]
+    [commitImage]
   );
 
-  const nudge = useCallback(
+  const handleKeyDown = useCallback(
     (image: NotebookImageRef, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      if ((event.key === "Delete" || event.key === "Backspace") && onDelete) {
+        event.preventDefault();
+        onDelete(image.id);
+        return;
+      }
       const amount = event.shiftKey ? 24 : 8;
       const delta =
         event.key === "ArrowLeft"
@@ -267,7 +332,7 @@ function NotebookImageLayer({
       event.preventDefault();
       commitImage(moveNotebookImageRef(image, delta.x, delta.y));
     },
-    [commitImage]
+    [commitImage, onDelete]
   );
 
   return (
@@ -279,6 +344,8 @@ function NotebookImageLayer({
         <div className="pointer-events-none absolute inset-0 z-[26]">
           {displayedImages.map((image) => {
             const selected = selectedImageId === image.id;
+            const dragging = draft?.id === image.id;
+            const name = image.altText || "notebook image";
             return (
               <div
                 key={image.id}
@@ -287,9 +354,9 @@ function NotebookImageLayer({
               >
                 <button
                   type="button"
-                  aria-label={`Move ${image.altText || "notebook illustration"}`}
+                  aria-label={`Move ${name}`}
                   aria-pressed={selected}
-                  className={`pointer-events-auto absolute inset-0 touch-none rounded-sm border bg-transparent outline-none transition focus-visible:ring-2 focus-visible:ring-accent/55 ${
+                  className={`pointer-events-auto absolute inset-0 touch-none rounded-sm border bg-transparent outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/55 ${
                     selected
                       ? "cursor-move border-accent shadow-ring"
                       : "cursor-pointer border-transparent hover:border-accent/55"
@@ -298,36 +365,42 @@ function NotebookImageLayer({
                     event.stopPropagation();
                     onSelect?.(image.id);
                   }}
-                  onKeyDown={(event) => nudge(image, event)}
+                  onKeyDown={(event) => handleKeyDown(image, event)}
                   onPointerDown={(event) => {
                     onSelect?.(image.id);
                     startGesture(image, event);
                   }}
-                  onPointerMove={(event) => {
-                    event.stopPropagation();
-                    updateGesture(event);
-                  }}
+                  onPointerMove={moveGesture}
                   onPointerUp={finishGesture}
                   onPointerCancel={finishGesture}
                 />
+                {selected && onDelete && !dragging ? (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${name}`}
+                    title="Delete image"
+                    className="pointer-events-auto absolute left-1/2 top-2 z-20 inline-flex h-9 -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] pl-2.5 pr-3.5 text-xs font-semibold text-text-primary shadow-e1 outline-none transition-colors hover:border-[var(--color-error-mark)] focus-visible:ring-2 focus-visible:ring-accent/55"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDelete(image.id);
+                    }}
+                  >
+                    <NotebookIcon name="trash" />
+                    Delete
+                  </button>
+                ) : null}
                 {selected
                   ? RESIZE_CORNERS.map((handle) => (
                       <button
                         key={handle.corner}
                         type="button"
                         data-image-resize-handle={handle.corner}
-                        aria-label={`${handle.label} of ${
-                          image.altText || "notebook illustration"
-                        }`}
+                        aria-label={`${handle.label} of ${name}`}
                         title={handle.label}
                         className={`group pointer-events-auto absolute z-10 inline-grid h-8 w-8 touch-none place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/55 ${handle.positionClass} ${handle.cursorClass}`}
-                        onPointerDown={(event) =>
-                          startGesture(image, event, handle.corner)
-                        }
-                        onPointerMove={(event) => {
-                          event.stopPropagation();
-                          updateGesture(event);
-                        }}
+                        onPointerDown={(event) => startGesture(image, event, handle.corner)}
+                        onPointerMove={moveGesture}
                         onPointerUp={finishGesture}
                         onPointerCancel={finishGesture}
                       >

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   captureExamWorking,
+  EXAM_WORKING_MAX_IMAGE_SIDE,
+  EXAM_WORKING_MAX_PAGES,
   examWorkingHasInk,
+  examWorkingPagesWithInk,
+  examWorkingStackLayout,
   requireExamWorkingSnapshot,
 } from "@/lib/practice/exam-working";
 
@@ -12,6 +16,9 @@ const EMPTY_SHEET =
 const INKED_SHEET =
   '<svg viewBox="0 0 900 1240" xmlns="http://www.w3.org/2000/svg">' +
   '<path d="M10,10 L90,90" stroke="#000"/></svg>';
+const SECOND_INKED_SHEET =
+  '<svg viewBox="0 0 900 1240" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M20,20 L80,80" stroke="#000"/></svg>';
 
 /**
  * An empty sheet is not an empty string, and undo depth is not ink.
@@ -51,11 +58,49 @@ describe("deciding whether a sheet has ink on it", () => {
   });
 });
 
+describe("several pages of working", () => {
+  it("keeps only the pages with something on them, in order", () => {
+    expect(
+      examWorkingPagesWithInk([INKED_SHEET, EMPTY_SHEET, "", SECOND_INKED_SHEET])
+    ).toEqual([INKED_SHEET, SECOND_INKED_SHEET]);
+  });
+
+  it("sends a single page at full size", () => {
+    expect(
+      examWorkingStackLayout({ pageCount: 1, pageWidth: 1200, pageHeight: 1653, gap: 24 })
+    ).toEqual({ width: 1200, height: 1653, pageHeight: 1653, offsets: [0] });
+  });
+
+  /*
+   * The server refuses an image taller than its limit, so a long piece of
+   * working has to fit inside it rather than be turned away at submission.
+   */
+  it("fits the most pages allowed inside the server's size limit", () => {
+    const layout = examWorkingStackLayout({
+      pageCount: EXAM_WORKING_MAX_PAGES,
+      pageWidth: 1200,
+      pageHeight: 1653,
+      gap: 24,
+    });
+    expect(layout.height).toBeLessThanOrEqual(EXAM_WORKING_MAX_IMAGE_SIDE);
+    expect(layout.width).toBeLessThanOrEqual(EXAM_WORKING_MAX_IMAGE_SIDE);
+    expect(layout.offsets).toHaveLength(EXAM_WORKING_MAX_PAGES);
+    // Each page follows the one before it without overlapping it.
+    for (let index = 1; index < layout.offsets.length; index += 1) {
+      expect(layout.offsets[index]! - layout.offsets[index - 1]!).toBeGreaterThanOrEqual(
+        layout.pageHeight
+      );
+    }
+    // Scaled by the same factor on both axes, so no page is squashed.
+    expect(layout.width / layout.pageHeight).toBeCloseTo(1200 / 1653, 2);
+  });
+});
+
 describe("working must be known before submission", () => {
-  it.each([null, undefined])("refuses an unavailable serializer result: %s", async (svg) => {
+  it.each([null, undefined])("refuses an unavailable serializer result: %s", async (pages) => {
     const save = vi.fn();
     const rasterize = vi.fn();
-    expect(await captureExamWorking({ serialize: async () => svg, save, rasterize }))
+    expect(await captureExamWorking({ serialize: async () => pages, save, rasterize }))
       .toEqual({ hasInk: false, ok: false, reason: "not_ready" });
     expect(save).not.toHaveBeenCalled();
     expect(rasterize).not.toHaveBeenCalled();
@@ -63,17 +108,18 @@ describe("working must be known before submission", () => {
 
   it("allows a confirmed empty sheet", async () => {
     const rasterize = vi.fn();
-    expect(await captureExamWorking({ serialize: async () => "", save: vi.fn(), rasterize }))
+    expect(await captureExamWorking({ serialize: async () => [""], save: vi.fn(), rasterize }))
       .toEqual({ hasInk: false, ok: true });
     expect(rasterize).not.toHaveBeenCalled();
   });
 
   /** The blank sheet that used to be rasterised, submitted and marked. */
-  it("does not submit an untouched sheet as working", async () => {
+  it("does not submit untouched pages as working", async () => {
     const rasterize = vi.fn();
     const save = vi.fn();
-    expect(await captureExamWorking({ serialize: async () => EMPTY_SHEET, save, rasterize }))
-      .toEqual({ hasInk: false, ok: true });
+    expect(
+      await captureExamWorking({ serialize: async () => [EMPTY_SHEET, EMPTY_SHEET], save, rasterize })
+    ).toEqual({ hasInk: false, ok: true });
     expect(rasterize).not.toHaveBeenCalled();
     expect(save).not.toHaveBeenCalled();
   });
@@ -81,14 +127,24 @@ describe("working must be known before submission", () => {
   it("includes loaded ink even without undo history, despite a failed draft save", async () => {
     const png = { mimeType: "image/png" as const, dataBase64: "ink", width: 1200, height: 1653 };
     const rasterize = vi.fn().mockResolvedValue(png);
-    expect(await captureExamWorking({ serialize: async () => INKED_SHEET,
+    expect(await captureExamWorking({ serialize: async () => [INKED_SHEET],
       save: vi.fn().mockRejectedValue(new Error("offline")), rasterize }))
       .toEqual({ hasInk: true, ok: true, png });
-    expect(rasterize).toHaveBeenCalledWith(INKED_SHEET);
+    expect(rasterize).toHaveBeenCalledWith([INKED_SHEET]);
+  });
+
+  it("saves every page but rasterises only the ones with ink", async () => {
+    const png = { mimeType: "image/png" as const, dataBase64: "ink", width: 1200, height: 3330 };
+    const save = vi.fn().mockResolvedValue(undefined);
+    const rasterize = vi.fn().mockResolvedValue(png);
+    const pages = [INKED_SHEET, EMPTY_SHEET, SECOND_INKED_SHEET];
+    await captureExamWorking({ serialize: async () => pages, save, rasterize });
+    expect(save).toHaveBeenCalledWith(pages);
+    expect(rasterize).toHaveBeenCalledWith([INKED_SHEET, SECOND_INKED_SHEET]);
   });
 
   it("blocks a failed image conversion", async () => {
-    const snapshot = await captureExamWorking({ serialize: async () => INKED_SHEET,
+    const snapshot = await captureExamWorking({ serialize: async () => [INKED_SHEET],
       save: vi.fn().mockResolvedValue(undefined), rasterize: vi.fn().mockResolvedValue(undefined) });
     expect(snapshot).toEqual({ hasInk: true, ok: false, reason: "image_failed" });
     await expect(requireExamWorkingSnapshot({ id: "a", status: "draft" },
@@ -107,7 +163,7 @@ describe("working must be known before submission", () => {
 
   it("lets a typed-only answer through once the sheet is confirmed empty", async () => {
     const snapshot = async () => await captureExamWorking({
-      serialize: async () => EMPTY_SHEET, save: vi.fn(), rasterize: vi.fn(),
+      serialize: async () => [EMPTY_SHEET], save: vi.fn(), rasterize: vi.fn(),
     });
     expect(await requireExamWorkingSnapshot({ id: "a", status: "draft" }, { attemptId: "a", snapshot }))
       .toEqual({ hasInk: false, ok: true });

@@ -1,6 +1,7 @@
 "use client";
 
-import { memo, type ComponentPropsWithoutRef, type Ref } from "react";
+import { memo, useRef, type ComponentPropsWithoutRef, type Ref } from "react";
+import { NOTEBOOK_PAGE_IMAGE_TYPES } from "@/lib/workspace/notebook-page-image-upload";
 import ToolbarIconButton from "@/components/workspace/NotebookToolbarIconButton";
 import { getNotebookStrokePaintColor } from "@/lib/workspace/notebook-page-content";
 import {
@@ -40,6 +41,11 @@ type Props = {
    */
   onSelectDrawingTool: (tool: "pen" | "highlighter" | "eraser") => void;
   onToggleTextTool: () => void;
+  /** Back to selecting, where images and text boxes can be moved. */
+  onSelectTool: () => void;
+  /** A picture chosen from the device, to place on the current page. */
+  onAddImage: (file: File) => void;
+  addingImage: boolean;
   undoDepth: number;
   redoDepth: number;
   onUndo: () => void;
@@ -73,12 +79,16 @@ function NotebookDrawingToolbar({
   openMenu,
   onSelectDrawingTool,
   onToggleTextTool,
+  onSelectTool,
+  onAddImage,
+  addingImage,
   undoDepth,
   redoDepth,
   onUndo,
   onRedo,
 }: Props) {
   const sideDock = isNotebookToolbarSideDock(dock);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   return (
     <div className={`pointer-events-none absolute z-40 ${DOCK_CLASS[dock]}`}>
@@ -133,6 +143,32 @@ function NotebookDrawingToolbar({
           icon="text"
           active={tool === "text"}
           onClick={onToggleTextTool}
+        />
+        <ToolbarIconButton
+          label="Select and move (V)"
+          icon="select"
+          active={tool === "select"}
+          onClick={onSelectTool}
+        />
+        <ToolbarIconButton
+          label={addingImage ? "Adding image…" : "Add image"}
+          icon="image"
+          disabled={addingImage}
+          onClick={() => imageInputRef.current?.click()}
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept={NOTEBOOK_PAGE_IMAGE_TYPES.join(",")}
+          className="hidden"
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // Cleared so choosing the same file again still fires a change.
+            event.target.value = "";
+            if (file) onAddImage(file);
+          }}
         />
         <span
           aria-hidden="true"

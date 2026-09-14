@@ -19,6 +19,19 @@ vi.mock("@/services/study/cards", () => ({
   updateCardContent: mocks.updateCardContent,
 }));
 
+const storageMocks = vi.hoisted(() => ({
+  deleteStorageFile: vi.fn<(path: string) => Promise<undefined>>(async () => undefined),
+}));
+
+vi.mock("@/services/firebase/storage-files", () => ({
+  createStorageFileId: vi.fn(() => "file-1"),
+  deleteStorageFile: storageMocks.deleteStorageFile,
+  getStorageFileDownloadUrl: vi.fn(async () => "https://files.test/image.png"),
+  getStorageUploadErrorMessage: vi.fn(() => "upload failed"),
+  sanitizeStorageFileName: vi.fn((name: string) => name),
+  uploadStorageFile: vi.fn(async () => undefined),
+}));
+
 const startingCard: Card = {
   id: "card-1",
   front: "Question",
@@ -42,8 +55,8 @@ let root: Root;
 let editing: CardEditingController;
 let renderedCards: Card[];
 
-function Harness() {
-  const [cards, setCards] = useState([startingCard]);
+function Harness({ initial = [startingCard] }: { initial?: Card[] }) {
+  const [cards, setCards] = useState(initial);
   const value = useCardEditing({
     cards,
     setCards,
@@ -60,6 +73,7 @@ function Harness() {
 beforeEach(() => {
   mocks.deleteCard.mockReset().mockResolvedValue(undefined);
   mocks.updateCardContent.mockReset().mockResolvedValue(undefined);
+  storageMocks.deleteStorageFile.mockClear();
   feedback.clear.mockReset();
   feedback.showError.mockReset();
   feedback.success.mockReset();
@@ -136,6 +150,33 @@ describe("useCardEditing", () => {
     act(() => editing.cancel());
     expect(editing.card).toBeNull();
     expect(editing.error).toBeNull();
+  });
+
+  it("clears a removed image from the card and deletes its file once saved", async () => {
+    const image = {
+      storagePath: "users/user-1/cardImages/file-1/cell.png",
+      width: 640,
+      height: 480,
+    };
+    const imageCard: Card = { ...startingCard, backImage: image };
+    act(() => root.unmount());
+    root = createRoot(container);
+    act(() => root.render(<Harness initial={[imageCard]} />));
+
+    act(() => editing.start(imageCard));
+    expect(editing.draft.backImage).toEqual({ kind: "saved", image });
+    act(() => editing.rows.updateDraft({ backImage: undefined }));
+    await act(async () => editing.save("card-1"));
+
+    // The text still answers the card, so the image can go.
+    expect(mocks.updateCardContent).toHaveBeenCalledWith("card-1", {
+      front: "Question",
+      back: "Answer",
+      topicIds: ["topic-1"],
+      backImage: null,
+    });
+    expect(storageMocks.deleteStorageFile).toHaveBeenCalledWith(image.storagePath);
+    expect(renderedCards[0].backImage).toBeUndefined();
   });
 
   it("deletes the pending card and informs selection ownership", async () => {

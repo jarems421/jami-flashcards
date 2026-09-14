@@ -20,7 +20,6 @@ const deleteNotebookPageDraft = vi.fn();
 vi.mock("@/services/study/notebooks", () => ({
   saveNotebookPageSnapshot: (...args: unknown[]) =>
     saveNotebookPageSnapshot(...args),
-  NotebookPageConflictError: class NotebookPageConflictError extends Error {},
 }));
 
 vi.mock("@/lib/workspace/notebook-drafts", async () => {

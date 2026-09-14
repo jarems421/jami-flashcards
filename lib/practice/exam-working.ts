@@ -11,6 +11,18 @@ export type ExamScratchpadHandle = {
 };
 
 /**
+ * Pages of working a question can hold.
+ *
+ * Enough for a long calculation or an extended answer, and few enough that
+ * every page still reads at a legible size once they are stacked into the one
+ * image the marker is sent.
+ */
+export const EXAM_WORKING_MAX_PAGES = 4;
+
+/** The server refuses a working image wider or taller than this. */
+export const EXAM_WORKING_MAX_IMAGE_SIDE = 4096;
+
+/**
  * Whether a serialised sheet actually has anything drawn on it.
  *
  * An empty editor does not serialise to an empty string: it returns its own
@@ -39,19 +51,54 @@ export function examWorkingHasInk(svg: string | null | undefined): boolean {
   return /<[a-zA-Z]/.test(body);
 }
 
+/** The pages worth sending, in order: a blank page adds nothing to mark. */
+export function examWorkingPagesWithInk(pages: readonly string[]) {
+  return pages.filter((page) => examWorkingHasInk(page));
+}
+
+/**
+ * Where each page sits in the single image a submission carries.
+ *
+ * Marking, the check, the Tutor and the notebook copy all read one working
+ * image, so several pages are stacked top to bottom rather than sent as
+ * several. Scaled down only as far as the server's size limit needs; the
+ * heights are floored so the stack can never round past it.
+ */
+export function examWorkingStackLayout(input: {
+  pageCount: number;
+  pageWidth: number;
+  pageHeight: number;
+  gap: number;
+  maxSide?: number;
+}) {
+  const maxSide = input.maxSide ?? EXAM_WORKING_MAX_IMAGE_SIDE;
+  const count = Math.max(1, Math.round(input.pageCount));
+  const naturalHeight = count * input.pageHeight + (count - 1) * input.gap;
+  const scale = Math.min(1, maxSide / naturalHeight, maxSide / input.pageWidth);
+  const width = Math.floor(input.pageWidth * scale);
+  const pageHeight = Math.floor(input.pageHeight * scale);
+  const gap = count > 1 ? Math.floor(input.gap * scale) : 0;
+  return {
+    width,
+    height: count * pageHeight + (count - 1) * gap,
+    pageHeight,
+    offsets: Array.from({ length: count }, (_unused, index) => index * (pageHeight + gap)),
+  };
+}
+
 /** A missing/unready editor is not evidence of an empty sheet. */
 export async function captureExamWorking(input: {
-  serialize(): Promise<string | null | undefined>;
-  save(svg: string): Promise<unknown>;
-  rasterize(svg: string): Promise<ExamScratchpadSnapshot["png"]>;
+  serialize(): Promise<readonly string[] | null | undefined>;
+  save(pages: readonly string[]): Promise<unknown>;
+  rasterize(pages: readonly string[]): Promise<ExamScratchpadSnapshot["png"]>;
 }): Promise<ExamScratchpadSnapshot> {
-  const svg = await input.serialize();
-  if (svg == null) return { hasInk: false, ok: false, reason: "not_ready" };
-  const hasInk = examWorkingHasInk(svg);
-  if (!hasInk) return { hasInk: false, ok: true };
+  const pages = await input.serialize();
+  if (pages == null) return { hasInk: false, ok: false, reason: "not_ready" };
+  const inked = examWorkingPagesWithInk(pages);
+  if (inked.length === 0) return { hasInk: false, ok: true };
   // The frozen PNG is submitted even if the separate draft save is offline.
-  await input.save(svg).catch(() => undefined);
-  const png = await input.rasterize(svg);
+  await input.save(pages).catch(() => undefined);
+  const png = await input.rasterize(inked);
   return png ? { hasInk: true, ok: true, png }
     : { hasInk: true, ok: false, reason: "image_failed" };
 }

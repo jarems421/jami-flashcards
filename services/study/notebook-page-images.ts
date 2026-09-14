@@ -52,7 +52,6 @@ export async function addUploadedImageToNotebookPage(input: {
   pageId: string;
   file: File;
   currentImageRefs: readonly NotebookImageRef[];
-  baseContentRevision: number;
   onProgress?: (progress: number) => void;
 }) {
   validateNotebookPageImage(input.file);
@@ -91,14 +90,28 @@ export async function addUploadedImageToNotebookPage(input: {
       displayHeight: display.height,
     };
 
-    return await updateNotebookPageImages(input.userId, {
+    const imageRefs = [...input.currentImageRefs, placed];
+    const result = await updateNotebookPageImages(input.userId, {
       notebookId: input.notebookId,
       pageId: input.pageId,
-      imageRefs: [...input.currentImageRefs, placed],
-      baseContentRevision: input.baseContentRevision,
+      imageRefs,
     });
+    return { ...result, imageRef: placed, imageRefs };
   } catch (error) {
     await deleteStorageFile(storagePath).catch(() => undefined);
     throw error;
   }
+}
+
+/**
+ * Removes the stored file behind an image the student uploaded, once the page
+ * no longer refers to it.
+ *
+ * Only uploads: their object is created for that one placement. A Jami visual
+ * is copied to a path keyed by the notebook and the asset, which another page
+ * of the same notebook can be pointing at, so its file is left alone.
+ */
+export async function deleteUploadedNotebookImageFile(image: NotebookImageRef) {
+  if (!image.id.startsWith("upload-") || !image.storagePath) return;
+  await deleteStorageFile(image.storagePath).catch(() => undefined);
 }

@@ -1027,6 +1027,10 @@ describe("Firestore security rules", () => {
     await assertFails(updateDoc(doc(aliceDb, "users", ALICE, "examAttempts", "attempt1"), { status: "marked" }));
     const scratchpad = doc(aliceDb, "users", ALICE, "examScratchpads", "attempt1");
     await assertSucceeds(setDoc(scratchpad, { inkSvg: "<svg/>", updatedAt: 2 }));
+    // Further pages of working ride along, up to four pages in all.
+    await assertSucceeds(setDoc(scratchpad, { inkSvg: "<svg/>", pages: ["<svg/>", "<svg/>", "<svg/>"], updatedAt: 2 }));
+    await assertFails(setDoc(scratchpad, { inkSvg: "<svg/>", pages: ["<svg/>", "<svg/>", "<svg/>", "<svg/>"], updatedAt: 2 }));
+    await assertFails(setDoc(scratchpad, { inkSvg: "<svg/>", pages: "<svg/>", updatedAt: 2 }));
     await testEnv.withSecurityRulesDisabled(async (context) => updateDoc(doc(context.firestore(), "users", ALICE, "examAttempts", "attempt1"), { status: "marked" }));
     await assertFails(updateDoc(scratchpad, { inkSvg: "<svg>changed</svg>", updatedAt: 3 }));
   });
@@ -1124,6 +1128,33 @@ describe("Firestore security rules", () => {
           userId: ALICE,
           front: "Changed question",
           back: "Answer",
+          tags: ["biology"],
+          createdAt: 1,
+          dueDate: 200,
+          stability: 3,
+          difficulty: 5,
+          fsrsState: 2,
+          lapses: 1,
+          reps: 3,
+        },
+        { merge: false }
+      )
+    );
+
+    // A picture is card content like the words are.
+    await assertFails(
+      setDoc(
+        doc(demoDb, "cards", "alice-card"),
+        {
+          deckId: ALICE_DECK_ID,
+          userId: ALICE,
+          front: "Question",
+          back: "Answer",
+          frontImage: {
+            storagePath: `users/${ALICE}/cardImages/file-1/heart.png`,
+            width: 640,
+            height: 480,
+          },
           tags: ["biology"],
           createdAt: 1,
           dueDate: 200,

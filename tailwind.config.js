@@ -67,6 +67,8 @@ module.exports = {
           DEFAULT: "var(--color-accent)",
           hover: "var(--color-accent-hover)",
           muted: "var(--color-accent-muted)",
+          // Text on a solid accent fill: `text-accent-on`.
+          on: "var(--color-on-accent)",
         },
         success: {
           DEFAULT: "var(--color-success)",

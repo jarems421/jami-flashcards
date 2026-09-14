@@ -11,18 +11,26 @@ import {
   type InlineRowEditing,
   useInlineRowEditing,
 } from "@/hooks/useInlineRowEditing";
+import { cardImageDraftFrom, type CardImageDraft } from "@/lib/study/card-images";
 import {
-  MAX_BACK_LENGTH,
-  MAX_FRONT_LENGTH,
+  getCardFacesError,
   normalizeCardContentInput,
   type Card,
 } from "@/lib/study/cards";
+import {
+  cardSaveErrorMessage,
+  commitCardImageDrafts,
+  deleteCardImageFiles,
+  releaseCardImageDraft,
+} from "@/services/study/card-images";
 import { deleteCard, updateCardContent } from "@/services/study/cards";
 
 export type CardDraft = {
   front: string;
   back: string;
   topicIds: string[];
+  frontImage?: CardImageDraft;
+  backImage?: CardImageDraft;
 };
 
 const EMPTY_CARD_DRAFT: CardDraft = {
@@ -94,6 +102,8 @@ export function useCardEditing({
   );
 
   const cancel = useCallback(() => {
+    releaseCardImageDraft(rows.draft?.frontImage);
+    releaseCardImageDraft(rows.draft?.backImage);
     rows.cancelEditing();
     rows.setSaving(null);
     setError(null);
@@ -105,6 +115,8 @@ export function useCardEditing({
         front: card.front,
         back: card.back,
         topicIds: card.topicIds ?? [],
+        frontImage: cardImageDraftFrom(card.frontImage),
+        backImage: cardImageDraftFrom(card.backImage),
       });
       setError(null);
       feedback.clear();
@@ -116,29 +128,33 @@ export function useCardEditing({
     async (cardId: string) => {
       const nextFront = normalizeCardContentInput(draft.front);
       const nextBack = normalizeCardContentInput(draft.back);
-
-      if (!nextFront || !nextBack) {
-        setError("Both front and back are required.");
+      const problem = getCardFacesError({
+        front: nextFront,
+        back: nextBack,
+        hasFrontImage: Boolean(draft.frontImage),
+        hasBackImage: Boolean(draft.backImage),
+      });
+      if (problem) {
+        setError(problem);
         return;
       }
-      if (
-        nextFront.length > MAX_FRONT_LENGTH ||
-        nextBack.length > MAX_BACK_LENGTH
-      ) {
-        setError(
-          `Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`
-        );
-        return;
-      }
+      const previous = cards.find((card) => card.id === cardId);
 
       rows.setSaving(cardId);
       setError(null);
       feedback.clear();
       try {
-        await updateCardContent(cardId, {
-          front: nextFront,
-          back: nextBack,
-          topicIds: draft.topicIds,
+        const { frontImage, backImage } = await commitCardImageDrafts({
+          userId: previous?.userId ?? "",
+          drafts: { frontImage: draft.frontImage, backImage: draft.backImage },
+          previous,
+          write: (images) =>
+            updateCardContent(cardId, {
+              front: nextFront,
+              back: nextBack,
+              topicIds: draft.topicIds,
+              ...images,
+            }),
         });
         setCards((current) =>
           current.map((card) =>
@@ -147,6 +163,8 @@ export function useCardEditing({
                   ...card,
                   front: nextFront,
                   back: nextBack,
+                  frontImage,
+                  backImage,
                   topicIds: draft.topicIds,
                   tags: [],
                 }
@@ -158,10 +176,10 @@ export function useCardEditing({
       } catch (saveError) {
         console.error("Failed to update card.", saveError);
         rows.setSaving(null);
-        setError("Failed to update card.");
+        setError(cardSaveErrorMessage(saveError, "Failed to update card."));
       }
     },
-    [cancel, draft, feedback, rows, setCards]
+    [cancel, cards, draft, feedback, rows, setCards]
   );
 
   const confirmDelete = useCallback(async () => {
@@ -171,7 +189,11 @@ export function useCardEditing({
     feedback.clear();
 
     try {
+      const deleted = cards.find((card) => card.id === cardId);
       await deleteCard(cardId);
+      if (deleted?.frontImage || deleted?.backImage) {
+        await deleteCardImageFiles([deleted.frontImage, deleted.backImage]);
+      }
       setCards((current) =>
         current.filter((card) => card.id !== cardId)
       );
@@ -185,7 +207,7 @@ export function useCardEditing({
     } finally {
       rows.setDeleting(null);
     }
-  }, [cancel, feedback, onCardDeleted, pendingDeleteId, rows, setCards]);
+  }, [cancel, cards, feedback, onCardDeleted, pendingDeleteId, rows, setCards]);
 
   const editPreview = useCallback(
     (card: Card) => {

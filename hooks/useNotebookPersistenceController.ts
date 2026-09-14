@@ -29,7 +29,6 @@ import {
   type NotebookTextBlock,
 } from "@/lib/workspace/notebooks";
 import {
-  NotebookPageConflictError,
   saveNotebookPageSnapshot,
 } from "@/services/study/notebooks";
 import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
@@ -268,7 +267,6 @@ export function useNotebookPersistenceController({
           pageColor: input.pageColor,
           pageStyle: input.pageStyle,
           status,
-          baseContentRevision: input.baseContentRevision,
         });
 
         if (pageState.read().selectedPage?.id === input.page.id) {
@@ -335,11 +333,7 @@ export function useNotebookPersistenceController({
         ) {
           pageState.setSaveStatus("failed");
           latestRef.current.onError(
-            error instanceof NotebookPageConflictError
-              ? error.message
-              : error instanceof Error
-                ? error.message
-                : "Could not autosave this page."
+            error instanceof Error ? error.message : "Could not autosave this page."
           );
         }
         return false;

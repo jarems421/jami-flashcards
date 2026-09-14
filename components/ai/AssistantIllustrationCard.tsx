@@ -84,7 +84,7 @@ export default function AssistantIllustrationCard({
             <button
               type="button"
               disabled={inserted || inserting || !url}
-              className="rounded-full bg-accent px-3 py-1.5 text-2xs font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted"
+              className="rounded-full bg-accent px-3 py-1.5 text-2xs font-semibold text-accent-on transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted"
               onClick={onInsert}
             >
               {inserted ? "Added to page" : inserting ? "Adding..." : "Add to page"}

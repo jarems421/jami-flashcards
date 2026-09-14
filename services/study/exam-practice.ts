@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import type { ExamCourseOption } from "@/lib/practice/exam-course-form";
 import type { ExamCalculatorChoice, ExamDifficulty, ExamSession } from "@/lib/practice/exam-questions";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
+import { EXAM_WORKING_MAX_PAGES } from "@/lib/practice/exam-working";
 import { MAX_NOTEBOOK_INK_SVG_LENGTH } from "@/lib/workspace/notebooks";
 
 /** What the server sends back when a course cannot fill the requested mix. */
@@ -161,13 +162,27 @@ export async function saveExamAttemptToNotebook(input: { sessionId: string; atte
   }) as Promise<{ pageId: string; notebookId: string; alreadySaved: boolean }>;
 }
 
-export async function loadExamScratchpad(userId: string, attemptId: string) {
+/**
+ * The pages of a sheet of working, first page first.
+ *
+ * The first page is stored as `inkSvg`, where a single sheet always lived, and
+ * any further pages under `pages` -- so every sheet saved before pages existed
+ * opens unchanged as a one-page sheet.
+ */
+export async function loadExamScratchpad(userId: string, attemptId: string): Promise<string[]> {
   const snapshot = await getDoc(doc(db, "users", userId, "examScratchpads", attemptId));
-  return snapshot.exists() && typeof snapshot.data().inkSvg === "string" ? snapshot.data().inkSvg as string : "";
+  if (!snapshot.exists()) return [""];
+  const data = snapshot.data();
+  const first = typeof data.inkSvg === "string" ? data.inkSvg : "";
+  const extra = Array.isArray(data.pages)
+    ? data.pages.filter((page): page is string => typeof page === "string")
+    : [];
+  return [first, ...extra].slice(0, EXAM_WORKING_MAX_PAGES);
 }
 
 /**
- * The rules cap the sheet at 900KB and the app keeps a margin under it.
+ * The rules cap the sheet at 900KB and the app keeps a margin under it, across
+ * every page together, since they share one document.
  *
  * `MAX_NOTEBOOK_INK_SVG_LENGTH` is the same ceiling the notebook works to.
  */
@@ -188,12 +203,21 @@ export class ExamScratchpadTooLargeError extends Error {
  * is refused and the caller is told, so what is already stored survives and
  * the student finds out while they can still do something about it.
  */
-export async function saveExamScratchpad(userId: string, attemptId: string, inkSvg: string) {
-  if (inkSvg.length > EXAM_SCRATCHPAD_MAX_SVG_LENGTH) {
-    throw new ExamScratchpadTooLargeError(inkSvg.length);
+export async function saveExamScratchpad(
+  userId: string,
+  attemptId: string,
+  pages: readonly string[]
+) {
+  const kept = (pages.length > 0 ? pages : [""]).slice(0, EXAM_WORKING_MAX_PAGES);
+  const length = kept.reduce((total, page) => total + page.length, 0);
+  if (length > EXAM_SCRATCHPAD_MAX_SVG_LENGTH) {
+    throw new ExamScratchpadTooLargeError(length);
   }
+  // A one-page sheet writes exactly what it always did, so it is accepted by
+  // rules that predate pages.
   await setDoc(doc(db, "users", userId, "examScratchpads", attemptId), {
-    inkSvg,
+    inkSvg: kept[0],
+    ...(kept.length > 1 ? { pages: kept.slice(1) } : {}),
     updatedAt: Date.now(),
   });
 }

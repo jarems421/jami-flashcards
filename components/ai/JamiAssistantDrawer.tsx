@@ -855,7 +855,7 @@ export default function JamiAssistantDrawer({
                     <div
                       className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
                         message.role === "user"
-                          ? "rounded-br-md bg-accent text-white"
+                          ? "rounded-br-md bg-accent text-accent-on"
                           : "rounded-bl-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-primary"
                       }`}
                     >
@@ -1021,7 +1021,7 @@ export default function JamiAssistantDrawer({
               </div>
               <button
                 type="button"
-                className="shrink-0 rounded-full bg-accent px-3.5 py-2 text-xs font-semibold text-white transition duration-fast hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                className="shrink-0 rounded-full bg-accent px-3.5 py-2 text-xs font-semibold text-accent-on transition duration-fast hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
                 onClick={startNewChat}
               >
                 New chat
@@ -1104,7 +1104,7 @@ export default function JamiAssistantDrawer({
                   type="button"
                   aria-label="Send message to Jami"
                   disabled={loading || (!input.trim() && !dictation.listening)}
-                  className="inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-white shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
+                  className="inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-accent-on shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
                   onClick={submitComposer}
                 >
                   <SendIcon />

@@ -15,6 +15,7 @@ import {
   type ExamCoverageShortage,
 } from "@/services/study/exam-practice";
 import ExamCourseSetup from "@/components/practice/ExamCourseSetup";
+import ExamGenerationProgress from "@/components/practice/ExamGenerationProgress";
 import CreateFolderDialog from "@/components/workspace/CreateFolderDialog";
 
 const DIFFICULTIES: Array<{ id: ExamDifficulty; label: string; note: string }> = [
@@ -69,6 +70,8 @@ export default function ExamSessionSetup({
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [shortage, setShortage] = useState<ExamCoverageShortage | null>(null);
+  /** Jami-created questions being written: how many, and since when. */
+  const [generating, setGenerating] = useState<{ count: number; startedAt: number } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [courseRevision, setCourseRevision] = useState(0);
@@ -168,9 +171,15 @@ export default function ExamSessionSetup({
    * says so in the same round trip, along with what it could supply. Looking
    * for more papers happens behind that answer, not in front of it.
    */
-  const start = async (options: { allowGenerated?: boolean; useAvailableOnly?: boolean } = {}) => {
+  const start = async (
+    options: { allowGenerated?: boolean; useAvailableOnly?: boolean; generatedCount?: number } = {}
+  ) => {
+    const { generatedCount, ...requestOptions } = options;
     setStarting(true);
     setError("");
+    if (requestOptions.allowGenerated) {
+      setGenerating({ count: generatedCount ?? 0, startedAt: Date.now() });
+    }
     try {
       const session = await createPastPaperPracticeSession({
         folderId,
@@ -178,13 +187,15 @@ export default function ExamSessionSetup({
         topicIds,
         originNotebookId,
         calculator,
-        ...options,
+        ...requestOptions,
       });
+      // The progress stays up until the session page replaces this one.
       router.push(`/dashboard/practice/questions/${session.id}`);
     } catch (reason) {
       const gap = readCoverageShortage(reason);
       if (gap) setShortage(gap);
       else setError(reason instanceof Error ? reason.message : "This session could not be started.");
+      setGenerating(null);
       setStarting(false);
     }
   };
@@ -387,6 +398,21 @@ export default function ExamSessionSetup({
 
       {shortage ? (
         <Card tone="warm" padding="lg">
+          {generating ? (
+            <>
+              <h3 className="text-lg font-semibold text-text-primary">
+                Jami is writing your questions
+              </h3>
+              <p className="mt-1 max-w-xl text-sm leading-6 text-text-secondary">
+                {generating.count} original Jami-created question{generating.count === 1 ? "" : "s"}
+                {availableTotal > 0
+                  ? `, alongside the ${availableTotal} real one${availableTotal === 1 ? "" : "s"}.`
+                  : "."}
+              </p>
+              <ExamGenerationProgress count={generating.count} startedAt={generating.startedAt} />
+            </>
+          ) : (
+            <>
           <h3 className="text-lg font-semibold text-text-primary">
             {availableTotal > 0
               ? `Only ${availableTotal} matching real question${availableTotal === 1 ? "" : "s"} so far`
@@ -408,7 +434,10 @@ export default function ExamSessionSetup({
             ones there are.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <Button disabled={starting} onClick={() => void start({ allowGenerated: true })}>
+            <Button
+              disabled={starting}
+              onClick={() => void start({ allowGenerated: true, generatedCount: missingTotal })}
+            >
               Add {missingTotal} Jami-created question{missingTotal === 1 ? "" : "s"}
             </Button>
             {availableTotal > 0 ? (
@@ -424,6 +453,8 @@ export default function ExamSessionSetup({
               Change my mix
             </Button>
           </div>
+            </>
+          )}
         </Card>
       ) : null}
 

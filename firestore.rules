@@ -101,6 +101,8 @@ service cloud.firestore {
           (
             request.resource.data.front == resource.data.front &&
             request.resource.data.back == resource.data.back &&
+            request.resource.data.get('frontImage', null) == resource.data.get('frontImage', null) &&
+            request.resource.data.get('backImage', null) == resource.data.get('backImage', null) &&
             request.resource.data.tags == resource.data.tags &&
             request.resource.data.createdAt == resource.data.createdAt &&
             request.resource.data.userId == resource.data.userId
@@ -333,9 +335,14 @@ service cloud.firestore {
         allow read: if isSelf(userId);
         allow create, update: if isSelf(userId) && !isDemoAccount() &&
           editableAttempt() &&
-          request.resource.data.keys().hasOnly(['inkSvg', 'updatedAt']) &&
+          request.resource.data.keys().hasOnly(['inkSvg', 'pages', 'updatedAt']) &&
           request.resource.data.inkSvg is string &&
-          request.resource.data.inkSvg.size() < 900000;
+          request.resource.data.inkSvg.size() < 900000 &&
+          // Further pages of the same sheet, up to four pages in all. The
+          // whole document is still bound by Firestore's own size limit.
+          (!('pages' in request.resource.data) ||
+            (request.resource.data.pages is list &&
+              request.resource.data.pages.size() <= 3));
         allow delete: if isSelf(userId) && !isDemoAccount() && editableAttempt();
       }
 

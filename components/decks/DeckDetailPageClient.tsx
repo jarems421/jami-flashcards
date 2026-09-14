@@ -6,12 +6,18 @@ import { useFeedback } from "@/hooks/useFeedback";
 import { useParams } from "next/navigation";
 import {
   exportCardsToSeparatedText,
-  getCardContentKey,
-  MAX_BACK_LENGTH,
-  MAX_FRONT_LENGTH,
+  getCardDuplicateKey,
+  getCardFacesError,
   normalizeCardContentInput,
   type Card,
 } from "@/lib/study/cards";
+import { cardImageDraftFrom, type CardImageDraft } from "@/lib/study/card-images";
+import {
+  cardSaveErrorMessage,
+  commitCardImageDrafts,
+  deleteCardImageFiles,
+  releaseCardImageDraft,
+} from "@/services/study/card-images";
 import { getCardContentDuplicateCounts } from "@/lib/study/card-quality";
 import { useUser } from "@/components/providers/UserProvider";
 import type { Feedback } from "@/lib/app/feedback";
@@ -69,6 +75,8 @@ export default function DeckDetailPageClient() {
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");
+  const [editingFrontImage, setEditingFrontImage] = useState<CardImageDraft>();
+  const [editingBackImage, setEditingBackImage] = useState<CardImageDraft>();
   const [editingTopicIds, setEditingTopicIds] = useState<string[]>([]);
   // The card editor floats above the page, so its own failures belong beside
   // its fields rather than in the page banner hidden behind it.
@@ -153,9 +161,13 @@ export default function DeckDetailPageClient() {
   }, [clearFeedback, deckId, showError, user.uid]);
 
   const resetEditingCard = () => {
+    releaseCardImageDraft(editingFrontImage);
+    releaseCardImageDraft(editingBackImage);
     setEditingCardId(null);
     setEditingFront("");
     setEditingBack("");
+    setEditingFrontImage(undefined);
+    setEditingBackImage(undefined);
     setEditingTopicIds([]);
     setSavingCardId(null);
     setCardEditError(null);
@@ -165,6 +177,8 @@ export default function DeckDetailPageClient() {
     setEditingCardId(card.id);
     setEditingFront(card.front);
     setEditingBack(card.back);
+    setEditingFrontImage(cardImageDraftFrom(card.frontImage));
+    setEditingBackImage(cardImageDraftFrom(card.backImage));
     setEditingTopicIds(card.topicIds ?? []);
     setCardEditError(null);
     clearFeedback();
@@ -214,31 +228,37 @@ export default function DeckDetailPageClient() {
   const handleSaveCard = async (cardId: string) => {
     const nextFront = normalizeCardContentInput(editingFront);
     const nextBack = normalizeCardContentInput(editingBack);
+    const problem = getCardFacesError({
+      front: nextFront,
+      back: nextBack,
+      hasFrontImage: Boolean(editingFrontImage),
+      hasBackImage: Boolean(editingBackImage),
+    });
 
-    if (!nextFront || !nextBack) {
-      setCardEditError("Both front and back are required.");
-      return;
-    }
-
-    if (
-      nextFront.length > MAX_FRONT_LENGTH ||
-      nextBack.length > MAX_BACK_LENGTH
-    ) {
-      setCardEditError(`Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`);
+    if (problem) {
+      setCardEditError(problem);
       return;
     }
 
     const nextTopicIds = editingTopicIds;
+    const previous = cards.find((card) => card.id === cardId);
 
     setSavingCardId(cardId);
     setCardEditError(null);
     clearFeedback();
 
     try {
-      await updateCardContent(cardId, {
-        front: nextFront,
-        back: nextBack,
-        topicIds: nextTopicIds,
+      const { frontImage, backImage } = await commitCardImageDrafts({
+        userId: user.uid,
+        drafts: { frontImage: editingFrontImage, backImage: editingBackImage },
+        previous,
+        write: (images) =>
+          updateCardContent(cardId, {
+            front: nextFront,
+            back: nextBack,
+            topicIds: nextTopicIds,
+            ...images,
+          }),
       });
 
       setCards((prev) =>
@@ -248,6 +268,8 @@ export default function DeckDetailPageClient() {
                 ...card,
                 front: nextFront,
                 back: nextBack,
+                frontImage,
+                backImage,
                 tags: [],
                 topicIds: nextTopicIds,
               }
@@ -259,7 +281,7 @@ export default function DeckDetailPageClient() {
     } catch (error) {
       console.error(error);
       setSavingCardId(null);
-      setCardEditError("Failed to update card.");
+      setCardEditError(cardSaveErrorMessage(error, "Failed to update card."));
     }
   };
 
@@ -268,7 +290,11 @@ export default function DeckDetailPageClient() {
     clearFeedback();
 
     try {
+      const deleted = cards.find((card) => card.id === cardId);
       await deleteCard(cardId);
+      if (deleted?.frontImage || deleted?.backImage) {
+        await deleteCardImageFiles([deleted.frontImage, deleted.backImage]);
+      }
       setCards((prev) => prev.filter((card) => card.id !== cardId));
       setSelectedCardIds((prev) => prev.filter((selectedId) => selectedId !== cardId));
       if (editingCardId === cardId) {
@@ -588,6 +614,8 @@ export default function DeckDetailPageClient() {
                         <CardFaceSummary
                           front={card.front}
                           back={card.back}
+                          frontImage={card.frontImage}
+                          backImage={card.backImage}
                           onPreview={() => setPreviewCardId(card.id)}
                         />
                       </div>
@@ -596,7 +624,7 @@ export default function DeckDetailPageClient() {
                           <span className="sr-only">Select card</span>
                           <input
                             type="checkbox"
-                            aria-label={`Select card: ${card.front}`}
+                            aria-label={`Select card: ${card.front.trim() || "image card"}`}
                             checked={selectedCardIdSet.has(card.id)}
                             onClick={(event) => handleCheckboxClick(card.id, event)}
                             onChange={() => undefined}
@@ -623,9 +651,7 @@ export default function DeckDetailPageClient() {
         deckName={deck?.name ?? "Deck"}
         duplicateCount={
           previewCard
-            ? duplicateCounts.get(
-                getCardContentKey(previewCard.front, previewCard.back)
-              )
+            ? duplicateCounts.get(getCardDuplicateKey(previewCard))
             : undefined
         }
         topicNames={(previewCard?.topicIds ?? []).flatMap((topicId) => {
@@ -644,6 +670,8 @@ export default function DeckDetailPageClient() {
           front: editingFront,
           back: editingBack,
           topicIds: editingTopicIds,
+          frontImage: editingFrontImage,
+          backImage: editingBackImage,
         }}
         userId={user.uid}
         topics={topics}
@@ -651,9 +679,7 @@ export default function DeckDetailPageClient() {
         deckName={deck?.name ?? "Deck"}
         duplicateCount={
           editingCard
-            ? duplicateCounts.get(
-                getCardContentKey(editingCard.front, editingCard.back)
-              )
+            ? duplicateCounts.get(getCardDuplicateKey(editingCard))
             : undefined
         }
         saving={editingCard ? savingCardId === editingCard.id : false}
@@ -662,6 +688,10 @@ export default function DeckDetailPageClient() {
           if (patch.front !== undefined) setEditingFront(patch.front);
           if (patch.back !== undefined) setEditingBack(patch.back);
           if (patch.topicIds !== undefined) setEditingTopicIds(patch.topicIds);
+          // Removing an image is a patch whose value is undefined, so these
+          // ask whether the side was mentioned rather than what it holds.
+          if ("frontImage" in patch) setEditingFrontImage(patch.frontImage);
+          if ("backImage" in patch) setEditingBackImage(patch.backImage);
         }}
         onTopicsChange={setTopics}
         onCancel={resetEditingCard}

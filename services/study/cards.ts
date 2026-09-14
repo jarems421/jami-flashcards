@@ -25,6 +25,7 @@ import {
   type CardReviewUpdateCommand,
   type ImportedCardDraft,
 } from "@/lib/study/cards";
+import type { CardImage } from "@/lib/study/card-images";
 import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const LOAD_MS = 30_000;
@@ -37,6 +38,8 @@ type CreateCardInput = {
   deckId: string;
   front: string;
   back: string;
+  frontImage?: CardImage;
+  backImage?: CardImage;
   topicIds?: readonly string[];
   createdAt?: number;
 };
@@ -52,7 +55,8 @@ type CreateCardsInBatchesInput = {
 type CardWrite = Pick<
   Card,
   "deckId" | "userId" | "front" | "back" | "tags" | "topicIds" | "createdAt"
->;
+> &
+  Partial<Pick<Card, "frontImage" | "backImage">>;
 
 export class CardBatchCreateError extends Error {
   readonly createdCards: Card[];
@@ -77,6 +81,9 @@ function buildNewCard(
     userId: input.userId,
     front: normalizeCardContentInput(input.front),
     back: normalizeCardContentInput(input.back),
+    // Left off entirely when absent: Firestore refuses an explicit undefined.
+    ...(input.frontImage ? { frontImage: input.frontImage } : {}),
+    ...(input.backImage ? { backImage: input.backImage } : {}),
     tags: [],
     topicIds: [...(input.topicIds ?? [])],
     createdAt,
@@ -89,6 +96,8 @@ function getCardWrite(card: Card): CardWrite {
     userId: card.userId,
     front: card.front,
     back: card.back,
+    ...(card.frontImage ? { frontImage: card.frontImage } : {}),
+    ...(card.backImage ? { backImage: card.backImage } : {}),
     tags: card.tags,
     topicIds: card.topicIds,
     createdAt: card.createdAt,
@@ -152,13 +161,26 @@ export async function getCardsForDeck(
  */
 export async function updateCardContent(
   cardId: string,
-  input: { front: string; back: string; topicIds: string[] }
+  input: {
+    front: string;
+    back: string;
+    topicIds: string[];
+    /** Only sides that changed: an image to set, or null to remove it. */
+    frontImage?: CardImage | null;
+    backImage?: CardImage | null;
+  }
 ) {
   await updateDoc(doc(db, "cards", cardId), {
     front: input.front,
     back: input.back,
     topicIds: input.topicIds,
     tags: [],
+    ...(input.frontImage !== undefined
+      ? { frontImage: input.frontImage ?? deleteField() }
+      : {}),
+    ...(input.backImage !== undefined
+      ? { backImage: input.backImage ?? deleteField() }
+      : {}),
   });
   invalidateAllDashboardData();
 }

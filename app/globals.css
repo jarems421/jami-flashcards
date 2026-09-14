@@ -116,6 +116,15 @@
     --nav-active-border: var(--color-warm-border);
     --nav-active-text: #fff8ff;
     --nav-active-shadow: var(--elevation-1);
+    /*
+     * Text or an icon on a solid accent fill.
+     *
+     * Hard-coded white was wrong wherever the accent is light -- the Grey and
+     * Black themes, the star sky, a dark photo background -- and those read as
+     * white on pale grey. Every palette already sets the right colour for this
+     * exact pairing on its primary button, so this follows it.
+     */
+    --color-on-accent: var(--button-primary-text);
     --button-primary-bg: linear-gradient(180deg, #8f7de8 0%, #7565d6 100%);
     --button-primary-bg-hover: linear-gradient(180deg, #a994f4 0%, #8170e2 100%);
     --button-primary-border: rgba(255, 255, 255, 0.18);
@@ -1522,51 +1531,74 @@
     background-color: var(--color-surface-panel-strong);
   }
 
-  body.app-theme-light .text-white {
+  /*
+   * A light photo palette needs every one of these for the same reason a light
+   * theme does: hard-coded white text over light glass. Keyed on the root so
+   * they apply from the first paint, before the shell has stamped the body.
+   */
+  body.app-theme-light .text-white,
+  html.photo-background-light body .text-white {
     color: var(--color-text-primary) !important;
   }
 
-  body.app-theme-light [class*="border-white/"] {
+  body.app-theme-light [class*="border-white/"],
+  html.photo-background-light body [class*="border-white/"] {
     border-color: var(--color-border-strong) !important;
   }
 
-  body.app-theme-light [class*="bg-white/"] {
+  body.app-theme-light [class*="bg-white/"],
+  html.photo-background-light body [class*="bg-white/"] {
     background-color: var(--color-glass-medium) !important;
   }
 
   body.app-theme-light [class*="bg-white/"][class*="text-white"],
   body.app-theme-light [class*="bg-white/"] .text-white,
-  body.app-theme-light [class*="bg-white/"] [class*="text-white/"] {
+  body.app-theme-light [class*="bg-white/"] [class*="text-white/"],
+  html.photo-background-light body [class*="bg-white/"][class*="text-white"],
+  html.photo-background-light body [class*="bg-white/"] .text-white,
+  html.photo-background-light body [class*="bg-white/"] [class*="text-white/"] {
     color: var(--color-text-primary) !important;
   }
 
-  body.app-theme-light [class*="hover:bg-white/"]:hover {
+  body.app-theme-light [class*="hover:bg-white/"]:hover,
+  html.photo-background-light body [class*="hover:bg-white/"]:hover {
     background-color: var(--color-glass-strong) !important;
   }
 
   body.app-theme-light [class*="bg-accent"].text-white,
   body.app-theme-light [class*="bg-accent"] .text-white,
   body.app-theme-light [class*="bg-error"].text-white,
-  body.app-theme-light [class*="bg-error"] .text-white {
+  body.app-theme-light [class*="bg-error"] .text-white,
+  html.photo-background-light body [class*="bg-accent"].text-white,
+  html.photo-background-light body [class*="bg-accent"] .text-white,
+  html.photo-background-light body [class*="bg-error"].text-white,
+  html.photo-background-light body [class*="bg-error"] .text-white {
     color: #ffffff !important;
   }
 
   body.app-theme-light .bg-error.text-white,
-  body.app-theme-light .bg-error .text-white {
+  body.app-theme-light .bg-error .text-white,
+  html.photo-background-light body .bg-error.text-white,
+  html.photo-background-light body .bg-error .text-white {
     color: #ffffff !important;
   }
 
-  body.app-theme-light [class*="text-white/"] {
+  body.app-theme-light [class*="text-white/"],
+  html.photo-background-light body [class*="text-white/"] {
     color: var(--color-text-secondary) !important;
   }
 
   body.app-theme-light [class*="text-rose-100"],
-  body.app-theme-light [class*="text-rose-200"] {
+  body.app-theme-light [class*="text-rose-200"],
+  html.photo-background-light body [class*="text-rose-100"],
+  html.photo-background-light body [class*="text-rose-200"] {
     color: #8a123d !important;
   }
 
   body.app-theme-light [class*="text-emerald-100"],
-  body.app-theme-light [class*="text-emerald-200"] {
+  body.app-theme-light [class*="text-emerald-200"],
+  html.photo-background-light body [class*="text-emerald-100"],
+  html.photo-background-light body [class*="text-emerald-200"] {
     color: #126855 !important;
   }
 
@@ -1588,7 +1620,8 @@
     color: var(--color-selected-text) !important;
   }
 
-  body.app-theme-light [class*="bg-black/"] {
+  body.app-theme-light [class*="bg-black/"],
+  html.photo-background-light body [class*="bg-black/"] {
     background-color: rgba(20, 28, 42, 0.065) !important;
   }
 
@@ -1900,6 +1933,236 @@ body.constellation-background-enabled .backdrop-blur-2xl {
 
 body.constellation-background-enabled::before {
   opacity: 0.2;
+}
+
+/* Photo background */
+
+/*
+ * A photo of the student's own, with the app's colours read off it.
+ *
+ * The palette is sixteen primitives -- `--photo-*`, set on the root element by
+ * the blocking script and the shell from `lib/app/photo-background-palette.ts`
+ * -- and every colour a theme can set is built from them here. Like the sky's
+ * block, this sits outside `@layer` so it outranks the layered theme blocks,
+ * and the shell stamps no theme class while it is on.
+ *
+ * The numbers that decide readability are not in this file. How see-through a
+ * panel is, how strong the tint over the photo is, and how light or dark the
+ * accent sits were all measured against the photo when it was chosen, so the
+ * contrast each pairing below relies on has already been checked.
+ */
+html.photo-background-enabled,
+body.photo-background-enabled {
+  --color-surface-base: var(--photo-base);
+  --color-surface-raised: rgb(var(--photo-surface-rgb) / var(--photo-panel-alpha));
+  --color-surface-overlay: var(--photo-solid);
+  --color-surface-panel: rgb(var(--photo-surface-rgb) / var(--photo-panel-alpha));
+  --color-surface-panel-strong: rgb(var(--photo-surface-rgb) / var(--photo-panel-strong-alpha));
+  --color-glass-subtle: rgb(var(--photo-line-rgb) / 0.07);
+  --color-glass-medium: rgb(var(--photo-line-rgb) / 0.11);
+  --color-glass-strong: rgb(var(--photo-line-rgb) / 0.17);
+  --color-text-primary: var(--photo-text);
+  --color-text-secondary: var(--photo-text-secondary);
+  --color-text-muted: var(--photo-text-muted);
+  --color-text-inverse: var(--photo-solid);
+  /* Opaque: text you are typing should not have the photo behind it. */
+  --color-field-bg: var(--photo-solid);
+  --color-field-text: var(--photo-text);
+  --color-field-placeholder: var(--photo-text-muted);
+  --color-field-border: rgb(var(--photo-line-rgb) / 0.26);
+  --color-chip-bg: rgb(var(--photo-line-rgb) / 0.09);
+  --color-chip-text: var(--photo-text-secondary);
+  --color-chip-border: rgb(var(--photo-line-rgb) / 0.18);
+  --color-selected-bg: rgb(var(--photo-accent-rgb) / 0.22);
+  --color-selected-text: var(--photo-text);
+  --color-selected-border: rgb(var(--photo-accent-rgb) / 0.5);
+  --color-border: rgb(var(--photo-line-rgb) / 0.16);
+  --color-border-strong: rgb(var(--photo-line-rgb) / 0.26);
+  --color-accent: var(--photo-accent);
+  --color-accent-hover: var(--photo-accent-hover);
+  --color-accent-muted: rgb(var(--photo-accent-rgb) / 0.2);
+  --color-warm-accent: var(--photo-accent);
+  --color-warm-glow: rgb(var(--photo-accent-rgb) / 0.12);
+  --color-warm-border: rgb(var(--photo-accent-rgb) / 0.32);
+
+  --app-background: var(--photo-base);
+  --app-overlay: var(--photo-overlay);
+  --gradient-card: linear-gradient(160deg, rgb(var(--photo-surface-rgb) / 0.97) 0%, rgb(var(--photo-surface-rgb) / 0.94) 100%);
+  --topbar-bg: rgb(var(--photo-surface-rgb) / var(--photo-panel-alpha));
+  --topbar-border: rgb(var(--photo-line-rgb) / 0.16);
+  --topbar-shadow: 0 18px 38px rgb(var(--photo-shadow-rgb) / 0.3);
+  --nav-shell-bg: rgb(var(--photo-surface-rgb) / var(--photo-panel-strong-alpha));
+  --nav-shell-border: rgb(var(--photo-line-rgb) / 0.16);
+  --nav-shell-shadow: 0 22px 44px rgb(var(--photo-shadow-rgb) / 0.34);
+  --nav-hover-bg: rgb(var(--photo-line-rgb) / 0.06);
+  --nav-active-bg: linear-gradient(135deg, rgb(var(--photo-accent-rgb) / 0.22), rgb(var(--photo-line-rgb) / 0.06));
+  --nav-active-border: rgb(var(--photo-accent-rgb) / 0.45);
+  --nav-active-text: var(--photo-text);
+
+  --button-primary-bg: linear-gradient(180deg, var(--photo-accent-hover) 0%, var(--photo-accent) 100%);
+  --button-primary-bg-hover: linear-gradient(180deg, var(--photo-accent-hover) 0%, var(--photo-accent-hover) 100%);
+  --button-primary-text: var(--photo-on-accent);
+  --button-primary-shadow: 0 14px 26px rgb(var(--photo-shadow-rgb) / 0.3);
+  --button-primary-shadow-hover: 0 18px 32px rgb(var(--photo-shadow-rgb) / 0.38);
+  --button-secondary-bg: linear-gradient(180deg, rgb(var(--photo-line-rgb) / 0.16), rgb(var(--photo-line-rgb) / 0.09));
+  --button-secondary-bg-hover: linear-gradient(180deg, rgb(var(--photo-line-rgb) / 0.22), rgb(var(--photo-line-rgb) / 0.12));
+  --button-secondary-border: rgb(var(--photo-line-rgb) / 0.26);
+  --button-secondary-border-hover: rgb(var(--photo-line-rgb) / 0.36);
+  --button-secondary-text: var(--photo-text);
+  --button-secondary-shadow: 0 10px 20px rgb(var(--photo-shadow-rgb) / 0.22);
+  --button-secondary-shadow-hover: 0 14px 26px rgb(var(--photo-shadow-rgb) / 0.28);
+  --button-surface-bg: var(--photo-solid);
+  --button-surface-bg-hover: var(--photo-solid-alt);
+  --button-surface-border: rgb(var(--photo-line-rgb) / 0.26);
+  --button-surface-border-hover: rgb(var(--photo-line-rgb) / 0.36);
+  --button-surface-text: var(--photo-text);
+  --button-warm-bg: linear-gradient(180deg, var(--photo-solid-alt) 0%, var(--photo-solid) 100%);
+  --button-warm-bg-hover: linear-gradient(180deg, var(--photo-solid-alt) 0%, var(--photo-solid-alt) 100%);
+  --button-warm-border: rgb(var(--photo-accent-rgb) / 0.3);
+  --button-warm-border-hover: rgb(var(--photo-accent-rgb) / 0.45);
+  --button-warm-text: var(--photo-text);
+  --button-ghost-bg-hover: rgb(var(--photo-line-rgb) / 0.08);
+  --button-disabled-bg: linear-gradient(180deg, rgb(var(--photo-line-rgb) / 0.12), rgb(var(--photo-line-rgb) / 0.07));
+  --button-disabled-border: rgb(var(--photo-line-rgb) / 0.22);
+  --button-disabled-text: var(--photo-text-muted);
+
+  --elevation-0: 0 2px 6px rgb(var(--photo-shadow-rgb) / 0.3);
+  --elevation-1: 0 10px 20px rgb(var(--photo-shadow-rgb) / 0.22);
+  --elevation-2: 0 18px 36px rgb(var(--photo-shadow-rgb) / 0.32);
+  --elevation-3: 0 24px 60px rgb(var(--photo-shadow-rgb) / 0.42);
+  --shadow-card: var(--elevation-2);
+  --shadow-shell: var(--elevation-2);
+  --shadow-bubble: var(--elevation-2);
+  --shadow-glass: var(--elevation-3);
+  --shadow-button-3d: var(--elevation-1);
+  --shadow-accent: 0 16px 28px rgb(var(--photo-accent-rgb) / 0.22);
+  --shadow-warm: 0 14px 28px rgb(var(--photo-shadow-rgb) / 0.26);
+}
+
+/* Status colours keep their meaning, in the set each scheme was drawn for. */
+html.photo-background-dark,
+body.photo-background-dark {
+  --color-success-muted: rgba(125, 224, 204, 0.2);
+  --color-success-text: #dffcf7;
+  --color-error-muted: rgba(255, 120, 183, 0.18);
+  --color-error-text: #ffe7f2;
+  --color-warning-muted: rgba(255, 214, 166, 0.18);
+  --color-warning-text: #fff1dc;
+  --color-success-mark: #7de0cc;
+  --color-error-mark: #ff78b7;
+  --color-warning-mark: #ffd6a6;
+}
+
+html.photo-background-light,
+body.photo-background-light {
+  --color-success-muted: rgba(18, 104, 85, 0.12);
+  --color-success-text: #126855;
+  --color-error-muted: rgba(138, 18, 61, 0.11);
+  --color-error-text: #8a123d;
+  --color-warning-muted: rgba(126, 82, 16, 0.12);
+  --color-warning-text: #70470d;
+  --color-success-mark: #126855;
+  --color-error-mark: #8a123d;
+  --color-warning-mark: #70470d;
+}
+
+/*
+ * The photo on a fixed layer of its own.
+ *
+ * Not a fixed background on the body: iPad Safari ignores
+ * `background-attachment: fixed` and scrolls a cover image with the page,
+ * zoomed. The body goes transparent so the layer beneath it shows, and the
+ * existing overlay above it carries the palette's tint.
+ */
+html.photo-background-enabled body {
+  background: transparent !important;
+}
+
+/*
+ * Positioned on the point the student chose, and zoomed around that same
+ * point, so it stays where they put it whatever shape the screen is.
+ */
+html.photo-background-enabled body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--photo-base) var(--photo-image, none) no-repeat;
+  background-size: cover;
+  background-position: var(--photo-position, 50% 50%);
+  transform: scale(var(--photo-zoom, 1));
+  transform-origin: var(--photo-position, 50% 50%);
+}
+
+html.photo-background-enabled [data-app-surface="true"] {
+  background: transparent !important;
+  background-image: none !important;
+}
+
+html.photo-background-enabled .app-panel,
+html.photo-background-enabled .app-panel-warm {
+  background-color: var(--color-surface-panel);
+  background-image: none;
+  border-color: var(--color-border-strong);
+  backdrop-filter: none;
+}
+
+html.photo-background-enabled .bg-surface-panel {
+  background-color: var(--color-surface-panel) !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+html.photo-background-enabled .bg-surface-panel-strong {
+  background-color: var(--color-surface-panel-strong) !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+/*
+ * Anything being read is solid, as it is over the sky: a question with the
+ * photo showing through it is a question that is harder to read.
+ */
+html.photo-background-enabled .study-flashcard-face {
+  background-color: var(--photo-solid);
+  background-image: none;
+  box-shadow:
+    inset 0 1px 0 rgb(var(--photo-line-rgb) / 0.05),
+    0 20px 42px rgb(var(--photo-shadow-rgb) / 0.28);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html.photo-background-enabled .study-flashcard-face-front {
+  background: var(--photo-solid);
+}
+
+html.photo-background-enabled .study-flashcard-face-back {
+  background: var(--photo-solid-alt);
+}
+
+html.photo-background-enabled .app-topbar {
+  background: rgb(var(--photo-surface-rgb) / var(--photo-panel-alpha)) !important;
+  background-image: none !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-color: var(--color-border) !important;
+}
+
+html.photo-background-enabled .app-nav {
+  background: rgb(var(--photo-surface-rgb) / var(--photo-panel-strong-alpha)) !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Blur over a full-screen photo is expensive on an iPad, and the panels are already measured to be readable without it. */
+html.photo-background-enabled .backdrop-blur-md,
+html.photo-background-enabled .backdrop-blur-lg,
+html.photo-background-enabled .backdrop-blur-xl,
+html.photo-background-enabled .backdrop-blur-2xl {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* Constellation keyframes */

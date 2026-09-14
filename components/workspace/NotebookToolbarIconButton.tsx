@@ -5,6 +5,7 @@ import { JamiTutorIcon } from "@/components/ui";
 
 export type NotebookIconName =
   | "back"
+  | "forward"
   | "pages"
   | "text"
   | "pen"
@@ -19,7 +20,9 @@ export type NotebookIconName =
   | "plus"
   | "check"
   | "alert"
-  | "close";
+  | "close"
+  | "image"
+  | "select";
 
 // Hand-drawn on a consistent 24px grid with a uniform 1.8 stroke, rounded
 // caps/joins, and shared optical margins, so the set reads as one family.
@@ -43,6 +46,9 @@ export function NotebookIcon({ name }: { name: NotebookIconName }) {
     >
       {name === "back" ? (
         <path {...common} d="M14.5 17.5 9 12l5.5-5.5" />
+      ) : null}
+      {name === "forward" ? (
+        <path {...common} d="m9.5 6.5 5.5 5.5-5.5 5.5" />
       ) : null}
       {name === "pages" ? (
         <>
@@ -136,6 +142,19 @@ export function NotebookIcon({ name }: { name: NotebookIconName }) {
       ) : null}
       {name === "close" ? (
         <path {...common} d="m6.5 6.5 11 11M17.5 6.5l-11 11" />
+      ) : null}
+      {name === "image" ? (
+        <>
+          <rect {...common} x="3.8" y="5" width="16.4" height="14" rx="2.4" />
+          <circle {...common} cx="9" cy="10" r="1.6" />
+          <path
+            {...common}
+            d="m4.6 17.4 4.6-4.5a1.6 1.6 0 0 1 2.2 0l2.1 2 1.6-1.5a1.6 1.6 0 0 1 2.2 0l2.8 2.7"
+          />
+        </>
+      ) : null}
+      {name === "select" ? (
+        <path {...common} d="M6.2 4.6 18.4 10.8l-5.5 1.7-2.6 5.4L6.2 4.6Z" />
       ) : null}
     </svg>
   );

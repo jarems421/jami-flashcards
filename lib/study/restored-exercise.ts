@@ -21,6 +21,8 @@ export function restoreStudyExercise(restored: PersistedStudyExercise, card: Car
 /** Never silently upgrade an old generated presentation into a validated one. */
 export function canRestoreStudyExercise(exercise: PersistedStudyExercise, card: Card): boolean {
   if (exercise.mode === "classic") return true;
+  // A card now answered by a picture cannot resume a question marked in words.
+  if (card.backImage) return false;
   const generated = exercise.markingSettings?.generatedStudy;
   if (generated && (generated.validatorVersion !== STUDY_ASSET_VALIDATOR_VERSION || !generated.bundleRevision ||
     (exercise.variantId && generated.retiredVariantIds?.includes(exercise.variantId)))) return false;

@@ -208,11 +208,25 @@ export function getCardContentHash(input: {
   front: string;
   back: string;
   studySettings?: CardStudySettings;
+  frontImage?: { storagePath: string };
+  backImage?: { storagePath: string };
 }) {
+  /*
+   * A picture changes what a card asks as much as its words do, so a saved
+   * exercise or a prepared bundle must not survive one being added, swapped or
+   * removed. Paths are appended only when there is an image, so every card
+   * without one keeps exactly the fingerprint it always had -- and with it its
+   * prepared material and any session saved against it.
+   */
+  const images =
+    input.frontImage || input.backImage
+      ? [`image:${input.frontImage?.storagePath ?? ""}`, input.backImage?.storagePath ?? ""]
+      : [];
   const material = [
     (input.front ?? "").trim(),
     (input.back ?? "").trim(),
     input.studySettings ? JSON.stringify(input.studySettings) : "",
+    ...images,
   ].join("\0");
 
   let hash = 0x811c9dc5;

@@ -424,6 +424,14 @@ async function resolveLearnContext(input: {
         answerIsVisibleToStudent
           ? `Card answer: ${back || "(empty)"}`
           : "Card answer: withheld. The student has not flipped this card yet, so you have not been given it. Help them recall it themselves. If they ask for it outright, say you cannot see it and suggest they flip the card.",
+        // Card images are not sent. Saying they exist stops an image-only side
+        // reading as an empty card, and stops the tutor guessing at a picture.
+        ...(cardData.frontImage
+          ? ["The card's front is an image, which you cannot see. Do not guess what it shows; ask the student to describe it if you need to."]
+          : []),
+        ...(answerIsVisibleToStudent && cardData.backImage
+          ? ["The card's answer includes an image, which you cannot see."]
+          : []),
         "",
         describeMemoryProfile(cardData),
         ...(relatedCardsText ? ["", relatedCardsText] : []),

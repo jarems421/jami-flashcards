@@ -5,6 +5,12 @@ import {
   CONSTELLATION_BACKGROUND_EXCLUDED_PATHS,
   CONSTELLATION_BACKGROUND_STORAGE_KEY,
 } from "@/lib/constellation/background";
+import {
+  MAX_PHOTO_BACKGROUND_ZOOM,
+  PHOTO_BACKGROUND_STORAGE_KEY,
+  PHOTO_BACKGROUND_URL_PATTERN,
+  PHOTO_BACKGROUND_VALUE_PATTERN,
+} from "@/lib/app/photo-background";
 
 export const APP_THEME_STORAGE_KEY = "jami:app-theme";
 export const LEGACY_APP_BACKGROUND_STORAGE_KEY = "jami:app-background";
@@ -137,6 +143,12 @@ export function readAppThemePreference(): AppThemePreference {
  * theme's when it is. Without that the app opens in the stored theme's colours
  * and swaps to black a frame later, which is the flash this script exists to
  * prevent, just moved.
+ *
+ * A photo background is decided the same way, after the sky: its colours are
+ * set on the document and its class stamped, so the first frame is already the
+ * photo's palette. A stored record that fails to parse, or carries a URL or a
+ * value that could escape its CSS, is ignored and the theme applies instead --
+ * this runs before anything else and must never be the reason a page is blank.
  */
 export const APP_THEME_BOOTSTRAP_SCRIPT = `(function(){try{var c=${JSON.stringify(
   Object.fromEntries(
@@ -149,13 +161,19 @@ export const APP_THEME_BOOTSTRAP_SCRIPT = `(function(){try{var c=${JSON.stringif
   APP_THEME_STORAGE_KEY
 )})||s.getItem(${JSON.stringify(
   LEGACY_APP_BACKGROUND_STORAGE_KEY
-)});if(t==="purple-pink")t="purple";var d=document.documentElement,p=(window.location&&window.location.pathname)||"";if(s.getItem(${JSON.stringify(
+)});if(t==="purple-pink")t="purple";var d=document.documentElement,p=(window.location&&window.location.pathname)||"",o=${JSON.stringify(
+  CONSTELLATION_BACKGROUND_EXCLUDED_PATHS
+)}.every(function(x){return p.indexOf(x)!==0});if(s.getItem(${JSON.stringify(
   CONSTELLATION_BACKGROUND_STORAGE_KEY
 )})==="true"&&s.getItem(${JSON.stringify(
   CONSTELLATION_BACKGROUND_CRASH_MARKER_STORAGE_KEY
-)})!=="true"&&${JSON.stringify(
-  CONSTELLATION_BACKGROUND_EXCLUDED_PATHS
-)}.every(function(x){return p.indexOf(x)!==0})){d.classList.add("constellation-background-enabled")}else{d.classList.add.apply(d.classList,c[t]||c.normal)}}catch(e){}})();`;
+)})!=="true"&&o){d.classList.add("constellation-background-enabled")}else{var g=null;if(o){try{g=JSON.parse(s.getItem(${JSON.stringify(
+  PHOTO_BACKGROUND_STORAGE_KEY
+)})||"null")}catch(e){g=null}}var u=g&&g.imageUrl,v=g&&g.vars,k=g&&(g.scheme==="light"||g.scheme==="dark")?g.scheme:"";if(k&&typeof u==="string"&&new RegExp(${JSON.stringify(
+  PHOTO_BACKGROUND_URL_PATTERN.source
+)}).test(u)&&v&&typeof v==="object"){var r=new RegExp(${JSON.stringify(
+  PHOTO_BACKGROUND_VALUE_PATTERN.source
+)});for(var n in v){if(n.indexOf("--photo-")===0&&typeof v[n]==="string"&&r.test(v[n]))d.style.setProperty(n,v[n])}d.style.setProperty("--photo-image",'url("'+u+'")');var fx=Number(g.focusX),fy=Number(g.focusY),z=Number(g.zoom);if(fx>=0&&fx<=100&&fy>=0&&fy<=100)d.style.setProperty("--photo-position",fx+"% "+fy+"%");if(z>=1&&z<=${MAX_PHOTO_BACKGROUND_ZOOM})d.style.setProperty("--photo-zoom",String(z));d.classList.add("photo-background-enabled","photo-background-"+k)}else{d.classList.add.apply(d.classList,c[t]||c.normal)}}}catch(e){}})();`;
 
 export function saveAppThemePreference(value: AppThemePreference) {
   try {

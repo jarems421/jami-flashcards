@@ -157,7 +157,6 @@ describe("useNotebookLoader", () => {
     getNotebookDraftDecision.mockReturnValue("discard");
     await mount();
     expect(deleteNotebookPageDraft).toHaveBeenCalledTimes(1);
-    expect(loader.draftConflict).toBeNull();
     expect(loader.takeRecoveredDraft("page-1")).toBeNull();
   });
 
@@ -173,44 +172,31 @@ describe("useNotebookLoader", () => {
     expect(loader.takeRecoveredDraft("page-1")).toBeNull();
   });
 
-  it("raises a conflict for the student to resolve", async () => {
-    readNotebookPageDraft.mockResolvedValue(DRAFT);
-    getNotebookDraftDecision.mockReturnValue("conflict");
+  /*
+   * A notebook open on one device while the student carried on on another
+   * must show the newer work when they come back to it.
+   */
+  it("reloads on return when a page changed on another device", async () => {
     await mount();
-    expect(loader.draftConflict?.pageId).toBe("page-1");
-    expect(deleteNotebookPageDraft).not.toHaveBeenCalled();
+    expect(onBeforeLoad).toHaveBeenCalledTimes(1);
+
+    getNotebookPages.mockResolvedValue([{ ...PAGE_ONE, updatedAt: 5000 }]);
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await act(async () => {});
+
+    expect(onBeforeLoad).toHaveBeenCalledTimes(2);
+    expect(loader.pages[0]?.updatedAt).toBe(5000);
   });
 
-  it("rebases the draft onto the served page when restoring a conflict", async () => {
-    readNotebookPageDraft.mockResolvedValue(DRAFT);
-    getNotebookDraftDecision.mockReturnValue("conflict");
+  it("stays put on return when nothing changed elsewhere", async () => {
     await mount();
-
     await act(async () => {
-      loader.restoreLocalDraft();
+      window.dispatchEvent(new Event("focus"));
     });
-
-    expect(onDraftRestored).toHaveBeenCalledTimes(1);
-    expect(loader.draftConflict).toBeNull();
-    // The rebased draft must carry the revision that came back from the server.
-    const written = writeNotebookPageDraft.mock.calls[0]?.[0];
-    expect(written.baseContentRevision).toBe(5);
-    expect(written.remoteUpdatedAt).toBe(1000);
-    expect(loader.takeRecoveredDraft("page-1")?.localRevision).toBe(7);
-  });
-
-  it("deletes the draft when the student keeps the synced version", async () => {
-    readNotebookPageDraft.mockResolvedValue(DRAFT);
-    getNotebookDraftDecision.mockReturnValue("conflict");
-    await mount();
-
-    await act(async () => {
-      loader.keepSavedVersion();
-    });
-
-    expect(deleteNotebookPageDraft).toHaveBeenCalledTimes(1);
-    expect(loader.draftConflict).toBeNull();
-    expect(feedback?.type).toBe("success");
+    await act(async () => {});
+    expect(onBeforeLoad).toHaveBeenCalledTimes(1);
   });
 
   it("resolves download URLs for image backgrounds only", async () => {

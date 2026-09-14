@@ -15,6 +15,8 @@ let root: Root;
 
 const onSelectDrawingTool = vi.fn();
 const onToggleTextTool = vi.fn();
+const onSelectTool = vi.fn();
+const onAddImage = vi.fn();
 const onUndo = vi.fn();
 const onRedo = vi.fn();
 
@@ -25,6 +27,7 @@ function render(
     openMenu: NotebookToolMenu;
     undoDepth: number;
     redoDepth: number;
+    addingImage: boolean;
   }> = {}
 ) {
   act(() => {
@@ -39,6 +42,9 @@ function render(
         openMenu={overrides.openMenu ?? null}
         onSelectDrawingTool={onSelectDrawingTool}
         onToggleTextTool={onToggleTextTool}
+        onSelectTool={onSelectTool}
+        onAddImage={onAddImage}
+        addingImage={overrides.addingImage ?? false}
         undoDepth={overrides.undoDepth ?? 0}
         redoDepth={overrides.redoDepth ?? 0}
         onUndo={onUndo}
@@ -65,6 +71,8 @@ function click(label: string) {
 beforeEach(() => {
   onSelectDrawingTool.mockClear();
   onToggleTextTool.mockClear();
+  onSelectTool.mockClear();
+  onAddImage.mockClear();
   onUndo.mockClear();
   onRedo.mockClear();
   container = document.createElement("div");
@@ -128,6 +136,37 @@ describe("NotebookDrawingToolbar", () => {
     click("Redo (Ctrl+Shift+Z)");
     expect(onUndo).toHaveBeenCalledTimes(1);
     expect(onRedo).toHaveBeenCalledTimes(1);
+  });
+
+  /*
+   * Moving an image needs the select tool, and there was no way back to it from
+   * the toolbar -- only Escape, or a Tutor visual being inserted.
+   */
+  it("offers a way back to selecting, and marks it while it is the tool", () => {
+    render({ tool: "pen" });
+    expect(button("Select and move (V)").dataset.active).not.toBe("true");
+    click("Select and move (V)");
+    expect(onSelectTool).toHaveBeenCalledTimes(1);
+
+    render({ tool: "select" });
+    expect(button("Select and move (V)").dataset.active).toBe("true");
+  });
+
+  it("hands a chosen picture to the page, and holds the button while one uploads", () => {
+    render();
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no image file input");
+    expect(input.accept).toBe("image/jpeg,image/png,image/webp");
+
+    const file = new File(["png"], "graph.png", { type: "image/png" });
+    Object.defineProperty(input, "files", { value: [file], configurable: true });
+    act(() => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(onAddImage).toHaveBeenCalledWith(file);
+
+    render({ addingImage: true });
+    expect(button("Adding image…").disabled).toBe(true);
   });
 
   it("keeps side docks clear of the device safe area", () => {

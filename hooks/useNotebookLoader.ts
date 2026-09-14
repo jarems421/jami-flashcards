@@ -11,12 +11,9 @@ import {
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
 import type { Feedback } from "@/lib/app/feedback";
 import {
-  createNotebookPageDraft,
   deleteNotebookPageDraft,
   getNotebookDraftDecision,
   readNotebookPageDraft,
-  writeNotebookPageDraft,
-  type NotebookPageDraft,
 } from "@/lib/workspace/notebook-drafts";
 import { getNotebookPageIdFromSearch } from "@/lib/workspace/notebook-navigation";
 import { applyNotebookDraftToPage } from "@/lib/workspace/notebook-page-content";
@@ -29,11 +26,6 @@ import {
   getNotebookPageWithInk,
 } from "@/services/study/notebooks";
 import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
-
-export type NotebookDraftConflict = {
-  draft: NotebookPageDraft;
-  pageId: string;
-};
 
 /** A draft recovered during load, waiting for its page to hydrate. */
 export type RecoveredNotebookDraft = {
@@ -72,23 +64,20 @@ export type NotebookLoader = {
   setSelectedPageId: Dispatch<SetStateAction<string | null>>;
   loading: boolean;
   setLoading: Dispatch<SetStateAction<boolean>>;
-  draftConflict: NotebookDraftConflict | null;
   /**
    * Consumed by page hydration: a draft restored during load still needs its
    * local revision applied once the page's content reaches the editor.
    */
   takeRecoveredDraft: (pageId: string) => RecoveredNotebookDraft | null;
   reload: () => Promise<void>;
-  restoreLocalDraft: () => void;
-  keepSavedVersion: () => void;
 };
 
 /**
  * Loads a notebook and reconciles it with any local recovery draft.
  *
  * Draft reconciliation belongs here rather than in the persistence controller:
- * the decision to restore, conflict, or discard can only be made against the
- * page as it arrives from the server, which is this hook's job.
+ * whether the draft or the synced page is the more recent can only be decided
+ * against the page as it arrives from the server, which is this hook's job.
  */
 export function useNotebookLoader({
   userId,
@@ -112,8 +101,6 @@ export function useNotebookLoader({
   >({});
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [draftConflict, setDraftConflict] =
-    useState<NotebookDraftConflict | null>(null);
   const recoveredDraftRef = useRef<RecoveredNotebookDraft | null>(null);
 
   const latestRef = useRef({ onFeedback, onBeforeLoad, onDraftRestored });
@@ -139,7 +126,6 @@ export function useNotebookLoader({
     pageState.resetHydration();
     pageState.setContentRevision(0);
     recoveredDraftRef.current = null;
-    setDraftConflict(null);
 
     try {
       const nextNotebook = await getNotebookById(userId, notebookId);
@@ -206,8 +192,7 @@ export function useNotebookLoader({
           pageId: nextSelectedPage.id,
         });
         if (draft) {
-          const decision = getNotebookDraftDecision(draft, nextSelectedPage);
-          if (decision === "restore") {
+          if (getNotebookDraftDecision(draft, nextSelectedPage) === "restore") {
             nextPages = nextPages.map((page) =>
               page.id === nextSelectedPage.id
                 ? applyNotebookDraftToPage(page, draft)
@@ -217,8 +202,6 @@ export function useNotebookLoader({
               pageId: nextSelectedPage.id,
               localRevision: Math.max(1, draft.localRevision),
             };
-          } else if (decision === "conflict") {
-            setDraftConflict({ draft, pageId: nextSelectedPage.id });
           } else {
             void deleteNotebookPageDraft({
               userId,
@@ -250,6 +233,53 @@ export function useNotebookLoader({
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  /*
+   * One notebook, whichever device it is open on.
+   *
+   * A notebook left open on a laptop while the student carried on on an iPad
+   * showed the laptop's older copy when they came back to it, and the next
+   * save from there would have put that older copy back. Coming back to the
+   * window now asks the server whether any page moved on and, if one did,
+   * reloads -- but only when everything on this device has already saved, so
+   * nothing typed here is thrown away to make room for it.
+   */
+  useEffect(() => {
+    if (!userId || !notebookId) return;
+    let checking = false;
+    let disposed = false;
+
+    const refreshIfChangedElsewhere = async () => {
+      if (checking || document.visibilityState !== "visible") return;
+      if (pageState.read().saveStatus !== "saved") return;
+      checking = true;
+      try {
+        const remotePages = await getNotebookPages(userId, notebookId);
+        if (disposed || pageState.read().saveStatus !== "saved") return;
+        const localPages = pagesRef.current;
+        const changedElsewhere =
+          remotePages.length !== localPages.length ||
+          remotePages.some((remote) => {
+            const local = localPages.find((page) => page.id === remote.id);
+            return !local || remote.updatedAt > local.updatedAt;
+          });
+        if (changedElsewhere) await reload();
+      } catch {
+        // Offline or unreachable: keep what is on screen and check next time.
+      } finally {
+        checking = false;
+      }
+    };
+
+    const handleReturn = () => void refreshIfChangedElsewhere();
+    document.addEventListener("visibilitychange", handleReturn);
+    window.addEventListener("focus", handleReturn);
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", handleReturn);
+      window.removeEventListener("focus", handleReturn);
+    };
+  }, [notebookId, pageState, reload, userId]);
 
   // Image backgrounds need a download URL. `resolvedImageFileIds` records which
   // lookups have finished so a missing image reads as settled, not pending.
@@ -297,58 +327,6 @@ export function useNotebookLoader({
       cancelled = true;
     };
   }, [files]);
-
-  const restoreLocalDraft = useCallback(() => {
-    if (!draftConflict || !userId) return;
-    const remotePage = pages.find((page) => page.id === draftConflict.pageId);
-    if (!remotePage) return;
-
-    // Rebase the draft onto the page that actually came back from the server,
-    // so the next save is not rejected as stale.
-    const rebasedDraft = createNotebookPageDraft({
-      ...draftConflict.draft,
-      baseContentRevision: remotePage.contentRevision,
-      remoteUpdatedAt: remotePage.updatedAt,
-      savedAt: Date.now(),
-    });
-    recoveredDraftRef.current = {
-      pageId: remotePage.id,
-      localRevision: Math.max(1, rebasedDraft.localRevision),
-    };
-    pageState.resetHydration();
-    latestRef.current.onDraftRestored();
-    setPages((current) =>
-      current.map((page) =>
-        page.id === remotePage.id
-          ? applyNotebookDraftToPage(page, rebasedDraft)
-          : page
-      )
-    );
-    setDraftConflict(null);
-    void writeNotebookPageDraft(rebasedDraft).catch((error) => {
-      latestRef.current.onFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "This device could not update the recovery copy.",
-      });
-    });
-  }, [draftConflict, pageState, pages, userId]);
-
-  const keepSavedVersion = useCallback(() => {
-    if (!draftConflict || !userId) return;
-    setDraftConflict(null);
-    void deleteNotebookPageDraft({
-      userId,
-      notebookId: draftConflict.draft.notebookId,
-      pageId: draftConflict.pageId,
-    });
-    latestRef.current.onFeedback({
-      type: "success",
-      message: "Kept the latest synced version of this page.",
-    });
-  }, [draftConflict, userId]);
 
   /**
    * Ensures a page holds its full-fidelity ink before it is drawn on.
@@ -459,10 +437,7 @@ export function useNotebookLoader({
     setSelectedPageId,
     loading,
     setLoading,
-    draftConflict,
     takeRecoveredDraft,
     reload,
-    restoreLocalDraft,
-    keepSavedVersion,
   };
 }

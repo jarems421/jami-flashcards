@@ -136,6 +136,9 @@ export async function POST(request: NextRequest) {
     const front = typeof data.front === "string" ? data.front : "";
     const back = typeof data.back === "string" ? data.back : "";
     if (!front.trim() || !back.trim()) continue;
+    // Preparation reads words and cannot see a picture, so a card carrying one
+    // is never prepared, whatever a client asks for.
+    if (data.frontImage || data.backImage) continue;
     cards.push({
       id: snapshot.id,
       front,

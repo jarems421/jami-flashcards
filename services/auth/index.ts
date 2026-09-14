@@ -25,6 +25,7 @@ import {
   type AccountDeletionPhase,
 } from "@/lib/auth/account-deletion-contract";
 import { getPasswordRequirementMessage } from "@/lib/auth/password-strength";
+import { writePhotoBackground } from "@/lib/app/photo-background";
 
 const provider = new GoogleAuthProvider();
 const AUTH_OPERATION_TIMEOUT_MS = 30_000;
@@ -126,6 +127,9 @@ export const handleGoogleRedirectResult = async () => {
 // Logout
 export const logout = async () => {
   await signOut(auth);
+  // The photo background is this account's. On a shared device the next person
+  // to sign in should not open on it.
+  writePhotoBackground(null);
 };
 
 // Email sign-up
@@ -341,4 +345,5 @@ export async function deleteAccount(
   await signOut(auth).catch(() => {
     // The server has already deleted the account; local auth cleanup is best-effort.
   });
+  writePhotoBackground(null);
 }

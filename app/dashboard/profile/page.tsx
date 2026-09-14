@@ -32,6 +32,8 @@ import {
   readConstellationBackgroundCrashMarked,
   readConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
+import { PHOTO_BACKGROUND_EVENT, readPhotoBackground } from "@/lib/app/photo-background";
+import PhotoBackgroundCard from "@/components/profile/PhotoBackgroundCard";
 import { TutorialAccountCard } from "@/components/onboarding/TutorialProvider";
 
 function ThemePreferenceCard() {
@@ -39,6 +41,7 @@ function ThemePreferenceCard() {
     readAppThemePreference(),
   );
   const [skyIsOn, setSkyIsOn] = useState(false);
+  const [photoIsOn, setPhotoIsOn] = useState(false);
 
   /*
    * The sky is a preset of its own and brings its own black palette, so while
@@ -51,15 +54,18 @@ function ThemePreferenceCard() {
         readConstellationBackgroundEnabled() &&
           !readConstellationBackgroundCrashMarked(),
       );
+      setPhotoIsOn(Boolean(readPhotoBackground()));
     };
 
     syncSky();
     window.addEventListener("storage", syncSky);
     window.addEventListener(CONSTELLATION_BACKGROUND_EVENT, syncSky);
+    window.addEventListener(PHOTO_BACKGROUND_EVENT, syncSky);
 
     return () => {
       window.removeEventListener("storage", syncSky);
       window.removeEventListener(CONSTELLATION_BACKGROUND_EVENT, syncSky);
+      window.removeEventListener(PHOTO_BACKGROUND_EVENT, syncSky);
     };
   }, []);
 
@@ -87,6 +93,12 @@ function ThemePreferenceCard() {
             Stars
           </Link>
           .
+        </p>
+      ) : photoIsOn ? (
+        <p className="app-subtle-panel mt-4 rounded-lg px-3 py-2.5 text-sm leading-6">
+          Your photo background is on, so Jami takes its colours from the
+          photo. Pick a colour here and it comes back when you remove the photo
+          below.
         </p>
       ) : null}
       {/*
@@ -124,16 +136,17 @@ function ThemePreferenceCard() {
               >
                 {/*
                   The tick sits on a filled accent disc rather than straight on
-                  the swatch: a white check alone disappears against the White
-                  and Pink previews, and tinting it per option would need a
-                  contrast decision for every future theme.
+                  the swatch: a check alone disappears against the White and
+                  Pink previews, and tinting it per option would need a
+                  contrast decision for every future theme. It is drawn in the
+                  accent's own text colour, so a light accent gets a dark tick.
                 */}
                 {active ? (
-                  <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-accent)] shadow-e0">
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-accent)] text-accent-on shadow-e0">
                     <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
                       <path
                         d="m5 10.5 3.4 3.4L15 7.2"
-                        stroke="#ffffff"
+                        stroke="currentColor"
                         strokeWidth="2.4"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -396,6 +409,7 @@ export default function ProfilePage() {
         page keeps one rhythm all the way down.
       */}
       <ThemePreferenceCard />
+      <PhotoBackgroundCard />
 
       {/* One line, because a setting that moved should say where it went once. */}
       <p className="app-subtle-panel rounded-xl px-4 py-3 text-xs leading-5 text-text-muted">

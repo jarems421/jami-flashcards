@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import CardFaceImage from "@/components/cards/CardFaceImage";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import {
@@ -71,21 +72,39 @@ export default function CardPreviewDialog({
                 <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">
                   Front
                 </div>
-                <StudyText
-                  as="div"
-                  text={card.front}
-                  className="mt-3 whitespace-pre-wrap text-lg font-medium leading-8 text-text-primary"
-                />
+                {card.frontImage ? (
+                  <CardFaceImage
+                    source={card.frontImage}
+                    alt="Front image"
+                    className="mt-3 max-h-72 w-full rounded-md object-contain"
+                  />
+                ) : null}
+                {card.front.trim() ? (
+                  <StudyText
+                    as="div"
+                    text={card.front}
+                    className="mt-3 whitespace-pre-wrap text-lg font-medium leading-8 text-text-primary"
+                  />
+                ) : null}
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">
                   Back
                 </div>
-                <StudyText
-                  as="div"
-                  text={card.back}
-                  className="mt-3 whitespace-pre-wrap text-base leading-7 text-text-secondary"
-                />
+                {card.backImage ? (
+                  <CardFaceImage
+                    source={card.backImage}
+                    alt="Back image"
+                    className="mt-3 max-h-72 w-full rounded-md object-contain"
+                  />
+                ) : null}
+                {card.back.trim() ? (
+                  <StudyText
+                    as="div"
+                    text={card.back}
+                    className="mt-3 whitespace-pre-wrap text-base leading-7 text-text-secondary"
+                  />
+                ) : null}
               </div>
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-2">

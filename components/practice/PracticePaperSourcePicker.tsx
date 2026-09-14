@@ -181,7 +181,7 @@ export default function PracticePaperSourcePicker({
                         aria-hidden="true"
                         className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-sm border transition duration-fast ${
                           checked
-                            ? "border-accent bg-accent text-white"
+                            ? "border-accent bg-accent text-accent-on"
                             : "border-[var(--color-border-strong)]"
                         }`}
                       >

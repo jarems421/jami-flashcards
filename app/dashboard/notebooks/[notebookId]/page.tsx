@@ -27,7 +27,6 @@ import NotebookDrawingToolbar, {
   type NotebookToolMenu,
 } from "@/components/workspace/NotebookDrawingToolbar";
 import NotebookAddPagesDialog from "@/components/workspace/NotebookAddPagesDialog";
-import NotebookDraftConflictBanner from "@/components/workspace/NotebookDraftConflictBanner";
 import NotebookPhoneLayoutNotice from "@/components/workspace/NotebookPhoneLayoutNotice";
 import NotebookSaveIndicator from "@/components/workspace/NotebookSaveIndicator";
 import NotebookToolSettingsPopover from "@/components/workspace/NotebookToolSettingsPopover";
@@ -125,6 +124,10 @@ import {
   deleteNotebookPage,
   updateNotebookPageImages,
 } from "@/services/study/notebooks";
+import {
+  addUploadedImageToNotebookPage,
+  deleteUploadedNotebookImageFile,
+} from "@/services/study/notebook-page-images";
 import { appendUploadedFileToNotebook } from "@/services/study/notebook-import";
 import {
   legacyStrokesToJsDrawSvg,
@@ -222,10 +225,7 @@ export default function NotebookEditorPage() {
     selectedPageId,
     setSelectedPageId,
     loading,
-    draftConflict,
     takeRecoveredDraft,
-    restoreLocalDraft: handleRestoreLocalDraft,
-    keepSavedVersion: handleKeepSavedDraftVersion,
   } = useNotebookLoader({
     userId: user?.uid,
     notebookId,
@@ -732,10 +732,57 @@ export default function NotebookEditorPage() {
     scheduleUiCommit: scheduleInkUiSync,
   });
 
+  /*
+   * Image writes run one at a time, and each starts from the list the one
+   * before it left. Two quick moves used to overlap, the second was rejected,
+   * and its image jumped back to where the drag began.
+   */
+  const imageWriteChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  /** The last image list written or asked for, per page, ahead of `pages`. */
+  const latestImageRefsRef = useRef<{ pageId: string; imageRefs: NotebookImageRef[] } | null>(
+    null
+  );
+  const [addingImage, setAddingImage] = useState(false);
+
+  const queueImageWrite = useCallback(<T,>(task: () => Promise<T>) => {
+    const run = imageWriteChainRef.current.then(task, task);
+    imageWriteChainRef.current = run.catch(() => undefined);
+    return run;
+  }, []);
+
+  const currentImageRefsFor = useCallback(
+    (pageId: string) => {
+      const latest = latestImageRefsRef.current;
+      if (latest?.pageId === pageId) return latest.imageRefs;
+      const selected = pageState.read().selectedPage;
+      return selected?.id === pageId ? selected.imageRefs : [];
+    },
+    [pageState]
+  );
+
+  const applyPageImages = useCallback(
+    (pageId: string, imageRefs: NotebookImageRef[], updatedAt: number) => {
+      latestImageRefsRef.current = { pageId, imageRefs };
+      setPages((current) =>
+        current.map((page) =>
+          page.id === pageId ? { ...page, imageRefs, updatedAt } : page
+        )
+      );
+    },
+    [setPages]
+  );
+
   const handleIllustrationInserted = useCallback(
     (input: { imageRef: NotebookImageRef; contentRevision: number }) => {
       const pageId = pageState.read().selectedPage?.id;
       if (!pageId) return;
+      const latest = latestImageRefsRef.current;
+      if (
+        latest?.pageId === pageId &&
+        !latest.imageRefs.some((image) => image.sourceAssetId === input.imageRef.sourceAssetId)
+      ) {
+        latestImageRefsRef.current = { pageId, imageRefs: [...latest.imageRefs, input.imageRef] };
+      }
       setPages((current) =>
         current.map((page) =>
           page.id === pageId
@@ -761,52 +808,32 @@ export default function NotebookEditorPage() {
     [isPhoneLayout, pageState, setPages, setSaveStatus, setTool, success]
   );
 
+  /*
+   * Images are their own field, so a move no longer flushes the page first or
+   * touches its revision -- the flush was there to dodge a conflict the image
+   * write itself was causing, and it put a save round-trip in front of every
+   * drop.
+   */
   const handleNotebookImagesCommit = useCallback(
-    async (imageRefs: NotebookImageRef[]) => {
+    (imageRefs: NotebookImageRef[]) => {
       const pageId = pageState.read().selectedPage?.id;
-      if (!user?.uid || !notebookId || !pageId) return;
-      try {
-        // Flush ink/text first so the image transaction starts from the latest
-        // revision and never overwrites a concurrent notebook autosave.
-        await saveCurrentPage({ flush: true });
-        const baseContentRevision = pageState.read().contentRevision;
-        setSaveStatus("saving");
-        const result = await updateNotebookPageImages(user.uid, {
+      if (!user?.uid || !notebookId || !pageId) return Promise.resolve();
+      const userId = user.uid;
+      latestImageRefsRef.current = { pageId, imageRefs };
+      return queueImageWrite(async () => {
+        const result = await updateNotebookPageImages(userId, {
           notebookId,
           pageId,
           imageRefs,
-          baseContentRevision,
         });
-        setPages((current) =>
-          current.map((page) =>
-            page.id === pageId
-              ? {
-                  ...page,
-                  imageRefs,
-                  contentRevision: result.contentRevision,
-                  updatedAt: result.updatedAt,
-                }
-              : page
-          )
-        );
-        if (pageState.read().selectedPage?.id === pageId) {
-          pageState.setContentRevision(result.contentRevision);
-          setSaveStatus("saved");
-        }
-      } catch (error) {
-        setSaveStatus("saved");
-        showThrownError(error, "That visual could not be moved. Try again.");
-      }
+        applyPageImages(pageId, imageRefs, result.updatedAt);
+      }).catch((error: unknown) => {
+        latestImageRefsRef.current = null;
+        showThrownError(error, "That image could not be moved. Try again.");
+        throw error;
+      });
     },
-    [
-      notebookId,
-      pageState,
-      saveCurrentPage,
-      setPages,
-      setSaveStatus,
-      showThrownError,
-      user?.uid,
-    ]
+    [applyPageImages, notebookId, pageState, queueImageWrite, showThrownError, user?.uid]
   );
 
   useEffect(() => {
@@ -2226,6 +2253,9 @@ export default function NotebookEditorPage() {
           pageState.read().tool === "eraser" ? "select" : "eraser"
         );
       }
+      if (key === "v") {
+        switchNotebookTool("select");
+      }
       if (key === "escape") {
         switchNotebookTool("select");
         setPenMenuOpen(false);
@@ -2296,6 +2326,74 @@ export default function NotebookEditorPage() {
     closeDrawingToolMenus();
     switchNotebookTool(pageState.read().tool === "text" ? "select" : "text");
   }, [closeDrawingToolMenus, pageState, switchNotebookTool]);
+
+  const handleSelectTool = useCallback(() => {
+    closeDrawingToolMenus();
+    switchNotebookTool("select");
+  }, [closeDrawingToolMenus, switchNotebookTool]);
+
+  const handleAddImage = useCallback(
+    (file: File) => {
+      const pageId = pageState.read().selectedPage?.id;
+      if (!user?.uid || !notebookId || !pageId) return;
+      const userId = user.uid;
+      closeDrawingToolMenus();
+      setAddingImage(true);
+      void queueImageWrite(async () => {
+        const result = await addUploadedImageToNotebookPage({
+          userId,
+          notebookId,
+          pageId,
+          file,
+          currentImageRefs: currentImageRefsFor(pageId),
+        });
+        applyPageImages(pageId, result.imageRefs, result.updatedAt);
+        if (pageState.read().selectedPage?.id === pageId) {
+          // Selected and ready to move, which is almost always the next thing.
+          switchNotebookTool("select");
+          setSelectedImageId(result.imageRef.id);
+        }
+      })
+        .catch((error: unknown) =>
+          showThrownError(error, "That image could not be added. Try again.")
+        )
+        .finally(() => setAddingImage(false));
+    },
+    [
+      applyPageImages,
+      closeDrawingToolMenus,
+      currentImageRefsFor,
+      notebookId,
+      pageState,
+      queueImageWrite,
+      showThrownError,
+      switchNotebookTool,
+      user?.uid,
+    ]
+  );
+
+  const handleDeleteImage = useCallback(
+    (imageId: string) => {
+      const pageId = pageState.read().selectedPage?.id;
+      if (!user?.uid || !notebookId || !pageId) return;
+      const userId = user.uid;
+      const before = currentImageRefsFor(pageId);
+      const removed = before.find((image) => image.id === imageId);
+      if (!removed) return;
+      const imageRefs = before.filter((image) => image.id !== imageId);
+      setSelectedImageId(null);
+      // Gone at once; put back only if the page write is refused.
+      applyPageImages(pageId, imageRefs, Date.now());
+      void queueImageWrite(async () => {
+        await updateNotebookPageImages(userId, { notebookId, pageId, imageRefs });
+        await deleteUploadedNotebookImageFile(removed);
+      }).catch((error: unknown) => {
+        applyPageImages(pageId, before, Date.now());
+        showThrownError(error, "That image could not be deleted. Try again.");
+      });
+    },
+    [applyPageImages, currentImageRefsFor, notebookId, pageState, queueImageWrite, showThrownError, user?.uid]
+  );
 
   const handleToolbarUndo = useCallback(() => {
     closeDrawingToolMenus();
@@ -2592,15 +2690,6 @@ export default function NotebookEditorPage() {
           </div>
         ) : null}
 
-        <NotebookDraftConflictBanner
-          open={Boolean(
-            draftConflict && draftConflict.pageId === selectedPage?.id
-          )}
-          belowFeedback={Boolean(feedback)}
-          onKeepSynced={handleKeepSavedDraftVersion}
-          onRestoreLocal={handleRestoreLocalDraft}
-        />
-
         <NotebookAddPagesDialog
           open={showAddPagesDialog}
           file={notebookFile}
@@ -2791,6 +2880,7 @@ export default function NotebookEditorPage() {
                     selectedImageId={selectedImageId}
                     onSelect={setSelectedImageId}
                     onCommit={handleNotebookImagesCommit}
+                    onDelete={handleDeleteImage}
                   />
                   <NotebookTextBlockLayer
                     textBlocks={textBlocks}
@@ -2885,6 +2975,9 @@ export default function NotebookEditorPage() {
                 openMenu={openToolMenu}
                 onSelectDrawingTool={handleSelectDrawingTool}
                 onToggleTextTool={handleToggleTextTool}
+                onSelectTool={handleSelectTool}
+                onAddImage={handleAddImage}
+                addingImage={addingImage}
                 undoDepth={undoDepth}
                 redoDepth={redoDepth}
                 onUndo={handleToolbarUndo}

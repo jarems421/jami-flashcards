@@ -2,7 +2,13 @@ import { getCardContentHash, type CardStudySettings } from "@/lib/study/study-mo
 
 export function hasCurrentStudySource(
   asset: { sourceFingerprint?: unknown } | null | undefined,
-  card: { front: string; back: string; studySettings?: CardStudySettings },
+  card: {
+    front: string;
+    back: string;
+    studySettings?: CardStudySettings;
+    frontImage?: { storagePath: string };
+    backImage?: { storagePath: string };
+  },
 ) {
   return typeof asset?.sourceFingerprint === "string" && asset.sourceFingerprint === getCardContentHash(card);
 }

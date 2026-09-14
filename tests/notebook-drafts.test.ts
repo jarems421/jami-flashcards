@@ -38,22 +38,27 @@ describe("notebook local drafts", () => {
     expect(parseNotebookPageDraft(JSON.stringify(draft))).toEqual(draft);
   });
 
-  it("restores against the same revision and asks on a remote conflict", () => {
-    const draft = makeDraft();
+  /*
+   * The most recent version wins, wherever it was made. There is no conflict
+   * to ask about: one student, one device at a time.
+   */
+  it("restores the device copy only when it is newer than the synced page", () => {
+    const draft = makeDraft(); // saved at 200
     expect(
       getNotebookDraftDecision(draft, {
         id: "page-1",
         notebookId: "notebook-1",
-        contentRevision: 3,
+        updatedAt: 150,
       })
     ).toBe("restore");
+    // Changed on another device after this copy was made: that change stands.
     expect(
       getNotebookDraftDecision(draft, {
         id: "page-1",
         notebookId: "notebook-1",
-        contentRevision: 4,
+        updatedAt: 250,
       })
-    ).toBe("conflict");
+    ).toBe("discard");
   });
 
   it("discards corrupt or unrelated recovery records", () => {
@@ -63,7 +68,7 @@ describe("notebook local drafts", () => {
       getNotebookDraftDecision(makeDraft(), {
         id: "other-page",
         notebookId: "notebook-1",
-        contentRevision: 3,
+        updatedAt: 150,
       })
     ).toBe("discard");
   });

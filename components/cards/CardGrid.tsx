@@ -60,6 +60,8 @@ export default function CardGrid({
                   <CardFaceSummary
                     front={card.front}
                     back={card.back}
+                    frontImage={card.frontImage}
+                    backImage={card.backImage}
                     onPreview={() => editing.preview.open(card.id)}
                   />
                 </div>
@@ -71,7 +73,7 @@ export default function CardGrid({
                     <span className="sr-only">Select card</span>
                     <input
                       type="checkbox"
-                      aria-label={`Select card: ${card.front}`}
+                      aria-label={`Select card: ${card.front.trim() || "image card"}`}
                       checked={bulk.selection.idSet.has(card.id)}
                       onClick={(event) =>
                         bulk.selection.handleCheckboxClick(card.id, event)

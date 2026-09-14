@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import AppPage from "@/components/layout/AppPage";
 import {
   Button,
@@ -94,6 +94,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   const [hasInk, setHasInk] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const answerFieldId = useId();
   const [error, setError] = useState("");
   /** Attempt whose reopened-draft refusal the student has read and closed. */
   const [dismissedFailure, setDismissedFailure] = useState("");
@@ -515,7 +516,12 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
 
         <nav
           aria-label="Questions"
-          className="sticky top-[4.5rem] z-30 flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--app-background)]/90 py-2 pl-3 pr-2 shadow-shell backdrop-blur-xl"
+          /*
+           * Solid rather than frosted. A backdrop blur has to be recomputed
+           * whenever what is beneath it changes, and while a student scrolls
+           * and writes that is a page of fresh ink every frame.
+           */
+          className="sticky top-[4.5rem] z-30 flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--app-background)] py-2 pl-3 pr-2 shadow-shell"
         >
           <p className="hidden shrink-0 text-sm font-semibold text-text-primary sm:block">
             Question {index + 1}
@@ -631,14 +637,17 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
           </div>
         ) : (
         /*
-         * The question on the left, everything the student does about it on
-         * the right: the answer, then the working under it. The answer box used
-         * to sit under the question with the working in the other column, so
-         * one response was split across both sides of the screen.
+         * The question, in full, on the left; one answer sheet on the right,
+         * with the typed answer as its top strip and the working as the paper
+         * under it. Everything that gets marked is in one place beside the
+         * question it answers. Below `lg` the two stack -- a portrait tablet is
+         * too narrow for a readable question and a usable sheet side by side.
          */
         <div
           className={`grid items-start gap-4 lg:gap-6 ${
-            answering ? "lg:grid-cols-[minmax(0,1fr)_minmax(26rem,1fr)]" : "mx-auto w-full max-w-3xl"
+            answering
+              ? "lg:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)]"
+              : "mx-auto w-full max-w-3xl"
           }`}
         >
           <div
@@ -664,9 +673,19 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
             ) : activeAttempt?.status === "marking" && !submitting ? (
               <>
                 <Card padding="md">
-                  <h3 className="text-base font-semibold text-text-primary">
-                    {markingStale ? "This one is taking too long" : "Jami is marking this one"}
-                  </h3>
+                  <div className="flex items-center gap-2.5">
+                    <span
+                      aria-hidden="true"
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        markingStale
+                          ? "bg-[var(--color-warning-mark)]"
+                          : "animate-pulse bg-accent"
+                      }`}
+                    />
+                    <h3 className="text-base font-semibold text-text-primary">
+                      {markingStale ? "This one is taking too long" : "Jami is marking this one"}
+                    </h3>
+                  </div>
                   <p className="mt-2 text-sm leading-5 text-text-muted">
                     {markingStale
                       ? "Your answer and working are saved exactly as you sent them. Marking looks like it stopped part way — running it again will not change what is marked."
@@ -788,33 +807,22 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                   </Card>
                 ) : null}
 
-                <Card padding="md">
-                  <Textarea
-                    label={retryOpen ? "Try your answer again" : "Your answer"}
-                    value={answer}
-                    rows={8}
-                    maxLength={EXAM_ANSWER_MAX_LENGTH}
-                    placeholder="Write your final answer here…"
-                    disabled={submitting}
-                    onChange={(event) => {
-                      const id = activeAttempt?.id;
-                      if (!id) return;
-                      const text = event.target.value;
-                      setDrafts((current) => ({ ...current, [id]: text }));
-                    }}
-                  />
-                  <div className="mt-3 md:hidden">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="w-full"
-                      onClick={() => setShowWorking(true)}
+              </>
+            ) : null}
+          </div>
+
+          {answering && activeAttempt ? (
+            <section aria-label="Answer sheet" className="app-panel min-w-0">
+              {activeAttempt.status === "draft" ? (
+                <div data-behind-working className="p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <label
+                      htmlFor={answerFieldId}
+                      className="text-base font-semibold tracking-tight text-text-primary"
                     >
-                      {hasInk ? "Open working" : "Show your working"}
-                    </Button>
-                  </div>
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
-                    <p className="flex items-center gap-2 text-xs text-text-muted">
+                      {retryOpen ? "Try your answer again" : "Your answer"}
+                    </label>
+                    <p aria-live="polite" className="flex items-center gap-2 text-xs text-text-muted">
                       <span
                         aria-hidden="true"
                         className={`h-1.5 w-1.5 shrink-0 rounded-full ${
@@ -830,12 +838,44 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                       {saveState === "saving"
                         ? "Saving…"
                         : saveState === "failed"
-                          ? "Couldn't save just now — your answer is still here and will retry."
+                          ? "Couldn't save just now — it will retry."
                           : saveState === "saved"
                             ? "Saved."
-                            : "Your answer saves as you write."}
+                            : "Saves as you write."}
                     </p>
-                    <Button disabled={submitting} onClick={() => void submit()}>
+                  </div>
+                  <Textarea
+                    id={answerFieldId}
+                    containerClassName="mt-3"
+                    className="resize-y leading-6"
+                    rows={3}
+                    symbols
+                    value={answer}
+                    maxLength={EXAM_ANSWER_MAX_LENGTH}
+                    placeholder="Type your final answer…"
+                    disabled={submitting}
+                    onChange={(event) => {
+                      const id = activeAttempt?.id;
+                      if (!id) return;
+                      const text = event.target.value;
+                      setDrafts((current) => ({ ...current, [id]: text }));
+                    }}
+                  />
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="md:hidden"
+                      onClick={() => setShowWorking(true)}
+                    >
+                      {hasInk ? "Open working" : "Show your working"}
+                    </Button>
+                    <p className="hidden text-xs text-text-muted md:block">
+                      {hasInk
+                        ? "Your working below is sent with this answer."
+                        : "Working below is optional — sent only if you use it."}
+                    </p>
+                    <Button className="ml-auto" disabled={submitting} onClick={() => void submit()}>
                       {submitting
                         ? hasInk
                           ? "Reading your working…"
@@ -845,81 +885,88 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                           : "Mark answer"}
                     </Button>
                   </div>
-                </Card>
-              </>
-            ) : null}
-          </div>
-
-          {answering && activeAttempt ? (
-            /*
-             * A dialog by hand, deliberately.
-             *
-             * The shared Dialog renders its children only while open, and the
-             * pad has to stay mounted whether or not the sheet is: it holds the
-             * handle submission asks for, so on a phone a student who never
-             * opened working could not submit at all. So the sheet keeps its
-             * one mount point and takes on the dialog's obligations instead --
-             * a labelled modal role, focus moved in and restored on close,
-             * Escape, and the rest of the page hidden from assistive
-             * technology while it covers the screen.
-             */
-            <div
-              ref={workingSheet}
-              {...(showWorking
-                ? {
-                    role: "dialog" as const,
-                    "aria-modal": true,
-                    "aria-label": "Your working",
-                    onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => {
-                      if (event.key !== "Escape") return;
-                      event.stopPropagation();
-                      setShowWorking(false);
-                    },
-                  }
-                : {})}
-              /*
-               * Three layouts, not two. A tablet in portrait is 834px wide and
-               * was treated as a phone: the working surface lived behind a
-               * button, so a student had to open and close a sheet every time
-               * they wanted to look at the question. From `md` up it is inline
-               * and stacked under the answer, and from `lg` it moves beside it.
-               */
-              className={`${
-                showWorking
-                  ? "fixed inset-0 z-50 overflow-y-auto bg-[var(--app-background)] p-3 pb-[env(safe-area-inset-bottom)]"
-                  : "hidden md:block"
-              } lg:static lg:block lg:overflow-visible lg:bg-transparent lg:p-0`}
-            >
-              <div className="mb-2 flex items-center justify-between gap-3 px-1">
-                <div>
-                  <h2 className="text-sm font-semibold text-text-primary">Working</h2>
-                  <p className="text-xs text-text-muted">
-                    {hasInk ? "This sheet is sent with your answer" : "Optional — sent only if you use it"}
-                  </p>
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="md:hidden"
-                  onClick={() => setShowWorking(false)}
-                >
-                  Done
-                </Button>
+              ) : null}
+
+              {/*
+                * A dialog by hand, deliberately.
+                *
+                * The shared Dialog renders its children only while open, and the
+                * pad has to stay mounted whether or not the sheet is: it holds the
+                * handle submission asks for, so on a phone a student who never
+                * opened working could not submit at all. So the sheet keeps its
+                * one mount point and takes on the dialog's obligations instead --
+                * a labelled modal role, focus moved in and restored on close,
+                * Escape, and the rest of the page hidden from assistive
+                * technology while it covers the screen.
+                *
+                * From `md` up it is part of the answer sheet; only a phone opens
+                * it over the page.
+                */}
+              <div
+                ref={workingSheet}
+                {...(showWorking
+                  ? {
+                      role: "dialog" as const,
+                      "aria-modal": true,
+                      "aria-label": "Your working",
+                      onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => {
+                        if (event.key !== "Escape") return;
+                        event.stopPropagation();
+                        setShowWorking(false);
+                      },
+                    }
+                  : {})}
+                className={`${
+                  showWorking
+                    ? "fixed inset-0 z-50 overflow-y-auto bg-[var(--app-background)] p-3 pb-[env(safe-area-inset-bottom)]"
+                    : "hidden md:block"
+                } md:static md:block md:overflow-visible md:bg-transparent md:p-0`}
+              >
+                <div className={showWorking ? "app-panel" : ""}>
+                  <div
+                    className={`flex items-center justify-between gap-3 bg-[var(--color-glass-subtle)] px-4 py-2.5 sm:px-5 ${
+                      activeAttempt.status === "draft" && !showWorking
+                        ? "border-t border-[var(--color-border)]"
+                        : ""
+                    }`}
+                  >
+                    <div className="flex min-w-0 items-baseline gap-2">
+                      <h2 className="text-sm font-semibold text-text-primary">Working</h2>
+                      <p className="truncate text-xs text-text-muted">
+                        {activeAttempt.status !== "draft"
+                          ? "As it was sent"
+                          : hasInk
+                            ? "Sent with your answer"
+                            : "Optional"}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="md:hidden"
+                      onClick={() => setShowWorking(false)}
+                    >
+                      Done
+                    </Button>
+                  </div>
+                  <ExamScratchpad
+                    key={activeAttempt.id}
+                    embedded
+                    userId={user.uid}
+                    attemptId={activeAttempt.id}
+                    // Read-only the moment the attempt stops being a draft: the
+                    // sheet is then frozen evidence, and the rules refuse writes.
+                    disabled={submitting || activeAttempt.status !== "draft"}
+                    onHandle={(handle) => {
+                      scratchpad.current = handle;
+                    }}
+                    onInkChange={setHasInk}
+                  />
+                </div>
               </div>
-              <ExamScratchpad
-                key={activeAttempt.id}
-                userId={user.uid}
-                attemptId={activeAttempt.id}
-                // Read-only the moment the attempt stops being a draft: the
-                // sheet is then frozen evidence, and the rules refuse writes.
-                disabled={submitting || activeAttempt.status !== "draft"}
-                onHandle={(handle) => {
-                  scratchpad.current = handle;
-                }}
-                onInkChange={setHasInk}
-              />
-            </div>
+            </section>
           ) : null}
           </div>
         </div>

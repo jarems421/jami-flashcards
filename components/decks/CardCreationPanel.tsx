@@ -7,11 +7,20 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
+  getCardFacesError,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
   normalizeCardContentInput,
   type Card,
 } from "@/lib/study/cards";
+import type { CardImageDraft } from "@/lib/study/card-images";
+import {
+  cardSaveErrorMessage,
+  commitCardImageDrafts,
+  releaseCardImageDraft,
+} from "@/services/study/card-images";
+import CardFaceImage from "@/components/cards/CardFaceImage";
+import CardImageField from "@/components/decks/CardImageField";
 import type { Feedback } from "@/lib/app/feedback";
 import type { Topic } from "@/lib/material/topics";
 import { createCard } from "@/services/study/cards";
@@ -87,6 +96,8 @@ export default function CardCreationPanel({
   const [singleDeckId, setSingleDeckId] = useState(fallbackDeckId);
   const [singleFront, setSingleFront] = useState("");
   const [singleBack, setSingleBack] = useState("");
+  const [singleFrontImage, setSingleFrontImage] = useState<CardImageDraft>();
+  const [singleBackImage, setSingleBackImage] = useState<CardImageDraft>();
   const [singleTopicIds, setSingleTopicIds] = useState<string[]>([]);
   const [addingSingleCard, setAddingSingleCard] = useState(false);
 
@@ -140,32 +151,41 @@ export default function CardCreationPanel({
       return;
     }
 
-    if (!front || !back) {
-      onFeedback({ type: "error", message: "Both front and back are required." });
-      return;
-    }
-
-    if (front.length > MAX_FRONT_LENGTH || back.length > MAX_BACK_LENGTH) {
-      onFeedback({
-        type: "error",
-        message: `Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`,
-      });
+    const problem = getCardFacesError({
+      front,
+      back,
+      hasFrontImage: Boolean(singleFrontImage),
+      hasBackImage: Boolean(singleBackImage),
+    });
+    if (problem) {
+      onFeedback({ type: "error", message: problem });
       return;
     }
 
     setAddingSingleCard(true);
 
     try {
-      const card = await createCard({
-        deckId: singleDeckId,
+      const { result: card } = await commitCardImageDrafts({
         userId,
-        front,
-        back,
-        topicIds: singleTopicIds,
+        drafts: { frontImage: singleFrontImage, backImage: singleBackImage },
+        write: (images) =>
+          createCard({
+            deckId: singleDeckId,
+            userId,
+            front,
+            back,
+            topicIds: singleTopicIds,
+            ...(images.frontImage ? { frontImage: images.frontImage } : {}),
+            ...(images.backImage ? { backImage: images.backImage } : {}),
+          }),
       });
 
+      releaseCardImageDraft(singleFrontImage);
+      releaseCardImageDraft(singleBackImage);
       setSingleFront("");
       setSingleBack("");
+      setSingleFrontImage(undefined);
+      setSingleBackImage(undefined);
       setSingleTopicIds([]);
       onCardsCreated([card], { source: "single", selectCreated: false });
       onFeedback({
@@ -174,7 +194,7 @@ export default function CardCreationPanel({
       });
     } catch (error) {
       console.error(error);
-      onFeedback({ type: "error", message: "Failed to add card." });
+      onFeedback({ type: "error", message: cardSaveErrorMessage(error, "Failed to add card.") });
     } finally {
       setAddingSingleCard(false);
     }
@@ -224,6 +244,7 @@ export default function CardCreationPanel({
             </div>
           ) : null}
           <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-2">
             <Input
               label="Front"
               symbols
@@ -234,6 +255,14 @@ export default function CardCreationPanel({
               maxLength={MAX_FRONT_LENGTH}
               disabled={addingSingleCard}
             />
+            <CardImageField
+              label="Front image"
+              value={singleFrontImage}
+              disabled={addingSingleCard}
+              onChange={setSingleFrontImage}
+            />
+            </div>
+            <div className="space-y-2">
             <CardBackEditor
               label="Back"
               placeholder="Back"
@@ -260,6 +289,13 @@ export default function CardCreationPanel({
                 ) : null
               }
             />
+            <CardImageField
+              label="Back image"
+              value={singleBackImage}
+              disabled={addingSingleCard}
+              onChange={setSingleBackImage}
+            />
+            </div>
           </div>
 
           {/*
@@ -268,23 +304,43 @@ export default function CardCreationPanel({
             way to find out what "$\frac{a}{b}$" becomes is to save the card and
             go and study it.
           */}
-          {singleFront.trim() || singleBack.trim() ? (
+          {singleFront.trim() || singleBack.trim() || singleFrontImage || singleBackImage ? (
             <div className="app-subtle-panel rounded-lg p-4">
               <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
                 Preview
               </div>
               <div className="mt-3 space-y-2">
-                <StudyText
-                  as="div"
-                  text={singleFront}
-                  className="whitespace-pre-wrap text-sm font-medium leading-6 text-text-primary"
-                />
-                {singleBack.trim() ? (
+                {singleFrontImage ? (
+                  <CardFaceImage
+                    source={singleFrontImage}
+                    alt="Front image"
+                    className="max-h-40 rounded-md object-contain"
+                  />
+                ) : null}
+                {singleFront.trim() ? (
                   <StudyText
                     as="div"
-                    text={singleBack}
-                    className="whitespace-pre-wrap border-t border-[var(--color-border)] pt-2 text-sm leading-6 text-text-secondary"
+                    text={singleFront}
+                    className="whitespace-pre-wrap text-sm font-medium leading-6 text-text-primary"
                   />
+                ) : null}
+                {singleBack.trim() || singleBackImage ? (
+                  <div className="space-y-2 border-t border-[var(--color-border)] pt-2">
+                    {singleBackImage ? (
+                      <CardFaceImage
+                        source={singleBackImage}
+                        alt="Back image"
+                        className="max-h-40 rounded-md object-contain"
+                      />
+                    ) : null}
+                    {singleBack.trim() ? (
+                      <StudyText
+                        as="div"
+                        text={singleBack}
+                        className="whitespace-pre-wrap text-sm leading-6 text-text-secondary"
+                      />
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -308,7 +364,12 @@ export default function CardCreationPanel({
             type="button"
             data-tutorial-target="create-card"
             aria-keyshortcuts="Control+Enter Meta+Enter"
-            disabled={addingSingleCard || !singleDeckId || !singleFront.trim() || !singleBack.trim()}
+            disabled={
+              addingSingleCard ||
+              !singleDeckId ||
+              (!singleFront.trim() && !singleFrontImage) ||
+              (!singleBack.trim() && !singleBackImage)
+            }
             onClick={() => void handleAddSingleCard()}
             size="lg"
             className="w-full sm:w-auto"

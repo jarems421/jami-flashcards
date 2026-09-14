@@ -28,7 +28,9 @@ export type StudyTaskProfile = {
 const wordCount = (value: string) => value.trim().split(/\s+/).filter(Boolean).length;
 
 /** Conservative local profile used when no reviewed preparation is available. */
-export function classifyStudyTask(card: Pick<Card, "front" | "back">): StudyTaskProfile {
+export function classifyStudyTask(
+  card: Pick<Card, "front" | "back"> & Partial<Pick<Card, "frontImage">>
+): StudyTaskProfile {
   const front = card.front.trim();
   const back = card.back.trim();
   const joined = `${front}\n${back}`;
@@ -40,7 +42,9 @@ export function classifyStudyTask(card: Pick<Card, "front" | "back">): StudyTask
     reasons: [reason], source: "deterministic",
   });
 
-  if (!front || !back) return profile("ambiguous", ["classic"], [], "missing-content");
+  // A picture is a question. Without this every flag and diagram card read as
+  // empty, and Smart Mix never typed one however short its answer.
+  if ((!front && !card.frontImage) || !back) return profile("ambiguous", ["classic"], [], "missing-content");
   if (answerWords > 55) return profile("extended", ["classic"], [], "extended-answer");
   if (hasMathDelimiters(back) && answerWords <= 12) {
     return profile("formula", ["classic"], ["type-answer"], "maths-heavy-answer");

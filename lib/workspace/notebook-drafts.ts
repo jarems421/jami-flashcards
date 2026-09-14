@@ -35,7 +35,7 @@ export type NotebookPageDraft = {
   status: NotebookPageStatus;
 };
 
-export type NotebookDraftDecision = "restore" | "conflict" | "discard";
+export type NotebookDraftDecision = "restore" | "discard";
 
 function normalizeIdentifier(value: unknown) {
   return typeof value === "string" && value.trim() && value.length <= 200
@@ -140,9 +140,19 @@ export function createNotebookPageDraft(
   return draft;
 }
 
+/**
+ * Whether this device's unsaved copy of a page should come back.
+ *
+ * The most recent version wins, wherever it was made: the recovery copy if it
+ * was written after the synced page last changed, the synced page otherwise.
+ * There is no third answer. Asking the student to choose assumed two people
+ * editing one page at once, and a notebook has one owner working on one device
+ * at a time -- so the prompt only ever stood between them and their own latest
+ * work.
+ */
 export function getNotebookDraftDecision(
   draft: NotebookPageDraft,
-  page: Pick<NotebookPage, "id" | "notebookId" | "contentRevision">
+  page: Pick<NotebookPage, "id" | "notebookId" | "updatedAt">
 ): NotebookDraftDecision {
   if (
     draft.pageId !== page.id ||
@@ -151,9 +161,7 @@ export function getNotebookDraftDecision(
   ) {
     return "discard";
   }
-  return draft.baseContentRevision === page.contentRevision
-    ? "restore"
-    : "conflict";
+  return draft.savedAt > page.updatedAt ? "restore" : "discard";
 }
 
 function openDraftDatabase() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, StudyText } from "@/components/ui";
 import type { McqQuestion } from "@/lib/study/mcq";
 
@@ -8,6 +8,8 @@ const OPTION_SHORTCUTS = ["1", "2", "3", "4"];
 
 type StudyMultipleChoiceProps = {
   prompt: string;
+  /** A picture the question is about, shown above its words. */
+  promptMedia?: ReactNode;
   question: McqQuestion;
   onAnswered: (correct: boolean) => void;
   onContinue: (correct: boolean) => void | Promise<void>;
@@ -31,6 +33,7 @@ type StudyMultipleChoiceProps = {
  */
 export default function StudyMultipleChoice({
   prompt,
+  promptMedia,
   question,
   onAnswered,
   onContinue,
@@ -92,12 +95,15 @@ export default function StudyMultipleChoice({
 
   return (
     <div className="space-y-4">
-      <div className="study-flashcard-face flex min-h-[12rem] items-center justify-center rounded-2xl p-6 sm:min-h-[15rem] sm:p-10">
-        <StudyText
-          as="p"
-          text={prompt}
-          className="whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-text-primary sm:text-2xl"
-        />
+      <div className="study-flashcard-face flex min-h-[12rem] flex-col items-center justify-center gap-4 rounded-2xl p-6 sm:min-h-[15rem] sm:p-10">
+        {promptMedia}
+        {prompt.trim() ? (
+          <StudyText
+            as="p"
+            text={prompt}
+            className="whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-text-primary sm:text-2xl"
+          />
+        ) : null}
       </div>
 
       <div

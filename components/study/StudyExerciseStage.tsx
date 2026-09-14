@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import CardFaceImage from "@/components/cards/CardFaceImage";
 import { Button, Input, StudyText } from "@/components/ui";
 import StudyAnswerEntry, {
   StudyPromptText,
@@ -75,6 +76,23 @@ type RevealState = {
 };
 
 const BLANK = "_____";
+
+/**
+ * The picture a card asks about, above whatever words go with it.
+ *
+ * Only a front image reaches an exercise: a card answered by a picture is
+ * always flipped, so nothing here has a picture answer to reveal.
+ */
+function PromptImage({ card }: { card: Card }) {
+  if (!card.frontImage) return null;
+  return (
+    <CardFaceImage
+      source={card.frontImage}
+      alt={card.front.trim() ? "Image for this question" : "The question on this card"}
+      className="mx-auto max-h-56 w-auto max-w-full rounded-xl object-contain sm:max-h-72"
+    />
+  );
+}
 
 /**
  * The answer-first modes: type it, fill the gap, or pick from four.
@@ -237,6 +255,7 @@ export default function StudyExerciseStage({
       >
         <StudyMultipleChoice
           prompt={exercise.prompt}
+          promptMedia={<PromptImage card={card} />}
           question={exercise.mcq}
           initialChosenId={viewState.chosenId}
           onSelectionChange={(chosenId) => onViewStateChange?.({ chosenId })}
@@ -294,7 +313,8 @@ export default function StudyExerciseStage({
     return (
       <div data-study-current-card-id={card.id} className="mx-auto w-full max-w-[62rem] space-y-6">
         <div className="space-y-3 text-center">
-          <StudyText as="p" text={card.front} className="text-sm text-text-muted" />
+          <PromptImage card={card} />
+          {card.front.trim() ? <StudyText as="p" text={card.front} className="text-sm text-text-muted" /> : null}
           <StudyText as="p" text={prompt} className="whitespace-pre-wrap text-lg font-medium leading-relaxed text-text-primary sm:text-xl" />
         </div>
         <div className="mx-auto grid max-w-2xl gap-3 sm:grid-cols-2">
@@ -331,11 +351,14 @@ export default function StudyExerciseStage({
   const isGapFill = exercise.mode === "gap-fill" && gaps.length === 1;
   const promptNode = isGapFill ? (
     <div className="space-y-3">
-      <StudyText
-        as="p"
-        text={card.front}
-        className="text-center text-sm text-text-muted"
-      />
+      <PromptImage card={card} />
+      {card.front.trim() ? (
+        <StudyText
+          as="p"
+          text={card.front}
+          className="text-center text-sm text-text-muted"
+        />
+      ) : null}
       <StudyText
         as="p"
         text={renderClozePrompt(card.back, gaps[0], BLANK)}
@@ -343,7 +366,10 @@ export default function StudyExerciseStage({
       />
     </div>
   ) : (
-    <StudyPromptText text={exercise.prompt} />
+    <div className="flex w-full flex-col items-center gap-4">
+      <PromptImage card={card} />
+      {exercise.prompt.trim() ? <StudyPromptText text={exercise.prompt} /> : null}
+    </div>
   );
 
   // The hint is the first letter and the shape of the word. Enough to unstick a

@@ -1,32 +1,41 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import InkColorPicker from "@/components/workspace/NotebookInkColorPicker";
-import SmoothingSlider from "@/components/workspace/NotebookSmoothingSlider";
-import ThicknessSlider from "@/components/workspace/NotebookThicknessSlider";
-import { Button } from "@/components/ui";
-import {
-  captureExamWorking,
-  examWorkingHasInk,
-  type ExamScratchpadHandle,
-} from "@/lib/practice/exam-working";
-export type { ExamScratchpadHandle } from "@/lib/practice/exam-working";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button, ConfirmDialog } from "@/components/ui";
+import type { NotebookToolMenu } from "@/components/workspace/NotebookDrawingToolbar";
+import NotebookToolSettingsPopover from "@/components/workspace/NotebookToolSettingsPopover";
 import ToolbarIconButton from "@/components/workspace/NotebookToolbarIconButton";
 import {
   NotebookInkEditor,
   type NotebookInkEditorHandle,
-  type NotebookInkTool,
 } from "@/components/workspace/NotebookInkEditor";
 import {
-  NOTEBOOK_DEFAULT_THICKNESS_PERCENT,
+  captureExamWorking,
+  EXAM_WORKING_MAX_PAGES,
+  examWorkingHasInk,
+  examWorkingStackLayout,
+  type ExamScratchpadHandle,
+} from "@/lib/practice/exam-working";
+export type { ExamScratchpadHandle } from "@/lib/practice/exam-working";
+import {
+  NOTEBOOK_ERASER_THICKNESS_BY_SIZE,
+  type NotebookEraserMode,
+  type NotebookEraserSize,
+} from "@/lib/workspace/notebook-eraser";
+import {
   getHighlighterWidthFromPercent,
   getPenWidthFromPercent,
 } from "@/lib/workspace/notebook-inking";
+import { installNotebookStylusTouchListeners } from "@/lib/workspace/notebook-interaction-lock";
 import { getNotebookStrokePaintColor } from "@/lib/workspace/notebook-page-content";
 import {
   readNotebookPenSmoothingPreference,
   saveNotebookPenSmoothingPreference,
 } from "@/lib/workspace/notebook-pen-feel";
+import {
+  readNotebookScribbleErasePreference,
+  saveNotebookScribbleErasePreference,
+} from "@/lib/workspace/notebook-toolbar";
 import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
 import {
   ExamScratchpadTooLargeError,
@@ -34,100 +43,163 @@ import {
   saveExamScratchpad,
 } from "@/services/study/exam-practice";
 
-/** The sheet's own page units, and the size the frozen snapshot is taken at. */
+/** The sheet's own page units, and the size each page is snapshotted at. */
 export const EXAM_WORKING_PAGE_WIDTH = 900;
 export const EXAM_WORKING_PAGE_HEIGHT = 1_240;
 const SNAPSHOT_WIDTH = 1_200;
 const SNAPSHOT_HEIGHT = Math.round(
   (SNAPSHOT_WIDTH * EXAM_WORKING_PAGE_HEIGHT) / EXAM_WORKING_PAGE_WIDTH
 );
+/** The band between stacked pages in the submitted image, at snapshot size. */
+const SNAPSHOT_PAGE_GAP = 24;
 const SAVE_DEBOUNCE_MS = 700;
-const SETTINGS_ID = "exam-working-tool-settings";
 
-async function svgToPng(svg: string) {
-  if (!svg.trim()) return undefined;
-  const blob = new Blob([svg], { type: "image/svg+xml" });
-  const url = URL.createObjectURL(blob);
+/*
+ * Memoised, with every callback below held stable, the way the notebook holds
+ * its editor. The sheet re-rendered the editor on every one of its own renders
+ * with fresh inline callbacks, so the ink surface was being reconciled while a
+ * student was writing on it.
+ */
+const WorkingInkEditor = memo(NotebookInkEditor);
+const ignorePointer = () => undefined;
+
+function loadSvgImage(svg: string) {
+  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  const image = new Image();
+  image.src = url;
+  return image
+    .decode()
+    .then(() => image)
+    .finally(() => URL.revokeObjectURL(url));
+}
+
+/**
+ * Every inked page, stacked into the one image the marker reads.
+ *
+ * A marker reads ink on paper, so the pages are flattened onto white rather
+ * than sent as transparent overlays whose ground it would have to guess, and a
+ * grey band between them keeps each page its own.
+ */
+async function pagesToPng(pages: readonly string[]) {
+  if (pages.length === 0) return undefined;
   try {
-    const image = new Image();
-    image.src = url;
-    await image.decode();
+    const layout = examWorkingStackLayout({
+      pageCount: pages.length,
+      pageWidth: SNAPSHOT_WIDTH,
+      pageHeight: SNAPSHOT_HEIGHT,
+      gap: SNAPSHOT_PAGE_GAP,
+    });
+    const images = await Promise.all(pages.map(loadSvgImage));
     const canvas = document.createElement("canvas");
-    canvas.width = SNAPSHOT_WIDTH;
-    canvas.height = SNAPSHOT_HEIGHT;
+    canvas.width = layout.width;
+    canvas.height = layout.height;
     const context = canvas.getContext("2d");
     if (!context) return undefined;
-    // A marker reads ink on paper, so the sheet is flattened onto white rather
-    // than sent as a transparent overlay whose ground it would have to guess.
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT);
-    context.drawImage(image, 0, 0, SNAPSHOT_WIDTH, SNAPSHOT_HEIGHT);
+    context.fillStyle = "#e5e7eb";
+    context.fillRect(0, 0, layout.width, layout.height);
+    images.forEach((image, index) => {
+      const top = layout.offsets[index] ?? 0;
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, top, layout.width, layout.pageHeight);
+      context.drawImage(image, 0, top, layout.width, layout.pageHeight);
+    });
     return {
       mimeType: "image/png" as const,
       dataBase64: canvas.toDataURL("image/png").split(",")[1],
-      width: SNAPSHOT_WIDTH,
-      height: SNAPSHOT_HEIGHT,
+      width: layout.width,
+      height: layout.height,
     };
   } catch {
     // Failure blocks submission; never silently mark the typed answer alone.
     return undefined;
-  } finally {
-    URL.revokeObjectURL(url);
   }
 }
 
+type ConfirmRequest = "clear-page" | "delete-page" | null;
+
+/** A sheet of working has no text layer, so these are its only tools. */
+type WorkingTool = "pen" | "highlighter" | "eraser";
+
 /**
- * One sheet of working, bound to one attempt.
+ * The pages of working for one attempt.
  *
- * It is the notebook's ink editor with the notebook's tools, deliberately: a
- * student who has learned to write in Jami should not meet a different, worse
- * pen the moment the work is being marked. The pen feel is read from the same
- * saved preference, so a hand tuned once stays tuned here.
+ * It is the notebook's ink editor with the notebook's tools and settings,
+ * deliberately: a student who has learned to write in Jami should not meet a
+ * different, worse pen the moment the work is being marked. Pen feel and
+ * scribble-to-erase are read from the same saved preferences, so a hand tuned
+ * once stays tuned here.
  *
- * What it is not is a notebook page. There is no text layer, no page history
- * and no `useNotebookInkController` — that hook exists to reconcile strokes
- * with `NotebookTextBlock[]`, which a sheet of working does not have.
+ * What it is not is a notebook page. There is no text layer and no images:
+ * the typed answer sits above the sheet, and what is sent for marking is the
+ * ink on these pages and nothing else.
  */
 export default function ExamScratchpad({
   userId,
   attemptId,
   disabled = false,
+  embedded = false,
   onHandle,
   onInkChange,
 }: {
   userId: string;
   attemptId: string;
   disabled?: boolean;
+  /** Drawn flush inside a surrounding sheet, without a frame of its own. */
+  embedded?: boolean;
   onHandle(handle: ExamScratchpadHandle | null): void;
   onInkChange?(hasInk: boolean): void;
 }) {
   const editorRef = useRef<NotebookInkEditorHandle | null>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const inkInteractionActiveRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [initialSvg, setInitialSvg] = useState<string | null>(null);
+  /** The latest markup of every page; the open page is read from the editor. */
+  const pagesRef = useRef<string[]>([]);
+  const pageIndexRef = useRef(0);
+  const loadedRef = useRef(false);
+  /** What each page opens with. Refreshed whenever the open page changes. */
+  const [pageSvgs, setPageSvgs] = useState<string[] | null>(null);
+  const [pageIndex, setPageIndex] = useState(0);
+  /** Remounts the editor when the open page's content changes underneath it. */
+  const [pageMount, setPageMount] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
   const [saveProblem, setSaveProblem] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
-  const [tool, setTool] = useState<NotebookInkTool>("pen");
-  const [openMenu, setOpenMenu] = useState<NotebookInkTool | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmRequest>(null);
+
+  const [tool, setTool] = useState<WorkingTool>("pen");
+  const [openMenu, setOpenMenu] = useState<NotebookToolMenu>(null);
   const [history, setHistory] = useState({ undo: 0, redo: 0 });
   const [penColor, setPenColor] = useState<NotebookStrokeColor>("black");
-  const [penThickness, setPenThickness] = useState(NOTEBOOK_DEFAULT_THICKNESS_PERCENT);
-  // Read once, lazily: the saved pen feel is this pad's starting value, and
-  // nothing on the first paint depends on it, so there is nothing to sync.
-  const [penSmoothing, setPenSmoothing] = useState(readNotebookPenSmoothingPreference);
-  const [highlighterColor, setHighlighterColor] = useState<NotebookStrokeColor>("yellow");
-  const [highlighterThickness, setHighlighterThickness] = useState(
-    NOTEBOOK_DEFAULT_THICKNESS_PERCENT
+  const [penThicknessPercent, setPenThicknessPercent] = useState(50);
+  // Read once, lazily: the saved preferences are this sheet's starting values,
+  // and nothing on the first paint depends on them.
+  const [penSmoothingPercent, setPenSmoothingPercent] = useState(
+    readNotebookPenSmoothingPreference
   );
-  const [eraserThickness, setEraserThickness] = useState(NOTEBOOK_DEFAULT_THICKNESS_PERCENT);
+  const [scribbleToErase, setScribbleToErase] = useState(
+    readNotebookScribbleErasePreference
+  );
+  const [highlighterColor, setHighlighterColor] = useState<NotebookStrokeColor>("yellow");
+  const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(50);
+  const [eraserMode, setEraserMode] = useState<NotebookEraserMode>("precision");
+  const [eraserSize, setEraserSize] = useState<NotebookEraserSize>("medium");
+
+  const pageCount = pageSvgs?.length ?? 1;
 
   useEffect(() => {
     let active = true;
+    loadedRef.current = false;
     void loadExamScratchpad(userId, attemptId)
-      .then((svg) => {
+      .then((pages) => {
         if (!active) return;
-        setInitialSvg(svg);
-        onInkChange?.(examWorkingHasInk(svg));
+        const loaded = pages.length > 0 ? pages : [""];
+        pagesRef.current = loaded;
+        pageIndexRef.current = 0;
+        loadedRef.current = true;
+        setPageIndex(0);
+        setPageSvgs(loaded);
+        onInkChange?.(loaded.some((page) => examWorkingHasInk(page)));
       })
       // An empty sheet after a failed read is not an empty sheet: writing to it
       // would replace working that is still there. Offer a retry instead.
@@ -137,34 +209,45 @@ export default function ExamScratchpad({
     };
   }, [attemptId, onInkChange, reloadKey, userId]);
 
+  /** Every page as it stands now, with the open page read from the editor. */
+  const collectPages = useCallback(() => {
+    const pages = [...pagesRef.current];
+    const editor = editorRef.current;
+    if (editor) {
+      const current = editor.serializeWarm() ?? editor.serialize();
+      if (current != null) pages[pageIndexRef.current] = current;
+    }
+    pagesRef.current = pages;
+    return pages;
+  }, []);
+
   const writeSheet = useCallback(async () => {
-    if (disabled || !editorRef.current) return true;
-    const svg = editorRef.current.serializeWarm() ?? editorRef.current.serialize() ?? "";
-    if (!svg) return true;
+    if (disabled || !loadedRef.current) return true;
+    const pages = collectPages();
     /*
-     * The label follows what is on the page, not the undo stack. Drawing a
+     * The label follows what is on the pages, not the undo stack. Drawing a
      * stroke and erasing it leaves history behind and no ink, and the sheet
      * would still have claimed it was being sent with the answer.
      */
-    onInkChange?.(examWorkingHasInk(svg));
+    onInkChange?.(pages.some((page) => examWorkingHasInk(page)));
     try {
-      await saveExamScratchpad(userId, attemptId, svg);
+      await saveExamScratchpad(userId, attemptId, pages);
       setSaveProblem("");
       return true;
     } catch (error) {
       setSaveProblem(
         error instanceof ExamScratchpadTooLargeError
-          ? "This sheet is too detailed to save. Your last saved working is safe — erase some of it, or submit what you have."
+          ? "These pages are too detailed to save. Your last saved working is safe — erase some of it, or submit what you have."
           : "Your working could not be saved just now. It is still on the page."
       );
       return false;
     }
-  }, [attemptId, disabled, onInkChange, userId]);
+  }, [attemptId, collectPages, disabled, onInkChange, userId]);
 
   const persist = useCallback(() => {
     // Once the answer is frozen the sheet is evidence rather than a draft, and
     // the security rules refuse the write — so it is not attempted.
-    if (disabled || !editorRef.current) return;
+    if (disabled) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => void writeSheet(), SAVE_DEBOUNCE_MS);
   }, [disabled, writeSheet]);
@@ -185,18 +268,97 @@ export default function ExamScratchpad({
   useEffect(() => {
     const handle: ExamScratchpadHandle = {
       attemptId,
-      snapshot: () => captureExamWorking({
-        serialize: async () => editorRef.current?.serializeAsync(),
-        save: (svg) => saveExamScratchpad(userId, attemptId, svg),
-        rasterize: svgToPng,
-      }),
+      snapshot: () =>
+        captureExamWorking({
+          serialize: async () => {
+            const editor = editorRef.current;
+            if (!loadedRef.current || !editor) return null;
+            const current = await editor.serializeAsync();
+            if (current == null) return null;
+            const pages = [...pagesRef.current];
+            pages[pageIndexRef.current] = current;
+            pagesRef.current = pages;
+            return pages;
+          },
+          save: (pages) => saveExamScratchpad(userId, attemptId, pages),
+          rasterize: pagesToPng,
+        }),
     };
     onHandle(handle);
     return () => onHandle(null);
   }, [attemptId, onHandle, userId]);
 
+  /*
+   * The notebook's Pencil guard, which this sheet never had.
+   *
+   * iPadOS Safari reads Apple Pencil movement as a native scroll or back
+   * gesture even under `touch-action: none`: it cancels the stroke part way
+   * and then needs a frame to settle before it delivers the next one. On the
+   * notebook the page cannot scroll and this guard is installed; here the page
+   * scrolls and it was not, which is what made writing break up and lag. It
+   * cancels the touch default only for Pencil contact or while ink is being
+   * drawn, so a finger still scrolls the page and taps on controls stay native.
+   */
+  const handleInteractionChange = useCallback((active: boolean) => {
+    inkInteractionActiveRef.current = active;
+  }, []);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    return installNotebookStylusTouchListeners({
+      surface,
+      getInkInteractionActive: () => inkInteractionActiveRef.current,
+    });
+  }, []);
+
+  const handleHistoryChange = useCallback(
+    (undo: number, redo: number) => {
+      setHistory({ undo, redo });
+      const otherPagesHaveInk = pagesRef.current.some(
+        (page, index) => index !== pageIndexRef.current && examWorkingHasInk(page)
+      );
+      onInkChange?.(undo > 0 || otherPagesHaveInk);
+    },
+    [onInkChange]
+  );
+
+  /** Opens a page, keeping what is on the one being left. */
+  const showPage = useCallback(
+    (pages: string[], nextIndex: number) => {
+      pagesRef.current = pages;
+      pageIndexRef.current = nextIndex;
+      setPageSvgs(pages);
+      setPageIndex(nextIndex);
+      setPageMount((value) => value + 1);
+      setHistory({ undo: 0, redo: 0 });
+      setOpenMenu(null);
+    },
+    []
+  );
+
+  const goToPage = (nextIndex: number) => {
+    if (nextIndex < 0 || nextIndex >= pageCount || nextIndex === pageIndexRef.current) return;
+    showPage(collectPages(), nextIndex);
+    persist();
+  };
+
+  const addPage = () => {
+    if (disabled || pageCount >= EXAM_WORKING_MAX_PAGES) return;
+    const pages = [...collectPages(), ""];
+    showPage(pages, pages.length - 1);
+    persist();
+  };
+
+  const deletePage = () => {
+    if (disabled || pageCount <= 1) return;
+    const pages = collectPages().filter((_page, index) => index !== pageIndexRef.current);
+    showPage(pages, Math.min(pageIndexRef.current, pages.length - 1));
+    persist();
+  };
+
   /** Pressing the active tool opens its options; pressing another switches. */
-  const selectTool = (next: NotebookInkTool) => {
+  const selectTool = (next: WorkingTool) => {
     if (tool === next) {
       setOpenMenu((current) => (current === next ? null : next));
       return;
@@ -207,130 +369,146 @@ export default function ExamScratchpad({
 
   const widths = useMemo(
     () => ({
-      pen: getPenWidthFromPercent(penThickness),
-      highlighter: getHighlighterWidthFromPercent(highlighterThickness),
-      eraser: getHighlighterWidthFromPercent(eraserThickness),
+      pen: getPenWidthFromPercent(penThicknessPercent),
+      highlighter: getHighlighterWidthFromPercent(highlighterThicknessPercent),
+      eraser: NOTEBOOK_ERASER_THICKNESS_BY_SIZE[eraserSize],
     }),
-    [eraserThickness, highlighterThickness, penThickness]
+    [eraserSize, highlighterThicknessPercent, penThicknessPercent]
   );
 
+  const currentPageHasInk =
+    history.undo > 0 || examWorkingHasInk(pageSvgs?.[pageIndex] ?? "");
+
   return (
-    <div className="overflow-hidden rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-shell">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-2 py-1.5">
-        <div className="flex items-center gap-1">
+    <div
+      className={
+        embedded
+          ? "relative"
+          : "relative overflow-hidden rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-shell"
+      }
+    >
+      <div
+        role="toolbar"
+        aria-label="Working tools"
+        className={`flex items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-glass-subtle)] py-1.5 ${
+          embedded ? "px-3" : "px-2"
+        }`}
+      >
+        {(["pen", "highlighter", "eraser"] as const).map((item) => (
+          <div key={item} className="relative shrink-0">
+            <ToolbarIconButton
+              label={item === "pen" ? "Pen" : item === "highlighter" ? "Highlighter" : "Eraser"}
+              icon={item}
+              active={tool === item || openMenu === item}
+              disabled={disabled}
+              expanded={openMenu === item}
+              controls="notebook-tool-settings"
+              onClick={() => selectTool(item)}
+            >
+              {item !== "eraser" ? (
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
+                  style={{
+                    backgroundColor: getNotebookStrokePaintColor(
+                      item === "pen" ? penColor : highlighterColor,
+                      item
+                    ),
+                  }}
+                />
+              ) : null}
+            </ToolbarIconButton>
+          </div>
+        ))}
+        <span aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-[var(--color-border)]" />
+        <ToolbarIconButton
+          label="Undo"
+          icon="undo"
+          disabled={disabled || history.undo === 0}
+          onClick={() => editorRef.current?.undo()}
+        />
+        <ToolbarIconButton
+          label="Redo"
+          icon="redo"
+          disabled={disabled || history.redo === 0}
+          onClick={() => editorRef.current?.redo()}
+        />
+
+        <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
           <ToolbarIconButton
-            label="Pen"
-            icon="pen"
-            active={tool === "pen"}
-            disabled={disabled}
-            expanded={openMenu === "pen"}
-            controls={SETTINGS_ID}
-            onClick={() => selectTool("pen")}
+            label="Previous page"
+            icon="back"
+            disabled={pageIndex === 0}
+            onClick={() => goToPage(pageIndex - 1)}
+          />
+          <span
+            aria-live="polite"
+            className="min-w-[3.25rem] text-center text-xs font-semibold tabular-nums text-text-secondary"
+          >
+            {pageIndex + 1} / {pageCount}
+          </span>
+          <ToolbarIconButton
+            label="Next page"
+            icon="forward"
+            disabled={pageIndex >= pageCount - 1}
+            onClick={() => goToPage(pageIndex + 1)}
           />
           <ToolbarIconButton
-            label="Highlighter"
-            icon="highlighter"
-            active={tool === "highlighter"}
-            disabled={disabled}
-            expanded={openMenu === "highlighter"}
-            controls={SETTINGS_ID}
-            onClick={() => selectTool("highlighter")}
+            label={
+              pageCount >= EXAM_WORKING_MAX_PAGES
+                ? `Up to ${EXAM_WORKING_MAX_PAGES} pages`
+                : "Add a page"
+            }
+            icon="plus"
+            disabled={disabled || pageCount >= EXAM_WORKING_MAX_PAGES}
+            onClick={addPage}
           />
           <ToolbarIconButton
-            label="Eraser"
-            icon="eraser"
-            active={tool === "eraser"}
-            disabled={disabled}
-            expanded={openMenu === "eraser"}
-            controls={SETTINGS_ID}
-            onClick={() => selectTool("eraser")}
-          />
-        </div>
-        <div className="flex items-center gap-1">
-          <ToolbarIconButton
-            label="Undo"
-            icon="undo"
-            disabled={disabled || history.undo === 0}
-            onClick={() => editorRef.current?.undo()}
-          />
-          <ToolbarIconButton
-            label="Redo"
-            icon="redo"
-            disabled={disabled || history.redo === 0}
-            onClick={() => editorRef.current?.redo()}
-          />
-          <ToolbarIconButton
-            label="Clear working"
+            label="Delete this page"
             icon="trash"
-            disabled={disabled || history.undo === 0}
-            onClick={() => editorRef.current?.clear()}
+            disabled={disabled || pageCount <= 1}
+            onClick={() => (currentPageHasInk ? setConfirm("delete-page") : deletePage())}
           />
         </div>
       </div>
 
-      {openMenu && !disabled ? (
-        <div
-          id={SETTINGS_ID}
-          role="group"
-          aria-label={`${openMenu} settings`}
-          className="space-y-3 border-b border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-3"
-        >
-          {openMenu === "pen" ? (
-            <>
-              <InkColorPicker
-                label="Pen color"
-                value={penColor}
-                presets={["black", "white", "red", "green"]}
-                getPresetColor={(color) => getNotebookStrokePaintColor(color, "pen")}
-                onPresetSelect={setPenColor}
-                onCustomColorChange={setPenColor}
-              />
-              <ThicknessSlider
-                label="Pen thickness"
-                percent={penThickness}
-                color={getNotebookStrokePaintColor(penColor, "pen")}
-                previewWidth={widths.pen}
-                onChange={setPenThickness}
-              />
-              <SmoothingSlider
-                percent={penSmoothing}
-                onChange={(value) => {
-                  setPenSmoothing(value);
-                  saveNotebookPenSmoothingPreference(value);
-                }}
-              />
-            </>
-          ) : null}
-          {openMenu === "highlighter" ? (
-            <>
-              <InkColorPicker
-                label="Highlighter color"
-                value={highlighterColor}
-                presets={["yellow", "green", "pink"]}
-                getPresetColor={(color) => getNotebookStrokePaintColor(color, "highlighter")}
-                onPresetSelect={setHighlighterColor}
-                onCustomColorChange={setHighlighterColor}
-              />
-              <ThicknessSlider
-                label="Highlighter thickness"
-                percent={highlighterThickness}
-                color={getNotebookStrokePaintColor(highlighterColor, "highlighter")}
-                previewWidth={widths.highlighter / 2}
-                onChange={setHighlighterThickness}
-              />
-            </>
-          ) : null}
-          {openMenu === "eraser" ? (
-            <ThicknessSlider
-              label="Eraser size"
-              percent={eraserThickness}
-              color="var(--color-text-muted)"
-              previewWidth={widths.eraser / 2}
-              onChange={setEraserThickness}
-            />
-          ) : null}
-        </div>
-      ) : null}
+      <NotebookToolSettingsPopover
+        dock="top"
+        openMenu={disabled ? null : openMenu}
+        pen={{
+          color: penColor,
+          thicknessPercent: penThicknessPercent,
+          onColorChange: setPenColor,
+          onThicknessChange: setPenThicknessPercent,
+          smoothingPercent: penSmoothingPercent,
+          onSmoothingChange: (percent) => {
+            setPenSmoothingPercent(percent);
+            saveNotebookPenSmoothingPreference(percent);
+          },
+          scribbleToErase,
+          onScribbleToEraseChange: (enabled) => {
+            setScribbleToErase(enabled);
+            saveNotebookScribbleErasePreference(enabled);
+          },
+        }}
+        highlighter={{
+          color: highlighterColor,
+          thicknessPercent: highlighterThicknessPercent,
+          onColorChange: setHighlighterColor,
+          onThicknessChange: setHighlighterThicknessPercent,
+        }}
+        eraser={{
+          mode: eraserMode,
+          size: eraserSize,
+          onModeChange: setEraserMode,
+          onSizeChange: setEraserSize,
+          canClearPage: !disabled && currentPageHasInk,
+          onClearPage: () => {
+            setOpenMenu(null);
+            setConfirm("clear-page");
+          },
+        }}
+      />
 
       {saveProblem ? (
         <p className="border-b border-[var(--color-border)] bg-error/10 px-3 py-2 text-sm text-text-primary">
@@ -338,7 +516,17 @@ export default function ExamScratchpad({
         </p>
       ) : null}
 
-      <div className="relative aspect-[9/12.4] min-h-[26rem] w-full bg-white">
+      {/*
+        * `notebook-page-surface` is the notebook sheet's own ground rules: no
+        * text selection, callout or drag, no overscroll, no native pan. Paint
+        * containment keeps every ink frame's repaint inside the page instead
+        * of invalidating the scrolling page around it.
+        */}
+      <div
+        ref={surfaceRef}
+        className="notebook-page-surface relative w-full bg-white [contain:layout_paint]"
+        style={{ aspectRatio: `${EXAM_WORKING_PAGE_WIDTH} / ${EXAM_WORKING_PAGE_HEIGHT}` }}
+      >
         {loadFailed ? (
           <div className="absolute inset-0 grid place-items-center gap-3 p-6 text-center">
             <p className="text-sm text-text-secondary">
@@ -356,39 +544,55 @@ export default function ExamScratchpad({
               Try again
             </Button>
           </div>
-        ) : initialSvg !== null ? (
-          <NotebookInkEditor
+        ) : pageSvgs !== null ? (
+          <WorkingInkEditor
+            key={`${attemptId}:${pageMount}`}
             ref={editorRef}
             activeTool={tool}
-            eraserMode="precision"
+            eraserMode={eraserMode}
             eraserThickness={widths.eraser}
             highlighterColor={highlighterColor}
             highlighterThickness={widths.highlighter}
-            initialSvg={initialSvg}
+            initialSvg={pageSvgs[pageIndex] ?? ""}
             pageHeight={EXAM_WORKING_PAGE_HEIGHT}
-            pageId={attemptId}
+            pageId={`${attemptId}:${pageIndex}`}
             pageWidth={EXAM_WORKING_PAGE_WIDTH}
             penColor={penColor}
-            penSmoothing={penSmoothing}
+            penSmoothing={penSmoothingPercent}
             penThickness={widths.pen}
             readOnly={disabled}
+            scribbleToErase={scribbleToErase}
             onChange={persist}
-            onHistoryChange={(undo, redo) => {
-              setHistory({ undo, redo });
-              onInkChange?.(undo > 0);
-            }}
-            onInteractionChange={() => undefined}
-            onPointerCancel={() => undefined}
-            onPointerDown={() => undefined}
-            onPointerMove={() => undefined}
-            onPointerUp={() => undefined}
+            onHistoryChange={handleHistoryChange}
+            onInteractionChange={handleInteractionChange}
+            onPointerCancel={ignorePointer}
+            onPointerDown={ignorePointer}
+            onPointerMove={ignorePointer}
+            onPointerUp={ignorePointer}
           />
         ) : (
           <div className="absolute inset-0 grid place-items-center text-sm text-text-muted">
-            Opening your working sheet…
+            Opening your working…
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        title={confirm === "delete-page" ? "Delete this page?" : "Clear this page?"}
+        description={
+          confirm === "delete-page"
+            ? "Everything written on this page of working is removed."
+            : "Everything written on this page is removed. You can undo it straight after."
+        }
+        confirmLabel={confirm === "delete-page" ? "Delete page" : "Clear page"}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm === "delete-page") deletePage();
+          else editorRef.current?.clear();
+          setConfirm(null);
+        }}
+      />
     </div>
   );
 }

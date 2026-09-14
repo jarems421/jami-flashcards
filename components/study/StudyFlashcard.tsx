@@ -1,7 +1,9 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import CardFaceImage from "@/components/cards/CardFaceImage";
 import { StudyText } from "@/components/ui";
+import type { CardImage } from "@/lib/study/card-images";
 import type { Card } from "@/lib/study/cards";
 
 const VISIBLE_TOPIC_LIMIT = 2;
@@ -16,6 +18,47 @@ type StudyFlashcardProps = {
   /** Shown under the answer, e.g. how the student should rate what they recalled. */
   answerHint?: string;
 };
+
+/**
+ * What one face shows: its image, its text, or both.
+ *
+ * The image takes whatever height the text leaves and is letterboxed rather
+ * than cropped, because a diagram with its labels cut off is not the card that
+ * was written.
+ */
+function FlashcardFaceContent({
+  text,
+  image,
+  side,
+}: {
+  text: string;
+  image?: CardImage;
+  side: "front" | "back";
+}) {
+  const hasText = Boolean(text.trim());
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 py-6">
+      {image ? (
+        <div className="flex min-h-0 w-full flex-1 items-center justify-center">
+          <CardFaceImage
+            source={image}
+            alt={hasText ? `Image on the ${side} of this card` : `The ${side} of this card`}
+            className="h-full w-full rounded-xl object-contain"
+          />
+        </div>
+      ) : null}
+      {hasText ? (
+        <StudyText
+          as="p"
+          text={text}
+          className={`max-w-4xl shrink-0 whitespace-pre-wrap text-center font-medium leading-snug tracking-[0.01em] text-[color:inherit] ${
+            image ? "text-base sm:text-xl xl:text-2xl" : "text-lg sm:text-2xl xl:text-4xl"
+          }`}
+        />
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * The card itself: two faces in one 3D space, turned by `flipped`.
@@ -92,13 +135,7 @@ export default function StudyFlashcard({
               </div>
             ) : null}
           </div>
-          <div className="flex flex-1 items-center justify-center py-6">
-            <StudyText
-              as="p"
-              text={card.front}
-              className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-[color:inherit] sm:text-2xl xl:text-4xl"
-            />
-          </div>
+          <FlashcardFaceContent text={card.front} image={card.frontImage} side="front" />
           <div className="text-center text-xs font-medium opacity-60">
             Tap anywhere on the card or press Space to reveal
           </div>
@@ -123,13 +160,7 @@ export default function StudyFlashcard({
             />
             <span>Answer</span>
           </div>
-          <div className="flex flex-1 items-center justify-center py-6">
-            <StudyText
-              as="p"
-              text={card.back}
-              className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-[color:inherit] sm:text-2xl xl:text-4xl"
-            />
-          </div>
+          <FlashcardFaceContent text={card.back} image={card.backImage} side="back" />
           <div className="text-center text-xs font-medium opacity-60">
             {answerHint}
           </div>
