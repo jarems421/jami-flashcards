@@ -106,6 +106,8 @@ describe("formal blind marking pipeline", () => {
     expect(primaryCall.request.systemInstruction).not.toContain("verifier report");
     expect(verifierCall.request.systemInstruction).not.toContain("primary report");
     for (const call of [primaryCall, verifierCall]) {
+      // A hung endpoint is abandoned in seconds, not at the report budget.
+      expect(call.stallTimeoutMs).toBe(30_000);
       const serialized = JSON.stringify(call.request.contents);
       expect(serialized).toContain("cGFwZXItaW1hZ2U=");
       expect(serialized).toContain("cTEtaW1hZ2U=");

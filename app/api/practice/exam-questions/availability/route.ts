@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const folderId = request.nextUrl.searchParams.get("folderId")?.trim() ?? "";
   const topicIds = request.nextUrl.searchParams.getAll("topicId").slice(0, 20);
+  const paperIds = request.nextUrl.searchParams.getAll("paperId").slice(0, 10);
   if (!folderId) return apiFailure("Choose a folder.", 400, "folder_required");
   const calculator = request.nextUrl.searchParams.get("calculator");
   try {
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
       uid,
       folderId,
       topicIds,
+      paperIds,
       ...(isExamCalculatorChoice(calculator) ? { calculator } : {}),
     }));
   } catch (error) {

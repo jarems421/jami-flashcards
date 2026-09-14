@@ -31,6 +31,8 @@ function queryFor(path: string, state: {
   order?: string;
   cursor?: Doc;
   limit?: number;
+  /** A field-only read, such as the papers' calculator rules, rather than a page of questions. */
+  projection?: boolean;
 }): Record<string, unknown> {
   const next = (changes: Partial<typeof state>) => queryFor(path, { ...state, ...changes });
   return {
@@ -39,6 +41,7 @@ function queryFor(path: string, state: {
     orderBy: (field: string) => next({ order: field }),
     startAfter: (cursor: Doc) => next({ cursor }),
     limit: (count: number) => next({ limit: count }),
+    select: () => next({ projection: true }),
     get: async () => {
       let docs = (collections.get(path) ?? []).filter((doc) => matches(doc, state.filters));
       if (state.order) {
@@ -50,7 +53,9 @@ function queryFor(path: string, state: {
         docs = docs.slice(docs.findIndex((doc) => doc.id === state.cursor!.id) + 1);
       }
       if (state.limit !== undefined) docs = docs.slice(0, state.limit);
-      reads.push({ path, size: docs.length });
+      // The read budget is about pages of questions searched; a field-only read
+      // describing the papers is not one of them.
+      if (!state.projection) reads.push({ path, size: docs.length });
       return {
         empty: docs.length === 0,
         size: docs.length,
@@ -76,8 +81,14 @@ function docFor(path: string): Record<string, unknown> {
   };
 }
 
+const writes: { path: string; data: Record<string, unknown> }[] = [];
+
 const db = {
   collection: (name: string) => ({ ...queryFor(name, { filters: [] }), doc: (id: string) => docFor(`${name}/${id}`) }),
+  batch: () => ({
+    set: (ref: { id?: string }, data: Record<string, unknown>) => writes.push({ path: String(ref.id), data }),
+    commit: async () => undefined,
+  }),
 };
 
 vi.mock("server-only", () => ({}));
@@ -85,7 +96,7 @@ vi.mock("@/services/firebase/admin", () => ({ getAdminDb: () => db }));
 vi.mock("@/services/practice/exam-gap-generation.server", () => ({ generateExamGapQuestions: vi.fn(async () => []) }));
 vi.mock("@/services/practice/exam-difficulty.server", () => ({ recoverExamDifficultyContributions: vi.fn(async () => 0) }));
 
-const { getExamQuestionAvailability } = await import("@/services/practice/exam-question-bank.server");
+const { createExamSession, getExamQuestionAvailability } = await import("@/services/practice/exam-question-bank.server");
 
 const COURSE = {
   board: "aqa",
@@ -159,7 +170,12 @@ describe("counting the questions a folder can draw on", () => {
     expect(availability.hasMore.medium).toBe(false);
   });
 
-  it("stops once it has a session's worth rather than counting the corpus", async () => {
+  it("counts every eligible question rather than stopping at a session's worth", async () => {
+    /*
+     * This used to stop at twenty, so a well-stocked course read "20 ready" on
+     * every difficulty -- which looked like a count and was only where the
+     * search gave up.
+     */
     collections.set(
       "examQuestions",
       Array.from({ length: 900 }, (_unused, index) => question(index))
@@ -167,11 +183,9 @@ describe("counting the questions a folder can draw on", () => {
 
     const availability = await getExamQuestionAvailability({ uid: "student-1", folderId: "folder-1" });
 
-    expect(availability.counts.medium).toBe(20);
-    expect(availability.hasMore.medium).toBe(true);
-    // One page of two hundred already holds twenty; reading further would cost
-    // four more reads and change nothing the student can choose.
-    expect(reads.filter((read) => read.path === "examQuestions" && read.size > 0)).toHaveLength(1);
+    expect(availability.counts.medium).toBe(900);
+    expect(availability.hasMore.medium).toBe(false);
+    expect(reads.filter((read) => read.path === "examQuestions" && read.size > 0)).toHaveLength(5);
   });
 
   it("reports an exact count as exact", async () => {
@@ -194,6 +208,143 @@ describe("counting the questions a folder can draw on", () => {
 
     expect(availability.counts.medium).toBe(0);
     expect(reads.filter((read) => read.path === "examQuestions").length).toBeLessThanOrEqual(75);
+  });
+});
+
+/**
+ * A question is served whole: every part, together, in the paper's order.
+ *
+ * Parts used to be drawn one at a time, so a session could hold 5(c) with no
+ * 5(a) or 5(b) in it. The mix now counts whole questions, a question is as
+ * hard as its hardest part, and one part held back holds the question back.
+ */
+describe("serving a question whole", () => {
+  function partOf(index: number, questionNumber: string, overrides: Record<string, unknown> = {}): Doc {
+    const base = question(index);
+    return {
+      id: `part-${questionNumber.replace(/\W/g, "")}`,
+      data: {
+        ...base.data,
+        paperId: "paper-7",
+        label: `Question ${questionNumber}`,
+        provenance: { ...(base.data.provenance as Record<string, unknown>), questionNumber },
+        ...overrides,
+      },
+    };
+  }
+
+  beforeEach(() => {
+    writes.length = 0;
+    collections.set("examQuestions", [
+      // Stored out of order on purpose: the session must follow the paper.
+      partOf(3, "5(c)", { difficulty: "medium" }),
+      partOf(1, "5(a)", { difficulty: "easy" }),
+      partOf(2, "5(b)", { difficulty: "easy" }),
+      partOf(4, "6", { difficulty: "medium" }),
+    ]);
+  });
+
+  it("counts a question once, at its hardest part", async () => {
+    const availability = await getExamQuestionAvailability({ uid: "student-1", folderId: "folder-1" });
+
+    expect(availability.counts).toEqual({ easy: 0, medium: 2, hard: 0 });
+  });
+
+  it("holds the whole question back when one of its parts cannot be served", async () => {
+    collections.set("examQuestions", [
+      partOf(3, "5(c)", { difficulty: "medium" }),
+      partOf(1, "5(a)", { difficulty: "easy", status: "needs_review" }),
+      partOf(2, "5(b)", { difficulty: "easy" }),
+      partOf(4, "6", { difficulty: "medium" }),
+    ]);
+
+    const availability = await getExamQuestionAvailability({ uid: "student-1", folderId: "folder-1" });
+
+    expect(availability.counts.medium).toBe(1);
+  });
+
+  it("builds a session from whole questions, parts together and in order", async () => {
+    const session = await createExamSession({
+      uid: "student-1",
+      folderId: "folder-1",
+      mix: { easy: 0, medium: 2, hard: 0 },
+    });
+
+    expect(session.questions.map((item) => item.label)).toEqual([
+      "Question 5(a)", "Question 5(b)", "Question 5(c)", "Question 6",
+    ]);
+    // One attempt per part, each still marked on its own.
+    expect(writes.filter((write) => write.data.status === "draft")).toHaveLength(4);
+  });
+
+  it("counts a short session in whole questions", async () => {
+    await expect(
+      createExamSession({ uid: "student-1", folderId: "folder-1", mix: { easy: 0, medium: 3, hard: 0 } })
+    ).rejects.toMatchObject({
+      code: "coverage_gap",
+      availableMix: { easy: 0, medium: 2, hard: 0 },
+      missingByDifficulty: { medium: 1 },
+    });
+  });
+});
+
+/**
+ * Narrowing to one paper, on a course whose papers carry no calculator rule.
+ *
+ * Biology is split into papers by topic, not by calculator, so the setup screen
+ * asks which paper and leaves the calculator question out.
+ */
+describe("choosing a paper", () => {
+  beforeEach(() => {
+    collections.set("examFormatCatalogue", [
+      { id: "aqa-8461-1f", data: { board: "aqa", status: "current", qualification: "gcse", specificationCode: "8461", tier: "foundation", componentCode: "1F", componentTitle: "Paper 1 Foundation" } },
+      { id: "aqa-8461-2f", data: { board: "aqa", status: "current", qualification: "gcse", specificationCode: "8461", tier: "foundation", componentCode: "2F", componentTitle: "Paper 2 Foundation" } },
+      { id: "aqa-8461-1h", data: { board: "aqa", status: "current", qualification: "gcse", specificationCode: "8461", tier: "higher", componentCode: "1H", componentTitle: "Paper 1 Higher" } },
+    ]);
+    collections.set("examQuestions", [
+      ...Array.from({ length: 3 }, (_unused, index) => question(index)),
+      ...Array.from({ length: 2 }, (_unused, index) =>
+        question(10 + index, {
+          provenance: {
+            board: "aqa", qualification: "gcse", specificationId: "8461",
+            componentCode: "8461/2F", boardLabel: "AQA", specificationTitle: "GCSE Biology (8461)",
+            componentTitle: "Paper 2 Foundation",
+          },
+        })
+      ),
+    ]);
+  });
+
+  it("lists the course's papers and says nothing about calculators", async () => {
+    const availability = await getExamQuestionAvailability({ uid: "student-1", folderId: "folder-1" });
+
+    expect(availability.papers.map((paper) => paper.label)).toEqual(["Paper 1", "Paper 2"]);
+    expect(availability.counts.medium).toBe(5);
+    expect(availability.calculatorPolicyKnown).toBe(false);
+  });
+
+  it("counts only the paper chosen", async () => {
+    const availability = await getExamQuestionAvailability({
+      uid: "student-1",
+      folderId: "folder-1",
+      paperIds: ["paper-2"],
+    });
+
+    expect(availability.counts.medium).toBe(2);
+  });
+
+  it("refuses a paper the course does not have", async () => {
+    await expect(
+      getExamQuestionAvailability({ uid: "student-1", folderId: "folder-1", paperIds: ["paper-3"] })
+    ).rejects.toMatchObject({ code: "unknown_papers" });
+  });
+
+  it("asks about calculators once a paper records a rule", async () => {
+    collections.set("examQuestions", [question(0, { calculatorAllowed: false })]);
+
+    const availability = await getExamQuestionAvailability({ uid: "student-1", folderId: "folder-1" });
+
+    expect(availability.calculatorPolicyKnown).toBe(true);
   });
 });
 

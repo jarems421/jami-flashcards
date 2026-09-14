@@ -47,3 +47,22 @@ describe("the step being described", () => {
     expect(examGenerationStage(25_000, 1)).toBe("Writing its mark scheme");
   });
 });
+
+/*
+ * The server writes twenty-five questions a round, so a fifty-question
+ * shortfall takes two. Paced as one, the bar hit its ceiling and the step read
+ * "longer than usual" on a request running exactly as long as it should.
+ */
+describe("pacing a large shortfall", () => {
+  it("moves more slowly when there are more rounds to write", () => {
+    expect(examGenerationProgress(25_000, 50)).toBeLessThan(examGenerationProgress(25_000, 3));
+    expect(examGenerationProgress(25_000, 25)).toBe(examGenerationProgress(25_000, 3));
+  });
+
+  it("does not call a two-round request slow while it is on time", () => {
+    expect(examGenerationStage(30_000, 50)).toBe("Writing 50 original questions");
+    expect(examGenerationStage(50_000, 50)).toBe("Writing a mark scheme for each one");
+    expect(examGenerationStage(80_000, 50)).toBe("Checking them and setting up your session");
+    expect(examGenerationStage(110_000, 50)).toMatch(/longer than usual/);
+  });
+});

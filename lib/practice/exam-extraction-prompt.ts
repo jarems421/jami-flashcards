@@ -134,6 +134,7 @@ export const SCHEME_RULES = [
   "pointPool marking is for a scheme offering more creditworthy points than the tariff can award: \"any two from\", or a question asking for two criticisms printed beside a list of three the scheme accepts. Give every listed point at equal value and set awardable to how many of them a student may be credited.",
   "Where the scheme allows a different route to the same mark, keep it in that point's own text and allow list. An alternative method is not an extra point.",
   "Where a mark can be earned only if another was earned, name the other point's id in dep.",
+  "A mark printed in brackets after another, as in \"B2 for 4x + 3 (B1 for 4x or 3)\", is partial credit within that mark, not an extra one: write the bracketed condition as a point worth its own marks, then a point worth only the remaining marks for the full condition whose dep names the first, so the points add up to the tariff.",
   "If your points do not add up to the tariff and the question is not a pool, leave them exactly as the scheme prints them. Do not adjust the points or the tariff to make them agree.",
   "Every question must carry at least one point, band or trait.",
   "code is M for method, A for accuracy, B for an independent mark, C for communication.",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { auth } from "@/services/firebase/client";
 
 /**
@@ -19,12 +19,18 @@ export default function ExamPrivateImage({
   alt,
   className = "",
   imageClassName = "",
+  fallback,
 }: {
   path: string;
   alt: string;
   className?: string;
   /** Applied to the image itself, for a viewer that scales it. */
   imageClassName?: string;
+  /**
+   * Shown instead of the retry prompt when the image cannot be had, for an image
+   * with a readable alternative -- a mark scheme page that also exists as text.
+   */
+  fallback?: ReactNode;
 }) {
   const [url, setUrl] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -59,6 +65,7 @@ export default function ExamPrivateImage({
     };
   }, [attempt, path]);
 
+  if (failed && fallback) return <>{fallback}</>;
   if (failed) {
     /*
      * A figure that will not load can make a question unanswerable, and the

@@ -84,11 +84,24 @@ export function readExamPaperSeries(label: string): string | null {
  * dash -- 8461/1H, 7402-1, 1BI0/1F. Falling back to the catalogue's own codes
  * keeps the manifest complete; the extraction pass then decides whether it
  * matches what the paper actually says.
+ *
+ * Pearson's spec codes are a digit, two letters and a digit (1MA1, 1BI0), which
+ * the four-digit pattern never matched -- so every Edexcel paper fell through
+ * to the fallback, which then doubled the code, because Pearson's component
+ * codes already carry it. The manifest said `1MA1/1MA1/1H`, the paper says
+ * `1MA1/1H`, and extraction correctly reported that they differ.
  */
 export function readExamPaperReference(label: string, course: ExamCatalogueCourse): string {
-  const printed = label.match(/\b[0-9]{4}[A-Z]{0,3}\s?[/-]\s?[0-9][A-Z]{0,2}\b/i);
+  const printed = label.match(/\b(?:[0-9]{4}|[0-9][A-Z]{2}[0-9])[A-Z]{0,3}\s?[/-]\s?[0-9][A-Z]{0,2}\b/i);
   if (printed) return printed[0].replace(/\s+/g, "");
-  return `${course.specificationCode}/${course.componentCode}`;
+  return examComponentReference(course.specificationCode, course.componentCode);
+}
+
+/** `8461` and `1H` are `8461/1H`; `1MA1` and `1MA1/1H` are also `1MA1/1H`. */
+export function examComponentReference(specificationCode: string, componentCode: string) {
+  return componentCode.startsWith(`${specificationCode}/`)
+    ? componentCode
+    : `${specificationCode}/${componentCode}`;
 }
 
 export type ExamPaperManifestDraft = {

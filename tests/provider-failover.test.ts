@@ -12,7 +12,7 @@ import { failoverProvidersFor } from "@/lib/ai/provider-policy";
  */
 describe("deliberate provider failover", () => {
   it("offers the worker an independent full-context endpoint", () => {
-    expect(failoverProvidersFor("worker", {} as unknown as NodeJS.ProcessEnv)).toEqual(["deepinfra"]);
+    expect(failoverProvidersFor("worker", {} as unknown as NodeJS.ProcessEnv)).toEqual(["coreweave", "baseten"]);
   });
 
   it("offers the supervisor a second endpoint for the same model", () => {

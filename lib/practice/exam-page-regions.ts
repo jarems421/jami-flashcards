@@ -130,27 +130,86 @@ function sameLine(a: number, b: number) {
  *
  * Body text is left-aligned and furniture sits to its right, so among the
  * columns busy enough to be columns at all, the leftmost is the prose.
+ *
+ * Except that furniture does not always sit to the right. Pearson prints "DO
+ * NOT WRITE IN THIS AREA" down the left edge of every page, at x=50 on 1MA1/2H,
+ * 39 times -- busy enough to be a column, and left of the question numbers at
+ * x=71. It became the margin's edge, no number was left of it, and every
+ * question on the paper lost its region. The dotted answer lines at x=71 were
+ * waiting to do the same.
+ *
+ * So a column is counted by how many different things it says. Prose never
+ * repeats a line; furniture only ever says one thing, however often. And a
+ * run with no letters in it is an answer line, not prose.
  */
 function bodyTextStart(pages: PdfPageText[], fallback: number) {
-  const counts = new Map<number, number>();
+  const lines = new Map<number, Set<string>>();
   for (const page of pages) {
     for (const item of page.items) {
-      if (item.text.trim().length < BODY_TEXT_MIN_LENGTH) continue;
+      const text = item.text.trim();
+      if (text.length < BODY_TEXT_MIN_LENGTH || !/[a-z]/i.test(text)) continue;
       const column = Math.round(item.x);
-      counts.set(column, (counts.get(column) ?? 0) + 1);
+      const seen = lines.get(column) ?? new Set<string>();
+      seen.add(text);
+      lines.set(column, seen);
     }
   }
-  if (counts.size === 0) return fallback;
-  const busiest = Math.max(...counts.values());
+  if (lines.size === 0) return fallback;
+  const counts = [...lines].map(([column, texts]) => [column, texts.size] as const);
+  const busiest = Math.max(...counts.map(([, count]) => count));
   const threshold = Math.max(MIN_COLUMN_LINES, busiest * COLUMN_SHARE);
-  const columns = [...counts]
+  const columns = counts
     .filter(([, count]) => count >= threshold)
     .map(([column]) => column);
   return columns.length ? Math.min(...columns) : fallback;
 }
 
+/**
+ * A question whose number stands alone because the question opens on a figure.
+ *
+ * Pearson's 1MA1/3H June 2023 prints `16` at the top of its page and then a
+ * diagram, with the first line of wording well below it -- so nothing sits
+ * beside the number, and it was dropped as a page number. The question lost
+ * its region, and the student lost the question.
+ *
+ * A page number and a lone question number differ in two ways the paper
+ * shows. A question number sits in the column every other question number
+ * sits in -- x=70.9 there, where the page number is at 77.6 -- and it is the
+ * number missing between the questions either side of it. Both are required,
+ * so a page number that happens to fit the sequence is still refused by its
+ * column, and a stray number in the column with no neighbours is refused by
+ * the sequence.
+ */
+function questionsOpeningOnAFigure(
+  starts: readonly QuestionStart[],
+  bare: ReadonlyArray<QuestionStart & { x: number }>,
+  labelColumns: readonly number[]
+): QuestionStart[] {
+  if (labelColumns.length === 0) return [];
+  const sorted = [...labelColumns].sort((left, right) => left - right);
+  const column = sorted[Math.floor(sorted.length / 2)];
+  const order = (left: QuestionStart, right: QuestionStart) => left.page - right.page || left.top - right.top;
+  const found = new Map(starts.map((start) => [start.label, start]));
+  const rescued: QuestionStart[] = [];
+  for (const candidate of bare) {
+    if (!/^\d+$/.test(candidate.label) || found.has(candidate.label)) continue;
+    if (Math.abs(candidate.x - column) > COLUMN_TOLERANCE) continue;
+    const before = found.get(String(Number(candidate.label) - 1));
+    const after = found.get(String(Number(candidate.label) + 1));
+    if (!before || !after || order(before, candidate) >= 0 || order(candidate, after) >= 0) continue;
+    const start = { label: candidate.label, page: candidate.page, top: candidate.top };
+    rescued.push(start);
+    found.set(start.label, start);
+  }
+  return rescued;
+}
+
 export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
   const starts: QuestionStart[] = [];
+  /** Margin numbers with nothing beside them, kept in case a figure is why. */
+  const bare: Array<QuestionStart & { x: number }> = [];
+  /** Where each accepted question number sits, to recognise the column. */
+  const labelColumns: number[] = [];
   // One column for the whole paper: a single page can be dominated by a table
   // or a run of answer lines, and taking its own modal column then puts the
   // boundary in the wrong place for that page alone.
@@ -164,23 +223,25 @@ export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
       else lines.push([item]);
     }
     for (const line of lines) {
-      const joined = line
-        .slice()
-        .sort((left, right) => left.x - right.x)
-        .map((item) => item.text)
-        .join("");
-      const label = normaliseQuestionLabel(joined);
+      const ordered = line.slice().sort((left, right) => left.x - right.x);
+      const label = normaliseQuestionLabel(ordered.map((item) => item.text).join(""));
       if (!label) continue;
       const y = line[0].y;
-      // A label has its question beside it. A number alone in the margin is a
-      // page number, not a question.
+      const start = { label, page: page.page, top: page.height - y };
+      // A label has its question beside it. A number alone in the margin is
+      // usually a page number -- see `questionsOpeningOnAFigure` for when not.
       const hasQuestionBeside = page.items.some(
         (other) => sameLine(other.y, y) && other.x >= bodyStart - COLUMN_TOLERANCE
       );
-      if (!hasQuestionBeside) continue;
-      starts.push({ label, page: page.page, top: page.height - y });
+      if (!hasQuestionBeside) {
+        bare.push({ ...start, x: ordered[0].x });
+        continue;
+      }
+      starts.push(start);
+      labelColumns.push(ordered[0].x);
     }
   }
+  starts.push(...questionsOpeningOnAFigure(starts, bare, labelColumns));
   /*
    * A question number appears once on a paper, so a repeat is a false
    * positive -- a figure caption or an answer line that happens to sit in the

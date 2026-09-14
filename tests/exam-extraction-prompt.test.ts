@@ -50,6 +50,11 @@ describe("what extraction is told about a scheme that outruns its tariff", () =>
     expect(SCHEME_RULES).toContain("name the other point's id in dep");
     expect(SCHEME_RULES).toContain("An alternative method is not an extra point");
   });
+
+  /** Edexcel's "B2 for ... (B1 for ...)", read as three marks on a two-mark question. */
+  it("says a bracketed mark is partial credit, not an extra mark", () => {
+    expect(SCHEME_RULES).toContain("is partial credit within that mark, not an extra one");
+  });
 });
 
 /**

@@ -58,6 +58,55 @@ describe("finding where questions start", () => {
     ];
     expect(findQuestionStarts(withParts).map((s) => s.label)).toEqual(["1"]);
   });
+
+  /*
+   * The shape of Pearson's 1MA1/2H and 3H, June 2023: numbers at x=71, prose at
+   * x=89, dotted answer lines back at x=71, and "DO NOT WRITE IN THIS AREA"
+   * down the left edge at x=50 on every page. Counted by volume, that edge was
+   * the leftmost busy column, and no question on either paper was found.
+   */
+  /*
+   * Pearson 1MA1/3H June 2023, question 16: its number at the top of the page,
+   * a diagram, and its first line of wording far below. The page number sits
+   * lower and to the right of the question-number column.
+   */
+  it("keeps a question that opens on a figure, and still refuses page numbers", () => {
+    const pages = [
+      page(1, [
+        ["1", 71, 750], ["Work out the first thing.", 89, 750],
+        ["Then write something else down.", 89, 700],
+      ]),
+      page(2, [
+        ["2", 71, 780],
+        ["Here is a diagram of a triangle.", 89, 500],
+        ["2", 80, 40],
+      ]),
+      page(3, [
+        ["3", 71, 750], ["Solve the third question now.", 89, 750],
+        // In the column but with no question 5 after it: not a question.
+        ["4", 71, 100],
+      ]),
+    ];
+    expect(findQuestionStarts(pages)).toEqual([
+      { label: "1", page: 1, top: 50 },
+      { label: "2", page: 2, top: 20 },
+      { label: "3", page: 3, top: 50 },
+    ]);
+  });
+
+  it("is not led off the page by furniture repeated down the left edge", () => {
+    const pearson = Array.from({ length: 6 }, (_unused, index) =>
+      page(index + 1, [
+        ["DO NOT WRITE IN THIS AREA", 50, 623],
+        ["DO NOT WRITE IN THIS AREA", 50, 374],
+        [String(index + 1), 71, 700],
+        [`Question ${index + 1} asks something different.`, 89, 700],
+        [`And explains it in another line, ${index + 1}.`, 89, 650],
+        ["........................................", 71, 300],
+      ])
+    );
+    expect(findQuestionStarts(pearson).map((start) => start.label)).toEqual(["1", "2", "3", "4", "5", "6"]);
+  });
 });
 
 describe("the slice of paper a question occupies", () => {
@@ -241,7 +290,9 @@ describe("telling prose from page furniture", () => {
   it("takes the leftmost busy column, not the busiest", () => {
     const body = (n: number) => page(n, [
       [`${n}`, 50, 750],
-      ["A question that is printed in the body column.", 99, 750],
+      // Each page asks its own question, as a real paper does: prose that
+      // repeated word for word would be indistinguishable from furniture.
+      [`Question ${n} is printed in the body column.`, 99, 750],
       ["IB/M/Jun23/8300/2H", 475, 18],
       ["Do not write outside", 543, 783],
     ]);

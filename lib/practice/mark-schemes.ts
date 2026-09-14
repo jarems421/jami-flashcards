@@ -400,6 +400,41 @@ export function normalizeMarkSchemeItem(
           awardable: question.marks / perPoint,
         };
       }
+      /*
+       * A bracketed partial mark is part of the mark before it, not added to it.
+       *
+       * Edexcel writes "B2 for 4p³ + 12p² (B1 for expanding the bracket ...)":
+       * two marks for the answer, or one for getting partway. Extraction wrote
+       * that as a two-mark point beside a one-mark point -- three marks against
+       * a two-mark tariff -- and 1MA1/3H question 1(c) was held back for a
+       * scheme that is perfectly sound. M2 (M1) and P3 (P2 (P1)) are the same.
+       *
+       * Points of different values whose largest is the tariff, none depending
+       * on another, can only be that ladder: earned alongside each other they
+       * would exceed the question. So they become its rungs, each worth what it
+       * adds over the one below and earned only once that one is -- which adds
+       * up to the tariff and still gives a full answer every mark.
+       */
+      const rungs = [...points].sort((left, right) => left.marks - right.marks);
+      const ladder =
+        total > question.marks &&
+        rungs.length > 1 &&
+        rungs[rungs.length - 1].marks === question.marks &&
+        rungs.every(
+          (point, index) =>
+            (point.dep?.length ?? 0) === 0 && (index === 0 || point.marks > rungs[index - 1].marks)
+        );
+      if (ladder) {
+        return {
+          ...common,
+          marking: "additive",
+          points: rungs.map((point, index) => ({
+            ...point,
+            marks: index === 0 ? point.marks : point.marks - rungs[index - 1].marks,
+            dep: index === 0 ? [] : [rungs[index - 1].id],
+          })),
+        };
+      }
       return { ...common, marking: "additive", points };
     }
     case "pointPool": {

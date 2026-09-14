@@ -19,6 +19,58 @@ function point(overrides: Record<string, unknown> = {}) {
   return { id: "q1.m1", marks: 1, code: "M", text: "Correct method", ...overrides };
 }
 
+/**
+ * Edexcel 1MA1/3H June 2023, question 1(c): "B2 for 4p³ + 12p² (B1 for
+ * expanding the bracket ...)". The bracketed mark is partial credit inside the
+ * two, and was read as a third mark on top of them -- three against a two-mark
+ * tariff, so a sound question was held back.
+ */
+describe("a bracketed partial mark", () => {
+  it("becomes rungs that add up to the tariff", () => {
+    const item = parse({
+      marking: "additive",
+      points: [
+        point({ id: "m1", marks: 2, code: "B", text: "for 4p^3 + 12p^2" }),
+        point({ id: "m2", marks: 1, code: "B", text: "for expanding the bracket" }),
+      ],
+    }, 2);
+    if (item?.marking !== "additive") throw new Error("wrong regime");
+    expect(item.points.map((p) => [p.id, p.marks, p.dep])).toEqual([
+      ["m2", 1, []],
+      ["m1", 1, ["m2"]],
+    ]);
+    expect(schemeMarkTotal(item)).toBe(2);
+    expect(codes(item)).toEqual([]);
+  });
+
+  it("climbs a longer ladder one rung at a time", () => {
+    const item = parse({
+      marking: "additive",
+      points: [
+        point({ id: "p3", marks: 3, code: "P", text: "for a complete process" }),
+        point({ id: "p1", marks: 1, code: "P", text: "for a start" }),
+        point({ id: "p2", marks: 2, code: "P", text: "for most of the process" }),
+      ],
+    }, 3);
+    if (item?.marking !== "additive") throw new Error("wrong regime");
+    expect(item.points.map((p) => [p.id, p.marks, p.dep])).toEqual([
+      ["p1", 1, []],
+      ["p2", 1, ["p1"]],
+      ["p3", 1, ["p2"]],
+    ]);
+  });
+
+  /** Equal points that overrun an odd tariff are neither a ladder nor a pool. */
+  it("leaves a mismatch that is not a ladder to be reviewed", () => {
+    const item = parse({
+      marking: "additive",
+      points: [point({ id: "a", marks: 2 }), point({ id: "b", marks: 2, text: "Another method" })],
+    }, 3);
+    expect(item?.marking).toBe("additive");
+    expect(codes(item)).toContain("marks_do_not_sum");
+  });
+});
+
 describe("reading a scheme item", () => {
   it("refuses an item that does not say how it is marked", () => {
     expect(parse({ answer: "42", points: [point()] })).toBeNull();

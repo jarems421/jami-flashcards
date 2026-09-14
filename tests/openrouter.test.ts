@@ -274,3 +274,69 @@ describe("how hard a model is allowed to think", () => {
     expect(bodyOf(fetchMock).reasoning.effort).toBe("high");
   });
 });
+
+/**
+ * A hung endpoint used to hold a marking for the whole budget sized for the
+ * longest report -- minutes -- before the plan moved on. A watched stream is
+ * abandoned once tokens stop, and only tokens count: reasoning is the model
+ * working, a keepalive comment is OpenRouter waiting.
+ */
+describe("a stream that stops producing tokens", () => {
+  const encoder = new TextEncoder();
+  /** Sends each event after a pause, and stays open unless told to close. */
+  function pacedStream(events: string[], gapMs: number, close: boolean) {
+    return new Response(new ReadableStream({
+      async start(controller) {
+        for (const event of events) {
+          controller.enqueue(encoder.encode(event));
+          await new Promise((resolve) => setTimeout(resolve, gapMs));
+        }
+        if (close) controller.close();
+      },
+    }), { status: 200 });
+  }
+  const bodyOf = (mock: ReturnType<typeof vi.spyOn>) =>
+    JSON.parse(String((mock.mock.calls.at(-1)?.[1] as RequestInit)?.body ?? "{}"));
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("is abandoned as stalled once tokens stop arriving", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(pacedStream([
+      'data: {"choices":[{"delta":{"content":"{\\"awarded"}}]}\n\n',
+    ], 0, false));
+    await expect(collect(streamOpenRouterText({ ...baseInput, stallTimeoutMs: 40 })))
+      .rejects.toMatchObject({ name: "AiAbortError", kind: "stalled" });
+  });
+
+  it("counts reasoning as progress, and never hands it to the caller", async () => {
+    // Twenty events 20ms apart outlast the 250ms window only if each one resets
+    // it, and leave a wide margin for timers delayed by a loaded test run.
+    const thinking = 'data: {"choices":[{"delta":{"reasoning":"weighing M1"}}]}\n\n';
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(pacedStream([
+      ...Array.from({ length: 20 }, () => thinking),
+      'data: {"choices":[{"delta":{"content":"done"}}]}\n\n',
+      "data: [DONE]\n\n",
+    ], 20, true));
+    await expect(collect(streamOpenRouterText({ ...baseInput, stallTimeoutMs: 250 })))
+      .resolves.toBe("done");
+  });
+
+  it("does not mistake OpenRouter's keepalive comments for progress", async () => {
+    const keepalive = ": OPENROUTER PROCESSING\n\n";
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      pacedStream([keepalive, keepalive, keepalive, keepalive, keepalive, keepalive], 20, false)
+    );
+    await expect(collect(streamOpenRouterText({ ...baseInput, stallTimeoutMs: 50 })))
+      .rejects.toMatchObject({ kind: "stalled" });
+  });
+
+  it("asks for reasoning to be streamed only when the stream is watched", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(pacedStream([
+      'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
+    ], 0, true));
+    await collect(streamOpenRouterText({ ...baseInput, reasoning: true, stallTimeoutMs: 1_000 }));
+    expect(bodyOf(fetchMock).reasoning).toEqual({ enabled: true, exclude: false, effort: "medium" });
+  });
+});

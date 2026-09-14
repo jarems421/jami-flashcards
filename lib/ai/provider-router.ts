@@ -94,6 +94,15 @@ export type AiRouterOptions = {
    */
   fallbackTimeoutMs?: number;
   /**
+   * Abandon an attempt that goes this long without a token, reasoning included.
+   *
+   * `timeoutMs` has to fit the longest report a role writes, so on its own it
+   * lets a hung endpoint hold a call for minutes before the plan moves on. A
+   * caller that sets this has its OpenRouter attempts streamed and watched
+   * instead; the caller still receives the whole text at once.
+   */
+  stallTimeoutMs?: number;
+  /**
    * Let a worker call end on the supervisor. True unless a caller says not to.
    *
    * The bulk study-asset route sets this false: a batch that quietly escalates
@@ -211,6 +220,8 @@ function recordFailure(attempt: AiProviderAttempt, error: unknown, latencyMs: nu
         ? "deadline"
         : abort === "call_timeout"
           ? "call_timeout"
+          : abort === "stalled"
+            ? "stalled"
           : status === 429
             ? "rate_limited"
             : typeof status === "number" && status >= 500
@@ -271,6 +282,11 @@ async function runBufferedAttempt(
   timeoutMs: number
 ) {
   const startedAt = Date.now();
+  // Watching for a stall needs tokens as they arrive; the caller still gets
+  // one whole, trimmed response exactly as the buffered call returns it.
+  if (attempt.provider === "openrouter" && options.stallTimeoutMs !== undefined) {
+    return (await runStreamBufferedAttempt(attempt, options, timeoutMs)).trim();
+  }
   if (attempt.provider === "openrouter") {
     const sampling = optionalSamplingParameters(attempt, options.generationConfig);
     let usage: OpenRouterUsage = {};
@@ -366,6 +382,7 @@ async function runStreamBufferedAttempt(
     let providerEndpoint: string | undefined;
     for await (const chunk of streamOpenRouterText({
       apiKey: process.env.OPENROUTER_API_KEY?.trim() ?? "",
+      stallTimeoutMs: options.stallTimeoutMs,
       model: attempt.model,
       providerAllowlist: resolveProviderAllowlist(attempt, options),
       quantizations: attempt.quantizations,

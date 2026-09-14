@@ -82,6 +82,37 @@ const ROLES = [
   },
 ];
 
+/*
+ * Failover allowlists, checked to the bar of the role they stand in for.
+ *
+ * They were not checked at all, so a supervisor failover naming `venice` --
+ * which serves the model at fp8 with zero retention but without
+ * `response_format` -- passed this gate while every marking request routed to
+ * it came back 404 "No endpoints found". A failover is reached exactly when the
+ * primary is already failing, which is the worst moment to learn it never
+ * worked.
+ *
+ * The allowlist is optional, so an unset variable is checked as the default the
+ * app falls back to. Those defaults must equal DEFAULT_FAILOVER_PROVIDERS in
+ * lib/ai/provider-policy.ts; ai-provider-policy.test.ts fails if they disagree.
+ * The model and every requirement are inherited rather than repeated, because a
+ * failover runs the same model for the same work.
+ */
+const FAILOVERS = [
+  { of: "worker", providersKey: "OPENROUTER_WORKER_FAILOVER_PROVIDERS", fallbackProviders: ["coreweave", "baseten"] },
+  { of: "supervisor", providersKey: "OPENROUTER_SUPERVISOR_FAILOVER_PROVIDERS", fallbackProviders: ["parasail"] },
+];
+
+const LIVE_CHECKS = [
+  ...ROLES,
+  ...FAILOVERS.map((failover) => ({
+    ...ROLES.find((role) => role.name === failover.of),
+    name: `${failover.of} failover`,
+    providersKey: failover.providersKey,
+    fallbackProviders: failover.fallbackProviders,
+  })),
+];
+
 function splitList(value) {
   return value?.split(",").map((item) => item.trim()).filter(Boolean) ?? [];
 }
@@ -203,9 +234,11 @@ async function assertLiveEndpoints() {
       String(provider.slug ?? "").toLowerCase(),
     ])
   );
-  for (const role of ROLES) {
+  for (const role of LIVE_CHECKS) {
     const model = process.env[role.modelKey]?.trim() || role.fallbackModel;
-    const allowlist = splitList(process.env[role.providersKey]).map((item) => item.toLowerCase());
+    const configured = splitList(process.env[role.providersKey]);
+    const allowlist = (configured.length > 0 ? configured : role.fallbackProviders ?? [])
+      .map((item) => item.toLowerCase());
     const modelRecord = models.find((candidate) => candidate.id === model);
     if (!modelRecord) fail(`Configured ${role.name} model ${model} is unavailable.`);
     if (role.requiresImageInput && !modelSupportsImages(modelRecord)) {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 import { createCanvas, DOMMatrix, ImageData, Path2D, type Canvas } from "@napi-rs/canvas";
 import { generateAiText } from "@/lib/ai/provider-router";
 import { isOfficialExamBoardUrl, type ExamBoardId } from "@/lib/practice/exam-formats";
@@ -94,10 +95,29 @@ async function loadPdfJs() {
   return pdfjs;
 }
 
+/**
+ * Where pdf.js finds its image decoders.
+ *
+ * Pearson's papers draw their diagrams as JBIG2 images, and pdf.js decodes
+ * those with a WebAssembly module it loads from `wasmUrl`. Without one it logs
+ * "JBig2 failed to initialize", skips the image and carries on -- so every
+ * Edexcel question rendered with its graphs and shapes silently missing. In
+ * Node the URL is read with `fs`, so it is a directory path, and pdf.js insists
+ * on the trailing slash whatever the platform's separator.
+ *
+ * Resolved from the working directory rather than the module, because webpack
+ * bundles pdf.js and its own location is no guide to where the package is.
+ */
+const PDF_WASM_URL = `${join(process.cwd(), "node_modules", "pdfjs-dist", "wasm")}/`;
+
+function pdfSource(bytes: Buffer) {
+  return { data: new Uint8Array(bytes), useSystemFonts: true, wasmUrl: PDF_WASM_URL };
+}
+
 /** The text layer with positions, which is what decides question boundaries. */
 async function readPageText(bytes: Buffer): Promise<PdfPageText[]> {
   const pdfjs = await loadPdfJs();
-  const task = pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
+  const task = pdfjs.getDocument(pdfSource(bytes));
   const document = await task.promise;
   try {
     const pages: PdfPageText[] = [];
@@ -129,7 +149,7 @@ async function readPageText(bytes: Buffer): Promise<PdfPageText[]> {
  */
 async function renderRegions(bytes: Buffer, regions: QuestionRegion[]) {
   const pdfjs = await loadPdfJs();
-  const task = pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
+  const task = pdfjs.getDocument(pdfSource(bytes));
   const document = await task.promise;
   try {
     const slices: Array<{ canvas: Canvas; top: number; height: number }> = [];
@@ -162,7 +182,7 @@ async function renderRegions(bytes: Buffer, regions: QuestionRegion[]) {
 
 async function renderPage(bytes: Buffer, pageNumber: number) {
   const pdfjs = await loadPdfJs();
-  const task = pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
+  const task = pdfjs.getDocument(pdfSource(bytes));
   const document = await task.promise;
   try {
     if (pageNumber < 1 || pageNumber > document.numPages) throw new Error("Question page is outside the PDF.");

@@ -385,9 +385,16 @@ export type ExamMarkingJob = {
   attempts: number;
 };
 
-export const EXAM_SESSION_MAX_QUESTIONS = 20;
+/**
+ * The most questions one session may hold.
+ *
+ * Twenty arrived with the feature and no reason attached. Fifty is a full
+ * paper's worth of practice. What it does not change is the daily marking
+ * allowance, so a student can build a session larger than one day will mark.
+ */
+export const EXAM_SESSION_MAX_QUESTIONS = 50;
 /** Bump when marking prompts, scheme interpretation or routing policy changes. */
-export const EXAM_MARKING_CHECKPOINT_VERSION = "practice-marking-v2";
+export const EXAM_MARKING_CHECKPOINT_VERSION = "practice-marking-v3";
 export const EXAM_ANSWER_MAX_LENGTH = 30_000;
 export const EXAM_WORKING_MAX_BYTES = 3 * 1024 * 1024;
 export const EXAM_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
@@ -488,7 +495,7 @@ export function normalizeDifficultyMix(value: unknown): Record<ExamDifficulty, n
   if (!value || typeof value !== "object") return null;
   const input = value as Record<string, unknown>;
   if (["easy", "medium", "hard"].some((key) => input[key] !== undefined &&
-    (typeof input[key] !== "number" || !Number.isInteger(input[key]) || input[key] < 0 || input[key] > 20))) return null;
+    (typeof input[key] !== "number" || !Number.isInteger(input[key]) || input[key] < 0 || input[key] > EXAM_SESSION_MAX_QUESTIONS))) return null;
   const read = (key: ExamDifficulty) =>
     typeof input[key] === "number" && Number.isInteger(input[key])
       ? Math.max(0, Math.min(EXAM_SESSION_MAX_QUESTIONS, input[key]))

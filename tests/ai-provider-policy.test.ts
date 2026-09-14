@@ -85,7 +85,7 @@ describe("AI provider policy", () => {
     ]);
     expect(plan[2]).toMatchObject({
       routeReason: "provider_failover",
-      providerAllowlist: ["deepinfra"],
+      providerAllowlist: ["coreweave", "baseten"],
     });
     expect(plan[3].routeReason).toBe("provider_escalation");
   });
@@ -347,6 +347,19 @@ describe("the release gate validates the models the app actually uses", () => {
     expect(gateFallbacks).toContain(capabilities.worker.modelId);
     expect(gateFallbacks).toContain(capabilities.supervisor.modelId);
     expect(gateFallbacks).toContain(capabilities.juror.modelId);
+  });
+
+  it("checks the failover allowlists the app falls back to", () => {
+    // An unchecked supervisor failover named an endpoint that could not take a
+    // structured request, and passed the gate while every call to it 404'd.
+    for (const role of ["worker", "supervisor"] as const) {
+      const entry = gate.match(
+        new RegExp(`of:\\s*"${role}"[^}]*fallbackProviders:\\s*\\[([^\\]]*)\\]`)
+      );
+      expect(entry, role).not.toBeNull();
+      const providers = [...entry![1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+      expect(providers, role).toEqual([...failoverProvidersFor(role, {} as NodeJS.ProcessEnv)]);
+    }
   });
 });
 

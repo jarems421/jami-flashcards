@@ -62,6 +62,38 @@ export function hasMathDelimiters(text: string): boolean {
   return splitMathRichText(text).some((segment) => segment.type === "math");
 }
 
+/*
+ * One piece of LaTeX written without delimiters: a whole environment, a
+ * \left...\right pair, or a single command with its arguments and any script
+ * straight after it. Environments and pairs are matched whole, because wrapping
+ * their halves separately gives KaTeX a \left with no \right.
+ */
+const BARE_LATEX_PATTERN =
+  /\\begin\{([a-zA-Z*]+)\}[\s\S]*?\\end\{\1\}|\\left[\s\S]*?\\right\s*(?:\\[a-zA-Z]+|\\?[^\sa-zA-Z])|\\[a-zA-Z]+(?:\s*\{(?:[^{}]|\{[^{}]*\})*\})*(?:\s*[\^_](?:\{[^{}]*\}|[A-Za-z0-9]))?/g;
+
+/**
+ * LaTeX that arrived without delimiters, wrapped so it renders.
+ *
+ * Marking reports and mark schemes quote maths as it was written, and a scheme
+ * extracted from a PDF or a marker copying it often drops the `$`. The result
+ * reached students as `\begin{pmatrix} 4 \\ -3 \end{pmatrix}` rather than as a
+ * column vector. Only text outside existing delimiters is touched, so maths
+ * that was written properly is left exactly as it was.
+ */
+export function wrapBareLatex(text: string): string {
+  if (!text || !/\\[a-zA-Z]/.test(text)) return text;
+  return splitMathRichText(text)
+    .map((segment) => {
+      if (segment.type === "math") {
+        return segment.display ? `$$${segment.value}$$` : `$${segment.value}$`;
+      }
+      return segment.value.replace(BARE_LATEX_PATTERN, (match, _environment, offset: number, whole: string) =>
+        offset > 0 && whole[offset - 1] === "\\" ? match : `$${match.trim()}$`
+      );
+    })
+    .join("");
+}
+
 export function attachInlineMathPunctuation(
   input: readonly MathRichTextSegment[]
 ): MathRichDisplaySegment[] {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildExamPaperManifest,
+  examComponentReference,
   examStudyLevelForQualification,
   readExamPaperReference,
   readExamPaperSeries,
@@ -56,6 +57,21 @@ describe("reading a paper's identity from a link", () => {
   it("reads a printed paper reference, or falls back to the course's own codes", () => {
     expect(readExamPaperReference("Biology 8461/1H June 2023", course)).toBe("8461/1H");
     expect(readExamPaperReference("Question paper June 2023", course)).toBe("8461/1H");
+  });
+
+  /*
+   * Pearson's spec code is not four digits and its component code already
+   * carries it. Both used to go wrong: the printed `1MA1/1H` was not read, and
+   * the fallback wrote `1MA1/1MA1/1H` -- which no paper prints, so every
+   * Edexcel question failed the identity check.
+   */
+  it("reads Pearson's references without doubling the spec code", () => {
+    const edexcel = { ...course, board: "pearson_edexcel" as const, specificationCode: "1MA1", componentCode: "1MA1/1H" };
+    expect(readExamPaperReference("1MA1/1MA1/1H June 2023", edexcel)).toBe("1MA1/1H");
+    expect(readExamPaperReference("Question paper June 2023", edexcel)).toBe("1MA1/1H");
+    expect(readExamPaperReference("Pearson Edexcel 1BI0/1F", course)).toBe("1BI0/1F");
+    expect(examComponentReference("1MA1", "1MA1/1H")).toBe("1MA1/1H");
+    expect(examComponentReference("8300", "1H")).toBe("8300/1H");
   });
 
   it("maps every servable qualification to a school study level", () => {

@@ -17,6 +17,14 @@ import {
 import { isExamQuestionServable } from "@/lib/practice/exam-question-rights";
 import { examSubjectFromTitle } from "@/lib/practice/exam-course-names";
 import { sameExamTier } from "@/lib/practice/exam-course-tiers";
+import { examCoursePapers, matchesPaperChoice, withPaperCalculatorRules } from "@/lib/practice/exam-papers";
+import {
+  chooseExamQuestionGroups,
+  examQuestionGroupKey,
+  examQuestionIsComplete,
+  groupExamQuestions,
+  type ExamQuestionGroup,
+} from "@/lib/practice/exam-question-groups";
 import {
   filterCanonicalTopicIds,
   servableExamSpecificationTopics,
@@ -79,7 +87,7 @@ async function loadEligibleQuestions(input: {
   course: ExamCourseSelection;
   difficulty: ExamDifficulty;
   topicIds: string[];
-  /** Stop once this many usable questions have been found. */
+  /** Stop once this many usable whole questions have been found. */
   need: number;
   /**
    * Questions the student has already seen. They still count as eligible --
@@ -89,6 +97,10 @@ async function loadEligibleQuestions(input: {
   seenIds?: ReadonlySet<string>;
   /** Which papers to draw from, in the terms a student thinks in. */
   calculator?: ExamCalculatorChoice;
+  /** The course's papers to draw from, by `examPaperKey`; empty means all. */
+  paperIds?: readonly string[];
+  /** Each paper's stored parts, read once and shared across difficulties. */
+  paperParts?: Map<string, Promise<ExamQuestion[]>>;
 }) {
   const base = getAdminDb()
     .collection("examQuestions")
@@ -99,7 +111,50 @@ async function loadEligibleQuestions(input: {
     .where("status", "==", "published")
     .orderBy("selectionKey", "asc");
 
-  const questions: ExamQuestion[] = [];
+  const eligible = (question: ExamQuestion) =>
+    hasCurrentRights(question) &&
+    questionMatchesExamCourse(question, input.course) &&
+    matchesCalculatorChoice(question, input.calculator) &&
+    matchesPaperChoice(question, input.paperIds ?? []);
+
+  const paperParts = input.paperParts ?? new Map<string, Promise<ExamQuestion[]>>();
+  const partsOfPaper = (paperId: string) => {
+    let pending = paperParts.get(paperId);
+    if (!pending) {
+      pending = getAdminDb().collection("examQuestions").where("paperId", "==", paperId).get()
+        .then((snapshot) => snapshot.docs
+          .map((doc) => mapQuestion(doc.id, doc.data()))
+          .filter((item): item is ExamQuestion => Boolean(item)));
+      paperParts.set(paperId, pending);
+    }
+    return pending;
+  };
+
+  /*
+   * A part found by the query stands for its whole question.
+   *
+   * The query is by difficulty, and a question is rated by its hardest part --
+   * so the question is found through that part, and its easier siblings are
+   * read from the same paper. Every part has to be servable, or none is: a
+   * question held back for one faulty part is a question missing, but a (b)
+   * served without its (a) is the thing this exists to stop.
+   */
+  const wholeQuestion = async (candidate: ExamQuestion) => {
+    const key = examQuestionGroupKey(candidate);
+    const parts = candidate.paperId
+      ? (await partsOfPaper(candidate.paperId)).filter((part) => examQuestionGroupKey(part) === key)
+      : [candidate];
+    if (
+      !parts.some((part) => part.id === candidate.id) ||
+      !parts.every(eligible) ||
+      // A part that was never stored cannot fail `eligible`, so its absence is checked too.
+      !examQuestionIsComplete(parts)
+    ) return null;
+    return groupExamQuestions(parts)[0] ?? null;
+  };
+
+  const groups: ExamQuestionGroup<ExamQuestion>[] = [];
+  const considered = new Set<string>();
   let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
   let exhausted = false;
   for (let page = 0; page < MAX_CANDIDATE_PAGES; page += 1) {
@@ -109,28 +164,31 @@ async function loadEligibleQuestions(input: {
       break;
     }
     cursor = snapshot.docs[snapshot.docs.length - 1];
-    questions.push(
-      ...snapshot.docs
-        .map((doc) => mapQuestion(doc.id, doc.data()))
-        .filter((item): item is ExamQuestion => Boolean(item))
-        .filter(hasCurrentRights)
-        .filter((question) => questionMatchesExamCourse(question, input.course))
-        .filter((question) =>
-          input.topicIds.length === 0 ||
-          input.topicIds.some((topicId) => question.topicIds.includes(topicId))
-        )
-        .filter((question) => matchesCalculatorChoice(question, input.calculator))
-    );
+    for (const doc of snapshot.docs) {
+      const candidate = mapQuestion(doc.id, doc.data());
+      if (!candidate || !eligible(candidate)) continue;
+      const key = examQuestionGroupKey(candidate);
+      if (considered.has(key)) continue;
+      considered.add(key);
+      const group = await wholeQuestion(candidate);
+      if (!group || group.difficulty !== input.difficulty) continue;
+      // A question is about a topic if any of its parts is.
+      if (
+        input.topicIds.length > 0 &&
+        !group.parts.some((part) => input.topicIds.some((topicId) => part.topicIds.includes(topicId)))
+      ) continue;
+      groups.push(group);
+    }
     if (snapshot.size < CANDIDATE_PAGE) {
       exhausted = true;
       break;
     }
     const usable = input.seenIds
-      ? questions.filter((question) => !input.seenIds!.has(question.id)).length
-      : questions.length;
+      ? groups.filter((group) => !group.parts.some((part) => input.seenIds!.has(part.id))).length
+      : groups.length;
     if (usable >= input.need) break;
   }
-  return { questions, exhausted };
+  return { groups, exhausted };
 }
 
 async function loadContext(uid: string, folderId: string) {
@@ -185,7 +243,12 @@ async function loadContext(uid: string, folderId: string) {
     folder.subject ||
     examSubjectFromTitle(folder.examCourse.specificationTitle) ||
     folder.examCourse.specificationTitle;
-  return { folder, subject, subjectKey: normalizeSubjectKey(subject) };
+  return {
+    folder,
+    subject,
+    subjectKey: normalizeSubjectKey(subject),
+    papers: examCoursePapers(matches, folder.examCourse),
+  };
 }
 
 export class ExamQuestionBankError extends Error {
@@ -227,19 +290,41 @@ function canonicalTopicIds(specificationId: string, topicIds: readonly string[])
   return known;
 }
 
+/** Papers are checked the same way topics are, and for the same reason. */
+function knownPaperIds(papers: ReadonlyArray<{ id: string }>, paperIds: readonly string[]) {
+  if (paperIds.length === 0) return [];
+  const known = new Set(papers.map((paper) => paper.id));
+  if (paperIds.some((id) => !known.has(id))) {
+    throw new ExamQuestionBankError(
+      "That paper is not on this course any more. Choose again.",
+      400,
+      "unknown_papers"
+    );
+  }
+  return [...new Set(paperIds)];
+}
+
 export async function getExamQuestionAvailability(input: {
   uid: string;
   folderId: string;
   topicIds?: string[];
   calculator?: ExamCalculatorChoice;
+  paperIds?: string[];
 }) {
-  const { folder, subject, subjectKey } = await loadContext(input.uid, input.folderId);
+  const { folder, subject, subjectKey, papers } = await loadContext(input.uid, input.folderId);
   const topicIds = canonicalTopicIds(folder.examCourse!.specificationId, input.topicIds ?? []);
+  const paperIds = knownPaperIds(papers, input.paperIds ?? []);
   /*
-   * A session holds at most twenty questions, so counting past that answers
-   * nothing the student can act on and costs a scan of the whole corpus. The
-   * count says "at least" instead, and the setup screen shows it that way.
+   * The whole count, not a session's worth.
+   *
+   * This stopped at twenty -- a session's maximum -- so every well-stocked
+   * course read "20 ready" on every difficulty, which looked like a count and
+   * was only the point the search gave up. Tier, component, licence and paper
+   * eligibility are applied after the read, so an exact number needs the scan
+   * anyway; it is bounded by the loader's page cap, and only a corpus past that
+   * cap reports "at least".
    */
+  const paperParts = new Map<string, Promise<ExamQuestion[]>>();
   const loadDifficulty = (difficulty: ExamDifficulty) => loadEligibleQuestions({
     subjectKey,
     studyLevel: folder.studyLevel!,
@@ -247,13 +332,34 @@ export async function getExamQuestionAvailability(input: {
     course: folder.examCourse!,
     difficulty,
     topicIds,
-    need: EXAM_SESSION_MAX_QUESTIONS,
+    need: Number.POSITIVE_INFINITY,
+    paperIds,
+    paperParts,
     ...(input.calculator ? { calculator: input.calculator } : {}),
   });
-  const [easy, medium, hard] = await Promise.all([
+  /*
+   * What each paper is, for the line under the picker.
+   *
+   * Read apart from the counts, because those are narrowed by the paper and
+   * calculator already chosen -- and describing Paper 1 has to work while
+   * Paper 3 is selected. Only the fields that say which paper a question came
+   * from and whether a calculator was allowed are read.
+   */
+  const paperRules = getAdminDb().collection("examQuestions")
+    .where("provenance.board", "==", folder.examCourse!.board)
+    .where("provenance.specificationId", "==", folder.examCourse!.specificationId)
+    .where("status", "==", "published")
+    .select("calculatorAllowed", "provenance.componentTitle", "provenance.componentCode")
+    .limit(2_000)
+    .get()
+    .then((snapshot) => snapshot.docs.map((doc) => doc.data() as Pick<ExamQuestion, "calculatorAllowed" | "provenance">))
+    // A description is a nicety; failing to read one must not fail the counts.
+    .catch(() => []);
+  const [easy, medium, hard, ruleQuestions] = await Promise.all([
     loadDifficulty("easy"),
     loadDifficulty("medium"),
     loadDifficulty("hard"),
+    paperRules,
   ]);
   /*
    * Topics come from the checked-in catalogue, not from the database.
@@ -275,19 +381,34 @@ export async function getExamQuestionAvailability(input: {
       studyLevel: folder.studyLevel,
       course: folder.examCourse,
     },
+    /** Whole questions, each counted once however many parts it has. */
     counts: {
-      easy: Math.min(easy.questions.length, EXAM_SESSION_MAX_QUESTIONS),
-      medium: Math.min(medium.questions.length, EXAM_SESSION_MAX_QUESTIONS),
-      hard: Math.min(hard.questions.length, EXAM_SESSION_MAX_QUESTIONS),
+      easy: easy.groups.length,
+      medium: medium.groups.length,
+      hard: hard.groups.length,
     },
-    /** Whether each count is the whole truth or the point the search stopped. */
+    /** Whether each count is the whole truth or the point the page cap stopped it. */
     hasMore: {
-      easy: !easy.exhausted && easy.questions.length >= EXAM_SESSION_MAX_QUESTIONS,
-      medium: !medium.exhausted && medium.questions.length >= EXAM_SESSION_MAX_QUESTIONS,
-      hard: !hard.exhausted && hard.questions.length >= EXAM_SESSION_MAX_QUESTIONS,
+      easy: !easy.exhausted && easy.groups.length > 0,
+      medium: !medium.exhausted && medium.groups.length > 0,
+      hard: !hard.exhausted && hard.groups.length > 0,
     },
     topics,
     topicIds,
+    /** Offered as a choice only when there is more than one; each says what it is where that is known. */
+    papers: withPaperCalculatorRules(papers, ruleQuestions),
+    paperIds,
+    /*
+     * Whether this course's papers say anything about calculators.
+     *
+     * Read off the questions rather than the subject's name: a calculator rule
+     * is printed on a paper's cover and recorded at ingestion, so a course with
+     * none recorded is one where the question does not arise, whatever it is
+     * called.
+     */
+    calculatorPolicyKnown: [easy, medium, hard].some(({ groups }) =>
+      groups.some((group) => group.parts.some((part) => typeof part.calculatorAllowed === "boolean"))
+    ),
   };
 }
 
@@ -300,25 +421,28 @@ export async function createExamSession(input: {
   allowGenerated?: boolean;
   useAvailableOnly?: boolean;
   calculator?: ExamCalculatorChoice;
+  paperIds?: string[];
 }) {
   const total = input.mix.easy + input.mix.medium + input.mix.hard;
   if (total < 1 || total > EXAM_SESSION_MAX_QUESTIONS) {
-    throw new ExamQuestionBankError("Choose between 1 and 20 questions.", 400, "invalid_mix");
+    throw new ExamQuestionBankError(`Choose between 1 and ${EXAM_SESSION_MAX_QUESTIONS} questions.`, 400, "invalid_mix");
   }
-  const { folder, subject, subjectKey } = await loadContext(input.uid, input.folderId);
+  const { folder, subject, subjectKey, papers } = await loadContext(input.uid, input.folderId);
   // Checked once, here, rather than trusted from the request. A narrowed
   // session built on an id nobody recognises is an empty session.
   const topicIds = canonicalTopicIds(folder.examCourse!.specificationId, input.topicIds ?? []);
+  const paperIds = knownPaperIds(papers, input.paperIds ?? []);
   const recent = await getAdminDb().collection("users").doc(input.uid)
     .collection("examAttempts").orderBy("updatedAt", "desc").limit(500).get();
   const recentIds = new Set(recent.docs.map((doc) => doc.data().questionId).filter((id): id is string => typeof id === "string"));
-  const selected: ExamQuestion[] = [];
+  const chosenGroups: ExamQuestionGroup<ExamQuestion>[] = [];
   const missing: Partial<Record<ExamDifficulty, number>> = {};
   let requestedMix = input.mix;
+  const paperParts = new Map<string, Promise<ExamQuestion[]>>();
   for (const difficulty of ["easy", "medium", "hard"] as const) {
     const wanted = input.mix[difficulty];
     if (!wanted) continue;
-    const { questions: candidates } = await loadEligibleQuestions({
+    const { groups: candidates } = await loadEligibleQuestions({
       subjectKey,
       studyLevel: folder.studyLevel!,
       specificationId: folder.examCourse!.specificationId,
@@ -327,14 +451,18 @@ export async function createExamSession(input: {
       topicIds,
       need: wanted,
       seenIds: recentIds,
+      paperIds,
+      paperParts,
       ...(input.calculator ? { calculator: input.calculator } : {}),
     });
-    const unseen = candidates.filter((question) => !recentIds.has(question.id));
-    const seen = candidates.filter((question) => recentIds.has(question.id));
-    const chosen = [...unseen, ...seen].slice(0, wanted);
-    selected.push(...chosen);
+    const chosen = chooseExamQuestionGroups(candidates, wanted, recentIds);
+    chosenGroups.push(...chosen);
     if (chosen.length < wanted) missing[difficulty] = wanted - chosen.length;
   }
+  // The mix counts whole questions; the session lists their parts together, in order.
+  const selected: ExamQuestion[] = chosenGroups.flatMap((group) => group.parts);
+  const chosenOf = (difficulty: ExamDifficulty) =>
+    chosenGroups.filter((group) => group.difficulty === difficulty).length;
   if (Object.keys(missing).length > 0) {
     if (input.allowGenerated) {
       selected.push(...await generateExamGapQuestions({ uid: input.uid, subject, subjectKey, studyLevel: folder.studyLevel!, course: folder.examCourse!, missing, topicIds }));
@@ -342,9 +470,9 @@ export async function createExamSession(input: {
       // Starting short is a choice the student made, so the session records the
       // mix it actually holds rather than the one that was asked for.
       requestedMix = {
-        easy: selected.filter((question) => question.difficulty === "easy").length,
-        medium: selected.filter((question) => question.difficulty === "medium").length,
-        hard: selected.filter((question) => question.difficulty === "hard").length,
+        easy: chosenOf("easy"),
+        medium: chosenOf("medium"),
+        hard: chosenOf("hard"),
       };
     } else {
       throw new ExamQuestionBankError(
@@ -353,9 +481,9 @@ export async function createExamSession(input: {
         "coverage_gap",
         folder.examCourse!,
         {
-          easy: Math.min(input.mix.easy, selected.filter((question) => question.difficulty === "easy").length),
-          medium: Math.min(input.mix.medium, selected.filter((question) => question.difficulty === "medium").length),
-          hard: Math.min(input.mix.hard, selected.filter((question) => question.difficulty === "hard").length),
+          easy: Math.min(input.mix.easy, chosenOf("easy")),
+          medium: Math.min(input.mix.medium, chosenOf("medium")),
+          hard: Math.min(input.mix.hard, chosenOf("hard")),
         },
         missing
       );

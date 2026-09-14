@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
 import { Button, Card, EmptyState, FeedbackBanner, Select, Skeleton } from "@/components/ui";
+import OptionSwitch from "@/components/ui/OptionSwitch";
+import { examCalculatorChoiceOffered, type ExamCoursePaper } from "@/lib/practice/exam-papers";
 import type { ExamCalculatorChoice, ExamDifficulty } from "@/lib/practice/exam-questions";
-import { examBoardAppliesTo } from "@/lib/practice/exam-questions";
+import { EXAM_SESSION_MAX_QUESTIONS, examBoardAppliesTo } from "@/lib/practice/exam-questions";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import {
@@ -24,13 +26,15 @@ const DIFFICULTIES: Array<{ id: ExamDifficulty; label: string; note: string }> =
   { id: "hard", label: "Hard", note: "The ones that separate the top grades" },
 ];
 
-const CALCULATOR_CHOICES: Array<{ id: ExamCalculatorChoice; label: string }> = [
-  { id: "any", label: "Any paper" },
-  { id: "non_calculator", label: "Non-calculator" },
-  { id: "calculator", label: "Calculator" },
+const CALCULATOR_CHOICES: Array<{ value: ExamCalculatorChoice; label: string }> = [
+  { value: "any", label: "Either" },
+  { value: "non_calculator", label: "Non-calculator" },
+  { value: "calculator", label: "Calculator" },
 ];
 
-const MAX_QUESTIONS = 20;
+const ALL_PAPERS = "all";
+
+const MAX_QUESTIONS = EXAM_SESSION_MAX_QUESTIONS;
 
 function totalOf(mix: Record<ExamDifficulty, number>) {
   return mix.easy + mix.medium + mix.hard;
@@ -57,14 +61,19 @@ export default function ExamSessionSetup({
     hasMore: Record<ExamDifficulty, boolean>;
   } | null>(null);
   /*
-   * The one thing a maths student says out loud about a paper.
+   * Which paper, in the words every subject uses for it.
    *
-   * "Non-calculator" is how Paper 1 is known -- AQA prints it on the cover --
-   * and it is the difference between useful practice and being handed the
-   * wrong half of the course. Every other filter here is in the product's
-   * vocabulary; this one is in theirs.
+   * Papers split a course by what they examine -- micro and macro economics,
+   * different biology topics -- so "Paper 2" is how a student names the half
+   * of the course they want. The calculator question is maths's version of
+   * the same thing, and it is asked only on a course whose papers carry a
+   * calculator rule; the folder that answered yes is remembered so narrowing
+   * to one paper does not make the question vanish.
    */
+  const [paperId, setPaperId] = useState(ALL_PAPERS);
+  const [papers, setPapers] = useState<ExamCoursePaper[]>([]);
   const [calculator, setCalculator] = useState<ExamCalculatorChoice>("any");
+  const [calculatorFolderId, setCalculatorFolderId] = useState("");
   const [topics, setTopics] = useState<Array<{ id: string; label: string }>>([]);
   const [topicIds, setTopicIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,11 +105,13 @@ export default function ExamSessionSetup({
   useEffect(() => {
     if (!folderId) return;
     let active = true;
-    void getExamAvailability(folderId, topicIds, calculator)
+    void getExamAvailability(folderId, topicIds, calculator, paperId === ALL_PAPERS ? [] : [paperId])
       .then((result) => {
         if (!active) return;
         setAvailability({ folderId, counts: result.counts, hasMore: result.hasMore });
         setTopics(result.topics);
+        setPapers(result.papers ?? []);
+        if (result.calculatorPolicyKnown) setCalculatorFolderId(folderId);
       })
       .catch((reason: unknown) => {
         if (active) {
@@ -110,18 +121,35 @@ export default function ExamSessionSetup({
     return () => {
       active = false;
     };
-  }, [calculator, courseRevision, folderId, topicIds]);
+  }, [calculator, courseRevision, folderId, paperId, topicIds]);
 
   const counts = availability?.folderId === folderId ? availability.counts : null;
   const hasMore = availability?.folderId === folderId ? availability.hasMore : null;
   const total = totalOf(mix);
   const selectedFolder = folders.find((folder) => folder.id === folderId);
   const ready = Boolean(folderId && selectedFolder?.examCourse && total > 0);
+  const showPapers = papers.length > 1;
+  const showCalculator = examCalculatorChoiceOffered({
+    paperChosen: paperId !== ALL_PAPERS,
+    policyKnown: calculatorFolderId === folderId,
+    calculatorChosen: calculator !== "any",
+  });
+  const paperDetails = papers.some((paper) => paper.detail);
+  const paperOptions = [
+    {
+      value: ALL_PAPERS,
+      label: "All papers",
+      ...(paperDetails ? { detail: "Anything on the course" } : {}),
+    },
+    ...papers.map((paper) => ({ value: paper.id, label: paper.label, detail: paper.detail })),
+  ];
 
   const selectFolder = (id: string) => {
     setFolderId(id);
     setTopicIds([]);
     setTopics([]);
+    setPaperId(ALL_PAPERS);
+    setPapers([]);
     setCalculator("any");
     setShortage(null);
   };
@@ -187,6 +215,7 @@ export default function ExamSessionSetup({
         topicIds,
         originNotebookId,
         calculator,
+        paperIds: paperId === ALL_PAPERS ? [] : [paperId],
         ...requestOptions,
       });
       // The progress stays up until the session page replaces this one.
@@ -285,28 +314,49 @@ export default function ExamSessionSetup({
         />
       ) : null}
 
-      {selectedFolder?.examCourse ? (
+      {selectedFolder?.examCourse && (showPapers || showCalculator) ? (
         <Card padding="md">
           <h3 className="text-lg font-semibold text-text-primary">Which papers?</h3>
           <p className="mt-1 text-sm leading-5 text-text-muted">
-            Paper 1 is the non-calculator one. Pick whichever you want to practise.
+            {showPapers
+              ? calculatorFolderId === folderId
+                ? "Each paper examines a different part of the course and sets whether a calculator is allowed. Practise one, or draw from them all."
+                : "Each paper examines a different part of the course. Practise one, or draw from them all."
+              : "Practise with or without a calculator."}
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {CALCULATOR_CHOICES.map(({ id, label }) => (
-              <Button
-                key={id}
-                type="button"
-                variant={calculator === id ? "primary" : "secondary"}
-                aria-pressed={calculator === id}
-                onClick={() => {
-                  setCalculator(id);
-                  setShortage(null);
-                }}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
+          {showPapers ? (
+            <OptionSwitch
+              label="Paper"
+              hideLabel
+              className="mt-4"
+              value={paperId}
+              options={paperOptions}
+              columns={Math.min(paperOptions.length, 5) as 3 | 4 | 5}
+              // One line under the row for the paper chosen, so pressing a paper
+              // says what it is without every tile carrying a description.
+              detail="selected"
+              onChange={(value) => {
+                setPaperId(value);
+                // A single paper carries its own calculator rule, so a choice
+                // made across all papers would only contradict it.
+                if (value !== ALL_PAPERS) setCalculator("any");
+                setShortage(null);
+              }}
+            />
+          ) : null}
+          {showCalculator ? (
+            <OptionSwitch
+              label="Calculator"
+              hideLabel={!showPapers}
+              className="mt-4"
+              value={calculator}
+              options={CALCULATOR_CHOICES}
+              onChange={(value) => {
+                setCalculator(value);
+                setShortage(null);
+              }}
+            />
+          ) : null}
         </Card>
       ) : null}
 

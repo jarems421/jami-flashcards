@@ -6,10 +6,11 @@ import { buildSingleQuestionPaper } from "@/lib/practice/single-question-paper";
 const rights = { key: "permission", version: 1, verified: true, storageAllowed: true, studentDisplayAllowed: true, aiInferenceAllowed: true, revoked: false };
 
 describe("Past Paper Practice safety contracts", () => {
-  it("accepts only a one-to-twenty question difficulty mix", () => {
+  it("accepts only a one-to-fifty question difficulty mix", () => {
     expect(normalizeDifficultyMix({ easy: 2, medium: 3, hard: 1 })).toEqual({ easy: 2, medium: 3, hard: 1 });
     expect(normalizeDifficultyMix({ easy: 0, medium: 0, hard: 0 })).toBeNull();
-    expect(normalizeDifficultyMix({ easy: 20, medium: 1, hard: 0 })).toBeNull();
+    expect(normalizeDifficultyMix({ easy: 20, medium: 20, hard: 10 })).toEqual({ easy: 20, medium: 20, hard: 10 });
+    expect(normalizeDifficultyMix({ easy: 50, medium: 1, hard: 0 })).toBeNull();
     expect(normalizeDifficultyMix({ easy: 1.5, medium: 0, hard: 0 })).toBeNull();
   });
 

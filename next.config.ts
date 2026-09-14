@@ -64,6 +64,12 @@ export const nextConfig: NextConfig = {
   // PDF evidence rendering uses a native Skia binary and must remain a
   // server runtime dependency rather than being parsed by webpack.
   serverExternalPackages: ["@napi-rs/canvas", "mammoth", "officeparser"],
+  // pdf.js reads its image decoders from disk at render time, which tracing
+  // cannot see from an import. Without them a deployed ingestion renders
+  // Pearson's JBIG2 diagrams as blank space.
+  outputFileTracingIncludes: {
+    "/api/internal/exam-questions/ingest/**": ["./node_modules/pdfjs-dist/wasm/**"],
+  },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

@@ -15,6 +15,7 @@ import {
   markerTimeoutMs,
   PracticePaperMarkingFailedError,
   type MarkingCostAccounting,
+  MARKER_STALL_TIMEOUT_MS,
   type PracticePaperMarkerStage,
   type PracticePaperMarkerStageResult,
 } from "@/lib/practice/marker-stages";
@@ -341,7 +342,8 @@ Write the feedback for the student who wrote the answer, and keep it short. Effe
 - feedback: at most two sentences, on the work and never on the person. Write what the answer did and did not do, never "you clearly understand" or "good effort".
 - criterion: at most twelve words.
 - evidence: the candidate's own words, quoted, at most fifteen.
-- nextStep: one action they can take on the next question, at most twenty words, phrased as an instruction rather than an observation.
+- nextStep: advice to this student about this answer, at most forty words. Full marks with working a strict examiner could not fault: write exactly "Full marks — move on." Full marks but fragile working -- a skipped step, missing units, a method that is hard to follow -- name the one improvement to the working. Marks lost: explain what went wrong in their answer and why it is wrong, so they would not do it again, for example "You multiplied the two gradients instead of checking their product is -1". Never restate the scheme or name the mark they missed.
+- mathematics: write every mathematical expression, in every field, inside $...$ delimiters, for example $\\begin{pmatrix}4\\\\-3\\end{pmatrix}$ or $\\frac{3}{4}$. Never write bare LaTeX commands outside delimiters.
 - improvements: at most two, and only where they are not already said by a criterion.
 - strengths: at most one, and only where it names something the work did rather than something the candidate is.
 - summary: one sentence.
@@ -435,6 +437,7 @@ async function callMarker(input: PracticePaperMarkingInput & {
       ? fallbackTimeoutMs(input.modelRole)
       : markerTimeoutMs(input.modelRole)),
     fallbackTimeoutMs: input.callTimeoutMs ?? fallbackTimeoutMs(input.modelRole),
+    stallTimeoutMs: MARKER_STALL_TIMEOUT_MS,
     deadlineAt: input.deadlineAt,
     signal: input.signal,
     generationConfig: {

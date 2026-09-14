@@ -5,7 +5,41 @@ import {
   normalizeMathDelimiters,
   preprocessMathDelimiters,
   splitMathRichText,
+  wrapBareLatex,
 } from "@/lib/study/math-text";
+
+/**
+ * Marking reports quote maths as the scheme wrote it, and a scheme extracted
+ * from a PDF often has no delimiters -- so students read
+ * `\begin{pmatrix} 4 \\ -3 \end{pmatrix}` instead of a column vector.
+ */
+describe("wrapping LaTeX written without delimiters", () => {
+  it("wraps a whole environment, so a column vector renders", () => {
+    expect(wrapBareLatex("Answer: \\begin{pmatrix} 4 \\\\ -3 \\end{pmatrix}")).toBe(
+      "Answer: $\\begin{pmatrix} 4 \\\\ -3 \\end{pmatrix}$"
+    );
+  });
+
+  it("wraps a single command with its arguments", () => {
+    expect(wrapBareLatex("25 \\div 10 (= 2.5)")).toBe("25 $\\div$ 10 (= 2.5)");
+    expect(wrapBareLatex("\\frac{3}{4} of the total")).toBe("$\\frac{3}{4}$ of the total");
+  });
+
+  it("keeps a \\left...\\right pair together", () => {
+    expect(wrapBareLatex("\\left( \\frac{1}{2} \\right) squared")).toBe(
+      "$\\left( \\frac{1}{2} \\right)$ squared"
+    );
+  });
+
+  it("leaves maths that already has delimiters as it was", () => {
+    expect(wrapBareLatex("$\\frac{1}{2}$ and \\pi")).toBe("$\\frac{1}{2}$ and $\\pi$");
+    expect(wrapBareLatex("$$x^2$$")).toBe("$$x^2$$");
+  });
+
+  it("leaves plain text alone", () => {
+    expect(wrapBareLatex("Add 3 and 4 to get 7, costing $5")).toBe("Add 3 and 4 to get 7, costing $5");
+  });
+});
 
 describe("math-rich study text", () => {
   it("separates inline and display TeX without exposing delimiters", () => {

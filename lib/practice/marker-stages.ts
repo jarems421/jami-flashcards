@@ -119,6 +119,19 @@ export function markerTimeoutMs(modelRole: string) {
 }
 
 /**
+ * How long a marker may go without producing a single token before its
+ * endpoint is treated as hung and the call moves on.
+ *
+ * `markerTimeoutMs` bounds a report that is still being written, and has to be
+ * minutes long to fit the longest one. Alone it also let an endpoint that had
+ * stopped responding hold a student's mark for those same minutes. Streamed
+ * with reasoning visible, every marking endpoint was measured producing its
+ * first token within 3.6 seconds and never pausing longer than 420ms after
+ * that, so thirty seconds of silence is not a slow report.
+ */
+export const MARKER_STALL_TIMEOUT_MS = 30_000;
+
+/**
  * The same number for a fallback endpoint, because the floor rate already is
  * the fallback on a bad day. Two constants existed to say that the second
  * endpoint is slower; measuring the slow one directly says it better, and the

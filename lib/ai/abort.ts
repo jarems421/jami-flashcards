@@ -12,6 +12,8 @@
  *   deadline      the whole operation's budget ran out, which is a different
  *                 thing: retrying the attempt cannot help.
  *   cancelled     the caller went away.
+ *   stalled       the stream stopped producing tokens, reasoning included,
+ *                 for longer than any healthy endpoint has been seen to pause.
  *
  * It lives in its own module rather than beside the OpenRouter client because
  * it is not OpenRouter's idea, and because the router would otherwise have to
@@ -22,7 +24,7 @@
  * been generating, queued, or stalled, it may have produced tokens, and it may
  * have been billed for them. No timing on this side tells those apart.
  */
-export type AiAbortKind = "call_timeout" | "deadline" | "cancelled";
+export type AiAbortKind = "call_timeout" | "deadline" | "cancelled" | "stalled";
 
 export const AI_TIMEOUT_MESSAGE = "Request timed out";
 
@@ -33,7 +35,9 @@ export class AiAbortError extends Error {
         ? "Request cancelled"
         : kind === "deadline"
           ? "Deadline reached before the request completed"
-          : AI_TIMEOUT_MESSAGE
+          : kind === "stalled"
+            ? "The provider stopped responding"
+            : AI_TIMEOUT_MESSAGE
     );
     this.name = "AiAbortError";
   }

@@ -45,7 +45,9 @@ export default function ExamSubmittedAnswer({
             <StudyText
               as="div"
               text={answer}
-              className="mt-2 whitespace-pre-wrap rounded-xl border-l-2 border-accent/60 bg-[var(--color-glass-subtle)] px-4 py-3 text-sm leading-7 text-text-primary"
+              // An even border all round: a single left stripe on a rounded box
+              // curves away from the text and reads as a gap down the left side.
+              className="mt-2 whitespace-pre-wrap rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm leading-7 text-text-primary"
             />
           ) : (
             <p className="mt-2 rounded-xl bg-[var(--color-glass-subtle)] px-4 py-3 text-sm text-text-muted">

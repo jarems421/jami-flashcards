@@ -79,8 +79,12 @@ function datesInWindow(year: number, window: { from: [number, number]; to: [numb
   const end = Date.UTC(year, window.to[0] - 1, window.to[1]);
   for (let at = start; at <= end; at += 86_400_000) {
     const date = new Date(at);
-    // Papers are not sat at weekends, which halves the probing.
-    if (date.getUTCDay() === 0 || date.getUTCDay() === 6) continue;
+    /*
+     * Weekends included. The date in a Pearson filename is when the file was
+     * published, not when the paper was sat: 1MA1/1H June 2023 was sat on a
+     * Tuesday and lives at `-que-20230520`, a Saturday. Skipping weekends made
+     * that paper, and every other one filed on one, undiscoverable.
+     */
     dates.push(
       `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}${String(date.getUTCDate()).padStart(2, "0")}`
     );

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isOfficialExamBoardUrl, type ExamBoardId } from "@/lib/practice/exam-formats";
+import { examComponentReference } from "@/lib/practice/exam-ingestion-manifest";
 import {
   boardHasSourcePattern,
   distinctQuestionPaperUrls,
@@ -105,7 +106,7 @@ export async function findExamPapersByPattern(
       confirmed.push({
         questionPaperUrl,
         markSchemeUrl,
-        label: `${search.specificationId}/${search.componentCode} ${series} ${year}`,
+        label: `${examComponentReference(search.specificationId, search.componentCode)} ${series} ${year}`,
       });
     }
   }

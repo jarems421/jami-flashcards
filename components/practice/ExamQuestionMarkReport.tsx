@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type ElementType, type ReactNode } from "react";
 import { Button, Card, StudyText } from "@/components/ui";
+import JamiTutorIcon from "@/components/ui/JamiTutorIcon";
+import { wrapBareLatex } from "@/lib/study/math-text";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { examReviewFailureMessage } from "@/lib/practice/exam-marking-failure";
 import { breakdownExamMarkReport, examCriterionMarks } from "@/lib/practice/exam-mark-report";
 import type { PracticePaperCriterionResult } from "@/lib/practice/practice-papers";
+import ExamPrivateImage from "@/components/practice/ExamPrivateImage";
 import ExamSubmittedAnswer from "@/components/practice/ExamSubmittedAnswer";
 import { ScoreMeter, scoreBand, type ScoreBandName } from "@/components/practice/ScoreBand";
 
@@ -67,6 +70,13 @@ export default function ExamQuestionMarkReport({
   const guidance = (result.improvements ?? []).filter(Boolean);
   const earlier = firstAttempt && firstAttempt.id !== attempt.id ? firstAttempt : undefined;
   const lost = result.maxMarks - result.awardedMarks;
+  /*
+   * Advice, never an empty box on a perfect answer. Reports marked before the
+   * marker was asked for advice can have no line at all, and full marks with
+   * nothing to say should still tell the student they are done.
+   */
+  const fullMarks = result.maxMarks > 0 && result.awardedMarks >= result.maxMarks;
+  const advice = result.nextStep?.trim() || (fullMarks ? "Full marks — move on." : "");
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -109,19 +119,19 @@ export default function ExamQuestionMarkReport({
         ) : null}
 
         {result.feedback ? (
-          <StudyText
+          <ReportText
             as="p"
             text={result.feedback}
             className="mt-4 text-sm leading-7 text-text-secondary"
           />
         ) : null}
 
-        {result.nextStep ? (
+        {advice ? (
           <div className="mt-4 rounded-xl border border-accent/25 bg-accent/10 px-4 py-3">
-            <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent">Next step</p>
-            <StudyText
+            <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent">Advice</p>
+            <ReportText
               as="p"
-              text={result.nextStep}
+              text={advice}
               className="mt-1 text-sm font-medium leading-6 text-text-primary"
             />
           </div>
@@ -145,7 +155,7 @@ export default function ExamQuestionMarkReport({
                 {guidance.map((item, index) => (
                   <li key={`${item}-${index}`} className="flex gap-2.5 text-sm leading-6 text-text-primary">
                     <span aria-hidden="true" className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-warning-mark)]" />
-                    <StudyText as="span" text={item} />
+                    <ReportText as="span" text={item} />
                   </li>
                 ))}
               </ul>
@@ -176,17 +186,31 @@ export default function ExamQuestionMarkReport({
           />
           <div className="mt-4 space-y-2">
             {attempt.officialMarkScheme ? (
-              <Reveal label="Official mark scheme" hint="As published by the exam board">
-                <StudyText
-                  as="div"
-                  text={attempt.officialMarkScheme}
-                  className="whitespace-pre-wrap text-sm leading-7 text-text-secondary"
+              <Reveal label="Official mark scheme" hint="The exam board's published page">
+                {/*
+                  * The page itself, as the board printed it. A retelling of a
+                  * scheme loses its layout, its abbreviations and its guidance
+                  * notes, which are the parts a student learns examining from.
+                  * The text stays as the fallback for a page that cannot load.
+                  */}
+                <ExamPrivateImage
+                  key={attempt.id}
+                  alt="The published mark scheme page for this question"
+                  className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-white"
+                  path={`/api/practice/exam-sessions/${encodeURIComponent(sessionId)}/scheme/${encodeURIComponent(attempt.id)}`}
+                  fallback={
+                    <ReportText
+                      as="div"
+                      text={attempt.officialMarkScheme}
+                      className="whitespace-pre-wrap text-sm leading-7 text-text-secondary"
+                    />
+                  }
                 />
               </Reveal>
             ) : null}
             {result.modelAnswer ? (
               <Reveal label="A full-mark answer" hint="Written by Jami against the scheme">
-                <StudyText
+                <ReportText
                   as="div"
                   text={result.modelAnswer}
                   className="whitespace-pre-wrap text-sm leading-7 text-text-secondary"
@@ -221,7 +245,10 @@ export default function ExamQuestionMarkReport({
             ) : null}
             {onAsk ? (
               <Button type="button" variant="ghost" onClick={onAsk}>
-                Ask Jami
+                <span className="inline-flex items-center gap-1.5">
+                  <JamiTutorIcon className="h-4 w-4 text-accent" />
+                  Ask Jami
+                </span>
               </Button>
             ) : null}
           </div>
@@ -361,7 +388,7 @@ function CriterionRow({ item }: { item: PracticePaperCriterionResult }) {
         <div className="flex items-start justify-between gap-3">
           <p className="min-w-0 text-sm font-medium leading-6 text-text-primary">
             <span className="sr-only">{state.label}: </span>
-            <StudyText as="span" text={item.criterion} />
+            <ReportText as="span" text={item.criterion} />
           </p>
           <span
             className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold tabular-nums ${tone.badge}`}
@@ -370,10 +397,16 @@ function CriterionRow({ item }: { item: PracticePaperCriterionResult }) {
           </span>
         </div>
 
-        {item.evidence ? (
+        {/*
+          * Only a mark that was earned quotes the line that earned it. Where a
+          * mark was lost the note quoted the student's own answer back at them
+          * -- which they wrote, can see, and which the comparison beneath says
+          * again -- so it is gone rather than repeated.
+          */}
+        {item.evidence && full ? (
           <p className="mt-1 text-sm leading-6 text-text-muted">
-            <span className="font-medium text-text-secondary">{awarded > 0 ? "Why: " : "Marker's note: "}</span>
-            <StudyText as="span" text={item.evidence} />
+            <span className="font-medium text-text-secondary">Why: </span>
+            <ReportText as="span" text={item.evidence} />
           </p>
         ) : null}
 
@@ -381,7 +414,7 @@ function CriterionRow({ item }: { item: PracticePaperCriterionResult }) {
           <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
             <div className="rounded-xl bg-[var(--color-glass-strong)] px-3 py-2">
               <p className="text-2xs font-semibold uppercase tracking-wide text-text-muted">You wrote</p>
-              <StudyText
+              <ReportText
                 as="p"
                 text={item.candidateValue?.trim() || "nothing here"}
                 className="mt-0.5 text-sm leading-6 text-text-primary"
@@ -389,7 +422,7 @@ function CriterionRow({ item }: { item: PracticePaperCriterionResult }) {
             </div>
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-success-muted)] px-3 py-2">
               <p className="text-2xs font-semibold uppercase tracking-wide text-text-muted">Needed</p>
-              <StudyText
+              <ReportText
                 as="p"
                 text={item.schemeValue?.trim() || item.criterion}
                 className="mt-0.5 text-sm leading-6 text-text-primary"
@@ -400,6 +433,14 @@ function CriterionRow({ item }: { item: PracticePaperCriterionResult }) {
       </div>
     </li>
   );
+}
+
+/**
+ * Report text, with any LaTeX the scheme or marker wrote bare wrapped so it
+ * renders: a column vector rather than `\begin{pmatrix} 4 \\ -3 \end{pmatrix}`.
+ */
+function ReportText({ text, as, className }: { text: string; as?: ElementType; className?: string }) {
+  return <StudyText as={as} text={wrapBareLatex(text)} className={className} />;
 }
 
 function ReportHeading({

@@ -3,6 +3,7 @@ import { db } from "@/services/firebase/client";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import type { ExamCourseOption } from "@/lib/practice/exam-course-form";
 import type { ExamCalculatorChoice, ExamDifficulty, ExamSession } from "@/lib/practice/exam-questions";
+import type { ExamCoursePaper } from "@/lib/practice/exam-papers";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { EXAM_WORKING_MAX_PAGES } from "@/lib/practice/exam-working";
 import { MAX_NOTEBOOK_INK_SVG_LENGTH } from "@/lib/workspace/notebooks";
@@ -48,10 +49,12 @@ async function request(path: string, init?: RequestInit) {
 export async function getExamAvailability(
   folderId: string,
   topicIds: string[] = [],
-  calculator?: ExamCalculatorChoice
+  calculator?: ExamCalculatorChoice,
+  paperIds: string[] = []
 ) {
   const params = new URLSearchParams({ folderId });
   topicIds.forEach((id) => params.append("topicId", id));
+  paperIds.forEach((id) => params.append("paperId", id));
   if (calculator && calculator !== "any") params.set("calculator", calculator);
   return request(`/api/practice/exam-questions/availability?${params}`) as Promise<{
     folder: { id: string; name: string; subject: string; course: { board: string; specificationTitle: string } };
@@ -59,6 +62,9 @@ export async function getExamAvailability(
     /** A count that stopped at a session's worth rather than at the corpus. */
     hasMore: Record<ExamDifficulty, boolean>;
     topics: Array<{ id: string; label: string }>;
+    papers: ExamCoursePaper[];
+    /** Whether any of this course's papers carries a calculator rule. */
+    calculatorPolicyKnown: boolean;
   }>;
 }
 
@@ -77,6 +83,7 @@ export async function createPastPaperPracticeSession(input: {
   allowGenerated?: boolean;
   useAvailableOnly?: boolean;
   calculator?: ExamCalculatorChoice;
+  paperIds?: string[];
 }) {
   const data = await request("/api/practice/exam-sessions", { method: "POST", body: JSON.stringify(input) });
   return data.session as ExamSession;

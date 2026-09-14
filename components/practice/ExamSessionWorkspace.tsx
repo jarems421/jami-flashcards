@@ -49,15 +49,24 @@ function provenanceLine(question: SessionQuestion) {
     .join(" · ");
 }
 
-/** The colour a question's pill takes in the strip along the top. */
+/**
+ * The colour a question's pill takes in the strip along the top.
+ *
+ * A marked question takes the colour of its mark -- the latest attempt's, so a
+ * retry that earned full marks turns green. Every marked pill used to be green,
+ * so a question scored zero looked exactly like one answered perfectly.
+ */
 function pillTone(attempts: PublicExamAttempt[]) {
-  if (attempts.some((item) => item.attemptNumber === 2 && item.status === "marked")) {
-    return "bg-accent/20 text-accent";
+  const marked = [...attempts]
+    .filter((item) => item.status === "marked" && item.result)
+    .sort((left, right) => right.attemptNumber - left.attemptNumber)[0];
+  if (marked?.result) {
+    const { awardedMarks, maxMarks } = marked.result;
+    if (maxMarks > 0 && awardedMarks >= maxMarks) return "bg-success/20 text-[var(--color-success-mark)]";
+    if (awardedMarks > 0) return "bg-warning/20 text-[var(--color-warning-mark)]";
+    return "bg-error/15 text-[var(--color-error-mark)]";
   }
   if (attempts.some((item) => item.status === "marking_failed")) return "bg-error/15 text-error";
-  if (attempts.some((item) => item.attemptNumber === 1 && item.status === "marked")) {
-    return "bg-success/20 text-success";
-  }
   if (attempts.some((item) => item.status === "marking")) {
     return "animate-pulse bg-warm-accent/20 text-warm-accent";
   }
@@ -213,25 +222,28 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
       ? `${activeAttempt.id}:${activeAttempt.status}:${activeAttempt.reviewStatus ?? ""}`
       : null;
   /*
-   * A mark in progress resolves itself rather than waiting to be asked. The
-   * only recovery used to be a "Check again" button, so a student who looked
-   * away, or refreshed, sat in front of a spinner that would never move on its
-   * own. Backs off so a long mark is not a tight loop, and stops once the
-   * attempt reaches a settled state.
+   * A mark in progress resolves itself rather than waiting to be asked, and
+   * stops being watched once the attempt reaches a settled state.
+   *
+   * Steady rather than backing off. The backoff reached fifteen seconds by the
+   * sixth check, so a mark finished at second 19 was not shown until second 32
+   * -- the wait it added fell on exactly the markings already taking longest.
+   * Only a mark running well past its usual length slows down, so something
+   * stranded is not polled at full speed until its lease runs out.
    */
   useEffect(() => {
     if (pendingStatus === null) return;
     let cancelled = false;
-    let delay = 2_000;
+    const startedAt = Date.now();
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const delay = () => (Date.now() - startedAt < 180_000 ? 2_500 : 10_000);
     const tick = async () => {
       await refresh();
       if (cancelled) return;
       setNow(Date.now());
-      delay = Math.min(Math.round(delay * 1.6), 15_000);
-      timer = setTimeout(() => void tick(), delay);
+      timer = setTimeout(() => void tick(), delay());
     };
-    timer = setTimeout(() => void tick(), delay);
+    timer = setTimeout(() => void tick(), delay());
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
@@ -691,14 +703,16 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                       ? "Your answer and working are saved exactly as you sent them. Marking looks like it stopped part way — running it again will not change what is marked."
                       : "Your answer is saved and is being marked now. This usually takes under a minute, it carries on if you leave this page, and this page updates on its own."}
                   </p>
-                  <Button
-                    className="mt-4"
-                    variant={markingStale ? "primary" : "secondary"}
-                    disabled={submitting}
-                    onClick={() => (markingStale ? void submit() : void refresh())}
-                  >
-                    {markingStale ? "Mark it again" : "Check again"}
-                  </Button>
+                  {markingStale ? (
+                    <Button
+                      className="mt-4"
+                      variant="primary"
+                      disabled={submitting}
+                      onClick={() => void submit()}
+                    >
+                      Mark it again
+                    </Button>
+                  ) : null}
                 </Card>
                 {markingStale ? (
                   <ExamSubmittedAnswer

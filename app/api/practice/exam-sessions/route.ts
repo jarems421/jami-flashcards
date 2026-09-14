@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { apiFailure, authenticateRequest, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { isExamCalculatorChoice, normalizeDifficultyMix } from "@/lib/practice/exam-questions";
+import { EXAM_SESSION_MAX_QUESTIONS, isExamCalculatorChoice, normalizeDifficultyMix } from "@/lib/practice/exam-questions";
 import { createExamSession, ExamQuestionBankError, listExamSessions } from "@/services/practice/exam-question-bank.server";
 import { queueOfficialExamSourceDiscovery } from "@/services/practice/exam-source-discovery.server";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
@@ -9,6 +9,11 @@ import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import { aiSpendContextFor } from "@/services/ai/spend.server";
 
 export const runtime = "nodejs";
+/**
+ * Creating a session can write Jami-created questions for a shortfall, which
+ * takes minutes at worst; the platform default is not something to rely on.
+ */
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   if (!featureFlags.enablePastPaperPractice) return apiFailure("Not found", 404, "not_found");
@@ -38,7 +43,7 @@ export async function POST(request: NextRequest) {
   }
   const mix = normalizeDifficultyMix(body.mix);
   const folderId = typeof body.folderId === "string" ? body.folderId.trim() : "";
-  if (!mix || !folderId) return apiFailure("Choose a folder and 1 to 20 questions.", 400, "invalid_request");
+  if (!mix || !folderId) return apiFailure(`Choose a folder and 1 to ${EXAM_SESSION_MAX_QUESTIONS} questions.`, 400, "invalid_request");
   const allowGenerated = body.allowGenerated === true;
   const generationBudget = allowGenerated ? await checkAiBudget({ uid, action: "practicePaperGeneration" }) : null;
   if (generationBudget && !generationBudget.allowed) return createAiBudgetLimitResponse("practicePaperGeneration", generationBudget);
@@ -52,6 +57,7 @@ export async function POST(request: NextRequest) {
       originNotebookId: typeof body.originNotebookId === "string" ? body.originNotebookId.trim() : undefined,
       allowGenerated,
       useAvailableOnly: body.useAvailableOnly === true,
+      paperIds: Array.isArray(body.paperIds) ? body.paperIds.filter((item): item is string => typeof item === "string").slice(0, 10) : [],
       ...(isExamCalculatorChoice(body.calculator) ? { calculator: body.calculator } : {}),
     });
     return Response.json({ session }, { status: 201 });

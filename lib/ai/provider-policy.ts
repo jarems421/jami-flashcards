@@ -245,10 +245,11 @@ const DEFAULT_STANDBY = {
  * than quietly used.
  */
 const DEFAULT_FAILOVER_PROVIDERS = {
-  // DeepInfra rather than Novita: Novita is in the worker's primary allowlist
-  // now, and a failover that names an endpoint already carrying normal traffic
-  // is not a failover.
-  worker: ["deepinfra"],
+  // Not Novita, Z.ai or Modal: those carry the worker's normal traffic, and a
+  // failover naming one is the same endpoint twice. And no longer DeepInfra,
+  // which serves GLM 5.3 Flash only at fp4 -- below the fp8 floor the request
+  // itself demands, so every call routed there came back "No endpoints found".
+  worker: ["coreweave", "baseten"],
   // Parasail serves the supervisor's model compliantly but is held out of the
   // primary list for the same reason: kept in reserve, not in rotation.
   supervisor: ["parasail"],

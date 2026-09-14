@@ -47,7 +47,7 @@ export default function ExamGenerationProgress({
           {seconds}s
         </span>
       </div>
-      <ProgressBar progress={examGenerationProgress(elapsed)} className="mt-3" />
+      <ProgressBar progress={examGenerationProgress(elapsed, count)} className="mt-3" />
       <p className="mt-2.5 text-xs leading-5 text-text-muted">
         This usually takes under a minute. Your session opens as soon as they&apos;re ready — keep
         this page open.

@@ -30,6 +30,15 @@ export type OpenRouterCallOptions = {
   timeoutMs: number;
   /** Whether this attempt's budget is its own or what is left of a deadline. */
   timeoutKind?: Exclude<AiAbortKind, "cancelled">;
+  /**
+   * Streams only: abort with `stalled` after this long without a token.
+   *
+   * Reasoning counts as a token, so a watched stream asks for reasoning to be
+   * sent rather than excluded -- it is still never passed to the caller. With
+   * it excluded, the supervisor was measured silent for seven seconds before
+   * its first word, which a watchdog cannot tell from a hang.
+   */
+  stallTimeoutMs?: number;
   signal?: AbortSignal;
   reasoning: boolean;
   /** How hard to let it think. Defaults to a bounded `medium`. */
@@ -74,9 +83,23 @@ export class OpenRouterApiError extends Error {
 function createAttemptSignal(
   timeoutMs: number,
   signal?: AbortSignal,
-  timeoutKind: Exclude<AiAbortKind, "cancelled"> = "call_timeout"
+  timeoutKind: Exclude<AiAbortKind, "cancelled"> = "call_timeout",
+  stallTimeoutMs?: number
 ) {
   const controller = new AbortController();
+  /*
+   * A watchdog that each token resets, so a hung endpoint is abandoned in
+   * seconds rather than at the end of a budget sized for the longest report.
+   * It starts with the request, which also covers an endpoint that queues the
+   * call and never begins.
+   */
+  let stallId: ReturnType<typeof setTimeout> | undefined;
+  const touch = () => {
+    if (stallTimeoutMs === undefined) return;
+    clearTimeout(stallId);
+    stallId = setTimeout(() => controller.abort(new AiAbortError("stalled")), stallTimeoutMs);
+  };
+  touch();
   /*
    * An Error, not the bare string.
    *
@@ -95,8 +118,10 @@ function createAttemptSignal(
   if (signal?.aborted) abortFromCaller();
   return {
     signal: controller.signal,
+    touch,
     release() {
       clearTimeout(timeoutId);
+      clearTimeout(stallId);
       signal?.removeEventListener("abort", abortFromCaller);
     },
   };
@@ -207,7 +232,9 @@ export function buildOpenRouterRequestBody(
      */
     reasoning: {
       enabled: true,
-      exclude: true,
+      // Streamed only for a stall watchdog, which needs to see the model
+      // thinking; the stream reader still passes content alone to the caller.
+      exclude: !(stream && options.stallTimeoutMs !== undefined),
       effort: options.reasoningEffort ?? (options.reasoning ? "medium" : "low"),
     },
     ...(options.jsonSchema
@@ -286,7 +313,12 @@ function reportRequestId(source: { get(name: string): string | null }, options: 
 }
 
 async function createResponse(options: OpenRouterCallOptions, stream: boolean) {
-  const attempt = createAttemptSignal(options.timeoutMs, options.signal, options.timeoutKind);
+  const attempt = createAttemptSignal(
+    options.timeoutMs,
+    options.signal,
+    options.timeoutKind,
+    stream ? options.stallTimeoutMs : undefined
+  );
   const started = Date.now();
   options.onTiming?.({ event: "sent", atMs: started });
   try {
@@ -322,7 +354,7 @@ async function createResponse(options: OpenRouterCallOptions, stream: boolean) {
         errorType
       );
     }
-    return { response, release: attempt.release };
+    return { response, release: attempt.release, signal: attempt.signal, touch: attempt.touch };
   } catch (error) {
     // Operational only: when it stopped and whether the stop was ours.
     options.onTiming?.({
@@ -344,7 +376,8 @@ type CompletionPayload = {
   provider?: unknown;
   choices?: Array<{
     message?: { content?: unknown };
-    delta?: { content?: unknown };
+    /** Reasoning arrives only when not excluded, and is never returned. */
+    delta?: { content?: unknown; reasoning?: unknown; reasoning_details?: unknown };
     finish_reason?: unknown;
   }>;
   usage?: unknown;
@@ -409,18 +442,31 @@ function parseSseEvent(event: string) {
 export async function* streamOpenRouterText(
   options: OpenRouterCallOptions
 ): AsyncGenerator<string, void, unknown> {
-  const { response, release } = await createResponse(options, true);
+  const { response, release, signal, touch } = await createResponse(options, true);
   const reader = response.body?.getReader();
   if (!reader) {
     release();
     throw new OpenRouterApiError("OpenRouter returned no response stream.", 502);
   }
+  /*
+   * Every read races the attempt's own signal. A body is not guaranteed to
+   * error when its request is aborted, and a read left waiting on a stalled
+   * one would hold the call exactly as long as the watchdog exists to prevent.
+   */
+  const aborted = new Promise<never>((_, reject) => {
+    const fail = () => reject(
+      signal.reason instanceof AiAbortError ? signal.reason : new AiAbortError("call_timeout")
+    );
+    if (signal.aborted) fail();
+    else signal.addEventListener("abort", fail, { once: true });
+  });
+  aborted.catch(() => undefined);
   const decoder = new TextDecoder();
   let buffer = "";
   let receivedText = false;
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await Promise.race([reader.read(), aborted]);
       buffer += decoder.decode(value, { stream: !done });
       const events = buffer.split(/\r?\n\r?\n/);
       buffer = events.pop() ?? "";
@@ -439,7 +485,12 @@ export async function* streamOpenRouterText(
             safeErrorType(parsed)
           );
         }
-        const text = textFromContent(parsed.choices?.[0]?.delta?.content);
+        const delta = parsed.choices?.[0]?.delta;
+        const text = textFromContent(delta?.content);
+        const thinking =
+          (typeof delta?.reasoning === "string" && delta.reasoning.length > 0) ||
+          (Array.isArray(delta?.reasoning_details) && delta.reasoning_details.length > 0);
+        if (text || thinking) touch();
         if (text) {
           receivedText = true;
           yield text;
@@ -452,6 +503,8 @@ export async function* streamOpenRouterText(
     }
   } finally {
     release();
+    // An abort leaves a read pending; cancelling settles it so the lock can go.
+    if (signal.aborted) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }

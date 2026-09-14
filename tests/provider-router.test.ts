@@ -119,7 +119,7 @@ describe("provider router", () => {
       "z-ai/glm-5.3-flash",
       "z-ai/glm-5.3-flash",
     ]);
-    expect(mocks.generateOpenRouterText.mock.calls[2][0].providerAllowlist).toEqual(["deepinfra"]);
+    expect(mocks.generateOpenRouterText.mock.calls[2][0].providerAllowlist).toEqual(["coreweave", "baseten"]);
 
     mocks.generateOpenRouterText.mockReset();
     mocks.generateOpenRouterText.mockRejectedValue(new Error("supervisor unavailable"));
@@ -264,5 +264,58 @@ describe("what an attempt off the primary is given to work with", () => {
 
     const calls = mocks.generateOpenRouterText.mock.calls.map(([options]) => options);
     expect(calls[2].timeoutMs).toBeLessThanOrEqual(20_000);
+  });
+});
+
+describe("a call watched for stalls", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.assign(process.env, {
+      OPENROUTER_API_KEY: "test-key",
+      OPENROUTER_ENABLED: "true",
+      OPENROUTER_PRIVACY_APPROVED: "true",
+      OPENROUTER_QUALITY_GATE_PASSED: "true",
+      OPENROUTER_KILL_SWITCH: "false",
+      OPENROUTER_JUROR_KILL_SWITCH: "false",
+    });
+  });
+
+  it("is streamed, and still hands the caller one whole response", async () => {
+    mocks.streamOpenRouterText.mockImplementationOnce(async function* () {
+      yield ' {"ok"';
+      yield ":true} ";
+    });
+    await expect(generateAiText({
+      role: "supervisor",
+      request,
+      timeoutMs: 60_000,
+      stallTimeoutMs: 30_000,
+    })).resolves.toBe('{"ok":true}');
+
+    expect(mocks.generateOpenRouterText).not.toHaveBeenCalled();
+    expect(mocks.streamOpenRouterText.mock.calls[0][0].stallTimeoutMs).toBe(30_000);
+  });
+
+  it("moves on from a stalled endpoint instead of waiting out the budget", async () => {
+    const { AiAbortError } = await import("@/lib/ai/abort");
+    const stalled = () => {
+      throw new AiAbortError("stalled");
+    };
+    mocks.streamOpenRouterText
+      .mockImplementationOnce(stalled)
+      .mockImplementationOnce(stalled)
+      .mockImplementationOnce(async function* () {
+        yield "ok";
+      });
+    await expect(generateAiText({
+      role: "supervisor",
+      request,
+      timeoutMs: 408_000,
+      stallTimeoutMs: 30_000,
+    })).resolves.toBe("ok");
+
+    const calls = mocks.streamOpenRouterText.mock.calls.map(([options]) => options);
+    expect(calls).toHaveLength(3);
+    expect(calls[2].providerAllowlist).toEqual(["parasail"]);
   });
 });
