@@ -25,6 +25,14 @@ import {
   submitExamAnswer,
 } from "@/services/study/exam-practice";
 import { EXAM_ANSWER_MAX_LENGTH, EXAM_OPERATION_LEASE_MS } from "@/lib/practice/exam-questions";
+import {
+  detectExamAnswerParts,
+  examAnswerPartLabelsIn,
+  examAnswerPartMaxLength,
+  joinExamAnswerParts,
+  nextExamAnswerPartLabel,
+  splitExamAnswerParts,
+} from "@/lib/practice/exam-answer-parts";
 import { examMarkingFailureIsRetryable, examMarkingFailureMessage } from "@/lib/practice/exam-marking-failure";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { getActiveNotebooks } from "@/services/study/notebooks";
@@ -665,13 +673,18 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
          * The question, in full, on the left; one answer sheet on the right,
          * with the typed answer as its top strip and the working as the paper
          * under it. Everything that gets marked is in one place beside the
-         * question it answers. Below `lg` the two stack -- a portrait tablet is
-         * too narrow for a readable question and a usable sheet side by side.
+         * question it answers.
+         *
+         * Side by side only on a wide screen held landscape, with the sheet
+         * given the larger share: an even split left an iPad a page of working
+         * barely wider than a phone's. Held upright -- a portrait iPad, even a
+         * 13-inch one at exactly `lg` -- the two stack and the sheet takes the
+         * full width.
          */
         <div
           className={`grid items-start gap-4 lg:gap-6 ${
             answering
-              ? "lg:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)]"
+              ? "lg:landscape:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] 2xl:landscape:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]"
               : "mx-auto w-full max-w-3xl"
           }`}
         >
@@ -679,7 +692,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
             data-behind-working
             className={`min-w-0 ${
               answering
-                ? "lg:sticky lg:top-[8.5rem] lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto lg:rounded-2xl"
+                ? "lg:landscape:sticky lg:landscape:top-[8.5rem] lg:landscape:max-h-[calc(100dvh-10rem)] lg:landscape:overflow-y-auto lg:landscape:rounded-2xl"
                 : ""
             }`}
           >
@@ -874,6 +887,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                   <ExamAnswerField
                     key={activeAttempt.id}
                     id={answerFieldId}
+                    prompt={question.prompt}
                     attemptId={activeAttempt.id}
                     storedText={activeAttempt.answerText ?? ""}
                     disabled={submitting}
@@ -1040,16 +1054,39 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   );
 }
 
+const PART_ACTION_CLASS =
+  "rounded text-xs font-semibold text-accent underline-offset-2 transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-50";
+
+/** How a draft opens: in one box, or in a box for each part it was written in. */
+function initialAnswerLayout(prompt: string, text: string) {
+  const asked = detectExamAnswerParts(prompt);
+  const labels = asked.length > 0 ? asked : examAnswerPartLabelsIn(text);
+  if (labels.length === 0) return { labels, texts: [] as string[] };
+  const texts = splitExamAnswerParts(text, labels);
+  // A question that asks for parts opens by part even over an answer typed in
+  // one box before it could; that answer goes into the first part to be moved.
+  if (texts) return { labels, texts };
+  return asked.length > 0
+    ? { labels, texts: [text.trim(), ...labels.slice(1).map(() => "")] }
+    : { labels: [] as string[], texts: [] as string[] };
+}
+
 /**
  * The typed answer, holding its own text.
  *
  * Kept apart from the session so a keystroke re-renders this box and nothing
  * else. It opens with a draft typed before the student left the question, if
  * there is one, and reports every change for saving.
+ *
+ * A question that asks for (a), (b) and (c) gets a box for each, rather than
+ * leaving a student to label three answers inside one box, and any answer can
+ * be split into parts by hand. However it is typed, it is saved and marked as
+ * one labelled answer.
  */
 const ExamAnswerField = memo(function ExamAnswerField({
   id,
   attemptId,
+  prompt,
   storedText,
   disabled,
   readDraft,
@@ -1057,29 +1094,135 @@ const ExamAnswerField = memo(function ExamAnswerField({
 }: {
   id: string;
   attemptId: string;
+  prompt: string;
   storedText: string;
   disabled: boolean;
   readDraft(attemptId: string): string | undefined;
   onDraft(attemptId: string, text: string, storedText: string): void;
 }) {
-  const [value, setValue] = useState(() => readDraft(attemptId) ?? storedText);
+  const [initial] = useState(() => {
+    const text = readDraft(attemptId) ?? storedText;
+    return { text, ...initialAnswerLayout(prompt, text) };
+  });
+  const [value, setValue] = useState(initial.text);
+  const [labels, setLabels] = useState<string[]>(initial.labels);
+  const [texts, setTexts] = useState<string[]>(initial.texts);
+  const report = (text: string) => onDraft(attemptId, text, storedText);
+
+  if (labels.length === 0) {
+    return (
+      <>
+        <Textarea
+          id={id}
+          containerClassName="mt-3"
+          className="resize-y leading-6"
+          rows={3}
+          symbols
+          value={value}
+          maxLength={EXAM_ANSWER_MAX_LENGTH}
+          placeholder="Type your final answer…"
+          disabled={disabled}
+          onChange={(event) => {
+            const text = event.target.value;
+            setValue(text);
+            report(text);
+          }}
+        />
+        <button
+          type="button"
+          className={`mt-2 ${PART_ACTION_CLASS}`}
+          disabled={disabled}
+          onClick={() => {
+            const nextLabels = ["(a)", "(b)"];
+            const nextTexts = [value, ""];
+            setLabels(nextLabels);
+            setTexts(nextTexts);
+            report(joinExamAnswerParts(nextLabels, nextTexts));
+          }}
+        >
+          Answer in parts (a), (b)…
+        </button>
+      </>
+    );
+  }
+
+  const nextLabel = nextExamAnswerPartLabel(labels);
+  const lastLabel = labels[labels.length - 1];
+  const partMaxLength = examAnswerPartMaxLength(labels.length);
+  const changeParts = (nextLabels: string[], nextTexts: string[]) => {
+    setLabels(nextLabels);
+    setTexts(nextTexts);
+    report(joinExamAnswerParts(nextLabels, nextTexts));
+  };
+
   return (
-    <Textarea
-      id={id}
-      containerClassName="mt-3"
-      className="resize-y leading-6"
-      rows={3}
-      symbols
-      value={value}
-      maxLength={EXAM_ANSWER_MAX_LENGTH}
-      placeholder="Type your final answer…"
-      disabled={disabled}
-      onChange={(event) => {
-        const text = event.target.value;
-        setValue(text);
-        onDraft(attemptId, text, storedText);
-      }}
-    />
+    <div className="mt-3 space-y-2.5">
+      {labels.map((label, index) => {
+        const fieldId = index === 0 ? id : `${id}-part-${index}`;
+        return (
+          <div key={label} className="grid grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-2">
+            <label
+              htmlFor={fieldId}
+              className="pt-2.5 text-center text-sm font-semibold tabular-nums text-text-secondary"
+            >
+              {label}
+            </label>
+            <Textarea
+              id={fieldId}
+              className="resize-y leading-6"
+              rows={2}
+              symbols
+              value={texts[index] ?? ""}
+              maxLength={partMaxLength}
+              placeholder={`Answer to part ${label}`}
+              disabled={disabled}
+              onChange={(event) =>
+                changeParts(
+                  labels,
+                  texts.map((current, textIndex) => (textIndex === index ? event.target.value : current))
+                )
+              }
+            />
+          </div>
+        );
+      })}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-12">
+        {nextLabel ? (
+          <button
+            type="button"
+            className={PART_ACTION_CLASS}
+            disabled={disabled}
+            onClick={() => changeParts([...labels, nextLabel], [...texts, ""])}
+          >
+            Add part {nextLabel}
+          </button>
+        ) : null}
+        {labels.length > 2 && lastLabel && !(texts[labels.length - 1] ?? "").trim() ? (
+          <button
+            type="button"
+            className={PART_ACTION_CLASS}
+            disabled={disabled}
+            onClick={() => changeParts(labels.slice(0, -1), texts.slice(0, -1))}
+          >
+            Remove part {lastLabel}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={PART_ACTION_CLASS}
+          disabled={disabled}
+          onClick={() => {
+            const joined = joinExamAnswerParts(labels, texts);
+            setValue(joined);
+            setLabels([]);
+            setTexts([]);
+            report(joined);
+          }}
+        >
+          Use one box
+        </button>
+      </div>
+    </div>
   );
 });
 

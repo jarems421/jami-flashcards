@@ -912,7 +912,9 @@ function ExamScratchpad({
         className={
           expanded
             ? "min-h-0 flex-1 overflow-auto overscroll-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
-            : undefined
+            : embedded
+              ? "bg-[var(--color-glass-subtle)] p-2 sm:p-3"
+              : undefined
         }
       >
         <div
@@ -927,7 +929,9 @@ function ExamScratchpad({
             */}
           <div
             ref={surfaceRef}
-            className="notebook-page-surface relative w-full bg-white [contain:layout_paint]"
+            // Rounded along the top like a notebook page. The clip also keeps
+            // the ink canvas inside those corners.
+            className="notebook-page-surface relative w-full overflow-hidden rounded-t-2xl bg-white shadow-e1 [contain:layout_paint]"
             style={{ aspectRatio: `${EXAM_WORKING_PAGE_WIDTH} / ${EXAM_WORKING_PAGE_HEIGHT}` }}
           >
             {loadFailed ? (
