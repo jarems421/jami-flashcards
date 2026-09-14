@@ -44,8 +44,17 @@ export default function ViewTabs({
   // current in that case, which is better than the control throwing.
   const pathname = usePathname() ?? "";
 
-  const isActive = (href: string) =>
+  const matches = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
+  /*
+   * The most specific view wins. A view can live under another's address --
+   * Progress's Practice view is /dashboard/progress/practice -- and matching by
+   * prefix alone lit both tabs at once.
+   */
+  const activeHref = items
+    .filter((item) => matches(item.href))
+    .sort((left, right) => right.href.length - left.href.length)[0]?.href;
+  const isActive = (href: string) => href === activeHref;
   const activeDetail = items.find((item) => isActive(item.href))?.detail;
 
   return (

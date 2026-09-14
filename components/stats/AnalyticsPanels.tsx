@@ -1,65 +1,89 @@
 import { Card, SectionHeader } from "@/components/ui";
 import type { SpacedRepetitionAnalytics } from "@/lib/study/analytics";
+import { buildMemorySummary, type MemoryGroupKey } from "@/lib/study/memory-summary";
 
-export function ScheduleForecastPanel({ analytics }: { analytics: SpacedRepetitionAnalytics }) {
-  const maxDueCount = Math.max(1, ...analytics.dueForecast7d.map((point) => point.dueCount));
-  const weeklyDueCount = analytics.dueForecast7d.reduce(
-    (sum, point) => sum + point.dueCount,
-    0
-  );
+const GROUP_COLOUR: Record<MemoryGroupKey, string> = {
+  strong: "bg-success",
+  settling: "bg-[var(--color-accent)]",
+  slipping: "bg-warning",
+  unstudied: "bg-glass-strong",
+};
+
+/**
+ * How much of what the student has studied is sticking.
+ *
+ * Replaces the scheduling forecast, which drew the scheduler's bookings as bars
+ * and left the student to work out what that meant for them.
+ */
+export function MemoryPanel({
+  analytics,
+}: {
+  analytics: Pick<SpacedRepetitionAnalytics, "retentionSummary" | "dueForecast7d">;
+}) {
+  const summary = buildMemorySummary(analytics);
+  const { busiestDay, reviews } = summary.weekAhead;
 
   return (
     <Card padding="md" className="animate-fade-in">
       <SectionHeader
-        title="Scheduling forecast"
-        description={`${weeklyDueCount} card${weeklyDueCount === 1 ? "" : "s"} scheduled over the next 7 days.`}
+        title="How well you remember"
+        description={
+          summary.studiedCards > 0
+            ? `${summary.rememberedWell} of your ${summary.studiedCards} studied card${summary.studiedCards === 1 ? " is" : "s are"} remembered well.`
+            : "Review a few cards and this shows how much is sticking."
+        }
       />
-      <div
-        className="app-subtle-panel mt-4 rounded-lg px-3 pb-3 pt-4 sm:px-4"
-        role="img"
-        aria-label={`Seven-day scheduling forecast with ${weeklyDueCount} cards scheduled`}
-      >
-        <div className="grid grid-cols-7 gap-2 sm:gap-3">
-          {analytics.dueForecast7d.map((point, index) => (
-            <div key={point.dayKey} className="min-w-0 text-center">
-              <div className="h-5 text-xs font-semibold tabular-nums text-text-secondary">
-                {point.dueCount > 0 ? point.dueCount : ""}
-              </div>
-              <div className="mt-1 flex h-24 items-end rounded-md bg-glass-medium px-1.5 pt-2">
+
+      {/* Before anything is studied, four rows of zeros say less than the line above. */}
+      {summary.studiedCards > 0 ? (
+        <>
+          <div
+            className="mt-4 flex h-3 overflow-hidden rounded-full bg-glass-medium"
+            role="img"
+            aria-label={summary.groups.map((group) => `${group.label}: ${group.count}`).join(", ")}
+          >
+            {summary.groups
+              .filter((group) => group.count > 0)
+              .map((group) => (
                 <div
-                  className={`w-full rounded-t-sm ${
-                    index === 0
-                      ? "bg-[var(--color-warm-accent)]"
-                      : "bg-[var(--color-accent)]"
-                  }`}
-                  /*
-                    * Height in proportion to the count, with only enough of a
-                    * floor to keep a single card visible.
-                    *
-                    * The floor was 12 per cent, which is a fifth of the tallest
-                    * bar -- so a day with one card and a day with thirty were
-                    * drawn nearly the same height, and the one thing a forecast
-                    * is for, seeing where the pile is, was the thing it hid.
-                    */
-                  style={{
-                    height:
-                      point.dueCount === 0
-                        ? "3px"
-                        : `${Math.max(5, Math.round((point.dueCount / maxDueCount) * 100))}%`,
-                  }}
+                  key={group.key}
+                  className={`h-full ${GROUP_COLOUR[group.key]}`}
+                  style={{ width: `${group.percent}%` }}
                 />
-              </div>
-              <div
-                className={`mt-2 truncate text-2xs font-semibold ${
-                  index === 0 ? "text-warm-accent" : "text-text-muted"
-                }`}
-              >
-                {index === 0 ? "Today" : point.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+              ))}
+          </div>
+
+          <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+            {summary.groups.map((group) => (
+              <li key={group.key} className="app-subtle-panel flex items-start gap-2.5 rounded-lg px-3 py-2.5">
+                <span
+                  aria-hidden="true"
+                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${GROUP_COLOUR[group.key]}`}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-medium text-text-primary">{group.label}</span>
+                    <span className="text-sm font-semibold tabular-nums text-text-primary">
+                      {group.count}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-2xs text-text-muted">{group.detail}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <p className="mt-3 text-xs text-text-muted">
+            {reviews > 0
+              ? `${reviews} review${reviews === 1 ? "" : "s"} over the next 7 days${
+                  busiestDay
+                    ? `, busiest ${busiestDay.isToday ? "today" : `on ${busiestDay.label}`} (${busiestDay.count})`
+                    : ""
+                }.`
+              : "Nothing scheduled for the next 7 days."}
+          </p>
+        </>
+      ) : null}
     </Card>
   );
 }

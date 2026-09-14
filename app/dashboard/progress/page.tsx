@@ -20,7 +20,8 @@ import { getDecks } from "@/services/study/decks";
 import { getActiveTopics } from "@/services/study/topics";
 import { ensureStudyStateSetup } from "@/services/study/daily-review";
 import AppPage from "@/components/layout/AppPage";
-import { ScheduleForecastPanel } from "@/components/stats/AnalyticsPanels";
+import { MemoryPanel } from "@/components/stats/AnalyticsPanels";
+import { PROGRESS_TITLE, PROGRESS_VIEWS } from "@/lib/app/progress-views";
 import {
   ButtonLink,
   Card,
@@ -312,7 +313,9 @@ export default function ProgressPage() {
 
   return (
     <AppPage
-      title="Progress"
+      title={PROGRESS_TITLE}
+      views={PROGRESS_VIEWS}
+      viewsLabel="Progress views"
       backHref="/dashboard"
       backLabel="Today"
       width="xl"
@@ -338,9 +341,9 @@ export default function ProgressPage() {
             * What to do right now, said once.
             *
             * The number of cards due was on this page three times over -- its
-            * own tile, the first bar of the forecast, and a line on every deck
-            * row. It is the one thing somebody opens Progress to act on, so it
-            * gets the top of the page and nowhere else.
+            * own tile, the first bar of a scheduling forecast since replaced,
+            * and a line on every deck row. It is the one thing somebody opens
+            * Progress to act on, so it gets the top of the page and nowhere else.
             */}
           <Card tone="warm" padding="md">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -393,7 +396,7 @@ export default function ProgressPage() {
             )}
           </Card>
 
-          <ScheduleForecastPanel analytics={analytics} />
+          <MemoryPanel analytics={analytics} />
 
           <Card padding="md">
             <SectionHeader
