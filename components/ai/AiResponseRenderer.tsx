@@ -10,6 +10,7 @@ import {
   preprocessMathDelimiters,
 } from "@/lib/study/math-text";
 import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
+import AssistantGraphFigure from "@/components/ai/AssistantGraphFigure";
 
 export type AiResponseRendererProps = {
   content: string;
@@ -138,6 +139,9 @@ export default function AiResponseRenderer({
             const fenced = child as { props?: { className?: string; children?: unknown } } | undefined;
             if (/language-svg/.test(String(fenced?.props?.className ?? ""))) {
               return <DrawnFigure source={String(fenced?.props?.children ?? "").trim()} />;
+            }
+            if (/language-graph/.test(String(fenced?.props?.className ?? ""))) {
+              return <AssistantGraphFigure source={String(fenced?.props?.children ?? "").trim()} />;
             }
             return <pre {...props}>{children}</pre>;
           },

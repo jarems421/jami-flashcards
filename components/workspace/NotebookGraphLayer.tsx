@@ -1,0 +1,408 @@
+"use client";
+
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import NotebookGraphView from "@/components/workspace/NotebookGraphView";
+import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
+import {
+  moveNotebookGraphBlock,
+  resizeNotebookGraphBlock,
+  zoomGraphView,
+  type NotebookGraphBlock,
+  type NotebookGraphResizeCorner,
+} from "@/lib/workspace/notebook-graphs";
+import {
+  NOTEBOOK_PAGE_COORDINATE_HEIGHT,
+  NOTEBOOK_PAGE_COORDINATE_WIDTH,
+} from "@/lib/workspace/notebooks";
+
+const RESIZE_CORNERS: Array<{
+  corner: NotebookGraphResizeCorner;
+  label: string;
+  positionClass: string;
+  cursorClass: string;
+}> = [
+  {
+    corner: "top-left",
+    label: "Resize from the top left corner",
+    positionClass: "left-0 top-0 -translate-x-1/2 -translate-y-1/2",
+    cursorClass: "cursor-nwse-resize",
+  },
+  {
+    corner: "top-right",
+    label: "Resize from the top right corner",
+    positionClass: "right-0 top-0 translate-x-1/2 -translate-y-1/2",
+    cursorClass: "cursor-nesw-resize",
+  },
+  {
+    corner: "bottom-right",
+    label: "Resize from the bottom right corner",
+    positionClass: "bottom-0 right-0 translate-x-1/2 translate-y-1/2",
+    cursorClass: "cursor-nwse-resize",
+  },
+  {
+    corner: "bottom-left",
+    label: "Resize from the bottom left corner",
+    positionClass: "bottom-0 left-0 -translate-x-1/2 translate-y-1/2",
+    cursorClass: "cursor-nesw-resize",
+  },
+];
+
+/** Screen pixels a press has to travel before it counts as a drag; see NotebookImageLayer. */
+const DRAG_THRESHOLD_PX = 3;
+
+/**
+ * Drawing units per page unit. Below one draws a graph's numbers and lines a
+ * little larger than their nominal size, which is what stays legible on a page
+ * read at arm's length on an iPad.
+ */
+const DRAWING_SCALE = 0.8;
+
+const ACTION_CLASS =
+  "pointer-events-auto inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-semibold text-text-primary outline-none transition-colors hover:bg-[var(--color-glass-subtle)] focus-visible:ring-2 focus-visible:ring-accent/55";
+
+function styleFor(graph: NotebookGraphBlock) {
+  return {
+    left: `${(graph.x / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
+    top: `${(graph.y / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
+    width: `${(graph.width / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
+    height: `${(graph.height / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
+  };
+}
+
+type Gesture = {
+  kind: "move" | "resize";
+  corner?: NotebookGraphResizeCorner;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  layerWidth: number;
+  layerHeight: number;
+  original: NotebookGraphBlock;
+};
+
+type Pending = Record<string, { commitId: number; graph: NotebookGraphBlock }>;
+
+type Props = {
+  graphs: NotebookGraphBlock[];
+  editingEnabled?: boolean;
+  selectedGraphId?: string | null;
+  onSelect?: (graphId: string | null) => void;
+  onCommit?: (graphs: NotebookGraphBlock[]) => void | Promise<void>;
+  onEdit?: (graphId: string) => void;
+  onDelete?: (graphId: string) => void;
+};
+
+function geometryFor(gesture: Gesture, clientX: number, clientY: number) {
+  const deltaX = ((clientX - gesture.startClientX) / gesture.layerWidth) * NOTEBOOK_PAGE_COORDINATE_WIDTH;
+  const deltaY = ((clientY - gesture.startClientY) / gesture.layerHeight) * NOTEBOOK_PAGE_COORDINATE_HEIGHT;
+  return gesture.kind === "move"
+    ? moveNotebookGraphBlock(gesture.original, deltaX, deltaY)
+    : resizeNotebookGraphBlock(gesture.original, deltaX, deltaY, gesture.corner);
+}
+
+/**
+ * Graphs on a notebook page, and moving, resizing, zooming and editing them.
+ *
+ * They sit under the ink, so a student can annotate a graph with the pen --
+ * mark an intercept, sketch a tangent -- the way they would on paper. The
+ * gesture handling follows NotebookImageLayer: refs for the live gesture, one
+ * preview render a frame, and each graph's last placement held until its save
+ * lands.
+ */
+function NotebookGraphLayer({
+  graphs,
+  editingEnabled = false,
+  selectedGraphId = null,
+  onSelect,
+  onCommit,
+  onEdit,
+  onDelete,
+}: Props) {
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  const gestureRef = useRef<Gesture | null>(null);
+  const pointRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const [draft, setDraft] = useState<NotebookGraphBlock | null>(null);
+  const [pending, setPending] = useState<Pending>({});
+  const pendingRef = useRef<Pending>({});
+  const graphsRef = useRef(graphs);
+  const commitIdRef = useRef(0);
+
+  useEffect(() => {
+    graphsRef.current = graphs;
+    pendingRef.current = pending;
+  });
+
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    },
+    []
+  );
+
+  const displayedGraphs = graphs.map((graph) => {
+    if (draft?.id === graph.id) return draft;
+    return pending[graph.id]?.graph ?? graph;
+  });
+
+  const commitGraph = useCallback(
+    (next: NotebookGraphBlock) => {
+      const commitId = (commitIdRef.current += 1);
+      const nextPending = { ...pendingRef.current, [next.id]: { commitId, graph: next } };
+      pendingRef.current = nextPending;
+      setPending(nextPending);
+      const list = graphsRef.current.map((graph) => nextPending[graph.id]?.graph ?? graph);
+      void Promise.resolve(onCommit?.(list))
+        .catch(() => undefined)
+        .finally(() => {
+          setPending((current) => {
+            if (current[next.id]?.commitId !== commitId) return current;
+            const rest = { ...current };
+            delete rest[next.id];
+            return rest;
+          });
+        });
+    },
+    [onCommit]
+  );
+
+  const startGesture = useCallback(
+    (graph: NotebookGraphBlock, event: ReactPointerEvent<HTMLElement>, corner?: NotebookGraphResizeCorner) => {
+      event.stopPropagation();
+      const bounds = layerRef.current?.getBoundingClientRect();
+      if (!bounds?.width || !bounds.height) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pointRef.current = null;
+      gestureRef.current = {
+        kind: corner ? "resize" : "move",
+        ...(corner ? { corner } : {}),
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        layerWidth: bounds.width,
+        layerHeight: bounds.height,
+        original: graph,
+      };
+    },
+    []
+  );
+
+  const moveGesture = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const gesture = gestureRef.current;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    event.stopPropagation();
+    pointRef.current = { clientX: event.clientX, clientY: event.clientY };
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      const current = gestureRef.current;
+      const point = pointRef.current;
+      if (!current || !point) return;
+      setDraft(geometryFor(current, point.clientX, point.clientY));
+    });
+  }, []);
+
+  const finishGesture = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      const gesture = gestureRef.current;
+      if (!gesture || event.pointerId !== gesture.pointerId) return;
+      event.stopPropagation();
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      gestureRef.current = null;
+      const point =
+        event.type === "pointercancel" ? pointRef.current : { clientX: event.clientX, clientY: event.clientY };
+      pointRef.current = null;
+      setDraft(null);
+      if (!point) return;
+      const travelled = Math.hypot(point.clientX - gesture.startClientX, point.clientY - gesture.startClientY);
+      if (travelled < DRAG_THRESHOLD_PX) return;
+      commitGraph(geometryFor(gesture, point.clientX, point.clientY));
+    },
+    [commitGraph]
+  );
+
+  const handleKeyDown = useCallback(
+    (graph: NotebookGraphBlock, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      if ((event.key === "Delete" || event.key === "Backspace") && onDelete) {
+        event.preventDefault();
+        onDelete(graph.id);
+        return;
+      }
+      if (event.key === "Enter" && onEdit) {
+        event.preventDefault();
+        onEdit(graph.id);
+        return;
+      }
+      if (event.key === "+" || event.key === "=" || event.key === "-") {
+        event.preventDefault();
+        commitGraph({ ...graph, view: zoomGraphView(graph.view, event.key === "-" ? 1.25 : 0.8) });
+        return;
+      }
+      const amount = event.shiftKey ? 24 : 8;
+      const delta =
+        event.key === "ArrowLeft"
+          ? { x: -amount, y: 0 }
+          : event.key === "ArrowRight"
+            ? { x: amount, y: 0 }
+            : event.key === "ArrowUp"
+              ? { x: 0, y: -amount }
+              : event.key === "ArrowDown"
+                ? { x: 0, y: amount }
+                : null;
+      if (!delta) return;
+      event.preventDefault();
+      commitGraph(moveNotebookGraphBlock(graph, delta.x, delta.y));
+    },
+    [commitGraph, onDelete, onEdit]
+  );
+
+  return (
+    <div ref={layerRef} className="pointer-events-none absolute inset-0">
+      {displayedGraphs.map((graph) => (
+        <div
+          key={graph.id}
+          className="pointer-events-none absolute z-10 overflow-hidden rounded-sm border border-slate-950/15"
+          style={styleFor(graph)}
+        >
+          <NotebookGraphView graph={graph} width={graph.width * DRAWING_SCALE} height={graph.height * DRAWING_SCALE} />
+        </div>
+      ))}
+      {editingEnabled ? (
+        <div className="pointer-events-none absolute inset-0 z-[26]">
+          {displayedGraphs.map((graph) => {
+            const selected = selectedGraphId === graph.id;
+            const dragging = draft?.id === graph.id;
+            const name = graph.title ? `graph ${graph.title}` : "graph";
+            return (
+              <div key={graph.id} className="pointer-events-none absolute" style={styleFor(graph)}>
+                <button
+                  type="button"
+                  aria-label={`Move ${name}. Enter to edit, plus or minus to zoom.`}
+                  aria-pressed={selected}
+                  className={`pointer-events-auto absolute inset-0 touch-none rounded-sm border bg-transparent outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/55 ${
+                    selected ? "cursor-move border-accent shadow-ring" : "cursor-pointer border-transparent hover:border-accent/55"
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect?.(graph.id);
+                  }}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    onEdit?.(graph.id);
+                  }}
+                  onKeyDown={(event) => handleKeyDown(graph, event)}
+                  onPointerDown={(event) => {
+                    onSelect?.(graph.id);
+                    startGesture(graph, event);
+                  }}
+                  onPointerMove={moveGesture}
+                  onPointerUp={finishGesture}
+                  onPointerCancel={finishGesture}
+                />
+                {selected && !dragging ? (
+                  <div
+                    role="toolbar"
+                    aria-label={`${name} options`}
+                    className={`pointer-events-auto absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-1 shadow-e1 ${
+                      // A graph at the very top of the page keeps its options inside it.
+                      graph.y < 64 ? "top-2" : "bottom-full mb-2"
+                    }`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      aria-label="Zoom out"
+                      title="Zoom out"
+                      className={ACTION_CLASS}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        commitGraph({ ...graph, view: zoomGraphView(graph.view, 1.25) });
+                      }}
+                    >
+                      <NotebookIcon name="minus" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Zoom in"
+                      title="Zoom in"
+                      className={ACTION_CLASS}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        commitGraph({ ...graph, view: zoomGraphView(graph.view, 0.8) });
+                      }}
+                    >
+                      <NotebookIcon name="plus" />
+                    </button>
+                    {onEdit ? (
+                      <button
+                        type="button"
+                        className={ACTION_CLASS}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEdit(graph.id);
+                        }}
+                      >
+                        <NotebookIcon name="graph" />
+                        Edit
+                      </button>
+                    ) : null}
+                    {onDelete ? (
+                      <button
+                        type="button"
+                        aria-label={`Delete ${name}`}
+                        className={`${ACTION_CLASS} hover:text-[var(--color-error-mark)]`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDelete(graph.id);
+                        }}
+                      >
+                        <NotebookIcon name="trash" />
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {selected
+                  ? RESIZE_CORNERS.map((handle) => (
+                      <button
+                        key={handle.corner}
+                        type="button"
+                        aria-label={`${handle.label} of ${name}`}
+                        title={handle.label}
+                        className={`group pointer-events-auto absolute z-10 inline-grid h-8 w-8 touch-none place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/55 ${handle.positionClass} ${handle.cursorClass}`}
+                        onPointerDown={(event) => startGesture(graph, event, handle.corner)}
+                        onPointerMove={moveGesture}
+                        onPointerUp={finishGesture}
+                        onPointerCancel={finishGesture}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="h-4 w-4 rounded-full border-2 border-white bg-accent shadow-e1 transition group-hover:scale-110"
+                        />
+                      </button>
+                    ))
+                  : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default memo(NotebookGraphLayer);

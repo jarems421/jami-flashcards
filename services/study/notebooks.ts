@@ -58,6 +58,11 @@ import {
   splitNotebookPageForPersistence,
   type NotebookPageInkRecord,
 } from "@/lib/workspace/notebook-page-ink-split";
+import {
+  MAX_NOTEBOOK_GRAPHS,
+  normalizeNotebookGraphBlocks,
+  type NotebookGraphBlock,
+} from "@/lib/workspace/notebook-graphs";
 import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const LOAD_MS = 30_000;
@@ -667,6 +672,51 @@ export async function updateNotebookPageImages(
     }),
     WRITE_MS,
     "Move notebook illustration"
+  );
+  invalidateDashboardData(normalizedUserId);
+  return result;
+}
+
+/**
+ * Saves the graphs on a page. Like images they are a field of their own, which
+ * an ink or text save never writes, so this neither checks nor bumps the page's
+ * content revision; see updateNotebookPageImages for why that matters.
+ */
+export async function updateNotebookPageGraphs(
+  userId: string,
+  input: {
+    notebookId: string;
+    pageId: string;
+    graphBlocks: NotebookGraphBlock[];
+  }
+) {
+  const normalizedUserId = userId.trim();
+  const notebookId = input.notebookId.trim();
+  const pageId = input.pageId.trim();
+  if (!normalizedUserId || !notebookId || !pageId) {
+    throw new Error("Missing notebook graph target.");
+  }
+  if (input.graphBlocks.length > MAX_NOTEBOOK_GRAPHS) {
+    throw new Error(`A page can hold up to ${MAX_NOTEBOOK_GRAPHS} graphs.`);
+  }
+  const graphBlocks = normalizeNotebookGraphBlocks(input.graphBlocks);
+  if (graphBlocks.length !== input.graphBlocks.length) {
+    throw new Error("One of the graphs on this page is invalid.");
+  }
+  const pageRef = doc(db, "users", normalizedUserId, "notebookPages", pageId);
+  const result = await withTimeout(
+    runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(pageRef);
+      if (!snapshot.exists()) throw new Error("This notebook page no longer exists.");
+      if (snapshot.data().notebookId !== notebookId) {
+        throw new Error("This page does not belong to the open notebook.");
+      }
+      const updatedAt = Date.now();
+      transaction.update(pageRef, { graphBlocks, updatedAt });
+      return { updatedAt };
+    }),
+    WRITE_MS,
+    "Save notebook graph"
   );
   invalidateDashboardData(normalizedUserId);
   return result;

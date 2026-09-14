@@ -46,6 +46,8 @@ type Props = {
   /** A picture chosen from the device, to place on the current page. */
   onAddImage: (file: File) => void;
   addingImage: boolean;
+  /** Opens the graph editor, to plot a new graph on the current page. */
+  onAddGraph: () => void;
   undoDepth: number;
   redoDepth: number;
   onUndo: () => void;
@@ -82,6 +84,7 @@ function NotebookDrawingToolbar({
   onSelectTool,
   onAddImage,
   addingImage,
+  onAddGraph,
   undoDepth,
   redoDepth,
   onUndo,
@@ -170,6 +173,7 @@ function NotebookDrawingToolbar({
             if (file) onAddImage(file);
           }}
         />
+        <ToolbarIconButton label="Add graph" icon="graph" onClick={onAddGraph} />
         <span
           aria-hidden="true"
           className={`shrink-0 rounded-full bg-[var(--color-border)] ${

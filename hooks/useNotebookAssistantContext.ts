@@ -4,6 +4,7 @@ import { useCallback, type RefObject } from "react";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type { Notebook, NotebookFile, NotebookImageRef } from "@/lib/workspace/notebooks";
+import { describeNotebookGraphsForTutor } from "@/lib/workspace/notebook-graphs";
 import type { NotebookPdfCanvasTracking } from "@/lib/workspace/notebook-pdf-canvas";
 import {
   readBlobAsBase64,
@@ -113,6 +114,8 @@ export function useNotebookAssistantContext({
     const capturedPageStyle = pageState.read().pageStyle;
     const capturedHasInk = editor.hasInk();
     const capturedImages = page.imageRefs.map((image) => ({ ...image }));
+    // Graphs are not in the page picture, so the Tutor is told what they plot.
+    const capturedGraphs = describeNotebookGraphsForTutor(page.graphBlocks);
 
     const assertCaptureIsCurrent = () => {
       if (
@@ -215,7 +218,7 @@ export function useNotebookAssistantContext({
         height: snapshot.height,
         dataBase64,
       },
-      typedText: snapshot.typedText || undefined,
+      typedText: [snapshot.typedText, capturedGraphs].filter(Boolean).join("\n\n") || undefined,
       questionPrompt: page.questionPrompt?.trim() || undefined,
       hasInk: capturedHasInk,
       imageCount: capturedImages.length,

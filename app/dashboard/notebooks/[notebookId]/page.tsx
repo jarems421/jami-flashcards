@@ -19,6 +19,8 @@ import NotebookQuestionOverlay from "@/components/workspace/NotebookQuestionOver
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayers";
 import NotebookImageLayer from "@/components/workspace/NotebookImageLayer";
+import NotebookGraphLayer from "@/components/workspace/NotebookGraphLayer";
+import NotebookGraphEditorDialog from "@/components/workspace/NotebookGraphEditorDialog";
 import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
 import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
 import NotebookPagesDrawer from "@/components/workspace/NotebookPagesDrawer";
@@ -120,8 +122,15 @@ import {
 } from "@/lib/workspace/notebook-inking";
 import { getNotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 import {
+  createNotebookGraphBlock,
+  MAX_NOTEBOOK_GRAPHS,
+  type NotebookGraphBlock,
+  type NotebookGraphDraft,
+} from "@/lib/workspace/notebook-graphs";
+import {
   createNotebookPage,
   deleteNotebookPage,
+  updateNotebookPageGraphs,
   updateNotebookPageImages,
 } from "@/services/study/notebooks";
 import {
@@ -312,6 +321,9 @@ export default function NotebookEditorPage() {
   const [practicePaperEditingLocked, setPracticePaperEditingLocked] = useState(false);
   const [practicePaperTutorLocked, setPracticePaperTutorLocked] = useState(false);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
+  /** The id of the graph open in the editor, "new" while one is being made, or null. */
+  const [graphEditorTarget, setGraphEditorTarget] = useState<string | null>(null);
   const handlePracticePaperRetake = usePracticePaperRetake(pageState, setPages, setInkEditorMountRevision);
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
@@ -355,7 +367,8 @@ export default function NotebookEditorPage() {
           inkHasContent ||
           selectedPage?.inkData?.svg ||
           (selectedPage?.strokeData?.strokes.length ?? 0) > 0 ||
-          (selectedPage?.imageRefs.length ?? 0) > 0
+          (selectedPage?.imageRefs.length ?? 0) > 0 ||
+          (selectedPage?.graphBlocks.length ?? 0) > 0
       ),
     [inkHasContent, selectedPage, textBlocks]
   );
@@ -2395,6 +2408,166 @@ export default function NotebookEditorPage() {
     [applyPageImages, currentImageRefsFor, notebookId, pageState, queueImageWrite, showThrownError, user?.uid]
   );
 
+  /** The last graph list written or asked for, per page, ahead of `pages`. */
+  const latestGraphBlocksRef = useRef<{ pageId: string; graphBlocks: NotebookGraphBlock[] } | null>(
+    null
+  );
+
+  const currentGraphBlocksFor = useCallback(
+    (pageId: string) => {
+      const latest = latestGraphBlocksRef.current;
+      if (latest?.pageId === pageId) return latest.graphBlocks;
+      const selected = pageState.read().selectedPage;
+      return selected?.id === pageId ? selected.graphBlocks : [];
+    },
+    [pageState]
+  );
+
+  const applyPageGraphs = useCallback(
+    (pageId: string, graphBlocks: NotebookGraphBlock[], updatedAt: number) => {
+      latestGraphBlocksRef.current = { pageId, graphBlocks };
+      setPages((current) =>
+        current.map((page) => (page.id === pageId ? { ...page, graphBlocks, updatedAt } : page))
+      );
+    },
+    [setPages]
+  );
+
+  /*
+   * Shown at once and saved behind, through the image write queue: graphs and
+   * images are both single fields on the page, and one queue keeps two quick
+   * edits from landing in the wrong order. A refused write puts back what was
+   * there and says so, so callers do not report failures themselves.
+   */
+  const writePageGraphs = useCallback(
+    async (pageId: string, graphBlocks: NotebookGraphBlock[], failureMessage: string) => {
+      if (!user?.uid || !notebookId) return false;
+      const userId = user.uid;
+      const before = currentGraphBlocksFor(pageId);
+      applyPageGraphs(pageId, graphBlocks, Date.now());
+      const stillLatest = () => latestGraphBlocksRef.current?.graphBlocks === graphBlocks;
+      try {
+        await queueImageWrite(async () => {
+          const result = await updateNotebookPageGraphs(userId, { notebookId, pageId, graphBlocks });
+          // A newer edit already on screen is not replaced by this older one.
+          if (stillLatest()) applyPageGraphs(pageId, graphBlocks, result.updatedAt);
+        });
+        return true;
+      } catch (error) {
+        if (stillLatest()) applyPageGraphs(pageId, before, Date.now());
+        showThrownError(error, failureMessage);
+        return false;
+      }
+    },
+    [applyPageGraphs, currentGraphBlocksFor, notebookId, queueImageWrite, showThrownError, user?.uid]
+  );
+
+  const handleNotebookGraphsCommit = useCallback(
+    async (graphBlocks: NotebookGraphBlock[]) => {
+      const pageId = pageState.read().selectedPage?.id;
+      if (pageId) await writePageGraphs(pageId, graphBlocks, "That graph could not be changed. Try again.");
+    },
+    [pageState, writePageGraphs]
+  );
+
+  // One thing selected at a time, so the options showing belong to what was tapped last.
+  const handleSelectGraph = useCallback((graphId: string | null) => {
+    setSelectedGraphId(graphId);
+    if (graphId) setSelectedImageId(null);
+  }, []);
+
+  const handleSelectImage = useCallback((imageId: string | null) => {
+    setSelectedImageId(imageId);
+    if (imageId) setSelectedGraphId(null);
+  }, []);
+
+  const handleOpenNewGraph = useCallback(() => {
+    closeDrawingToolMenus();
+    setGraphEditorTarget("new");
+  }, [closeDrawingToolMenus]);
+
+  const selectPlacedGraph = useCallback(
+    (graphId: string) => {
+      if (isPhoneLayout) return;
+      // Selected and ready to move or resize, which is almost always next.
+      switchNotebookTool("select");
+      setSelectedGraphId(graphId);
+      setSelectedImageId(null);
+    },
+    [isPhoneLayout, switchNotebookTool]
+  );
+
+  const handleSaveGraph = useCallback(
+    (draft: NotebookGraphDraft) => {
+      const pageId = pageState.read().selectedPage?.id;
+      const target = graphEditorTarget;
+      setGraphEditorTarget(null);
+      if (!pageId || !target) return;
+      const current = currentGraphBlocksFor(pageId);
+      const existing = current.find((graph) => graph.id === target);
+      if (existing) {
+        const { id, x, y, width, height } = existing;
+        void writePageGraphs(
+          pageId,
+          current.map((graph) => (graph.id === id ? { id, x, y, width, height, ...draft } : graph)),
+          "That graph could not be saved. Try again."
+        );
+        selectPlacedGraph(id);
+        return;
+      }
+      if (current.length >= MAX_NOTEBOOK_GRAPHS) {
+        showError(`A page can hold up to ${MAX_NOTEBOOK_GRAPHS} graphs. Delete one to add another.`);
+        return;
+      }
+      const created = createNotebookGraphBlock(crypto.randomUUID(), draft);
+      void writePageGraphs(pageId, [...current, created], "That graph could not be added. Try again.");
+      selectPlacedGraph(created.id);
+    },
+    [currentGraphBlocksFor, graphEditorTarget, pageState, selectPlacedGraph, showError, writePageGraphs]
+  );
+
+  const handleDeleteGraph = useCallback(
+    (graphId: string) => {
+      const pageId = pageState.read().selectedPage?.id;
+      if (!pageId) return;
+      setSelectedGraphId(null);
+      void writePageGraphs(
+        pageId,
+        currentGraphBlocksFor(pageId).filter((graph) => graph.id !== graphId),
+        "That graph could not be deleted. Try again."
+      );
+    },
+    [currentGraphBlocksFor, pageState, writePageGraphs]
+  );
+
+  const handleTutorGraphInsert = useCallback(
+    async (draft: NotebookGraphDraft) => {
+      const pageId = pageState.read().selectedPage?.id;
+      if (!pageId) return false;
+      const current = currentGraphBlocksFor(pageId);
+      if (current.length >= MAX_NOTEBOOK_GRAPHS) {
+        showError(`A page can hold up to ${MAX_NOTEBOOK_GRAPHS} graphs. Delete one to add this one.`);
+        return false;
+      }
+      const created = createNotebookGraphBlock(crypto.randomUUID(), draft);
+      const added = await writePageGraphs(pageId, [...current, created], "That graph could not be added. Try again.");
+      if (!added) return false;
+      if (pageState.read().selectedPage?.id === pageId) selectPlacedGraph(created.id);
+      success("Graph added to this page.");
+      return true;
+    },
+    [currentGraphBlocksFor, pageState, selectPlacedGraph, showError, success, writePageGraphs]
+  );
+
+  useEffect(() => {
+    setSelectedGraphId(null);
+    setGraphEditorTarget(null);
+  }, [selectedPage?.id]);
+
+  useEffect(() => {
+    if (tool !== "select") setSelectedGraphId(null);
+  }, [tool]);
+
   const handleToolbarUndo = useCallback(() => {
     closeDrawingToolMenus();
     handleUndo();
@@ -2722,8 +2895,15 @@ export default function NotebookEditorPage() {
             settingsFolderIds={notebook.folderId ? [notebook.folderId] : []}
             onBeforeIllustrationInsert={() => saveCurrentPage({ flush: true })}
             onIllustrationInserted={handleIllustrationInserted}
+            onGraphInsert={handleTutorGraphInsert}
           />
         ) : null}
+        <NotebookGraphEditorDialog
+          open={graphEditorTarget !== null}
+          graph={selectedPage?.graphBlocks.find((graph) => graph.id === graphEditorTarget) ?? null}
+          onCancel={() => setGraphEditorTarget(null)}
+          onSave={handleSaveGraph}
+        />
         {pagesDrawerOpen ? (
           <NotebookPagesDrawer
             pages={pages}
@@ -2878,9 +3058,23 @@ export default function NotebookEditorPage() {
                       !practicePaperEditingLocked
                     }
                     selectedImageId={selectedImageId}
-                    onSelect={setSelectedImageId}
+                    onSelect={handleSelectImage}
                     onCommit={handleNotebookImagesCommit}
                     onDelete={handleDeleteImage}
+                  />
+                  <NotebookGraphLayer
+                    graphs={selectedPage.graphBlocks}
+                    editingEnabled={
+                      tool === "select" &&
+                      fullNotebookEditingEnabled &&
+                      !isPhoneLayout &&
+                      !practicePaperEditingLocked
+                    }
+                    selectedGraphId={selectedGraphId}
+                    onSelect={handleSelectGraph}
+                    onCommit={handleNotebookGraphsCommit}
+                    onEdit={setGraphEditorTarget}
+                    onDelete={handleDeleteGraph}
                   />
                   <NotebookTextBlockLayer
                     textBlocks={textBlocks}
@@ -2978,6 +3172,7 @@ export default function NotebookEditorPage() {
                 onSelectTool={handleSelectTool}
                 onAddImage={handleAddImage}
                 addingImage={addingImage}
+                onAddGraph={handleOpenNewGraph}
                 undoDepth={undoDepth}
                 redoDepth={redoDepth}
                 onUndo={handleToolbarUndo}

@@ -80,6 +80,7 @@ const page: NotebookPage = {
     svg: "<svg></svg>",
   },
   imageRefs: [],
+  graphBlocks: [],
   pdfPageIndex: 3,
   pageColor: "white",
   pageStyle: "plain",

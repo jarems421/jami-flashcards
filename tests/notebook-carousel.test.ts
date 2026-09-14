@@ -17,6 +17,7 @@ function makePage(id: string): NotebookPage {
     pageType: "blank",
     textBlocks: [],
     imageRefs: [],
+    graphBlocks: [],
     pageColor: "white",
     pageStyle: "plain",
     status: "blank",

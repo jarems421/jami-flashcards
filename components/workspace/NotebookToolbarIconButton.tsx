@@ -24,7 +24,8 @@ export type NotebookIconName =
   | "image"
   | "select"
   | "expand"
-  | "minus";
+  | "minus"
+  | "graph";
 
 // Hand-drawn on a consistent 24px grid with a uniform 1.8 stroke, rounded
 // caps/joins, and shared optical margins, so the set reads as one family.
@@ -162,6 +163,12 @@ export function NotebookIcon({ name }: { name: NotebookIconName }) {
         />
       ) : null}
       {name === "minus" ? <path {...common} d="M5.5 12h13" /> : null}
+      {name === "graph" ? (
+        <>
+          <path {...common} d="M4.8 4.8v14.4h14.4" />
+          <path {...common} d="M7.6 16.4c1.9-6.9 4.1-8.6 5.8-5.6 1.3 2.3 2.8 2.2 4.4-2.6" />
+        </>
+      ) : null}
       {name === "select" ? (
         <path {...common} d="M6.2 4.6 18.4 10.8l-5.5 1.7-2.6 5.4L6.2 4.6Z" />
       ) : null}

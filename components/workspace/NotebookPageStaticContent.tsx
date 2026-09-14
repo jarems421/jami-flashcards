@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import NotebookGraphLayer from "@/components/workspace/NotebookGraphLayer";
 import NotebookImageLayer from "@/components/workspace/NotebookImageLayer";
 import NotebookPageBackground from "@/components/workspace/NotebookPageBackground";
 import type {
@@ -61,6 +62,7 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
         inkClassName="pointer-events-none absolute inset-0 z-[12] object-fill"
       />
       <NotebookImageLayer images={page.imageRefs} />
+      <NotebookGraphLayer graphs={page.graphBlocks} />
       {page.textBlocks.map((block) => (
         <div
           key={block.id}

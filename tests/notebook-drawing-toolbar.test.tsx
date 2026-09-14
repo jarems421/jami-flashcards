@@ -17,6 +17,7 @@ const onSelectDrawingTool = vi.fn();
 const onToggleTextTool = vi.fn();
 const onSelectTool = vi.fn();
 const onAddImage = vi.fn();
+const onAddGraph = vi.fn();
 const onUndo = vi.fn();
 const onRedo = vi.fn();
 
@@ -45,6 +46,7 @@ function render(
         onSelectTool={onSelectTool}
         onAddImage={onAddImage}
         addingImage={overrides.addingImage ?? false}
+        onAddGraph={onAddGraph}
         undoDepth={overrides.undoDepth ?? 0}
         redoDepth={overrides.redoDepth ?? 0}
         onUndo={onUndo}

@@ -29,6 +29,7 @@ function makePage(): NotebookPage {
       ],
     },
     imageRefs: [],
+    graphBlocks: [],
     pageColor: "white",
     pageStyle: "plain",
     status: "working",

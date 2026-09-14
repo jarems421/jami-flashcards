@@ -47,6 +47,10 @@ import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard
 import TutorReasoningMenu from "@/components/ai/TutorReasoningMenu";
 import AssistantAnswerBody from "@/components/ai/AssistantAnswerBody";
 import {
+  AssistantGraphActionsContext,
+  type AssistantGraphActions,
+} from "@/components/ai/AssistantGraphActions";
+import {
   Dialog,
   DialogBackdrop,
   DialogPanel,
@@ -56,6 +60,7 @@ import {
   SymbolKeyboard,
 } from "@/components/ui";
 import type { NotebookImageRef } from "@/lib/workspace/notebooks";
+import type { NotebookGraphDraft } from "@/lib/workspace/notebook-graphs";
 import {
   CloseIcon,
   HistoryIcon,
@@ -121,6 +126,11 @@ type JamiAssistantDrawerProps = {
   }) => void;
   onBeforeIllustrationInsert?: () => boolean | Promise<boolean>;
   /**
+   * Adds a graph from an answer to the open notebook page. Resolves true once
+   * it is on the page; the notebook reports its own failures.
+   */
+  onGraphInsert?: (graph: NotebookGraphDraft) => Promise<boolean>;
+  /**
    * The folders this conversation's material belongs to, when the surface
    * knows.
    *
@@ -155,6 +165,7 @@ export default function JamiAssistantDrawer({
   emptyStateNote,
   onIllustrationInserted,
   onBeforeIllustrationInsert,
+  onGraphInsert,
   settingsFolderIds,
 }: JamiAssistantDrawerProps) {
   const [messages, setMessages] = useState<DrawerMessage[]>([]);
@@ -175,6 +186,9 @@ export default function JamiAssistantDrawer({
   const [insertedIllustrationIds, setInsertedIllustrationIds] = useState<Set<string>>(
     () => new Set()
   );
+  /** Graphs already added from this conversation, keyed by their source. */
+  const [insertedGraphKeys, setInsertedGraphKeys] = useState<Set<string>>(() => new Set());
+  const [insertingGraphKey, setInsertingGraphKey] = useState<string | null>(null);
   /*
    * Wide screens have room for the drawer to sit beside the work rather than
    * over it. Jami is meant to nudge you towards an answer you are looking at,
@@ -271,6 +285,7 @@ export default function JamiAssistantDrawer({
     setThreadLoading(false);
     setActiveThread(null);
     setInsertedIllustrationIds(new Set());
+    setInsertedGraphKeys(new Set());
     setGeneratingIllustrationId(null);
     setInsertingIllustrationId(null);
     onOpenChange(false);
@@ -329,6 +344,7 @@ export default function JamiAssistantDrawer({
     setThreadLoading(false);
     setActiveThread(null);
     setInsertedIllustrationIds(new Set());
+    setInsertedGraphKeys(new Set());
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }, [abandonActiveRequest]);
 
@@ -493,6 +509,21 @@ export default function JamiAssistantDrawer({
       onIllustrationInserted,
     ]
   );
+
+  const graphActions: AssistantGraphActions = {
+    canInsert: Boolean(onGraphInsert) && contextKey.startsWith("notebook:") && !viewingForeignThread,
+    insertingKey: insertingGraphKey,
+    isInserted: (key) => insertedGraphKeys.has(key),
+    insert: (key, graph) => {
+      if (!onGraphInsert || insertingGraphKey) return;
+      setInsertingGraphKey(key);
+      void onGraphInsert(graph)
+        .then((added) => {
+          if (added) setInsertedGraphKeys((current) => new Set(current).add(key));
+        })
+        .finally(() => setInsertingGraphKey(null));
+    },
+  };
 
   const sendMessage = useCallback(
     async (rawMessage: string) => {
@@ -860,6 +891,7 @@ export default function JamiAssistantDrawer({
                       }`}
                     >
                       {message.role === "assistant" ? (
+                        <AssistantGraphActionsContext.Provider value={graphActions}>
                         <AssistantAnswerBody
                           text={message.text}
                           illustrations={message.illustrations ?? []}
@@ -880,6 +912,7 @@ export default function JamiAssistantDrawer({
                             />
                           )}
                         />
+                        </AssistantGraphActionsContext.Provider>
                       ) : (
                         <StudyText
                           text={message.text}

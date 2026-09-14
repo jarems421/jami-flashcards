@@ -9,6 +9,10 @@ import {
 import { normalizeInkPressure, normalizeInkTime } from "@/lib/workspace/notebook-ink-engine";
 import type { NotebookStrokeTool } from "@/lib/workspace/notebook-ink-types";
 import { compactNotebookInkSvg } from "@/lib/workspace/notebook-ink-compaction";
+import {
+  normalizeNotebookGraphBlocks,
+  type NotebookGraphBlock,
+} from "@/lib/workspace/notebook-graphs";
 
 export type { NotebookStrokeTool } from "@/lib/workspace/notebook-ink-types";
 
@@ -152,6 +156,8 @@ export type NotebookPage = {
    */
   thumbnail?: NotebookPageThumbnailData;
   imageRefs: NotebookImageRef[];
+  /** Graphs plotted from their functions and points; see notebook-graphs.ts. */
+  graphBlocks: NotebookGraphBlock[];
   backgroundFileId?: string;
   pdfPageIndex?: number;
   pageColor: NotebookPageColor;
@@ -911,6 +917,7 @@ export function mapNotebookPageData(
     strokeData: normalizeNotebookStrokeData(data.strokeData),
     thumbnail: normalizeThumbnailData(data.thumbnail),
     imageRefs: normalizeNotebookImageRefs(data.imageRefs),
+    graphBlocks: normalizeNotebookGraphBlocks(data.graphBlocks),
     backgroundFileId: normalizeOptionalString(data.backgroundFileId, 160),
     pdfPageIndex:
       typeof data.pdfPageIndex === "number" &&
@@ -999,6 +1006,7 @@ export function buildNotebookPagePayload(input: {
   inkData?: NotebookInkData;
   strokeData?: NotebookStrokeData;
   imageRefs?: NotebookImageRef[];
+  graphBlocks?: NotebookGraphBlock[];
   backgroundFileId?: string;
   pdfPageIndex?: number;
   pageColor?: NotebookPageColor;
@@ -1079,6 +1087,7 @@ export function buildNotebookPagePayload(input: {
     inkData: inkData ?? null,
     strokeData: strokeData ?? null,
     imageRefs: normalizeNotebookImageRefs(input.imageRefs ?? []),
+    graphBlocks: normalizeNotebookGraphBlocks(input.graphBlocks ?? []),
     backgroundFileId: normalizeOptionalString(input.backgroundFileId, 160) ?? null,
     pdfPageIndex:
       typeof input.pdfPageIndex === "number" &&
