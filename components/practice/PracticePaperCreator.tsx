@@ -13,6 +13,7 @@ import {
   Input,
   JamiTutorIcon,
   OptionSwitch,
+  ElapsedTime,
   ProgressBar,
   Select,
   Skeleton,
@@ -610,7 +611,10 @@ export default function PracticePaperCreator() {
               Cancel
             </Button>
           </div>
-          <ProgressBar progress={activeJob.progress} size="sm" className="mt-3" />
+          <div className="mt-3 flex items-center gap-3">
+            <ProgressBar progress={activeJob.progress} size="sm" className="flex-1" />
+            <ElapsedTime startedAt={activeJob.createdAt} label="Building for" className="shrink-0 text-xs text-text-muted" />
+          </div>
         </div>
       ) : null}
 
@@ -840,7 +844,10 @@ export default function PracticePaperCreator() {
           <div>
             <div className="mb-2 flex justify-between text-xs font-medium text-text-muted">
               <span>Adding files</span>
-              <span className="tabular-nums">{progress}%</span>
+              <span className="flex gap-2 tabular-nums">
+                <ElapsedTime />
+                <span>{progress}%</span>
+              </span>
             </div>
             <ProgressBar progress={progress} size="sm" />
           </div>

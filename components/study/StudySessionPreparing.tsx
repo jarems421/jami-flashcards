@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, ProgressBar } from "@/components/ui";
+import { Button, ElapsedTime, ProgressBar } from "@/components/ui";
 
 type StudySessionPreparingProps = {
   /** Cards Jami has finished, out of the few being waited for. */
@@ -57,8 +57,11 @@ export default function StudySessionPreparing({
 
       <div className="w-full space-y-2">
         <ProgressBar progress={percent} size="sm" />
-        <p className="text-2xs tabular-nums text-text-muted">
-          {done} of {total} ready
+        <p className="flex justify-center gap-2 text-2xs tabular-nums text-text-muted">
+          <span>
+            {done} of {total} ready
+          </span>
+          <ElapsedTime label="Preparing for" />
         </p>
       </div>
 

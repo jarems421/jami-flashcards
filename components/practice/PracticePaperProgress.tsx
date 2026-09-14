@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
+import { Button, Card, ElapsedTime, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
 import type {
   PracticePaperAttempt,
   PracticePaperJob,
@@ -12,6 +12,7 @@ import {
   getPaperBuilderJobs,
   isPracticePaperJobBuilding,
 } from "@/lib/practice/practice-paper-jobs";
+import { summarisePaperAttempts } from "@/lib/practice/practice-progress";
 import {
   acknowledgePracticePaperJob,
   getRecentPracticePaperJobs,
@@ -95,8 +96,9 @@ function BuilderJobRow({
             ) : null}
           </span>
           {building ? (
-            <span className="shrink-0 text-xs font-semibold tabular-nums text-text-secondary">
-              {job.progress}%
+            <span className="flex shrink-0 flex-col items-end text-xs font-semibold tabular-nums text-text-secondary">
+              <span>{job.progress}%</span>
+              <ElapsedTime startedAt={job.createdAt} label="Building for" className="text-2xs font-normal text-text-muted" />
             </span>
           ) : null}
           <svg
@@ -207,17 +209,8 @@ export default function PracticePaperProgress({ userId }: { userId: string }) {
     [attempts]
   );
 
-  const summary = useMemo(() => {
-    const percentages = marked.map((attempt) => attempt.result!.percentage);
-    const average = percentages.length > 0
-      ? Math.round(percentages.reduce((total, value) => total + value, 0) / percentages.length)
-      : 0;
-    return {
-      average,
-      best: percentages.length > 0 ? Math.max(...percentages) : 0,
-      change: percentages.length > 1 ? Math.round((percentages[0] - percentages[1]) * 10) / 10 : null,
-    };
-  }, [marked]);
+  // The same summary Progress shows, so the two pages cannot disagree.
+  const summary = useMemo(() => summarisePaperAttempts(marked), [marked]);
 
   const retry = async (job: PracticePaperJob) => {
     setBusyJobId(job.id);

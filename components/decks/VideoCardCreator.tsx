@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TopicPicker from "@/components/topics/TopicPicker";
-import { Button, Card as Panel, FileField, Input, OptionSwitch, ProgressBar, Select, Textarea } from "@/components/ui";
+import { Button, Card as Panel, ElapsedTime, FileField, Input, OptionSwitch, ProgressBar, Select, Textarea } from "@/components/ui";
 import {
   VIDEO_CARD_REVIEW_CEILING,
   VIDEO_MAX_BYTES,
@@ -392,7 +392,10 @@ export default function VideoCardCreator({
           <Panel tone="subtle" padding="md">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium text-text-primary">{STAGE[job.stage]}</span>
-              <span className="tabular-nums text-text-muted">{job.progress}%</span>
+              <span className="flex gap-2 tabular-nums text-text-muted">
+                <ElapsedTime startedAt={job.createdAt} label="Making cards for" />
+                <span>{job.progress}%</span>
+              </span>
             </div>
             <ProgressBar className="mt-3" progress={job.progress} size="sm" variant="warm" />
             <Button className="mt-4" variant="ghost" onClick={() => void cancel()}>

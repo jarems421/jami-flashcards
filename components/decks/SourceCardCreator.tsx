@@ -8,6 +8,7 @@ import {
   FileField,
   Input,
   OptionSwitch,
+  ElapsedTime,
   ProgressBar,
   Select,
   Textarea,
@@ -282,7 +283,10 @@ export default function SourceCardCreator({
           <Panel tone="subtle" padding="md">
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="font-medium text-text-primary">{STAGE_LABELS[job.stage]}</span>
-              <span className="tabular-nums text-text-muted">{job.progress}%</span>
+              <span className="flex gap-2 tabular-nums text-text-muted">
+                <ElapsedTime startedAt={job.createdAt} label="Making cards for" />
+                <span>{job.progress}%</span>
+              </span>
             </div>
             <ProgressBar className="mt-3" progress={job.progress} size="sm" variant="warm" />
             <Button className="mt-4" variant="ghost" onClick={() => void discard()}>Cancel</Button>

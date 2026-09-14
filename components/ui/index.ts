@@ -33,6 +33,7 @@ export {
 export { default as PageHero } from "./PageHero";
 export { default as Textarea } from "./Textarea";
 export { default as ProgressBar } from "./ProgressBar";
+export { default as ElapsedTime } from "./ElapsedTime";
 export { default as ViewTabs } from "./ViewTabs";
 export type { ViewTabItem } from "./ViewTabs";
 export { default as SectionHeader } from "./SectionHeader";

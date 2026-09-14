@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ProgressBar } from "@/components/ui";
+import { formatElapsed } from "@/lib/app/elapsed-time";
 import {
   examGenerationProgress,
   examGenerationStage,
@@ -30,7 +31,6 @@ export default function ExamGenerationProgress({
   }, []);
 
   const elapsed = Math.max(0, now - startedAt);
-  const seconds = Math.floor(elapsed / 1000);
 
   return (
     <div className="mt-4">
@@ -44,7 +44,7 @@ export default function ExamGenerationProgress({
           {examGenerationStage(elapsed, count)}
         </p>
         <span aria-hidden="true" className="shrink-0 text-xs tabular-nums text-text-muted">
-          {seconds}s
+          {formatElapsed(elapsed)}
         </span>
       </div>
       <ProgressBar progress={examGenerationProgress(elapsed, count)} className="mt-3" />

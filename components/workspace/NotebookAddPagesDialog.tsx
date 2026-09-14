@@ -7,6 +7,7 @@ import {
   DialogDescription,
   DialogPanel,
   DialogTitle,
+  ElapsedTime,
 } from "@/components/ui";
 
 type NotebookAddPagesDialogProps = {
@@ -62,18 +63,27 @@ export default function NotebookAddPagesDialog({
           />
         </label>
         {adding && progress !== null ? (
-          <div
-            role="progressbar"
-            aria-label="Notebook file upload progress"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress}
-            className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--color-glass-subtle)]"
-          >
+          <div className="mt-3">
+            <div className="mb-1.5 flex items-center justify-between text-xs text-text-muted">
+              <span>Adding pages</span>
+              <span className="flex gap-2 tabular-nums">
+                <ElapsedTime label="Adding pages for" />
+                <span>{progress}%</span>
+              </span>
+            </div>
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
-              style={{ width: `${progress}%` }}
-            />
+              role="progressbar"
+              aria-label="Notebook file upload progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress}
+              className="h-2 overflow-hidden rounded-full bg-[var(--color-glass-subtle)]"
+            >
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
           </div>
         ) : null}
         <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[var(--color-border)] pt-3">

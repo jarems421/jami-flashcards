@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ConfirmDialog, FeedbackBanner, ProgressBar } from "@/components/ui";
+import { Button, ConfirmDialog, ElapsedTime, FeedbackBanner, ProgressBar } from "@/components/ui";
 import {
   Dialog,
   DialogBackdrop,
@@ -546,7 +546,10 @@ export default function PracticePaperAttemptBar({
           <div className="mt-3 border-t border-[var(--color-border)] pt-3">
             <div className="flex items-center justify-between gap-3 text-xs text-text-muted">
               <span>{PRACTICE_PAPER_MARKING_STAGE_LABELS[markingJob.stage]}</span>
-              <span className="tabular-nums">{markingJob.progress}%</span>
+              <span className="flex gap-2 tabular-nums">
+                <ElapsedTime startedAt={markingJob.createdAt} label="Marking for" />
+                <span>{markingJob.progress}%</span>
+              </span>
             </div>
             <ProgressBar progress={markingJob.progress} className="mt-2" />
             {markingJob.status === "paused" ? (

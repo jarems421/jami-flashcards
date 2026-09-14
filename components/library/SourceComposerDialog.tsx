@@ -1,4 +1,5 @@
 "use client";
+import ElapsedTime from "@/components/ui/ElapsedTime";
 
 import { useEffect, useRef, useState } from "react";
 import type { SourceType } from "@/lib/material/sources";
@@ -353,7 +354,10 @@ export default function SourceComposerDialog({
           <div>
             <div className="mb-2 flex items-center justify-between text-xs text-text-muted">
               <span>Uploading file</span>
-              <span>{uploadProgress}%</span>
+              <span className="flex gap-2 tabular-nums">
+                <ElapsedTime label="Uploading for" />
+                <span>{uploadProgress}%</span>
+              </span>
             </div>
             <div
               role="progressbar"

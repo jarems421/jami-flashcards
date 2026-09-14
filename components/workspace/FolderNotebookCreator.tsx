@@ -6,7 +6,7 @@ import { NotebookObjectCard } from "@/components/workspace/NotebookObjectCard";
 import NotebookPageDefaultsPicker from "@/components/workspace/NotebookPageDefaultsPicker";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import WorkspaceActionDialog from "@/components/workspace/WorkspaceActionDialog";
-import { Button, FeedbackBanner, Input } from "@/components/ui";
+import { Button, ElapsedTime, FeedbackBanner, Input } from "@/components/ui";
 import FormDisclosure from "@/components/ui/FormDisclosure";
 import type { Topic } from "@/lib/material/topics";
 import type {
@@ -144,18 +144,21 @@ export default function FolderNotebookCreator({
   const footer = (
     <div className="grid gap-3">
       {file && creating && uploadProgress !== null ? (
-        <div
-          role="progressbar"
-          aria-label="Notebook file import progress"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={uploadProgress}
-          className="h-1.5 overflow-hidden rounded-full bg-[var(--color-glass-subtle)]"
-        >
+        <div className="flex items-center gap-3">
           <div
-            className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
-            style={{ width: `${uploadProgress}%` }}
-          />
+            role="progressbar"
+            aria-label="Notebook file import progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={uploadProgress}
+            className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-glass-subtle)]"
+          >
+            <div
+              className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+          <ElapsedTime label="Importing for" className="shrink-0 text-xs text-text-muted" />
         </div>
       ) : null}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
