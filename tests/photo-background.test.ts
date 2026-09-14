@@ -227,13 +227,18 @@ describe("the photo is on the document before the first paint", () => {
     }
   });
 
-  it("keeps the photo off the constellation page, which draws its own sky", () => {
+  /*
+   * The constellation page was the last one left out. Its sky is a panel of its
+   * own, so the photo sits around it like every other page rather than behind
+   * the stars.
+   */
+  it("shows the photo on the constellation page too", () => {
     const { classes, properties } = run(
       { "jami:app-theme": "pink", [PHOTO_BACKGROUND_STORAGE_KEY]: JSON.stringify(cached) },
       "/dashboard/constellation"
     );
-    expect(classes).toEqual(getActiveAppThemeClassNames("pink"));
-    expect(properties).toEqual({});
+    expect(classes).toEqual(["photo-background-enabled", `photo-background-${dark.scheme}`]);
+    expect(properties["--photo-image"]).toBe(`url("${cached.imageUrl}")`);
   });
 
   it("shows no photo on a notebook while the sky is the chosen background", () => {

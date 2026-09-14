@@ -19,7 +19,6 @@ import {
   type AppThemePreference,
 } from "@/lib/app/theme-preference";
 import {
-  allowsPhotoBackground,
   getPhotoBackgroundClassNames,
   PHOTO_BACKGROUND_CLASS_NAMES,
   PHOTO_BACKGROUND_EVENT,
@@ -129,12 +128,11 @@ export default function ConstellationBackgroundShell({
    * the sky off -- so the later choice wins on this device, including on the
    * notebook pages the sky itself cannot be drawn on.
    *
-   * A photo has its own, much shorter, list of excluded paths: it is a still
-   * image, so it can sit behind notebooks and past-paper questions.
+   * A photo has no excluded paths: it is a still image, so it can sit behind
+   * notebooks, past-paper questions and the constellation page alike.
    */
   const skyIsPreferred = isEnabled && !isCrashMarked;
-  const photo =
-    !skyIsPreferred && allowsPhotoBackground(pathname ?? "") ? photoBackground : null;
+  const photo = !skyIsPreferred ? photoBackground : null;
   /** Either background brings its own palette, so the colour theme stands aside. */
   const shouldShowBackground = showsSky || Boolean(photo);
 

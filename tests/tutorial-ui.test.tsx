@@ -51,8 +51,9 @@ vi.mock("@/services/constellation/stars", () => ({
     createOnboardingStarIfMissing(...args),
 }));
 
-const HOLD_MS = 3_200;
-const FADE_MS = 300;
+// The star reward's hold and fade, which is calmer and a little longer now.
+const HOLD_MS = 4_000;
+const FADE_MS = 400;
 const SPOTLIGHT_HOLD_MS = 2_400;
 
 let container: HTMLDivElement;

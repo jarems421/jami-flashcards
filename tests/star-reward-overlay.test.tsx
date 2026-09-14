@@ -26,8 +26,8 @@ vi.mock("next/link", () => ({
 // jsdom does not give this file a file: URL, so the repo root comes from cwd.
 const rootDir = process.cwd();
 
-const HOLD_MS = 3_200;
-const FADE_MS = 300;
+const HOLD_MS = 4_000;
+const FADE_MS = 400;
 
 const star: Star = {
   id: "onboarding-first-loop",
@@ -181,6 +181,21 @@ describe("the star reward moment", () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
+  /*
+   * The reward used to be its own drawing, so the star earned here and the star
+   * found in the sky looked like two different things. It is now the sky's own
+   * star: glow, bloom and sparkles from the same component.
+   */
+  it("shows the same sparkling star as the sky, on a window of night", async () => {
+    await render({ star, goalName: "First study loop" });
+
+    const sky = document.querySelector<HTMLDivElement>(".star-reward-sky");
+    expect(sky).not.toBeNull();
+    const layers = Array.from(sky!.querySelectorAll<HTMLElement>("[style]"));
+    expect(layers.some((layer) => layer.style.animationName === "constellation-twinkle")).toBe(true);
+    expect(layers.filter((layer) => layer.style.animationName === "constellation-sparkle")).toHaveLength(4);
+  });
+
   it("offers View Stars, which closes the moment and goes to the constellation", async () => {
     await render({ star, goalName: "First study loop" });
 
@@ -209,34 +224,25 @@ describe("the star reward's motion", () => {
     expect(block).not.toContain("backdrop-filter");
   });
 
-  it("flies the star in on a curve, using two axes with different easings", () => {
-    expect(styles).toContain("@keyframes star-reward-arc-x");
-    expect(styles).toContain("@keyframes star-reward-arc-y");
-    const x = styles.slice(styles.indexOf(".star-reward-arc {"));
-    const y = styles.slice(styles.indexOf(".star-reward-star {"));
-    expect(x.slice(0, 200)).toContain("cubic-bezier(0.16, 1, 0.3, 1)");
-    expect(y.slice(0, 200)).toContain("cubic-bezier(0.5, 0, 0.2, 1)");
-  });
-
-  it("traces the outline before the solid star resolves", () => {
-    expect(styles).toContain("@keyframes star-reward-draw");
-    expect(styles).toContain("stroke-dasharray: 620");
+  /*
+   * It interrupts a run of flashcards, so it is calm: the star fades up and
+   * settles. It used to fly in on an arc, trace its outline and trail a
+   * constellation, which was busier than a pause between cards should be.
+   */
+  it("arrives calmly, with no flight, outline trace or trail", () => {
+    expect(styles).toContain("@keyframes star-reward-settle");
+    for (const removed of ["star-reward-arc", "star-reward-draw", "star-reward-orbit", "stroke-dasharray: 620"]) {
+      expect(styles).not.toContain(removed);
+    }
   });
 
   it("under reduced motion shows the finished star with no animation", () => {
     const reduced = styles.slice(
       styles.indexOf("@media (prefers-reduced-motion: reduce)", styles.indexOf("/* Star reward moment"))
     );
-    for (const layer of [
-      ".star-reward-arc",
-      ".star-reward-star",
-      ".star-reward-trace",
-      ".star-reward-core",
-      ".star-reward-orbit",
-    ]) {
-      expect(reduced.slice(0, 900)).toContain(layer);
+    for (const layer of [".star-reward-overlay", ".star-reward-card", ".star-reward-star", ".star-reward-copy"]) {
+      expect(reduced.slice(0, 400)).toContain(layer);
     }
-    expect(reduced.slice(0, 1200)).toContain("stroke-dashoffset: 0");
-    expect(reduced.slice(0, 1200)).toContain("transition: opacity 200ms ease");
+    expect(reduced.slice(0, 600)).toContain("transition: opacity 200ms ease");
   });
 });

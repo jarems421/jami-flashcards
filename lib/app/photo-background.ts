@@ -106,20 +106,14 @@ function finiteOr(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-/**
- * Where a photo background is never drawn.
- *
- * Far shorter than the star sky's list. The sky is kept off notebooks and
- * past-paper questions because forty animated stars sat behind a canvas that
- * repaints on every stroke; a photo is one still image on a layer of its own,
- * painted once, so it costs the ink nothing. Only the constellation page is
- * left out, because it draws a sky in the middle of itself.
+/*
+ * A photo background shows on every page, unlike the star sky. The sky is kept
+ * off notebooks and past-paper questions because forty animated stars sat
+ * behind a canvas that repaints on every stroke; a photo is one still image on
+ * a layer of its own, painted once, so it costs the ink nothing. The
+ * constellation page was left out for a while, but its sky is a panel of its
+ * own, so the photo sits around it like anywhere else.
  */
-export const PHOTO_BACKGROUND_EXCLUDED_PATHS = ["/dashboard/constellation"];
-
-export function allowsPhotoBackground(pathname: string) {
-  return !PHOTO_BACKGROUND_EXCLUDED_PATHS.some((prefix) => pathname.startsWith(prefix));
-}
 
 export function photoBackgroundStoragePrefix(userId: string) {
   return `users/${userId}/appBackgrounds/`;

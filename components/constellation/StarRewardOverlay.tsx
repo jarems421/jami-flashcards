@@ -2,13 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import ConstellationStar from "@/components/constellation/ConstellationStar";
 import { ButtonLink } from "@/components/ui";
-import {
-  NORTHERN_STAR_FACET_PATH,
-  NORTHERN_STAR_PATH,
-  northernStarTransform,
-} from "@/components/ui/NorthernStar";
-import { type Star } from "@/lib/constellation/stars";
+import { type NormalizedStar, type Star } from "@/lib/constellation/stars";
 
 export type StarReward = { star: Star; goalName: string };
 
@@ -18,172 +14,32 @@ type StarRewardOverlayProps = {
 };
 
 /** Long enough to look at, short enough not to interrupt a run of reviews. */
-const HOLD_MS = 3_200;
-const FADE_MS = 300;
+const HOLD_MS = 4_000;
+const FADE_MS = 400;
 
 /**
- * The trail the star arrives along, drawn as its own small constellation.
+ * Every reward star is drawn at this size, whatever the goal earned.
  *
- * The companions sit under the flight path rather than anywhere decorative, so
- * the arc the star flies in on and the constellation it joins are the same
- * line. They are placed clear of the star's arms; the lone mark at the top
- * right stops the whole drawing leaning into one corner.
+ * Size carries meaning in the sky, where it grows with the goal behind it, but
+ * a one-card goal's smallest star is a speck when it is the whole subject of
+ * the screen. Its sparkles sit out beyond the tips, so the sky below leaves
+ * room for them.
  */
-const TRAIL = [
-  { x: -4, y: 130, size: 15 },
-  { x: 30, y: 156, size: 11 },
-  { x: 74, y: 169, size: 8 },
-  { x: 119, y: 161, size: 12 },
-  { x: 157, y: 135, size: 9 },
-] as const;
-
-/**
- * The star is drawn in its own 160 box; the viewBox is wider than that on
- * purpose, and the margin is where the constellation lives.
- *
- * Packed inside the star's own box the companions had nowhere to go but under
- * its arms, where they read as specks rather than as a shape the star is
- * joining.
- */
-const MARK_VIEW_BOX = "-20 -14 200 200";
-
-/**
- * Sparkles in the gaps between the star's arms.
- *
- * The star is four-point and tall, so the space around it is four wide
- * diagonal wedges. These sit in them, out beyond the tips, at sizes small
- * enough to read as thrown light rather than as more stars.
- */
-const REWARD_SPARKLES = [
-  { x: 112, y: 44, size: 11 },
-  { x: 36, y: 40, size: 9 },
-  { x: 138, y: 116, size: 10 },
-  { x: 26, y: 108, size: 12 },
-  { x: 96, y: 8, size: 7 },
-] as const;
-
-function NorthernStarMark() {
-  return (
-    <svg viewBox={MARK_VIEW_BOX} className="h-full w-full" aria-hidden="true">
-      {/*
-        * The light around the star, as a gradient rather than a blur.
-        *
-        * There was a blurred bloom here once and it was taken out; the test
-        * beside this file still forbids filter: blur and backdrop-filter
-        * anywhere in the reward's CSS. A radial gradient gives the same warmth
-        * with none of the cost -- no offscreen buffer, no banding on a large
-        * soft edge -- and it is painted first so everything else sits in it.
-        */}
-      <defs>
-        {/*
-          * Five stops rather than four, on a curve that never straightens.
-          *
-          * A gradient that steps 0.42 -> 0.14 -> 0.03 -> 0 has a shoulder in
-          * it, and the eye finds a shoulder and reads it as an edge. Halving
-          * the alpha at each stop gives a falloff with no place to catch.
-          */}
-        <radialGradient id="star-reward-halo-fill">
-          <stop offset="0%" stopColor="currentColor" stopOpacity="0.34" />
-          <stop offset="24%" stopColor="currentColor" stopOpacity="0.17" />
-          <stop offset="46%" stopColor="currentColor" stopOpacity="0.08" />
-          <stop offset="68%" stopColor="currentColor" stopOpacity="0.03" />
-          <stop offset="88%" stopColor="currentColor" stopOpacity="0.008" />
-          <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      <circle
-        className="star-reward-halo"
-        cx="80"
-        cy="80"
-        r="92"
-        fill="url(#star-reward-halo-fill)"
-      />
-      <g className="star-reward-orbit">
-        <polyline
-          points={TRAIL.map((point) => `${point.x},${point.y}`).join(" ")}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.1"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {TRAIL.map((point) => (
-          <path
-            key={`${point.x}-${point.y}`}
-            d={NORTHERN_STAR_PATH}
-            transform={northernStarTransform(point.x, point.y, point.size)}
-            fill="currentColor"
-          />
-        ))}
-        <path
-          d={NORTHERN_STAR_PATH}
-          transform={northernStarTransform(152, 22, 9)}
-          fill="currentColor"
-        />
-      </g>
-      <path
-        className="star-reward-trace"
-        d={NORTHERN_STAR_PATH}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
-      {/*
-        * Sparkles coming off the star.
-        *
-        * Placed by hand rather than seeded: there is exactly one reward star on
-        * screen, it is always the same size in the same box, and five positions
-        * chosen to sit in the gaps between its arms beat five random ones. Each
-        * lights on its own delay after the star has resolved.
-        */}
-      {REWARD_SPARKLES.map((sparkle, index) => (
-        /*
-         * The group carries the placement and the path carries the animation,
-         * which is not a style choice.
-         *
-         * In SVG the `transform` attribute and the CSS `transform` property are
-         * the same property, so a keyframe that animates scale silently
-         * replaces the translate that put the sparkle where it belongs -- every
-         * one of them collapses onto the star's own origin and vanishes behind
-         * it. Splitting placement onto a parent leaves the path's own transform
-         * free to be animated.
-         */
-        <g
-          key={`${sparkle.x}-${sparkle.y}`}
-          transform={northernStarTransform(sparkle.x, sparkle.y, sparkle.size)}
-        >
-          <path
-            className="star-reward-sparkle"
-            d={NORTHERN_STAR_PATH}
-            fill="currentColor"
-            style={{ animationDelay: `${1.1 + index * 0.34}s` }}
-          />
-        </g>
-      ))}
-      <path className="star-reward-core" d={NORTHERN_STAR_PATH} fill="currentColor" />
-      <path
-        className="star-reward-cut"
-        d={NORTHERN_STAR_FACET_PATH}
-        fill="var(--color-surface-base)"
-      />
-    </svg>
-  );
-}
+const REWARD_STAR_SIZE = 72;
 
 /**
  * The moment a goal turns into a star.
  *
- * Every reward draws the same northern star at the same size, whatever the
- * star written to the constellation looks like. Size and preset carry meaning
- * on the canvas -- they grow with the goal behind them -- and a one-card goal's
- * smallest star reads as a speck when it is the entire subject of the screen.
- * So this is the shape of the reward rather than a preview of the object, and
- * the constellation page is where the real one is found.
+ * The star is the one from the student's sky -- the same white light, bloom and
+ * slow sparkles, drawn by the same component -- on a small window of the same
+ * night. It used to be its own drawing that flew in on an arc, traced its
+ * outline and trailed a constellation behind it, so the star earned here and
+ * the star found in the sky looked like two different things, and the arrival
+ * was busier than a pause between flashcards should be.
  *
- * It holds for a few seconds and leaves on its own, but it sits over the
- * session rather than beside it, so a tap anywhere or Escape ends it
- * immediately for anyone mid-run.
+ * Now it simply fades up and settles, then breathes. It holds for a few seconds
+ * and leaves on its own, but it sits over the session rather than beside it, so
+ * a tap anywhere or Escape ends it immediately for anyone mid-run.
  */
 export default function StarRewardOverlay({ reward, onDone }: StarRewardOverlayProps) {
   const [leavingStarId, setLeavingStarId] = useState<string | null>(null);
@@ -251,6 +107,13 @@ export default function StarRewardOverlay({ reward, onDone }: StarRewardOverlayP
       ? `Walkthrough complete: ${reward.star.rewardLabel ?? reward.goalName}`
       : `Goal complete: ${reward.goalName}`;
 
+  // Centred in its window; where it sits in the real sky is the sky's business.
+  const shownStar: NormalizedStar = {
+    ...reward.star,
+    position: { x: 50, y: 50 },
+    needsBackfill: false,
+  };
+
   return createPortal(
     <div
       className={`star-reward-overlay fixed inset-0 z-[95] flex items-center justify-center p-4 ${
@@ -260,19 +123,17 @@ export default function StarRewardOverlay({ reward, onDone }: StarRewardOverlayP
       aria-live="polite"
       onPointerDown={finish}
     >
-      <div
-        className="star-reward-card relative flex w-full max-w-sm flex-col items-center px-8 pb-7 pt-9 text-center"
-      >
-        <div className="star-reward-arc">
-          <div className="star-reward-star relative h-32 w-32 text-text-primary sm:h-36 sm:w-36">
-            <NorthernStarMark />
+      <div className="star-reward-card relative flex w-full max-w-xs flex-col items-center p-3 pb-6 text-center">
+        <div className="star-reward-sky relative h-40 w-full overflow-hidden" aria-hidden="true">
+          <div className="star-reward-star absolute inset-0">
+            <ConstellationStar star={shownStar} variant="preview" visualSize={REWARD_STAR_SIZE} />
           </div>
         </div>
-        <div className="star-reward-copy relative mt-1 flex flex-col items-center gap-1.5">
+        <div className="star-reward-copy mt-5 flex flex-col items-center gap-1 px-3">
           <div className="text-2xs font-semibold uppercase tracking-[0.24em] text-text-muted">
             Star earned
           </div>
-          <div className="max-w-[17rem] text-lg font-semibold leading-snug text-text-primary">
+          <div className="max-w-[16rem] text-base font-semibold leading-snug text-text-primary">
             {reward.goalName}
           </div>
           <ButtonLink

@@ -46,6 +46,36 @@ describe("arranging a finished constellation", () => {
     expect(pageSource).not.toContain("sm:touch-none");
   });
 
+  /*
+   * A star swallows its own pointerdown, which also stops the browser sending
+   * the mouse events after it. Listening for mouseup left a star stuck to the
+   * cursor on a computer until a click somewhere else.
+   */
+  it("moves and drops a star on pointer events, which a pressed star still receives", () => {
+    expect(pageSource).not.toContain('"mouseup"');
+    expect(pageSource).not.toContain('"mousemove"');
+    expect(pageSource).toContain('window.addEventListener("pointermove", handleMove)');
+    expect(pageSource).toContain("event.buttons === 0");
+  });
+
+  // Dragging a star downward used to count as pull-to-refresh and slide the page.
+  it("keeps pull-to-refresh out of the sky", () => {
+    expect(pageSource).toContain("data-no-pull-refresh");
+    const refreshable = readFileSync(path.join(process.cwd(), "components/layout/Refreshable.tsx"), "utf8");
+    expect(refreshable).toContain('closest("[data-no-pull-refresh]")');
+  });
+
+  /*
+   * The scroll lock hid the desktop scrollbar, so the page widened and the sky
+   * zoomed in a little whenever a star was clicked. A mouse never needed it.
+   */
+  it("locks page scrolling for a finger or pen, never for a mouse", () => {
+    expect(pageSource).toContain('active && pointerType !== "mouse"');
+    expect(pageSource).toContain("setStarGesture(true, pointerType)");
+    const star = readFileSync(path.join(process.cwd(), "components/constellation/ConstellationStar.tsx"), "utf8");
+    expect(star).toContain("onDragStart(event.pointerType)");
+  });
+
   it("no longer marks any sky as view only", () => {
     expect(pageSource).not.toContain("View only");
   });

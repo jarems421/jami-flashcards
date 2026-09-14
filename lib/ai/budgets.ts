@@ -2,6 +2,7 @@ import "server-only";
 
 export type AiBudgetAction =
   | "autocompleteCard"
+  | "constellationPattern"
   | "assistant"
   | "tutorIllustration"
   | "practicePaperGeneration"
@@ -86,6 +87,17 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstWindowMs: 60_000,
     burstScope: "assistantInteractive",
     tokenCap: 900,
+    inputTokenCap: null,
+  },
+  // One worker call over at most forty stars and a short request, so the input
+  // is bounded by construction. The cap leaves room for the model's thinking on
+  // top of a full arrangement of positions and lines.
+  constellationPattern: {
+    dailyRequestLimit: 20,
+    burstRequestLimit: 4,
+    burstWindowMs: 60_000,
+    burstScope: "assistantInteractive",
+    tokenCap: 4_000,
     inputTokenCap: null,
   },
   assistant: {

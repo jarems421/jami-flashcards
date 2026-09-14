@@ -57,6 +57,13 @@ import ConstellationControls, {
 } from "@/components/constellation/ConstellationControls";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import PanelStyleSetting from "@/components/profile/PanelStyleSetting";
+import SkyPatternChat from "@/components/constellation/SkyPatternChat";
+import type { SkyDrawing } from "@/lib/constellation/sky-drawing";
+import type { SkyPatternTurn } from "@/lib/constellation/sky-pattern";
+import {
+  requestSkyPattern,
+  saveSkyArrangement,
+} from "@/services/constellation/sky-pattern";
 
 const STAR_GESTURE_BODY_CLASS = "jami-star-gesture-active";
 
@@ -117,6 +124,17 @@ export default function ConstellationDashboardPage() {
    * blind: nothing on screen said whether letting go would join anything.
    */
   const [linkHoverStarId, setLinkHoverStarId] = useState<string | null>(null);
+  /** The sky as it was before Jami's last arrangement, so it can be put back. */
+  const [skyPatternUndo, setSkyPatternUndo] = useState<{
+    constellationId: string;
+    positions: Record<string, NormalizedStar["position"]>;
+    lines: ConstellationLine[];
+  } | null>(null);
+  /** Jami's last drawing for this sky, so a follow-up like "bigger" can build on it. */
+  const [lastSkyDrawing, setLastSkyDrawing] = useState<{
+    constellationId: string;
+    drawing: SkyDrawing;
+  } | null>(null);
   /**
    * Whether the press now in progress already settled what it meant.
    *
@@ -140,10 +158,18 @@ export default function ConstellationDashboardPage() {
    * with it.
    */
   const starGestureRef = useRef(false);
-  const setStarGesture = useCallback((active: boolean) => {
+  const setStarGesture = useCallback((active: boolean, pointerType?: string) => {
     starGestureRef.current = active;
     if (typeof document === "undefined") return;
-    document.body.classList.toggle(STAR_GESTURE_BODY_CLASS, active);
+    /*
+     * The page-wide scroll lock is for fingers and pens only.
+     *
+     * A mouse drag never scrolls the page, and locking it removed the desktop
+     * scrollbar for the length of the press -- the page grew by its width, and
+     * the full-width sky, with stars placed in percentages, zoomed in a little
+     * every time a star was clicked.
+     */
+    document.body.classList.toggle(STAR_GESTURE_BODY_CLASS, active && pointerType !== "mouse");
   }, []);
   const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -369,16 +395,6 @@ export default function ConstellationDashboardPage() {
       );
     };
 
-    const handleMouseMove = (event: MouseEvent) => {
-      updateDragPosition(event.clientX, event.clientY);
-    };
-
-    const handleTouchMove = (event: TouchEvent) => {
-      event.preventDefault();
-      const touch = event.touches[0];
-      updateDragPosition(touch.clientX, touch.clientY);
-    };
-
     const handleEnd = () => {
       const position = dragPositionRef.current;
       const starId = draggingStarId;
@@ -392,18 +408,32 @@ export default function ConstellationDashboardPage() {
       void saveStarPosition(user.uid, starId, position);
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleEnd);
-    window.addEventListener("touchmove", handleTouchMove, { passive: false });
-    window.addEventListener("touchend", handleEnd);
-    window.addEventListener("touchcancel", handleEnd);
+    /*
+     * Pointer events, for mouse, pen and finger alike.
+     *
+     * This listened for `mouseup`, and a star swallows its own `pointerdown` to
+     * stop the page scrolling -- which also stops the browser sending the mouse
+     * events that would have followed. So on a computer the release never
+     * arrived: the star stayed stuck to the cursor until a click somewhere else,
+     * usually outside the sky, where it was left pinned to the edge.
+     */
+    const handleMove = (event: PointerEvent) => {
+      // No button held means the release happened somewhere this never heard.
+      if (event.pointerType === "mouse" && event.buttons === 0) {
+        handleEnd();
+        return;
+      }
+      updateDragPosition(event.clientX, event.clientY);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
 
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleEnd);
-      window.removeEventListener("touchmove", handleTouchMove);
-      window.removeEventListener("touchend", handleEnd);
-      window.removeEventListener("touchcancel", handleEnd);
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
     };
   }, [canArrangeSelectedConstellation, draggingStarId, user.uid]);
 
@@ -484,6 +514,96 @@ export default function ConstellationDashboardPage() {
     setLineRedoHistory({ constellationId: "", lines: [] });
     setIsConfirmingClearLines(false);
   }, [applyLines, selectedConstellation]);
+
+  /**
+   * Puts a whole arrangement on the sky and saves it: Jami's, or the one it replaced.
+   *
+   * Only stars in the sky move and only lines between them are kept -- what Jami
+   * returns has already been limited to real stars, and this holds that line
+   * again on the page that saves it.
+   */
+  const applySkyArrangement = useCallback(
+    async (
+      constellationId: string,
+      positions: Record<string, NormalizedStar["position"]>,
+      lines: ConstellationLine[]
+    ) => {
+      setAllStars((current) =>
+        current.map((star) => {
+          const position = positions[star.id];
+          return position ? { ...star, position } : star;
+        })
+      );
+      setConstellations((current) =>
+        current.map((entry) => (entry.id === constellationId ? { ...entry, lines } : entry))
+      );
+      setLineRedoHistory({ constellationId: "", lines: [] });
+      setLinkFromStarId(null);
+      setLinkPoint(null);
+      setLinkHoverStarId(null);
+      await saveSkyArrangement(user.uid, constellationId, positions, lines);
+    },
+    [user.uid]
+  );
+
+  const handleAskJamiForPattern = useCallback(
+    async (request: string, history: SkyPatternTurn[]) => {
+      const constellation = selectedConstellation;
+      if (!constellation) throw new Error("Choose a sky first.");
+
+      const rect = document.getElementById("constellation-container")?.getBoundingClientRect();
+      const pattern = await requestSkyPattern({
+        constellationId: constellation.id,
+        request,
+        history,
+        previousDrawing:
+          lastSkyDrawing?.constellationId === constellation.id ? lastSkyDrawing.drawing : undefined,
+        aspectRatio: rect && rect.height > 0 ? rect.width / rect.height : undefined,
+      });
+
+      const present = new Set(visibleStars.map((star) => star.id));
+      const positions = Object.fromEntries(
+        Object.entries(pattern.positions).filter(([starId]) => present.has(starId))
+      );
+      const lines = pattern.lines?.filter((line) => present.has(line.a) && present.has(line.b)) ?? null;
+      // Jami answered without changing anything -- a question, or a request it declined.
+      if (Object.keys(positions).length === 0 && lines === null) return pattern.reply;
+
+      const before = {
+        constellationId: constellation.id,
+        positions: Object.fromEntries(visibleStars.map((star) => [star.id, star.position])),
+        lines: constellation.lines,
+      };
+      try {
+        await applySkyArrangement(constellation.id, positions, lines ?? constellation.lines);
+      } catch (error) {
+        console.error("Failed to save Jami's arrangement.", error);
+        void loadAll();
+        throw new Error("Jami arranged your stars, but they could not be saved. Try again.");
+      }
+      setSkyPatternUndo(before);
+      if (pattern.drawing) {
+        setLastSkyDrawing({ constellationId: constellation.id, drawing: pattern.drawing });
+      }
+      return pattern.reply;
+    },
+    [applySkyArrangement, lastSkyDrawing, loadAll, selectedConstellation, visibleStars]
+  );
+
+  const handleUndoSkyPattern = useCallback(() => {
+    const before = skyPatternUndo;
+    if (!before) return;
+    setSkyPatternUndo(null);
+    // What is on the sky is no longer Jami's drawing, so a follow-up starts fresh.
+    setLastSkyDrawing(null);
+    void applySkyArrangement(before.constellationId, before.positions, before.lines).catch(
+      (error: unknown) => {
+        console.error("Failed to undo Jami's arrangement.", error);
+        showError("Could not put your sky back. Try again.");
+        void loadAll();
+      }
+    );
+  }, [applySkyArrangement, loadAll, showError, skyPatternUndo]);
 
   /*
    * Stable, because the drawn figure is memoised on it. An arrow function
@@ -958,6 +1078,15 @@ export default function ConstellationDashboardPage() {
                   onClear={() => setIsConfirmingClearLines(true)}
                 />
 
+                <SkyPatternChat
+                  // A new sky starts a new conversation.
+                  key={selectedConstellation.id}
+                  disabled={visibleStars.length < 2}
+                  onSend={handleAskJamiForPattern}
+                  canUndo={skyPatternUndo?.constellationId === selectedConstellation.id}
+                  onUndo={handleUndoSkyPattern}
+                />
+
                 {/* How the rest of Jami sits over this sky, while it is the background. */}
                 {isConstellationBackgroundEnabled ? (
                   <PanelStyleSetting />
@@ -965,6 +1094,8 @@ export default function ConstellationDashboardPage() {
 
                 <div
                   id="constellation-container"
+                  // Every drag in here is a star's, never a pull to refresh.
+                  data-no-pull-refresh
                   /*
                     * The sky takes the whole gesture from a tablet upwards.
                     *
@@ -1030,12 +1161,12 @@ export default function ConstellationDashboardPage() {
                           !canArrangeSelectedConstellation
                             ? undefined
                             : isConnecting
-                              ? () => {
-                                  setStarGesture(true);
+                              ? (pointerType) => {
+                                  setStarGesture(true, pointerType);
                                   beginOrFinishLink(star);
                                 }
-                              : () => {
-                                  setStarGesture(true);
+                              : (pointerType) => {
+                                  setStarGesture(true, pointerType);
                                   setDraggingStarId(star.id);
                                 }
                         }

@@ -31,9 +31,14 @@ export default function Refreshable({ onRefresh, children }: RefreshableProps) {
   }, [onRefresh]);
 
   const handleTouchStart = (e: TouchEvent) => {
-    // Only pull-to-refresh when scrolled to top
-    const el = e.currentTarget;
-    if (el.scrollTop > 0) return;
+    // Only pull-to-refresh when scrolled to top. This wrapper never scrolls
+    // itself, so the page's own scroll is the one that says where the top is.
+    if (e.currentTarget.scrollTop > 0 || window.scrollY > 0) return;
+    /*
+     * Never from a surface that owns its drags. Dragging a star down the sky
+     * used to count as a pull, and the whole page slid down under the finger.
+     */
+    if (e.target instanceof Element && e.target.closest("[data-no-pull-refresh]")) return;
     touchStartY.current = e.touches[0].clientY;
     pulling.current = true;
   };

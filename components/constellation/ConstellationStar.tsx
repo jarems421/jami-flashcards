@@ -9,7 +9,8 @@ import { NORTHERN_STAR_BOX, NORTHERN_STAR_PATH } from "@/components/ui/NorthernS
 
 type ConstellationStarProps = {
   star: NormalizedStar;
-  onDragStart?: () => void;
+  /** Called with what pressed the star: "mouse", "touch" or "pen". */
+  onDragStart?: (pointerType: string) => void;
   onNudge?: (position: NormalizedStar["position"]) => void;
   variant?: "default" | "background" | "preview";
   label?: string;
@@ -33,6 +34,14 @@ type ConstellationStarProps = {
   isLinkTarget?: boolean;
   /** Keyboard equivalent of pressing the star, used to pick link ends. */
   onActivate?: () => void;
+  /**
+   * Draw at this many pixels instead of the size the goal earned.
+   *
+   * For the reward, where the star is the whole subject of the screen: a
+   * one-card goal's 18px star reads as a speck there. Glow, bloom and sparkles
+   * all scale from this, so a larger star is the same star, not a stretched one.
+   */
+  visualSize?: number;
 };
 
 /**
@@ -320,12 +329,13 @@ export default function ConstellationStar({
   isLinkSource = false,
   isLinkTarget = false,
   onActivate,
+  visualSize,
 }: ConstellationStarProps) {
   const isBackground = variant === "background";
   const isPreview = variant === "preview";
   const glowStrength = Math.max(0, Math.min(1, star.glow));
   // Was multiplied by a three-branch ternary whose every branch was 1.
-  const starSize = getEffectiveStarVisualSize(star);
+  const starSize = visualSize ?? getEffectiveStarVisualSize(star);
   const sparkles = getSparkles(star, starSize, isBackground);
   const className = `absolute select-none ${variant === "default" ? "constellation-star-enter" : ""} ${onDragStart ? "cursor-grab touch-none" : ""}`;
   const style = {
@@ -525,7 +535,7 @@ export default function ConstellationStar({
           event.currentTarget.focus({ preventScroll: true });
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
-          onDragStart();
+          onDragStart(event.pointerType);
         }}
         onKeyDown={(event) => {
           if (isConnecting) {
