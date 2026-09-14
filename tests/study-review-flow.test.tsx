@@ -478,6 +478,27 @@ describe("committing a Daily Review answer", () => {
     expect(currentCardId()).toBe("card-2");
   });
 
+  it("shows the next card straight away and saves behind it", async () => {
+    // A save that has not come back yet -- a slow connection, frozen mid-write.
+    let finishSaving: () => void = () => {};
+    vi.mocked(recordStudyReview).mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finishSaving = resolve; })
+    );
+
+    await click("Start Daily Review");
+    const first = currentCardId()!;
+    await flip();
+    await click("Good");
+
+    // Moved on, with the answer held on this device until the server confirms it.
+    expect(currentCardId()).not.toBe(first);
+    expect(getOfflineQueuedReviews("user-1")).toHaveLength(1);
+
+    await act(async () => finishSaving());
+    await settle();
+    expect(getOfflineQueuedReviews("user-1")).toHaveLength(0);
+  });
+
   it("commits exactly once per rating", async () => {
     await click("Start Daily Review");
     await flip();

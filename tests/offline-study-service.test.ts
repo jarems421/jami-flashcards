@@ -221,6 +221,20 @@ describe("offline study synchronization", () => {
     expect(mocks.markDailyReviewCardComplete).not.toHaveBeenCalled();
   });
 
+  it("records tomorrow's risk on a queued card whose Daily Review attempts ran out", async () => {
+    mocks.recordDailyReviewWeakAttempt.mockResolvedValue({ attemptCount: 3, parked: true });
+    queueReview({ cardId: "parked-card", rating: "again", isCorrect: false, cardUpdates: {} });
+
+    await syncOfflineStudyReviews(USER_ID);
+
+    expect(firestoreMock.transactionUpdate).toHaveBeenCalledWith(
+      { path: "cards/parked-card" },
+      expect.objectContaining({
+        memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(NOW), 1),
+      })
+    );
+  });
+
   it("keeps a failed review queued while removing later successful reviews", async () => {
     const failedReview = queueReview({
       cardId: "failed-card",

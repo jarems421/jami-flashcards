@@ -8,18 +8,17 @@ import {
   type SetStateAction,
 } from "react";
 import type { StarReward } from "@/components/constellation/StarRewardOverlay";
-import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
-import { DAILY_REVIEW_MAX_WEAK_ATTEMPTS } from "@/lib/study/daily-review";
+import { getStudyDayKey } from "@/lib/study/day";
 import type { DailyReviewState } from "@/lib/study/daily-review-types";
 import type { Card } from "@/lib/study/cards";
 import type { Deck } from "@/lib/study/decks";
 import {
-  buildCardReviewUpdateCommand,
-  hasCardReviewUpdateCommand,
-} from "@/lib/study/card-review";
+  applyReviewToDailyState,
+  planReviewOutcome,
+  type ReviewOutcome,
+  type ReviewRetryResult,
+} from "@/lib/study/review-outcome";
 import {
-  isStruggleRating,
-  isSuccessfulRating,
   updateCardSchedule,
   type CardRating,
 } from "@/lib/study/scheduler";
@@ -29,8 +28,11 @@ import {
   type SimpleStudyResult,
 } from "@/lib/study/simple-study";
 import {
+  getOfflineQueuedReviews,
   queueOfflineStudyReview,
+  removeOfflineQueuedReviews,
   saveOfflineStudySnapshot,
+  type OfflineQueuedReview,
 } from "@/lib/study/offline-study";
 import type { StudySessionKind, StudySessionStats } from "@/lib/study/session";
 import {
@@ -39,18 +41,12 @@ import {
   withGoalReward,
   type AnswerFeedback,
 } from "@/lib/study/study-feedback";
+import { reserveStudyCommit, type StudyCommitIntent } from "@/services/study/commit-intent";
+import { syncOfflineStudyReviews } from "@/services/study/offline";
 import {
-  markDailyReviewCardComplete,
-  recordDailyReviewWeakAttempt,
-} from "@/services/study/daily-review";
-import {
-  recordSimpleStudyResult,
-  updateCardAfterReview,
-} from "@/services/study/cards";
-import { applyGoalProgressForAnswer } from "@/services/study/goals";
-import { recordStudyReview } from "@/services/study/activity";
-import { reserveStudyCommit, clearStudyCommitDraft, type StudyCommitIntent } from "@/services/study/commit-intent";
-import { removeOfflineQueuedReviews } from "@/lib/study/offline-study";
+  persistStudyReview,
+  type PersistedStudyReview,
+} from "@/services/study/review-persistence";
 
 /**
  * One answer, on its way to being recorded.
@@ -142,6 +138,8 @@ type ControllerOptions = {
   notifyError: (message: string) => void;
 };
 
+type ScheduledSessionKind = Exclude<StudySessionKind, "simple">;
+
 /**
  * Whether a missed card comes round again before the session ends.
  *
@@ -156,11 +154,15 @@ type ControllerOptions = {
 function shouldRequeueAfterMiss(input: {
   attempt: StudyAttemptCommit;
   isStruggle: boolean;
-  retryResult: { attemptCount: number; parked: boolean } | null;
+  retryResult: ReviewRetryResult | null;
 }) {
   if (!input.isStruggle) return false;
   if (input.retryResult) return !input.retryResult.parked;
   return Boolean(input.attempt.requeueOnMiss);
+}
+
+function isOffline(offlineMode: boolean) {
+  return offlineMode || (typeof navigator !== "undefined" && navigator.onLine === false);
 }
 
 export function useStudyExerciseController(
@@ -185,7 +187,6 @@ export function useStudyExerciseController(
     setSessionStats,
     setAnswerFeedback,
     setStarReward,
-    savingRating,
     setSavingRating,
     offlineMode,
     setOfflineMode,
@@ -200,6 +201,9 @@ export function useStudyExerciseController(
   const commitInFlightRef = useRef(false);
   const [presentation, setPresentation] = useState(0);
   const hintedRevisitsRef = useRef(new Set<string>());
+  /** Background saves run one after another, so a card's answers land in order. */
+  const persistChainRef = useRef<Promise<void>>(Promise.resolve());
+  const saveDelayNotifiedRef = useRef(false);
 
   const reveal = useCallback(() => {
     if (!current || flipped) return;
@@ -241,200 +245,167 @@ export function useStudyExerciseController(
     []
   );
 
-  const commitOffline = useCallback(
-    async (card: Card, attempt: StudyAttemptCommit) => {
-      if (!sessionKind || sessionKind === "simple") return;
-
-      const now = attempt.answeredAt;
-      const rating = attempt.rating;
-      const durationMs = measureResponseTime(attempt);
-      const isCorrect = isSuccessfulRating(rating);
-      const isStruggle = isStruggleRating(rating);
-      const schedule =
-        attempt.intent ? attempt.intent.schedule : sessionKind === "custom" ? null : updateCardSchedule(card, rating);
-      const cardUpdates: Record<string, number | string> = {};
-      let retryResult: { attemptCount: number; parked: boolean } | null = null;
-
-      if (schedule) {
-        Object.assign(cardUpdates, schedule);
-      } else if (isStruggle) {
-        const studyDayKey = getStudyDayKey(now);
-        cardUpdates.lastStruggleAt = now;
-        cardUpdates.lastStruggleStudyDayKey = studyDayKey;
-        cardUpdates.memoryRiskOverrideDayKey = shiftStudyDayKey(studyDayKey, 1);
-        cardUpdates.customStruggleCount = (card.customStruggleCount ?? 0) + 1;
-      }
-      if (isStruggle) {
-        cardUpdates.simpleStudyLastResult = "wrong";
-        cardUpdates.simpleStudyLastReviewedAt = now;
-        cardUpdates.simpleStudyWrongCount = (card.simpleStudyWrongCount ?? 0) + 1;
-      }
-
-      if (sessionKind === "daily-required" && isStruggle) {
-        const currentAttempts = dailyReviewState?.requiredRetryCounts[card.id] ?? 0;
-        const attemptCount = currentAttempts + 1;
-        retryResult = {
-          attemptCount,
-          parked: attemptCount >= DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
-        };
-      }
-
-      const parkedRiskUpdates =
-        sessionKind === "daily-required" && isStruggle && retryResult?.parked
-          ? {
-              lastStruggleAt: now,
-              lastStruggleStudyDayKey: getStudyDayKey(now),
-              memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
-            }
-          : null;
-
-      if (parkedRiskUpdates) {
-        Object.assign(cardUpdates, parkedRiskUpdates);
-      }
-
-      queueOfflineStudyReview({
-        intent: attempt.intent,
-        commitId: attempt.commitId,
-        userId,
-        cardId: card.id,
-        deckId: card.deckId,
-        topicIds: card.topicIds ?? [],
-        folderIds: folderIdsForCard(card),
-        rating,
-        reviewedAt: now,
-        studyDayKey: getStudyDayKey(now),
-        isCorrect,
-        durationMs,
-        sessionKind,
-        cardUpdates,
-        clearMemoryRiskOverrideDayKey: Boolean(schedule && isCorrect),
-      });
-      refreshPendingOfflineReviews();
-
-      const nextCard: Card = {
-        ...card,
-        ...(schedule ?? {}),
-        ...(parkedRiskUpdates ?? {}),
-        ...(sessionKind === "custom" && isStruggle
-          ? {
-              lastStruggleAt: now,
-              lastStruggleStudyDayKey: getStudyDayKey(now),
-              memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
-              customStruggleCount: (card.customStruggleCount ?? 0) + 1,
-            }
-          : {}),
-        ...(isStruggle
-          ? {
-              simpleStudyLastResult: "wrong" as const,
-              simpleStudyLastReviewedAt: now,
-              simpleStudyWrongCount: (card.simpleStudyWrongCount ?? 0) + 1,
-            }
-          : {}),
-        ...(schedule && isCorrect ? { memoryRiskOverrideDayKey: undefined } : {}),
-      };
-      const nextCardsSnapshot = cards.map((entry) =>
-        entry.id === card.id ? nextCard : entry
-      );
-
-      if (schedule || (sessionKind === "custom" && isStruggle)) {
-        setCards(nextCardsSnapshot);
-        saveOfflineStudySnapshot(userId, { cards: nextCardsSnapshot, decks });
-      }
-
-      if (sessionKind === "daily-required") {
-        if (isStruggle && retryResult) {
-          setDailyReviewState((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  requiredRetryCounts: {
-                    ...prev.requiredRetryCounts,
-                    [card.id]: retryResult.attemptCount,
-                  },
-                  parkedRequiredCardIds:
-                    retryResult.parked &&
-                    !prev.parkedRequiredCardIds.includes(card.id)
-                      ? [...prev.parkedRequiredCardIds, card.id]
-                      : prev.parkedRequiredCardIds,
-                  updatedAt: now,
-                }
-              : prev
-          );
-        } else {
-          setDailyReviewState((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  completedRequiredCardIds: prev.completedRequiredCardIds.includes(
-                    card.id
-                  )
-                    ? prev.completedRequiredCardIds
-                    : [...prev.completedRequiredCardIds, card.id],
-                  updatedAt: now,
-                }
-              : prev
-          );
+  /**
+   * Saves an answer to the server behind the session.
+   *
+   * The answer is already held on this device, so a failure costs nothing: it
+   * stays queued and goes up with the next successful save or sync. The student
+   * is told once, not once per card.
+   */
+  const persistInBackground = useCallback(
+    (queued: OfflineQueuedReview, onSaved?: (saved: PersistedStudyReview) => void) => {
+      persistChainRef.current = persistChainRef.current.then(async () => {
+        try {
+          const saved = await persistStudyReview(userId, queued);
+          removeOfflineQueuedReviews(userId, [queued.id]);
+          saveDelayNotifiedRef.current = false;
+          onSaved?.(saved);
+          // Anything an earlier failure left behind goes up with it.
+          if (getOfflineQueuedReviews(userId).length > 0) {
+            await syncOfflineStudyReviews(userId);
+          }
+        } catch (error) {
+          console.warn("A study answer could not be saved yet; it stays on this device.", error);
+          if (!saveDelayNotifiedRef.current) {
+            saveDelayNotifiedRef.current = true;
+            notifySuccess("Your answers are saved on this device and will sync when the connection settles.");
+          }
+        } finally {
+          refreshPendingOfflineReviews();
         }
-      } else if (sessionKind === "daily-optional") {
-        setDailyReviewState((prev) =>
-          prev
-            ? {
-                ...prev,
-                completedOptionalCardIds: prev.completedOptionalCardIds.includes(
-                  card.id
-                )
-                  ? prev.completedOptionalCardIds
-                  : [...prev.completedOptionalCardIds, card.id],
-                updatedAt: now,
-              }
-            : prev
-        );
-      }
+      });
+    },
+    [notifySuccess, refreshPendingOfflineReviews, userId]
+  );
 
+  const queuedReviewFor = useCallback(
+    (
+      card: Card,
+      attempt: StudyAttemptCommit,
+      kind: ScheduledSessionKind,
+      outcome: ReviewOutcome
+    ): Omit<OfflineQueuedReview, "id"> => ({
+      intent: attempt.intent,
+      commitId: attempt.commitId,
+      userId,
+      cardId: card.id,
+      deckId: card.deckId,
+      topicIds: card.topicIds ?? [],
+      folderIds: folderIdsForCard(card),
+      rating: attempt.rating,
+      reviewedAt: attempt.answeredAt,
+      studyDayKey: getStudyDayKey(attempt.answeredAt),
+      isCorrect: outcome.isCorrect,
+      durationMs: measureResponseTime(attempt),
+      sessionKind: kind,
+      cardUpdates: outcome.cardUpdates,
+      clearMemoryRiskOverrideDayKey: Boolean(outcome.schedule && outcome.isCorrect),
+    }),
+    [folderIdsForCard, measureResponseTime, userId]
+  );
+
+  /** Moves the session on from an answer: the card, Daily Review, stats, feedback, what comes next. */
+  const applyOutcome = useCallback(
+    (card: Card, attempt: StudyAttemptCommit, kind: ScheduledSessionKind, outcome: ReviewOutcome) => {
+      if (outcome.updatesCards) {
+        setCards((prev) => prev.map((entry) => (entry.id === card.id ? outcome.nextCard : entry)));
+      }
+      setDailyReviewState((prev) =>
+        applyReviewToDailyState(prev, card.id, kind, outcome.retryResult, attempt.answeredAt)
+      );
       bumpSessionRevision();
-      setOfflineMode(true);
       setSessionStats((prev) => ({
         reviewedCards: prev.reviewedCards + 1,
-        correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0),
+        correctAnswers: prev.correctAnswers + (outcome.isCorrect ? 1 : 0),
         completedGoals: prev.completedGoals,
         starsEarned: prev.starsEarned,
-        ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 },
+        ratings: { ...prev.ratings, [attempt.rating]: prev.ratings[attempt.rating] + 1 },
       }));
-      setAnswerFeedback(
-        getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked))
-      );
-      notifySuccess("Saved offline. This answer will sync when you are back online.");
-
-      if (shouldRequeueAfterMiss({ attempt, isStruggle, retryResult })) {
-        requeueCurrentCard(nextCard);
+      setAnswerFeedback(getAnswerFeedback(attempt.rating, kind, Boolean(outcome.retryResult?.parked)));
+      // A missed card goes to the back of the queue: seen again before the
+      // session ends, but with enough cards in between to have genuinely
+      // forgotten the answer it was just shown. Parking still wins -- a card
+      // that has used up its Daily Review attempts stops for the day.
+      if (shouldRequeueAfterMiss({ attempt, isStruggle: outcome.isStruggle, retryResult: outcome.retryResult })) {
+        requeueCurrentCard(outcome.nextCard);
       } else {
         goNext();
       }
     },
+    [bumpSessionRevision, goNext, requeueCurrentCard, setAnswerFeedback, setCards, setDailyReviewState, setSessionStats]
+  );
+
+  /** What only the server knows, applied once it has answered: goals, stars, and its retry count. */
+  const applySavedReview = useCallback(
+    (cardId: string, rating: CardRating, kind: ScheduledSessionKind, answeredAt: number, saved: PersistedStudyReview) => {
+      const goals = saved.goalProgress;
+      if (goals && (goals.completedGoals > 0 || goals.starsEarned > 0)) {
+        setSessionStats((prev) => ({
+          ...prev,
+          completedGoals: prev.completedGoals + goals.completedGoals,
+          starsEarned: prev.starsEarned + goals.starsEarned,
+        }));
+        // The goal lands a moment after the card moved on, so it joins whatever
+        // feedback is showing rather than waiting for the next answer.
+        setAnswerFeedback((prev) =>
+          withGoalReward(prev ?? getAnswerFeedback(rating, kind, Boolean(saved.retryResult?.parked)), goals)
+        );
+      }
+      // Only the first is shown: finishing two goals on one card is rare, and
+      // stacking overlays would bury the card behind the celebration.
+      if (goals && goals.rewards.length > 0) setStarReward(goals.rewards[0]);
+      const retryResult = saved.retryResult;
+      if (retryResult && kind === "daily-required") {
+        setDailyReviewState((prev) => applyReviewToDailyState(prev, cardId, kind, retryResult, answeredAt));
+      }
+    },
+    [setAnswerFeedback, setDailyReviewState, setSessionStats, setStarReward]
+  );
+
+  const commitOffline = useCallback(
+    (card: Card, attempt: StudyAttemptCommit, kind: ScheduledSessionKind) => {
+      const schedule = attempt.intent
+        ? attempt.intent.schedule
+        : kind === "custom"
+          ? null
+          : updateCardSchedule(card, attempt.rating);
+      const outcome = planReviewOutcome({
+        card,
+        rating: attempt.rating,
+        answeredAt: attempt.answeredAt,
+        sessionKind: kind,
+        schedule,
+        dailyReviewState,
+      });
+
+      queueOfflineStudyReview(queuedReviewFor(card, attempt, kind, outcome));
+      refreshPendingOfflineReviews();
+      if (outcome.updatesCards) {
+        saveOfflineStudySnapshot(userId, {
+          cards: cards.map((entry) => (entry.id === card.id ? outcome.nextCard : entry)),
+          decks,
+        });
+      }
+      applyOutcome(card, attempt, kind, outcome);
+      setOfflineMode(true);
+      notifySuccess("Saved offline. This answer will sync when you are back online.");
+    },
     [
-      bumpSessionRevision,
+      applyOutcome,
       cards,
       dailyReviewState,
       decks,
-      folderIdsForCard,
-      goNext,
-      measureResponseTime,
       notifySuccess,
+      queuedReviewFor,
       refreshPendingOfflineReviews,
-      requeueCurrentCard,
-      sessionKind,
-      setAnswerFeedback,
-      setCards,
-      setDailyReviewState,
       setOfflineMode,
-      setSessionStats,
       userId,
     ]
   );
 
   const commitSimpleStudy = useCallback(
-    async (card: Card, result: SimpleStudyResult, commitId?: string, intent?: StudyCommitIntent) => {
-      if (sessionKind !== "simple" || savingRating) return;
+    (card: Card, result: SimpleStudyResult, commitId?: string, intent?: StudyCommitIntent) => {
+      if (sessionKind !== "simple") return;
 
       const now = intent?.answeredAt ?? Date.now();
       const queued = queueOfflineStudyReview({ userId, cardId: card.id, commitId, intent, rating: result === "correct" ? "good" : "again", reviewedAt: now, studyDayKey: getStudyDayKey(now), isCorrect: result === "correct", sessionKind: "simple", cardUpdates: {} });
@@ -444,8 +415,6 @@ export function useStudyExerciseController(
         entry.id === card.id ? nextCard : entry
       );
       const ratingForStats: CardRating = result === "correct" ? "good" : "again";
-      setSavingRating(ratingForStats);
-      clearFeedback();
 
       setCards(nextCardsSnapshot);
       saveOfflineStudySnapshot(userId, { cards: nextCardsSnapshot, decks });
@@ -478,39 +447,22 @@ export function useStudyExerciseController(
       setAnswerFeedback(getSimpleStudyFeedback(result));
       setFlipped(false);
 
-      try {
-        if (offlineMode || (typeof navigator !== "undefined" && navigator.onLine === false)) return;
-        await recordSimpleStudyResult(card.id, result, now, commitId ? { userId, commitId } : undefined);
-        removeOfflineQueuedReviews(userId, [queued.id]);
-        if (commitId) clearStudyCommitDraft(userId, commitId);
-        refreshPendingOfflineReviews();
-      } catch (error) {
-        console.warn("Failed to save Simple Study result.", error);
-        setOfflineMode(true);
-        notifySuccess(
-          "Your Simple Study answer is saved on this device and will sync when you reconnect."
-        );
-      } finally {
-        setSavingRating(null);
-      }
+      if (isOffline(offlineMode)) return;
+      persistInBackground(queued);
     },
     [
       bumpSessionRevision,
       cards,
-      clearFeedback,
       decks,
-      notifySuccess,
-      refreshPendingOfflineReviews,
       offlineMode,
-      savingRating,
+      persistInBackground,
+      refreshPendingOfflineReviews,
       sessionCards.length,
       sessionKind,
       setAnswerFeedback,
       setCards,
       setFlipped,
       setIndex,
-      setOfflineMode,
-      setSavingRating,
       setSessionCards,
       setSessionStats,
       userId,
@@ -526,242 +478,103 @@ export function useStudyExerciseController(
       if (commitInFlightRef.current) return;
       commitInFlightRef.current = true;
       setSavingRating(attempt.rating);
-      const card = current;
-      try {
-        const intent = await reserveStudyCommit(userId, {
-          ...attempt, commitId: attempt.commitId ?? crypto.randomUUID(), sessionKind,
-          context: { deckId: card.deckId, topicIds: card.topicIds ?? [], folderIds: folderIdsForCard(card) },
-          schedule: sessionKind === "custom" || sessionKind === "simple" ? null : updateCardSchedule(card, attempt.rating),
-        }, offlineMode || (typeof navigator !== "undefined" && navigator.onLine === false));
-        attempt = { ...intent, intent };
-      } catch {
-        commitInFlightRef.current = false;
-        setSavingRating(null);
-        notifyError("Your answer could not be saved yet. Please try again.");
-        return;
-      }
-      const rating = attempt.rating;
-
-      if (sessionKind === "simple") {
-        try {
-          await commitSimpleStudy(card, rating === "again" || rating === "hard" ? "wrong" : "correct", attempt.commitId, attempt.intent);
-        } catch {
-          notifyError("Your answer could not be saved on this device. Please reconnect and try again.");
-        } finally {
-          commitInFlightRef.current = false;
-        }
-        return;
-      }
-
-      setSavingRating(rating);
       clearFeedback();
+      const card = current;
+      const kind = sessionKind;
+      const offline = isOffline(offlineMode);
+      const proposal: StudyCommitIntent = {
+        ...attempt,
+        commitId: attempt.commitId ?? crypto.randomUUID(),
+        sessionKind: kind,
+        context: { deckId: card.deckId, topicIds: card.topicIds ?? [], folderIds: folderIdsForCard(card) },
+        schedule: kind === "custom" || kind === "simple" ? null : updateCardSchedule(card, attempt.rating),
+      };
+
       try {
-        if (
-          offlineMode ||
-          (typeof navigator !== "undefined" && !navigator.onLine)
-        ) {
-          await commitOffline(card, attempt);
+        /*
+         * The answer is held on this device before anything else, which is
+         * what lets the session move on without waiting for the server. Only a
+         * device that cannot hold it waits, as every answer used to.
+         */
+        let intent: StudyCommitIntent;
+        let heldOnDevice = true;
+        try {
+          intent = await reserveStudyCommit(userId, proposal, true);
+        } catch (error) {
+          if (offline) throw error;
+          heldOnDevice = false;
+          intent = await reserveStudyCommit(userId, proposal, false);
+        }
+        const committed: StudyAttemptCommit = { ...intent, intent };
+
+        if (kind === "simple") {
+          const rating = committed.rating;
+          commitSimpleStudy(card, rating === "again" || rating === "hard" ? "wrong" : "correct", committed.commitId, committed.intent);
           return;
         }
 
-        const now = attempt.answeredAt;
-        const isCorrect = isSuccessfulRating(rating);
-        const isStruggle = isStruggleRating(rating);
-        const schedule =
-          attempt.intent ? attempt.intent.schedule : sessionKind === "custom" ? null : updateCardSchedule(card, rating);
-        const cardReviewUpdate = buildCardReviewUpdateCommand({
-          schedule,
-          isCorrect,
-          isStruggle,
-          reviewedAt: now,
-        });
+        if (offline) {
+          commitOffline(card, committed, kind);
+          return;
+        }
 
-        const reviewPromise = recordStudyReview(userId, now, {
-          commitId: attempt.commitId,
-          isCorrect,
-          durationMs: measureResponseTime(attempt),
-          sessionKind: sessionKind === "custom" ? "custom" : "daily",
-        });
-        const goalProgressPromise = applyGoalProgressForAnswer(
-          userId,
-          isCorrect,
-          now,
-          attempt.intent?.context ?? { deckId: card.deckId, topicIds: card.topicIds ?? [], folderIds: folderIdsForCard(card) },
-          attempt.commitId
-        );
-        const remainingPromises: Promise<unknown>[] = [];
-        if (hasCardReviewUpdateCommand(cardReviewUpdate)) {
-          remainingPromises.push(updateCardAfterReview(card.id, cardReviewUpdate, attempt.commitId ? { userId, commitId: attempt.commitId } : undefined));
-        }
-        let retryResultPromise: Promise<{
-          attemptCount: number;
-          parked: boolean;
-        }> | null = null;
-        if (sessionKind === "daily-required" && isStruggle) {
-          retryResultPromise = recordDailyReviewWeakAttempt(userId, card.id, now, attempt.commitId);
-          remainingPromises.push(retryResultPromise);
-        } else if (sessionKind === "daily-required") {
-          remainingPromises.push(
-            markDailyReviewCardComplete(userId, card.id, "required")
-          );
-        }
-        if (sessionKind === "daily-optional") {
-          remainingPromises.push(
-            markDailyReviewCardComplete(userId, card.id, "optional")
-          );
-        }
-        const [, goalProgress] = await Promise.all([
-          reviewPromise,
-          goalProgressPromise,
-          ...remainingPromises,
-        ]);
-        const retryResult = retryResultPromise ? await retryResultPromise : null;
-        const parkedRiskUpdates =
-          sessionKind === "daily-required" && isStruggle && retryResult?.parked
-            ? {
-                lastStruggleAt: now,
-                lastStruggleStudyDayKey: getStudyDayKey(now),
-                memoryRiskOverrideDayKey: shiftStudyDayKey(
-                  getStudyDayKey(now),
-                  1
-                ),
-              }
-            : null;
-        if (parkedRiskUpdates) {
-          await updateCardAfterReview(card.id, { values: parkedRiskUpdates }, attempt.commitId ? { userId, commitId: attempt.commitId } : undefined, "parked-risk");
-        }
-        const nextCard: Card = {
-          ...card,
-          ...(schedule ?? {}),
-          ...(parkedRiskUpdates ?? {}),
-          ...(sessionKind === "custom" && isStruggle
-            ? {
-                lastStruggleAt: now,
-                lastStruggleStudyDayKey: getStudyDayKey(now),
-                memoryRiskOverrideDayKey: shiftStudyDayKey(
-                  getStudyDayKey(now),
-                  1
-                ),
-                customStruggleCount: (card.customStruggleCount ?? 0) + 1,
-              }
-            : {}),
-          ...(isStruggle
-            ? {
-                simpleStudyLastResult: "wrong" as const,
-                simpleStudyLastReviewedAt: now,
-                simpleStudyWrongCount: (card.simpleStudyWrongCount ?? 0) + 1,
-              }
-            : {}),
-          ...(schedule && isCorrect
-            ? { memoryRiskOverrideDayKey: undefined }
-            : {}),
-        };
-        if (schedule || (sessionKind === "custom" && isStruggle)) {
-          setCards((prev) =>
-            prev.map((entry) => (entry.id === card.id ? nextCard : entry))
-          );
-        }
-        if (sessionKind === "daily-required") {
-          if (isStruggle && retryResult) {
-            setDailyReviewState((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    requiredRetryCounts: {
-                      ...prev.requiredRetryCounts,
-                      [card.id]: retryResult.attemptCount,
-                    },
-                    parkedRequiredCardIds:
-                      retryResult.parked &&
-                      !prev.parkedRequiredCardIds.includes(card.id)
-                        ? [...prev.parkedRequiredCardIds, card.id]
-                        : prev.parkedRequiredCardIds,
-                    updatedAt: now,
-                  }
-                : prev
-            );
-          } else {
-            setDailyReviewState((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    completedRequiredCardIds:
-                      prev.completedRequiredCardIds.includes(card.id)
-                        ? prev.completedRequiredCardIds
-                        : [...prev.completedRequiredCardIds, card.id],
-                    updatedAt: now,
-                  }
-                : prev
-            );
+        const schedule = committed.intent ? committed.intent.schedule : kind === "custom" ? null : updateCardSchedule(card, committed.rating);
+        const plan = (retryResult?: ReviewRetryResult | null) =>
+          planReviewOutcome({
+            card,
+            rating: committed.rating,
+            answeredAt: committed.answeredAt,
+            sessionKind: kind,
+            schedule,
+            dailyReviewState,
+            retryResult,
+          });
+        const outcome = plan();
+        const review = queuedReviewFor(card, committed, kind, outcome);
+
+        let queued: OfflineQueuedReview | null = null;
+        if (heldOnDevice) {
+          try {
+            queued = queueOfflineStudyReview(review);
+            refreshPendingOfflineReviews();
+          } catch {
+            queued = null;
           }
-        } else if (sessionKind === "daily-optional") {
-          setDailyReviewState((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  completedOptionalCardIds:
-                    prev.completedOptionalCardIds.includes(card.id)
-                      ? prev.completedOptionalCardIds
-                      : [...prev.completedOptionalCardIds, card.id],
-                  updatedAt: now,
-                }
-              : prev
-          );
         }
-        bumpSessionRevision();
-        setSessionStats((prev) => ({
-          reviewedCards: prev.reviewedCards + 1,
-          correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0),
-          completedGoals: prev.completedGoals + goalProgress.completedGoals,
-          starsEarned: prev.starsEarned + goalProgress.starsEarned,
-          ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 },
-        }));
-        setAnswerFeedback(
-          withGoalReward(
-            getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)),
-            goalProgress
-          )
-        );
-        // Only the first is shown: finishing two goals on one card is rare, and
-        // stacking overlays would bury the card behind the celebration.
-        if (goalProgress.rewards.length > 0) setStarReward(goalProgress.rewards[0]);
-        // A missed card goes to the back of the queue: seen again before the
-        // session ends, but with enough cards in between to have genuinely
-        // forgotten the answer it was just shown. Parking still wins -- a card
-        // that has used up its Daily Review attempts stops for the day.
-        if (attempt.commitId) clearStudyCommitDraft(userId, attempt.commitId);
-        if (shouldRequeueAfterMiss({ attempt, isStruggle, retryResult })) {
-          requeueCurrentCard(nextCard);
-        } else {
-          goNext();
+
+        if (!queued) {
+          const saved = await persistStudyReview(userId, { ...review, id: proposal.commitId });
+          applyOutcome(card, committed, kind, plan(saved.retryResult));
+          applySavedReview(card.id, committed.rating, kind, committed.answeredAt, saved);
+          return;
         }
+
+        applyOutcome(card, committed, kind, outcome);
+        persistInBackground(queued, (saved) => applySavedReview(card.id, committed.rating, kind, committed.answeredAt, saved));
       } catch (error) {
         console.error(error);
-        notifyError("Failed to save that answer. Please try again.");
+        notifyError("Your answer could not be saved yet. Please try again.");
       } finally {
         commitInFlightRef.current = false;
         setSavingRating(null);
       }
     },
     [
-      bumpSessionRevision,
+      applyOutcome,
+      applySavedReview,
       clearFeedback,
       commitOffline,
       commitSimpleStudy,
       current,
+      dailyReviewState,
       folderIdsForCard,
-      goNext,
-      measureResponseTime,
       notifyError,
       offlineMode,
-      requeueCurrentCard,
+      persistInBackground,
+      queuedReviewFor,
+      refreshPendingOfflineReviews,
       sessionKind,
-      setAnswerFeedback,
-      setCards,
-      setDailyReviewState,
       setSavingRating,
-      setSessionStats,
-      setStarReward,
       userId,
     ]
   );
