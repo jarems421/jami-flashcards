@@ -23,6 +23,7 @@ import {
   type ExamExtractionEntry,
 } from "@/lib/practice/exam-extraction";
 import type { ExamPaperIngestionManifest } from "@/lib/practice/exam-ingestion-manifest";
+import { schemeRetryGroups } from "@/lib/practice/exam-ingestion-job";
 
 export type { ExamPaperIngestionManifest };
 
@@ -335,6 +336,25 @@ export async function extractSchemeChunk(
     marks: Math.round(Number(item.marks)) || 0,
   }));
   const schemeBytes = await sourceBytes(state.schemeStoragePath);
+  const schemes = { ...state.schemes, ...(await requestSchemes(schemeBytes, wanted)) };
+  const labels = wanted.map((item) => item.questionNumber);
+  for (const group of schemeRetryGroups(labels, Object.keys(schemes))) {
+    const retry = wanted.filter((item) => group.includes(item.questionNumber));
+    Object.assign(schemes, await requestSchemes(schemeBytes, retry));
+  }
+  return { ...state, schemes };
+}
+
+/**
+ * One request for the schemes of some questions, keyed by question number.
+ *
+ * A reply that does not parse gives back nothing rather than throwing: the
+ * caller asks again for whatever is missing, in smaller groups.
+ */
+async function requestSchemes(
+  schemeBytes: Buffer,
+  wanted: Array<{ questionNumber: string; marks: number }>
+): Promise<Record<string, Record<string, unknown>>> {
   const response = await generateAiText({
     role: "documentVision", taskClass: "visual", timeoutMs: 120_000, deadlineAt: Date.now() + 130_000,
     generationConfig: { temperature: 0, topP: 0.6, maxOutputTokens: 16_000 },
@@ -349,13 +369,13 @@ ${SCHEME_RULES}` },
     ] }] },
   });
   const parsed = parseJsonObject(response);
-  const schemes = { ...state.schemes };
+  const schemes: Record<string, Record<string, unknown>> = {};
   for (const entry of Array.isArray(parsed.schemes) ? parsed.schemes : []) {
     if (!entry || typeof entry !== "object") continue;
     const number = text((entry as Record<string, unknown>).questionNumber, 80);
     if (number) schemes[number] = entry as Record<string, unknown>;
   }
-  return { ...state, schemes };
+  return schemes;
 }
 
 /** The checks, run against the paper. No model, no network. */

@@ -107,6 +107,7 @@ vi.mock("@/services/firebase/admin", () => ({
 const jobsRoute = await import("@/app/api/practice/paper-jobs/route");
 const jobRoute = await import("@/app/api/practice/paper-jobs/[jobId]/route");
 const clarifyRoute = await import("@/app/api/practice/paper-jobs/[jobId]/clarify/route");
+const retryRoute = await import("@/app/api/practice/paper-jobs/[jobId]/retry/route");
 
 const jobId = "job_key_12345678";
 const folderPath = "users/user-1/studyFolders/folder-1";
@@ -272,6 +273,85 @@ describe("durable practice-paper job routes", () => {
     });
     expect(repeated.status).toBe(200);
     expect(mocks.refundBudget).toHaveBeenCalledOnce();
+  });
+
+  it("retries a failed paper on the same job, charged again, without deleted temporary files", async () => {
+    mocks.documents.set("users/user-1/sources/source-kept", { title: "Specification" });
+    mocks.documents.set(jobPath, queuedJob({
+      status: "failed",
+      stage: "designing",
+      progress: 42,
+      request: { ...generationRequest(), sourceIds: ["source-kept", "temporary-gone"] },
+      failureCode: "generation_failed",
+      failureMessage: "Jami could not finish that paper just now.",
+      budgetRefunded: true,
+      providerStartedAt: 10,
+      retryCount: 0,
+    }));
+    mocks.documents.set(artifactPath, { generation: { stale: true } });
+
+    const response = await retryRoute.POST(request("POST"), {
+      params: Promise.resolve({ jobId }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ id: jobId, status: "queued", progress: 0 });
+    expect(mocks.checkBudget).toHaveBeenCalledOnce();
+    expect(mocks.startWorkflow).toHaveBeenCalledWith(expect.any(Function), ["user-1", jobId]);
+    expect(mocks.documents.has(artifactPath)).toBe(false);
+    expect(mocks.documents.get(jobPath)).toMatchObject({
+      status: "queued",
+      stage: "queued",
+      budgetRefunded: false,
+      retryCount: 1,
+      workflowRunId: "workflow-run-1",
+      request: { sourceIds: ["source-kept"] },
+    });
+  });
+
+  it("returns the queued job to a repeated retry without charging twice", async () => {
+    mocks.documents.set(jobPath, queuedJob({ status: "queued", retryCount: 1 }));
+
+    const response = await retryRoute.POST(request("POST"), {
+      params: Promise.resolve({ jobId }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
+    expect(mocks.startWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("refuses to retry a paper that did not fail", async () => {
+    mocks.documents.set(jobPath, queuedJob({ status: "ready" }));
+
+    const response = await retryRoute.POST(request("POST"), {
+      params: Promise.resolve({ jobId }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
+  });
+
+  it("dismisses a failed paper from the builder when it is acknowledged", async () => {
+    mocks.documents.set(jobPath, queuedJob({ status: "failed" }));
+
+    const response = await jobRoute.PATCH(request("PATCH"), {
+      params: Promise.resolve({ jobId }),
+    });
+
+    expect(await response.json()).toMatchObject({ status: "failed", failureDismissed: true });
+    expect(mocks.documents.get(jobPath)).toMatchObject({ failureDismissed: true });
+  });
+
+  it("does not dismiss a paper that is still building", async () => {
+    mocks.documents.set(jobPath, queuedJob({ status: "running" }));
+
+    const response = await jobRoute.PATCH(request("PATCH"), {
+      params: Promise.resolve({ jobId }),
+    });
+
+    expect(await response.json()).toMatchObject({ status: "running", failureDismissed: false });
+    expect(mocks.documents.get(jobPath)).not.toHaveProperty("failureDismissed");
   });
 
   it("does not refund an allowance after provider work has started", async () => {

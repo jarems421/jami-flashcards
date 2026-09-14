@@ -110,6 +110,15 @@ export async function confirmPracticePaperFormat(
   return mapPracticePaperJobData(jobId, data);
 }
 
+export async function retryPracticePaperJob(jobId: string) {
+  const data = await authenticatedPaperJobRequest(
+    `/api/practice/paper-jobs/${encodeURIComponent(jobId)}/retry`,
+    { method: "POST" }
+  );
+  return mapPracticePaperJobData(jobId, data);
+}
+
+/** Clears a ready paper's notice, or dismisses a failed paper. */
 export async function acknowledgePracticePaperJob(jobId: string) {
   const data = await authenticatedPaperJobRequest(
     `/api/practice/paper-jobs/${encodeURIComponent(jobId)}`,

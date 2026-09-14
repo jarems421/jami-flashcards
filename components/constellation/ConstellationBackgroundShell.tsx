@@ -19,6 +19,7 @@ import {
   type AppThemePreference,
 } from "@/lib/app/theme-preference";
 import {
+  allowsPhotoBackground,
   getPhotoBackgroundClassNames,
   PHOTO_BACKGROUND_CLASS_NAMES,
   PHOTO_BACKGROUND_EVENT,
@@ -28,6 +29,8 @@ import {
   readPhotoBackground,
   type CachedPhotoBackground,
 } from "@/lib/app/photo-background";
+import { SOLID_PANELS_CLASS_NAME } from "@/lib/app/panel-style";
+import { usePanelStyle } from "@/hooks/usePanelStyle";
 
 const ConstellationBackground = dynamic(
   () => import("@/components/constellation/ConstellationBackground"),
@@ -56,6 +59,7 @@ export default function ConstellationBackgroundShell({
    */
   const [photoBackground, setPhotoBackground] =
     useState<CachedPhotoBackground | null>(() => readPhotoBackground());
+  const [panelStyle] = usePanelStyle();
 
   useEffect(() => {
     const syncPhotoBackground = () => {
@@ -120,11 +124,17 @@ export default function ConstellationBackgroundShell({
     allowsConstellationBackground(pathname ?? "");
   const showsSky = isEnabled && !isCrashMarked && allowsBackground;
   /*
-   * A photo shows wherever the sky does not. Both being on means the sky was
-   * turned on after the photo was chosen -- choosing a photo turns the sky off
-   * -- so the later choice wins on this device.
+   * A photo shows unless the sky is the chosen background. Both being on means
+   * the sky was turned on after the photo was chosen -- choosing a photo turns
+   * the sky off -- so the later choice wins on this device, including on the
+   * notebook pages the sky itself cannot be drawn on.
+   *
+   * A photo has its own, much shorter, list of excluded paths: it is a still
+   * image, so it can sit behind notebooks and past-paper questions.
    */
-  const photo = !showsSky && allowsBackground ? photoBackground : null;
+  const skyIsPreferred = isEnabled && !isCrashMarked;
+  const photo =
+    !skyIsPreferred && allowsPhotoBackground(pathname ?? "") ? photoBackground : null;
   /** Either background brings its own palette, so the colour theme stands aside. */
   const shouldShowBackground = showsSky || Boolean(photo);
 
@@ -243,6 +253,18 @@ export default function ConstellationBackgroundShell({
       }
     };
   }, [photo]);
+
+  /*
+   * Solid or see-through panels, stamped on the root the same way the blocking
+   * script does. Harmless without a background: only the photo and sky blocks
+   * in globals.css read it.
+   */
+  useEffect(() => {
+    document.documentElement.classList.toggle(
+      SOLID_PANELS_CLASS_NAME,
+      panelStyle === "solid"
+    );
+  }, [panelStyle]);
 
   return (
     <>

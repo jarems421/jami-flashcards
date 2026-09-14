@@ -4,14 +4,8 @@ import Link from "next/link";
 import type { ComponentType } from "react";
 import { JamiTutorIcon } from "@/components/ui";
 import { usePathname } from "next/navigation";
-import { type TouchEvent, useEffect, useRef, useState } from "react";
+import { type TouchEvent, useEffect, useRef } from "react";
 import { BrandMark, IconBubble } from "@/components/ui";
-import {
-  Dialog,
-  DialogBackdrop,
-  DialogPanel,
-  DialogTitle,
-} from "@/components/ui/Dialog";
 
 type TabGroup = "loop" | "support";
 
@@ -157,21 +151,6 @@ const navGroups: { id: TabGroup; label: string; helper: string }[] = [
   },
 ];
 
-const mobilePrimaryHrefs = [
-  "/dashboard",
-  "/dashboard/study",
-  "/dashboard/practice",
-  "/dashboard/tutor",
-  "/dashboard/decks",
-] as const;
-
-const mobilePrimaryTabs = mobilePrimaryHrefs.map(
-  (href) => tabs.find((tab) => tab.href === href)!
-);
-const mobileMoreTabs = tabs.filter(
-  (tab) => !mobilePrimaryHrefs.includes(tab.href as (typeof mobilePrimaryHrefs)[number])
-);
-
 function isActive(pathname: string, tab: Tab) {
   // Home is the only exact match; everything else owns its subtree.
   if (tab.href === "/dashboard") return pathname === "/dashboard";
@@ -253,7 +232,7 @@ function MobileNavItem({ tab, active }: { tab: Tab; active: boolean }) {
       aria-current={active ? "page" : undefined}
       data-agent-nav={tab.label}
       data-agent-route={tab.href}
-      className={`relative flex min-h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-2xs leading-tight transition duration-fast ease-spring ${
+      className={`relative flex min-h-[3.25rem] w-[4.5rem] shrink-0 snap-start flex-col items-center justify-center gap-1 rounded-lg px-1 text-2xs leading-tight transition duration-fast ease-spring ${
         active
           ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-nav-active"
           : "text-text-muted active:text-text-primary"
@@ -270,96 +249,6 @@ function MobileNavItem({ tab, active }: { tab: Tab; active: boolean }) {
   );
 }
 
-function MoreIcon({ active }: { active: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={`h-5 w-5 ${active ? "opacity-100" : "opacity-75"}`}>
-      <circle cx="5" cy="12" r="1.75" fill="currentColor" />
-      <circle cx="12" cy="12" r="1.75" fill="currentColor" />
-      <circle cx="19" cy="12" r="1.75" fill="currentColor" />
-    </svg>
-  );
-}
-
-function MobileMoreSheet({
-  open,
-  pathname,
-  onClose,
-}: {
-  open: boolean;
-  pathname: string;
-  onClose: () => void;
-}) {
-  return (
-    <Dialog
-      open={open}
-      onDismiss={onClose}
-      className="fixed inset-0 flex items-end justify-center p-3 pb-[calc(env(safe-area-inset-bottom,0px)+5.9rem)] md:hidden"
-    >
-      <DialogBackdrop className="absolute inset-0 bg-[color-mix(in_srgb,var(--app-background)_62%,transparent)]" />
-      <DialogPanel className="app-nav relative w-full max-w-[31rem] rounded-2xl border-[1.5px] border-[var(--nav-shell-border)] p-4 shadow-nav-shell">
-        <div className="flex items-center justify-between gap-3">
-          <DialogTitle className="text-base font-semibold text-text-primary">
-            More in Jami
-          </DialogTitle>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close more navigation"
-            className="app-chip grid h-9 w-9 place-items-center rounded-md text-lg text-text-muted"
-          >
-            ×
-          </button>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          {mobileMoreTabs.map((tab) => {
-            const active = isActive(pathname, tab);
-            return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                onClick={onClose}
-                aria-current={active ? "page" : undefined}
-                className={`flex min-h-16 items-center gap-3 rounded-xl border p-3 transition ${
-                  active
-                    ? "border-[var(--nav-active-border)] bg-[var(--nav-active-bg)] text-[var(--nav-active-text)]"
-                    : "border-[var(--color-border)] bg-[var(--nav-hover-bg)] text-text-secondary"
-                }`}
-              >
-                <NavIcon tab={tab} active={active} />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold">{tab.label}</span>
-                  <span className="mt-0.5 block truncate text-2xs text-text-muted">{tab.description}</span>
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </DialogPanel>
-    </Dialog>
-  );
-}
-
-function SidebarToggleIcon({ direction }: { direction: "hide" | "show" }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-4 w-4">
-      <path
-        d="M4.75 5.75A2 2 0 016.75 3.75h10.5a2 2 0 012 2v12.5a2 2 0 01-2 2H6.75a2 2 0 01-2-2V5.75zM9 4.25v15.5"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d={direction === "hide" ? "M15.5 9l-3 3 3 3" : "M12.5 9l3 3-3 3"}
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 type TabBarProps = {
   desktopHidden?: boolean;
   onDesktopHiddenChange?: (hidden: boolean) => void;
@@ -371,15 +260,9 @@ export default function TabBar({
 }: TabBarProps) {
   const pathname = usePathname();
   const mobileNavRef = useRef<HTMLElement>(null);
-  const touchStartXRef = useRef<number | null>(null);
-  const touchStartYRef = useRef<number | null>(null);
   const sidebarTouchStartXRef = useRef<number | null>(null);
   const sidebarTouchStartYRef = useRef<number | null>(null);
   const sidebarSwipeHandledRef = useRef(false);
-  const swipeHandledRef = useRef(false);
-  const [mobileHidden, setMobileHidden] = useState(false);
-  const [mobileMorePathname, setMobileMorePathname] = useState<string | null>(null);
-  const mobileMoreOpen = mobileMorePathname === pathname;
 
   useEffect(() => {
     const nav = mobileNavRef.current;
@@ -391,70 +274,6 @@ export default function TabBar({
       behavior: "smooth",
     });
   }, [pathname]);
-
-  const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
-    touchStartXRef.current = event.touches[0]?.clientX ?? null;
-    touchStartYRef.current = event.touches[0]?.clientY ?? null;
-    swipeHandledRef.current = false;
-  };
-
-  const handleTouchMove = (event: TouchEvent<HTMLElement>) => {
-    if (mobileHidden || swipeHandledRef.current) {
-      return;
-    }
-
-    const startX = touchStartXRef.current;
-    const startY = touchStartYRef.current;
-    const moveX = event.touches[0]?.clientX ?? null;
-    const moveY = event.touches[0]?.clientY ?? null;
-
-    if (
-      startX === null ||
-      startY === null ||
-      moveX === null ||
-      moveY === null
-    ) {
-      return;
-    }
-
-    const deltaX = moveX - startX;
-    const deltaY = moveY - startY;
-    const mostlyVertical = Math.abs(deltaY) > Math.abs(deltaX) + 10;
-
-    if (deltaY > 26 && mostlyVertical) {
-      swipeHandledRef.current = true;
-      setMobileMorePathname(null);
-      setMobileHidden(true);
-    }
-  };
-
-  const handleTouchEnd = (event: TouchEvent<HTMLElement>) => {
-    const startX = touchStartXRef.current;
-    const startY = touchStartYRef.current;
-    touchStartXRef.current = null;
-    touchStartYRef.current = null;
-    const endY = event.changedTouches[0]?.clientY ?? null;
-    const endX = event.changedTouches[0]?.clientX ?? null;
-
-    if (
-      swipeHandledRef.current ||
-      startX === null ||
-      startY === null ||
-      endX === null ||
-      endY === null
-    ) {
-      return;
-    }
-
-    const deltaX = endX - startX;
-    const deltaY = endY - startY;
-    const mostlyVertical = Math.abs(deltaY) > Math.abs(deltaX) + 10;
-
-    if (deltaY > 36 && mostlyVertical) {
-      setMobileMorePathname(null);
-      setMobileHidden(true);
-    }
-  };
 
   const handleSidebarTouchStart = (event: TouchEvent<HTMLElement>) => {
     sidebarTouchStartXRef.current = event.touches[0]?.clientX ?? null;
@@ -527,83 +346,32 @@ export default function TabBar({
 
   return (
     <>
-      <MobileMoreSheet
-        open={mobileMoreOpen}
-        pathname={pathname}
-        onClose={() => setMobileMorePathname(null)}
-      />
       <nav
         ref={mobileNavRef}
         aria-label="Primary"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        className={`app-nav fixed left-3 right-3 z-30 mx-auto grid max-w-[31rem] grid-cols-6 gap-1 rounded-xl border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-1.5 shadow-nav-shell backdrop-blur-xl transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
+        data-nav="bar"
+        className="app-nav fixed left-3 right-3 z-30 mx-auto flex max-w-[31rem] snap-x snap-mandatory gap-1 overflow-x-auto rounded-xl border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-1.5 shadow-nav-shell backdrop-blur-xl scrollbar-hide md:hidden"
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
       >
-        {mobilePrimaryTabs.map((tab) => {
+        {tabs.map((tab) => {
           const active = isActive(pathname, tab);
           return <MobileNavItem key={tab.href} tab={tab} active={active} />;
         })}
-        <button
-          type="button"
-          aria-label={
-            mobileMoreTabs.some((tab) => isActive(pathname, tab))
-              ? "More navigation, current section"
-              : "More navigation"
-          }
-          aria-expanded={mobileMoreOpen}
-          onClick={() =>
-            setMobileMorePathname((openPathname) =>
-              openPathname === pathname ? null : pathname
-            )
-          }
-          className={`relative flex min-h-[3.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 text-2xs leading-tight transition duration-fast ${
-            mobileMoreOpen || mobileMoreTabs.some((tab) => isActive(pathname, tab))
-              ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-nav-active"
-              : "text-text-muted"
-          }`}
-        >
-          <MoreIcon active={mobileMoreOpen} />
-          <span className="font-medium">More</span>
-        </button>
       </nav>
 
-      {mobileHidden ? (
-        <button
-          type="button"
-          aria-label="Show navigation"
-          onClick={() => setMobileHidden(false)}
-          className="fixed inset-x-0 z-30 mx-auto flex h-8 w-28 items-center justify-center rounded-t-xl border border-b-0 border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted shadow-nav-shell backdrop-blur-xl md:hidden"
-          style={{ bottom: "env(safe-area-inset-bottom, 0px)" }}
-        >
-          Show nav
-        </button>
-      ) : null}
-
       {desktopHidden ? (
-        <>
-          <div
-            aria-hidden="true"
-            onTouchStart={handleSidebarTouchStart}
-            onTouchMove={(event) => handleSidebarTouchMove(event, "show")}
-            onTouchEnd={(event) => handleSidebarTouchEnd(event, "show")}
-            className="fixed inset-y-0 left-0 z-30 hidden w-8 touch-pan-y md:block"
-          />
-          <button
-            type="button"
-            aria-label="Show sidebar"
-            title="Show sidebar"
-            onClick={() => onDesktopHiddenChange?.(false)}
-            className="app-nav fixed left-0 top-1/2 z-40 hidden h-14 w-9 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] text-text-secondary shadow-nav-shell backdrop-blur-xl transition duration-fast hover:w-10 hover:text-text-primary md:flex"
-          >
-            <SidebarToggleIcon direction="show" />
-          </button>
-        </>
+        <div
+          aria-hidden="true"
+          onTouchStart={handleSidebarTouchStart}
+          onTouchMove={(event) => handleSidebarTouchMove(event, "show")}
+          onTouchEnd={(event) => handleSidebarTouchEnd(event, "show")}
+          className="fixed inset-y-0 left-0 z-30 hidden w-8 touch-pan-y md:block"
+        />
       ) : null}
 
       <nav
         aria-label="Primary"
+        data-nav="sidebar"
         onTouchStart={handleSidebarTouchStart}
         onTouchMove={(event) => handleSidebarTouchMove(event, "hide")}
         onTouchEnd={(event) => handleSidebarTouchEnd(event, "hide")}
@@ -613,7 +381,7 @@ export default function TabBar({
             : "translate-x-0 opacity-100"
         }`}
       >
-        <div className="flex flex-col items-center gap-2 border-b border-[var(--color-border)] px-1 pb-3 pt-2 lg:flex-row lg:justify-between lg:px-2">
+        <div className="flex justify-center border-b border-[var(--color-border)] px-1 pb-3 pt-2 lg:justify-start lg:px-2">
           <div className="flex min-w-0 items-center gap-3">
             <BrandMark size="md" />
             <div className="hidden min-w-0 lg:block">
@@ -625,15 +393,6 @@ export default function TabBar({
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            aria-label="Hide sidebar"
-            title="Hide sidebar"
-            onClick={() => onDesktopHiddenChange?.(true)}
-            className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-md border border-[var(--color-border)] bg-[var(--nav-hover-bg)] text-text-muted transition duration-fast hover:border-[var(--nav-active-border)] hover:text-text-primary [&>svg]:block"
-          >
-            <SidebarToggleIcon direction="hide" />
-          </button>
         </div>
 
         <div className="app-sidebar-scroll flex flex-1 flex-col gap-4 overflow-y-auto py-3 pl-0.5 pr-1.5">

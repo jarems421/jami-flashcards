@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import FolderCourseSection from "@/components/workspace/FolderCourseSection";
+import FolderDetailsFields from "@/components/workspace/FolderDetailsFields";
 import FolderLookSection from "@/components/workspace/FolderLookSection";
-import { Button, Card, ConfirmDialog, Input } from "@/components/ui";
+import { Button, Card, ConfirmDialog } from "@/components/ui";
 import { useFolderCourseForm } from "@/hooks/useFolderCourseForm";
 import { featureFlags } from "@/lib/app/feature-flags";
 import {
@@ -12,11 +13,7 @@ import {
   type ObjectColorId,
   type ObjectIconId,
 } from "@/lib/workspace/object-card-styles";
-import {
-  MAX_STUDY_FOLDER_NAME_LENGTH,
-  MAX_STUDY_FOLDER_SUBJECT_LENGTH,
-  type StudyFolder,
-} from "@/lib/workspace/study-folders";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
 import {
   archiveStudyFolder,
   updateStudyFolder,
@@ -31,6 +28,13 @@ type FolderEditorProps = {
   onError: (error: unknown, fallback: string) => void;
 };
 
+/**
+ * A folder's settings, opened in place above its contents.
+ *
+ * Laid out as the folder creation dialog is -- the folder beside its name, then
+ * its look, then the course folded away -- so making a folder and changing one
+ * are the same form, and archiving sits apart from saving rather than beside it.
+ */
 export default function FolderEditor({
   userId,
   folder,
@@ -108,67 +112,80 @@ export default function FolderEditor({
 
   return (
     <>
-      <Card padding="sm" className="mx-auto max-w-[52rem]">
-        <div className="px-1 text-center sm:px-2 sm:text-left">
-          <div className="text-sm font-semibold text-text-primary">Edit folder</div>
-          <p className="mt-0.5 text-xs text-text-muted">
-            Update how this study space looks, which course it is, and how Jami explains its material.
-          </p>
+      <Card padding="none" className="mx-auto w-full max-w-3xl">
+        <div className="flex items-start justify-between gap-4 px-4 pb-3 pt-4 sm:px-6 sm:pt-5">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight text-text-primary">Folder settings</h2>
+            <p className="mt-1 text-sm leading-6 text-text-muted">
+              Its name, how it looks, and the course it belongs to.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Close folder settings"
+            disabled={saving}
+            onClick={onCancel}
+            className="-mr-2 -mt-1 shrink-0"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              aria-hidden="true"
+              className="h-5 w-5"
+            >
+              <path d="m5 5 10 10M15 5 5 15" strokeLinecap="round" />
+            </svg>
+          </Button>
         </div>
 
-        <div className="mt-4 grid gap-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              data-dialog-autofocus="true"
-              label="Folder name"
-              value={name}
-              maxLength={MAX_STUDY_FOLDER_NAME_LENGTH}
-              onChange={(event) => setName(event.target.value)}
-            />
-            <Input
-              label="Subject detail"
-              value={subject}
-              placeholder="Optional"
-              maxLength={MAX_STUDY_FOLDER_SUBJECT_LENGTH}
-              onChange={(event) => setSubject(event.target.value)}
-            />
-          </div>
+        <div className="grid gap-6 border-t border-[var(--color-border)] px-4 py-5 sm:px-6">
+          <FolderDetailsFields
+            name={name}
+            subject={subject}
+            color={color}
+            icon={icon}
+            onNameChange={setName}
+            onSubjectChange={setSubject}
+          />
+
+          <FolderLookSection
+            color={color}
+            icon={icon}
+            onColorChange={setColor}
+            onIconChange={setIcon}
+          />
 
           <FolderCourseSection
             form={courseForm}
             subjectHint={`${name} ${subject}`}
             disabled={saving}
           />
-
-          <FolderLookSection
-            name={name}
-            color={color}
-            icon={icon}
-            onColorChange={setColor}
-            onIconChange={setIcon}
-          />
         </div>
 
-        <div className="mt-4 flex min-h-[3.25rem] flex-wrap items-center justify-center gap-3 border-t border-[var(--color-border)] px-1 pt-3 sm:justify-between sm:px-2">
+        <div className="flex flex-col-reverse gap-3 border-t border-[var(--color-border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <Button
             type="button"
-            variant="danger"
+            variant="ghost"
             size="sm"
             disabled={saving}
             onClick={() => setConfirmArchive(true)}
+            className="self-start text-danger-text"
           >
             Archive folder
           </Button>
-          <div className="flex flex-wrap items-center justify-center gap-2.5">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {needsTier ? (
-              <p className="text-xs text-text-muted">Choose your tier to finish the course.</p>
+              <p className="mr-1 text-xs text-text-muted">Choose your tier to finish the course.</p>
             ) : null}
-            <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={onCancel}>
+            <Button type="button" variant="ghost" disabled={saving} onClick={onCancel}>
               Cancel
             </Button>
             <Button
               type="button"
-              size="sm"
               disabled={saving || !name.trim() || needsTier}
               onClick={() => void save()}
             >

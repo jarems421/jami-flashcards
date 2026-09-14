@@ -1,7 +1,7 @@
 import { type HTMLAttributes } from "react";
 
 type CardTone = "default" | "warm" | "subtle";
-type CardPadding = "sm" | "md" | "lg";
+type CardPadding = "none" | "sm" | "md" | "lg";
 
 type CardProps = HTMLAttributes<HTMLDivElement> & {
   tone?: CardTone;
@@ -15,6 +15,7 @@ const toneClasses: Record<CardTone, string> = {
 };
 
 const paddingClasses: Record<CardPadding, string> = {
+  none: "",
   sm: "p-3 sm:p-4",
   md: "p-4 sm:p-6",
   lg: "p-5 sm:p-8",

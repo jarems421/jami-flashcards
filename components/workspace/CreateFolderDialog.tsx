@@ -4,16 +4,13 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { Button, FeedbackBanner, Input } from "@/components/ui";
+import { Button, FeedbackBanner } from "@/components/ui";
 import { useFolderCourseForm } from "@/hooks/useFolderCourseForm";
 import { getFolderNameValidationError } from "@/lib/workspace/folder-form";
-import {
-  MAX_STUDY_FOLDER_NAME_LENGTH,
-  MAX_STUDY_FOLDER_SUBJECT_LENGTH,
-  type StudyFolder,
-} from "@/lib/workspace/study-folders";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { createStudyFolder } from "@/services/study/folders";
 import FolderCourseSection from "./FolderCourseSection";
+import FolderDetailsFields from "./FolderDetailsFields";
 import FolderLookSection from "./FolderLookSection";
 import WorkspaceActionDialog from "./WorkspaceActionDialog";
 import type { ObjectColorId, ObjectIconId } from "@/lib/workspace/object-card-styles";
@@ -101,8 +98,8 @@ export default function CreateFolderDialog({
   return (
     <WorkspaceActionDialog
       open={open}
-      title="Create a study space"
-      description="Name the subject, say which course it is, and make it yours. Notebooks, decks and sources go inside."
+      title="New folder"
+      description="A study space for one subject. Notebooks, decks and sources go inside."
       busy={saving}
       maxWidth="lg"
       onClose={closeDialog}
@@ -118,55 +115,33 @@ export default function CreateFolderDialog({
       ) : null}
 
       <form onSubmit={handleSubmit}>
-        <fieldset disabled={saving} className="grid gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Input
-                data-dialog-autofocus="true"
-                label="Folder name"
-                value={name}
-                placeholder="Biology"
-                maxLength={MAX_STUDY_FOLDER_NAME_LENGTH}
-                onBlur={() => setNameTouched(true)}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  if (event.target.value.trim()) setNameTouched(false);
-                }}
-                aria-invalid={showNameError}
-                aria-describedby={
-                  showNameError ? "create-folder-name-error" : undefined
-                }
-              />
-              {showNameError ? (
-                <p
-                  id="create-folder-name-error"
-                  className="mt-2 text-sm font-medium text-danger-text"
-                >
-                  {nameError}
-                </p>
-              ) : null}
-            </div>
-            <Input
-              label="Subject detail"
-              value={subject}
-              placeholder="Optional"
-              maxLength={MAX_STUDY_FOLDER_SUBJECT_LENGTH}
-              onChange={(event) => setSubject(event.target.value)}
-            />
-          </div>
+        <fieldset disabled={saving} className="grid gap-6">
+          <FolderDetailsFields
+            name={name}
+            subject={subject}
+            color={color}
+            icon={icon}
+            onNameBlur={() => setNameTouched(true)}
+            onNameChange={(value) => {
+              setName(value);
+              if (value.trim()) setNameTouched(false);
+            }}
+            onSubjectChange={setSubject}
+            nameError={showNameError ? nameError : null}
+            nameErrorId="create-folder-name-error"
+          />
+
+          <FolderLookSection
+            color={color}
+            icon={icon}
+            onColorChange={setColor}
+            onIconChange={setIcon}
+          />
 
           <FolderCourseSection
             form={courseForm}
             subjectHint={`${name} ${subject}`}
             disabled={saving}
-          />
-
-          <FolderLookSection
-            name={name}
-            color={color}
-            icon={icon}
-            onColorChange={setColor}
-            onIconChange={setIcon}
           />
         </fieldset>
 
@@ -175,7 +150,7 @@ export default function CreateFolderDialog({
           * a phone and a tablet held sideways -- the one button that matters
           * should not be below the fold.
           */}
-        <div className="sticky bottom-0 z-10 -mx-3 -mb-3 mt-5 flex flex-col gap-2 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-3 sm:-mx-5 sm:-mb-5 sm:flex-row sm:items-center sm:px-5">
+        <div className="sticky bottom-0 z-10 -mx-3 -mb-3 mt-6 flex flex-col gap-2 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-3 sm:-mx-5 sm:-mb-5 sm:flex-row sm:items-center sm:px-5">
           {needsTier ? (
             <p
               id="create-folder-submit-hint"

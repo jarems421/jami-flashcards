@@ -113,3 +113,30 @@ export function examIngestionProgress(job: ExamIngestionJob): number {
   }
   return Math.min(0.99, (index + within) / total);
 }
+
+/**
+ * The questions a mark-scheme request came back without, in groups to ask again.
+ *
+ * Schemes are read eight questions at a time, and one reply that is not valid
+ * JSON used to lose all eight: the parse failed quietly, the chunk held no
+ * schemes, and every question in it was rejected. It was the same eight on
+ * every run -- the request is at temperature 0 -- so running again never
+ * helped. Asking again in smaller groups changes the request, and one scheme
+ * that will not parse then costs its own question rather than seven others.
+ */
+export function schemeRetryGroups(
+  wanted: readonly string[],
+  found: Iterable<string>,
+  size = 2
+): string[][] {
+  const have = new Set(found);
+  const missing = wanted.filter((label) => label && !have.has(label));
+  // Nothing smaller to ask for: a single question that failed stays failed.
+  if (missing.length === 0 || (wanted.length <= 1 && missing.length === wanted.length)) return [];
+  const step = Math.max(1, Math.floor(size));
+  const groups: string[][] = [];
+  for (let index = 0; index < missing.length; index += step) {
+    groups.push(missing.slice(index, index + step));
+  }
+  return groups;
+}

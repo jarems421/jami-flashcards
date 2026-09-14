@@ -54,9 +54,7 @@ test("view tabs live in the top bar on every flashcards and tutor view", async (
 
       // The sidebar entry stays lit across both views of the pair.
       if (size.width >= 768) {
-        const rail = page
-          .getByRole("navigation", { name: "Primary" })
-          .filter({ has: page.getByRole("button", { name: "Hide sidebar" }) });
+        const rail = page.locator("nav[data-nav='sidebar']");
         await expect(
           rail.locator("[aria-current='page']")
         ).toHaveCount(1);

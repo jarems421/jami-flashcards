@@ -2,10 +2,11 @@
 
 import ExamCourseFields from "@/components/practice/ExamCourseFields";
 import StudyLevelSelect from "@/components/study/StudyLevelSelect";
-import { FormSection } from "@/components/ui";
+import FormDisclosure from "@/components/ui/FormDisclosure";
 import type { FolderCourseForm } from "@/hooks/useFolderCourseForm";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { describeExamCourse } from "@/lib/practice/exam-course-form";
+import { getStudyLevelShortLabel } from "@/lib/profile/study-level";
 
 type FolderCourseSectionProps = {
   form: FolderCourseForm;
@@ -19,6 +20,9 @@ type FolderCourseSectionProps = {
  *
  * These used to exist only in the folder editor, so every new folder was
  * created, reopened and edited before Past Paper Practice would even list it.
+ *
+ * Folded away unless something is already set: most folders never need it,
+ * and the summary says what is chosen without opening it.
  */
 export default function FolderCourseSection({
   form,
@@ -27,17 +31,23 @@ export default function FolderCourseSection({
 }: FolderCourseSectionProps) {
   const practice = featureFlags.enablePastPaperPractice;
   const course = form.resolvedCourse.course;
+  const summary = course
+    ? describeExamCourse(course)
+    : form.studyLevel
+      ? getStudyLevelShortLabel(form.studyLevel)
+      : "Optional";
 
   return (
-    <FormSection
+    <FormDisclosure
       title="Level and course"
-      aside="Optional"
-      description={
-        practice
-          ? "Sets how Tutor explains things here, and which past-paper questions Practice uses."
-          : "Sets how Tutor explains things inside this folder."
-      }
+      summary={summary}
+      defaultOpen={Boolean(form.studyLevel)}
     >
+      <p className="-mt-1 mb-4 max-w-xl text-xs leading-5 text-text-muted">
+        {practice
+          ? "Sets how Tutor explains things here, and which past-paper questions Practice uses."
+          : "Sets how Tutor explains things inside this folder."}
+      </p>
       <div className="grid gap-4">
         <StudyLevelSelect
           value={form.studyLevel}
@@ -45,7 +55,7 @@ export default function FolderCourseSection({
           description={
             practice && !form.studyLevel
               ? "Choose School, GCSE or A level to add your exam board and course."
-              : "Only applies inside this folder."
+              : undefined
           }
           disabled={disabled}
           onChange={form.setStudyLevel}
@@ -92,6 +102,6 @@ export default function FolderCourseSection({
           </div>
         ) : null}
       </div>
-    </FormSection>
+    </FormDisclosure>
   );
 }

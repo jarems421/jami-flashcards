@@ -61,14 +61,33 @@ const SECURITY_HEADERS = [
 ];
 
 export const nextConfig: NextConfig = {
+  // The floating "N" dev badge sits over the signed-out pages' bottom corner.
+  // Compile and runtime errors still surface with it off.
+  devIndicators: false,
   // PDF evidence rendering uses a native Skia binary and must remain a
   // server runtime dependency rather than being parsed by webpack.
-  serverExternalPackages: ["@napi-rs/canvas", "mammoth", "officeparser"],
+  // pdfkit reads its font metrics from disk, and MathJax imports glyph ranges
+  // by computed path, so both stay unbundled for generated paper booklets.
+  serverExternalPackages: [
+    "@napi-rs/canvas",
+    "mammoth",
+    "officeparser",
+    "pdfkit",
+    "@mathjax/src",
+    "@mathjax/mathjax-newcm-font",
+  ],
   // pdf.js reads its image decoders from disk at render time, which tracing
   // cannot see from an import. Without them a deployed ingestion renders
   // Pearson's JBIG2 diagrams as blank space.
   outputFileTracingIncludes: {
     "/api/internal/exam-questions/ingest/**": ["./node_modules/pdfjs-dist/wasm/**"],
+    // Generated papers are typeset in the workflow step. The body font, pdfkit's
+    // metrics and MathJax's glyph ranges are all read by path at render time.
+    "/.well-known/workflow/v1/step": [
+      "./node_modules/pdfjs-dist/standard_fonts/LiberationSans-*.ttf",
+      "./node_modules/pdfkit/js/data/**",
+      "./node_modules/@mathjax/mathjax-newcm-font/mjs/svg/dynamic/**",
+    ],
   },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];

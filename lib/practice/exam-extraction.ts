@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import {
   findQuestionStarts,
   normaliseQuestionLabel,
+  numberedPartLabel,
+  printedPartReference,
   rootQuestionLabel,
   readPrintedTariff,
   readPrintedTariffs,
@@ -146,7 +148,10 @@ export function buildExamQuestionsFromExtraction(
      * with no tariff in it, which read as "no tariff could be read" on every
      * question of the paper.
      */
-    const fullLabel = normaliseQuestionLabel(number) ?? rootLabel;
+    const fullLabel = numberedPartLabel(normaliseQuestionLabel(number) ?? rootLabel, questionStarts);
+    // Stored and shown by the paper's own numbering. The id still hashes the
+    // model's label, so re-ingesting a paper replaces its questions in place.
+    const printed = printedPartReference(number, fullLabel);
     /*
      * Asked of the board, not of the one label: AQA numbers every part in the
      * margin, so `08.1` is its own question even on the one page where its
@@ -315,7 +320,7 @@ export function buildExamQuestionsFromExtraction(
         subject: manifest.subject,
         subjectKey: subjectKeyOf(manifest.subject),
         studyLevel: manifest.studyLevel,
-        label: text(item.label, 120) || `Question ${number}`,
+        label: printed?.label ?? (text(item.label, 120) || `Question ${number}`),
         prompt,
         marks,
         assets: [],
@@ -338,7 +343,7 @@ export function buildExamQuestionsFromExtraction(
           year: manifest.year,
           series: manifest.series,
           paperReference: manifest.paperReference,
-          questionNumber: number,
+          questionNumber: printed?.reference ?? number,
           sourceUrl: manifest.questionPaperUrl,
           sourceSha256: input.paperSha256,
         },

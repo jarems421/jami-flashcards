@@ -208,7 +208,21 @@ export function compactNotebookInkSvg(
     skippedPaths,
     pointsBefore,
     pointsAfter,
-    bytesBefore: Buffer.byteLength(svg, "utf8"),
-    bytesAfter: Buffer.byteLength(next, "utf8"),
+    bytesBefore: utf8Length(svg),
+    bytesAfter: utf8Length(next),
   };
+}
+
+/*
+ * UTF-8 length without Node's `Buffer`.
+ *
+ * This runs in the browser, on every page save, and `Buffer` does not exist
+ * there: the call threw, the save caught it and stored the ink uncompacted --
+ * so compaction was only ever reaching pages saved by tests. The encoder gives
+ * the same count in both places.
+ */
+const utf8Encoder = new TextEncoder();
+
+function utf8Length(value: string) {
+  return utf8Encoder.encode(value).length;
 }

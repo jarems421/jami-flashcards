@@ -56,6 +56,7 @@ import ConstellationControls, {
   type ConstellationSkyMode,
 } from "@/components/constellation/ConstellationControls";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
+import PanelStyleSetting from "@/components/profile/PanelStyleSetting";
 
 const STAR_GESTURE_BODY_CLASS = "jami-star-gesture-active";
 
@@ -956,6 +957,11 @@ export default function ConstellationDashboardPage() {
                   onRedo={handleRedoLine}
                   onClear={() => setIsConfirmingClearLines(true)}
                 />
+
+                {/* How the rest of Jami sits over this sky, while it is the background. */}
+                {isConstellationBackgroundEnabled ? (
+                  <PanelStyleSetting />
+                ) : null}
 
                 <div
                   id="constellation-container"

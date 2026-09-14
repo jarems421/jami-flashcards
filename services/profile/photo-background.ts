@@ -9,13 +9,30 @@ import {
 } from "@/services/firebase/storage-files";
 import { derivePhotoBackgroundPaletteForView } from "@/lib/app/photo-background-palette";
 import {
+  findFlatPalette,
+  isFaithfulSharpening,
+  photoBackgroundUpscaleFactor,
+  sharpenFlatGraphic,
+} from "@/lib/app/photo-background-upscale";
+import {
+  photoSoftenSigma,
+  reduceCompressionArtifacts,
+  softenPhoto,
+} from "@/lib/app/photo-background-soften";
+import {
   DEFAULT_PHOTO_BACKGROUND_VIEW,
   encodePhotoBackgroundSample,
+  ENLARGED_PHOTO_BACKGROUND_FILE_STEM,
+  LOW_RESOLUTION_PHOTO_STRETCH,
   MAX_PHOTO_BACKGROUND_SAMPLE_EDGE,
+  MAX_PHOTO_BACKGROUND_UPLOAD_BYTES,
   normalizePhotoBackgroundRecord,
   normalizePhotoBackgroundView,
+  photoBackgroundFileExtension,
   photoBackgroundStoragePrefix,
   readPhotoBackground,
+  SHARP_PHOTO_BACKGROUND_FILE_STEM,
+  shouldKeepOriginalPhoto,
   writePhotoBackground,
   type CachedPhotoBackground,
   type PhotoBackgroundRecord,
@@ -25,8 +42,42 @@ import { setConstellationBackgroundEnabled } from "@/lib/constellation/backgroun
 
 /** What a phone camera produces, before it is resized. */
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
-/** Sharp on a large desktop monitor, and light enough to sit behind every page on an iPad. */
-const MAX_EDGE = 2560;
+/**
+ * Enough to cover a retina laptop, an iPad Pro or a 4K monitor without the
+ * photo being stretched, with a little room to zoom. 2560 was short of a
+ * retina laptop's width, so every background was upscaled before it was shown.
+ */
+const MAX_EDGE = 3840;
+/**
+ * WebP where the browser can write it: at the same size it keeps hard edges and
+ * flat colour -- patterns, illustrations, text in a photo -- far cleaner than
+ * JPEG. Safari cannot encode WebP from a canvas, so it falls back to JPEG.
+ * Both are high enough that skies do not band, and well inside the 15 MB limit.
+ */
+const WEBP_QUALITY = 0.95;
+const JPEG_QUALITY = 0.92;
+
+function canvasBlob(canvas: HTMLCanvasElement, type: string, quality: number) {
+  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+/**
+ * A flat graphic as PNG: a few solid colours compress to very little without
+ * loss, where JPEG and WebP would soften the edges that were just sharpened.
+ */
+async function encodeGraphic(canvas: HTMLCanvasElement) {
+  const png = await canvasBlob(canvas, "image/png", 1);
+  return png && png.size <= MAX_PHOTO_BACKGROUND_UPLOAD_BYTES ? png : encodeBackground(canvas);
+}
+
+async function encodeBackground(canvas: HTMLCanvasElement) {
+  const webp = await canvasBlob(canvas, "image/webp", WEBP_QUALITY);
+  // A browser that cannot write WebP quietly hands back a PNG instead.
+  if (webp?.type === "image/webp") return webp;
+  const jpeg = await canvasBlob(canvas, "image/jpeg", JPEG_QUALITY);
+  if (!jpeg) throw new Error("This browser could not prepare the photo.");
+  return jpeg;
+}
 
 function drawScaled(source: CanvasImageSource, width: number, height: number) {
   const canvas = document.createElement("canvas");
@@ -34,8 +85,84 @@ function drawScaled(source: CanvasImageSource, width: number, height: number) {
   canvas.height = height;
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) throw new Error("This browser could not prepare the photo.");
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
   context.drawImage(source, 0, 0, width, height);
   return { canvas, context };
+}
+
+/**
+ * The photo at its final size, shrunk in halves on the way down.
+ *
+ * One draw from a camera photo straight to the final size reads only a few of
+ * the original pixels for each one it writes, which is what left uploaded
+ * backgrounds jagged and soft. Halving first means every step averages the
+ * pixels it drops.
+ */
+function resizeSmoothly(
+  image: CanvasImageSource,
+  imageWidth: number,
+  imageHeight: number,
+  width: number,
+  height: number
+) {
+  let source = image;
+  let sourceWidth = imageWidth;
+  let sourceHeight = imageHeight;
+  while (sourceWidth / 2 >= width && sourceHeight / 2 >= height) {
+    sourceWidth = Math.round(sourceWidth / 2);
+    sourceHeight = Math.round(sourceHeight / 2);
+    source = drawScaled(source, sourceWidth, sourceHeight).canvas;
+  }
+  return drawScaled(source, width, height);
+}
+
+/**
+ * A flat graphic enlarged and its edges redrawn crisp, or null for anything
+ * that should stay a photo.
+ *
+ * Two checks: the image has to be drawn in a handful of solid colours, and the
+ * sharpened result, shrunk back down, has to still be the original image --
+ * which catches a subtle shade or a small gradient the palette would erase.
+ */
+function enlargeFlatGraphic(bitmap: ImageBitmap, factor: number) {
+  const nativeWidth = bitmap.width;
+  const nativeHeight = bitmap.height;
+  const original = drawScaled(bitmap, nativeWidth, nativeHeight)
+    .context.getImageData(0, 0, nativeWidth, nativeHeight).data;
+  const palette = findFlatPalette(original, nativeWidth, nativeHeight);
+  if (!palette) return null;
+
+  const width = Math.max(1, Math.round(nativeWidth * factor));
+  const height = Math.max(1, Math.round(nativeHeight * factor));
+  const enlarged = drawScaled(bitmap, width, height);
+  const image = enlarged.context.getImageData(0, 0, width, height);
+  sharpenFlatGraphic(image.data, palette, factor);
+  enlarged.context.putImageData(image, 0, 0);
+
+  const roundTrip = resizeSmoothly(enlarged.canvas, width, height, nativeWidth, nativeHeight)
+    .context.getImageData(0, 0, nativeWidth, nativeHeight).data;
+  return isFaithfulSharpening(original, roundTrip) ? enlarged : null;
+}
+
+/**
+ * A photo smaller than the screen: compression noise smoothed and the picture
+ * softened a little at its own size, then enlarged, so the screen shows a
+ * smooth photo rather than magnified JPEG blocks.
+ */
+function enlargeSmallPhoto(bitmap: ImageBitmap, factor: number) {
+  const nativeWidth = bitmap.width;
+  const nativeHeight = bitmap.height;
+  const native = drawScaled(bitmap, nativeWidth, nativeHeight);
+  const image = native.context.getImageData(0, 0, nativeWidth, nativeHeight);
+  reduceCompressionArtifacts(image.data, nativeWidth, nativeHeight);
+  softenPhoto(image.data, nativeWidth, nativeHeight, photoSoftenSigma(factor));
+  native.context.putImageData(image, 0, 0);
+  return drawScaled(
+    native.canvas,
+    Math.max(1, Math.round(nativeWidth * factor)),
+    Math.max(1, Math.round(nativeHeight * factor))
+  );
 }
 
 /**
@@ -58,14 +185,29 @@ export async function preparePhotoBackground(file: File) {
   }
 
   try {
-    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+    const shrink = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+    /*
+     * A flat graphic smaller than the screen is enlarged here and its edges
+     * redrawn crisp, rather than left for the browser to stretch into blur.
+     * Photos are never enlarged: that would only move the blur into the file.
+     */
+    const upscaleFactor = shrink === 1 ? photoBackgroundUpscaleFactor(bitmap.width, bitmap.height) : 1;
+    const graphic = upscaleFactor > 1 ? enlargeFlatGraphic(bitmap, upscaleFactor) : null;
+    // A photo only stretched a little looks fine as it is; past that, it is prepared for the stretch.
+    const photo =
+      !graphic && upscaleFactor > LOW_RESOLUTION_PHOTO_STRETCH
+        ? enlargeSmallPhoto(bitmap, upscaleFactor)
+        : null;
+    const scale = graphic || photo ? upscaleFactor : shrink;
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
-    const { canvas } = drawScaled(bitmap, width, height);
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.86)
-    );
-    if (!blob) throw new Error("This browser could not prepare the photo.");
+    const { canvas } =
+      graphic ?? photo ?? resizeSmoothly(bitmap, bitmap.width, bitmap.height, width, height);
+    const blob = shouldKeepOriginalPhoto({ type: file.type, size: file.size, scale })
+      ? file
+      : graphic
+        ? await encodeGraphic(canvas)
+        : await encodeBackground(canvas);
 
     const sampleScale = MAX_PHOTO_BACKGROUND_SAMPLE_EDGE / Math.max(width, height);
     const sampleWidth = Math.max(1, Math.round(width * sampleScale));
@@ -81,6 +223,7 @@ export async function preparePhotoBackground(file: File) {
       blob,
       sample,
       palette: derivePhotoBackgroundPaletteForView(sample, DEFAULT_PHOTO_BACKGROUND_VIEW),
+      enlargedPhoto: Boolean(photo),
     };
   } finally {
     bitmap.close();
@@ -134,12 +277,18 @@ async function deleteOwnPhotos(userId: string, paths: Array<string | undefined>,
 export async function savePhotoBackground(userId: string, file: File): Promise<CachedPhotoBackground> {
   const prepared = await preparePhotoBackground(file);
   const previous = await loadRemotePhotoBackground(userId).catch(() => null);
-  const storagePath = `${photoBackgroundStoragePrefix(userId)}${createStorageFileId()}/background.jpg`;
+  const extension = photoBackgroundFileExtension(prepared.blob.type);
+  const contentType = extension ? prepared.blob.type : "image/jpeg";
+  const stem = prepared.enlargedPhoto
+    ? ENLARGED_PHOTO_BACKGROUND_FILE_STEM
+    : SHARP_PHOTO_BACKGROUND_FILE_STEM;
+  const fileName = `${stem}.${extension ?? "jpg"}`;
+  const storagePath = `${photoBackgroundStoragePrefix(userId)}${createStorageFileId()}/${fileName}`;
 
   await uploadStorageFile({
     storagePath,
-    file: new File([prepared.blob], "background.jpg", { type: "image/jpeg" }),
-    contentType: "image/jpeg",
+    file: new File([prepared.blob], fileName, { type: contentType }),
+    contentType,
   });
 
   const record: PhotoBackgroundRecord = {
@@ -267,8 +416,15 @@ export function photoBackgroundErrorMessage(error: unknown) {
     typeof error === "object" && error && "code" in error
       ? String((error as { code?: unknown }).code)
       : "";
+  /*
+   * A refusal says the photo could not be kept, not that the feature is off.
+   *
+   * This read "not available on this account", which sent students looking for
+   * a setting when the cause was the service refusing the upload -- one they
+   * could do nothing about except try again later.
+   */
   if (code === "storage/unauthorized" || code === "permission-denied") {
-    return "Photo backgrounds are not available on this account.";
+    return "Jami couldn't store your photo just now. Please try again later.";
   }
   if (code.startsWith("storage/")) return getStorageUploadErrorMessage(error, "photo");
   return error instanceof Error && error.message

@@ -39,12 +39,12 @@ test("Release 1 landing stays clear at desktop and phone sizes", async ({ page }
   const signIn = await page
     .getByRole("button", { name: "Continue with Google" })
     .boundingBox();
-  const preview = await page
-    .getByLabel("A folder, a notebook page, and a card waiting for review")
+  const steps = await page
+    .getByText("Work naturally", { exact: true })
     .boundingBox();
-  expect(headline && signIn && preview).toBeTruthy();
+  expect(headline && signIn && steps).toBeTruthy();
   expect(signIn!.y).toBeGreaterThan(headline!.y);
-  expect(signIn!.y).toBeLessThan(preview!.y);
+  expect(signIn!.y).toBeLessThan(steps!.y);
 
   await page.screenshot({ path: "test-results/release-one-landing-phone.png", fullPage: true });
 });
@@ -56,9 +56,7 @@ test("Release 1 navigation and study workspace stay usable across sizes", async 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await signIn(page);
   await expect(page.getByRole("heading", { name: "Today", level: 1 })).toBeVisible();
-  const desktopNav = page
-    .getByRole("navigation", { name: "Primary" })
-    .filter({ has: page.getByRole("button", { name: "Hide sidebar" }) });
+  const desktopNav = page.locator("nav[data-nav='sidebar']");
   await expect(desktopNav).toBeVisible();
   await expect(desktopNav.getByText("Learning loop", { exact: true }).last()).toBeVisible();
   await expect(desktopNav.getByText("Workspace", { exact: true })).toBeVisible();

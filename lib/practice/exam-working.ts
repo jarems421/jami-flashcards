@@ -1,3 +1,5 @@
+import { compactNotebookInkSvg } from "@/lib/workspace/notebook-ink-compaction";
+
 export type ExamScratchpadSnapshot = {
   hasInk: boolean;
   ok: boolean;
@@ -54,6 +56,55 @@ export function examWorkingHasInk(svg: string | null | undefined): boolean {
 /** The pages worth sending, in order: a blank page adds nothing to mark. */
 export function examWorkingPagesWithInk(pages: readonly string[]) {
   return pages.filter((page) => examWorkingHasInk(page));
+}
+
+/**
+ * Pages as they are stored: the same drawing with fewer points in it.
+ *
+ * The notebook compacts ink before storing it and a sheet of working never
+ * did, so a busy sheet stayed at full density -- slower to redraw every time it
+ * was opened, and closer to the size at which it can no longer be saved. Only
+ * the stored copy is compacted; what the marker is sent is rasterised from the
+ * editor's own export. A page that does not come out smaller, or that the
+ * compactor cannot read, is kept exactly as it was.
+ */
+export function compactExamWorkingPages(pages: readonly string[]): string[] {
+  return pages.map((page) => {
+    if (!page) return page;
+    try {
+      const compacted = compactNotebookInkSvg(page).svg;
+      return compacted.length < page.length ? compacted : page;
+    } catch {
+      return page;
+    }
+  });
+}
+
+/**
+ * Zoom levels on the full-screen sheet, as multiples of the page fitted to the
+ * screen. The first is the fit itself.
+ */
+export const EXAM_WORKING_ZOOM_STEPS = [1, 1.25, 1.5, 2, 2.5, 3] as const;
+
+/** The widest a page can be drawn and still be seen whole, inside some padding. */
+export function examWorkingFitWidth(input: {
+  containerWidth: number;
+  containerHeight: number;
+  pageWidth: number;
+  pageHeight: number;
+  padding: number;
+}) {
+  const width = Math.max(0, input.containerWidth - input.padding * 2);
+  const height = Math.max(0, input.containerHeight - input.padding * 2);
+  if (input.pageWidth <= 0 || input.pageHeight <= 0) return 0;
+  return Math.floor(Math.min(width, (height * input.pageWidth) / input.pageHeight));
+}
+
+/** Contacts wider than this, in CSS pixels, are a resting hand rather than a fingertip. */
+export const EXAM_WORKING_PALM_CONTACT_SIZE = 40;
+
+export function examWorkingTouchIsPalm(contact: { width: number; height: number }) {
+  return Math.max(contact.width, contact.height) > EXAM_WORKING_PALM_CONTACT_SIZE;
 }
 
 /**

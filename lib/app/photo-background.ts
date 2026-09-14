@@ -106,8 +106,106 @@ function finiteOr(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/**
+ * Where a photo background is never drawn.
+ *
+ * Far shorter than the star sky's list. The sky is kept off notebooks and
+ * past-paper questions because forty animated stars sat behind a canvas that
+ * repaints on every stroke; a photo is one still image on a layer of its own,
+ * painted once, so it costs the ink nothing. Only the constellation page is
+ * left out, because it draws a sky in the middle of itself.
+ */
+export const PHOTO_BACKGROUND_EXCLUDED_PATHS = ["/dashboard/constellation"];
+
+export function allowsPhotoBackground(pathname: string) {
+  return !PHOTO_BACKGROUND_EXCLUDED_PATHS.some((prefix) => pathname.startsWith(prefix));
+}
+
 export function photoBackgroundStoragePrefix(userId: string) {
   return `users/${userId}/appBackgrounds/`;
+}
+
+/**
+ * The file name photos are saved under since uploads were made sharper.
+ *
+ * Earlier uploads were shrunk in a single step to at most 2560px and saved as
+ * `background.jpg`. Their detail is gone from the stored file, so nothing can
+ * sharpen them afterwards; the name is how the app tells them apart and asks
+ * for the photo again.
+ */
+export const SHARP_PHOTO_BACKGROUND_FILE_STEM = "background-sharp";
+/**
+ * A photo that was smaller than the screen, cleaned up, softened a little and
+ * enlarged on upload. Named apart so the card can say what happened to it.
+ */
+export const ENLARGED_PHOTO_BACKGROUND_FILE_STEM = "background-enlarged";
+
+function photoBackgroundFileName(storagePath: string) {
+  return storagePath.split("/").pop() ?? "";
+}
+
+export function isEnlargedPhotoBackground(storagePath: string) {
+  return photoBackgroundFileName(storagePath).startsWith(`${ENLARGED_PHOTO_BACKGROUND_FILE_STEM}.`);
+}
+
+export function isSoftPhotoBackground(storagePath: string) {
+  return (
+    !photoBackgroundFileName(storagePath).startsWith(`${SHARP_PHOTO_BACKGROUND_FILE_STEM}.`) &&
+    !isEnlargedPhotoBackground(storagePath)
+  );
+}
+
+/** What Storage accepts for a background (storage.rules), and the extension each is saved under. */
+const PHOTO_BACKGROUND_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+export const MAX_PHOTO_BACKGROUND_UPLOAD_BYTES = 15 * 1024 * 1024;
+
+export function photoBackgroundFileExtension(type: string) {
+  return PHOTO_BACKGROUND_EXTENSIONS[type] ?? null;
+}
+
+/**
+ * Whether to upload the student's own file rather than a re-encoded copy.
+ *
+ * A photo that needs no shrinking gains nothing from being encoded again, and
+ * an image that was already compressed -- a wallpaper saved from the web --
+ * loses more detail to every round. So when it already fits, is a format
+ * Storage takes and is within its size limit, the original bytes are kept.
+ */
+export function shouldKeepOriginalPhoto(input: { type: string; size: number; scale: number }) {
+  return (
+    // Neither shrunk nor enlarged.
+    input.scale === 1 &&
+    input.size <= MAX_PHOTO_BACKGROUND_UPLOAD_BYTES &&
+    photoBackgroundFileExtension(input.type) !== null
+  );
+}
+
+/** Stretch beyond which a background visibly blurs, so the card explains it. */
+export const LOW_RESOLUTION_PHOTO_STRETCH = 1.5;
+
+/**
+ * How many times the browser enlarges the photo to cover this screen, counting
+ * device pixels and the chosen zoom. Nothing processed after upload can add
+ * detail to an image smaller than the screen; this is how the app can say so.
+ */
+export function photoBackgroundStretch(input: {
+  imageWidth: number;
+  imageHeight: number;
+  screenWidth: number;
+  screenHeight: number;
+  pixelRatio: number;
+  zoom: number;
+}) {
+  if (input.imageWidth <= 0 || input.imageHeight <= 0) return 1;
+  return (
+    Math.max(input.screenWidth / input.imageWidth, input.screenHeight / input.imageHeight) *
+    input.zoom *
+    input.pixelRatio
+  );
 }
 
 export function getPhotoBackgroundClassNames(scheme: PhotoBackgroundScheme) {

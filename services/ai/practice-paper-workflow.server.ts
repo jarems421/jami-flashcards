@@ -30,6 +30,7 @@ import {
 } from "@/lib/practice/exam-formats";
 import { getPracticePaperJobProgress } from "@/lib/practice/practice-paper-jobs";
 import { buildNotebookPagePayload, buildNotebookPayload } from "@/lib/workspace/notebooks";
+import { createPracticePaperBooklet } from "@/services/ai/practice-paper-booklet.server";
 import { runPracticePaperGenerationForWorkflow } from "@/services/ai/practice-paper-generation.server";
 import {
   findOriginalPracticePaperConflicts,
@@ -742,6 +743,18 @@ async function finalizeQueuedPracticePaperMetered(
   const now = Date.now();
   const notebookRef = userRef.collection("notebooks").doc(state.job.paperId);
   const db = getAdminDb();
+  /*
+   * The paper as a printed booklet when it typesets, and the older page per
+   * question when it does not: a paper that will not typeset is still a paper
+   * the student can sit, so typesetting never fails the job.
+   */
+  const booklet = await createPracticePaperBooklet({
+    uid,
+    paperId: state.job.paperId,
+    folderId: state.job.request.folderId,
+    paper: generated,
+    now,
+  }).catch(() => null);
   const batch = db.batch();
   batch.set(notebookRef, buildNotebookPayload({
     folderId: state.job.request.folderId,
@@ -755,28 +768,36 @@ async function finalizeQueuedPracticePaperMetered(
     pageStyle: "plain",
     now,
   }));
-  generated.questions.forEach((question, index) => {
-    const safeQuestionId = question.id.replace(/[^A-Za-z0-9_-]/g, "-");
-    const pageRef = userRef.collection("notebookPages")
-      .doc(`${state.job.paperId}_${safeQuestionId}`.slice(0, 1_400));
-    batch.set(pageRef, buildNotebookPagePayload({
-      notebookId: state.job.paperId,
-      folderId: state.job.request.folderId,
-      pageNumber: index + 1,
-      title: question.label,
-      pageType: "question",
-      pageColor: "white",
-      pageStyle: "plain",
-      status: "blank",
-      questionPrompt: `${question.prompt}\n\n[${question.marks} ${question.marks === 1 ? "mark" : "marks"}]`,
-      questionAssets: question.assets,
-      linkedQuestionId: question.id,
-      linkedPastPaperId: state.job.paperId,
-      now,
-    }));
-  });
+  if (booklet) {
+    batch.set(userRef.collection("notebookFiles").doc(booklet.fileId), booklet.file);
+    for (const page of booklet.pages) {
+      batch.set(userRef.collection("notebookPages").doc(page.id), page.payload);
+    }
+  } else {
+    generated.questions.forEach((question, index) => {
+      const safeQuestionId = question.id.replace(/[^A-Za-z0-9_-]/g, "-");
+      const pageRef = userRef.collection("notebookPages")
+        .doc(`${state.job.paperId}_${safeQuestionId}`.slice(0, 1_400));
+      batch.set(pageRef, buildNotebookPagePayload({
+        notebookId: state.job.paperId,
+        folderId: state.job.request.folderId,
+        pageNumber: index + 1,
+        title: question.label,
+        pageType: "question",
+        pageColor: "white",
+        pageStyle: "plain",
+        status: "blank",
+        questionPrompt: `${question.prompt}\n\n[${question.marks} ${question.marks === 1 ? "mark" : "marks"}]`,
+        questionAssets: question.assets,
+        linkedQuestionId: question.id,
+        linkedPastPaperId: state.job.paperId,
+        now,
+      }));
+    });
+  }
   batch.set(paperRef, buildPracticePaperPayload({
     notebookId: state.job.paperId,
+    ...(booklet ? { pdfLayout: booklet.layout } : {}),
     folderId: state.job.request.folderId,
     title: generated.title,
     origin: "generated",

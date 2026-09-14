@@ -8,7 +8,6 @@ import {
   ConfirmDialog,
   EmptyState,
   FeedbackBanner,
-  PageHero,
   SectionHeader,
   Skeleton,
 } from "@/components/ui";
@@ -32,6 +31,7 @@ import CreateFolderDialog from "./CreateFolderDialog";
 import FolderObjectCard from "./FolderObjectCard";
 import NotebookEditorDialog from "./NotebookEditorDialog";
 import { NotebookObjectCard } from "./NotebookObjectCard";
+import PastPaperPracticeSection from "@/components/practice/PastPaperPracticeSection";
 import PracticePaperProgress from "@/components/practice/PracticePaperProgress";
 import { featureFlags } from "@/lib/app/feature-flags";
 
@@ -212,19 +212,6 @@ export default function PracticeWorkspace() {
       backHref="/dashboard"
       backLabel="Today"
       width="3xl"
-      action={
-        <div className="flex items-center gap-2">
-          <ButtonLink href="/dashboard/practice/new">New paper</ButtonLink>
-          <Button
-            type="button"
-            variant="secondary"
-            data-tutorial-target="create-folder"
-            onClick={() => setCreateFolderOpen(true)}
-          >
-            Create folder
-          </Button>
-        </div>
-      }
       contentClassName="space-y-7 sm:space-y-9"
     >
       <CreateFolderDialog
@@ -317,16 +304,9 @@ export default function PracticeWorkspace() {
         </div>
       ) : (
         <>
-          {featureFlags.enablePastPaperPractice ? (
-            <PageHero
-              eyebrow="Past Paper Practice"
-              title="Real questions. One clear step at a time."
-              description="Choose a subject and difficulty mix, show your working, then get a mark and a guided second try."
-              action={<ButtonLink href="/dashboard/practice/questions/new">Start practice</ButtonLink>}
-              secondaryAction={<ButtonLink href="/dashboard/practice/history" variant="ghost">History</ButtonLink>}
-              compact
-            />
-          ) : null}
+          <PastPaperPracticeSection
+            pastPapersEnabled={featureFlags.enablePastPaperPractice}
+          />
           <PracticePaperProgress userId={user.uid} />
           <section className="space-y-4">
             <SectionHeader eyebrow="Continue working" title="Recent notebooks" />
@@ -394,6 +374,7 @@ export default function PracticeWorkspace() {
                     type="button"
                     variant="secondary"
                     size="sm"
+                    data-tutorial-target="create-folder"
                     onClick={() => setCreateFolderOpen(true)}
                   >
                     New folder
@@ -436,6 +417,7 @@ export default function PracticeWorkspace() {
                 action={
                   <Button
                     type="button"
+                    data-tutorial-target="create-folder"
                     onClick={() => setCreateFolderOpen(true)}
                   >
                     Create folder

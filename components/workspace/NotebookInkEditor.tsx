@@ -191,6 +191,17 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const lastForwardedPointerSampleRef = useRef<Map<number, PointerEvent>>(
       new Map()
     );
+    /**
+     * Where js-draw's render region sat when the current pen stroke began.
+     *
+     * Read once at contact and reused for every move of that stroke -- see
+     * `referenceRect` in notebook-direct-ink-input. Forgotten on release, and
+     * whenever anything scrolls, resizes or re-windows the page, so a stroke
+     * never measures against a position the page has left.
+     */
+    const strokeRegionRectRef = useRef<{ pointerId: number; rect: DOMRect } | null>(
+      null
+    );
     const precisionEraserGestureRef =
       useRef<ActivePrecisionEraserGesture | null>(null);
     /**
@@ -708,6 +719,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const cancelEditorGesture = useCallback(() => {
       inkSmoothersRef.current.clear();
       lastForwardedPointerSampleRef.current.clear();
+      strokeRegionRectRef.current = null;
       scribbleSamplesRef.current = null;
       precisionEraserGestureRef.current?.gesture.cancel();
       precisionEraserGestureRef.current = null;
@@ -747,6 +759,25 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       };
     }, [cancelEditorGesture]);
+
+    useEffect(() => {
+      // Capturing scroll on the window hears every scroller on the page, not
+      // just the document, since scroll events do not bubble.
+      const forgetStrokeRegion = () => {
+        strokeRegionRectRef.current = null;
+      };
+      const scrollOptions: AddEventListenerOptions = { capture: true, passive: true };
+      window.addEventListener("scroll", forgetStrokeRegion, scrollOptions);
+      window.addEventListener("resize", forgetStrokeRegion);
+      return () => {
+        window.removeEventListener("scroll", forgetStrokeRegion, scrollOptions);
+        window.removeEventListener("resize", forgetStrokeRegion);
+      };
+    }, []);
+
+    useEffect(() => {
+      strokeRegionRectRef.current = null;
+    }, [inkWindow]);
 
     const finishPointerInteraction = useCallback((input: {
       pointerId: number;
@@ -936,6 +967,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             event.pointerId,
             event.nativeEvent
           );
+        }
+        if (activeTool === "pen" || activeTool === "highlighter") {
+          // js-draw has just measured the page for this contact itself, so the
+          // layout is clean and this read costs nothing.
+          strokeRegionRectRef.current = inkRegion
+            ? { pointerId: event.pointerId, rect: inkRegion.getBoundingClientRect() }
+            : null;
         }
         if (scribbleToErase && activeTool === "pen") {
           // Raw client coordinates. Recognising a scribble does not need to
@@ -1129,6 +1167,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             lastForwardedPointerSampleRef.current.get(event.pointerId)
           );
           const previewBatch = penPreviewBatchRef.current;
+          const strokeRegion = strokeRegionRectRef.current;
+          const referenceRect =
+            strokeRegion?.pointerId === event.pointerId ? strokeRegion.rect : null;
           dispatchBatchedNotebookPointerSamples({
             batch: previewBatch ?? undefined,
             samples: liveSamples,
@@ -1138,6 +1179,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
                 event: sample,
                 host,
                 jsDraw: pointerJsDraw,
+                referenceRect,
               });
             },
           });
@@ -1165,6 +1207,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       if (type === "pointerup" || type === "pointercancel") {
         inkSmoothersRef.current.delete(event.pointerId);
         lastForwardedPointerSampleRef.current.delete(event.pointerId);
+        if (strokeRegionRectRef.current?.pointerId === event.pointerId) {
+          strokeRegionRectRef.current = null;
+        }
         let hadPointerCapture = false;
         try {
           hadPointerCapture = surface.hasPointerCapture(event.pointerId);

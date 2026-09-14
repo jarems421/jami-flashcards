@@ -34,11 +34,13 @@ import {
 } from "@/lib/practice/practice-paper-jobs";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import {
+  acknowledgePracticePaperJob,
   cancelPracticePaperJob,
   clarifyPracticePaperJob,
   confirmPracticePaperFormat,
   createPracticePaperJob,
   getPracticePaperJob,
+  retryPracticePaperJob,
 } from "@/services/ai/practice-papers";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { importUploadedNotebook } from "@/services/study/notebook-import";
@@ -241,11 +243,9 @@ export default function PracticePaperCreator() {
           setClarificationQuestion("");
           return;
         }
+        // A failure is shown by the job panel at the top, with its retry.
         if (job.status === "failed" || job.status === "cancelled") {
           setWorking(false);
-          if (job.status === "failed") {
-            showError(job.failureMessage ?? "Jami could not finish that paper just now.");
-          }
           return;
         }
         timer = setTimeout(() => void poll(), 2_500);
@@ -260,7 +260,7 @@ export default function PracticePaperCreator() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [activeJob, router, showError]);
+  }, [activeJob, router]);
 
   const selectedFolder = useMemo(
     () => folders.find((folder) => folder.id === folderId) ?? null,
@@ -380,6 +380,28 @@ export default function PracticePaperCreator() {
     }
   };
 
+  const retryFailedJob = async () => {
+    if (!activeJob || activeJob.status !== "failed") return;
+    setWorking(true);
+    clear();
+    try {
+      setActiveJob(await retryPracticePaperJob(activeJob.id));
+    } catch (error) {
+      showThrownError(error, "Could not try this paper again.");
+      setWorking(false);
+    }
+  };
+
+  const dismissFailedJob = async () => {
+    if (!activeJob || activeJob.status !== "failed") return;
+    try {
+      await acknowledgePracticePaperJob(activeJob.id);
+      router.push("/dashboard/practice");
+    } catch (error) {
+      showThrownError(error, "Could not dismiss this paper.");
+    }
+  };
+
   const decidePaperFormat = async (
     action: "confirm" | "correct" | "use_custom",
     correction?: string
@@ -473,7 +495,7 @@ export default function PracticePaperCreator() {
 
   if (loading) {
     return (
-      <AppPage title="New practice paper" backHref="/dashboard/practice" backLabel="Practice" width="lg">
+      <AppPage title="New paper" backHref="/dashboard/practice" backLabel="Practice" width="lg">
         <div className="space-y-4">
           <Skeleton className="h-44 rounded-2xl" />
           <Skeleton className="h-96 rounded-2xl" />
@@ -484,7 +506,7 @@ export default function PracticePaperCreator() {
 
   if (folders.length === 0) {
     return (
-      <AppPage title="New practice paper" backHref="/dashboard/practice" backLabel="Practice" width="lg">
+      <AppPage title="New paper" backHref="/dashboard/practice" backLabel="Practice" width="lg">
         <EmptyState
           emoji="Folder"
           title="Create a study folder first"
@@ -497,7 +519,7 @@ export default function PracticePaperCreator() {
 
   return (
     <AppPage
-      title="New practice paper"
+      title="New paper"
       backHref={folderId ? `/dashboard/folders/${folderId}` : "/dashboard/practice"}
       backLabel={selectedFolder?.name ?? "Practice"}
       width="lg"
@@ -521,6 +543,76 @@ export default function PracticePaperCreator() {
           </p>
         </div>
       </div>
+
+      {/*
+       * Opened from the Practice paper builder, the job is why the student is
+       * here, so its state leads the page instead of waiting below the form.
+       */}
+      {activeJob?.status === "failed" ? (
+        <div
+          role="alert"
+          className="rounded-2xl border border-[color-mix(in_srgb,var(--color-warning-text)_32%,transparent)] bg-[color-mix(in_srgb,var(--color-warning-text)_7%,transparent)] p-4"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text-primary">
+                This paper could not be built
+              </p>
+              <p className="mt-0.5 truncate text-xs text-text-secondary">
+                {activeJob.title}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-[var(--color-warning-text)]">
+                {activeJob.failureMessage ?? "Jami could not finish that paper just now."}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={working}
+                onClick={() => void retryFailedJob()}
+              >
+                Try again
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={working}
+                onClick={() => void dismissFailedJob()}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : activeJob && canCancelPracticePaperJob(activeJob.status) && activeJob.status !== "needs_confirmation" ? (
+        <div className="rounded-2xl border border-accent/25 bg-accent/8 p-4" role="status">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text-primary">
+                {PRACTICE_PAPER_JOB_STAGE_LABELS[activeJob.stage]}
+              </p>
+              <p className="mt-0.5 truncate text-xs text-text-secondary">
+                {activeJob.title}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-text-muted">
+                You can leave this page. The paper will appear in Practice when it is ready.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void cancelGeneratedJob()}
+            >
+              Cancel
+            </Button>
+          </div>
+          <ProgressBar progress={activeJob.progress} size="sm" className="mt-3" />
+        </div>
+      ) : null}
 
       <Card padding="lg" className="space-y-8">
         <PracticeStep
@@ -744,29 +836,7 @@ export default function PracticePaperCreator() {
           </div>
         </PracticeStep>
 
-        {activeJob && canCancelPracticePaperJob(activeJob.status) && activeJob.status !== "needs_confirmation" ? (
-          <div className="rounded-2xl border border-accent/25 bg-accent/8 p-4" role="status">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-text-primary">
-                  {PRACTICE_PAPER_JOB_STAGE_LABELS[activeJob.stage]}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-text-muted">
-                  You can leave this page. The paper will appear in Practice when it is ready.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => void cancelGeneratedJob()}
-              >
-                Cancel
-              </Button>
-            </div>
-            <ProgressBar progress={activeJob.progress} size="sm" className="mt-3" />
-          </div>
-        ) : working && progress !== null ? (
+        {working && progress !== null ? (
           <div>
             <div className="mb-2 flex justify-between text-xs font-medium text-text-muted">
               <span>Adding files</span>

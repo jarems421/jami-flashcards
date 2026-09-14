@@ -29,6 +29,38 @@ describe("telling papers apart", () => {
   it("reads a component numbered with leading zeros", () => {
     expect(examPaperKey("Component 01: Biological processes", "01")).toBe("component-1");
   });
+
+  /*
+   * AQA Combined Science numbers each subject's papers from one. Read by number
+   * alone, Biology, Chemistry and Physics Paper 1 were one paper.
+   */
+  it("keeps a combined course's subjects apart, whatever their paper number", () => {
+    expect(examPaperKey("Biology Paper 1 Higher", "B/1H")).toBe("biology-paper-1");
+    expect(examPaperKey("Chemistry Paper 1 Higher", "C/1H")).toBe("chemistry-paper-1");
+    expect(examPaperKey("Biology Paper 1 Foundation", "B/1F")).toBe(examPaperKey("Biology Paper 1 Higher", "B/1H"));
+  });
+});
+
+describe("listing a combined course's papers", () => {
+  it("names each subject's paper for what it is", () => {
+    const entries = [
+      { componentCode: "C/1H", componentTitle: "Chemistry Paper 1 Higher", tier: "Higher" },
+      { componentCode: "B/2H", componentTitle: "Biology Paper 2 Higher", tier: "Higher" },
+      { componentCode: "B/1H", componentTitle: "Biology Paper 1 Higher", tier: "Higher" },
+      { componentCode: "B/1F", componentTitle: "Biology Paper 1 Foundation", tier: "Foundation" },
+    ];
+    expect(examCoursePapers(entries, { tier: "Higher" })).toEqual([
+      { id: "biology-paper-1", label: "Biology Paper 1" },
+      { id: "biology-paper-2", label: "Biology Paper 2" },
+      { id: "chemistry-paper-1", label: "Chemistry Paper 1" },
+    ]);
+  });
+
+  it("matches a question to its own subject's paper only", () => {
+    const question = { provenance: { componentTitle: "Chemistry Paper 1 Higher", componentCode: "C/1H" } as never };
+    expect(matchesPaperChoice(question, ["chemistry-paper-1"])).toBe(true);
+    expect(matchesPaperChoice(question, ["biology-paper-1"])).toBe(false);
+  });
 });
 
 describe("listing a course's papers", () => {

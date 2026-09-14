@@ -77,13 +77,65 @@ const COLUMN_SHARE = 0.5;
  * whoever printed the paper.
  */
 const LABEL_PATTERN = /^0*(\d{1,2})(?:[.](\d{1,2}))?[.)]?(?:\(([a-z])\))?$/i;
+/**
+ * A part written inside its question: `1(1.1)`.
+ *
+ * The model numbers some AQA science papers this way. Matched against
+ * LABEL_PATTERN it is nothing, so its root fell back to the leading `1` and
+ * every part was cropped to question 1's opening sentence -- which prints no
+ * tariff. All 31, 43, 45 and 62 questions of four real papers were held back.
+ * The part inside is the label, when it agrees with the question outside.
+ */
+const WRAPPED_PART_PATTERN = /^0*(\d{1,2})\((0*(\d{1,2})[.]\d{1,2})\)$/;
 
 export function normaliseQuestionLabel(raw: string): string | null {
-  const match = raw.replace(/\s+/g, "").match(LABEL_PATTERN);
+  const compact = raw.replace(/\s+/g, "");
+  const wrapped = compact.match(WRAPPED_PART_PATTERN);
+  const label = wrapped && Number(wrapped[1]) === Number(wrapped[3]) ? wrapped[2] : compact;
+  const match = label.match(LABEL_PATTERN);
   if (!match) return null;
   const question = String(Number(match[1]));
   if (match[2]) return `${question}.${Number(match[2])}`;
   return match[3] ? `${question}(${match[3].toLowerCase()})` : question;
+}
+
+/**
+ * A lettered part, named the way the paper numbers it.
+ *
+ * The model sometimes letters AQA science parts -- `1(a)`, `1(b)` -- where the
+ * paper prints `01.1` and `01.2`. Neither shape matches the other, so every
+ * part fell back to question 1's opening sentence, which prints no tariff, and
+ * all 45, 42 and 30 questions of three real papers were held back. When the
+ * paper prints numbered parts for that question, the nth letter is the nth
+ * part. The printed tariff is still checked against the part it lands on, so a
+ * wrong guess is held back rather than published.
+ */
+export function numberedPartLabel(label: string, starts: readonly QuestionStart[]): string {
+  if (starts.some((start) => start.label === label)) return label;
+  const lettered = label.match(/^(\d{1,2})\(([a-z])\)$/);
+  if (!lettered) return label;
+  const numbered = `${lettered[1]}.${lettered[2].charCodeAt(0) - 96}`;
+  return starts.some((start) => start.label === numbered) ? numbered : label;
+}
+
+/**
+ * How the paper itself numbers a part the model named some other way.
+ *
+ * Finding the right region was not enough: the question was still stored as
+ * `3(f)`, so a student saw a number the paper does not print and the reviewer
+ * rightly rejected it -- 26 questions across three Combined Science papers.
+ * Returns the printed reference (`03.6`) and the label shape every other AQA
+ * science question carries, or null when the model's own label already was
+ * the paper's.
+ */
+export function printedPartReference(rawNumber: string, printedLabel: string) {
+  const own = normaliseQuestionLabel(rawNumber) ?? rootQuestionLabel(rawNumber);
+  const part = printedLabel.match(/^(\d{1,2})\.(\d{1,2})$/);
+  if (!part || own === printedLabel) return null;
+  return {
+    reference: `${part[1].padStart(2, "0")}.${part[2]}`,
+    label: `Question ${part[1]} (${printedLabel})`,
+  };
 }
 
 /** The root a label belongs to: `1.3` and `1` are both question 1. */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import AppPage from "@/components/layout/AppPage";
 import {
   Button,
@@ -89,7 +89,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
    * another, and it survived a reload. Keyed by attempt there is no pairing to
    * get wrong, and coming back to a question still shows what was typed.
    */
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const latestDrafts = useRef(new Map<string, string>());
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [submitting, setSubmitting] = useState(false);
   const [reviewing, setReviewing] = useState(false);
@@ -117,6 +117,10 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushing = useRef(false);
   const flushAgain = useRef(false);
+  /** Stable, so the memoised working sheet is not re-rendered for a new function. */
+  const handleScratchpad = useCallback((handle: ExamScratchpadHandle | null) => {
+    scratchpad.current = handle;
+  }, []);
 
   /*
    * Focus follows the sheet, and the page behind it is hidden from screen
@@ -293,15 +297,29 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     }
   }, [sessionId]);
 
-  useEffect(() => {
-    if (!activeAttempt || activeAttempt.status !== "draft") return;
-    const attemptId = activeAttempt.id;
-    const text = drafts[attemptId];
-    if (text === undefined || text === (activeAttempt.answerText ?? "")) return;
-    pendingDrafts.current.set(attemptId, text);
-    if (draftTimer.current) clearTimeout(draftTimer.current);
-    draftTimer.current = setTimeout(() => void flushDrafts(), DRAFT_SAVE_MS);
-  }, [activeAttempt, drafts, flushDrafts]);
+  /*
+   * What was typed, reported by the answer box rather than kept in state here.
+   *
+   * Every keystroke used to set state on this component, so the whole session
+   * re-rendered on each one -- the question card and its maths, the working
+   * sheet and its toolbar, the strip of questions -- for a box that only needed
+   * its own text. The box holds its own value now; this keeps the latest draft
+   * per attempt, which is everything saving and submitting read.
+   */
+  const handleDraft = useCallback(
+    (attemptId: string, text: string, storedText: string) => {
+      latestDrafts.current.set(attemptId, text);
+      // Typing back to what is stored still has to replace an edit already queued.
+      if (text === storedText && !pendingDrafts.current.has(attemptId)) return;
+      pendingDrafts.current.set(attemptId, text);
+      if (draftTimer.current) clearTimeout(draftTimer.current);
+      draftTimer.current = setTimeout(() => void flushDrafts(), DRAFT_SAVE_MS);
+    },
+    [flushDrafts]
+  );
+
+  /** A draft typed before leaving a question, for the box to open with on return. */
+  const readDraft = useCallback((attemptId: string) => latestDrafts.current.get(attemptId), []);
 
   useEffect(() => {
     // Leaving the page is the one flush that has to outlive the document.
@@ -312,12 +330,6 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
       void flushDrafts();
     };
   }, [flushDrafts]);
-
-  // What the box shows: the local draft if there is one, else what is stored.
-  const answer =
-    !activeAttempt || activeAttempt.status === "marked"
-      ? ""
-      : drafts[activeAttempt.id] ?? activeAttempt.answerText ?? "";
 
   const goTo = useCallback(
     (next: number) => {
@@ -342,7 +354,8 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
         sessionId,
         questionId: question.id,
         attemptNumber: activeAttempt.attemptNumber,
-        answerText: answer,
+        // The latest draft if one was typed, else what is stored.
+        answerText: latestDrafts.current.get(activeAttempt.id) ?? activeAttempt.answerText ?? "",
         workingSnapshot: working?.png,
       });
       setData((current) =>
@@ -380,7 +393,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     setError("");
     try {
       await saveExamAnswerDraft(sessionId, retryId, "");
-      setDrafts((current) => ({ ...current, [retryId]: "" }));
+      latestDrafts.current.set(retryId, "");
       await refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The retry could not be opened.");
@@ -858,22 +871,14 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                             : "Saves as you write."}
                     </p>
                   </div>
-                  <Textarea
+                  <ExamAnswerField
+                    key={activeAttempt.id}
                     id={answerFieldId}
-                    containerClassName="mt-3"
-                    className="resize-y leading-6"
-                    rows={3}
-                    symbols
-                    value={answer}
-                    maxLength={EXAM_ANSWER_MAX_LENGTH}
-                    placeholder="Type your final answer…"
+                    attemptId={activeAttempt.id}
+                    storedText={activeAttempt.answerText ?? ""}
                     disabled={submitting}
-                    onChange={(event) => {
-                      const id = activeAttempt?.id;
-                      if (!id) return;
-                      const text = event.target.value;
-                      setDrafts((current) => ({ ...current, [id]: text }));
-                    }}
+                    readDraft={readDraft}
+                    onDraft={handleDraft}
                   />
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <Button
@@ -973,9 +978,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                     // Read-only the moment the attempt stops being a draft: the
                     // sheet is then frozen evidence, and the rules refuse writes.
                     disabled={submitting || activeAttempt.status !== "draft"}
-                    onHandle={(handle) => {
-                      scratchpad.current = handle;
-                    }}
+                    onHandle={handleScratchpad}
                     onInkChange={setHasInk}
                   />
                 </div>
@@ -1038,11 +1041,57 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
 }
 
 /**
+ * The typed answer, holding its own text.
+ *
+ * Kept apart from the session so a keystroke re-renders this box and nothing
+ * else. It opens with a draft typed before the student left the question, if
+ * there is one, and reports every change for saving.
+ */
+const ExamAnswerField = memo(function ExamAnswerField({
+  id,
+  attemptId,
+  storedText,
+  disabled,
+  readDraft,
+  onDraft,
+}: {
+  id: string;
+  attemptId: string;
+  storedText: string;
+  disabled: boolean;
+  readDraft(attemptId: string): string | undefined;
+  onDraft(attemptId: string, text: string, storedText: string): void;
+}) {
+  const [value, setValue] = useState(() => readDraft(attemptId) ?? storedText);
+  return (
+    <Textarea
+      id={id}
+      containerClassName="mt-3"
+      className="resize-y leading-6"
+      rows={3}
+      symbols
+      value={value}
+      maxLength={EXAM_ANSWER_MAX_LENGTH}
+      placeholder="Type your final answer…"
+      disabled={disabled}
+      onChange={(event) => {
+        const text = event.target.value;
+        setValue(text);
+        onDraft(attemptId, text, storedText);
+      }}
+    />
+  );
+});
+
+/**
  * The question, either in full while it is being answered or folded under the
  * mark once it has been. Folded, it keeps its number and source visible so the
  * report still says which question it is about.
+ *
+ * Memoised: its question does not change while it is being answered, and the
+ * session around it re-renders for its save indicator and working sheet.
  */
-function QuestionCard({
+const QuestionCard = memo(function QuestionCard({
   sessionId,
   question,
   number,
@@ -1128,4 +1177,4 @@ function QuestionCard({
       {body}
     </Card>
   );
-}
+});

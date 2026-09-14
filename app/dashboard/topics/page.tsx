@@ -14,6 +14,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
+import TopicRenameDialog from "@/components/topics/TopicRenameDialog";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useInlineRowEditing } from "@/hooks/useInlineRowEditing";
@@ -287,6 +288,17 @@ export default function TopicsPage() {
       width="3xl"
       contentClassName="space-y-4 sm:space-y-6"
     >
+      <TopicRenameDialog
+        topic={topics.find((topic) => rows.isEditing(topic.id)) ?? null}
+        name={rows.draft?.name ?? ""}
+        saving={rows.editingId !== null && rows.isSaving(rows.editingId)}
+        onNameChange={(name) => rows.updateDraft({ name })}
+        onCancel={cancelRenaming}
+        onSave={() => {
+          const topic = topics.find((candidate) => rows.isEditing(candidate.id));
+          if (topic) void saveTopicName(topic);
+        }}
+      />
       {feedback ? (
         <FeedbackBanner
           type={feedback.type}
@@ -395,49 +407,12 @@ export default function TopicsPage() {
             className="grid auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-4"
           >
             {visibleSummaries.map((summary) => {
-              const editing = rows.isEditing(summary.topic.id);
               return (
                 <section
                   key={summary.topic.id}
-                  className={`app-panel relative overflow-visible rounded-xl transition duration-fast has-[details[open]]:z-40 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell ${
-                    editing ? "sm:col-span-2" : "min-h-[8.5rem]"
-                  }`}
+                  className="app-panel relative min-h-[8.5rem] overflow-visible rounded-xl transition duration-fast has-[details[open]]:z-40 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
                 >
-                  {editing ? (
-                    <div className="p-4">
-                      <Input
-                        label="Topic name"
-                        value={rows.draft?.name ?? ""}
-                        onChange={(event) => rows.updateDraft({ name: event.target.value })}
-                        disabled={rows.isSaving(summary.topic.id)}
-                      />
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={
-                            rows.isSaving(summary.topic.id) ||
-                            !(rows.draft?.name ?? "").trim()
-                          }
-                          onClick={() => void saveTopicName(summary.topic)}
-                        >
-                          {rows.isSaving(summary.topic.id)
-                            ? "Saving..."
-                            : "Save Topic"}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          disabled={rows.isSaving(summary.topic.id)}
-                          onClick={cancelRenaming}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
+                  <>
                       <Link
                         href={`/dashboard/topics/${encodeURIComponent(summary.topic.id)}`}
                         className="group flex h-full flex-col rounded-xl p-4 pr-14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -474,8 +449,7 @@ export default function TopicsPage() {
                           setTopicPendingDelete(summary.topic)
                         }
                       />
-                    </>
-                  )}
+                  </>
                 </section>
               );
             })}

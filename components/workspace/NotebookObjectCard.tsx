@@ -51,8 +51,10 @@ function NotebookCardInner({
 }: NotebookObjectCardProps) {
   const preset = getObjectColorPreset(color);
   const paperFill = getNotebookPaperPalette(pageColor).paper;
-  const paperLine =
-    getNotebookRuleColor(pageColor, getNotebookPaperPalette(pageColor).isDark ? 0.18 : 0.13);
+  const paperIsDark = getNotebookPaperPalette(pageColor).isDark;
+  const paperLine = getNotebookRuleColor(pageColor, paperIsDark ? 0.18 : 0.13);
+  // Edged in something the paper is not, so black pages stay visible on a dark theme.
+  const paperEdge = paperIsDark ? "border-white/25" : "border-slate-900/15";
   const paperStyle =
     pageStyle === "lined"
       ? {
@@ -81,17 +83,24 @@ function NotebookCardInner({
     >
       <div className="flex items-center justify-center">
         <div className={cx("relative", editorPreview ? "h-[4.8rem] w-[4.6rem]" : compact ? "h-24 w-[5.45rem]" : "h-28 w-[6.1rem]")}>
+          {/*
+            * The page block, bound into the cover. Both sheets are the notebook's
+            * own paper, centred on the cover and tucked in evenly top and bottom,
+            * so they read as its pages rather than cards sliding out from behind
+            * -- they used to sit lower than the cover and hang past its foot.
+            */}
           <div
-            className="absolute left-3 top-1.5 h-[94%] w-[82%] rounded-sm border border-slate-900/10"
+            className={cx("absolute inset-y-[6%] left-[10%] right-0 rounded-r-sm border", paperEdge)}
             style={paperStyle}
             aria-hidden="true"
           />
           <div
-            className="absolute left-2 top-2 h-[92%] w-[82%] rounded-sm border border-slate-900/10 bg-white/80"
+            className={cx("absolute inset-y-[3%] left-[10%] right-[5%] rounded-r-sm border", paperEdge)}
+            style={paperStyle}
             aria-hidden="true"
           />
           <div
-            className="absolute inset-y-0 left-0 h-full w-[82%] rounded-sm border border-black/15 shadow-e1 transition duration-200 group-hover/notebook:-rotate-[0.65deg]"
+            className="absolute inset-y-0 left-0 h-full w-[86%] origin-left rounded-sm border border-black/15 shadow-e1 transition duration-200 group-hover/notebook:-rotate-[0.65deg]"
             style={{
               backgroundColor: preset.base,
             }}

@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   captureExamWorking,
+  compactExamWorkingPages,
   EXAM_WORKING_MAX_IMAGE_SIDE,
   EXAM_WORKING_MAX_PAGES,
+  examWorkingFitWidth,
   examWorkingHasInk,
   examWorkingPagesWithInk,
   examWorkingStackLayout,
+  examWorkingTouchIsPalm,
   requireExamWorkingSnapshot,
 } from "@/lib/practice/exam-working";
 
@@ -19,6 +22,63 @@ const INKED_SHEET =
 const SECOND_INKED_SHEET =
   '<svg viewBox="0 0 900 1240" xmlns="http://www.w3.org/2000/svg">' +
   '<path d="M20,20 L80,80" stroke="#000"/></svg>';
+
+/**
+ * What is stored for a sheet: the notebook's compaction, which a sheet of
+ * working never had, so busy pages stayed at full density.
+ */
+describe("storing a sheet of working", () => {
+  const sheet = (paths: string) =>
+    `<svg viewBox="0 0 900 1240"><style id="js-draw-style-sheet">path{fill:none}</style>${paths}</svg>`;
+
+  it("keeps the ink and stores fewer points for a densely sampled stroke", () => {
+    const out = Array.from({ length: 40 }, (_, i) => `L ${i} 0`).join(" ");
+    const back = Array.from({ length: 40 }, (_, i) => `L ${39 - i} 3`).join(" ");
+    const dense = sheet(`<path d="M 0 0 ${out} ${back} Z" fill="#111827"/>`);
+
+    const [stored] = compactExamWorkingPages([dense]);
+
+    expect(stored.length).toBeLessThan(dense.length);
+    expect(examWorkingHasInk(stored)).toBe(true);
+  });
+
+  it("leaves blank pages and curves exactly as they were", () => {
+    const curved = sheet('<path d="M 0 0 C 1 1 2 2 3 3"/>');
+    expect(compactExamWorkingPages(["", EMPTY_SHEET, curved])).toEqual(["", EMPTY_SHEET, curved]);
+  });
+});
+
+/**
+ * The full-screen sheet: the whole page on screen at its fit, and a resting
+ * hand told apart from a finger that means to scroll.
+ */
+describe("fitting and handling the full-screen sheet", () => {
+  it("fits a tall page by its height on a wide screen", () => {
+    expect(
+      examWorkingFitWidth({ containerWidth: 1180, containerHeight: 740, pageWidth: 900, pageHeight: 1240, padding: 16 })
+    ).toBe(Math.floor(((740 - 32) * 900) / 1240));
+  });
+
+  it("fits by width on a narrow screen", () => {
+    expect(
+      examWorkingFitWidth({ containerWidth: 390, containerHeight: 800, pageWidth: 900, pageHeight: 1240, padding: 16 })
+    ).toBe(358);
+  });
+
+  it("never reports a negative or undefined size", () => {
+    expect(
+      examWorkingFitWidth({ containerWidth: 10, containerHeight: 10, pageWidth: 900, pageHeight: 1240, padding: 16 })
+    ).toBe(0);
+    expect(
+      examWorkingFitWidth({ containerWidth: 500, containerHeight: 500, pageWidth: 0, pageHeight: 1240, padding: 16 })
+    ).toBe(0);
+  });
+
+  it("ignores a contact the size of a hand, and not a fingertip", () => {
+    expect(examWorkingTouchIsPalm({ width: 22, height: 24 })).toBe(false);
+    expect(examWorkingTouchIsPalm({ width: 64, height: 48 })).toBe(true);
+  });
+});
 
 /**
  * An empty sheet is not an empty string, and undo depth is not ink.

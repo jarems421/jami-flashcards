@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type ElementType } from "react";
+import { Fragment, useMemo, type ElementType } from "react";
 import katex from "katex";
 import {
   attachInlineMathPunctuation,
@@ -45,13 +45,29 @@ export default function MathText({
   as: Component = "span",
   className = "",
 }: MathTextProps) {
-  const segments = attachInlineMathPunctuation(
-    splitMathRichText(normalizeLegacyJamiMathText(text))
+  /*
+   * Rendered once per text, not once per render.
+   *
+   * KaTeX builds its HTML from scratch on every call, and this sits inside
+   * surfaces that re-render for reasons that have nothing to do with the text:
+   * a practice question re-typeset its maths on every keystroke of the answer
+   * beside it.
+   */
+  const segments = useMemo(
+    () =>
+      attachInlineMathPunctuation(
+        splitMathRichText(normalizeLegacyJamiMathText(text))
+      ).map((segment) => ({
+        segment,
+        html:
+          segment.type === "text" ? "" : renderMath(segment.value, segment.display),
+      })),
+    [text]
   );
 
   return (
     <Component className={className}>
-      {segments.map((segment, index) => {
+      {segments.map(({ segment, html }, index) => {
         if (segment.type === "text") {
           return (
             <Fragment key={`text-${index}`}>
@@ -60,7 +76,6 @@ export default function MathText({
           );
         }
 
-        const html = renderMath(segment.value, segment.display);
         if (!html) {
           return (
             <span key={`math-fallback-${index}`} className="font-mono">

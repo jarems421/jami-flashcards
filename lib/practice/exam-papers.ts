@@ -22,6 +22,28 @@ export type ExamCoursePaper = {
 const NUMBERED = /\b(paper|component|unit)\s*0*(\d+)\b/i;
 const TIER_WORDS = /\b(foundation|higher)(\s+tier)?\b/gi;
 
+const slug = (value: string) =>
+  value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+/**
+ * What a title says before its paper number, which is which paper it is.
+ *
+ * A combined course numbers each subject's papers from one: AQA's Combined
+ * Science is Biology Paper 1, Chemistry Paper 1 and Physics Paper 1, all
+ * "Paper 1". Read by number alone they collapsed into a single paper, so a
+ * student asking for Chemistry Paper 1 was handed Biology and Physics as well.
+ * The words before the number keep them apart. A title with none -- "Paper 1
+ * Higher", "Paper 1 (Non-Calculator)" -- is read exactly as before.
+ */
+function paperPrefix(title: string, numbered: RegExpMatchArray) {
+  return title
+    .slice(0, numbered.index ?? 0)
+    .replace(TIER_WORDS, "")
+    .replace(/[^A-Za-z\s]/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 /**
  * Which paper a component is, told apart by its number rather than its code.
  *
@@ -31,7 +53,11 @@ const TIER_WORDS = /\b(foundation|higher)(\s+tier)?\b/gi;
  */
 export function examPaperKey(title: string, code = "") {
   const numbered = title.match(NUMBERED);
-  if (numbered) return `${numbered[1].toLowerCase()}-${Number(numbered[2])}`;
+  if (numbered) {
+    const key = `${numbered[1].toLowerCase()}-${Number(numbered[2])}`;
+    const prefix = slug(paperPrefix(title, numbered));
+    return prefix ? `${prefix}-${key}` : key;
+  }
   const fromCode = code.split("/").at(-1)?.match(/^0*(\d+)[a-z]?$/i);
   if (fromCode) return `paper-${Number(fromCode[1])}`;
   const plain = title.replace(TIER_WORDS, "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -45,14 +71,16 @@ function describePaper(title: string, code: string): Omit<ExamCoursePaper, "id">
     return { label };
   }
   const word = numbered[1][0].toUpperCase() + numbered[1].slice(1).toLowerCase();
+  const prefix = paperPrefix(title, numbered);
   const detail = title
-    .replace(numbered[0], "")
+    .slice((numbered.index ?? 0) + numbered[0].length)
     .replace(TIER_WORDS, "")
     .replace(/[()]/g, " ")
     .replace(/^[\s:–—·,-]+|[\s:–—·,-]+$/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
-  return { label: `${word} ${Number(numbered[2])}`, ...(detail ? { detail } : {}) };
+  const label = `${prefix ? `${prefix} ` : ""}${word} ${Number(numbered[2])}`;
+  return { label, ...(detail ? { detail } : {}) };
 }
 
 /**

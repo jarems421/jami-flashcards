@@ -27,6 +27,7 @@ export function mapPracticePaperJobData(id: string, data: Record<string, unknown
     clarificationQuestion: normalizeOptionalString(data.clarificationQuestion, 600),
     failureCode: normalizeOptionalString(data.failureCode, 120),
     failureMessage: normalizeOptionalString(data.failureMessage, 500),
+    failureDismissed: data.failureDismissed === true,
     workflowRunId: normalizeOptionalString(data.workflowRunId, 200),
     cancellationRequested: data.cancellationRequested === true,
     readyUnread: data.readyUnread === true,
@@ -87,6 +88,27 @@ export function canCancelPracticePaperJob(status: PracticePaperJobStatus) {
     status === "needs_confirmation" ||
     status === "needs_clarification"
   );
+}
+
+/**
+ * The jobs the Practice paper builder lists: papers still being built or
+ * waiting on the student, and failures that have not been dismissed.
+ *
+ * A finished paper already lives in its folder, and a cancelled one was the
+ * student's own choice, so neither stays on the list -- which is what lets the
+ * builder disappear once there is nothing left to act on.
+ */
+export function getPaperBuilderJobs(jobs: readonly PracticePaperJob[]) {
+  return jobs.filter(
+    (job) =>
+      canCancelPracticePaperJob(job.status) ||
+      (job.status === "failed" && !job.failureDismissed)
+  );
+}
+
+/** Still moving without the student -- worth polling for progress. */
+export function isPracticePaperJobBuilding(status: PracticePaperJobStatus) {
+  return status === "queued" || status === "running";
 }
 
 export function getPracticePaperJobProgress(stage: PracticePaperJobStage) {

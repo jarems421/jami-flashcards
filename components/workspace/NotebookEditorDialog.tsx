@@ -5,19 +5,16 @@ import TopicPicker from "@/components/topics/TopicPicker";
 import {
   Button,
   ConfirmDialog,
-  Dialog,
-  DialogBackdrop,
-  DialogDescription,
-  DialogPanel,
-  DialogTitle,
   FeedbackBanner,
   Input,
 } from "@/components/ui";
+import FormDisclosure from "@/components/ui/FormDisclosure";
 import type { Topic } from "@/lib/material/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { updateNotebook } from "@/services/study/notebooks";
 import { NotebookObjectCard } from "./NotebookObjectCard";
 import { ObjectStylePicker } from "./ObjectStylePicker";
+import WorkspaceActionDialog from "./WorkspaceActionDialog";
 import {
   normalizeObjectColor,
   normalizeObjectIcon,
@@ -35,6 +32,9 @@ type NotebookEditorDialogProps = {
   onArchived: (notebookId: string) => void;
 };
 
+/**
+ * A notebook's name, cover and topics -- the same dialog that makes one.
+ */
 export default function NotebookEditorDialog({
   userId,
   notebook,
@@ -112,50 +112,56 @@ export default function NotebookEditorDialog({
     }
   };
 
+  const footer = (
+    <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={saving}
+        onClick={() => setConfirmArchive(true)}
+        className="self-start text-danger-text"
+      >
+        Archive notebook
+      </Button>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row">
+        <Button type="button" variant="ghost" disabled={saving} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          disabled={saving || !title.trim()}
+          onClick={() => void handleSave()}
+        >
+          {saving ? "Saving..." : "Save notebook"}
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <>
-      <Dialog
+      <WorkspaceActionDialog
         open
-        dismissible={!saving}
-        initialFocusRef={titleInputRef}
-        className="fixed inset-0 flex items-end justify-center p-3 sm:items-center sm:p-5"
-        onDismiss={() => onClose()}
+        title="Edit notebook"
+        busy={saving}
+        maxWidth="lg"
+        onClose={onClose}
+        footer={footer}
       >
-        <DialogBackdrop
-          className="absolute inset-0 bg-black/55 backdrop-blur-sm"
-        />
-        <DialogPanel
-          className="app-panel relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[44rem] overflow-y-auto rounded-xl p-3 backdrop-blur-md transition duration-fast sm:max-h-[calc(100dvh-2.5rem)] sm:p-4"
-        >
-          <div className="text-center sm:text-left">
-            <DialogTitle className="text-sm font-semibold text-text-primary">
-              Edit notebook
-            </DialogTitle>
-            <DialogDescription className="mt-0.5 text-xs text-text-muted">
-              Update the notebook name, cover, or Topics.
-            </DialogDescription>
-          </div>
-
-          {error ? (
-            <div className="mt-3">
-              <FeedbackBanner
-                type="error"
-                message={error}
-                onDismiss={() => setError(null)}
-              />
-            </div>
-          ) : null}
-
-          <div className="mx-auto mt-4 grid max-w-[31rem] gap-3 sm:grid-cols-[minmax(0,19rem)_8.5rem] sm:items-start">
-            <Input
-              ref={titleInputRef}
-              label="Notebook title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              disabled={saving}
-              containerClassName="w-full max-w-[19rem]"
+        {error ? (
+          <div className="mb-4">
+            <FeedbackBanner
+              type="error"
+              message={error}
+              onDismiss={() => setError(null)}
             />
-            <div className="app-subtle-panel rounded-md p-2">
+          </div>
+        ) : null}
+
+        <div className="grid gap-6">
+          <div className="grid gap-4 sm:grid-cols-[6.75rem_minmax(0,1fr)] sm:items-center sm:gap-5">
+            <div className="mx-auto w-[6.75rem] sm:mx-0">
               <NotebookObjectCard
                 title={title.trim() || "Notebook preview"}
                 color={color}
@@ -167,7 +173,18 @@ export default function NotebookEditorDialog({
                 editorPreview
               />
             </div>
-            <div className="sm:col-span-2">
+            <Input
+              ref={titleInputRef}
+              data-dialog-autofocus="true"
+              label="Notebook title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              disabled={saving}
+            />
+          </div>
+
+          <div className="grid gap-3">
+            <FormDisclosure title="Cover" summary="Colour and icon" defaultOpen>
               <ObjectStylePicker
                 color={color}
                 icon={icon}
@@ -176,10 +193,13 @@ export default function NotebookEditorDialog({
                 colorLabel="Cover colour"
                 iconLabel="Cover icon"
                 compact
-                centered
               />
-            </div>
-            <div className="sm:col-span-2">
+            </FormDisclosure>
+            <FormDisclosure
+              title="Topics"
+              summary={topicIds.length ? `${topicIds.length} selected` : "Optional"}
+              defaultOpen={topicIds.length > 0}
+            >
               <TopicPicker
                 userId={userId}
                 topics={topics}
@@ -188,41 +208,10 @@ export default function NotebookEditorDialog({
                 onTopicsChange={onTopicsChange}
                 disabled={saving}
               />
-            </div>
+            </FormDisclosure>
           </div>
-
-          <div className="mt-4 flex min-h-[3.25rem] flex-wrap items-center justify-center gap-3 border-t border-[var(--color-border)] px-1 pt-3 sm:justify-between sm:px-2">
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              disabled={saving}
-              onClick={() => setConfirmArchive(true)}
-            >
-              Archive notebook
-            </Button>
-            <div className="flex flex-wrap items-center justify-center gap-2.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={saving}
-                onClick={onClose}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={saving || !title.trim()}
-                onClick={() => void handleSave()}
-              >
-                {saving ? "Saving..." : "Save notebook"}
-              </Button>
-            </div>
-          </div>
-        </DialogPanel>
-      </Dialog>
+        </div>
+      </WorkspaceActionDialog>
 
       <ConfirmDialog
         open={confirmArchive}

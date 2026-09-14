@@ -7,12 +7,17 @@ import {
 } from "@/lib/app/photo-background-palette";
 import {
   encodePhotoBackgroundSample,
+  isSoftPhotoBackground,
   normalizePhotoBackgroundRecord,
   normalizePhotoBackgroundView,
   parseCachedPhotoBackground,
+  photoBackgroundStretch,
   photoBackgroundViewPixels,
   PHOTO_BACKGROUND_STORAGE_KEY,
+  SHARP_PHOTO_BACKGROUND_FILE_STEM,
+  shouldKeepOriginalPhoto,
 } from "@/lib/app/photo-background";
+import { PANEL_STYLE_STORAGE_KEY, SOLID_PANELS_CLASS_NAME } from "@/lib/app/panel-style";
 import { APP_THEME_BOOTSTRAP_SCRIPT, getActiveAppThemeClassNames } from "@/lib/app/theme-preference";
 
 const root = join(__dirname, "..");
@@ -106,6 +111,58 @@ describe("a stored photo background", () => {
     const broken = { ...cached, sample: { width: 16, height: 16, data: "AAAA" } };
     expect(normalizePhotoBackgroundRecord(broken, "alice")).not.toHaveProperty("sample");
   });
+
+  it("tells a photo saved before uploads were sharpened from one saved after", () => {
+    // The old pipeline's detail is gone from the stored file, so the card asks for the photo again.
+    expect(isSoftPhotoBackground("users/alice/appBackgrounds/f1/background.jpg")).toBe(true);
+    for (const extension of ["webp", "jpg"]) {
+      expect(
+        isSoftPhotoBackground(`users/alice/appBackgrounds/f2/${SHARP_PHOTO_BACKGROUND_FILE_STEM}.${extension}`)
+      ).toBe(false);
+    }
+  });
+});
+
+describe("a small background image", () => {
+  it("is measured as stretched well past sharp on a retina laptop", () => {
+    // A 736 x 1177 wallpaper covering a 1440 x 900 window at 2x.
+    const stretch = photoBackgroundStretch({
+      imageWidth: 736,
+      imageHeight: 1177,
+      screenWidth: 1440,
+      screenHeight: 900,
+      pixelRatio: 2,
+      zoom: 1,
+    });
+    expect(stretch).toBeCloseTo(3.91, 2);
+    expect(
+      photoBackgroundStretch({ imageWidth: 3840, imageHeight: 2400, screenWidth: 1440, screenHeight: 900, pixelRatio: 2, zoom: 1 })
+    ).toBeLessThan(1);
+  });
+
+  it("is uploaded untouched when it needs no shrinking, rather than compressed again", () => {
+    expect(shouldKeepOriginalPhoto({ type: "image/jpeg", size: 120_000, scale: 1 })).toBe(true);
+    expect(shouldKeepOriginalPhoto({ type: "image/png", size: 120_000, scale: 1 })).toBe(true);
+    // Shrunk, in a format Storage refuses, or over its limit: re-encoded instead.
+    expect(shouldKeepOriginalPhoto({ type: "image/jpeg", size: 120_000, scale: 0.5 })).toBe(false);
+    // A graphic that was enlarged and sharpened is its own new file.
+    expect(shouldKeepOriginalPhoto({ type: "image/jpeg", size: 120_000, scale: 3.9 })).toBe(false);
+    expect(shouldKeepOriginalPhoto({ type: "image/heic", size: 120_000, scale: 1 })).toBe(false);
+    expect(shouldKeepOriginalPhoto({ type: "image/png", size: 20 * 1024 * 1024, scale: 1 })).toBe(false);
+  });
+});
+
+describe("solid panels over a background", () => {
+  it("are stamped by the head script before the first paint, only when chosen", () => {
+    expect(run({ [PANEL_STYLE_STORAGE_KEY]: "solid" }).classes).toContain(SOLID_PANELS_CLASS_NAME);
+    expect(run({ [PANEL_STYLE_STORAGE_KEY]: "glass" }).classes).not.toContain(SOLID_PANELS_CLASS_NAME);
+    expect(run({}).classes).not.toContain(SOLID_PANELS_CLASS_NAME);
+  });
+
+  it("make the photo's and the sky's panels opaque", () => {
+    expect(globalsCss).toContain("html.panels-solid.photo-background-enabled");
+    expect(globalsCss).toContain("html.panels-solid body.constellation-background-enabled .app-panel");
+  });
 });
 
 /*
@@ -160,15 +217,36 @@ describe("the photo is on the document before the first paint", () => {
     ).toEqual(["constellation-background-enabled"]);
   });
 
-  it("keeps the photo off notebooks and past-paper questions", () => {
+  it("shows the photo behind notebooks and past-paper questions, since a still photo costs the ink nothing", () => {
     for (const path of ["/dashboard/notebooks/abc", "/dashboard/practice/questions/s1"]) {
-      const { classes, properties } = run(
+      const { classes } = run(
         { "jami:app-theme": "pink", [PHOTO_BACKGROUND_STORAGE_KEY]: JSON.stringify(cached) },
         path
       );
-      expect(classes, path).toEqual(getActiveAppThemeClassNames("pink"));
-      expect(properties, path).toEqual({});
+      expect(classes, path).toEqual(["photo-background-enabled", `photo-background-${dark.scheme}`]);
     }
+  });
+
+  it("keeps the photo off the constellation page, which draws its own sky", () => {
+    const { classes, properties } = run(
+      { "jami:app-theme": "pink", [PHOTO_BACKGROUND_STORAGE_KEY]: JSON.stringify(cached) },
+      "/dashboard/constellation"
+    );
+    expect(classes).toEqual(getActiveAppThemeClassNames("pink"));
+    expect(properties).toEqual({});
+  });
+
+  it("shows no photo on a notebook while the sky is the chosen background", () => {
+    // The sky cannot be drawn there, but it is still the later choice, so the theme shows.
+    const { classes } = run(
+      {
+        "jami:app-theme": "pink",
+        "constellation-background-enabled": "true",
+        [PHOTO_BACKGROUND_STORAGE_KEY]: JSON.stringify(cached),
+      },
+      "/dashboard/notebooks/abc"
+    );
+    expect(classes).toEqual(getActiveAppThemeClassNames("pink"));
   });
 
   it("falls back to the theme rather than blanking the page on a bad record", () => {

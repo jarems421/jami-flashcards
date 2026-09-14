@@ -232,4 +232,49 @@ describe("direct notebook ink input", () => {
     expect(ofEvent).toHaveBeenCalledTimes(5);
     expect(ofEvent.mock.calls.every((call) => call[3] === region)).toBe(true);
   });
+
+  /*
+   * js-draw reads the region's position for every sample. Handed the position
+   * taken at pen-down, a stroke measures the page once instead of forcing a
+   * layout on every packet the Pencil sends.
+   */
+  it("uses the position taken at the start of a stroke instead of measuring every sample", () => {
+    const { host, region } = buildInkLayout({ windowLeft: 0, windowTop: 0 });
+    const measure = vi.spyOn(region!, "getBoundingClientRect");
+    const { ofEvent, runtime } = buildJsDraw();
+    const { editor } = buildEditor();
+    const referenceRect = {
+      left: 40, top: 60, right: 40, bottom: 60, width: 0, height: 0, x: 40, y: 60, toJSON: () => ({}),
+    } as DOMRect;
+
+    for (let index = 0; index < 5; index += 1) {
+      dispatchPreciseNotebookPointerMove({
+        editor,
+        event: pointerAt(100 + index, 200),
+        host,
+        jsDraw: runtime,
+        referenceRect,
+      });
+    }
+
+    expect(measure).not.toHaveBeenCalled();
+    expect(ofEvent.mock.results[4]!.value.screenPos).toEqual({ x: 104 - 40, y: 200 - 60 });
+  });
+
+  it("measures live again once the caller has no position for the stroke", () => {
+    const { host, region } = buildInkLayout({ windowLeft: 12, windowTop: 30 });
+    const { ofEvent, runtime } = buildJsDraw();
+    const { editor } = buildEditor();
+
+    dispatchPreciseNotebookPointerMove({
+      editor,
+      event: pointerAt(50, 80),
+      host,
+      jsDraw: runtime,
+      referenceRect: null,
+    });
+
+    expect(ofEvent.mock.calls[0]![3]).toBe(region);
+    expect(ofEvent.mock.results[0]!.value.screenPos).toEqual({ x: 38, y: 50 });
+  });
 });

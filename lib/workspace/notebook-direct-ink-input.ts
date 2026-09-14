@@ -29,6 +29,25 @@ const JS_DRAW_RENDER_REGION_CLASS = "imageEditorRenderArea";
  */
 const renderRegions = new WeakMap<HTMLElement, HTMLElement>();
 
+/**
+ * A stand-in for the render region that answers with a position already read.
+ *
+ * A real, detached element whose `getBoundingClientRect` is replaced, one per
+ * host, so js-draw is handed exactly the kind of object it expects and nothing
+ * is allocated per sample.
+ */
+const measuredRegions = new WeakMap<HTMLElement, HTMLElement>();
+
+function measuredRegion(host: HTMLElement, rect: DOMRect) {
+  let region = measuredRegions.get(host);
+  if (!region) {
+    region = document.createElement("div");
+    measuredRegions.set(host, region);
+  }
+  region.getBoundingClientRect = () => rect;
+  return region;
+}
+
 export function getJsDrawPointerReferenceElement(
   host: HTMLElement | null
 ): HTMLElement | null {
@@ -71,13 +90,27 @@ export function dispatchPreciseNotebookPointerMove(input: {
   /** The element js-draw was mounted in. */
   host: HTMLElement;
   jsDraw: JsDrawPointerRuntime;
+  /**
+   * Where the render region was when this stroke began, if it is known.
+   *
+   * `Pointer.ofEvent` calls `getBoundingClientRect` on the element it is given
+   * for every sample, and a Pencil delivers several a frame. On a page that
+   * has not changed that read is cheap; on one that re-rendered between two
+   * strokes it forces a layout of the whole document, on the first move of the
+   * next stroke -- a delay exactly where the pen touches down. The region
+   * cannot move during a stroke unless something scrolls or resizes, and the
+   * caller stops passing this when it does.
+   */
+  referenceRect?: DOMRect | null;
 }) {
   input.editor.display.onPointerEvent(input.event);
   const pointer = input.jsDraw.Pointer.ofEvent(
     input.event,
     true,
     input.editor.viewport,
-    getJsDrawPointerReferenceElement(input.host) ?? input.host
+    input.referenceRect
+      ? measuredRegion(input.host, input.referenceRect)
+      : getJsDrawPointerReferenceElement(input.host) ?? input.host
   );
   return input.editor.toolController.dispatchInputEvent({
     kind: input.jsDraw.InputEvtType.PointerMoveEvt,

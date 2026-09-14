@@ -165,14 +165,14 @@ describe("the sidebar", () => {
     expect(new Set(icons).size).toBe(icons.length);
   });
 
-  it("keeps the complete desktop map but gives phones five stable destinations", () => {
+  it("gives phones every destination on one sideways-scrolling bar, with no More sheet", () => {
     expect(tabBar).toContain('label: "Today"');
     expect(tabBar).toContain('label: "Practice"');
     expect(tabBar).toContain('mobileLabel: "Cards"');
-    expect(tabBar).toContain("const mobilePrimaryHrefs");
-    expect(tabBar).toContain("More in Jami");
-    expect(tabBar).toContain("grid-cols-6");
-    expect(tabBar).not.toContain("snap-mandatory");
+    expect(tabBar).toContain("snap-mandatory");
+    expect(tabBar).toContain("overflow-x-auto");
+    expect(tabBar).not.toContain("More in Jami");
+    expect(tabBar).not.toContain("mobilePrimaryHrefs");
   });
 });
 

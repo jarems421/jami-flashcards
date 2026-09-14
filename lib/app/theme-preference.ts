@@ -6,6 +6,11 @@ import {
   CONSTELLATION_BACKGROUND_STORAGE_KEY,
 } from "@/lib/constellation/background";
 import {
+  PANEL_STYLE_STORAGE_KEY,
+  SOLID_PANELS_CLASS_NAME,
+} from "@/lib/app/panel-style";
+import {
+  PHOTO_BACKGROUND_EXCLUDED_PATHS,
   MAX_PHOTO_BACKGROUND_ZOOM,
   PHOTO_BACKGROUND_STORAGE_KEY,
   PHOTO_BACKGROUND_URL_PATTERN,
@@ -163,11 +168,17 @@ export const APP_THEME_BOOTSTRAP_SCRIPT = `(function(){try{var c=${JSON.stringif
   LEGACY_APP_BACKGROUND_STORAGE_KEY
 )});if(t==="purple-pink")t="purple";var d=document.documentElement,p=(window.location&&window.location.pathname)||"",o=${JSON.stringify(
   CONSTELLATION_BACKGROUND_EXCLUDED_PATHS
-)}.every(function(x){return p.indexOf(x)!==0});if(s.getItem(${JSON.stringify(
+)}.every(function(x){return p.indexOf(x)!==0}),q=${JSON.stringify(
+  PHOTO_BACKGROUND_EXCLUDED_PATHS
+)}.every(function(x){return p.indexOf(x)!==0}),w=s.getItem(${JSON.stringify(
   CONSTELLATION_BACKGROUND_STORAGE_KEY
 )})==="true"&&s.getItem(${JSON.stringify(
   CONSTELLATION_BACKGROUND_CRASH_MARKER_STORAGE_KEY
-)})!=="true"&&o){d.classList.add("constellation-background-enabled")}else{var g=null;if(o){try{g=JSON.parse(s.getItem(${JSON.stringify(
+)})!=="true";if(s.getItem(${JSON.stringify(
+  PANEL_STYLE_STORAGE_KEY
+)})==="solid")d.classList.add(${JSON.stringify(
+  SOLID_PANELS_CLASS_NAME
+)});if(w&&o){d.classList.add("constellation-background-enabled")}else{var g=null;if(!w&&q){try{g=JSON.parse(s.getItem(${JSON.stringify(
   PHOTO_BACKGROUND_STORAGE_KEY
 )})||"null")}catch(e){g=null}}var u=g&&g.imageUrl,v=g&&g.vars,k=g&&(g.scheme==="light"||g.scheme==="dark")?g.scheme:"";if(k&&typeof u==="string"&&new RegExp(${JSON.stringify(
   PHOTO_BACKGROUND_URL_PATTERN.source

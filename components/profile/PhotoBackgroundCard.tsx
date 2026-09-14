@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import PanelStyleSetting from "@/components/profile/PanelStyleSetting";
 import PhotoBackgroundPositioner from "@/components/profile/PhotoBackgroundPositioner";
 import { useUser } from "@/components/providers/UserProvider";
-import { Button, Card, SectionHeader } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 import {
+  isEnlargedPhotoBackground,
+  isSoftPhotoBackground,
+  LOW_RESOLUTION_PHOTO_STRETCH,
   PHOTO_BACKGROUND_EVENT,
+  photoBackgroundImageValue,
+  photoBackgroundPosition,
+  photoBackgroundStretch,
   readPhotoBackground,
   type CachedPhotoBackground,
   type PhotoBackgroundView,
@@ -25,9 +32,10 @@ import {
 /**
  * Choosing a photo to study in front of, and which part of it shows.
  *
- * There is no colour to pick here on purpose: the colours come from the photo,
- * measured so text stays readable over it, and the preview shows the result
- * rather than asking the student to predict it.
+ * Kept compact on purpose: it sits in Account beside settings that matter more,
+ * so the photo is a thumbnail with its actions, and positioning opens only when
+ * asked for. There is no colour to pick: the colours come from the photo,
+ * measured so text stays readable over it.
  */
 export default function PhotoBackgroundCard() {
   const { user } = useUser();
@@ -35,7 +43,10 @@ export default function PhotoBackgroundCard() {
   const [background, setBackground] = useState<CachedPhotoBackground | null>(null);
   const [skyIsOn, setSkyIsOn] = useState(false);
   const [phase, setPhase] = useState<"saving" | "positioning" | "removing" | null>(null);
+  const [adjusting, setAdjusting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageSize, setImageSize] = useState<{ url: string; width: number; height: number } | null>(null);
+  const [screen, setScreen] = useState({ width: 1440, height: 900, pixelRatio: 1 });
 
   useEffect(() => {
     const sync = () => {
@@ -56,12 +67,50 @@ export default function PhotoBackgroundCard() {
     };
   }, [user.uid]);
 
+  // The stored photo's real size, so the card can explain a blurry background.
+  useEffect(() => {
+    if (!background) return;
+    const url = background.imageUrl;
+    const image = new Image();
+    image.onload = () => setImageSize({ url, width: image.naturalWidth, height: image.naturalHeight });
+    image.src = url;
+    return () => {
+      image.onload = null;
+    };
+  }, [background]);
+
+  useEffect(() => {
+    const measure = () =>
+      setScreen({
+        width: window.innerWidth,
+        height: window.innerHeight,
+        pixelRatio: window.devicePixelRatio || 1,
+      });
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  const measuredImage = background && imageSize?.url === background.imageUrl ? imageSize : null;
+  const stretch =
+    background && measuredImage
+      ? photoBackgroundStretch({
+          imageWidth: measuredImage.width,
+          imageHeight: measuredImage.height,
+          screenWidth: screen.width,
+          screenHeight: screen.height,
+          pixelRatio: screen.pixelRatio,
+          zoom: background.zoom,
+        })
+      : 1;
+
   const choose = async (file: File | undefined) => {
     if (!file || phase) return;
     setPhase("saving");
     setError(null);
     try {
       await savePhotoBackground(user.uid, file);
+      setAdjusting(false);
     } catch (saveError) {
       console.error("Failed to save photo background.", saveError);
       setError(photoBackgroundErrorMessage(saveError));
@@ -90,6 +139,7 @@ export default function PhotoBackgroundCard() {
     setError(null);
     try {
       await removePhotoBackground(user.uid);
+      setAdjusting(false);
     } catch (removeError) {
       console.error("Failed to remove photo background.", removeError);
       setError("Your background could not be removed. Please try again.");
@@ -98,14 +148,18 @@ export default function PhotoBackgroundCard() {
     }
   };
 
-  return (
-    <Card padding="lg">
-      <SectionHeader
-        eyebrow="Background"
-        title="Study in front of your own photo"
-        description="Jami picks readable colours from the photo for you. Saved to your account, so it follows you to every device."
-      />
+  const notice = !background
+    ? null
+    : measuredImage && stretch > LOW_RESOLUTION_PHOTO_STRETCH
+      ? `This image is only ${measuredImage.width} × ${measuredImage.height}, so it's stretched about ${Math.round(stretch)}× to fill your screen. A larger version will look sharper.`
+      : isEnlargedPhotoBackground(background.storagePath)
+        ? "This photo was smaller than your screen, so Jami enlarged it and softened it a little. A larger photo will look sharper."
+        : isSoftPhotoBackground(background.storagePath)
+          ? "Saved before backgrounds were sharpened. Replace it with the same photo for full quality."
+          : null;
 
+  return (
+    <Card padding="md">
       <input
         ref={inputRef}
         type="file"
@@ -119,16 +173,77 @@ export default function PhotoBackgroundCard() {
         }}
       />
 
-      {skyIsOn ? (
-        <p className="app-subtle-panel mt-4 rounded-lg px-3 py-2.5 text-sm leading-6">
-          {background
-            ? "Your star sky is on on this device, so it shows instead of your photo. Choosing a photo turns the sky off here."
-            : "Choosing a photo turns your star sky off on this device."}
-        </p>
-      ) : null}
+      <div className="flex flex-wrap items-center gap-3">
+        {background ? (
+          <div
+            aria-hidden="true"
+            className="h-12 w-16 shrink-0 rounded-lg border border-[var(--color-border)] bg-cover"
+            style={{
+              backgroundColor: background.vars["--photo-base"],
+              backgroundImage: photoBackgroundImageValue(background.imageUrl),
+              backgroundPosition: photoBackgroundPosition(background),
+            }}
+          />
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold text-text-primary">Background photo</h2>
+          <p className="mt-0.5 text-xs text-text-muted">
+            {phase === "saving"
+              ? "Preparing your photo…"
+              : skyIsOn
+                ? "Your star sky is on here, so it shows instead."
+                : "Colours are picked from it. Follows you to every device."}
+          </p>
+        </div>
+        {background ? (
+        // Beside the title where there is room; underneath it on a phone.
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            aria-expanded={adjusting}
+            disabled={phase !== null}
+            onClick={() => setAdjusting((open) => !open)}
+          >
+            {adjusting ? "Done" : "Adjust"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={phase !== null}
+            onClick={() => inputRef.current?.click()}
+          >
+            {phase === "saving" ? "Saving…" : "Replace"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={phase !== null}
+            onClick={() => void remove()}
+          >
+            {phase === "removing" ? "Removing…" : "Remove"}
+          </Button>
+        </div>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            disabled={phase !== null}
+            onClick={() => inputRef.current?.click()}
+            className="shrink-0"
+          >
+            {phase === "saving" ? "Saving…" : "Choose photo"}
+          </Button>
+        )}
+      </div>
 
-      {background ? (
-        <div className="mt-5 space-y-4">
+      {notice ? <p className="mt-3 text-xs leading-5 text-text-muted">{notice}</p> : null}
+
+      {background && adjusting ? (
+        <div className="mt-4">
           {/* Keyed on the saved record, so a save or a photo chosen elsewhere starts the editor from it. */}
           <PhotoBackgroundPositioner
             key={`${background.storagePath}:${background.updatedAt}`}
@@ -136,54 +251,8 @@ export default function PhotoBackgroundCard() {
             saving={phase === "positioning"}
             onSave={(view) => void savePosition(view)}
           />
-          <div className="flex flex-wrap gap-2 border-t border-[var(--color-border)] pt-4">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={phase !== null}
-              onClick={() => inputRef.current?.click()}
-            >
-              {phase === "saving" ? "Saving photo…" : "Replace photo"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={phase !== null}
-              onClick={() => void remove()}
-            >
-              {phase === "removing" ? "Removing…" : "Remove photo"}
-            </Button>
-          </div>
         </div>
-      ) : (
-        <button
-          type="button"
-          disabled={phase !== null}
-          onClick={() => inputRef.current?.click()}
-          className="mt-5 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--color-border-strong)] px-4 py-8 text-center transition duration-fast hover:border-accent/50 hover:bg-[var(--color-glass-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-            className="h-7 w-7 text-text-muted"
-          >
-            <rect x="3" y="5" width="18" height="14" rx="2.5" />
-            <circle cx="9" cy="10" r="1.6" />
-            <path d="m4.5 17 5-5 3.5 3.5 2.5-2.5 4 4" />
-          </svg>
-          <span className="text-sm font-semibold text-text-primary">
-            {phase === "saving" ? "Saving photo…" : "Choose a photo"}
-          </span>
-          <span className="text-xs text-text-muted">
-            Any photo works. Large ones are resized for you.
-          </span>
-        </button>
-      )}
+      ) : null}
 
       {error ? (
         <p role="alert" className="mt-3 text-sm font-medium text-danger-text">
@@ -191,9 +260,10 @@ export default function PhotoBackgroundCard() {
         </p>
       ) : null}
 
-      <p className="mt-4 text-xs leading-5 text-text-muted">
-        Notebooks and past-paper questions keep a plain background, so nothing sits behind your writing.
-      </p>
+      {/* For whichever background is showing: the photo, or the star sky. */}
+      {background || skyIsOn ? (
+        <PanelStyleSetting className="mt-4 border-t border-[var(--color-border)] pt-4" />
+      ) : null}
     </Card>
   );
 }

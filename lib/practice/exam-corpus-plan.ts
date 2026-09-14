@@ -80,6 +80,28 @@ export const ENGLAND_MATHS_AND_SCIENCE: readonly ExamCorpusTarget[] = [
       { code: "2H", title: "Paper 2 Higher", tier: "Higher" },
     ],
   },
+  /*
+   * Combined Science is its own course, not the three sciences at once: a
+   * student sits six shorter papers, a Biology, Chemistry and Physics Paper 1
+   * and 2, each at Foundation or Higher. Coded as AQA prints them on the cover
+   * -- 8464/B/1H -- which is also what its file names are built from.
+   */
+  {
+    board: "aqa",
+    subject: "Combined Science: Trilogy",
+    level: "gcse",
+    specificationId: "8464",
+    specificationTitle: "GCSE Combined Science: Trilogy",
+    components: (["Biology", "Chemistry", "Physics"] as const).flatMap((science) =>
+      ([1, 2] as const).flatMap((paper) =>
+        (["Foundation", "Higher"] as const).map((tier) => ({
+          code: `${science[0]}/${paper}${tier[0]}`,
+          title: `${science} Paper ${paper} ${tier}`,
+          tier,
+        }))
+      )
+    ),
+  },
   {
     board: "aqa",
     subject: "Mathematics",

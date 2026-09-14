@@ -18,6 +18,7 @@ import {
   type PracticePaperCompanionDocument,
 } from "@/lib/practice/exam-formats";
 import { normalizeManualCorrectionAudits, normalizePracticePaperMarkRange, type PracticePaperManualCorrectionAudit, type PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
+import { normalizePracticePaperPdfLayout, type PracticePaperPdfLayout } from "@/lib/practice/paper-pdf-layout";
 export { mapPracticePaperMarkingJobData } from "@/lib/practice/practice-paper-marking-types";
 export { mapPracticePaperJobData } from "@/lib/practice/practice-paper-jobs";
 export type { PracticePaperEvidenceIssue, PracticePaperEvidenceManifest, PracticePaperEvidencePage, PracticePaperManualCorrectionAudit, PracticePaperMarkingJob, PracticePaperMarkingJobKind, PracticePaperMarkingJobStage, PracticePaperMarkingJobStatus, PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
@@ -113,6 +114,8 @@ export type PracticePaperJob = {
   clarificationQuestion?: string;
   failureCode?: string;
   failureMessage?: string;
+  /** The student cleared this failure from the Practice paper builder. */
+  failureDismissed: boolean;
   workflowRunId?: string;
   cancellationRequested: boolean;
   readyUnread: boolean;
@@ -430,6 +433,7 @@ export type PracticePaper = {
   timerEnabled: boolean;
   instructions: string[];
   companionDocuments?: PracticePaperCompanionDocument[];
+  pdfLayout?: PracticePaperPdfLayout;
   assessmentProfile: PracticePaperAssessmentProfile;
   questions: PracticePaperQuestion[];
   choiceGroups: PracticePaperChoiceGroup[];
@@ -1116,6 +1120,7 @@ export function mapPracticePaperData(
       : data.timerEnabled === true,
     instructions: normalizeTextList(data.instructions, 20),
     companionDocuments: normalizePracticePaperCompanionDocuments(data.companionDocuments),
+    pdfLayout: normalizePracticePaperPdfLayout(data.pdfLayout),
     assessmentProfile: normalizePracticePaperAssessmentProfile(data.assessmentProfile),
     questions,
     choiceGroups,
@@ -1165,6 +1170,7 @@ export function buildPracticePaperPayload(
       160
     ),
     companionDocuments: normalizePracticePaperCompanionDocuments(input.companionDocuments),
+    pdfLayout: normalizePracticePaperPdfLayout(input.pdfLayout) ?? null,
     questions: normalizePracticePaperQuestions(input.questions),
     choiceGroups: normalizePracticePaperChoiceGroups(
       input.choiceGroups,

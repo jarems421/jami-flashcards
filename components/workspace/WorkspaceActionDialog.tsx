@@ -15,6 +15,13 @@ type WorkspaceActionDialogProps = {
   title: string;
   description?: string;
   children: ReactNode;
+  /**
+   * The dialog's actions, pinned below the scrolling body.
+   *
+   * For dialogs whose buttons act directly. A form that submits keeps its
+   * footer inside its own `<form>`, so the submit button stays part of it.
+   */
+  footer?: ReactNode;
   busy?: boolean;
   maxWidth?: "md" | "lg" | "xl";
   onClose: () => void;
@@ -34,6 +41,7 @@ export default function WorkspaceActionDialog({
   title,
   description,
   children,
+  footer,
   busy = false,
   maxWidth = "md",
   onClose,
@@ -51,13 +59,13 @@ export default function WorkspaceActionDialog({
       <DialogPanel
         className={`app-panel relative flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-b-none rounded-t-2xl shadow-e3 sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-2xl ${maxWidthClasses[maxWidth]}`}
       >
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 py-4 sm:px-6">
+        <div className="flex shrink-0 items-start justify-between gap-4 px-4 pb-3 pt-4 sm:px-6 sm:pt-5">
           <div className="min-w-0">
             <DialogTitle className="text-lg font-semibold tracking-tight text-text-primary sm:text-xl">
               {title}
             </DialogTitle>
             {description ? (
-              <DialogDescription className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">
+              <DialogDescription className="mt-1 max-w-xl text-sm leading-6 text-text-muted">
                 {description}
               </DialogDescription>
             ) : null}
@@ -69,7 +77,7 @@ export default function WorkspaceActionDialog({
             aria-label={`Close ${title}`}
             disabled={busy}
             onClick={onClose}
-            className="shrink-0"
+            className="-mr-2 -mt-1 shrink-0"
           >
             <svg
               viewBox="0 0 20 20"
@@ -83,9 +91,14 @@ export default function WorkspaceActionDialog({
             </svg>
           </Button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-[var(--color-border)] p-3 sm:p-5">
           {children}
         </div>
+        {footer ? (
+          <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-4">
+            {footer}
+          </div>
+        ) : null}
       </DialogPanel>
     </Dialog>
   );

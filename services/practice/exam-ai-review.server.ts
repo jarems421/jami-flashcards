@@ -2,7 +2,7 @@ import "server-only";
 
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { generateAiText } from "@/lib/ai/provider-router";
-import { schemeCriteria } from "@/lib/practice/mark-schemes";
+import { examReviewScheme } from "@/lib/practice/exam-review-record";
 import type {
   ExamQuestion,
   ExamQuestionReview,
@@ -32,9 +32,11 @@ Reject when any of these is true:
 - the prompt is not what the question image says, or is truncated, or has absorbed a neighbouring question
 - the mark total does not match the tariff printed on the question
 - the question depends on a figure, table, diagram or extract that neither the prompt nor the question image contains
-- the extracted criteria are not what the scheme page awards for this question, or are for a different question
-- the criteria do not add up to the tariff
+- the extracted scheme is not what the scheme page awards for this question, or is for a different question
+- schemeAwards does not match the tariff
 - the question number or label does not match
+
+How the scheme adds up is stated in awardRule, and schemeAwards already applies it. Never add up every listed point or level yourself: a pool lists more acceptable answers than it awards, and levels of response are alternatives, so neither is a fault.
 
 Return ONLY JSON: {"verdict":"approve"|"reject","confidence":0..1,"issues":[string]}
 issues names what is wrong, one short sentence each, and is empty when approving. Be strict: a student is marked against this.`;
@@ -104,8 +106,8 @@ export async function reviewExamQuestionWithAi(input: {
   });
 
   if (!secret) return reject("No mark scheme was stored for this question.");
-  const criteria = schemeCriteria(secret.markSchemeItem);
-  if (criteria.length === 0) return reject("The mark scheme has no awardable criteria.");
+  const scheme = examReviewScheme(secret.markSchemeItem);
+  if (!scheme) return reject("The mark scheme has no awardable criteria.");
 
   const { parts: pageParts, hasScheme } = await sourceParts(question).catch(() => ({ parts: [], hasScheme: false }));
   // Without the page there is nothing to check the extraction against, and
@@ -123,9 +125,7 @@ export async function reviewExamQuestionWithAi(input: {
     questionNumber: question.provenance.questionNumber,
     prompt: question.prompt,
     marks: question.marks,
-    markSchemeRegime: secret.markSchemeItem.marking,
-    criteria: criteria.map((item) => ({ id: item.id, marks: item.marks, text: item.text })),
-    criteriaMarkTotal: criteria.reduce((sum, item) => sum + item.marks, 0),
+    scheme,
   };
 
   let response: string;

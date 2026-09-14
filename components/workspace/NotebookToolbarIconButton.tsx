@@ -22,7 +22,9 @@ export type NotebookIconName =
   | "alert"
   | "close"
   | "image"
-  | "select";
+  | "select"
+  | "expand"
+  | "minus";
 
 // Hand-drawn on a consistent 24px grid with a uniform 1.8 stroke, rounded
 // caps/joins, and shared optical margins, so the set reads as one family.
@@ -153,6 +155,13 @@ export function NotebookIcon({ name }: { name: NotebookIconName }) {
           />
         </>
       ) : null}
+      {name === "expand" ? (
+        <path
+          {...common}
+          d="M4.8 9.2V4.8h4.4M19.2 9.2V4.8h-4.4M4.8 14.8v4.4h4.4M19.2 14.8v4.4h-4.4"
+        />
+      ) : null}
+      {name === "minus" ? <path {...common} d="M5.5 12h13" /> : null}
       {name === "select" ? (
         <path {...common} d="M6.2 4.6 18.4 10.8l-5.5 1.7-2.6 5.4L6.2 4.6Z" />
       ) : null}

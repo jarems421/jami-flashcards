@@ -34,10 +34,10 @@ export function ObjectStylePicker({
   centered = false,
 }: ObjectStylePickerProps) {
   return (
-    <div className={cx(compact ? "space-y-3" : "space-y-4", className)}>
-      <div className={compact ? "space-y-1.5" : "space-y-2"}>
+    <div className={cx(compact ? "space-y-4" : "space-y-5", className)}>
+      <div className="space-y-2">
         <p className={cx(
-          "text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]",
+          "text-sm font-medium text-text-secondary",
           centered && "text-center",
         )}>
           {colorLabel}
@@ -53,10 +53,10 @@ export function ObjectStylePicker({
                 aria-pressed={selected}
                 onClick={() => onColorChange(preset.id)}
                 className={cx(
-                  `${compact ? "h-8 w-8" : "h-9 w-9"} rounded-full border p-0.5 transition hover:-translate-y-0.5`,
+                  `${compact ? "h-8 w-8" : "h-9 w-9"} rounded-full border-2 p-0.5 transition duration-fast`,
                   selected
                     ? "border-[var(--color-accent)] shadow-ring"
-                    : "border-[var(--color-border)]",
+                    : "border-transparent hover:border-[var(--color-border-strong)]",
                 )}
               >
                 <span
@@ -71,9 +71,9 @@ export function ObjectStylePicker({
         </div>
       </div>
 
-      <div className={compact ? "space-y-1.5" : "space-y-2"}>
+      <div className="space-y-2">
         <p className={cx(
-          "text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]",
+          "text-sm font-medium text-text-secondary",
           centered && "text-center",
         )}>
           {iconLabel}
@@ -89,10 +89,10 @@ export function ObjectStylePicker({
                 aria-pressed={selected}
                 onClick={() => onIconChange(preset.id)}
                 className={cx(
-                  `inline-grid ${compact ? "h-9 w-9 rounded-xl" : "h-10 w-10 rounded-2xl"} place-items-center border transition hover:-translate-y-0.5`,
+                  `inline-grid ${compact ? "h-9 w-9 rounded-xl" : "h-10 w-10 rounded-2xl"} place-items-center border transition duration-fast`,
                   selected
                     ? "border-[var(--color-accent)] bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
-                    : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-[var(--color-text-muted)]",
+                    : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-[var(--color-text-muted)] hover:border-[var(--color-border-strong)] hover:text-text-secondary",
                 )}
               >
                 {preset.id === "none" ? (

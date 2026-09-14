@@ -9,12 +9,8 @@ import type { Deck } from "@/lib/study/decks";
 import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckFolders, updateDeckStyle } from "@/services/study/decks";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
-import {
-  getDeckColorPreset,
-  type DeckColorPresetId,
-  type DeckIconPresetId,
-} from "@/lib/study/deck-style";
-import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
+import { getDeckColorPreset } from "@/lib/study/deck-style";
+import DeckEditorDialog, { type DeckDraft } from "@/components/decks/DeckEditorDialog";
 import { loadUserCards } from "@/services/study/cards";
 import { getDeckCardCounts, type DeckCounts } from "@/lib/study/deck-counts";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
@@ -28,13 +24,6 @@ import {
   useDashboardData,
   type DashboardDataLoadOptions,
 } from "@/hooks/useDashboardData";
-
-type DeckDraft = {
-  name: string;
-  colorPreset: DeckColorPresetId;
-  iconPreset: DeckIconPresetId;
-  folderId: string;
-};
 
 const EMPTY_DECK_DRAFT: DeckDraft = {
   name: "",
@@ -190,6 +179,7 @@ export default function DecksPage() {
       await deleteDeck(user.uid, deck.id);
       await loadAll();
       setDeckPendingDelete(null);
+      if (rows.isEditing(deck.id)) resetDeckEditing();
       success(`Deleted deck ${deck.name}`);
     } catch (error) {
       console.error("Failed to delete a deck.", error);
@@ -276,6 +266,23 @@ export default function DecksPage() {
           onClose={() => setDeckPendingDelete(null)}
           onConfirm={() => {
             if (deckPendingDelete) void handleDeckDelete(deckPendingDelete);
+          }}
+        />
+        <DeckEditorDialog
+          deck={decks.find((deck) => rows.isEditing(deck.id)) ?? null}
+          draft={draft}
+          folders={folders}
+          saving={rows.editingId !== null && rows.isSaving(rows.editingId)}
+          deleting={rows.editingId !== null && rows.isDeleting(rows.editingId)}
+          onDraftChange={rows.updateDraft}
+          onCancel={resetDeckEditing}
+          onSave={() => {
+            const deck = decks.find((candidate) => rows.isEditing(candidate.id));
+            if (deck) void handleDeckRename(deck);
+          }}
+          onDelete={() => {
+            const deck = decks.find((candidate) => rows.isEditing(candidate.id));
+            if (deck) setDeckPendingDelete(deck);
           }}
         />
 
@@ -381,126 +388,36 @@ export default function DecksPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 basis-full">
-                      {rows.isEditing(deck.id) ? (
-                        <div className="space-y-3">
-                          <div className="app-subtle-panel space-y-3 rounded-xl p-3">
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Deck cover</div>
-                            <div className="app-chip flex flex-wrap items-center gap-3 rounded-md p-3 sm:flex-nowrap">
-                              <DeckCoverIcon
-                                colorPreset={draft.colorPreset}
-                                iconPreset={draft.iconPreset}
-                                className="h-12 w-12"
-                              />
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-medium text-text-primary">
-                                  {draft.name.trim() || "Deck preview"}
-                                </div>
-                                <div className="text-xs text-text-muted">
-                                  Updates as you style it
-                                </div>
-                              </div>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <Input
-                                label="Deck name"
-                                value={draft.name}
-                                onChange={(event) => rows.updateDraft({ name: event.target.value })}
-                                placeholder="Deck name"
-                              />
-                              <label className="block">
-                                <span className="mb-2 block text-sm font-medium text-text-secondary">Folder</span>
-                                <select
-                                  value={draft.folderId}
-                                  onChange={(event) => rows.updateDraft({ folderId: event.target.value })}
-                                  className="app-field min-h-[2.75rem] w-full rounded-2xl px-3 text-sm outline-none"
-                                >
-                                  <option value="">No folder</option>
-                                  {folders.map((folder) => (
-                                    <option key={folder.id} value={folder.id}>
-                                      {folder.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            </div>
-                            <ObjectStylePicker
-                              color={draft.colorPreset}
-                              icon={draft.iconPreset}
-                              onColorChange={(colorPreset) => rows.updateDraft({ colorPreset })}
-                              onIconChange={(iconPreset) => rows.updateDraft({ iconPreset })}
-                              colorLabel="Deck colour"
-                              iconLabel="Deck icon"
-                              compact
-                            />
-                          </div>
-                          <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 sm:flex-row sm:items-center sm:justify-between">
-                            <Button
-                              type="button"
-                              variant="danger"
-                              disabled={
-                                rows.isSaving(deck.id) ||
-                                rows.isDeleting(deck.id)
-                              }
-                              onClick={() => setDeckPendingDelete(deck)}
-                              className="w-full sm:w-auto"
-                            >
-                              {rows.isDeleting(deck.id) ? "Deleting..." : "Delete deck"}
-                            </Button>
-                            <div className="flex flex-col gap-2 sm:flex-row">
-                              <Button
-                                type="button"
-                                disabled={rows.isSaving(deck.id)}
-                                onClick={resetDeckEditing}
-                                variant="ghost"
-                                className="w-full sm:w-auto"
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                type="button"
-                                disabled={rows.isSaving(deck.id) || !draft.name.trim()}
-                                onClick={() => void handleDeckRename(deck)}
-                                className="w-full sm:w-auto"
-                              >
-                                {rows.isSaving(deck.id) ? "Saving..." : "Save deck"}
-                              </Button>
-                            </div>
+                      <Link href={getDeckHref(deck.id)} aria-label={`Open ${deck.name}`} className="group flex items-center gap-3 transition duration-fast hover:opacity-90">
+                        <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-medium leading-5" title={deck.name}>{deck.name}</div>
+                          <div className="mt-1 text-sm text-text-muted">
+                            {counts.total} cards, {counts.due} due
+                            {folderName ? `, ${folderName}` : ""}
                           </div>
                         </div>
-                      ) : (
-                        <Link href={getDeckHref(deck.id)} aria-label={`Open ${deck.name}`} className="group flex items-center gap-3 transition duration-fast hover:opacity-90">
-                          <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate font-medium leading-5" title={deck.name}>{deck.name}</div>
-                            <div className="mt-1 text-sm text-text-muted">
-                              {counts.total} cards, {counts.due} due
-                              {folderName ? `, ${folderName}` : ""}
-                            </div>
-                          </div>
-                        </Link>
-                      )}
+                      </Link>
                     </div>
 
-                    {rows.isEditing(deck.id) ? null : (
-                      <div className="flex w-full flex-wrap gap-2">
-                        <ButtonLink
-                          href={getDeckStudyHref(deck.id)}
-                          size="sm"
-                          className="flex-1 sm:flex-none"
-                        >
-                          Study
-                        </ButtonLink>
-                        <Link
-                          href={`${getDeckHref(deck.id)}#add-card`}
-                          className="inline-flex min-h-[2.5rem] flex-1 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 text-sm font-medium text-[var(--button-secondary-text)] sm:flex-none"
-                        >
-                          Add card
-                        </Link>
-                        <Button type="button" disabled={rows.isDeleting(deck.id)} onClick={() => { rows.startEditing(deck.id, { name: deck.name, colorPreset: deck.colorPreset, iconPreset: deck.iconPreset, folderId: deck.folderIds[0] ?? "" }); clearFeedback(); }} variant="secondary" className="flex-1 sm:flex-none">
-                          Edit
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex w-full flex-wrap gap-2">
+                      <ButtonLink
+                        href={getDeckStudyHref(deck.id)}
+                        size="sm"
+                        className="flex-1 sm:flex-none"
+                      >
+                        Study
+                      </ButtonLink>
+                      <Link
+                        href={`${getDeckHref(deck.id)}#add-card`}
+                        className="inline-flex min-h-[2.5rem] flex-1 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 text-sm font-medium text-[var(--button-secondary-text)] sm:flex-none"
+                      >
+                        Add card
+                      </Link>
+                      <Button type="button" disabled={rows.isDeleting(deck.id)} onClick={() => { rows.startEditing(deck.id, { name: deck.name, colorPreset: deck.colorPreset, iconPreset: deck.iconPreset, folderId: deck.folderIds[0] ?? "" }); clearFeedback(); }} variant="secondary" className="flex-1 sm:flex-none">
+                        Edit
+                      </Button>
+                    </div>
                   </div>
                 </div>
               );

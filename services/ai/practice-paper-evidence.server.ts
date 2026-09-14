@@ -5,6 +5,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import sharp from "sharp";
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { buildJamiAssistantReferenceParts } from "@/lib/ai/jami-assistant";
+import { questionIdsForPdfPage } from "@/lib/practice/paper-pdf-layout";
 import {
   mapPracticePaperData,
   type PracticePaper,
@@ -180,7 +181,12 @@ function questionIdsForPage(page: NotebookPage, paper: PracticePaper) {
   if (page.linkedQuestionId && paper.questions.some((question) => question.id === page.linkedQuestionId)) {
     return [page.linkedQuestionId];
   }
-  return [];
+  // A page of a generated paper's own booklet: which questions were typeset on it is known.
+  return questionIdsForPdfPage(
+    paper.pdfLayout,
+    page,
+    new Set(paper.questions.map((question) => question.id))
+  );
 }
 
 async function addStoredPage(input: {

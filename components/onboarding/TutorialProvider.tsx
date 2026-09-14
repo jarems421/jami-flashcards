@@ -375,6 +375,13 @@ function MissionSpotlight({ missionId }: { missionId: TutorialMissionId }) {
       if (stopped) return;
       const found = measure();
       if (found) {
+        // A target can sit below the fold -- Folders keeps New folder with the
+        // folder list -- so bring it into view; `follow` tracks the scroll.
+        if (found.top < 0 || found.top + found.height > window.innerHeight) {
+          document
+            .querySelector<HTMLElement>(`[data-tutorial-target="${missionId}"]`)
+            ?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+        }
         setSpotlight({ rect: found, leaving: false });
         window.addEventListener("resize", follow);
         window.addEventListener("scroll", follow, true);

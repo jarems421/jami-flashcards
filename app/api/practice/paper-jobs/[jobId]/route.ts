@@ -117,11 +117,17 @@ export async function PATCH(
     .doc(jobId);
   const snapshot = await ref.get();
   if (!snapshot.exists) return failure("Job not found", 404, "job_not_found");
-  if (snapshot.data()?.status === "ready") {
+  const data = snapshot.data() ?? {};
+  // Acknowledging a ready paper clears its notice; acknowledging a failed one
+  // dismisses it from the Practice paper builder.
+  if (data.status === "ready") {
     await ref.update({ readyUnread: false, updatedAt: Date.now() });
+  } else if (data.status === "failed") {
+    await ref.update({ failureDismissed: true, updatedAt: Date.now() });
   }
   return Response.json(mapPracticePaperJobData(jobId, {
-    ...snapshot.data(),
+    ...data,
     readyUnread: false,
+    failureDismissed: data.status === "failed" || data.failureDismissed === true,
   }));
 }

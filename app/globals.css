@@ -2165,6 +2165,112 @@ html.photo-background-enabled .backdrop-blur-2xl {
   -webkit-backdrop-filter: none !important;
 }
 
+/* A printed paper is printed on paper, not on the student's photo. */
+@media print {
+  html.photo-background-enabled body::after {
+    display: none;
+  }
+}
+
+/*
+ * Solid panels over a background.
+ *
+ * The student's choice (`panels-solid`, from lib/app/panel-style.ts): the photo
+ * or sky still fills the page around cards and menus, but nothing shows
+ * through them. The photo's alphas are set inline on the root, so this
+ * replaces the colours that read them rather than the alphas themselves.
+ */
+/*
+ * The glass tints, too. Subtle panels, chips, pills and secondary buttons are
+ * translucent layers; inside a panel they sit on something solid, but on the
+ * page they sat straight on the photo. Mixed into the panel colour here, they
+ * look exactly as they did over a panel and nothing shows through them.
+ */
+html.panels-solid.photo-background-enabled,
+html.panels-solid.photo-background-enabled body {
+  --color-surface-raised: rgb(var(--photo-surface-rgb));
+  --color-surface-panel: rgb(var(--photo-surface-rgb));
+  --color-surface-panel-strong: var(--photo-solid);
+  --topbar-bg: rgb(var(--photo-surface-rgb));
+  --nav-shell-bg: var(--photo-solid);
+  --color-glass-subtle: color-mix(in srgb, rgb(var(--photo-line-rgb)) 7%, rgb(var(--photo-surface-rgb)));
+  --color-glass-medium: color-mix(in srgb, rgb(var(--photo-line-rgb)) 11%, rgb(var(--photo-surface-rgb)));
+  --color-glass-strong: color-mix(in srgb, rgb(var(--photo-line-rgb)) 17%, rgb(var(--photo-surface-rgb)));
+  --color-chip-bg: color-mix(in srgb, rgb(var(--photo-line-rgb)) 9%, rgb(var(--photo-surface-rgb)));
+  --color-selected-bg: color-mix(in srgb, rgb(var(--photo-accent-rgb)) 22%, rgb(var(--photo-surface-rgb)));
+  --color-accent-muted: color-mix(in srgb, rgb(var(--photo-accent-rgb)) 20%, rgb(var(--photo-surface-rgb)));
+  --nav-hover-bg: color-mix(in srgb, rgb(var(--photo-line-rgb)) 6%, rgb(var(--photo-surface-rgb)));
+  --button-ghost-bg-hover: color-mix(in srgb, rgb(var(--photo-line-rgb)) 8%, rgb(var(--photo-surface-rgb)));
+  --button-secondary-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, rgb(var(--photo-line-rgb)) 16%, rgb(var(--photo-surface-rgb))),
+    color-mix(in srgb, rgb(var(--photo-line-rgb)) 9%, rgb(var(--photo-surface-rgb)))
+  );
+  --button-secondary-bg-hover: linear-gradient(
+    180deg,
+    color-mix(in srgb, rgb(var(--photo-line-rgb)) 22%, rgb(var(--photo-surface-rgb))),
+    color-mix(in srgb, rgb(var(--photo-line-rgb)) 12%, rgb(var(--photo-surface-rgb)))
+  );
+  --button-disabled-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, rgb(var(--photo-line-rgb)) 12%, rgb(var(--photo-surface-rgb))),
+    color-mix(in srgb, rgb(var(--photo-line-rgb)) 7%, rgb(var(--photo-surface-rgb)))
+  );
+}
+
+html.panels-solid.photo-background-enabled .app-topbar {
+  background: rgb(var(--photo-surface-rgb)) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.panels-solid.photo-background-enabled .app-nav {
+  background: var(--photo-solid) !important;
+}
+
+html.panels-solid.constellation-background-enabled,
+html.panels-solid body.constellation-background-enabled {
+  --color-surface-raised: #0c0918;
+  --color-surface-panel: #0c0918;
+  --color-surface-panel-strong: #08060f;
+  --topbar-bg: #0a0816;
+  --nav-shell-bg: #0a0816;
+  --color-glass-subtle: color-mix(in srgb, #ffffff 8%, #0c0918);
+  --color-glass-medium: color-mix(in srgb, #ffffff 12%, #0c0918);
+  --color-glass-strong: color-mix(in srgb, #ffffff 18%, #0c0918);
+  --color-chip-bg: color-mix(in srgb, #ffffff 10%, #0c0918);
+  --color-selected-bg: color-mix(in srgb, rgb(143 125 232) 26%, #0c0918);
+  --color-accent-muted: color-mix(in srgb, rgb(216 216 226) 20%, #0c0918);
+  --nav-hover-bg: color-mix(in srgb, #ffffff 6%, #0c0918);
+  --button-ghost-bg-hover: color-mix(in srgb, #ffffff 9%, #0c0918);
+  --button-secondary-bg: linear-gradient(180deg, color-mix(in srgb, #ffffff 18%, #0c0918), color-mix(in srgb, #ffffff 10%, #0c0918));
+  --button-secondary-bg-hover: linear-gradient(180deg, color-mix(in srgb, #ffffff 26%, #0c0918), color-mix(in srgb, #ffffff 13%, #0c0918));
+  --button-disabled-bg: linear-gradient(180deg, color-mix(in srgb, #ffffff 13%, #0c0918), color-mix(in srgb, #ffffff 7.5%, #0c0918));
+}
+
+html.panels-solid body.constellation-background-enabled .app-panel {
+  background-color: #0c0918;
+}
+
+html.panels-solid body.constellation-background-enabled .app-panel-warm {
+  background-color: #0f0a1e;
+}
+
+html.panels-solid body.constellation-background-enabled .bg-surface-panel,
+html.panels-solid body.constellation-background-enabled .bg-surface-panel-strong {
+  background-color: #0c0918 !important;
+}
+
+html.panels-solid body.constellation-background-enabled .app-topbar {
+  background: #0a0816 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.panels-solid body.constellation-background-enabled .app-nav {
+  background: #0a0816 !important;
+}
+
 /* Constellation keyframes */
 
 /*

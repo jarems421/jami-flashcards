@@ -10,6 +10,7 @@ import {
   type PointerEvent,
 } from "react";
 import { Button } from "@/components/ui";
+import { usePanelStyle } from "@/hooks/usePanelStyle";
 import { derivePhotoBackgroundPaletteForView } from "@/lib/app/photo-background-palette";
 import {
   DEFAULT_PHOTO_BACKGROUND_VIEW,
@@ -50,6 +51,7 @@ export default function PhotoBackgroundPositioner({
   const saved = normalizePhotoBackgroundView(background);
   const [view, setView] = useState<PhotoBackgroundView>(saved);
   const [screenAspect, setScreenAspect] = useState(16 / 10);
+  const [panelStyle] = usePanelStyle();
   const frameRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -160,8 +162,8 @@ export default function PhotoBackgroundPositioner({
         }`}
         style={{
           aspectRatio: `${screenAspect.toFixed(4)}`,
-          // As wide as the card allows, but never taller than 26rem.
-          width: `min(100%, calc(26rem * ${screenAspect.toFixed(4)}))`,
+          // As wide as the card allows, but never taller than 14rem: it opens inside Account.
+          width: `min(100%, calc(14rem * ${screenAspect.toFixed(4)}))`,
         }}
       >
         <div
@@ -183,7 +185,9 @@ export default function PhotoBackgroundPositioner({
           aria-hidden="true"
           className="pointer-events-none absolute bottom-3 left-3 right-3 max-w-xs rounded-xl p-3 sm:bottom-4 sm:left-4"
           style={{
-            background: `rgb(${vars["--photo-surface-rgb"]} / ${vars["--photo-panel-alpha"]})`,
+            background: `rgb(${vars["--photo-surface-rgb"]} / ${
+              panelStyle === "solid" ? "1" : vars["--photo-panel-alpha"]
+            })`,
             border: `1px solid rgb(${vars["--photo-line-rgb"]} / 0.18)`,
           }}
         >
@@ -203,8 +207,7 @@ export default function PhotoBackgroundPositioner({
       </div>
 
       <p id={hintId} className="text-center text-xs leading-5 text-text-muted">
-        Drag the photo, or use the arrow keys, to choose what stays in view. The preview is the
-        shape of this screen; others show a little more or less around the same spot.
+        Drag the photo, or use the arrow keys, to choose what stays in view.
       </p>
 
       <div className="flex items-center gap-3">
