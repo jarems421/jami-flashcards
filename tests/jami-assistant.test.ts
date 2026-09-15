@@ -152,6 +152,7 @@ describe("Jami assistant model and receipt contract", () => {
       )
     ).toEqual({
       answer: "Photosynthesis stores light energy.",
+      graphs: [],
       sourceRefs: ["S1"],
       usedCurrentContext: true,
       usedGeneralKnowledge: true,
@@ -286,6 +287,23 @@ describe("Jami automatic routing and privacy helpers", () => {
         "Read https://www.aqa.org.uk/spec.pdf?student=Alice#answer and http://127.0.0.1/private"
       )
     ).toEqual(["https://www.aqa.org.uk/spec.pdf"]);
+  });
+
+  it("does not offer a visual for an answer that already drew one", () => {
+    const context = { surface: "notebook" as const, notebookId: "notebook-1", pageId: "page-1" };
+    for (const answer of [
+      "Here it is.\n\n```graph\n{\"functions\":[\"x^2\"]}\n```",
+      "The triangle:\n\n```svg\n<svg viewBox=\"0 0 10 10\"></svg>\n```",
+    ]) {
+      expect(shouldOfferTutorIllustration({ message: "Draw the graph of y = x^2", answer, context })).toBe(false);
+    }
+    expect(
+      shouldOfferTutorIllustration({
+        message: "Draw the water cycle",
+        answer: "Water evaporates, condenses into clouds and falls as rain.",
+        context,
+      })
+    ).toBe(true);
   });
 
   it("never offers a visual before a flashcard answer is revealed", () => {

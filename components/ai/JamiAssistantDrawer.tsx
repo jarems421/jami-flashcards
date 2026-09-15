@@ -943,6 +943,7 @@ export default function JamiAssistantDrawer({
                           </div>
                         ) : null}
                         {message.canIllustrate &&
+                        !message.illustrations?.length &&
                         message.id &&
                         activeThread &&
                         !viewingForeignThread ? (

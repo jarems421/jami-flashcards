@@ -278,6 +278,7 @@ describe("universal Jami assistant route", () => {
               "usedCurrentContext",
               "usedGeneralKnowledge",
               "usedWebResearch",
+              "graphs",
             ],
           }),
         }),

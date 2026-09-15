@@ -4,6 +4,8 @@ import type { JamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import { normalizeAssistantId as normalizeId } from "@/lib/ai/jami-assistant-normalize";
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 
+import { extractTutorGraphs, MAX_TUTOR_GRAPHS, readTutorGraphSpecs } from "@/lib/ai/assistant-graph";
+
 export const JAMI_ASSISTANT_MAX_HISTORY_MESSAGES = 12;
 export const JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH = 4_000;
 export const JAMI_ASSISTANT_MAX_MESSAGE_LENGTH = 2_000;
@@ -116,6 +118,8 @@ export type JamiAssistantResponseGuidance = {
 
 export type ParsedJamiAssistantModelAnswer = {
   answer: string;
+  /** Graphs to draw, as JSON specs, placed where the answer marks them. */
+  graphs: string[];
   sourceRefs: string[];
   usedCurrentContext: boolean;
   usedGeneralKnowledge: boolean;
@@ -134,6 +138,7 @@ type ModelAnswerPayload = {
   usedCurrentContext?: unknown;
   usedGeneralKnowledge?: unknown;
   usedWebResearch?: unknown;
+  graphs?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -141,6 +146,8 @@ const ILLUSTRATION_REQUEST_PATTERN =
 const WEB_VERIFICATION_PATTERN =
   /\b(?:search (?:the )?web|look (?:it |this )?up|online|latest|current|up[- ]to[- ]date|verify|official|specification|exam format|grade boundar(?:y|ies)|syllabus|course requirements?|module handbook|citation|cite sources?)\b/i;
 const MARKING_PATTERN = /\b(?:mark|check|review|assess|feedback|correct)\b/i;
+/** A figure the Tutor drew inside its answer: a fenced svg sketch or a graph. */
+const TUTOR_DRAWN_FIGURE_PATTERN = /```(?:svg|graph)\b/i;
 const CORRECTION_PATTERN =
   /\b(?:that(?:'s| is) (?:wrong|incorrect)|you(?:'re| are) wrong|not correct|check again|recheck|you made (?:a|an) (?:mistake|error)|i disagree)\b/i;
 const ROUTING_STOP_WORDS = new Set([
@@ -371,6 +378,9 @@ export function shouldOfferTutorIllustration(input: {
     return false;
   }
   if (MARKING_PATTERN.test(input.message)) return false;
+  // An answer that already drew the figure -- a sketch or a plotted graph --
+  // has shown it visually. Offering to again just makes the same picture twice.
+  if (TUTOR_DRAWN_FIGURE_PATTERN.test(input.answer)) return false;
   return (
     isExplicitTutorIllustrationRequest(input.message) ||
     (input.answer.length >= 80 &&
@@ -702,22 +712,48 @@ function unwrapJson(value: string) {
   return start >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed;
 }
 
+/**
+ * The readings of a reply that could hold the answer object.
+ *
+ * Usually the whole reply. A model sometimes writes a copy of its answer before
+ * the JSON, though, and when that copy holds a graph the first brace belongs to
+ * the graph -- so the object that opens with "answer" is tried too, last first.
+ */
+function modelAnswerCandidates(value: string) {
+  const end = value.lastIndexOf("}");
+  const keyed = [...value.matchAll(/\{\s*"answer"\s*:/g)]
+    .map((match) => (match.index !== undefined && end > match.index ? value.slice(match.index, end + 1) : ""))
+    .filter(Boolean)
+    .reverse();
+  return [unwrapJson(value), ...keyed];
+}
+
 export function parseJamiAssistantModelAnswer(
   value: string,
   allowedSourceRefs: readonly string[],
   options: { webResearchAvailable?: boolean } = {}
 ): ParsedJamiAssistantModelAnswer | null {
-  let payload: ModelAnswerPayload;
-  try {
-    payload = JSON.parse(
-      repairModelJsonBackslashes(unwrapJson(value))
-    ) as ModelAnswerPayload;
-  } catch {
-    // Invalid structured model output is rejected so the route can retry it.
-    return null;
+  let payload: ModelAnswerPayload | null = null;
+  for (const candidate of modelAnswerCandidates(value)) {
+    try {
+      const parsed: unknown = JSON.parse(repairModelJsonBackslashes(candidate));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        payload = parsed as ModelAnswerPayload;
+        break;
+      }
+    } catch {
+      // Try the next reading. Output with none that parses is rejected below so
+      // the route can retry it.
+    }
   }
+  if (!payload) return null;
 
-  const answer = typeof payload.answer === "string" ? payload.answer.trim() : "";
+  const extracted = extractTutorGraphs(typeof payload.answer === "string" ? payload.answer : "");
+  const answer = extracted.answer.trim();
+  const graphs = [...new Set([...readTutorGraphSpecs(payload.graphs), ...extracted.graphs])].slice(
+    0,
+    MAX_TUTOR_GRAPHS
+  );
   const sourceRefs = Array.isArray(payload.sourceRefs)
     ? Array.from(
         new Set(
@@ -728,7 +764,7 @@ export function parseJamiAssistantModelAnswer(
       )
     : null;
   if (
-    !answer ||
+    (!answer && graphs.length === 0) ||
     !sourceRefs ||
     typeof payload.usedCurrentContext !== "boolean" ||
     typeof payload.usedGeneralKnowledge !== "boolean" ||
@@ -743,6 +779,7 @@ export function parseJamiAssistantModelAnswer(
 
   return {
     answer,
+    graphs,
     sourceRefs,
     usedCurrentContext: payload.usedCurrentContext,
     usedGeneralKnowledge: payload.usedGeneralKnowledge,

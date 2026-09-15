@@ -316,7 +316,37 @@ function reportRequestId(source: { get(name: string): string | null }, options: 
   if (id) options.onRequestId?.(id.slice(0, 120));
 }
 
+/*
+ * A strict schema that is rate-limited is asked again as plain JSON, once.
+ *
+ * `require_parameters` sends a request only to endpoints that advertise every
+ * parameter in it, and for the worker model only one endpoint advertises strict
+ * `json_schema` -- a shared pool that is often rate-limited upstream. Measured on
+ * GLM 5.3 Flash through the worker allowlist: every `json_schema` request, streamed
+ * or not, was refused 429 in under half a second, while the same request asking
+ * for `json_object` was answered by Z.AI in one to two seconds. Each Tutor answer
+ * spent three of those refusals and then fell to the supervisor, which was the
+ * thirty-second wait students saw as a timeout.
+ *
+ * Every caller that asks for a schema already parses and validates what comes
+ * back, so dropping to `json_object` loses the endpoint's enforcement and
+ * nothing the caller relies on. Any other failure is left to the router.
+ */
 async function createResponse(options: OpenRouterCallOptions, stream: boolean) {
+  try {
+    return await sendResponse(options, stream);
+  } catch (error) {
+    const schemaRateLimited =
+      options.jsonSchema !== undefined &&
+      error instanceof OpenRouterApiError &&
+      error.status === 429 &&
+      !options.signal?.aborted;
+    if (!schemaRateLimited) throw error;
+    return sendResponse({ ...options, jsonSchema: undefined, json: true }, stream);
+  }
+}
+
+async function sendResponse(options: OpenRouterCallOptions, stream: boolean) {
   const attempt = createAttemptSignal(
     options.timeoutMs,
     options.signal,

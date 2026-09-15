@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { renderToString } from "react-dom/server";
 import AiResponseRenderer from "@/components/ai/AiResponseRenderer";
-import { parseAssistantGraphSpec } from "@/lib/ai/assistant-graph";
+import {
+  extractTutorGraphs,
+  parseAssistantGraphSpec,
+  placeTutorGraphs,
+  readTutorGraphSpecs,
+} from "@/lib/ai/assistant-graph";
+import { parseJamiAssistantModelAnswer } from "@/lib/ai/jami-assistant";
 
 describe("parseAssistantGraphSpec", () => {
   it("reads the functions, points and ranges the Tutor names", () => {
@@ -59,5 +65,57 @@ describe("a graph in a Tutor answer", () => {
     const out = html("```graph\n{broken\n```\n");
     expect(out).toContain("<pre");
     expect(out).toContain("{broken");
+  });
+});
+
+describe("graphs in a Tutor reply", () => {
+  it("reads graphs from the graphs field, as strings or objects, and drops the rest", () => {
+    expect(
+      readTutorGraphSpecs([
+        '{"functions":["x^2"]}',
+        { functions: ["2x"], x: [0, 5] },
+        "```graph\n{\"functions\":[\"x^3\"]}\n```",
+        '{"functions":["alert(1)"]}',
+        "not json",
+      ])
+    ).toEqual(['{"functions":["x^2"]}', '{"functions":["2x"],"x":[0,5]}', '{"functions":["x^3"]}']);
+  });
+
+  it("lifts out a graph block the worker model wrote into the answer with a broken fence", () => {
+    const extracted = extractTutorGraphs(
+      'graph\n{"x":[-2,6],"functions":["x^2 - 4*x + 3"]}\n``n\nThe graph shows roots at $x = 1$ and $x = 3$.'
+    );
+    expect(extracted.graphs).toEqual(['{"x":[-2,6],"functions":["x^2 - 4*x + 3"]}']);
+    expect(extracted.answer).toBe("The graph shows roots at $x = 1$ and $x = 3$.");
+  });
+
+  it("leaves text that only mentions a graph alone", () => {
+    const text = "Sketch the graph\nand label the roots {carefully}.";
+    expect(extractTutorGraphs(text)).toEqual({ answer: text, graphs: [] });
+  });
+
+  it("draws each graph where it was marked, and an unmarked one first", () => {
+    const spec = '{"functions":["x^2"]}';
+    expect(placeTutorGraphs("Here it is:\n[graph 1]\nRoots at 0.", [spec])).toBe(
+      "Here it is:\n\n```graph\n" + spec + "\n```\n\nRoots at 0."
+    );
+    expect(placeTutorGraphs("Roots at 0.", [spec])).toBe("```graph\n" + spec + "\n```\n\nRoots at 0.");
+    expect(placeTutorGraphs("Look at [graph 2] here.", [])).toBe("Look at  here.");
+  });
+
+  it("parses the reply the worker actually sent: a copy of the answer before the JSON", () => {
+    const raw =
+      'graph\n{"title":"y = x^2 - 4x + 3","x":[-2,6],"functions":["x^2 - 4x + 3"]}\n``The curve is a parabola.\n\n' +
+      JSON.stringify({
+        answer: 'graph\n{"x":[-2,6],"functions":["x^2 - 4x + 3"]}\n``n\nThe curve is a parabola.',
+        sourceRefs: [],
+        usedCurrentContext: false,
+        usedGeneralKnowledge: true,
+        usedWebResearch: false,
+      });
+    const parsed = parseJamiAssistantModelAnswer(raw, []);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.answer).toBe("The curve is a parabola.");
+    expect(parsed!.graphs).toEqual(['{"x":[-2,6],"functions":["x^2 - 4x + 3"]}']);
   });
 });

@@ -216,6 +216,64 @@ describe("OpenRouter adapter", () => {
 });
 
 /**
+ * Only one worker endpoint advertises strict `json_schema`, and it is a shared pool
+ * that is often rate-limited, while the same request as `json_object` is answered
+ * straight away elsewhere. A Tutor answer spent three refusals and a fall to the
+ * supervisor on it, which students saw as a thirty-second timeout.
+ */
+describe("a strict schema that is rate-limited", () => {
+  const schema = {
+    type: "OBJECT",
+    properties: { answer: { type: "STRING" } },
+    required: ["answer"],
+  };
+  const rateLimited = () =>
+    new Response(JSON.stringify({ error: { message: "rate-limited upstream" } }), {
+      status: 429,
+      headers: { "Content-Type": "application/json" },
+    });
+  const bodyAt = (fetchMock: { mock: { calls: unknown[][] } }, index: number) =>
+    JSON.parse(String((fetchMock.mock.calls[index][1] as RequestInit).body)) as Record<string, unknown>;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("is asked again once as plain JSON", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(rateLimited())
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ choices: [{ message: { content: "{\"answer\":\"4\"}" } }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    await expect(generateOpenRouterText({ ...baseInput, jsonSchema: schema })).resolves.toBe("{\"answer\":\"4\"}");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(bodyAt(fetchMock, 0).response_format).toMatchObject({ type: "json_schema" });
+    expect(bodyAt(fetchMock, 1).response_format).toEqual({ type: "json_object" });
+  });
+
+  it("is asked again for a stream too", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(rateLimited())
+      .mockResolvedValueOnce(
+        streamResponse(["data: {\"choices\":[{\"delta\":{\"content\":\"{}\"}}]}\n\n", "data: [DONE]\n\n"])
+      );
+    await expect(collect(streamOpenRouterText({ ...baseInput, jsonSchema: schema }))).resolves.toBe("{}");
+    expect(bodyAt(fetchMock, 1).response_format).toEqual({ type: "json_object" });
+  });
+
+  it("leaves any other refusal to the router", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(rateLimited());
+    await expect(generateOpenRouterText({ ...baseInput, json: true })).rejects.toMatchObject({ status: 429 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
  * Thinking tokens are still tokens: they spend the output budget and the clock,
  * and `exclude: true` only keeps them out of the reply. Asking for reasoning
  * with no ceiling let the paper design pass spend a full 600-second timeout

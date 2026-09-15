@@ -36,6 +36,85 @@ function range(value: unknown): [number, number] | null {
     : null;
 }
 
+/** The most graphs one Tutor answer carries. */
+export const MAX_TUTOR_GRAPHS = 3;
+
+/** A spec that reads as a graph, rewritten compactly; or null. */
+function canonicalGraphSpec(source: string) {
+  const trimmed = source
+    .trim()
+    .replace(/^`{0,3}\s*(?:graph)?\s*(?=\{)/i, "")
+    .replace(/\s*`{1,3}n?\s*$/, "");
+  if (!parseAssistantGraphSpec(trimmed)) return null;
+  return JSON.stringify(JSON.parse(trimmed));
+}
+
+/**
+ * The graphs the Tutor put in its answer's `graphs` field.
+ *
+ * Each is asked for as a JSON object written as a string, and accepted as a bare
+ * object too. Anything that does not read as a graph is dropped rather than
+ * drawn wrong.
+ */
+export function readTutorGraphSpecs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const specs = value.flatMap((item) => {
+    const source =
+      typeof item === "string" ? item : item && typeof item === "object" ? JSON.stringify(item) : "";
+    const spec = source ? canonicalGraphSpec(source) : null;
+    return spec ? [spec] : [];
+  });
+  return [...new Set(specs)].slice(0, MAX_TUTOR_GRAPHS);
+}
+
+/**
+ * Graph blocks the Tutor wrote into the answer text itself, taken out of it.
+ *
+ * Asked not to, a model still sometimes does, and the worker model cannot write
+ * a code fence inside a JSON string: measured on GLM 5.3 Flash, the opening
+ * backticks went missing and the closing ones came out as "``n" on three runs of
+ * three. Left alone that is a block of raw JSON in the middle of the answer. So
+ * any block that reads as a graph -- fenced properly or not -- is lifted out, to
+ * be drawn from the graphs it joins.
+ */
+export function extractTutorGraphs(answer: string): { answer: string; graphs: string[] } {
+  const graphs: string[] = [];
+  const lift = (match: string, source: string) => {
+    const spec = canonicalGraphSpec(source);
+    if (!spec) return match;
+    graphs.push(spec);
+    return "\n";
+  };
+  const text = answer
+    .replace(/`{3}[ \t]*graph[ \t]*\n([\s\S]*?)\n[ \t]*`{2,3}n?(?=\s|$)/gi, lift)
+    .replace(/(?:^|\n)[ \t]*`{0,2}[ \t]*graph[ \t]*\n[ \t]*(\{[^\n]*\})[ \t]*(?:\n[ \t]*`{1,3}n?)?(?=\n|$)/gi, lift);
+  return { answer: text.replace(/\n{3,}/g, "\n\n").trim(), graphs: [...new Set(graphs)] };
+}
+
+/**
+ * The answer with each graph drawn where the Tutor marked it.
+ *
+ * `[graph 1]` becomes the first graph's block, and so on. A graph with no marker
+ * goes before the text, which starts from what was asked for; a marker with no
+ * graph behind it is removed, since it would say nothing to a student.
+ */
+export function placeTutorGraphs(answer: string, graphs: readonly string[]) {
+  let text = answer;
+  const unmarked: string[] = [];
+  graphs.slice(0, MAX_TUTOR_GRAPHS).forEach((spec, index) => {
+    const block = "```graph\n" + spec + "\n```";
+    const marker = new RegExp(`\\[{1,2}\\s*graph(?:\\s*${index + 1})?\\s*\\]{1,2}`, "i");
+    if (marker.test(text)) text = text.replace(marker, () => `\n\n${block}\n\n`);
+    else unmarked.push(block);
+  });
+  text = text.replace(/\[{1,2}\s*graph(?:\s*\d+)?\s*\]{1,2}/gi, "");
+  return [...unmarked, text]
+    .filter((part) => part.trim())
+    .join("\n\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function parseAssistantGraphSpec(source: string): NotebookGraphDraft | null {
   if (!source || source.length > MAX_SPEC_LENGTH) return null;
   let data: unknown;
