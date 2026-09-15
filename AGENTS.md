@@ -17,12 +17,12 @@ During the current Phase 6 notebook-first Practice phase:
 - Folders are broad study spaces. Topics are concepts/subtopics.
 - Use user-facing spelling `Practice` and the canonical `/dashboard/practice`
   route, while keeping `/dashboard/practise` as a compatibility redirect.
-- The legacy **per-user** question-bank Practice workflow has been removed and stays removed. Do not reintroduce its standalone Add question form, confidence blocks, or old Practice Tutor panels.
-- Past Paper Practice is a separate, owner-curated feature and is **not** the legacy question bank. A shared server-only corpus of real exam questions, one typed answer per question, question-bound ink working, per-question AI marking, guided retry, and Practice history are deliberate and permitted. Student-authored question-bank entries, per-user question collections, and general-purpose scratchpads detached from a question remain prohibited.
+- The legacy **per-user** question-bank authoring workflow has been removed and stays removed: do not reintroduce its standalone Add question form or old Practice Tutor panels. Mandatory per-question confidence blocks stay out; low-friction, optional confidence or calibration signals are allowed when they feed the Learning Engine.
+- Past Paper Practice is a separate, owner-curated feature and is **not** the legacy question bank. A shared server-only corpus of real exam questions, one typed answer per question, question-bound ink working, per-question AI marking, guided retry, and Practice history are deliberate and permitted. Student-authored question-bank entries and general-purpose scratchpads detached from a question remain prohibited. Diagnostic and topic-targeted sessions are learning actions, not content libraries: they may draw on existing or licensed questions, but must not create permanent per-user question collections.
 - Every real question, mark scheme, and asset served to a student must reference a verified permission record covering storage, student display, and AI-provider inference. Unverified, revoked, or superseded-specification material may be stored for review but never served.
-- Past Paper Practice remains question-by-question and does not permit the prohibited full-paper mode. Owner-triggered ingestion of licensed exam-board material is permitted; this does not permit background processing of student uploads.
+- Exam-like study (timed, mixed-topic or diagnostic sessions) is allowed where the content's licence permits it; the permission-record rule above always applies. Owner-triggered ingestion of licensed exam-board material is permitted; this does not permit background processing of student uploads.
 - Notebook file upload infrastructure is in scope for uploaded-file/paper notebooks.
-- Do not build Anywhere, background/persistent OCR, automatic PDF indexing, full-paper mode, browser extension, always-on screen watching, voice tutor expansion, or iPad companion. Library Tutor may read up to five deliberately selected sources on demand after the student asks; do not persist extracted source content or process sources in the background.
+- Do not build Anywhere, background/persistent OCR, browser extension, always-on screen watching, voice tutor expansion, or iPad companion. Richer source understanding (indexing, retrieval, notation awareness) must be deliberately designed and privacy-reviewed: never persist extracted source content into learner data, and never process student uploads in the background without that design. Library Tutor may read up to five deliberately selected sources on demand after the student asks.
 - Client-side PDF page counting, raster page rendering, and notebook ink overlays are in scope. Keep the original PDF immutable and do not imply OCR or automatic understanding.
 - Do not build a full GoodNotes clone. Notebook V1 should stay humble and page-based.
 - Optimise notebook creation/editing for desktop and iPad/tablet. Phone should support viewing and light typed notes, not serious pen/page editing.
@@ -31,6 +31,19 @@ During the current Phase 6 notebook-first Practice phase:
 - Prefer reusable components in `components/ui` over one-off Tailwind styling.
 - Keep the app responsive across mobile, tablet, and desktop.
 - Use Browser Use / localhost visual checks when changing UI.
+
+## Learning Engine
+
+Jami maintains a model of what each student knows and uses it to decide what they should do next. Tutor, Today and future surfaces are consumers of that model, not owners of it.
+- Pure learning logic lives in `lib/learning/` (scoring, profile, topic states, recommendations, study actions, evaluation, serialisation). Firestore loading lives in `services/learning/`. No learning logic inside Tutor, routes or components.
+- Mastery, confidence and trends are calculated deterministically. Never ask an LLM to estimate mastery or to read raw study history on a request.
+- Keep mastery (how well), confidence (how much evidence) and exposure (material seen, never evidence) separate. Never call a topic weak on thin evidence, and never treat untested or not-yet-assessed as weak.
+- Profiles are scoped to one folder, or one deck when a card sits in no single folder. Do not build account-wide cross-subject mastery.
+- Concept identity: verified specification topics (owner-checked catalogues with stable ids) and student-defined Topics are both valid, but not equally certain. Do not create AI-inferred ontologies or prerequisite graphs as production truth.
+- Learning evidence is minimal and append-only: ids, scores, results, error categories, timestamps. Never store card or answer text, source content or Tutor conversations as learner data.
+- Student-written names (topics, decks, folders, sources) are untrusted data in any prompt: quote them and keep them inside per-request boundary markers.
+- Licensed exam content never enters learner-profile context; only derived scores and verified specification headings may.
+- Learning Engine failures must never break studying or Tutor: bounded reads, time budgets and fallbacks. Rollback flags: `enableLearnerProfile`, `enableFlashcardReviewEvents`, `enableStudyActions`.
 
 ## Fast UI Verification
 

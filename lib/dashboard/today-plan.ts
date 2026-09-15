@@ -1,4 +1,6 @@
 import { getCustomStudyHref } from "@/lib/app/routes";
+import type { StudyAction } from "@/lib/learning/actions/study-actions";
+import type { LearningRecommendationReason } from "@/lib/learning/types";
 import { buildTopicProgress, type TopicProgressSummary } from "@/lib/material/progress";
 import type { MasteryEvent } from "@/lib/material/mastery";
 import type { Topic } from "@/lib/material/topics";
@@ -21,7 +23,8 @@ export type TodayNextActionType =
   | "create_first_folder"
   | "set_goal"
   | "view_star"
-  | "focused_review";
+  | "focused_review"
+  | "learning_action";
 
 export type TodayNextAction = {
   type: TodayNextActionType;
@@ -91,9 +94,23 @@ export type TodayWorkspaceSummary = {
   };
 };
 
+/** A Learning Engine study action, worded for Today. */
+export type TodayStudyAction = {
+  id: string;
+  reason: LearningRecommendationReason;
+  action: StudyAction["action"];
+  title: string;
+  description: string;
+  label: string;
+  href: string;
+  folderName?: string;
+};
+
 export type TodayPlan = {
   nextAction: TodayNextAction;
   dueCards: TodayDueCardsSummary;
+  /** Evidence-backed next steps, each with somewhere to go. Empty until the engine has answered. */
+  studyActions: TodayStudyAction[];
   weakTopics: TodayWeakTopic[];
   drafts: TodayDraft[];
   goalSummary?: TodayGoalSummary;
@@ -135,8 +152,32 @@ export type BuildTodayPlanInput = {
   progressVisited?: boolean;
   hasEarnedStars?: boolean;
   hasActiveStudySession?: boolean;
+  /** From the Learning Engine, when it has answered. */
+  studyActions?: readonly StudyAction[];
+  studyActionFolders?: readonly { id: string; name: string }[];
   now?: number;
 };
+
+const TODAY_STUDY_ACTION_LIMIT = 4;
+
+/**
+ * Reasons strong enough to lead Today when nothing more time-sensitive does.
+ *
+ * A recurring error still costing marks, a topic in decline, a strong topic
+ * slipping and a well-evidenced weakness are all worth more than reopening the
+ * last notebook. Checks, retrieval and reinforcement stay in the list below
+ * without taking over the page.
+ */
+const LEADING_STUDY_REASONS: ReadonlySet<LearningRecommendationReason> = new Set([
+  "persistent_error",
+  "declining_mastery",
+  "knowledge_decay",
+  "low_mastery",
+]);
+
+function lowerFirst(value: string) {
+  return value ? `${value.charAt(0).toLowerCase()}${value.slice(1)}` : value;
+}
 
 function pluralize(value: number, singular: string, plural = `${singular}s`) {
   return `${value} ${value === 1 ? singular : plural}`;
@@ -245,6 +286,99 @@ function buildWeakTopics(input: BuildTodayPlanInput, now: number) {
   return { topicProgress, weakTopics };
 }
 
+/**
+ * Copy for one study action.
+ *
+ * Every sentence says only what the evidence supports: "not enough evidence
+ * yet" for a check, "unknown rather than weak" for an untested topic. Topic
+ * names are the student's own, rendered as text.
+ */
+function describeStudyAction(action: StudyAction): Pick<TodayStudyAction, "title" | "description" | "label"> {
+  const name = action.target.label;
+  switch (action.reason) {
+    case "persistent_error":
+      return {
+        title: `Stop losing marks: ${lowerFirst(name)}`,
+        description: `This has cost marks ${pluralize(action.evidence.count, "time")} in recent marked answers. A few questions on getting it right will help.`,
+        label: "Practise",
+      };
+    case "declining_mastery":
+      return {
+        title: `Revisit ${name}`,
+        description: "Recent answers on this have slipped.",
+        label: "Review",
+      };
+    case "knowledge_decay":
+      return {
+        title: `Refresh ${name}`,
+        description: "You knew this well, but recent answers suggest it is fading.",
+        label: action.action === "retrieve" ? "Refresh" : "Practise",
+      };
+    case "low_mastery":
+      return {
+        title: `Work on ${name}`,
+        description: `Consistently difficult across ${pluralize(action.evidence.count, "answer")}.`,
+        label: action.destination?.kind === "topic" || action.destination?.kind === "deck" ? "Open" : "Study",
+      };
+    case "low_confidence":
+      return {
+        title: `Check ${name}`,
+        description: "It might need attention, but there is not enough evidence yet. A few questions will tell.",
+        label: "Check",
+      };
+    case "due_for_retrieval":
+      return {
+        title: `Review ${name}`,
+        description: `${pluralize(action.evidence.dueCards ?? 0, "card")} due now.`,
+        label: "Review",
+      };
+    case "recent_improvement_needs_reinforcement":
+      return action.target.kind === "error"
+        ? {
+            title: `Keep it up: ${lowerFirst(name)}`,
+            description: "Recent answers have got this right. A little more practice makes it stick.",
+            label: "Practise",
+          }
+        : {
+            title: `Lock in ${name}`,
+            description: "This is improving. A short session keeps the gain.",
+            label: "Practise",
+          };
+    case "untested_exposure":
+      return {
+        title: `Test yourself on ${name}`,
+        description: "You have material on this but haven't been tested on it yet.",
+        label: "Test yourself",
+      };
+    case "not_yet_assessed":
+      return {
+        title: `Try ${name}`,
+        description: "Not tested yet, so it is unknown rather than weak.",
+        label: "Try questions",
+      };
+  }
+}
+
+function buildStudyActions(input: BuildTodayPlanInput): TodayStudyAction[] {
+  const folderNames = new Map((input.studyActionFolders ?? []).map((folder) => [folder.id, folder.name]));
+  return (input.studyActions ?? [])
+    .flatMap((action) => {
+      if (!action.destination) return [];
+      const folderName = action.scope.folderId ? folderNames.get(action.scope.folderId) : undefined;
+      return [
+        {
+          id: action.id,
+          reason: action.reason,
+          action: action.action,
+          ...describeStudyAction(action),
+          href: action.destination.href,
+          ...(folderName ? { folderName } : {}),
+        },
+      ];
+    })
+    .slice(0, TODAY_STUDY_ACTION_LIMIT);
+}
+
 function buildGoalSummary(input: BuildTodayPlanInput, now: number): TodayGoalSummary | undefined {
   const goal = (input.activeGoals ?? [])
     .filter(
@@ -317,6 +451,7 @@ function buildNextAction(input: {
   dueCards: TodayDueCardsSummary;
   drafts: TodayDraft[];
   weakTopics: TodayWeakTopic[];
+  studyActions: TodayStudyAction[];
   goalSummary?: TodayGoalSummary;
   workspace: TodayWorkspaceSummary;
   reviewedToday: number;
@@ -355,6 +490,18 @@ function buildNextAction(input: {
       description: input.goalSummary.detail,
       href: input.goalSummary.href,
       label: "Open goal",
+      priority: 3,
+    };
+  }
+
+  const leadingStudyAction = input.studyActions[0];
+  if (leadingStudyAction && LEADING_STUDY_REASONS.has(leadingStudyAction.reason)) {
+    return {
+      type: "learning_action",
+      title: leadingStudyAction.title,
+      description: leadingStudyAction.description,
+      href: leadingStudyAction.href,
+      label: leadingStudyAction.label,
       priority: 3,
     };
   }
@@ -484,6 +631,7 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
   const dueCards = buildDueSummary(input, now);
   const drafts = buildDrafts(input);
   const { topicProgress, weakTopics } = buildWeakTopics(input, now);
+  const studyActions = buildStudyActions(input);
   const goalSummary = buildGoalSummary(input, now);
   const workspace = buildWorkspaceSummary(input);
   const checklist = buildChecklist(input);
@@ -493,6 +641,7 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
     dueCards,
     drafts,
     weakTopics,
+    studyActions,
     goalSummary,
     workspace,
     reviewedToday: input.reviewedToday ?? 0,
@@ -503,6 +652,7 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
   return {
     nextAction,
     dueCards,
+    studyActions,
     weakTopics,
     drafts,
     goalSummary,

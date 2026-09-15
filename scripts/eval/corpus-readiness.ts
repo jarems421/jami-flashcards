@@ -15,6 +15,8 @@ import {
   isExamQuestionBoardEnabled,
   isExamQuestionServable,
 } from "@/lib/practice/exam-question-rights";
+import { examSpecificationConceptCatalogue } from "@/lib/practice/exam-specification-concepts";
+import { examSpecificationTopicCatalogue } from "@/lib/practice/exam-specification-topics";
 
 export default async function main() {
   const db = getAdminDb();
@@ -56,5 +58,33 @@ export default async function main() {
     }
     console.log("\nServable now:");
     for (const [key, value] of [...bySubject].sort()) console.log(`  ${key.padEnd(40)} ${value}`);
+  }
+
+  /*
+   * Which ingested courses have checked topic and concept lists, and how much of
+   * each has been tagged at each grain: the list to work down after ingesting.
+   * A course with no list at all needs one drafted before tagging can start.
+   */
+  const bySpecification = new Map<string, ExamQuestion[]>();
+  for (const question of official) {
+    const key = `${question.provenance.board}/${question.provenance.specificationId}`;
+    bySpecification.set(key, [...(bySpecification.get(key) ?? []), question]);
+  }
+  if (bySpecification.size > 0) {
+    console.log("\nTagging by course (questions with topics / concepts / command word read):");
+    for (const [key, list] of [...bySpecification].sort(([left], [right]) => left.localeCompare(right))) {
+      const specificationId = list[0]!.provenance.specificationId;
+      const topicList = examSpecificationTopicCatalogue(specificationId);
+      const conceptList = examSpecificationConceptCatalogue(specificationId);
+      const status = (known: boolean, checked: boolean) => (!known ? "none" : checked ? "checked" : "draft");
+      console.log(
+        `  ${key.padEnd(28)} ${String(list.length).padStart(5)} questions` +
+          `  topic list ${status(Boolean(topicList), Boolean(topicList?.verified))}` +
+          `, concept list ${status(Boolean(conceptList), conceptList?.provenance === "verified_specification")}` +
+          `  tagged ${list.filter((question) => (question.topicIds?.length ?? 0) > 0).length}` +
+          ` / ${list.filter((question) => Array.isArray(question.conceptIds)).length}` +
+          ` / ${list.filter((question) => typeof question.commandWord === "string").length}`
+      );
+    }
   }
 }

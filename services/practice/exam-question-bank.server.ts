@@ -26,6 +26,10 @@ import {
   type ExamQuestionGroup,
 } from "@/lib/practice/exam-question-groups";
 import {
+  filterCanonicalConceptIds,
+  servableExamSpecificationConcepts,
+} from "@/lib/practice/exam-specification-concepts";
+import {
   filterCanonicalTopicIds,
   servableExamSpecificationTopics,
 } from "@/lib/practice/exam-specification-topics";
@@ -69,6 +73,9 @@ function mapQuestion(id: string, data: Record<string, unknown>): ExamQuestion | 
     topicIds: Array.isArray(data.topicIds)
       ? data.topicIds.filter((item): item is string => typeof item === "string").slice(0, 40)
       : [],
+    ...(Array.isArray(data.conceptIds)
+      ? { conceptIds: data.conceptIds.filter((item): item is string => typeof item === "string").slice(0, 40) }
+      : {}),
     selectionKey:
       typeof data.selectionKey === "number" && Number.isFinite(data.selectionKey)
         ? data.selectionKey
@@ -87,6 +94,8 @@ async function loadEligibleQuestions(input: {
   course: ExamCourseSelection;
   difficulty: ExamDifficulty;
   topicIds: string[];
+  /** One grain finer; a question matches a selected topic or a selected concept. */
+  conceptIds: string[];
   /** Stop once this many usable whole questions have been found. */
   need: number;
   /**
@@ -172,10 +181,18 @@ async function loadEligibleQuestions(input: {
       considered.add(key);
       const group = await wholeQuestion(candidate);
       if (!group || group.difficulty !== input.difficulty) continue;
-      // A question is about a topic if any of its parts is.
+      /*
+       * A question is about a topic, or a concept, if any of its parts is. A
+       * student can narrow to whole topics and to single concepts at once, so
+       * matching either is enough.
+       */
       if (
-        input.topicIds.length > 0 &&
-        !group.parts.some((part) => input.topicIds.some((topicId) => part.topicIds.includes(topicId)))
+        (input.topicIds.length > 0 || input.conceptIds.length > 0) &&
+        !group.parts.some(
+          (part) =>
+            input.topicIds.some((topicId) => part.topicIds.includes(topicId)) ||
+            input.conceptIds.some((conceptId) => (part.conceptIds ?? []).includes(conceptId))
+        )
       ) continue;
       groups.push(group);
     }
@@ -290,6 +307,20 @@ function canonicalTopicIds(specificationId: string, topicIds: readonly string[])
   return known;
 }
 
+/** Concepts are checked the same way, against the course's checked concept list. */
+function canonicalConceptIds(specificationId: string, conceptIds: readonly string[]) {
+  if (conceptIds.length === 0) return [];
+  const { conceptIds: known, rejected } = filterCanonicalConceptIds(specificationId, conceptIds);
+  if (rejected.length > 0) {
+    throw new ExamQuestionBankError(
+      "Those subtopics are not on this course any more. Clear them and choose again.",
+      400,
+      "unknown_concepts"
+    );
+  }
+  return known;
+}
+
 /** Papers are checked the same way topics are, and for the same reason. */
 function knownPaperIds(papers: ReadonlyArray<{ id: string }>, paperIds: readonly string[]) {
   if (paperIds.length === 0) return [];
@@ -308,11 +339,13 @@ export async function getExamQuestionAvailability(input: {
   uid: string;
   folderId: string;
   topicIds?: string[];
+  conceptIds?: string[];
   calculator?: ExamCalculatorChoice;
   paperIds?: string[];
 }) {
   const { folder, subject, subjectKey, papers } = await loadContext(input.uid, input.folderId);
   const topicIds = canonicalTopicIds(folder.examCourse!.specificationId, input.topicIds ?? []);
+  const conceptIds = canonicalConceptIds(folder.examCourse!.specificationId, input.conceptIds ?? []);
   const paperIds = knownPaperIds(papers, input.paperIds ?? []);
   /*
    * The whole count, not a session's worth.
@@ -332,6 +365,7 @@ export async function getExamQuestionAvailability(input: {
     course: folder.examCourse!,
     difficulty,
     topicIds,
+    conceptIds,
     need: Number.POSITIVE_INFINITY,
     paperIds,
     paperParts,
@@ -372,7 +406,19 @@ export async function getExamQuestionAvailability(input: {
    * all rather than an invented one.
    */
   const catalogue = servableExamSpecificationTopics(folder.examCourse!.specificationId);
-  const topics = (catalogue?.topics ?? []).map((topic) => ({ id: topic.id, label: topic.label }));
+  const concepts = servableExamSpecificationConcepts(folder.examCourse!.specificationId);
+  const topics = (catalogue?.topics ?? []).map((topic) => ({
+    id: topic.id,
+    label: topic.label,
+    /*
+     * The finer concepts beneath it, from the checked list where there is one.
+     * Offered whether or not the corpus holds a question on each yet: a
+     * session narrowed past what exists says so and offers to fill the gap.
+     */
+    concepts: concepts
+      .filter((concept) => concept.parentTopicId === topic.id)
+      .map((concept) => ({ id: concept.id, label: concept.label })),
+  }));
   return {
     folder: {
       id: folder.id,
@@ -395,6 +441,7 @@ export async function getExamQuestionAvailability(input: {
     },
     topics,
     topicIds,
+    conceptIds,
     /** Offered as a choice only when there is more than one; each says what it is where that is known. */
     papers: withPaperCalculatorRules(papers, ruleQuestions),
     paperIds,
@@ -417,6 +464,7 @@ export async function createExamSession(input: {
   folderId: string;
   mix: Record<ExamDifficulty, number>;
   topicIds?: string[];
+  conceptIds?: string[];
   originNotebookId?: string;
   allowGenerated?: boolean;
   useAvailableOnly?: boolean;
@@ -431,6 +479,7 @@ export async function createExamSession(input: {
   // Checked once, here, rather than trusted from the request. A narrowed
   // session built on an id nobody recognises is an empty session.
   const topicIds = canonicalTopicIds(folder.examCourse!.specificationId, input.topicIds ?? []);
+  const conceptIds = canonicalConceptIds(folder.examCourse!.specificationId, input.conceptIds ?? []);
   const paperIds = knownPaperIds(papers, input.paperIds ?? []);
   const recent = await getAdminDb().collection("users").doc(input.uid)
     .collection("examAttempts").orderBy("updatedAt", "desc").limit(500).get();
@@ -449,6 +498,7 @@ export async function createExamSession(input: {
       course: folder.examCourse!,
       difficulty,
       topicIds,
+      conceptIds,
       need: wanted,
       seenIds: recentIds,
       paperIds,
@@ -465,7 +515,7 @@ export async function createExamSession(input: {
     chosenGroups.filter((group) => group.difficulty === difficulty).length;
   if (Object.keys(missing).length > 0) {
     if (input.allowGenerated) {
-      selected.push(...await generateExamGapQuestions({ uid: input.uid, subject, subjectKey, studyLevel: folder.studyLevel!, course: folder.examCourse!, missing, topicIds }));
+      selected.push(...await generateExamGapQuestions({ uid: input.uid, subject, subjectKey, studyLevel: folder.studyLevel!, course: folder.examCourse!, missing, topicIds, conceptIds }));
     } else if (input.useAvailableOnly && selected.length > 0) {
       // Starting short is a choice the student made, so the session records the
       // mix it actually holds rather than the one that was asked for.
@@ -506,6 +556,7 @@ export async function createExamSession(input: {
     course: folder.examCourse!,
     requestedMix,
     topicIds,
+    conceptIds,
     questions,
     status: "active",
     currentQuestionId: questions[0]?.id,

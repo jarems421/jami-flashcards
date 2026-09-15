@@ -11,6 +11,7 @@ import {
   recordDailyReviewWeakAttempt,
 } from "@/services/study/daily-review";
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
+import { recordFlashcardReviewEvent } from "@/services/learning/flashcard-review-events";
 
 export type PersistedStudyReview = {
   goalProgress: Awaited<ReturnType<typeof applyGoalProgressForAnswer>> | null;
@@ -22,6 +23,17 @@ const persisting = new Set<string>();
 
 export function isStudyReviewPersisting(reviewId: string) {
   return persisting.has(reviewId);
+}
+
+/**
+ * Adds a saved answer to the student's learning history, without waiting.
+ *
+ * Only after the answer itself has saved. The history improves what the
+ * Learning Engine can see; it never decides whether an answer saved, so a
+ * failure here is dropped rather than holding the answer in the review queue.
+ */
+function recordLearningHistory(userId: string, review: OfflineQueuedReview) {
+  void recordFlashcardReviewEvent(userId, review).catch(() => undefined);
 }
 
 /**
@@ -61,6 +73,7 @@ export async function persistStudyReview(
 
     if (review.sessionKind === "simple") {
       await recordSimpleStudyResult(review.cardId, review.isCorrect ? "correct" : "wrong", review.reviewedAt, identity);
+      recordLearningHistory(userId, review);
       clearStudyCommitDraft(userId, commitId);
       return { goalProgress: null, retryResult: null };
     }
@@ -139,6 +152,7 @@ export async function persistStudyReview(
       );
     }
 
+    recordLearningHistory(userId, review);
     clearStudyCommitDraft(userId, commitId);
     return { goalProgress: await goalProgressPromise, retryResult };
   } finally {

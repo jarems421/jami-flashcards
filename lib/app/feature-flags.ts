@@ -4,7 +4,10 @@ export type FeatureFlagKey =
   | "enableFlashcardAi"
   | "enableStudyModes"
   | "enablePastPaperPractice"
-  | "enableTutorPersonalisation";
+  | "enableTutorPersonalisation"
+  | "enableLearnerProfile"
+  | "enableFlashcardReviewEvents"
+  | "enableStudyActions";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
@@ -25,6 +28,23 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    */
   enablePastPaperPractice: true,
   enableTutorPersonalisation: true,
+  /*
+   * The Learning Engine's profile in Tutor's prompt. On, because it adds nothing
+   * for a student with no recorded work; the switch exists to take a new prompt
+   * input out quickly if it misbehaves.
+   */
+  enableLearnerProfile: true,
+  /*
+   * Recording each flashcard answer as a compact learning event. Separate from
+   * the profile so recording can stop without losing what is already stored,
+   * and the profile keeps reading existing history either way.
+   */
+  enableFlashcardReviewEvents: true,
+  /*
+   * Learning Engine study actions on Today. Separate from the profile so the
+   * recommendations can be taken off the home page without touching Tutor.
+   */
+  enableStudyActions: true,
 };
 
 /**
@@ -41,6 +61,9 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
     process.env.NEXT_PUBLIC_ENABLE_PAST_PAPER_PRACTICE,
   enableTutorPersonalisation:
     process.env.NEXT_PUBLIC_ENABLE_TUTOR_PERSONALISATION,
+  enableLearnerProfile: process.env.NEXT_PUBLIC_ENABLE_LEARNER_PROFILE,
+  enableFlashcardReviewEvents: process.env.NEXT_PUBLIC_ENABLE_FLASHCARD_REVIEW_EVENTS,
+  enableStudyActions: process.env.NEXT_PUBLIC_ENABLE_STUDY_ACTIONS,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -62,4 +85,7 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableStudyModes: isFeatureEnabled("enableStudyModes"),
   enablePastPaperPractice: isFeatureEnabled("enablePastPaperPractice"),
   enableTutorPersonalisation: isFeatureEnabled("enableTutorPersonalisation"),
+  enableLearnerProfile: isFeatureEnabled("enableLearnerProfile"),
+  enableFlashcardReviewEvents: isFeatureEnabled("enableFlashcardReviewEvents"),
+  enableStudyActions: isFeatureEnabled("enableStudyActions"),
 };

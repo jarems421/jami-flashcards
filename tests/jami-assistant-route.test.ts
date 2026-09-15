@@ -307,6 +307,28 @@ describe("universal Jami assistant route", () => {
     );
   });
 
+  it("puts the learner profile in the system instruction when there is one", async () => {
+    const resolved = await mocks.resolveContext.getMockImplementation()?.({});
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...(resolved as Record<string, unknown>),
+      learningContext:
+        '--- LEARNER PROFILE ---\nNeeds attention:\n- "Eigenvectors": mastery 43%\n--- END LEARNER PROFILE ---',
+    });
+
+    const response = await postAssistant(request(validBody()));
+    await readStream(response);
+
+    expect(mocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          systemInstruction: expect.stringMatching(
+            /Work in a notebook often runs across a page break[\s\S]*--- LEARNER PROFILE ---[\s\S]*"Eigenvectors": mastery 43%[\s\S]*Return JSON only/
+          ),
+        }),
+      })
+    );
+  });
+
   it("returns the reply with its Markdown and LaTeX intact", async () => {
     mocks.streamText.mockResolvedValue(
       JSON.stringify({

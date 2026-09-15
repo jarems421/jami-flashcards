@@ -40,11 +40,20 @@ function totalOf(mix: Record<ExamDifficulty, number>) {
   return mix.easy + mix.medium + mix.hard;
 }
 
+/** A topic the course names, with the finer concepts beneath it where it has a checked list. */
+type ExamTopicOption = { id: string; label: string; concepts?: Array<{ id: string; label: string }> };
+
 export default function ExamSessionSetup({
   initialFolderId = "",
+  initialTopicIds,
+  initialConceptIds,
   originNotebookId,
 }: {
   initialFolderId?: string;
+  /** Topics to start narrowed to; the server still checks them against the course. */
+  initialTopicIds?: string[];
+  /** Concepts to start narrowed to, checked the same way. */
+  initialConceptIds?: string[];
   originNotebookId?: string;
 }) {
   const { user } = useUser();
@@ -74,8 +83,9 @@ export default function ExamSessionSetup({
   const [papers, setPapers] = useState<ExamCoursePaper[]>([]);
   const [calculator, setCalculator] = useState<ExamCalculatorChoice>("any");
   const [calculatorFolderId, setCalculatorFolderId] = useState("");
-  const [topics, setTopics] = useState<Array<{ id: string; label: string }>>([]);
-  const [topicIds, setTopicIds] = useState<string[]>([]);
+  const [topics, setTopics] = useState<ExamTopicOption[]>([]);
+  const [topicIds, setTopicIds] = useState<string[]>(() => initialTopicIds ?? []);
+  const [conceptIds, setConceptIds] = useState<string[]>(() => initialConceptIds ?? []);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [shortage, setShortage] = useState<ExamCoverageShortage | null>(null);
@@ -93,7 +103,9 @@ export default function ExamSessionSetup({
         if (!active) return;
         const eligible = items.filter((folder) => examBoardAppliesTo(folder.studyLevel));
         setFolders(eligible);
-        setFolderId((current) => current || eligible[0]?.id || "");
+        // A folder that already knows its course can start straight away; one that does not has to be set up first.
+        const ready = eligible.find((folder) => folder.examCourse) ?? eligible[0];
+        setFolderId((current) => current || ready?.id || "");
       })
       .catch(() => setError("Your folders could not be loaded."))
       .finally(() => active && setLoading(false));
@@ -105,7 +117,7 @@ export default function ExamSessionSetup({
   useEffect(() => {
     if (!folderId) return;
     let active = true;
-    void getExamAvailability(folderId, topicIds, calculator, paperId === ALL_PAPERS ? [] : [paperId])
+    void getExamAvailability(folderId, topicIds, calculator, paperId === ALL_PAPERS ? [] : [paperId], conceptIds)
       .then((result) => {
         if (!active) return;
         setAvailability({ folderId, counts: result.counts, hasMore: result.hasMore });
@@ -121,11 +133,12 @@ export default function ExamSessionSetup({
     return () => {
       active = false;
     };
-  }, [calculator, courseRevision, folderId, paperId, topicIds]);
+  }, [calculator, conceptIds, courseRevision, folderId, paperId, topicIds]);
 
   const counts = availability?.folderId === folderId ? availability.counts : null;
   const hasMore = availability?.folderId === folderId ? availability.hasMore : null;
   const total = totalOf(mix);
+  const narrowedCount = topicIds.length + conceptIds.length;
   const selectedFolder = folders.find((folder) => folder.id === folderId);
   const ready = Boolean(folderId && selectedFolder?.examCourse && total > 0);
   const showPapers = papers.length > 1;
@@ -147,6 +160,7 @@ export default function ExamSessionSetup({
   const selectFolder = (id: string) => {
     setFolderId(id);
     setTopicIds([]);
+    setConceptIds([]);
     setTopics([]);
     setPaperId(ALL_PAPERS);
     setPapers([]);
@@ -168,6 +182,30 @@ export default function ExamSessionSetup({
     }
     setFolders((current) => [folder, ...current.filter((item) => item.id !== folder.id)]);
     selectFolder(folder.id);
+  };
+
+  /*
+   * A whole topic and single concepts inside it are two ways of asking for the
+   * same questions, so choosing one clears the other: ticking a topic replaces
+   * the concepts picked beneath it, and picking a concept unticks its topic.
+   */
+  const toggleTopic = (topic: ExamTopicOption) => {
+    const selecting = !topicIds.includes(topic.id);
+    setTopicIds((current) =>
+      selecting ? [...current, topic.id] : current.filter((id) => id !== topic.id)
+    );
+    if (selecting) {
+      const inside = new Set((topic.concepts ?? []).map((concept) => concept.id));
+      setConceptIds((current) => current.filter((id) => !inside.has(id)));
+    }
+  };
+
+  const toggleConcept = (topic: ExamTopicOption, conceptId: string) => {
+    const selecting = !conceptIds.includes(conceptId);
+    setConceptIds((current) =>
+      selecting ? [...current, conceptId] : current.filter((id) => id !== conceptId)
+    );
+    if (selecting) setTopicIds((current) => current.filter((id) => id !== topic.id));
   };
 
   const createFolderDialog = (
@@ -213,6 +251,7 @@ export default function ExamSessionSetup({
         folderId,
         mix,
         topicIds,
+        conceptIds,
         originNotebookId,
         calculator,
         paperIds: paperId === ALL_PAPERS ? [] : [paperId],
@@ -419,29 +458,59 @@ export default function ExamSessionSetup({
       ) : (
         <details className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
           <summary className="cursor-pointer text-sm font-semibold text-text-primary">
-            Narrow to topics{topicIds.length ? ` · ${topicIds.length} selected` : ""}
+            Narrow to topics{narrowedCount ? ` · ${narrowedCount} selected` : ""}
           </summary>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {topics.map((topic) => (
-              <label
-                key={topic.id}
-                className="flex cursor-pointer items-center gap-3 rounded-2xl px-3 py-2 text-sm text-text-secondary transition hover:bg-[var(--color-glass-strong)]"
-              >
-                <input
-                  type="checkbox"
-                  checked={topicIds.includes(topic.id)}
-                  className="h-4 w-4 accent-[var(--color-accent)]"
-                  onChange={() =>
-                    setTopicIds((current) =>
-                      current.includes(topic.id)
-                        ? current.filter((id) => id !== topic.id)
-                        : [...current, topic.id]
-                    )
-                  }
-                />
-                {topic.label}
-              </label>
-            ))}
+          <div className="mt-4 grid items-start gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {topics.map((topic) => {
+              const concepts = topic.concepts ?? [];
+              const chosenInside = concepts.filter((concept) => conceptIds.includes(concept.id)).length;
+              return (
+                <div
+                  key={topic.id}
+                  className="rounded-2xl px-3 py-2 transition hover:bg-[var(--color-glass-strong)]"
+                >
+                  <label className="flex cursor-pointer items-center gap-3 text-sm text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={topicIds.includes(topic.id)}
+                      className="h-4 w-4 accent-[var(--color-accent)]"
+                      onChange={() => toggleTopic(topic)}
+                    />
+                    {topic.label}
+                  </label>
+                  {/*
+                    * Finer concepts fold away under their topic. A student who
+                    * wants "quadratic equations" rather than all of solving
+                    * equations opens the topic; one who does not never sees them.
+                    */}
+                  {concepts.length > 0 ? (
+                    <details className="mt-1 pl-7">
+                      <summary className="cursor-pointer text-xs text-text-muted">
+                        {chosenInside > 0
+                          ? `${chosenInside} of ${concepts.length} subtopics chosen`
+                          : `Or choose from ${concepts.length} subtopics`}
+                      </summary>
+                      <div className="mt-2 grid gap-1">
+                        {concepts.map((concept) => (
+                          <label
+                            key={concept.id}
+                            className="flex cursor-pointer items-start gap-2 text-xs leading-5 text-text-secondary"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={conceptIds.includes(concept.id)}
+                              className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--color-accent)]"
+                              onChange={() => toggleConcept(topic, concept.id)}
+                            />
+                            {concept.label}
+                          </label>
+                        ))}
+                      </div>
+                    </details>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </details>
       )}
@@ -517,7 +586,7 @@ export default function ExamSessionSetup({
             Your answer and your working are both saved and both sent to Jami for marking.
           </p>
         </div>
-        <Button size="lg" disabled={!ready || starting} onClick={() => void start()}>
+        <Button size="lg" disabled={!ready || starting} onClick={() => void start()} data-tutorial-target="start-exam">
           {starting ? "Starting…" : "Start practice"}
         </Button>
       </Card>

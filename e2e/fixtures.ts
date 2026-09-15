@@ -141,3 +141,27 @@ export const E2E_GOAL = {
   id: "e2e-goal",
   name: "Browser smoke goal",
 };
+
+/**
+ * Learning Engine checks, on decks no other flow touches.
+ *
+ * The evidence deck is graded once so its review event can be read back. The
+ * exposure deck is never reviewed: its cards carry the seeded Topic, so Today
+ * has a deterministic "test yourself" action whose link can be followed. Four
+ * cards plus the seeded source make that the strongest untested action in the
+ * folder, so other seeded decks cannot push it out of Today's short list.
+ */
+export const E2E_EVIDENCE_DECK_ID = "e2e-deck-evidence";
+export const E2E_EVIDENCE_DECK_NAME = "Browser smoke evidence deck";
+export const E2E_EVIDENCE_CARDS = [
+  { id: "e2e-evidence-card-1", front: "Evidence card front", back: "Evidence card back" },
+] as const;
+
+export const E2E_EXPOSURE_DECK_ID = "e2e-deck-exposure";
+export const E2E_EXPOSURE_DECK_NAME = "Browser smoke exposure deck";
+export const E2E_EXPOSURE_CARDS = [1, 2, 3, 4].map((number) => ({
+  id: `e2e-exposure-card-${number}`,
+  front: `Exposure card ${number} front`,
+  back: `Exposure card ${number} back`,
+  topicIds: [E2E_TOPIC.id],
+}));

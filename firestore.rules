@@ -247,6 +247,31 @@ service cloud.firestore {
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();
       }
 
+      // Append-only learning history: one compact record per flashcard answer,
+      // holding ids, a time and a result -- never card or response text. Written
+      // once by the study flow and never edited; read by its owner and by the
+      // server-side Learning Engine. Allowed for demo accounts, like the rest of
+      // study activity, because it only describes their own studying.
+      match /flashcardReviewEvents/{eventId} {
+        allow read: if isSelf(userId);
+        allow create: if isSelf(userId) && isFlashcardReviewEvent(request.resource.data);
+        allow update: if false;
+        allow delete: if isSelf(userId) && !isDemoAccount();
+
+        function isFlashcardReviewEvent(data) {
+          return data.keys().hasOnly(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'rating', 'createdAt']) &&
+            data.keys().hasAll(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'createdAt']) &&
+            data.schemaVersion == 1 &&
+            data.cardId is string && data.cardId.size() > 0 && data.cardId.size() <= 160 &&
+            data.deckId is string && data.deckId.size() > 0 && data.deckId.size() <= 160 &&
+            data.reviewedAt is number &&
+            data.createdAt is number &&
+            data.studyDayKey is string && data.studyDayKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+            data.correct is bool &&
+            (!('rating' in data) || data.rating in ['again', 'hard', 'good', 'easy']);
+        }
+      }
+
       match /generatedContentDrafts/{draftId} {
         allow read: if isSelf(userId);
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();

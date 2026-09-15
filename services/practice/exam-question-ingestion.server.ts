@@ -8,10 +8,12 @@ import { isOfficialExamBoardUrl, type ExamBoardId } from "@/lib/practice/exam-fo
 import { getExamQuestionRights, isExamQuestionBoardEnabled, isExamQuestionSpecificationEnabled } from "@/lib/practice/exam-question-rights";
 import { canServeExamRights, type ExamPaper } from "@/lib/practice/exam-questions";
 import {
+  COMMAND_WORD_RULES,
   QUESTION_EXAMPLE,
   QUESTION_RULES,
   SCHEME_EXAMPLE,
   SCHEME_RULES,
+  conceptRulesFor,
   topicRulesFor,
 } from "@/lib/practice/exam-extraction-prompt";
 import { parseJsonObject } from "@/services/ai/practice-paper-generation.server";
@@ -305,7 +307,11 @@ ${QUESTION_EXAMPLE}
 
 ${QUESTION_RULES}
 
-${topicRulesFor(manifest.specificationId)}` },
+${topicRulesFor(manifest.specificationId)}
+
+${conceptRulesFor(manifest.specificationId)}
+
+${COMMAND_WORD_RULES}` },
       { inlineData: { mimeType: "application/pdf", data: paperBytes.toString("base64") } },
       { inlineData: { mimeType: "application/pdf", data: schemeBytes.toString("base64") } },
     ] }] },

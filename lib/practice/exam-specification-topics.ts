@@ -1,3 +1,5 @@
+import { EXAM_SPECIFICATION_OUTLINES, outlineTopics } from "@/lib/practice/exam-specification-outlines";
+
 /**
  * The topics a specification actually names, and nothing else.
  *
@@ -37,14 +39,14 @@ export type ExamSpecificationTopicCatalogue = {
 };
 
 /**
- * The catalogues, checked and unchecked. Only a checked one is served.
+ * Catalogues written out topic by topic.
  *
  * The ids are deliberately not the board's section numbers. A board can
  * renumber sections between specification versions, and these ids are stored
  * on every question extracted under them, so they are their own stable
  * identifiers and the label carries the wording.
  */
-export const EXAM_SPECIFICATION_TOPICS: readonly ExamSpecificationTopicCatalogue[] = [
+const WRITTEN_CATALOGUES: readonly ExamSpecificationTopicCatalogue[] = [
   {
     /*
      * AQA GCSE Mathematics (8300), read from the published specification.
@@ -109,26 +111,51 @@ export const EXAM_SPECIFICATION_TOPICS: readonly ExamSpecificationTopicCatalogue
       { id: "aqa-8300-statistics", label: "Statistics" },
     ],
   },
+];
+
+const aqaMathematics = WRITTEN_CATALOGUES.find((catalogue) => catalogue.specificationId === "8300")!;
+
+/** The same topics under another specification's own ids. */
+function withIdPrefix(topics: readonly ExamSpecificationTopic[], from: string, to: string) {
+  return topics.map((topic) => ({ id: topic.id.replace(from, to), label: topic.label }));
+}
+
+/**
+ * The catalogues, checked and unchecked. Only a checked one is served.
+ *
+ * Science catalogues are derived from their specification's numbered headings
+ * (see exam-specification-outlines), so a topic list and its concept list can
+ * never disagree about what a section is called.
+ */
+export const EXAM_SPECIFICATION_TOPICS: readonly ExamSpecificationTopicCatalogue[] = [
+  ...WRITTEN_CATALOGUES,
   {
-    specificationId: "8461",
+    /*
+     * Pearson Edexcel GCSE Mathematics (1MA1).
+     *
+     * Both boards teach the Department for Education's GCSE mathematics
+     * subject content, and Pearson prints it under the same statement codes
+     * and the same subheadings AQA does -- read from the 1MA1 specification on
+     * 2026-09-15. So these are the checked 8300 topics under Pearson's own
+     * ids. That they match is a reading, not a check: a person still compares
+     * them with the Pearson document before they are served.
+     */
+    specificationId: "1MA1",
     version: 1,
     verified: false,
     source:
-      "Drafted from the published AQA GCSE Biology (8461) subject content headings. " +
-      "Must be checked against the specification document before it is seeded.",
-    topics: [
-      { id: "aqa-8461-cell-biology", label: "Cell biology" },
-      { id: "aqa-8461-organisation", label: "Organisation" },
-      { id: "aqa-8461-infection-and-response", label: "Infection and response" },
-      { id: "aqa-8461-bioenergetics", label: "Bioenergetics" },
-      { id: "aqa-8461-homeostasis-and-response", label: "Homeostasis and response" },
-      {
-        id: "aqa-8461-inheritance-variation-evolution",
-        label: "Inheritance, variation and evolution",
-      },
-      { id: "aqa-8461-ecology", label: "Ecology" },
-    ],
+      "Pearson Edexcel GCSE (9-1) Mathematics (1MA1) specification, subject content read from " +
+      "the published PDF on 2026-09-15: six content areas and ten subheadings identical to " +
+      "AQA 8300, so the checked 8300 topics are reused under Pearson ids. Not yet checked by a person.",
+    topics: withIdPrefix(aqaMathematics.topics, "aqa-8300-", "pearson-edexcel-1ma1-"),
   },
+  ...EXAM_SPECIFICATION_OUTLINES.map((outline): ExamSpecificationTopicCatalogue => ({
+    specificationId: outline.specificationId,
+    version: 1,
+    verified: outline.checked?.topics === true,
+    source: outline.source,
+    topics: outlineTopics(outline),
+  })),
 ];
 
 export function examSpecificationTopicCatalogue(specificationId: string) {

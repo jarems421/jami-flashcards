@@ -155,8 +155,19 @@ export type ExamQuestion = {
   assets: PracticePaperQuestionAsset[];
   /** Server-private extraction evidence, never candidate question material. */
   reviewAssets?: PracticePaperQuestionAsset[];
+  /**
+   * The command word the question's instruction opens with, as printed:
+   * "Calculate", "Show that". An empty string means the question was read for
+   * one and prints none; absent means it was never read for one.
+   */
   commandWord?: string;
   topicIds: string[];
+  /**
+   * Concepts from the specification's checked concept catalogue, each with its
+   * topic also in `topicIds`. An empty list means the question was tagged and
+   * matched none; absent means it was never tagged at this grain.
+   */
+  conceptIds?: string[];
   tier?: string;
   /**
    * Read off the paper's cover at ingestion, and absent when it said nothing.
@@ -233,6 +244,12 @@ export type ExamSessionQuestion = Pick<
    * headings, so there is nothing here to keep from them.
    */
   | "topicIds"
+  /*
+   * The same, one grain finer, and the question's command word: what a marked
+   * answer was about, and what kind of answer it was asked for.
+   */
+  | "conceptIds"
+  | "commandWord"
 > & { attemptId: string };
 
 export type ExamSession = {
@@ -245,6 +262,8 @@ export type ExamSession = {
   course: ExamCourseSelection;
   requestedMix: Record<ExamDifficulty, number>;
   topicIds: string[];
+  /** Concepts the session was narrowed to; absent on sessions from before concepts. */
+  conceptIds?: string[];
   questions: ExamSessionQuestion[];
   status: "active" | "completed" | "abandoned";
   currentQuestionId?: string;

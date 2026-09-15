@@ -178,6 +178,28 @@ async function deleteUserDeckHistory(
     onCommitted
   );
 
+  /*
+   * The deck's flashcard review history goes with it. Best-effort: the learner
+   * profile already ignores history for cards that no longer exist, so a
+   * failure here leaves inert records rather than wrong conclusions, and it
+   * must never be the reason a deck cannot be deleted.
+   */
+  try {
+    const historySnapshot = await withTimeout(
+      getDocs(
+        query(
+          collection(db, "users", userId, "flashcardReviewEvents"),
+          where("deckId", "==", deckId)
+        )
+      ),
+      LOAD_MS,
+      "Load deck review history for deletion"
+    );
+    await deleteSnapshotsInBatches(historySnapshot.docs, "Delete deck review history");
+  } catch {
+    // Left for account deletion, which removes everything under the user.
+  }
+
   await withTimeout(
     deleteDoc(doc(db, "users", userId, "decks", deckId)),
     DELETE_MS,

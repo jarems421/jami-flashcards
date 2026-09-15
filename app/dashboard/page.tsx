@@ -20,7 +20,9 @@ import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable"
 import type { Topic } from "@/lib/material/topics";
 import type { MasteryEvent } from "@/lib/material/mastery";
 import type { Source } from "@/lib/material/sources";
-import { buildTodayPlan, type TodayPlan } from "@/lib/dashboard/today-plan";
+import { buildTodayPlan, type TodayPlan, type TodayStudyAction } from "@/lib/dashboard/today-plan";
+import { featureFlags } from "@/lib/app/feature-flags";
+import { useStudyActions } from "@/hooks/useStudyActions";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { usePersistentDisclosure } from "@/lib/app/disclosure-preference";
@@ -271,6 +273,41 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
   );
 }
 
+/**
+ * What to do next, from the student's own recorded work.
+ *
+ * Only actions Jami can actually open are listed, each with the reason it was
+ * chosen, and the list stays short: a surface that always has five more things
+ * to do stops being read.
+ */
+function StudyActionsCard({ actions }: { actions: TodayStudyAction[] }) {
+  return (
+    <Card padding="lg">
+      <SectionHeader eyebrow="From your recent work" title="Recommended for you" />
+      <div className="mt-5 grid gap-3">
+        {actions.map((action) => (
+          <Link
+            key={action.id}
+            href={action.href}
+            className="app-subtle-panel grid gap-3 rounded-lg p-4 transition duration-fast hover:-translate-y-[1px] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+          >
+            <div className="min-w-0">
+              <div className="break-words text-sm font-semibold text-text-primary">{action.title}</div>
+              <p className="mt-1 text-sm leading-6 text-text-secondary">{action.description}</p>
+              {action.folderName ? (
+                <div className="mt-1 break-words text-xs text-text-muted">{action.folderName}</div>
+              ) : null}
+            </div>
+            <span className="app-chip justify-self-start rounded-full px-3 py-1 text-xs font-semibold sm:justify-self-end">
+              {action.label}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
   return (
     <Card padding="lg">
@@ -440,15 +477,21 @@ export default function DashboardHome() {
     };
   }, [user.uid, loadAll]);
 
+  const studyActions = useStudyActions(
+    user.uid,
+    featureFlags.enableLearnerProfile && featureFlags.enableStudyActions
+  );
+  const refreshStudyActions = studyActions.refresh;
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     clearFeedback();
     try {
-      await loadAll(user.uid, { force: true });
+      await Promise.all([loadAll(user.uid, { force: true }), refreshStudyActions()]);
     } finally {
       setRefreshing(false);
     }
-  }, [clearFeedback, loadAll, user.uid]);
+  }, [clearFeedback, loadAll, refreshStudyActions, user.uid]);
 
   const todayReviews = useMemo(
     () => countTodayReviews(studyActivity),
@@ -471,6 +514,8 @@ export default function DashboardHome() {
         progressVisited,
         hasEarnedStars,
         hasActiveStudySession,
+        studyActions: studyActions.actions,
+        studyActionFolders: studyActions.folders,
       }),
     [
       activeGoals,
@@ -484,6 +529,8 @@ export default function DashboardHome() {
       hasEarnedStars,
       hasActiveStudySession,
       sources,
+      studyActions.actions,
+      studyActions.folders,
       studyFolders,
       todayReviews,
       topics,
@@ -553,24 +600,36 @@ export default function DashboardHome() {
     notebookCount: notebooks.length,
   });
 
+  // A brand-new account opens straight into First night, once, if it has never run.
+  const firstNightNeverRan = firstNight.ready && !firstNight.state;
   useEffect(() => {
-    if (isEmptyAccount && tutorial.canInvite) {
+    if (isEmptyAccount && firstNightNeverRan && tutorial.canInvite) {
       tutorial.invite();
     }
-  }, [isEmptyAccount, tutorial]);
+  }, [firstNightNeverRan, isEmptyAccount, tutorial]);
   const walkthroughLeading =
     tutorial.progress.status === "active" || tutorial.progress.status === "paused";
+  /*
+   * The engine's recommendations replace the older weak-topic card when they
+   * exist: both answer "what needs work", and the engine's answer carries its
+   * evidence. The weak-topic card remains the fallback whenever the engine is
+   * switched off, still loading or has nothing to say.
+   */
+  const showStudyActions = todayPlan.studyActions.length > 0;
+  const showWeakTopics =
+    !showStudyActions &&
+    sectionStates.topics !== "unavailable" &&
+    sectionStates.mastery !== "unavailable" &&
+    todayPlan.weakTopics.length > 0;
   const hasSecondaryCards =
     todayPlan.drafts.length > 0 ||
+    showStudyActions ||
     todayPlan.weakTopics.length > 0 ||
     Boolean(todayPlan.goalSummary);
   const secondaryCardCount =
     Number(sectionStates.drafts !== "unavailable" && todayPlan.drafts.length > 0) +
-    Number(
-      sectionStates.topics !== "unavailable" &&
-        sectionStates.mastery !== "unavailable" &&
-        todayPlan.weakTopics.length > 0
-    ) +
+    Number(showStudyActions) +
+    Number(showWeakTopics) +
     Number(sectionStates.goals !== "unavailable" && Boolean(todayPlan.goalSummary));
   const planSections = [
     "decks",
@@ -729,14 +788,11 @@ export default function DashboardHome() {
                         : "md:grid-cols-2 2xl:grid-cols-3"
                     }`}
                   >
+                    {showStudyActions ? <StudyActionsCard actions={todayPlan.studyActions} /> : null}
                     {sectionStates.drafts !== "unavailable" && todayPlan.drafts.length > 0 ? (
                       <DraftQueueCard plan={todayPlan} />
                     ) : null}
-                    {sectionStates.topics !== "unavailable" &&
-                    sectionStates.mastery !== "unavailable" &&
-                    todayPlan.weakTopics.length > 0 ? (
-                      <WeakTopicsCard plan={todayPlan} />
-                    ) : null}
+                    {showWeakTopics ? <WeakTopicsCard plan={todayPlan} /> : null}
                     {sectionStates.goals !== "unavailable" && todayPlan.goalSummary ? (
                       <GoalSnapshotCard plan={todayPlan} />
                     ) : null}

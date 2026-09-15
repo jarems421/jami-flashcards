@@ -235,3 +235,49 @@ describe("content versions", () => {
     expect(after).not.toBe(before);
   });
 });
+
+/**
+ * Concepts and command words, read on the same terms as topics.
+ *
+ * Run as though the paper belonged to a course with checked lists, so the
+ * canonical filter has something to keep: only the catalogue's own concepts
+ * survive, each brings its topic, and a command word is kept only when the
+ * question really prints it.
+ */
+describe("concepts and command words, extracted", () => {
+  const manifest = { ...fixture.manifest, specificationId: "8300" };
+  const workOut = fixture.capture.questions.findIndex((item) => /\bWork out\b/.test(String(item.prompt)));
+
+  it("keeps only the checked concepts, adding the topics they sit under", () => {
+    const questions = fixture.capture.questions.map((item, index) =>
+      index === 0
+        ? { ...item, topicIds: [], conceptIds: ["aqa-8300-number-ordering", "aqa-8300-invented"], commandWord: "Not printed anywhere" }
+        : item
+    );
+    const [first] = build({ manifest, questions }).entries;
+
+    expect(first?.question.conceptIds).toEqual(["aqa-8300-number-ordering"]);
+    expect(first?.question.topicIds).toEqual(["aqa-8300-number-structure-and-calculation"]);
+    // Read, and not found: an empty command word, not a missing one.
+    expect(first?.question.commandWord).toBe("");
+  });
+
+  it("keeps a command word the question prints, in one canonical form", () => {
+    expect(workOut).toBeGreaterThan(-1);
+    const questions = fixture.capture.questions.map((item, index) =>
+      index === workOut ? { ...item, commandWord: "WORK OUT" } : item
+    );
+    const entry = build({ manifest, questions }).entries.find(
+      (candidate) => candidate.question.prompt === String(fixture.capture.questions[workOut]!.prompt).trim()
+    );
+
+    expect(entry?.question.commandWord).toBe("Work out");
+  });
+
+  it("never holds a question back over a concept it could not keep", () => {
+    const withInvented = fixture.capture.questions.map((item) => ({ ...item, conceptIds: ["aqa-8300-invented"] }));
+    expect(summariseExamExtraction(build({ questions: withInvented })).extracted).toBe(
+      summariseExamExtraction(build()).extracted
+    );
+  });
+});
