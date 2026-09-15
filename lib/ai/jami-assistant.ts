@@ -148,6 +148,15 @@ const WEB_VERIFICATION_PATTERN =
 const MARKING_PATTERN = /\b(?:mark|check|review|assess|feedback|correct)\b/i;
 /** A figure the Tutor drew inside its answer: a fenced svg sketch or a graph. */
 const TUTOR_DRAWN_FIGURE_PATTERN = /```(?:svg|graph)\b/i;
+/** Words that mean a graph whatever the subject. */
+const GRAPH_REQUEST_PATTERN =
+  /\b(?:graphs?|parabolas?|x-axis|y-axis|turning points?|asymptotes?)\b|\by\s*=|\bf\s*\(\s*x\s*\)/i;
+/**
+ * Words that mean a graph only beside some mathematics. The plot of a novel,
+ * a concentration gradient and a demand curve are not graphs to plot.
+ */
+const GRAPH_WORD_PATTERN = /\b(?:plot(?:s|ted|ting)?|curves?|axes|gradients?|intercepts?)\b/i;
+const MATHEMATICS_PATTERN = /\d|\b[xy]\b|[=^]/;
 const CORRECTION_PATTERN =
   /\b(?:that(?:'s| is) (?:wrong|incorrect)|you(?:'re| are) wrong|not correct|check again|recheck|you made (?:a|an) (?:mistake|error)|i disagree)\b/i;
 const ROUTING_STOP_WORDS = new Set([
@@ -184,9 +193,43 @@ function assistantSearchTerms(value: string, maxItems = 24) {
   ).slice(0, maxItems);
 }
 
-/** True only for an explicit student request; illustrations are never automatic. */
+/**
+ * Whether the student is asking about a graph.
+ *
+ * Graphs are plotted from their functions in the answer itself. An image model
+ * asked for one draws a convincing curve through the wrong points, so a graph
+ * request never goes to it -- whether it says "draw", "show visually" or not.
+ */
+export function isTutorGraphRequest(message: string) {
+  return (
+    GRAPH_REQUEST_PATTERN.test(message) ||
+    (GRAPH_WORD_PATTERN.test(message) && MATHEMATICS_PATTERN.test(message))
+  );
+}
+
+/** An ask to see a graph drawn, as opposed to a question that mentions one. */
+const GRAPH_DRAWING_REQUEST_PATTERN =
+  /\b(?:draw|plot|sketch)\b[^.?!\n]{0,40}?(?:\bgraphs?\b|\bcurves?\b|\bparabolas?\b|\baxes\b|\by\s*=|\bf\s*\(\s*x\s*\))|\b(?:show(?:\s+me)?(?!\s+that\b)|visuali[sz]e|display)\b[^.?!\n]{0,40}?\b(?:graphs?|curves?|parabolas?|plots?)\b/i;
+
+/**
+ * Whether the student asked to see a graph drawn: "draw the graph of",
+ * "plot f(x) = 2x + 1", "sketch the curve".
+ *
+ * Narrower than `isTutorGraphRequest`, which keeps anything graph-shaped away
+ * from the image model. A question that only mentions a gradient or an
+ * equation -- "what's the gradient of y = 2x + 3", "show that the curve passes
+ * through (1, 2)" -- is answered in words. Treating it as a request for a
+ * graph asked the model a second time and could swap a good answer for a
+ * graph nobody wanted.
+ */
+export function isExplicitTutorGraphRequest(message: string) {
+  return GRAPH_DRAWING_REQUEST_PATTERN.test(message);
+}
+
+/** True only for an explicit student request; illustrations are never automatic, and never for a graph. */
 export function isExplicitTutorIllustrationRequest(message: string) {
-  return ILLUSTRATION_REQUEST_PATTERN.test(message.trim());
+  const trimmed = message.trim();
+  return ILLUSTRATION_REQUEST_PATTERN.test(trimmed) && !isTutorGraphRequest(trimmed);
 }
 
 export function isRoutineNotebookMarkMyWork(input: {
@@ -381,10 +424,11 @@ export function shouldOfferTutorIllustration(input: {
   // An answer that already drew the figure -- a sketch or a plotted graph --
   // has shown it visually. Offering to again just makes the same picture twice.
   if (TUTOR_DRAWN_FIGURE_PATTERN.test(input.answer)) return false;
+  if (isTutorGraphRequest(input.message)) return false;
   return (
     isExplicitTutorIllustrationRequest(input.message) ||
     (input.answer.length >= 80 &&
-      /\b(?:process|cycle|structure|relationship|compare|pathway|system|geometry|graph|timeline|mechanism|equation)\b/i.test(
+      /\b(?:process|cycle|structure|relationship|compare|pathway|system|geometry|timeline|mechanism)\b/i.test(
         `${input.message} ${input.answer}`
       ))
   );

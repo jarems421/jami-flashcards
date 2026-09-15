@@ -166,6 +166,42 @@ describe("Firestore security rules", () => {
     await assertSucceeds(deleteDoc(aliceProgress));
   });
 
+  it("keeps flashcard review history private, append-only and free of card text", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const event = (id: string) => doc(aliceDb, "users", ALICE, "flashcardReviewEvents", id);
+    const valid = {
+      schemaVersion: 1,
+      cardId: "alice-card",
+      deckId: ALICE_DECK_ID,
+      reviewedAt: 1_789_000_000_000,
+      studyDayKey: "2026-09-15",
+      correct: true,
+      rating: "good",
+      createdAt: 1_789_000_000_001,
+    };
+
+    await assertSucceeds(setDoc(event("commit-1"), valid));
+    await assertSucceeds(getDoc(event("commit-1")));
+    // Simple study records a result without a rating.
+    const withoutRating = Object.fromEntries(
+      Object.entries(valid).filter(([key]) => key !== "rating")
+    );
+    await assertSucceeds(setDoc(event("commit-2"), { ...withoutRating, correct: false }));
+
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "flashcardReviewEvents", "commit-1")));
+    await assertFails(setDoc(doc(bobDb, "users", ALICE, "flashcardReviewEvents", "commit-3"), valid));
+    // Written once, never edited.
+    await assertFails(updateDoc(event("commit-1"), { correct: false }));
+    // Nothing beyond the compact shape: no card or answer text rides along.
+    await assertFails(setDoc(event("commit-4"), { ...valid, front: "Question" }));
+    await assertFails(setDoc(event("commit-5"), { ...valid, rating: "perfect" }));
+    await assertFails(setDoc(event("commit-6"), { ...valid, schemaVersion: 2 }));
+    await assertFails(setDoc(event("commit-7"), { ...valid, studyDayKey: "yesterday" }));
+
+    await assertSucceeds(deleteDoc(event("commit-1")));
+  });
+
   it("allows owners to read decks stored with either userId or legacy uid", async () => {
     await seedData();
 

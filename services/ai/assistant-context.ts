@@ -39,6 +39,10 @@ import {
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { examQuestionVisualParts, loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
+import { serializeLearnerProfileForTutor } from "@/lib/learning/serialize/tutor-context";
+import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
+import { createLogger } from "@/lib/observability/logger";
+import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
 
 const MAX_SOURCE_METADATA_CANDIDATES = 200;
 const MAX_SOURCE_CANDIDATES_PER_RELATION =
@@ -48,6 +52,13 @@ const LEARN_MAX_RELATED_CARDS = 6;
 const NOTEBOOK_CONTEXT_PAGE_LIMIT = 60;
 const NOTEBOOK_CONTEXT_PAGE_TEXT_LIMIT = 700;
 const NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT = 12_000;
+/**
+ * How long Tutor waits for the learner profile before answering without it.
+ * The profile improves an answer; it must never be the reason one is slow.
+ */
+const LEARNER_PROFILE_BUDGET_MS = 2_500;
+
+const log = createLogger({ module: "ai.assistant.context" });
 
 type AdminDb = ReturnType<typeof getAdminDb>;
 
@@ -154,6 +165,87 @@ async function loadTutorPreferences(input: {
     personalisationContext,
     reasoningEffort,
   };
+}
+
+/**
+ * What the Learning Engine currently believes about the student, for the
+ * material in front of them, written for Tutor.
+ *
+ * Scoped like folder instructions: one folder when the material sits in
+ * exactly one, otherwise the card's own deck, otherwise nothing -- a profile
+ * spanning two folders would set one subject's results against another's. All
+ * of the learning logic lives in `lib/learning`; this only picks the scope and
+ * keeps Tutor's promise that an enrichment never costs an answer. A failure or
+ * a slow load drops the profile, and the request carries on exactly as it did
+ * before the profile existed.
+ */
+async function loadTutorLearningContext(input: {
+  uid: string;
+  folderIds: readonly string[];
+  deckId?: string;
+}) {
+  if (!featureFlags.enableLearnerProfile) return undefined;
+  const folderIds = Array.from(new Set(input.folderIds.filter(Boolean)));
+  const scope =
+    folderIds.length === 1
+      ? { folderId: folderIds[0] }
+      : input.deckId
+        ? { deckId: input.deckId }
+        : null;
+  if (!scope) return undefined;
+
+  const scopeKind = "folderId" in scope ? "folder" : "deck";
+  const startedAt = Date.now();
+  const loading = loadLearnerProfile({ uid: input.uid, ...scope });
+  // Still settles after a timeout; without this its failure would go unhandled.
+  loading.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const profile = await Promise.race([
+      loading,
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), LEARNER_PROFILE_BUDGET_MS);
+      }),
+    ]);
+    const latencyMs = Date.now() - startedAt;
+    if (profile === "timeout") {
+      log.warn("learner_profile.timed_out", {
+        consumer: "tutor",
+        scope: scopeKind,
+        budgetMs: LEARNER_PROFILE_BUDGET_MS,
+      });
+      return undefined;
+    }
+    if (!profile) {
+      log.info("learner_profile.completed", {
+        consumer: "tutor",
+        scope: scopeKind,
+        outcome: "no_profile",
+        latencyMs,
+      });
+      return undefined;
+    }
+    const learningContext = serializeLearnerProfileForTutor(profile, {
+      boundaryToken: randomUUID(),
+    });
+    log.info("learner_profile.completed", {
+      consumer: "tutor",
+      outcome: learningContext ? "included" : "insufficient_evidence",
+      latencyMs,
+      ...learnerProfileTelemetry(profile),
+    });
+    return learningContext;
+  } catch (error) {
+    log.warn("learner_profile.failed", {
+      consumer: "tutor",
+      scope: scopeKind,
+      latencyMs: Date.now() - startedAt,
+      error,
+    });
+    return undefined;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function getNotebookPageText(
@@ -442,6 +534,8 @@ async function resolveLearnContext(input: {
     currentId: cardSnapshot.id,
     currentLabel: "Current card",
     currentParts: parts,
+    // The learner profile's fallback scope when the deck is in no single folder.
+    deckId,
     relations: {
       currentSourceIds: [],
       directSourceIds: normalizeIds(cardData.sourceIds),
@@ -660,7 +754,7 @@ export async function resolveJamiAssistantContext(input: {
         : input.context.surface === "practice"
           ? await resolvePracticeContext({ db, uid, context: input.context })
           : await resolveNotebookContext({ db, uid, context: input.context });
-  const [sources, preferences] = await Promise.all([
+  const [sources, preferences, learningContext] = await Promise.all([
     selectSources({
       db,
       uid,
@@ -673,6 +767,13 @@ export async function resolveJamiAssistantContext(input: {
       uid,
       folderIds: resolved.relations.folderIds,
     }),
+    loadTutorLearningContext({
+      uid,
+      folderIds: resolved.relations.folderIds,
+      ...("deckId" in resolved && typeof resolved.deckId === "string" && resolved.deckId
+        ? { deckId: resolved.deckId }
+        : {}),
+    }),
   ]);
 
   return {
@@ -682,6 +783,7 @@ export async function resolveJamiAssistantContext(input: {
     sources,
     studyLevelContext: preferences.studyLevelContext,
     personalisationContext: preferences.personalisationContext,
+    ...(learningContext ? { learningContext } : {}),
     reasoningEffort: preferences.reasoningEffort,
   };
 }

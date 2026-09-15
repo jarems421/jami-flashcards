@@ -4,6 +4,8 @@ import {
   QUESTION_RULES,
   SCHEME_EXAMPLE,
   SCHEME_RULES,
+  COMMAND_WORD_RULES,
+  conceptRulesFor,
   topicRulesFor,
 } from "@/lib/practice/exam-extraction-prompt";
 
@@ -87,5 +89,24 @@ describe("the rules and the example describing the same document", () => {
 describe("what a specification is told about its own topics", () => {
   it("asks for none rather than inviting a guess it would discard", () => {
     expect(topicRulesFor("a-specification-with-no-catalogue")).toContain("empty array");
+  });
+});
+
+describe("what extraction is told about concepts and command words", () => {
+  it("shows both fields in the example it asks for them against", () => {
+    expect(QUESTION_EXAMPLE).toContain('"conceptIds"');
+    expect(QUESTION_EXAMPLE).toContain('"commandWord"');
+  });
+
+  it("offers a checked concept list as a closed list, and nothing for an unchecked one", () => {
+    expect(conceptRulesFor("8300")).toContain("aqa-8300-algebra-quadratic-equations (Solving quadratic equations)");
+    expect(conceptRulesFor("8461")).toBe(
+      "Leave conceptIds as an empty array: this specification has no checked concept list."
+    );
+  });
+
+  it("asks for the command word as printed rather than inferred", () => {
+    expect(COMMAND_WORD_RULES).toContain("copied exactly as printed");
+    expect(COMMAND_WORD_RULES).toContain("empty string");
   });
 });

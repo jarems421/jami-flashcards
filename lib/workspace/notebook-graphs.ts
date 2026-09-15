@@ -241,12 +241,29 @@ export function resizeNotebookGraphBlock(
 export const GRAPH_PLOT_PADDING = { left: 44, right: 14, top: 14, bottom: 34 };
 const TITLE_HEIGHT = 18;
 
-/** Where the plotted area sits inside a drawing of the given size. */
-export function graphPlotArea(width: number, height: number, hasTitle: boolean) {
+/** Room the y-axis numbers need to the left of the axis, in drawing units. */
+const Y_LABEL_ROOM = 30;
+
+/**
+ * Where the plotted area sits inside a drawing of the given size.
+ *
+ * The wide left margin is for y-axis numbers, and they only sit at the left
+ * edge when the y-axis does. When the axis crosses the middle of the graph its
+ * numbers sit beside it, and keeping the margin anyway left the graph with a
+ * band of empty space down its left side and hardly any on its right. So the
+ * margin is only as wide as the numbers beside the axis actually need.
+ */
+export function graphPlotArea(width: number, height: number, hasTitle: boolean, view?: GraphViewWindow) {
   const top = GRAPH_PLOT_PADDING.top + (hasTitle ? TITLE_HEIGHT : 0);
+  const right = GRAPH_PLOT_PADDING.right;
+  let left = GRAPH_PLOT_PADDING.left;
+  if (view && view.xMin < 0 && view.xMax > 0) {
+    const axisOffset = (-view.xMin / (view.xMax - view.xMin)) * Math.max(1, width - right * 2);
+    left = Math.min(GRAPH_PLOT_PADDING.left, right + Math.max(0, Y_LABEL_ROOM - axisOffset));
+  }
   return {
-    left: GRAPH_PLOT_PADDING.left,
-    right: Math.max(GRAPH_PLOT_PADDING.left + 20, width - GRAPH_PLOT_PADDING.right),
+    left,
+    right: Math.max(left + 20, width - right),
     top,
     bottom: Math.max(top + 20, height - GRAPH_PLOT_PADDING.bottom),
   };

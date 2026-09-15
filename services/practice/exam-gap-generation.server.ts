@@ -7,9 +7,13 @@ import { normalizeMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import { examDocument, type ExamCourseSelection, type ExamDifficulty, type ExamQuestion, type ExamQuestionSecret } from "@/lib/practice/exam-questions";
 import { getExamQuestionRights } from "@/lib/practice/exam-question-rights";
 import type { StudyLevel } from "@/lib/profile/study-level";
+import {
+  conceptParentTopicIds,
+  servableExamSpecificationConcepts,
+} from "@/lib/practice/exam-specification-concepts";
 import { examGeneratedQuestionRefs } from "@/services/practice/exam-evidence.server";
 
-type Candidate = { prompt?: unknown; answer?: unknown; points?: unknown; difficulty?: unknown; topicIds?: unknown };
+type Candidate = { prompt?: unknown; answer?: unknown; points?: unknown; difficulty?: unknown; topicIds?: unknown; conceptIds?: unknown };
 
 /*
  * Sized from measured calls, because the old numbers were why this failed.
@@ -48,6 +52,8 @@ export async function generateExamGapQuestions(input: {
   course: ExamCourseSelection;
   missing: Partial<Record<ExamDifficulty, number>>;
   topicIds: string[];
+  /** Concepts the session was narrowed to; a generated question may claim only these. */
+  conceptIds?: string[];
 }) {
   const requested = (Object.entries(input.missing) as Array<[ExamDifficulty, number | undefined]>).flatMap(([difficulty, count]) =>
     Array.from({ length: count ?? 0 }, () => ({ difficulty, marks: difficulty === "easy" ? 2 : difficulty === "medium" ? 4 : 6 }))
@@ -66,6 +72,11 @@ export async function generateExamGapQuestions(input: {
     requested.slice(index * GAP_BATCH_SIZE, (index + 1) * GAP_BATCH_SIZE)
   );
   const deadlineAt = Date.now() + GAP_GENERATION_BUDGET_MS;
+  const requestedConcepts = input.conceptIds ?? [];
+  // Named as well as numbered, so the writer knows what "quadratic equations" is on this course.
+  const targetConcepts = servableExamSpecificationConcepts(input.course.specificationId)
+    .filter((concept) => requestedConcepts.includes(concept.id))
+    .map((concept) => ({ id: concept.id, label: concept.label }));
   const writeBatch = async (batch: typeof requested) => {
     const response = await generateAiText({
       role: "supervisor",
@@ -76,7 +87,7 @@ export async function generateExamGapQuestions(input: {
       generationConfig: { temperature: 0.25, topP: 0.8, maxOutputTokens: GAP_MAX_OUTPUT_TOKENS },
       request: {
         systemInstruction: "You write original school exam practice questions. Never reproduce or claim to quote a past-paper question. Match the named current specification and return strict JSON only. Each point is one independently awardable mark and the number of points must equal marks.",
-        contents: [{ role: "user", parts: [{ text: `Create exactly ${batch.length} original gap-filler questions for ${input.subject}. Course: ${input.course.specificationTitle} (${input.course.specificationId}), ${input.course.qualification}, ${input.course.board}${input.course.tier ? `, ${input.course.tier}` : ""}. Requested sequence: ${JSON.stringify(batch)}. Preferred canonical topic ids: ${JSON.stringify(input.topicIds)}. Return {"questions":[{"difficulty":"easy|medium|hard","prompt":"...","answer":"complete example answer","points":["one mark point per string"],"topicIds":["only supplied ids when relevant"]}]}. No assets, citations or copyrighted wording.` }] }],
+        contents: [{ role: "user", parts: [{ text: `Create exactly ${batch.length} original gap-filler questions for ${input.subject}. Course: ${input.course.specificationTitle} (${input.course.specificationId}), ${input.course.qualification}, ${input.course.board}${input.course.tier ? `, ${input.course.tier}` : ""}. Requested sequence: ${JSON.stringify(batch)}. Preferred canonical topic ids: ${JSON.stringify(input.topicIds)}.${targetConcepts.length > 0 ? ` Concepts to write for: ${JSON.stringify(targetConcepts)}.` : ""} Return {"questions":[{"difficulty":"easy|medium|hard","prompt":"...","answer":"complete example answer","points":["one mark point per string"],"topicIds":["only supplied ids when relevant"],"conceptIds":["only supplied concept ids when relevant"]}]}. No assets, citations or copyrighted wording.` }] }],
       },
     });
     const payload = parseJsonObject(response);
@@ -112,10 +123,15 @@ export async function generateExamGapQuestions(input: {
     }, { id, marks: expected.marks });
     if (!markSchemeItem) throw new Error("A generated marking guide failed validation.");
     const sourceSha256 = createHash("sha256").update(`${prompt}\n${answer}\n${rawPoints.join("\n")}`).digest("hex");
-    const topicIds = Array.isArray(candidate.topicIds) ? candidate.topicIds.filter((item): item is string => typeof item === "string" && input.topicIds.includes(item)).slice(0, 10) : [];
+    const conceptIds = Array.isArray(candidate.conceptIds) ? candidate.conceptIds.filter((item): item is string => typeof item === "string" && requestedConcepts.includes(item)).slice(0, 10) : [];
+    // A concept's topic comes with it, so the question sits under its topic like an extracted one.
+    const topicIds = Array.from(new Set([
+      ...(Array.isArray(candidate.topicIds) ? candidate.topicIds.filter((item): item is string => typeof item === "string" && input.topicIds.includes(item)) : []),
+      ...conceptParentTopicIds(input.course.specificationId, conceptIds),
+    ])).slice(0, 10);
     const question: ExamQuestion = {
       id, paperId: `jami-gap-${input.course.specificationId}`, subject: input.subject, subjectKey: input.subjectKey,
-      studyLevel: input.studyLevel, label: `Jami-created ${index + 1}`, prompt, marks: expected.marks, assets: [], topicIds,
+      studyLevel: input.studyLevel, label: `Jami-created ${index + 1}`, prompt, marks: expected.marks, assets: [], topicIds, ...(conceptIds.length > 0 ? { conceptIds } : {}),
       tier: input.course.tier, difficulty: expected.difficulty, aiDifficulty: expected.difficulty,
       difficultyScore: expected.difficulty === "easy" ? 0.25 : expected.difficulty === "medium" ? 0.55 : 0.82,
       difficultySource: "ai_ingest", origin: "jami_generated",

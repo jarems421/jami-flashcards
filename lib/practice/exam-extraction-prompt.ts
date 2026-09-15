@@ -7,6 +7,7 @@
  * say the right thing, and a prompt that cannot be asserted on is a prompt
  * that silently drifts.
  */
+import { servableExamSpecificationConcepts } from "@/lib/practice/exam-specification-concepts";
 import { servableExamSpecificationTopics } from "@/lib/practice/exam-specification-topics";
 
 /*
@@ -35,6 +36,8 @@ export const QUESTION_EXAMPLE = JSON.stringify({
     schemePage: 1,
     difficulty: "easy|medium|hard",
     topicIds: [],
+    conceptIds: [],
+    commandWord: "",
   }],
 }, null, 2);
 
@@ -104,6 +107,36 @@ export function topicRulesFor(specificationId: string) {
     "Never invent an id, and leave the array empty rather than guess.",
   ].join(" ");
 }
+
+/**
+ * The concept ids this paper's specification names, one grain finer than its
+ * topics and on the same terms: a closed, checked list or nothing at all.
+ */
+export function conceptRulesFor(specificationId: string) {
+  const concepts = servableExamSpecificationConcepts(specificationId);
+  if (concepts.length === 0) {
+    return "Leave conceptIds as an empty array: this specification has no checked concept list.";
+  }
+  const list = concepts.map((concept) => `${concept.id} (${concept.label})`).join("; ");
+  return [
+    "For conceptIds choose only from this list, using the id exactly as written:",
+    `${list}.`,
+    "Give one or two ids per question, whichever the question genuinely tests.",
+    "Never invent an id, and leave the array empty rather than guess.",
+  ].join(" ");
+}
+
+/**
+ * What the command word is.
+ *
+ * Copied, never inferred: extraction keeps it only when the question prints
+ * it, so anything the model reasoned its way to would only be thrown away.
+ */
+export const COMMAND_WORD_RULES = [
+  "commandWord is the command word or phrase the question's instruction opens with, copied exactly as printed: for example Calculate, Describe, Explain, Show that or Work out.",
+  "Take it from the part being asked, not from a stem shared by several parts.",
+  "Leave it as an empty string when the question gives no such instruction.",
+].join(" ");
 
 /*
  * What a scheme is allowed to lose on the way in: nothing.

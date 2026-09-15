@@ -29,6 +29,15 @@ export type ResolvedJamiAssistantContext = {
    */
   personalisationContext?: string;
   /**
+   * What the Learning Engine has calculated about the student for this folder
+   * or deck: strengths, weaknesses, recurring errors and suggested priorities.
+   *
+   * Undefined when there is no single folder or deck to scope it to, when the
+   * student has no recorded work there, or when it could not be loaded in time.
+   * Tutor answers exactly as before in every one of those cases.
+   */
+  learningContext?: string;
+  /**
    * How hard this student has asked Jami to think, if they have said.
    *
    * Read from the same user document the study level comes from, so wanting it

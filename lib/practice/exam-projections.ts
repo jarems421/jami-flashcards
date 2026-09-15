@@ -86,6 +86,8 @@ export function projectExamSessionQuestion(
     provenance: question.provenance,
     contentVersion: question.contentVersion,
     topicIds: question.topicIds ?? [],
+    conceptIds: question.conceptIds ?? [],
+    ...(question.commandWord ? { commandWord: question.commandWord } : {}),
     assets: candidateExamAssets(question).map((asset) => {
       const visible = { ...asset };
       delete visible.storagePath;

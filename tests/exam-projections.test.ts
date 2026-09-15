@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { projectExamAttempt } from "@/lib/practice/exam-projections";
+import { projectExamAttempt, projectExamSessionQuestion } from "@/lib/practice/exam-projections";
+import type { ExamSessionQuestion } from "@/lib/practice/exam-questions";
 
 describe("projectExamAttempt", () => {
   it("keeps student feedback while removing internal marking and evidence fields", () => {
@@ -43,5 +44,35 @@ describe("projectExamAttempt", () => {
     expect(projected).not.toHaveProperty("idempotencyKey");
     expect(projected).not.toHaveProperty("audit");
     expect(projected).not.toHaveProperty("reviewAudit");
+  });
+});
+
+describe("projectExamSessionQuestion", () => {
+  const base = {
+    id: "question-1",
+    attemptId: "attempt-1",
+    label: "Question 1",
+    prompt: "Explain why the rate increases.",
+    marks: 2,
+    difficulty: "easy",
+    origin: "official_past_paper",
+    provenance: { board: "aqa", specificationId: "8461" },
+    contentVersion: "v1",
+    topicIds: ["aqa-8461-cell-biology"],
+    assets: [],
+  };
+
+  it("carries what a question was about and the command word it opened with", () => {
+    const projected = projectExamSessionQuestion(
+      { ...base, conceptIds: ["aqa-8461-cell-biology-osmosis"], commandWord: "Explain" } as unknown as ExamSessionQuestion,
+      "attempt-1"
+    );
+    expect(projected).toMatchObject({ conceptIds: ["aqa-8461-cell-biology-osmosis"], commandWord: "Explain" });
+  });
+
+  it("reads a snapshot from before concepts as having none, and invents no command word", () => {
+    const projected = projectExamSessionQuestion(base as unknown as ExamSessionQuestion, "attempt-1");
+    expect(projected.conceptIds).toEqual([]);
+    expect(projected).not.toHaveProperty("commandWord");
   });
 });

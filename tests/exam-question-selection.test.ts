@@ -457,3 +457,102 @@ describe("a folder whose subject is not written the way the paper writes it", ()
     expect(availability.folder.subject).toBe("Mathematics");
   });
 });
+
+/**
+ * Narrowing practice to a concept, one grain finer than a topic.
+ *
+ * A student who wants quadratic equations rather than all of solving equations
+ * gets questions tagged with that concept -- and a topic and a concept chosen
+ * together widen the session rather than cancelling each other out.
+ */
+describe("narrowing to a concept", () => {
+  const QUADRATICS = "aqa-8300-algebra-quadratic-equations";
+  const SOLVING = "aqa-8300-algebra-solving-equations-and-inequalities";
+
+  beforeEach(() => {
+    writes.length = 0;
+    collections.set("users/student-1/studyFolders", [
+      {
+        id: "folder-maths",
+        data: {
+          name: "Maths",
+          subject: "Mathematics",
+          studyLevel: "gcse-equivalent",
+          examCourse: { ...COURSE, specificationId: "8300", specificationTitle: "GCSE Mathematics (8300)", tier: "higher" },
+        },
+      },
+    ]);
+    collections.set("examFormatCatalogue", [
+      {
+        id: "aqa-8300",
+        data: { board: "aqa", status: "current", qualification: "gcse", specificationCode: "8300", tier: "higher", subject: "Mathematics" },
+      },
+    ]);
+    const maths = (index: number, overrides: Record<string, unknown>) =>
+      question(index, {
+        subjectKey: "mathematics",
+        tier: "higher",
+        provenance: {
+          board: "aqa", qualification: "gcse", specificationId: "8300",
+          componentCode: "8300/1H", boardLabel: "AQA",
+          specificationTitle: "GCSE Mathematics (8300)", componentTitle: "Paper 1 Higher",
+        },
+        ...overrides,
+      });
+    collections.set("examQuestions", [
+      maths(0, { topicIds: [SOLVING], conceptIds: [QUADRATICS] }),
+      maths(1, { topicIds: [SOLVING], conceptIds: ["aqa-8300-algebra-linear-equations"] }),
+      maths(2, { topicIds: [SOLVING] }),
+      maths(3, { topicIds: ["aqa-8300-probability"], conceptIds: ["aqa-8300-probability-venn-and-tree-diagrams"] }),
+    ]);
+  });
+
+  it("offers each topic with the checked concepts beneath it", async () => {
+    const availability = await getExamQuestionAvailability({ uid: "student-1", folderId: "folder-maths" });
+
+    expect(availability.topics.find((topic) => topic.id === SOLVING)?.concepts.map((concept) => concept.id)).toContain(
+      QUADRATICS
+    );
+    expect(availability.topics.flatMap((topic) => topic.concepts)).toHaveLength(97);
+  });
+
+  it("counts only the questions tagged with the chosen concept", async () => {
+    const availability = await getExamQuestionAvailability({
+      uid: "student-1",
+      folderId: "folder-maths",
+      conceptIds: [QUADRATICS],
+    });
+
+    expect(availability.counts.medium).toBe(1);
+    expect(availability.conceptIds).toEqual([QUADRATICS]);
+  });
+
+  it("draws on a chosen topic and a chosen concept together", async () => {
+    const availability = await getExamQuestionAvailability({
+      uid: "student-1",
+      folderId: "folder-maths",
+      topicIds: ["aqa-8300-probability"],
+      conceptIds: [QUADRATICS],
+    });
+
+    expect(availability.counts.medium).toBe(2);
+  });
+
+  it("builds a session from the concept and records what it was narrowed to", async () => {
+    const session = await createExamSession({
+      uid: "student-1",
+      folderId: "folder-maths",
+      mix: { easy: 0, medium: 1, hard: 0 },
+      conceptIds: [QUADRATICS],
+    });
+
+    expect(session.conceptIds).toEqual([QUADRATICS]);
+    expect(session.questions.map((item) => item.conceptIds)).toEqual([[QUADRATICS]]);
+  });
+
+  it("refuses a concept the course does not have", async () => {
+    await expect(
+      getExamQuestionAvailability({ uid: "student-1", folderId: "folder-maths", conceptIds: ["aqa-8300-vibes"] })
+    ).rejects.toMatchObject({ code: "unknown_concepts" });
+  });
+});

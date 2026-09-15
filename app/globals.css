@@ -830,7 +830,11 @@
   }
 
   body.jami-notebook-editor-active .notebook-text-editor,
-  body.jami-notebook-editor-active [data-notebook-text-editor="true"] {
+  body.jami-notebook-editor-active [data-notebook-text-editor="true"],
+  /* Fields over the page -- a dialog's, the Tutor's -- are ordinary text fields. */
+  body.jami-notebook-editor-active input,
+  body.jami-notebook-editor-active textarea,
+  body.jami-notebook-editor-active [contenteditable="true"] {
     -webkit-touch-callout: default !important;
     -webkit-user-select: text !important;
     user-select: text !important;
@@ -3044,3 +3048,7 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 @media (prefers-reduced-motion: reduce){
   .shooting-star{display:none}
 }
+
+/* First night: which course, and which tier, under a subject's board. */
+.fn-course-question{width:100%;display:flex;flex-direction:column;gap:.4rem;padding-top:.15rem}
+.fn-course-label{font-size:.72rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:rgba(222,214,255,.62)}

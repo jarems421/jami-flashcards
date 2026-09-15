@@ -72,7 +72,7 @@ export function useGraphPanZoom({
     (current: GraphViewWindow) => {
       const rect = ref.current?.getBoundingClientRect();
       if (!rect?.width || !rect.height) return null;
-      const plot = graphPlotArea(viewBoxWidth, viewBoxHeight, hasTitle);
+      const plot = graphPlotArea(viewBoxWidth, viewBoxHeight, hasTitle, current);
       const pixelsX = rect.width / viewBoxWidth;
       const pixelsY = rect.height / viewBoxHeight;
       return {

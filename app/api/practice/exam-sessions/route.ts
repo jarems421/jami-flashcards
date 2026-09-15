@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
       folderId,
       mix,
       topicIds: Array.isArray(body.topicIds) ? body.topicIds.filter((item): item is string => typeof item === "string").slice(0, 20) : [],
+      conceptIds: Array.isArray(body.conceptIds) ? body.conceptIds.filter((item): item is string => typeof item === "string").slice(0, 20) : [],
       originNotebookId: typeof body.originNotebookId === "string" ? body.originNotebookId.trim() : undefined,
       allowGenerated,
       useAvailableOnly: body.useAvailableOnly === true,

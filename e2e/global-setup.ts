@@ -10,6 +10,12 @@ import {
   E2E_CARDS,
   E2E_DECK_ID,
   E2E_DECK_NAME,
+  E2E_EVIDENCE_CARDS,
+  E2E_EVIDENCE_DECK_ID,
+  E2E_EVIDENCE_DECK_NAME,
+  E2E_EXPOSURE_CARDS,
+  E2E_EXPOSURE_DECK_ID,
+  E2E_EXPOSURE_DECK_NAME,
   E2E_OFFLINE_CARDS,
   E2E_OFFLINE_DECK_ID,
   E2E_OFFLINE_DECK_NAME,
@@ -219,6 +225,16 @@ export default async function globalSetup() {
             name: E2E_MODES_DECK_NAME,
             cards: E2E_MODES_CARDS,
           },
+          {
+            deckId: E2E_EVIDENCE_DECK_ID,
+            name: E2E_EVIDENCE_DECK_NAME,
+            cards: E2E_EVIDENCE_CARDS,
+          },
+          {
+            deckId: E2E_EXPOSURE_DECK_ID,
+            name: E2E_EXPOSURE_DECK_NAME,
+            cards: E2E_EXPOSURE_CARDS,
+          },
         ].flatMap(({ deckId, name, cards }) => [
           setDoc(doc(db, "decks", deckId), {
             name,
@@ -236,7 +252,7 @@ export default async function globalSetup() {
               back: card.back,
               createdAt: now + index,
               tags: [],
-              topicIds: [],
+              topicIds: "topicIds" in card ? [...card.topicIds] : [],
               // Brand new cards: no FSRS history, so the scheduler treats
               // them as due and the session has something to hand out.
               fsrsState: 0,

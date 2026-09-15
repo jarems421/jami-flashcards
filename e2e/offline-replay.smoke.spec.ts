@@ -5,6 +5,7 @@ import {
   E2E_USER_EMAIL,
   E2E_USER_PASSWORD,
 } from "./fixtures";
+import { readReviewEvents } from "./learning-evidence";
 
 const OFFLINE_STUDY_ROUTE = `/dashboard/study?mode=custom&decks=${E2E_OFFLINE_DECK_ID}`;
 /** Matches `QUEUE_PREFIX` in lib/study/offline-study.ts. */
@@ -101,6 +102,12 @@ test("a review graded offline syncs once the browser reconnects", async ({
     flashcard(page).or(page.getByText("Session complete"))
   ).toBeVisible({ timeout: 45_000 });
   expect(await queuedReviews(page)).toHaveLength(0);
+
+  // One answer in the learning history, however many times the sync tried to
+  // save it: the event is keyed by the answer's own commit.
+  await expect
+    .poll(async () => (await readReviewEvents(cardId as string)).length, { timeout: 30_000 })
+    .toBe(1);
 
   expect(pageErrors).toEqual([]);
 });

@@ -26,6 +26,7 @@ import {
 } from "@/lib/study/goals";
 import type { Star } from "@/lib/constellation/stars";
 import { commitStudyEffect } from "@/services/study/commit-effect";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 /** A finished goal and the star it earned, for the session to celebrate. */
 export type GoalReward = { star: Star; goalName: string };
@@ -175,6 +176,7 @@ export async function createGoal(
 ): Promise<Goal> {
   const goalRef = await addDoc(goalsCollection(userId), goal);
   invalidateDashboardData(userId);
+  reportTutorialAction("create-goal");
   return { id: goalRef.id, ...goal };
 }
 

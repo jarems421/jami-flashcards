@@ -2,19 +2,23 @@
  * Shooting stars across a sky, more of them the more stars it holds.
  *
  * A sky with a handful of earned stars gets the occasional streak; a full one
- * gets a few more, but never enough to pull the eye from the work. Each streak
- * is visible for well under two seconds of a cycle lasting over twenty, and
- * they are spread through that cycle so two rarely cross at once.
+ * gets a steady scatter of them. Each streak is visible for under two seconds
+ * of its cycle, falls somewhere new every time, and now and then two or three
+ * fall together -- which is what a real meteor shower looks like, and what a
+ * row of evenly spaced streaks in one corner did not.
  */
 
 export type ShootingStarSurface = "sky" | "background";
 
 const LIMITS: Record<ShootingStarSurface, { max: number; starsPerStreak: number }> = {
   // The constellation page, where the sky is the subject.
-  sky: { max: 4, starsPerStreak: 10 },
-  // Behind the app, where it is atmosphere: half as many, and slower to grow.
-  background: { max: 2, starsPerStreak: 16 },
+  sky: { max: 8, starsPerStreak: 5 },
+  // Behind the app, where it is atmosphere: fewer, and slower to grow.
+  background: { max: 5, starsPerStreak: 8 },
 };
+
+/** The sign-in pages and the welcome, which have no stars of their own to count. */
+export const NIGHT_SKY_SHOOTING_STARS = 4;
 
 export function getShootingStarCount(starCount: number, surface: ShootingStarSurface) {
   if (!Number.isFinite(starCount) || starCount <= 0) return 0;
@@ -22,7 +26,14 @@ export function getShootingStarCount(starCount: number, surface: ShootingStarSur
   return Math.min(max, 1 + Math.floor(starCount / starsPerStreak));
 }
 
-export type ShootingStarPlan = {
+/** When a streak falls. Every streak in a sky shares one cycle, so groups stay together. */
+export type ShootingStarTiming = {
+  duration: number;
+  delay: number;
+};
+
+/** Where one fall of a streak happens. */
+export type ShootingStarPath = {
   /** Where the streak starts, as percentages of the sky. */
   top: number;
   left: number;
@@ -30,10 +41,9 @@ export type ShootingStarPlan = {
   angle: number;
   /** Length in pixels. */
   length: number;
-  /** One full cycle, of which the streak is visible for the last few percent. */
-  duration: number;
-  delay: number;
 };
+
+export type ShootingStarPlan = ShootingStarTiming & ShootingStarPath;
 
 function hashOf(text: string) {
   let hash = 2166136261;
@@ -54,19 +64,40 @@ function seeded(seed: number) {
   };
 }
 
-/** The same streaks for the same sky, so nothing reshuffles between renders. */
+/**
+ * When each streak falls.
+ *
+ * Streaks are dealt into fewer slots than there are streaks, so once a sky has
+ * a few of them some slots hold two or three that fall within a moment of each
+ * other, and the rest fall alone.
+ */
+export function planShootingStarTimings(count: number, seed: string): ShootingStarTiming[] {
+  const total = Math.max(0, Math.floor(count));
+  const random = seeded(hashOf(`${seed}:timing`));
+  const duration = Math.round((16 + random() * 4) * 10) / 10;
+  const slots = Math.max(1, Math.ceil(total * 0.6));
+  const slotOffsets = Array.from({ length: slots }, (_, slot) => (slot / slots) * duration + random() * 1.5);
+  return Array.from({ length: total }, (_, index) => ({
+    duration,
+    delay: Math.round((slotOffsets[index % slots] + random() * 0.6) * 10) / 10,
+  }));
+}
+
+/** Where a streak falls on a given pass: anywhere across the sky, and different each pass. */
+export function planShootingStarPath(seed: string, index: number, pass: number): ShootingStarPath {
+  const random = seeded(hashOf(`${seed}:${index}:${pass}`));
+  return {
+    top: Math.round(random() * 70 * 10) / 10,
+    left: Math.round((15 + random() * 85) * 10) / 10,
+    angle: Math.round((14 + random() * 20) * 10) / 10,
+    length: Math.round(90 + random() * 90),
+  };
+}
+
+/** The first pass of every streak, for the same sky always the same. */
 export function planShootingStars(count: number, seed: string): ShootingStarPlan[] {
-  const random = seeded(hashOf(seed));
-  return Array.from({ length: Math.max(0, Math.floor(count)) }, (_, index) => {
-    const duration = 20 + random() * 8;
-    return {
-      top: 4 + random() * 48,
-      left: 35 + random() * 60,
-      angle: 16 + random() * 16,
-      length: 90 + random() * 80,
-      duration: Math.round(duration * 10) / 10,
-      // Spread through the cycle, so they take turns rather than falling together.
-      delay: Math.round(((index / Math.max(1, count)) * duration + random() * 3) * 10) / 10,
-    };
-  });
+  return planShootingStarTimings(count, seed).map((timing, index) => ({
+    ...timing,
+    ...planShootingStarPath(seed, index, 0),
+  }));
 }

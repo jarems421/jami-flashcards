@@ -16,11 +16,13 @@ import FirstNightGuide from "@/components/onboarding/FirstNightGuide";
 import { Sparkle } from "@/components/onboarding/FirstNightSky";
 import FirstNightWelcome from "@/components/onboarding/FirstNightWelcome";
 import {
+  allFirstNightLit,
   createFirstNightState,
-  FIRST_NIGHT_DISCOVERIES,
+  FIRST_NIGHT_ACTIONS,
   FIRST_NIGHT_PAGE_TARGETS,
   FIRST_NIGHT_QUERY_PARAM,
   FIRST_NIGHT_TOUR_LENGTH,
+  getFirstNightDiscovery,
   loadLocalFirstNight,
   mergeFirstNight,
   pendingNavLabels,
@@ -30,8 +32,10 @@ import {
   type FirstNightAnswers,
   type FirstNightDiscoveryId,
   type FirstNightGuidePlan,
+  type FirstNightStage,
   type FirstNightState,
 } from "@/lib/onboarding/first-night";
+import { TUTORIAL_ACTION_EVENT, type OnboardingActionId } from "@/lib/onboarding/tutorial";
 import { createOnboardingStarIfMissing } from "@/services/constellation/stars";
 import { setUpFirstNightSubjects } from "@/services/onboarding/first-night-setup";
 import { loadFirstNight, saveFirstNight } from "@/services/profile/first-night";
@@ -40,6 +44,8 @@ export type FirstNightFinale = "none" | "drawing" | "reward" | "leaving";
 
 type FirstNightContextValue = {
   active: boolean;
+  /** The account's copy has been read, so `state` being null means it has never run. */
+  ready: boolean;
   state: FirstNightState | null;
   pendingNavLabels: readonly string[];
   justLit: FirstNightDiscoveryId | null;
@@ -52,6 +58,7 @@ type FirstNightContextValue = {
 
 const INACTIVE: FirstNightContextValue = {
   active: false,
+  ready: false,
   state: null,
   pendingNavLabels: [],
   justLit: null,
@@ -69,6 +76,7 @@ export function useFirstNight() {
 }
 
 const WELCOME_DISSOLVE_MS = 1_700;
+const LEAVE_MS = 1_000;
 const PHONE_WIDTH = 768;
 
 function initialState(userId: string): FirstNightState | null {
@@ -93,6 +101,8 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
   const router = useRouter();
   const [state, setState] = useState<FirstNightState | null>(() => initialState(userId));
   const stateRef = useRef(state);
+  // A link that starts or ends it has already decided; otherwise wait for the account.
+  const [ready, setReady] = useState(() => typeof window !== "undefined" && readFirstNightQuery(window.location.search) !== null);
   const [leavingWelcome, setLeavingWelcome] = useState(false);
   const [pointing, setPointing] = useState<FirstNightDiscoveryId | null>(null);
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -161,6 +171,9 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
       })
       .catch((error: unknown) => {
         console.warn("Could not load First night progress.", error);
+      })
+      .finally(() => {
+        if (active) setReady(true);
       });
     return () => {
       active = false;
@@ -193,14 +206,38 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const light = useCallback(
-    (id: FirstNightDiscoveryId) => {
-      change((current) => (current.lit.includes(id) ? current : { ...current, lit: [...current.lit, id] }));
+  /*
+   * A star lights when the app reports the thing itself: a page that saved,
+   * a card that was added, a question that came back marked. Nothing a note
+   * says can light one, so a star always stands for something done.
+   */
+  useEffect(() => {
+    if (!running) return;
+    const onAction = (event: Event) => {
+      const action = (event as CustomEvent<{ missionId?: OnboardingActionId }>).detail?.missionId;
+      const id = action ? FIRST_NIGHT_ACTIONS[action] : undefined;
+      const current = stateRef.current;
+      if (!id || !current || (current.stage !== "tour" && current.stage !== "exploring")) return;
+      if (current.lit.includes(id)) return;
+      change((latest) => (latest.lit.includes(id) ? latest : { ...latest, lit: [...latest.lit, id] }));
+      setPointing((pointed) => (pointed === id ? null : pointed));
       setJustLit(id);
-      setToast("A star lit in your first constellation");
-    },
-    [change]
-  );
+      setToast(`Star lit: ${getFirstNightDiscovery(id).title}`);
+    };
+    window.addEventListener(TUTORIAL_ACTION_EVENT, onAction);
+    return () => window.removeEventListener(TUTORIAL_ACTION_EVENT, onAction);
+  }, [change, running]);
+
+  // Heading for another page from a note: once there, the page's own note takes over.
+  useEffect(() => {
+    if (!running) return;
+    const onClick = (event: MouseEvent) => {
+      const element = event.target instanceof Element ? event.target : null;
+      if (element?.closest("[data-agent-nav]")) setPointing(null);
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [running]);
 
   const end = useCallback(() => {
     change((current) => ({ ...current, stage: "finished", intent: null }));
@@ -230,13 +267,14 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
     [change]
   );
 
-  /** The welcome's answers become folders, each with a first notebook, once. */
+  /** The welcome's answers become folders, once, while the "ready" screen plays. */
   const setUpSubjects = useCallback(
     (answers: FirstNightAnswers) => {
       if (setUpStarted.current || answers.subjects.length === 0) return;
       setUpStarted.current = true;
       void setUpFirstNightSubjects(userId, answers)
         .then((result) => {
+          change((current) => (current.examReady === result.examReady ? current : { ...current, examReady: result.examReady }));
           if (result.failed > 0) {
             setToast("Some of your folders could not be made. You can add them in Practice.");
           }
@@ -246,7 +284,7 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
           setToast("Your folders could not be made just now. You can add them in Practice.");
         });
     },
-    [userId]
+    [change, userId]
   );
 
   const enterApp = useCallback(() => {
@@ -257,16 +295,20 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
     window.setTimeout(() => setLeavingWelcome(false), WELCOME_DISSOLVE_MS);
   }, [change, router]);
 
-  const finish = useCallback(() => {
-    setFinale("leaving");
-    window.setTimeout(() => {
-      setFinale("none");
-      change((current) => ({ ...current, stage: "finished", intent: null }));
-    }, 1_000);
-  }, [change]);
+  /** The panel fades, then the walkthrough moves on to its next stage. */
+  const leaveTo = useCallback(
+    (stage: FirstNightStage) => {
+      setFinale("leaving");
+      window.setTimeout(() => {
+        setFinale("none");
+        change((current) => ({ ...current, stage, intent: null }));
+      }, LEAVE_MS);
+    },
+    [change]
+  );
 
-  // All five lit and back on Today: the figure completes, then the star.
-  const allLit = Boolean(state && state.stage === "exploring" && state.lit.length === FIRST_NIGHT_DISCOVERIES.length);
+  // Every star lit and back on Today: the figure completes, then the real star.
+  const allLit = Boolean(state && state.stage === "exploring" && allFirstNightLit(state));
   useEffect(() => {
     if (!allLit || pathname !== "/dashboard" || finale !== "none") return;
     const timer = window.setTimeout(() => setFinale("drawing"), 1_200);
@@ -276,11 +318,9 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
   /*
    * The finishing star is the account's real onboarding star, given once.
    *
-   * It used to be a star made up on the spot for the reward screen and saved
-   * nowhere, so a student was told they had earned a star their sky never
-   * showed. A replay, where the star already exists, finishes without claiming
-   * a new one; a sky with no room says the star is waiting, and it is tried
-   * again on a later visit.
+   * A replay, where the star already exists, still ends by showing the sky it
+   * is in. A sky with no room says the star is waiting, and it is tried again
+   * on a later visit; there is nothing to show yet, so the walkthrough ends.
    */
   useEffect(() => {
     if (finale !== "drawing") return;
@@ -295,27 +335,29 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
             setReward({ goalName: "First night", star: result.star });
             return;
           }
-          change((current) => ({ ...current, rewardState: result.status === "pending" ? "pending" : "awarded" }));
-          setToast(
-            result.status === "pending"
-              ? "Your first constellation is complete. Its star will appear once your sky has room."
-              : "Your first constellation is complete."
-          );
-          finish();
+          if (result.status === "pending") {
+            change((current) => ({ ...current, rewardState: "pending" }));
+            setToast("Your first constellation is complete. Its star will appear once your sky has room.");
+            leaveTo("finished");
+            return;
+          }
+          change((current) => ({ ...current, rewardState: "awarded" }));
+          setToast("Your first constellation is complete.");
+          leaveTo("sky");
         })
         .catch((error: unknown) => {
           if (cancelled) return;
           console.warn("Could not award the First night star.", error);
           change((current) => ({ ...current, rewardState: "pending" }));
           setToast("Your first constellation is complete. Its star will be added next time.");
-          finish();
+          leaveTo("finished");
         });
     }, 2_600);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [change, finale, finish, userId]);
+  }, [change, finale, leaveTo, userId]);
 
   // A star that was waiting for room is tried again once a visit.
   const rewardPending = state?.stage === "finished" && state.rewardState === "pending";
@@ -337,23 +379,6 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
       ? planFirstNightGuide({ state, pathname, isPhone, pointing, present: (selector) => presentSet.has(selector) })
       : null;
   const guide = plan && !dismissed.includes(plan.key) ? plan : null;
-  const guideTarget = guide?.target ?? null;
-  const guideLights = guide?.lights ?? null;
-
-  // Pressing the control a note points at is the discovery itself.
-  useEffect(() => {
-    if (!running) return;
-    const onClick = (event: MouseEvent) => {
-      const element = event.target instanceof Element ? event.target : null;
-      if (!element) return;
-      if (element.closest("[data-agent-nav]")) setPointing(null);
-      if (guideLights && guideTarget && element.closest(guideTarget)) {
-        window.setTimeout(() => light(guideLights), 350);
-      }
-    };
-    document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
-  }, [guideLights, guideTarget, light, running]);
 
   const finishGuide = () => {
     if (!guide) return;
@@ -367,11 +392,11 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
       case "clear-point":
         setPointing(null);
         break;
-      case "light":
-        if (guide.lights) light(guide.lights);
-        break;
       case "dismiss":
         setDismissed((current) => [...current, guide.key]);
+        break;
+      case "finish":
+        change((current) => ({ ...current, stage: "finished", intent: null }));
         break;
     }
   };
@@ -379,6 +404,7 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
   const value = useMemo<FirstNightContextValue>(
     () => ({
       active: running || finale !== "none",
+      ready,
       state,
       pendingNavLabels: finale === "none" ? pendingNavLabels(state) : [],
       justLit,
@@ -387,8 +413,10 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
       start,
       end,
     }),
-    [end, finale, justLit, point, running, start, state]
+    [end, finale, justLit, point, ready, running, start, state]
   );
+
+  const exploring = state?.stage === "tour" || state?.stage === "exploring";
 
   return (
     <FirstNightContext.Provider value={value}>
@@ -412,7 +440,7 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
       {toast ? (
         <div className="fn-toast" role="status">
           <Sparkle size={13} /> {toast}
-          {pathname !== "/dashboard" && running ? <span className="fn-toast-hint">See it on Today</span> : null}
+          {pathname !== "/dashboard" && exploring ? <span className="fn-toast-hint">See it on Today</span> : null}
         </div>
       ) : null}
 
@@ -420,7 +448,7 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
         reward={reward}
         onDone={() => {
           setReward(null);
-          if (finale === "reward") finish();
+          if (finale === "reward") leaveTo("sky");
         }}
       />
     </FirstNightContext.Provider>

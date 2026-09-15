@@ -110,6 +110,20 @@
       ]
     },
     {
+      "collectionGroup": "flashcardReviewEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "deckId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "reviewedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "notebooks",
       "queryScope": "COLLECTION",
       "fields": [

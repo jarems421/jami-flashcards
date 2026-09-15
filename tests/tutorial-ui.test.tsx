@@ -52,7 +52,10 @@ vi.mock("@/services/profile/first-night", () => ({
   saveFirstNight: async () => undefined,
 }));
 vi.mock("@/services/onboarding/first-night-setup", () => ({
-  setUpFirstNightSubjects: async () => ({ created: 0, failed: 0 }),
+  setUpFirstNightSubjects: async () => ({ created: 0, failed: 0, examReady: false }),
+}));
+vi.mock("@/services/study/exam-practice", () => ({
+  getExamCourseOptions: async () => [],
 }));
 
 const createOnboardingStarIfMissing = vi.hoisted(() => vi.fn());
@@ -121,18 +124,6 @@ function click(target: EventTarget | null | undefined) {
   });
 }
 
-function escape() {
-  act(() => {
-    (document.activeElement ?? document.body).dispatchEvent(
-      new KeyboardEvent("keydown", {
-        key: "Escape",
-        bubbles: true,
-        cancelable: true,
-      })
-    );
-  });
-}
-
 async function advance(ms: number) {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(ms);
@@ -176,21 +167,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("the walkthrough invitation", () => {
-  it("is not shown until an empty account asks for it", async () => {
+describe("a new account's first visit", () => {
+  it("shows nothing until Today says the account is empty", async () => {
     await render();
+    expect(firstNightWelcome()).toBeNull();
     expect(testId("tutorial-welcome")).toBeNull();
-
-    click(testId("invite"));
-    expect(testId("tutorial-welcome")).not.toBeNull();
-    expect(byText("Start walkthrough")).toBeDefined();
-    expect(byText("Explore on my own")).toBeDefined();
   });
 
-  it("opens First night and retires the mission walkthrough", async () => {
+  it("opens First night itself, and retires the mission walkthrough", async () => {
     await render();
     click(testId("invite"));
-    click(byText("Start walkthrough"));
 
     expect(firstNightWelcome()).not.toBeNull();
     expect(testId("tutorial-welcome")).toBeNull();
@@ -200,40 +186,13 @@ describe("the walkthrough invitation", () => {
     expect(push).not.toHaveBeenCalledWith("/dashboard/practice");
   });
 
-  it("retires the walkthrough only when Explore on my own is chosen", async () => {
+  it("leaves an account that has already been through a walkthrough alone", async () => {
+    loadTutorialProgress.mockResolvedValue(createInitialTutorialProgress("completed"));
     await render();
     click(testId("invite"));
-    click(byText("Explore on my own"));
 
-    expect(status()).toBe("dismissed");
-    expect(lastSaved().status).toBe("dismissed");
-    expect(testId("tutorial-welcome")).toBeNull();
-  });
-
-  it("treats Escape as 'not now', leaving the walkthrough on offer", async () => {
-    await render();
-    click(testId("invite"));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20);
-    });
-
-    escape();
-
-    expect(testId("tutorial-welcome")).toBeNull();
-    expect(status()).toBe("idle");
-    expect(saveTutorialProgress).not.toHaveBeenCalled();
-  });
-
-  it("is offered once a session, so closing it does not reopen it", async () => {
-    await render();
-    click(testId("invite"));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20);
-    });
-    escape();
-
-    click(testId("invite"));
-    expect(testId("tutorial-welcome")).toBeNull();
+    expect(firstNightWelcome()).toBeNull();
+    expect(status()).toBe("completed");
   });
 });
 

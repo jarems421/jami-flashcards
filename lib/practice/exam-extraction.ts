@@ -18,6 +18,11 @@ import {
   schemeMarkTotal,
   validateMarkSchemeItem,
 } from "@/lib/practice/mark-schemes";
+import { normalizeCommandWord } from "@/lib/practice/exam-command-words";
+import {
+  conceptParentTopicIds,
+  filterCanonicalConceptIds,
+} from "@/lib/practice/exam-specification-concepts";
 import { filterCanonicalTopicIds } from "@/lib/practice/exam-specification-topics";
 import {
   canPublishExamQuestion,
@@ -227,6 +232,23 @@ export function buildExamQuestionsFromExtraction(
       manifest.specificationId,
       suggestedTopics
     );
+    /*
+     * Concepts on the same terms, one grain finer -- except that a dropped
+     * concept is not an issue that holds the question back. A topic decides
+     * which questions a filtered session can contain; a concept the model
+     * missed only leaves a finer label unset, which a tagging pass can fill.
+     */
+    const { conceptIds: canonicalConcepts } = filterCanonicalConceptIds(
+      manifest.specificationId,
+      Array.isArray(item.conceptIds)
+        ? item.conceptIds.map((value) => text(value, 160)).filter(Boolean).slice(0, 20)
+        : []
+    );
+    const questionTopics = Array.from(
+      new Set([...canonicalTopics, ...conceptParentTopicIds(manifest.specificationId, canonicalConcepts)])
+    );
+    // Empty when the paper prints none: read and not found is a different answer from never read.
+    const commandWord = normalizeCommandWord(item.commandWord, prompt) ?? "";
 
     const issues = [
       !input.identityMatches ? "The paper does not identify itself as the one in the manifest." : "",
@@ -324,7 +346,9 @@ export function buildExamQuestionsFromExtraction(
         prompt,
         marks,
         assets: [],
-        topicIds: canonicalTopics,
+        topicIds: questionTopics,
+        conceptIds: canonicalConcepts,
+        commandWord,
         ...(calculatorAllowed === undefined ? {} : { calculatorAllowed }),
         difficulty: difficultyOf(item.difficulty),
         aiDifficulty: difficultyOf(item.difficulty),

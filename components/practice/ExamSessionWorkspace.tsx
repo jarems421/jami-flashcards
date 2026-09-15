@@ -44,6 +44,7 @@ import ExamQuestionMarkReport from "@/components/practice/ExamQuestionMarkReport
 import { requireExamWorkingSnapshot } from "@/lib/practice/exam-working";
 import ExamSubmittedAnswer from "@/components/practice/ExamSubmittedAnswer";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const DRAFT_SAVE_MS = 700;
 
@@ -374,6 +375,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
             }
           : current
       );
+      if (response.attempt.status === "marked") reportTutorialAction("mark-exam-answer");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Jami couldn't mark this one — your answer is saved.");
       await refresh();

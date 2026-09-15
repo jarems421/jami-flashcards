@@ -26,6 +26,16 @@ describe("notebook interaction lock", () => {
     expect(shouldSuppressNotebookNativeEvent(target)).toBe(false);
   });
 
+  it("treats a form field over the page, like the graph editor's, as text editing", () => {
+    const dialogField = makeTarget("input, textarea, select, [contenteditable='true']");
+    const fieldOnPage = makeTarget("input, textarea, select, [contenteditable='true']", ".notebook-page-surface");
+
+    expect(isNotebookTextEditingTarget(dialogField)).toBe(true);
+    expect(shouldSuppressNotebookNativeEvent(dialogField)).toBe(false);
+    // A control inside the page itself is still the page.
+    expect(isNotebookTextEditingTarget(fieldOnPage)).toBe(false);
+  });
+
   it("suppresses native selection events outside text editing", () => {
     const target = makeTarget();
 

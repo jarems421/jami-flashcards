@@ -50,10 +50,12 @@ export async function getExamAvailability(
   folderId: string,
   topicIds: string[] = [],
   calculator?: ExamCalculatorChoice,
-  paperIds: string[] = []
+  paperIds: string[] = [],
+  conceptIds: string[] = []
 ) {
   const params = new URLSearchParams({ folderId });
   topicIds.forEach((id) => params.append("topicId", id));
+  conceptIds.forEach((id) => params.append("conceptId", id));
   paperIds.forEach((id) => params.append("paperId", id));
   if (calculator && calculator !== "any") params.set("calculator", calculator);
   return request(`/api/practice/exam-questions/availability?${params}`) as Promise<{
@@ -61,7 +63,8 @@ export async function getExamAvailability(
     counts: Record<ExamDifficulty, number>;
     /** A count that stopped at a session's worth rather than at the corpus. */
     hasMore: Record<ExamDifficulty, boolean>;
-    topics: Array<{ id: string; label: string }>;
+    /** Each topic with the finer concepts beneath it, where the course has a checked list. */
+    topics: Array<{ id: string; label: string; concepts?: Array<{ id: string; label: string }> }>;
     papers: ExamCoursePaper[];
     /** Whether any of this course's papers carries a calculator rule. */
     calculatorPolicyKnown: boolean;
@@ -79,6 +82,7 @@ export async function createPastPaperPracticeSession(input: {
   folderId: string;
   mix: Record<ExamDifficulty, number>;
   topicIds?: string[];
+  conceptIds?: string[];
   originNotebookId?: string;
   allowGenerated?: boolean;
   useAvailableOnly?: boolean;

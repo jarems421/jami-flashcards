@@ -7,11 +7,22 @@ import { EmptyState, Skeleton } from "@/components/ui";
 import { featureFlags } from "@/lib/app/feature-flags";
 import ExamSessionSetup from "@/components/practice/ExamSessionSetup";
 
+/** Specification topic or concept ids from a link, such as a study action narrowing practice to one. */
+function readIds(value: string | null) {
+  return (value ?? "")
+    .split(",")
+    .map((topicId) => topicId.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 function NewPastPaperPracticeSetup() {
   const search = useSearchParams();
   return (
     <ExamSessionSetup
       initialFolderId={search.get("folderId") ?? search.get("folder") ?? ""}
+      initialTopicIds={readIds(search.get("topics"))}
+      initialConceptIds={readIds(search.get("concepts"))}
       originNotebookId={search.get("notebookId") ?? search.get("notebook") ?? undefined}
     />
   );

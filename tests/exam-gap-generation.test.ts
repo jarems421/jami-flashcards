@@ -112,3 +112,48 @@ describe("writing Jami-created questions for a shortfall", () => {
     expect(saved).toHaveLength(0);
   });
 });
+
+/**
+ * A session narrowed to a concept that the bank cannot fill.
+ *
+ * The writer is told which concept, by name, and a question it writes may
+ * claim only the concepts it was asked for -- bringing their topics with them.
+ */
+describe("writing Jami-created questions for a concept", () => {
+  const QUADRATICS = "aqa-8300-algebra-quadratic-equations";
+
+  beforeEach(() => {
+    generateAiText.mockReset();
+    saved.length = 0;
+  });
+
+  it("names the concept and keeps only the concepts it asked for", async () => {
+    generateAiText.mockImplementation(async (call) => {
+      const text = call.request.contents[0].parts[0].text as string;
+      expect(text).toContain(`Concepts to write for: [{"id":"${QUADRATICS}","label":"Solving quadratic equations"}]`);
+      const written = JSON.parse(answer(call)) as { questions: Record<string, unknown>[] };
+      return JSON.stringify({
+        questions: written.questions.map((item) => ({ ...item, conceptIds: [QUADRATICS, "aqa-8300-invented"] })),
+      });
+    });
+
+    const questions = await generateExamGapQuestions({
+      uid: "student-1",
+      subject: "Maths",
+      subjectKey: "maths",
+      studyLevel: "gcse-equivalent",
+      course: {
+        board: "aqa", qualification: "gcse", specificationId: "8300",
+        specificationTitle: "GCSE Mathematics", tier: "higher", componentIds: [],
+      },
+      missing: { easy: 1 },
+      topicIds: [],
+      conceptIds: [QUADRATICS],
+    } as Parameters<typeof generateExamGapQuestions>[0]);
+
+    expect(questions[0]).toMatchObject({
+      conceptIds: [QUADRATICS],
+      topicIds: ["aqa-8300-algebra-solving-equations-and-inequalities"],
+    });
+  });
+});

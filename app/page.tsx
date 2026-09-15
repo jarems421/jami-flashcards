@@ -265,8 +265,8 @@ export default function Home() {
                 />
               </div>
               <p className="mt-4 text-center text-sm leading-6 text-text-secondary">
-                A new account starts with {CONSTELLATION_TRAIL_LENGTH} short missions,
-                from your first folder to your first review.
+                Your first night sets up your subjects, shows you round Jami, and
+                lights your first star.
               </p>
             </div>
             <p className="mt-6 text-xs leading-5 text-text-muted">

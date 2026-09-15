@@ -52,6 +52,30 @@ export function getCustomStudyHref(options?: {
   return `/dashboard/study?${searchParams.toString()}`;
 }
 
+export function getFolderHref(folderId: string, tab?: "practice" | "decks" | "sources") {
+  const base = `/dashboard/folders/${encodeURIComponent(folderId)}`;
+  return tab ? `${base}?tab=${tab}` : base;
+}
+
+export function getTopicHref(topicId: string) {
+  return `/dashboard/topics/${encodeURIComponent(topicId)}`;
+}
+
+/** Past Paper Practice setup for a folder, optionally narrowed to specification topics. */
+export function getQuestionPracticeSetupHref(input: {
+  folderId: string;
+  topicIds?: string[];
+  /** Specification concepts, one grain finer than topics. */
+  conceptIds?: string[];
+}) {
+  const searchParams = new URLSearchParams({ folderId: input.folderId });
+  const topicIds = (input.topicIds ?? []).filter(Boolean);
+  if (topicIds.length > 0) searchParams.set("topics", topicIds.join(","));
+  const conceptIds = (input.conceptIds ?? []).filter(Boolean);
+  if (conceptIds.length > 0) searchParams.set("concepts", conceptIds.join(","));
+  return `/dashboard/practice/questions/new?${searchParams.toString()}`;
+}
+
 export function getDeckStudyHref(deckId: string, topicId?: string) {
   return getCustomStudyHref({
     mode: "custom",
