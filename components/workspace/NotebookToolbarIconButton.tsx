@@ -22,7 +22,6 @@ export type NotebookIconName =
   | "alert"
   | "close"
   | "image"
-  | "select"
   | "expand"
   | "minus"
   | "graph";
@@ -169,9 +168,7 @@ export function NotebookIcon({ name }: { name: NotebookIconName }) {
           <path {...common} d="M7.6 16.4c1.9-6.9 4.1-8.6 5.8-5.6 1.3 2.3 2.8 2.2 4.4-2.6" />
         </>
       ) : null}
-      {name === "select" ? (
-        <path {...common} d="M6.2 4.6 18.4 10.8l-5.5 1.7-2.6 5.4L6.2 4.6Z" />
-      ) : null}
+
     </svg>
   );
 }

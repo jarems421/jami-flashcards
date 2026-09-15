@@ -15,7 +15,6 @@ let root: Root;
 
 const onSelectDrawingTool = vi.fn();
 const onToggleTextTool = vi.fn();
-const onSelectTool = vi.fn();
 const onAddImage = vi.fn();
 const onAddGraph = vi.fn();
 const onUndo = vi.fn();
@@ -43,7 +42,6 @@ function render(
         openMenu={overrides.openMenu ?? null}
         onSelectDrawingTool={onSelectDrawingTool}
         onToggleTextTool={onToggleTextTool}
-        onSelectTool={onSelectTool}
         onAddImage={onAddImage}
         addingImage={overrides.addingImage ?? false}
         onAddGraph={onAddGraph}
@@ -73,7 +71,6 @@ function click(label: string) {
 beforeEach(() => {
   onSelectDrawingTool.mockClear();
   onToggleTextTool.mockClear();
-  onSelectTool.mockClear();
   onAddImage.mockClear();
   onUndo.mockClear();
   onRedo.mockClear();
@@ -141,17 +138,12 @@ describe("NotebookDrawingToolbar", () => {
   });
 
   /*
-   * Moving an image needs the select tool, and there was no way back to it from
-   * the toolbar -- only Escape, or a Tutor visual being inserted.
+   * The pointer button was taken off. Images and graphs are moved with the text
+   * tool on, or with no tool on, so nothing on the bar is needed for it.
    */
-  it("offers a way back to selecting, and marks it while it is the tool", () => {
-    render({ tool: "pen" });
-    expect(button("Select and move (V)").dataset.active).not.toBe("true");
-    click("Select and move (V)");
-    expect(onSelectTool).toHaveBeenCalledTimes(1);
-
+  it("has no select button", () => {
     render({ tool: "select" });
-    expect(button("Select and move (V)").dataset.active).toBe("true");
+    expect(container.querySelector('[aria-label^="Select"]')).toBeNull();
   });
 
   it("hands a chosen picture to the page, and holds the button while one uploads", () => {

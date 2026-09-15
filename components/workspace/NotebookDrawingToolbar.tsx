@@ -41,8 +41,6 @@ type Props = {
    */
   onSelectDrawingTool: (tool: "pen" | "highlighter" | "eraser") => void;
   onToggleTextTool: () => void;
-  /** Back to selecting, where images and text boxes can be moved. */
-  onSelectTool: () => void;
   /** A picture chosen from the device, to place on the current page. */
   onAddImage: (file: File) => void;
   addingImage: boolean;
@@ -81,7 +79,6 @@ function NotebookDrawingToolbar({
   openMenu,
   onSelectDrawingTool,
   onToggleTextTool,
-  onSelectTool,
   onAddImage,
   addingImage,
   onAddGraph,
@@ -111,6 +108,7 @@ function NotebookDrawingToolbar({
           <ToolbarIconButton
             label="Pen (P)"
             icon="pen"
+            tutorialTarget="pen"
             active={tool === "pen" || openMenu === "pen"}
             expanded={openMenu === "pen"}
             controls={NOTEBOOK_TOOL_SETTINGS_ID}
@@ -147,12 +145,7 @@ function NotebookDrawingToolbar({
           active={tool === "text"}
           onClick={onToggleTextTool}
         />
-        <ToolbarIconButton
-          label="Select and move (V)"
-          icon="select"
-          active={tool === "select"}
-          onClick={onSelectTool}
-        />
+
         <ToolbarIconButton
           label={addingImage ? "Adding image…" : "Add image"}
           icon="image"

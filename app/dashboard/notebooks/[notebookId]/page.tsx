@@ -166,6 +166,18 @@ import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette"
 
 type Point = { x: number; y: number };
 type EditorTool = NotebookStrokeTool | "text" | "select";
+
+/*
+ * Whether images and graphs can be picked up and moved.
+ *
+ * There is no select button any more. Select is still where the notebook rests
+ * when no tool is on, but on an iPad without a keyboard nothing leads back to
+ * it once a pen is chosen -- so the text tool, the one non-drawing tool on the
+ * toolbar, moves placed things too.
+ */
+function movesPlacedItems(tool: EditorTool) {
+  return tool === "select" || tool === "text";
+}
 type PageSwipeState = {
   pointerId: number;
   startX: number;
@@ -854,7 +866,7 @@ export default function NotebookEditorPage() {
   }, [selectedPage?.id]);
 
   useEffect(() => {
-    if (tool !== "select") setSelectedImageId(null);
+    if (!movesPlacedItems(tool)) setSelectedImageId(null);
   }, [tool]);
 
   // With js-draw as the single ink engine, switching tools only updates the
@@ -2340,10 +2352,6 @@ export default function NotebookEditorPage() {
     switchNotebookTool(pageState.read().tool === "text" ? "select" : "text");
   }, [closeDrawingToolMenus, pageState, switchNotebookTool]);
 
-  const handleSelectTool = useCallback(() => {
-    closeDrawingToolMenus();
-    switchNotebookTool("select");
-  }, [closeDrawingToolMenus, switchNotebookTool]);
 
   const handleAddImage = useCallback(
     (file: File) => {
@@ -2565,7 +2573,7 @@ export default function NotebookEditorPage() {
   }, [selectedPage?.id]);
 
   useEffect(() => {
-    if (tool !== "select") setSelectedGraphId(null);
+    if (!movesPlacedItems(tool)) setSelectedGraphId(null);
   }, [tool]);
 
   const handleToolbarUndo = useCallback(() => {
@@ -3052,7 +3060,7 @@ export default function NotebookEditorPage() {
                   <NotebookImageLayer
                     images={selectedPage.imageRefs}
                     editingEnabled={
-                      tool === "select" &&
+                      movesPlacedItems(tool) &&
                       fullNotebookEditingEnabled &&
                       !isPhoneLayout &&
                       !practicePaperEditingLocked
@@ -3065,7 +3073,7 @@ export default function NotebookEditorPage() {
                   <NotebookGraphLayer
                     graphs={selectedPage.graphBlocks}
                     editingEnabled={
-                      tool === "select" &&
+                      movesPlacedItems(tool) &&
                       fullNotebookEditingEnabled &&
                       !isPhoneLayout &&
                       !practicePaperEditingLocked
@@ -3169,7 +3177,7 @@ export default function NotebookEditorPage() {
                 openMenu={openToolMenu}
                 onSelectDrawingTool={handleSelectDrawingTool}
                 onToggleTextTool={handleToggleTextTool}
-                onSelectTool={handleSelectTool}
+
                 onAddImage={handleAddImage}
                 addingImage={addingImage}
                 onAddGraph={handleOpenNewGraph}
