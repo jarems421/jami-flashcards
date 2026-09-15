@@ -271,6 +271,7 @@ export function compileGraphExpression(
 }
 
 export type GraphViewWindow = { xMin: number; xMax: number; yMin: number; yMax: number };
+export type GraphPoint = { x: number; y: number };
 
 /**
  * Points along a function across a view, split wherever the curve leaves the real numbers or jumps.
@@ -279,39 +280,111 @@ export type GraphViewWindow = { xMin: number; xMax: number; yMin: number; yMax: 
  * stroke through the asymptote, which is exactly the kind of inaccuracy a real
  * graph is here to avoid. So the line breaks where the function is undefined,
  * and where consecutive samples leap across most of the view in opposite
- * directions.
+ * directions. Values outside the view are kept as they are, for
+ * `clipGraphPolyline` to cut exactly at its edge.
  */
 export function sampleGraphFunction(
   evaluate: (x: number) => number,
   view: GraphViewWindow,
   samples = 480
-): Array<Array<{ x: number; y: number }>> {
+): GraphPoint[][] {
   const count = Math.max(8, Math.min(4_000, Math.round(samples)));
   const span = view.yMax - view.yMin;
-  const lowest = view.yMin - span * 2;
-  const highest = view.yMax + span * 2;
-  const segments: Array<Array<{ x: number; y: number }>> = [];
-  let current: Array<{ x: number; y: number }> = [];
-  let previous: { x: number; y: number } | null = null;
+  const middle = (view.yMin + view.yMax) / 2;
+  const segments: GraphPoint[][] = [];
+  let current: GraphPoint[] = [];
+  let previous: GraphPoint | null = null;
   for (let index = 0; index <= count; index += 1) {
     const x = view.xMin + ((view.xMax - view.xMin) * index) / count;
     const y = evaluate(x);
-    const jumped =
-      previous !== null &&
-      Number.isFinite(y) &&
-      Math.abs(y - previous.y) > span * 1.5 &&
-      Math.sign(y - (view.yMin + view.yMax) / 2) !== Math.sign(previous.y - (view.yMin + view.yMax) / 2);
-    if (!Number.isFinite(y) || jumped) {
+    if (!Number.isFinite(y)) {
       if (current.length > 1) segments.push(current);
       current = [];
-      previous = Number.isFinite(y) ? { x, y } : null;
-      if (Number.isFinite(y)) current.push({ x, y: Math.max(lowest, Math.min(highest, y)) });
+      previous = null;
       continue;
     }
-    const point = { x, y: Math.max(lowest, Math.min(highest, y)) };
-    current.push(point);
+    const jumped =
+      previous !== null &&
+      Math.abs(y - previous.y) > span * 1.5 &&
+      Math.sign(y - middle) !== Math.sign(previous.y - middle);
+    if (jumped) {
+      if (current.length > 1) segments.push(current);
+      current = [];
+    }
+    current.push({ x, y });
     previous = { x, y };
   }
   if (current.length > 1) segments.push(current);
   return segments;
+}
+
+/** One line segment cut to a rectangle (Liang–Barsky), or null when none of it is inside. */
+function clipSegment(from: GraphPoint, to: GraphPoint, view: GraphViewWindow): [GraphPoint, GraphPoint] | null {
+  let start = 0;
+  let end = 1;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const edges: Array<[number, number]> = [
+    [-dx, from.x - view.xMin],
+    [dx, view.xMax - from.x],
+    [-dy, from.y - view.yMin],
+    [dy, view.yMax - from.y],
+  ];
+  for (const [direction, distance] of edges) {
+    if (direction === 0) {
+      if (distance < 0) return null;
+      continue;
+    }
+    const ratio = distance / direction;
+    if (direction < 0) {
+      if (ratio > end) return null;
+      if (ratio > start) start = ratio;
+    } else {
+      if (ratio < start) return null;
+      if (ratio < end) end = ratio;
+    }
+  }
+  // The ends themselves when nothing was cut, so a piece stays joined to the next.
+  return [
+    start === 0 ? from : { x: from.x + start * dx, y: from.y + start * dy },
+    end === 1 ? to : { x: from.x + end * dx, y: from.y + end * dy },
+  ];
+}
+
+/**
+ * A line through points, cut exactly at the edges of the view.
+ *
+ * Drawing is kept inside the axes by arithmetic rather than by an SVG clip
+ * path. A clip path depends on the browser resolving a reference by id, and a
+ * graph whose curve vanished while its axes stayed put is exactly what a
+ * failed reference looks like; cutting the line here cannot fail that way, and
+ * it also keeps a steep curve's far-off coordinates out of the drawing.
+ */
+export function clipGraphPolyline(points: readonly GraphPoint[], view: GraphViewWindow): GraphPoint[][] {
+  const pieces: GraphPoint[][] = [];
+  let current: GraphPoint[] = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const from = points[index - 1]!;
+    const to = points[index]!;
+    const clipped = clipSegment(from, to, view);
+    if (!clipped) {
+      if (current.length > 1) pieces.push(current);
+      current = [];
+      continue;
+    }
+    const [start, end] = clipped;
+    const last = current[current.length - 1];
+    if (!last || last.x !== start.x || last.y !== start.y) {
+      if (current.length > 1) pieces.push(current);
+      current = [start];
+    }
+    current.push(end);
+    // Left the view part-way along this segment: the piece ends at the edge.
+    if (end.x !== to.x || end.y !== to.y) {
+      pieces.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 1) pieces.push(current);
+  return pieces;
 }

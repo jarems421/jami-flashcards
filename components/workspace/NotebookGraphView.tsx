@@ -1,7 +1,11 @@
 "use client";
 
-import { memo, useId, useMemo } from "react";
-import { compileGraphExpression, sampleGraphFunction } from "@/lib/math/graph-expression";
+import { memo, useMemo } from "react";
+import {
+  clipGraphPolyline,
+  compileGraphExpression,
+  sampleGraphFunction,
+} from "@/lib/math/graph-expression";
 import {
   formatGraphTick,
   graphPlotArea,
@@ -33,10 +37,11 @@ function describeGraph(graph: NotebookGraphDraft) {
  * A graph drawn from its data, so it is exact at any size.
  *
  * Every curve is sampled from the function itself across the current view, so
- * zooming in shows more of the curve rather than a blurred picture of it.
+ * zooming in shows more of the curve rather than a blurred picture of it, and
+ * each line is cut at the edge of the axes in arithmetic -- see
+ * `clipGraphPolyline` for why there is no clip path.
  */
 function NotebookGraphView({ graph, width, height, className = "" }: Props) {
-  const clipId = useId();
   const { view, series } = graph;
   const plot = graphPlotArea(width, height, Boolean(graph.title));
   const plotWidth = plot.right - plot.left;
@@ -52,31 +57,40 @@ function NotebookGraphView({ graph, width, height, className = "" }: Props) {
   const axisX = yAxisVisible ? toX(0) : plot.left;
   const showLegend = series.length > 1 || series.some((entry) => entry.label);
 
-  const curves = useMemo(
-    () =>
-      series.map((entry) => {
-        if (entry.kind !== "function") return { id: entry.id, color: entry.color, paths: [] as string[] };
-        const compiled = compileGraphExpression(entry.expression, entry.angleUnit);
-        if (!compiled.ok) return { id: entry.id, color: entry.color, paths: [] as string[] };
-        const segments = sampleGraphFunction(compiled.evaluate, view, Math.max(160, Math.round(plotWidth * 1.5)));
-        const scaleX = plotWidth / (view.xMax - view.xMin);
-        const scaleY = plotHeight / (view.yMax - view.yMin);
+  const lines = useMemo(() => {
+    const scaleX = plotWidth / (view.xMax - view.xMin);
+    const scaleY = plotHeight / (view.yMax - view.yMin);
+    const toPath = (piece: Array<{ x: number; y: number }>) =>
+      piece
+        .map((point, index) => {
+          const x = plot.left + (point.x - view.xMin) * scaleX;
+          const y = plot.bottom - (point.y - view.yMin) * scaleY;
+          return `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`;
+        })
+        .join(" ");
+    return series.map((entry) => {
+      if (entry.kind === "points") {
         return {
           id: entry.id,
           color: entry.color,
-          paths: segments.map((segment) =>
-            segment
-              .map((point, index) => {
-                const x = plot.left + (point.x - view.xMin) * scaleX;
-                const y = plot.bottom - (point.y - view.yMin) * scaleY;
-                return `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`;
-              })
-              .join(" ")
-          ),
+          width: 2,
+          paths: entry.connect ? clipGraphPolyline(entry.points, view).map(toPath) : [],
         };
-      }),
-    [series, view, plot.left, plot.bottom, plotWidth, plotHeight]
-  );
+      }
+      const compiled = compileGraphExpression(entry.expression, entry.angleUnit);
+      const paths = compiled.ok
+        ? sampleGraphFunction(compiled.evaluate, view, Math.max(160, Math.round(plotWidth * 1.5)))
+            .flatMap((segment) => clipGraphPolyline(segment, view))
+            .map(toPath)
+        : [];
+      return { id: entry.id, color: entry.color, width: 2.4, paths };
+    });
+  }, [series, view, plot.left, plot.bottom, plotWidth, plotHeight]);
+
+  const visiblePoints = (points: Array<{ x: number; y: number }>) =>
+    points.filter(
+      (point) => point.x >= view.xMin && point.x <= view.xMax && point.y >= view.yMin && point.y <= view.yMax
+    );
 
   return (
     <svg
@@ -92,9 +106,6 @@ function NotebookGraphView({ graph, width, height, className = "" }: Props) {
           {graph.title}
         </text>
       ) : null}
-      <clipPath id={clipId}>
-        <rect x={plot.left} y={plot.top} width={plotWidth} height={plotHeight} />
-      </clipPath>
 
       {graph.showGrid ? (
         <g stroke="#e5e7eb" strokeWidth={1}>
@@ -141,37 +152,30 @@ function NotebookGraphView({ graph, width, height, className = "" }: Props) {
         </text>
       ) : null}
 
-      <g clipPath={`url(#${clipId})`} fill="none" strokeLinecap="round" strokeLinejoin="round">
-        {curves.map((curve) =>
-          curve.paths.map((path, index) => (
-            <path key={`${curve.id}-${index}`} d={path} stroke={curve.color} strokeWidth={2.2} />
+      <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+        {lines.map((line) =>
+          line.paths.map((path, index) => (
+            <path key={`${line.id}-${index}`} d={path} stroke={line.color} strokeWidth={line.width} />
           ))
         )}
-        {series.map((entry) =>
-          entry.kind === "points" ? (
-            <g key={entry.id}>
-              {entry.connect && entry.points.length > 1 ? (
-                <polyline
-                  points={entry.points.map((point) => `${toX(point.x)},${toY(point.y)}`).join(" ")}
-                  stroke={entry.color}
-                  strokeWidth={2}
-                />
-              ) : null}
-              {entry.points.map((point, index) => (
-                <circle
-                  key={`${entry.id}-p${index}`}
-                  cx={toX(point.x)}
-                  cy={toY(point.y)}
-                  r={3.6}
-                  fill={entry.color}
-                  stroke="#ffffff"
-                  strokeWidth={1}
-                />
-              ))}
-            </g>
-          ) : null
-        )}
       </g>
+      {series.map((entry) =>
+        entry.kind === "points" ? (
+          <g key={`dots-${entry.id}`}>
+            {visiblePoints(entry.points).map((point, index) => (
+              <circle
+                key={`${entry.id}-p${index}`}
+                cx={toX(point.x)}
+                cy={toY(point.y)}
+                r={3.6}
+                fill={entry.color}
+                stroke="#ffffff"
+                strokeWidth={1}
+              />
+            ))}
+          </g>
+        ) : null
+      )}
 
       {showLegend ? (
         <g fontSize={11} fontWeight={600} textAnchor="end" stroke="#ffffff" strokeWidth={3} paintOrder="stroke">

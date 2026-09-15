@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileGraphExpression, sampleGraphFunction } from "@/lib/math/graph-expression";
+import { clipGraphPolyline, compileGraphExpression, sampleGraphFunction } from "@/lib/math/graph-expression";
 
 const at = (source: string, x: number, angle: "degrees" | "radians" = "radians") => {
   const compiled = compileGraphExpression(source, angle);
@@ -16,6 +16,7 @@ describe("compileGraphExpression", () => {
     expect(at("|x - 3|", 1)).toBe(2);
     expect(at("√x", 9)).toBe(3);
     expect(at("2^x", 3)).toBe(8);
+    expect(at("x³ − 3x", 2)).toBe(2);
   });
 
   it("follows the order of operations a student expects", () => {
@@ -60,5 +61,35 @@ describe("sampleGraphFunction", () => {
     const segments = sampleGraphFunction(compiled.evaluate, view, 101);
     expect(segments.length).toBeGreaterThanOrEqual(2);
     expect(segments.every((segment) => segment.every((point) => Math.sign(point.x) === Math.sign(segment[0].x)))).toBe(true);
+  });
+});
+
+describe("clipGraphPolyline", () => {
+  const view = { xMin: -10, xMax: 10, yMin: -10, yMax: 10 };
+
+  it("cuts a curve exactly where it leaves the view, and keeps what is inside", () => {
+    const compiled = compileGraphExpression("x^2");
+    if (!compiled.ok) throw new Error(compiled.error);
+    const pieces = sampleGraphFunction(compiled.evaluate, view, 400).flatMap((segment) => clipGraphPolyline(segment, view));
+    expect(pieces).toHaveLength(1);
+    const piece = pieces[0]!;
+    expect(piece.every((point) => point.y >= -10 - 1e-9 && point.y <= 10 + 1e-9)).toBe(true);
+    // x² reaches 10 at ±√10.
+    expect(piece[0]!.y).toBeCloseTo(10, 6);
+    expect(piece[0]!.x).toBeCloseTo(-Math.sqrt(10), 2);
+    expect(piece.at(-1)!.x).toBeCloseTo(Math.sqrt(10), 2);
+  });
+
+  it("draws nothing for a curve entirely outside the view", () => {
+    expect(clipGraphPolyline([{ x: -10, y: 20 }, { x: 10, y: 30 }], view)).toEqual([]);
+  });
+
+  it("keeps the part of a line that crosses the view from outside to outside", () => {
+    expect(clipGraphPolyline([{ x: -20, y: 0 }, { x: 20, y: 0 }], view)).toEqual([
+      [
+        { x: -10, y: 0 },
+        { x: 10, y: 0 },
+      ],
+    ]);
   });
 });

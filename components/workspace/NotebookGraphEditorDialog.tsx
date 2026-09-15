@@ -20,13 +20,13 @@ import {
   type GraphViewWindow,
 } from "@/lib/math/graph-expression";
 import {
-  DEFAULT_GRAPH_VIEW,
   fitGraphYRange,
   formatGraphPointsText,
   GRAPH_POINTS_COLOR,
   GRAPH_SERIES_COLORS,
   MAX_GRAPH_SERIES,
   normalizeGraphDraft,
+  normalizeGraphView,
   parseGraphPointsText,
   type NotebookGraphDraft,
   type NotebookGraphSeries,
@@ -35,27 +35,20 @@ import {
 const PREVIEW_WIDTH = 460;
 const PREVIEW_HEIGHT = 368;
 /** One series is kept back for plotted points. */
-const MAX_FUNCTIONS = MAX_GRAPH_SERIES - 1;
-const SERIES_COLORS: readonly string[] = GRAPH_SERIES_COLORS;
+const MAX_EQUATIONS = MAX_GRAPH_SERIES - 1;
+const EXAMPLES = ["x²", "2x + 1", "x³ − 3x", "sin x"];
 const ANGLE_OPTIONS = [
-  { value: "degrees", label: "Degrees", detail: "sin x peaks at x = 90" },
-  { value: "radians", label: "Radians", detail: "sin x peaks at x = π/2" },
+  { value: "degrees", label: "Degrees" },
+  { value: "radians", label: "Radians" },
 ] as const;
+/** Settings for a field of maths: iPad autocorrect turns "sinx" into "since". */
+const MATH_FIELD = { autoCapitalize: "off", autoCorrect: "off", autoComplete: "off", spellCheck: false } as const;
 
-type FunctionRow = { id: string; expression: string; color: string };
-type AxisText = Record<keyof GraphViewWindow, string>;
+type Equation = { id: string; expression: string; color: string };
 
-let rowCount = 0;
-const newRowId = () => `function-${Date.now().toString(36)}-${(rowCount += 1)}`;
-
+let equationCount = 0;
+const newEquationId = () => `function-${Date.now().toString(36)}-${(equationCount += 1)}`;
 const formatAxis = (value: number) => String(Number(value.toPrecision(4)));
-const axisTextFor = (view: GraphViewWindow): AxisText => ({
-  xMin: formatAxis(view.xMin),
-  xMax: formatAxis(view.xMax),
-  yMin: formatAxis(view.yMin),
-  yMax: formatAxis(view.yMax),
-});
-const readAxis = (value: string) => (value.trim() ? Number(value.replace(/[−–]/g, "-")) : Number.NaN);
 
 type Props = {
   open: boolean;
@@ -70,25 +63,31 @@ export default function NotebookGraphEditorDialog({ open, ...props }: Props) {
   return open ? <GraphEditor {...props} /> : null;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function OptionGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="space-y-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">{title}</h3>
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-text-secondary">{title}</p>
       {children}
-    </section>
+    </div>
   );
 }
 
+/**
+ * Making a graph, kept to what a student came for: type an equation, see it.
+ *
+ * The first version put every setting on screen at once -- colours, points,
+ * four axis limits, two labels, a grid switch, a title -- so the one field that
+ * mattered was one of a dozen. Now the equation box leads, with examples to tap
+ * for anyone unsure what to write, and the graph beside it fits itself to what
+ * is typed until the student moves it. Everything else waits under More options.
+ */
 function GraphEditor({ graph, onCancel, onSave }: Omit<Props, "open">) {
-  const [title, setTitle] = useState(graph?.title ?? "");
-  const [xLabel, setXLabel] = useState(graph?.xLabel ?? "x");
-  const [yLabel, setYLabel] = useState(graph?.yLabel ?? "y");
-  const [functions, setFunctions] = useState<FunctionRow[]>(() => {
+  const [equations, setEquations] = useState<Equation[]>(() => {
     const rows =
       graph?.series.flatMap((entry) =>
         entry.kind === "function" ? [{ id: entry.id, expression: entry.expression, color: entry.color }] : []
       ) ?? [];
-    return rows.length > 0 ? rows : [{ id: newRowId(), expression: "", color: GRAPH_SERIES_COLORS[0] }];
+    return rows.length > 0 ? rows : [{ id: newEquationId(), expression: "", color: GRAPH_SERIES_COLORS[0] }];
   });
   const [angleUnit, setAngleUnit] = useState<GraphAngleUnit>(() => {
     const first = graph?.series.find((entry) => entry.kind === "function");
@@ -103,25 +102,24 @@ function GraphEditor({ graph, onCancel, onSave }: Omit<Props, "open">) {
     const points = graph?.series.find((entry) => entry.kind === "points");
     return points?.kind === "points" ? points.connect : false;
   });
+  const [title, setTitle] = useState(graph?.title ?? "");
+  const [xLabel, setXLabel] = useState(graph?.xLabel ?? "x");
+  const [yLabel, setYLabel] = useState(graph?.yLabel ?? "y");
   const [showGrid, setShowGrid] = useState(graph?.showGrid ?? true);
-  const [view, setView] = useState<GraphViewWindow>(graph?.view ?? DEFAULT_GRAPH_VIEW);
-  const [axisText, setAxisText] = useState<AxisText>(() => axisTextFor(graph?.view ?? DEFAULT_GRAPH_VIEW));
-
-  const applyView = (next: GraphViewWindow) => {
-    setView(next);
-    setAxisText(axisTextFor(next));
-  };
+  /** A view the student chose by moving, zooming or typing limits; null while it fits itself. */
+  const [chosenView, setChosenView] = useState<GraphViewWindow | null>(graph?.view ?? null);
 
   const checks = useMemo(
     () =>
-      functions.map((row) => {
+      equations.map((row) => {
         const expression = row.expression.trim();
         const compiled = expression ? compileGraphExpression(expression, angleUnit) : null;
         return { row, expression, error: compiled && !compiled.ok ? compiled.error : "" };
       }),
-    [angleUnit, functions]
+    [angleUnit, equations]
   );
   const parsedPoints = useMemo(() => parseGraphPointsText(pointsText), [pointsText]);
+  const usesTrig = equations.some((row) => /sin|cos|tan/i.test(row.expression));
   const series = useMemo<NotebookGraphSeries[]>(
     () => [
       ...checks
@@ -147,6 +145,17 @@ function GraphEditor({ graph, onCancel, onSave }: Omit<Props, "open">) {
     ],
     [angleUnit, checks, joinPoints, parsedPoints.points]
   );
+  /*
+   * Fitted to what is plotted, so whatever is typed can be seen: a fixed
+   * -10 to 10 view left y = x² + 20 entirely off the top of an empty grid.
+   */
+  const fittedView = useMemo(() => {
+    const degreesTrig = usesTrig && angleUnit === "degrees";
+    const xMin = degreesTrig ? 0 : -10;
+    const xMax = degreesTrig ? 360 : 10;
+    return fitGraphYRange(series, xMin, xMax) ?? normalizeGraphView({ xMin, xMax, yMin: -10, yMax: 10 });
+  }, [angleUnit, series, usesTrig]);
+  const view = chosenView ?? fittedView;
   const draft = useMemo(
     () => normalizeGraphDraft({ view, series, showGrid, title, xLabel, yLabel }),
     [series, showGrid, title, view, xLabel, yLabel]
@@ -159,37 +168,29 @@ function GraphEditor({ graph, onCancel, onSave }: Omit<Props, "open">) {
     viewBoxWidth: PREVIEW_WIDTH,
     viewBoxHeight: PREVIEW_HEIGHT,
     hasTitle: Boolean(draft.title),
-    onChange: applyView,
+    onChange: setChosenView,
     wheelZoom: true,
     touchPan: true,
   });
 
-  const usesTrig = functions.some((row) => /sin|cos|tan/i.test(row.expression));
-  const axisValues = {
-    xMin: readAxis(axisText.xMin),
-    xMax: readAxis(axisText.xMax),
-    yMin: readAxis(axisText.yMin),
-    yMax: readAxis(axisText.yMax),
-  };
-  const axisProblem = !(axisValues.xMin < axisValues.xMax && axisValues.yMin < axisValues.yMax);
   const problem = checks.some((check) => check.error)
-    ? "Fix the function marked in red to save."
+    ? "Fix the equation in red to add the graph."
     : parsedPoints.invalid.length > 0
-      ? "Fix the points that could not be read to save."
+      ? "Fix the points under More options to add the graph."
       : series.length === 0
-        ? "Add a function or some points to save."
+        ? "Type an equation to see its graph."
         : "";
 
-  const updateRow = (id: string, change: Partial<FunctionRow>) =>
-    setFunctions((rows) => rows.map((row) => (row.id === id ? { ...row, ...change } : row)));
-  const addRow = () =>
-    setFunctions((rows) =>
-      rows.length >= MAX_FUNCTIONS
+  const updateEquation = (id: string, expression: string) =>
+    setEquations((rows) => rows.map((row) => (row.id === id ? { ...row, expression } : row)));
+  const addEquation = () =>
+    setEquations((rows) =>
+      rows.length >= MAX_EQUATIONS
         ? rows
         : [
             ...rows,
             {
-              id: newRowId(),
+              id: newEquationId(),
               expression: "",
               color:
                 GRAPH_SERIES_COLORS.find((candidate) => !rows.some((row) => row.color === candidate)) ??
@@ -197,224 +198,249 @@ function GraphEditor({ graph, onCancel, onSave }: Omit<Props, "open">) {
             },
           ]
     );
-  const removeRow = (id: string) =>
-    setFunctions((rows) =>
-      rows.length === 1 ? rows.map((row) => ({ ...row, expression: "" })) : rows.filter((row) => row.id !== id)
-    );
-  const changeAxis = (key: keyof GraphViewWindow, value: string) => {
-    const nextText = { ...axisText, [key]: value };
-    setAxisText(nextText);
-    const next = {
-      xMin: readAxis(nextText.xMin),
-      xMax: readAxis(nextText.xMax),
-      yMin: readAxis(nextText.yMin),
-      yMax: readAxis(nextText.yMax),
-    };
-    if (next.xMin < next.xMax && next.yMin < next.yMax) setView(next);
-  };
-  const fitToCurves = () => {
-    const fitted = fitGraphYRange(series, view.xMin, view.xMax);
-    if (fitted) applyView(fitted);
+  const removeEquation = (id: string) => setEquations((rows) => rows.filter((row) => row.id !== id));
+  const setAxis = (key: keyof GraphViewWindow, text: string) => {
+    const value = Number(text.replace(/[−–]/g, "-"));
+    if (!text.trim() || !Number.isFinite(value)) return;
+    const next = { ...view, [key]: value };
+    if (next.xMin < next.xMax && next.yMin < next.yMax) setChosenView(next);
   };
 
+  const firstEmpty = equations.length === 1 && !equations[0]!.expression.trim();
+
   return (
-    <Dialog
-      open
-      className="fixed inset-0 flex items-end justify-center p-3 sm:items-center sm:p-6"
-      onDismiss={onCancel}
-    >
+    <Dialog open className="fixed inset-0 flex items-end justify-center p-3 sm:items-center sm:p-6" onDismiss={onCancel}>
       <DialogBackdrop className="absolute inset-0 bg-black/65 backdrop-blur-sm" />
-      <DialogPanel className="app-panel relative flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl shadow-e3">
-        <header className="border-b border-[var(--color-border)] px-5 py-4 sm:px-6">
-          <DialogTitle className="text-lg font-semibold text-text-primary">
-            {graph ? "Edit graph" : "New graph"}
+      <DialogPanel className="app-panel relative flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-xl shadow-e3">
+        <header className="px-5 pb-2 pt-5 sm:px-6">
+          <DialogTitle className="text-xl font-semibold text-text-primary">
+            {graph ? "Edit graph" : "Add a graph"}
           </DialogTitle>
-          <DialogDescription className="mt-1 text-sm leading-6 text-text-secondary">
-            Plotted exactly from your functions and points. Drag the graph to move around it, and scroll or use the
-            zoom buttons to scale it.
+          <DialogDescription className="mt-1 text-sm text-text-secondary">
+            Type an equation and it is drawn exactly.
           </DialogDescription>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto px-5 py-5 sm:px-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-          <div className="space-y-3 lg:sticky lg:top-0 lg:self-start">
-            <div
-              ref={previewRef}
-              {...panZoom.bindings}
-              className="relative aspect-[5/4] w-full cursor-grab touch-none overflow-hidden rounded-lg border border-[var(--color-border)] bg-white active:cursor-grabbing"
-            >
-              <NotebookGraphView graph={draft} width={PREVIEW_WIDTH} height={PREVIEW_HEIGHT} />
-              {series.length === 0 ? (
-                <p className="pointer-events-none absolute inset-x-0 top-1/3 text-center text-sm text-slate-500">
-                  Type a function to see it drawn here.
-                </p>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" size="sm" variant="secondary" aria-label="Zoom out" onClick={() => panZoom.zoomBy(1.25)}>
-                −
-              </Button>
-              <Button type="button" size="sm" variant="secondary" aria-label="Zoom in" onClick={() => panZoom.zoomBy(0.8)}>
-                +
-              </Button>
-              <Button type="button" size="sm" variant="ghost" disabled={series.length === 0} onClick={fitToCurves}>
-                Fit to curves
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => applyView(DEFAULT_GRAPH_VIEW)}>
-                Reset view
-              </Button>
-              {usesTrig && angleUnit === "degrees" ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => applyView({ xMin: 0, xMax: 360, yMin: -1.5, yMax: 1.5 })}
-                >
-                  0° to 360°
-                </Button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="space-y-7">
-            <Section title="Functions">
-              <div className="space-y-2.5">
-                {checks.map(({ row, error }, index) => (
-                  <div key={row.id} className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        aria-label={`Change the colour of function ${index + 1}`}
-                        title="Change colour"
-                        className="h-6 w-6 shrink-0 rounded-full border-2 border-white shadow-e1 outline-none ring-1 ring-[var(--color-border)] focus-visible:ring-2 focus-visible:ring-accent/55"
-                        style={{ backgroundColor: row.color }}
-                        onClick={() =>
-                          updateRow(row.id, {
-                            color: SERIES_COLORS[(SERIES_COLORS.indexOf(row.color) + 1) % SERIES_COLORS.length],
-                          })
-                        }
-                      />
-                      <span className="shrink-0 font-serif text-base italic text-text-secondary">y =</span>
-                      <Input
-                        aria-label={`Function ${index + 1}`}
-                        aria-invalid={Boolean(error)}
-                        value={row.expression}
-                        placeholder={index === 0 ? "2x^2 - 3x + 1" : "Another function of x"}
-                        spellCheck={false}
-                        autoComplete="off"
-                        symbols
-                        containerClassName="min-w-0 flex-1"
-                        onChange={(event) => updateRow(row.id, { expression: event.target.value })}
-                      />
+        <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-5 pb-5 pt-3 sm:px-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <div className="space-y-4">
+            <div className="space-y-2.5">
+              {checks.map(({ row, error }, index) => (
+                <div key={row.id} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 text-lg font-semibold italic text-text-secondary" aria-hidden="true">
+                      y =
+                    </span>
+                    <Input
+                      {...MATH_FIELD}
+                      aria-label={equations.length > 1 ? `Equation ${index + 1}` : "Equation"}
+                      aria-invalid={Boolean(error)}
+                      data-dialog-autofocus={index === 0 ? "true" : undefined}
+                      value={row.expression}
+                      placeholder={index === 0 ? "e.g. x² − 4" : "Another equation"}
+                      symbols
+                      containerClassName="min-w-0 flex-1"
+                      className="text-lg"
+                      style={{ boxShadow: `inset 4px 0 0 ${row.color}` }}
+                      onChange={(event) => updateEquation(row.id, event.target.value)}
+                    />
+                    {equations.length > 1 ? (
                       <Button
                         type="button"
                         size="icon"
                         variant="ghost"
-                        aria-label={`Remove function ${index + 1}`}
-                        disabled={functions.length === 1 && !row.expression}
-                        onClick={() => removeRow(row.id)}
+                        aria-label={`Remove equation ${index + 1}`}
+                        onClick={() => removeEquation(row.id)}
                       >
                         ×
                       </Button>
-                    </div>
-                    {error ? (
-                      <p role="alert" className="pl-[4.5rem] text-xs leading-5 text-[var(--color-error-mark)]">
-                        {error}
-                      </p>
                     ) : null}
                   </div>
+                  {error ? (
+                    <p role="alert" className="pl-11 text-xs leading-5 text-[var(--color-error-mark)]">
+                      {error}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+
+            {firstEmpty ? (
+              <div className="flex flex-wrap items-center gap-2 pl-11">
+                <span className="text-xs text-text-muted">Try</span>
+                {EXAMPLES.map((example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    className="rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1.5 text-sm font-medium text-text-primary transition hover:border-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                    onClick={() => updateEquation(equations[0]!.id, example)}
+                  >
+                    {example}
+                  </button>
                 ))}
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                {functions.length < MAX_FUNCTIONS ? (
-                  <Button type="button" size="sm" variant="secondary" onClick={addRow}>
-                    Add function
-                  </Button>
-                ) : null}
-                <p className="text-xs leading-5 text-text-muted">
-                  Write in x: 3(x + 1), x^2, sqrt(x), |x|, sin x, 2^x.
-                </p>
-              </div>
-              {usesTrig ? (
-                <OptionSwitch label="Angles" value={angleUnit} options={ANGLE_OPTIONS} onChange={setAngleUnit} />
-              ) : null}
-            </Section>
+            ) : equations.length < MAX_EQUATIONS ? (
+              <button
+                type="button"
+                className="ml-11 rounded text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                onClick={addEquation}
+              >
+                + Add another equation
+              </button>
+            ) : null}
 
-            <Section title="Plotted points">
-              <Textarea
-                aria-label="Plotted points, one x, y pair to a line"
-                value={pointsText}
-                rows={3}
-                placeholder={"1, 2\n3, 5"}
-                spellCheck={false}
-                onChange={(event) => setPointsText(event.target.value)}
+            {usesTrig ? (
+              <OptionSwitch
+                label="Angles"
+                value={angleUnit}
+                options={ANGLE_OPTIONS}
+                columns={2}
+                onChange={(value) => {
+                  setAngleUnit(value);
+                  setChosenView(null);
+                }}
               />
-              {parsedPoints.invalid.length > 0 ? (
-                <p role="alert" className="text-xs leading-5 text-[var(--color-error-mark)]">
-                  Could not read {parsedPoints.invalid.slice(0, 3).map((line) => `“${line}”`).join(", ")}. Write each
-                  point as x, y on its own line.
-                </p>
-              ) : null}
-              <label className="flex items-center gap-2 text-sm text-text-secondary">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-accent"
-                  checked={joinPoints}
-                  onChange={(event) => setJoinPoints(event.target.checked)}
-                />
-                Join the points in order
-              </label>
-            </Section>
+            ) : null}
 
-            <Section title="Axes">
-              <div className="grid grid-cols-2 gap-3">
-                {(
-                  [
-                    ["xMin", "x from"],
-                    ["xMax", "x to"],
-                    ["yMin", "y from"],
-                    ["yMax", "y to"],
-                  ] as const
-                ).map(([key, label]) => (
+            <details className="group rounded-xl border border-[var(--color-border)]">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-text-primary [&::-webkit-details-marker]:hidden">
+                More options
+                <span aria-hidden="true" className="text-text-muted transition group-open:rotate-180">
+                  ⌄
+                </span>
+              </summary>
+              <div className="space-y-5 border-t border-[var(--color-border)] px-4 pb-4 pt-4">
+                <OptionGroup title="Title">
                   <Input
-                    key={key}
-                    label={label}
-                    inputMode="decimal"
-                    value={axisText[key]}
-                    onChange={(event) => changeAxis(key, event.target.value)}
-                    onBlur={() => setAxisText(axisTextFor(view))}
+                    aria-label="Graph title"
+                    value={title}
+                    maxLength={80}
+                    placeholder="Optional"
+                    onChange={(event) => setTitle(event.target.value)}
                   />
-                ))}
-                <Input label="x-axis label" value={xLabel} maxLength={40} onChange={(event) => setXLabel(event.target.value)} />
-                <Input label="y-axis label" value={yLabel} maxLength={40} onChange={(event) => setYLabel(event.target.value)} />
-              </div>
-              {axisProblem ? (
-                <p className="text-xs leading-5 text-text-muted">Each axis has to start below where it ends.</p>
-              ) : null}
-              <label className="flex items-center gap-2 text-sm text-text-secondary">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-accent"
-                  checked={showGrid}
-                  onChange={(event) => setShowGrid(event.target.checked)}
-                />
-                Show grid lines
-              </label>
-            </Section>
+                </OptionGroup>
 
-            <Section title="Title">
-              <Input
-                aria-label="Graph title"
-                value={title}
-                maxLength={80}
-                placeholder="Optional, like Distance against time"
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            </Section>
+                <OptionGroup title="Plot points">
+                  <Textarea
+                    {...MATH_FIELD}
+                    aria-label="Points, one x, y pair to a line"
+                    value={pointsText}
+                    rows={3}
+                    placeholder={"1, 2\n3, 5"}
+                    onChange={(event) => setPointsText(event.target.value)}
+                  />
+                  {parsedPoints.invalid.length > 0 ? (
+                    <p role="alert" className="text-xs leading-5 text-[var(--color-error-mark)]">
+                      Write each point as x, y on its own line.
+                    </p>
+                  ) : null}
+                  <label className="flex items-center gap-2 text-sm text-text-secondary">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-accent"
+                      checked={joinPoints}
+                      onChange={(event) => setJoinPoints(event.target.checked)}
+                    />
+                    Join the points with a line
+                  </label>
+                </OptionGroup>
+
+                <OptionGroup title="Axes">
+                  {/* Keyed to the view, so moving the graph refreshes them; applied when a box is left. */}
+                  <div key={`${view.xMin}:${view.xMax}:${view.yMin}:${view.yMax}`} className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        ["xMin", "x from"],
+                        ["xMax", "x to"],
+                        ["yMin", "y from"],
+                        ["yMax", "y to"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <Input
+                        key={key}
+                        {...MATH_FIELD}
+                        aria-label={label}
+                        placeholder={label}
+                        inputMode="decimal"
+                        defaultValue={formatAxis(view[key])}
+                        onBlur={(event) => setAxis(key, event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") setAxis(key, event.currentTarget.value);
+                        }}
+                      />
+                    ))}
+                    <Input
+                      aria-label="x-axis label"
+                      placeholder="x-axis label"
+                      value={xLabel}
+                      maxLength={40}
+                      onChange={(event) => setXLabel(event.target.value)}
+                    />
+                    <Input
+                      aria-label="y-axis label"
+                      placeholder="y-axis label"
+                      value={yLabel}
+                      maxLength={40}
+                      onChange={(event) => setYLabel(event.target.value)}
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-text-secondary">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-accent"
+                      checked={showGrid}
+                      onChange={(event) => setShowGrid(event.target.checked)}
+                    />
+                    Grid lines
+                  </label>
+                </OptionGroup>
+              </div>
+            </details>
+          </div>
+
+          <div className="space-y-2 md:sticky md:top-0 md:self-start">
+            <div
+              ref={previewRef}
+              {...panZoom.bindings}
+              className="relative aspect-[5/4] w-full cursor-grab touch-none overflow-hidden rounded-xl border border-[var(--color-border)] bg-white active:cursor-grabbing"
+            >
+              <NotebookGraphView graph={draft} width={PREVIEW_WIDTH} height={PREVIEW_HEIGHT} />
+              <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-white/90 p-1 shadow-e1">
+                <button
+                  type="button"
+                  aria-label="Zoom out"
+                  className="grid h-8 w-8 place-items-center rounded-full text-lg font-semibold text-slate-700 hover:bg-slate-100"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => panZoom.zoomBy(1.25)}
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  aria-label="Zoom in"
+                  className="grid h-8 w-8 place-items-center rounded-full text-lg font-semibold text-slate-700 hover:bg-slate-100"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => panZoom.zoomBy(0.8)}
+                >
+                  +
+                </button>
+                {chosenView ? (
+                  <button
+                    type="button"
+                    className="h-8 rounded-full px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => setChosenView(null)}
+                  >
+                    Fit
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <p className="text-center text-xs text-text-muted">Drag to move around the graph.</p>
           </div>
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-[var(--color-border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
-          {problem ? <p className="text-xs leading-5 text-text-muted sm:mr-auto">{problem}</p> : null}
+          {problem ? <p className="text-sm text-text-muted sm:mr-auto">{problem}</p> : null}
           <Button type="button" variant="secondary" onClick={onCancel}>
             Cancel
           </Button>
