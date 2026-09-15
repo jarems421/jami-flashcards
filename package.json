@@ -38,7 +38,8 @@
     "audit:ai-endpoints": "node --env-file-if-exists=.env.local scripts/audit-ai-endpoints.mjs",
     "report:ai-spend": "node --env-file-if-exists=.env.local scripts/ai-spend-report.mjs",
     "audit:legacy-shapes": "node --env-file-if-exists=.env.local scripts/audit-legacy-shapes.mjs",
-    "report:analytics": "node --env-file-if-exists=.env.local scripts/analytics-report.mjs"
+    "report:analytics": "node --env-file-if-exists=.env.local scripts/analytics-report.mjs",
+    "postinstall": "node scripts/copy-sql-wasm.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",
@@ -48,7 +49,9 @@
     "cheerio": "^1.1.2",
     "firebase": "^12.16.0",
     "firebase-admin": "^13.10.0",
+    "fzstd": "^0.1.1",
     "js-draw": "^1.33.0",
+    "jszip": "^3.10.2",
     "katex": "^0.16.47",
     "mammoth": "^1.12.0",
     "next": "^16.3.4",
@@ -65,6 +68,7 @@
     "remark-math": "^6.0.0",
     "server-only": "^0.0.1",
     "sharp": "^0.35.4",
+    "sql.js": "^1.14.2",
     "svg-to-pdfkit": "^0.1.8",
     "ts-fsrs": "^5.3.2",
     "web-push": "^3.6.7",
@@ -78,6 +82,7 @@
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/sql.js": "^1.4.11",
     "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^9",
