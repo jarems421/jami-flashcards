@@ -46,6 +46,15 @@ vi.mock("@/services/profile/tutorial", () => ({
   saveTutorialProgress: (...args: unknown[]) => saveTutorialProgress(...args),
 }));
 
+// First night keeps its own record and sets up folders; neither reaches Firestore here.
+vi.mock("@/services/profile/first-night", () => ({
+  loadFirstNight: async () => null,
+  saveFirstNight: async () => undefined,
+}));
+vi.mock("@/services/onboarding/first-night-setup", () => ({
+  setUpFirstNightSubjects: async () => ({ created: 0, failed: 0 }),
+}));
+
 const createOnboardingStarIfMissing = vi.hoisted(() => vi.fn());
 vi.mock("@/services/constellation/stars", () => ({
   createOnboardingStarIfMissing: (...args: unknown[]) =>
@@ -84,7 +93,7 @@ function Harness({ cards = false }: { cards?: boolean }) {
 async function render(cards = false) {
   await act(async () => {
     root.render(
-      <FirstNightProvider>
+      <FirstNightProvider userId="user-1">
         <TutorialProvider userId="user-1">
           <Harness cards={cards} />
         </TutorialProvider>

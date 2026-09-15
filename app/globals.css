@@ -2986,7 +2986,7 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 .fn-remove:disabled{opacity:.25;cursor:default}
 .fn-summary{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center}
 .fn-tag{display:inline-flex;align-items:center;gap:.45rem;padding:.5rem .8rem;border-radius:12px;background:rgba(255,255,255,.045);border:1px solid rgba(226,220,255,.1);font-size:.88rem;color:rgba(240,236,255,.88)}
-.fn-end-preview{position:fixed;right:14px;bottom:14px;z-index:3;font-size:.72rem;padding:.4rem .7rem;border-radius:999px;border:1px solid rgba(226,220,255,.16);background:rgba(10,6,24,.72);color:rgba(230,224,255,.65);cursor:pointer}
+
 
 .fn-nav-star{position:absolute;right:-4px;top:-4px;display:grid;color:var(--color-accent);filter:drop-shadow(0 0 4px rgba(150,120,255,.9));animation:fn-breathe 2.6s ease-in-out infinite}
 .fn-spot{position:fixed;z-index:70;border-radius:18px;pointer-events:none;box-shadow:0 0 0 9999px rgba(4,2,12,.55),0 0 0 1px rgba(205,190,255,.6),0 0 36px 8px rgba(142,112,255,.45);transition:left .5s cubic-bezier(.22,1,.36,1),top .5s cubic-bezier(.22,1,.36,1),width .5s,height .5s;animation:fn-halo 3.4s ease-in-out infinite}

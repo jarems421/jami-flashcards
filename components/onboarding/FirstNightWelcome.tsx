@@ -4,6 +4,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import NightSkyBackdrop from "@/components/constellation/NightSkyBackdrop";
 import { DrawnLines, Sparkle, makeFirstNightStar, type SkyPoint } from "@/components/onboarding/FirstNightSky";
+import type { FirstNightAnswers } from "@/lib/onboarding/first-night";
 
 type WelcomeStep = "arrival" | "subjects" | "level" | "device" | "confirm" | "ready";
 
@@ -157,10 +158,20 @@ function Frame({ step, onSkip, onBack, children }: { step: number | null; onSkip
 /**
  * The welcome a new student sees, on the night sky.
  *
- * In this preview the answers set nothing up: they shape the screens and are
- * then forgotten, and the student lands in their real account as it is.
+ * Confirming the answers hands them up to be set up -- a folder and a first
+ * notebook for each subject -- while the "ready" screen plays, so the folders
+ * are there by the time the tour points at them. "I'll explore myself" skips
+ * the questions and sets nothing up.
  */
-export default function FirstNightWelcome({ leaving, onEnter, onEnd }: { leaving: boolean; onEnter: () => void; onEnd: () => void }) {
+export default function FirstNightWelcome({
+  leaving,
+  onEnter,
+  onConfirm,
+}: {
+  leaving: boolean;
+  onEnter: () => void;
+  onConfirm: (answers: FirstNightAnswers) => void;
+}) {
   const [step, setStep] = useState<WelcomeStep>("arrival");
   const [subjects, setSubjects] = useState<string[]>([]);
   const [extraSubjects, setExtraSubjects] = useState<string[]>([]);
@@ -407,7 +418,14 @@ export default function FirstNightWelcome({ leaving, onEnter, onEnd }: { leaving
                 </span>
               </Enter>
               <Enter delay={750}>
-                <button type="button" className="fn-cta" onClick={() => setStep("ready")}>
+                <button
+                  type="button"
+                  className="fn-cta"
+                  onClick={() => {
+                    onConfirm({ subjects, level });
+                    setStep("ready");
+                  }}
+                >
                   Looks good <Sparkle size={14} />
                 </button>
               </Enter>
@@ -435,11 +453,7 @@ export default function FirstNightWelcome({ leaving, onEnter, onEnd }: { leaving
           ) : null}
         </div>
       </div>
-      {!leaving ? (
-        <button type="button" className="fn-end-preview" onClick={onEnd}>
-          End preview
-        </button>
-      ) : null}
+
     </div>
   );
 }

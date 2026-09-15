@@ -1,20 +1,25 @@
+import type { StudyLevel } from "@/lib/profile/study-level";
+
 /**
- * "First night": the sign-up walkthrough, previewed inside the real app.
+ * "First night": the sign-up walkthrough.
  *
  * A short welcome on a night sky, then a tour of the real sidebar, then five
  * discoveries that each light a star on Today. Every discovery sends the
  * student to the place it lives through the navigation itself, so by the end
  * they have used each part of the app they will come back to.
  *
- * Preview only for now: it starts from `?first-night=preview`, keeps its
- * progress in this tab's session, and writes nothing to the account.
+ * Progress is kept on the account and mirrored on the device, the subjects a
+ * student picks become their folders, and finishing earns the real onboarding
+ * star. `?first-night=preview` starts it afresh and `?first-night=off` ends it,
+ * for anyone checking it by hand.
  */
 
 export const FIRST_NIGHT_QUERY_PARAM = "first-night";
-const STORAGE_KEY = "jami:first-night-preview";
+const STORAGE_PREFIX = "jami:first-night:";
 
 export type FirstNightDiscoveryId = "notebook" | "exam" | "learn" | "tutor" | "stars";
 export type FirstNightStage = "welcome" | "tour" | "exploring" | "finished";
+export type FirstNightRewardState = "not-earned" | "pending" | "awarded";
 
 export type FirstNightDiscovery = {
   id: FirstNightDiscoveryId;
@@ -42,6 +47,10 @@ export type FirstNightState = {
   lit: FirstNightDiscoveryId[];
   /** The discovery last asked for from Today, when two share a page. */
   intent: FirstNightDiscoveryId | null;
+  /** The finishing star: not yet earned, waiting for room in the sky, or given. */
+  rewardState: FirstNightRewardState;
+  /** When this copy last changed, so the device's and the account's can be merged. */
+  updatedAt: number;
 };
 
 /** The real controls the walkthrough points at, marked where they are rendered. */
@@ -84,18 +93,19 @@ export function navTarget(label: string) {
 
 const DISCOVERY_IDS = new Set<string>(FIRST_NIGHT_DISCOVERIES.map((discovery) => discovery.id));
 const STAGES = new Set<string>(["welcome", "tour", "exploring", "finished"]);
+const REWARD_STATES = new Set<string>(["not-earned", "pending", "awarded"]);
 
 export function getFirstNightDiscovery(id: FirstNightDiscoveryId) {
   return FIRST_NIGHT_DISCOVERIES.find((discovery) => discovery.id === id) ?? FIRST_NIGHT_DISCOVERIES[0];
 }
 
-export function createFirstNightState(): FirstNightState {
-  return { version: 1, stage: "welcome", tourStep: 0, lit: [], intent: null };
+export function createFirstNightState(now = Date.now()): FirstNightState {
+  return { version: 1, stage: "welcome", tourStep: 0, lit: [], intent: null, rewardState: "not-earned", updatedAt: now };
 }
 
 export function readFirstNightState(value: unknown): FirstNightState | null {
   if (typeof value !== "object" || value === null) return null;
-  const { version, stage, tourStep, lit, intent } = value as Record<string, unknown>;
+  const { version, stage, tourStep, lit, intent, rewardState, updatedAt } = value as Record<string, unknown>;
   if (version !== 1 || typeof stage !== "string" || !STAGES.has(stage)) return null;
   const litIds = Array.isArray(lit)
     ? Array.from(new Set(lit.filter((id): id is FirstNightDiscoveryId => typeof id === "string" && DISCOVERY_IDS.has(id))))
@@ -106,6 +116,9 @@ export function readFirstNightState(value: unknown): FirstNightState | null {
     tourStep: typeof tourStep === "number" && Number.isInteger(tourStep) && tourStep >= 0 ? tourStep : 0,
     lit: litIds,
     intent: typeof intent === "string" && DISCOVERY_IDS.has(intent) ? (intent as FirstNightDiscoveryId) : null,
+    rewardState:
+      typeof rewardState === "string" && REWARD_STATES.has(rewardState) ? (rewardState as FirstNightRewardState) : "not-earned",
+    updatedAt: typeof updatedAt === "number" && Number.isFinite(updatedAt) && updatedAt >= 0 ? updatedAt : 0,
   };
 }
 
@@ -114,24 +127,70 @@ export function readFirstNightQuery(search: string): "preview" | "off" | null {
   return value === "preview" || value === "off" ? value : null;
 }
 
-export function loadStoredFirstNight(): FirstNightState | null {
+/**
+ * The device's copy, keyed per student so a shared device never shows one
+ * student another's progress. It lets a reload or a failed account read carry
+ * on from where the student was instead of starting again.
+ */
+export function loadLocalFirstNight(userId: string): FirstNightState | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(`${STORAGE_PREFIX}${userId}`);
     return raw ? readFirstNightState(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
 }
 
-export function storeFirstNight(state: FirstNightState | null) {
+export function saveLocalFirstNight(userId: string, state: FirstNightState) {
   if (typeof window === "undefined") return;
   try {
-    if (state) window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    else window.sessionStorage.removeItem(STORAGE_KEY);
+    window.localStorage.setItem(`${STORAGE_PREFIX}${userId}`, JSON.stringify(state));
   } catch {
-    // A preview that cannot be remembered still runs for this page.
+    // The account copy is what matters; this one is a convenience.
   }
+}
+
+/** Whichever copy changed last. The account's wins a tie, so a second device follows it. */
+export function mergeFirstNight(local: FirstNightState | null, remote: FirstNightState | null) {
+  if (!local) return remote;
+  if (!remote) return local;
+  return local.updatedAt > remote.updatedAt ? local : remote;
+}
+
+export type FirstNightAnswers = {
+  subjects: readonly string[];
+  /** The level as the welcome labels it, such as "GCSE". */
+  level: string | null;
+};
+
+const STUDY_LEVELS: Record<string, StudyLevel> = {
+  GCSE: "gcse-equivalent",
+  "A level": "post-16-equivalent",
+  IB: "post-16-equivalent",
+  University: "undergraduate",
+};
+
+export const MAX_FIRST_NIGHT_SUBJECTS = 12;
+
+/**
+ * The folders the welcome's answers become: one per subject, each with a first notebook.
+ *
+ * A subject the student already has a folder for is left alone, so replaying
+ * the walkthrough, or answering on a second device, never makes a duplicate.
+ */
+export function planFirstNightSetup(answers: FirstNightAnswers, existingFolderNames: readonly string[]) {
+  const taken = new Set(existingFolderNames.map((name) => name.trim().toLowerCase()));
+  const folders: Array<{ name: string; notebookTitle: string }> = [];
+  for (const subject of answers.subjects) {
+    const name = subject.trim().slice(0, 80);
+    const key = name.toLowerCase();
+    if (!name || taken.has(key)) continue;
+    taken.add(key);
+    folders.push({ name, notebookTitle: `${name} notebook` });
+    if (folders.length >= MAX_FIRST_NIGHT_SUBJECTS) break;
+  }
+  return { studyLevel: answers.level ? (STUDY_LEVELS[answers.level] ?? null) : null, folders };
 }
 
 export function isOnDiscoveryRoute(pathname: string, discovery: FirstNightDiscovery) {

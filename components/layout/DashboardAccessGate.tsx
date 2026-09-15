@@ -40,7 +40,7 @@ function AuthenticatedDashboard({
 
   return (
     <UserProvider user={user}>
-      <FirstNightProvider>
+      <FirstNightProvider userId={user.uid}>
       <TutorialProvider userId={user.uid}>
         <div
           data-dashboard-content

@@ -26,7 +26,7 @@ export default function FirstNightPanel() {
     <section data-tutorial-target="first-night" className={`app-panel rounded-2xl p-5 ${finale === "leaving" ? "fn-leave" : ""}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">First night · Preview</div>
+          <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">First night</div>
           <h2 className="mt-1.5 text-lg font-semibold text-text-primary">
             {complete ? "Your first constellation is complete" : "Your first constellation"}
           </h2>
@@ -36,7 +36,7 @@ export default function FirstNightPanel() {
             {lit.length} of {FIRST_NIGHT_DISCOVERIES.length} lit
           </span>
           <button type="button" className="rounded-full px-2 py-1 text-xs text-text-muted transition duration-fast hover:text-text-primary" onClick={end}>
-            End preview
+            Skip
           </button>
         </div>
       </div>

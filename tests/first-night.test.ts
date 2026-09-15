@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createFirstNightState,
+  mergeFirstNight,
+  planFirstNightSetup,
   FIRST_NIGHT_TARGETS,
   isOnDiscoveryRoute,
   getFirstNightDiscovery,
@@ -34,9 +36,35 @@ describe("starting and remembering the preview", () => {
       tourStep: 2,
       lit: ["learn"],
       intent: "exam",
+      rewardState: "not-earned",
+      updatedAt: 0,
     });
     expect(readFirstNightState({ version: 2, stage: "tour" })).toBeNull();
     expect(readFirstNightState("tour")).toBeNull();
+  });
+});
+
+describe("keeping it on the account", () => {
+  it("carries on from whichever copy changed last, preferring the account on a tie", () => {
+    const local = { ...createFirstNightState(10), stage: "exploring" as const, lit: ["learn" as const] };
+    const remote = { ...createFirstNightState(20), stage: "tour" as const };
+    expect(mergeFirstNight(local, remote)).toBe(remote);
+    expect(mergeFirstNight({ ...local, updatedAt: 30 }, remote)?.lit).toEqual(["learn"]);
+    expect(mergeFirstNight({ ...local, updatedAt: 20 }, remote)).toBe(remote);
+    expect(mergeFirstNight(null, remote)).toBe(remote);
+  });
+
+  it("turns the chosen subjects into folders, never duplicating one the student has", () => {
+    expect(
+      planFirstNightSetup({ subjects: ["Biology", " chemistry ", "Maths", "biology"], level: "A level" }, ["Chemistry"])
+    ).toEqual({
+      studyLevel: "post-16-equivalent",
+      folders: [
+        { name: "Biology", notebookTitle: "Biology notebook" },
+        { name: "Maths", notebookTitle: "Maths notebook" },
+      ],
+    });
+    expect(planFirstNightSetup({ subjects: ["History"], level: "Something else" }, []).studyLevel).toBeNull();
   });
 });
 
