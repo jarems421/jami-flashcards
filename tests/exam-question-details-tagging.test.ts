@@ -167,7 +167,7 @@ describe("tagging questions with concepts and command words", () => {
   });
 
   it("refuses a specification without a checked topic list, spending nothing", async () => {
-    await expect(tagExamQuestionDetails({ specificationId: "8461", limit: 5 })).rejects.toBeInstanceOf(
+    await expect(tagExamQuestionDetails({ specificationId: "7402", limit: 5 })).rejects.toBeInstanceOf(
       ExamQuestionDetailsTaggingError
     );
     expect(mocks.generateAiText).not.toHaveBeenCalled();

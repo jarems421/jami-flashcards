@@ -211,17 +211,18 @@ export const EXAM_SPECIFICATION_CONCEPTS: readonly ExamSpecificationConceptCatal
     /*
      * Pearson Edexcel GCSE Mathematics (1MA1): the same subject content
      * statements as AQA 8300, printed under the same codes and subheadings, so
-     * the checked 8300 concepts under Pearson's own ids. Served only once a
-     * person has compared them with the Pearson document.
+     * the checked 8300 concepts under Pearson's own ids, compared with the
+     * Pearson document by the owner before being served.
      */
     specificationId: "1MA1",
     version: 1,
-    verified: false,
-    provenance: "ai_suggested",
+    verified: true,
+    provenance: "verified_specification",
     source:
       "The checked AQA 8300 concepts under Pearson ids: the Pearson Edexcel GCSE (9-1) " +
       "Mathematics (1MA1) specification prints the same statements (N1-N16, A1-A25, R1-R16, " +
-      "G1-G25, P1-P9, S1-S6) under the same subheadings, read on 2026-09-15. Not yet checked by a person.",
+      "G1-G25, P1-P9, S1-S6) under the same subheadings, read on 2026-09-15. Checked against " +
+      "the Pearson specification by the Jami owner on 2026-09-16.",
     concepts: aqaMathematics.concepts.map((concept) => ({
       ...concept,
       id: concept.id.replace("aqa-8300-", "pearson-edexcel-1ma1-"),

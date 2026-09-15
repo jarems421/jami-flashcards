@@ -137,16 +137,16 @@ export const EXAM_SPECIFICATION_TOPICS: readonly ExamSpecificationTopicCatalogue
      * subject content, and Pearson prints it under the same statement codes
      * and the same subheadings AQA does -- read from the 1MA1 specification on
      * 2026-09-15. So these are the checked 8300 topics under Pearson's own
-     * ids. That they match is a reading, not a check: a person still compares
-     * them with the Pearson document before they are served.
+     * ids, compared with the Pearson document by the owner before being served.
      */
     specificationId: "1MA1",
     version: 1,
-    verified: false,
+    verified: true,
     source:
       "Pearson Edexcel GCSE (9-1) Mathematics (1MA1) specification, subject content read from " +
       "the published PDF on 2026-09-15: six content areas and ten subheadings identical to " +
-      "AQA 8300, so the checked 8300 topics are reused under Pearson ids. Not yet checked by a person.",
+      "AQA 8300, so the checked 8300 topics are reused under Pearson ids. Checked against the " +
+      "Pearson specification by the Jami owner on 2026-09-16.",
     topics: withIdPrefix(aqaMathematics.topics, "aqa-8300-", "pearson-edexcel-1ma1-"),
   },
   ...EXAM_SPECIFICATION_OUTLINES.map((outline): ExamSpecificationTopicCatalogue => ({

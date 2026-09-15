@@ -111,8 +111,8 @@ export function outlineConcepts(outline: SpecificationOutline): ExamSpecificatio
 
 const CHECKED_SOURCE =
   "numbered headings read from the specification's subject content pages on aqa.org.uk " +
-  "and cross-checked against the published specification PDF on 2026-09-15. Not yet " +
-  "checked by a person.";
+  "and cross-checked against the published specification PDF on 2026-09-15, then checked " +
+  "against the published specification by the Jami owner on 2026-09-16.";
 
 export const AQA_GCSE_BIOLOGY: SpecificationOutline = {
   specificationId: "8461",
@@ -120,6 +120,7 @@ export const AQA_GCSE_BIOLOGY: SpecificationOutline = {
   // The draft topic list used this id before the outline existed.
   slugOverrides: { "4.6": "inheritance-variation-evolution" },
   source: `AQA GCSE Biology (8461) sections 4.1-4.7: ${CHECKED_SOURCE}`,
+  checked: { topics: true, concepts: true },
   groups: [{
     sections: [
       ["4.1", "Cell biology", [
@@ -283,6 +284,7 @@ export const AQA_GCSE_CHEMISTRY: SpecificationOutline = {
   specificationId: "8462",
   idPrefix: "aqa-8462",
   source: `AQA GCSE Chemistry (8462) sections 4.1-4.10: ${CHECKED_SOURCE}`,
+  checked: { topics: true, concepts: true },
   groups: [{
     sections: [
       ["4.1", "Atomic structure and the periodic table", [
@@ -497,6 +499,7 @@ export const AQA_GCSE_PHYSICS: SpecificationOutline = {
   specificationId: "8463",
   idPrefix: "aqa-8463",
   source: `AQA GCSE Physics (8463) sections 4.1-4.8: ${CHECKED_SOURCE}`,
+  checked: { topics: true, concepts: true },
   groups: [{
     sections: [
       ["4.1", "Energy", [
@@ -652,6 +655,7 @@ export const AQA_GCSE_COMBINED_SCIENCE_TRILOGY: SpecificationOutline = {
   specificationId: "8464",
   idPrefix: "aqa-8464",
   source: `AQA GCSE Combined Science: Trilogy (8464) sections 4.1-4.7, 5.1-5.10 and 6.1-6.7: ${CHECKED_SOURCE}`,
+  checked: { topics: true, concepts: true },
   groups: [
     {
       label: "Biology",

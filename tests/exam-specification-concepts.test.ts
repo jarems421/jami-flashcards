@@ -44,10 +44,10 @@ describe("specification concept catalogues", () => {
 
   /*
    * Pearson prints the same national subject content under the same codes, so
-   * its concepts are AQA's statements under Pearson's own ids -- and stay
-   * unserved until a person has compared them with the Pearson document.
+   * its concepts are AQA's statements under Pearson's own ids -- served now
+   * that the owner has compared them with the Pearson document.
    */
-  it("gives Pearson maths the same statements under its own ids, unserved until checked", () => {
+  it("gives Pearson maths the same statements under its own ids", () => {
     const aqa = examSpecificationConceptCatalogue("8300")!.concepts;
     const pearson = examSpecificationConceptCatalogue("1MA1")!.concepts;
     expect(pearson.map((concept) => concept.reference)).toEqual(aqa.map((concept) => concept.reference));
@@ -58,17 +58,22 @@ describe("specification concept catalogues", () => {
           concept.id.startsWith("pearson-edexcel-1ma1-") && concept.parentTopicId.startsWith("pearson-edexcel-1ma1-")
       )
     ).toBe(true);
-    expect(servableExamSpecificationConcepts("1MA1")).toEqual([]);
+    expect(servableExamSpecificationConcepts("1MA1")).toHaveLength(aqa.length);
   });
 
   it("keeps the concept ids a question may claim and reports the rest", () => {
     expect(
       filterCanonicalConceptIds("8300", ["aqa-8300-algebra-quadratic-equations", "aqa-8300-algebra-vibes"])
     ).toEqual({ conceptIds: ["aqa-8300-algebra-quadratic-equations"], rejected: ["aqa-8300-algebra-vibes"] });
-    // An unchecked catalogue behaves exactly like no catalogue.
-    expect(filterCanonicalConceptIds("8461", ["aqa-8461-cell-biology-osmosis"])).toEqual({
-      conceptIds: [],
-      rejected: ["aqa-8461-cell-biology-osmosis"],
+    // A checked catalogue keeps its own ids and drops anything invented.
+    expect(
+      filterCanonicalConceptIds("8461", [
+        "aqa-8461-cell-biology-eukaryotes-and-prokaryotes",
+        "aqa-8461-cell-biology-vibes",
+      ])
+    ).toEqual({
+      conceptIds: ["aqa-8461-cell-biology-eukaryotes-and-prokaryotes"],
+      rejected: ["aqa-8461-cell-biology-vibes"],
     });
   });
 
