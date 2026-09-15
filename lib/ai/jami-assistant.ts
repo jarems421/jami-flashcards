@@ -148,9 +148,15 @@ const WEB_VERIFICATION_PATTERN =
 const MARKING_PATTERN = /\b(?:mark|check|review|assess|feedback|correct)\b/i;
 /** A figure the Tutor drew inside its answer: a fenced svg sketch or a graph. */
 const TUTOR_DRAWN_FIGURE_PATTERN = /```(?:svg|graph)\b/i;
-/** A request about a graph, a plot or a function's curve. */
+/** Words that mean a graph whatever the subject. */
 const GRAPH_REQUEST_PATTERN =
-  /\b(?:graphs?|plot(?:s|ted|ting)?|curves?|parabolas?|axes|x-axis|y-axis|gradient|intercepts?|turning points?|asymptotes?)\b|\by\s*=|\bf\s*\(\s*x\s*\)/i;
+  /\b(?:graphs?|parabolas?|x-axis|y-axis|turning points?|asymptotes?)\b|\by\s*=|\bf\s*\(\s*x\s*\)/i;
+/**
+ * Words that mean a graph only beside some mathematics. The plot of a novel,
+ * a concentration gradient and a demand curve are not graphs to plot.
+ */
+const GRAPH_WORD_PATTERN = /\b(?:plot(?:s|ted|ting)?|curves?|axes|gradients?|intercepts?)\b/i;
+const MATHEMATICS_PATTERN = /\d|\b[xy]\b|[=^]/;
 const CORRECTION_PATTERN =
   /\b(?:that(?:'s| is) (?:wrong|incorrect)|you(?:'re| are) wrong|not correct|check again|recheck|you made (?:a|an) (?:mistake|error)|i disagree)\b/i;
 const ROUTING_STOP_WORDS = new Set([
@@ -195,7 +201,10 @@ function assistantSearchTerms(value: string, maxItems = 24) {
  * request never goes to it -- whether it says "draw", "show visually" or not.
  */
 export function isTutorGraphRequest(message: string) {
-  return GRAPH_REQUEST_PATTERN.test(message);
+  return (
+    GRAPH_REQUEST_PATTERN.test(message) ||
+    (GRAPH_WORD_PATTERN.test(message) && MATHEMATICS_PATTERN.test(message))
+  );
 }
 
 /** An ask to see a graph drawn, as opposed to a question that mentions one. */

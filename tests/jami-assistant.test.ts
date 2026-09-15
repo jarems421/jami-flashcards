@@ -301,6 +301,16 @@ describe("Jami automatic routing and privacy helpers", () => {
       ).toBe(false);
     }
     expect(isTutorGraphRequest("Draw the water cycle")).toBe(false);
+    // A plot, a curve or a gradient is only a graph beside some mathematics.
+    for (const message of [
+      "Draw the plot of Romeo and Juliet as a picture",
+      "Illustrate the concentration gradient across a membrane",
+      "Draw the supply and demand curves",
+    ]) {
+      expect(isTutorGraphRequest(message), message).toBe(false);
+    }
+    expect(isTutorGraphRequest("Where does the curve y = x^2 cross the axes?")).toBe(true);
+    expect(isTutorGraphRequest("What is the gradient between (1, 2) and (3, 8)?")).toBe(true);
   });
 
   /*
