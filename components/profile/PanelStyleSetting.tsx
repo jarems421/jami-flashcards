@@ -1,8 +1,10 @@
 "use client";
 
 import { useId } from "react";
+import { useUser } from "@/components/providers/UserProvider";
 import { usePanelStyle } from "@/hooks/usePanelStyle";
 import type { PanelStyle } from "@/lib/app/panel-style";
+import { updateAppearance } from "@/services/profile/appearance";
 
 const PANEL_STYLE_OPTIONS: Array<{ value: PanelStyle; label: string; detail: string }> = [
   { value: "glass", label: "See-through", detail: "Your background shows through cards and menus" },
@@ -17,7 +19,14 @@ const PANEL_STYLE_OPTIONS: Array<{ value: PanelStyle; label: string; detail: str
  * small should not take up half the card.
  */
 export default function PanelStyleSetting({ className = "" }: { className?: string }) {
-  const [panelStyle, setPanelStyle] = usePanelStyle();
+  const { user } = useUser();
+  const [panelStyle, setPanelStyleOnDevice] = usePanelStyle();
+  const setPanelStyle = (value: PanelStyle) => {
+    setPanelStyleOnDevice(value);
+    void updateAppearance(user.uid, { panelStyle: value }).catch((error: unknown) => {
+      console.warn("Could not save the panel style to your account.", error);
+    });
+  };
   const labelId = useId();
   const selected = PANEL_STYLE_OPTIONS.find((option) => option.value === panelStyle);
 

@@ -426,7 +426,7 @@ export default function DecksPage() {
           />
         ) : (
           <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
-            {decks.map((deck) => {
+            {decks.map((deck, index) => {
               const counts = deckCounts[deck.id] ?? { due: 0, total: 0 };
               const deckColor = getDeckColorPreset(deck.colorPreset);
               const folderName =
@@ -465,6 +465,7 @@ export default function DecksPage() {
                       </ButtonLink>
                       <Link
                         href={`${getDeckHref(deck.id)}#add-card`}
+                        data-tutorial-target={index === 0 ? "deck-add-card" : undefined}
                         className="inline-flex min-h-[2.5rem] flex-1 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 text-sm font-medium text-[var(--button-secondary-text)] sm:flex-none"
                       >
                         Add card

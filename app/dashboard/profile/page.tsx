@@ -24,9 +24,9 @@ import {
 import {
   APP_THEME_OPTIONS,
   readAppThemePreference,
-  saveAppThemePreference,
   type AppThemePreference,
 } from "@/lib/app/theme-preference";
+import { updateAppearance } from "@/services/profile/appearance";
 import {
   CONSTELLATION_BACKGROUND_EVENT,
   readConstellationBackgroundCrashMarked,
@@ -37,6 +37,7 @@ import PhotoBackgroundCard from "@/components/profile/PhotoBackgroundCard";
 import { TutorialAccountCard } from "@/components/onboarding/TutorialProvider";
 
 function ThemePreferenceCard() {
+  const { user } = useUser();
   const [selectedTheme, setSelectedTheme] = useState<AppThemePreference>(() =>
     readAppThemePreference(),
   );
@@ -71,7 +72,9 @@ function ThemePreferenceCard() {
 
   const handleSelectTheme = (value: AppThemePreference) => {
     setSelectedTheme(value);
-    saveAppThemePreference(value);
+    void updateAppearance(user.uid, { theme: value }).catch((error: unknown) => {
+      console.warn("Could not save the theme to your account.", error);
+    });
   };
 
   return (
@@ -79,7 +82,7 @@ function ThemePreferenceCard() {
       <SectionHeader
         eyebrow="Appearance"
         title="Choose your study atmosphere"
-        description="Saved only on this device. Your notes and study data do not change."
+        description="Saved to your account, so Jami looks the same on every device you sign into."
       />
       {skyIsOn ? (
         <p className="app-subtle-panel mt-4 rounded-lg px-3 py-2.5 text-sm leading-6">

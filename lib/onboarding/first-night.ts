@@ -1,52 +1,75 @@
+import type { OnboardingActionId } from "@/lib/onboarding/tutorial";
+import type { ExamCourseSelection } from "@/lib/practice/exam-questions";
 import type { StudyLevel } from "@/lib/profile/study-level";
 
 /**
  * "First night": the sign-up walkthrough.
  *
- * A short welcome on a night sky, then a tour of the real sidebar, then five
- * discoveries that each light a star on Today. Every discovery sends the
- * student to the place it lives through the navigation itself, so by the end
- * they have used each part of the app they will come back to.
+ * A short welcome on a night sky that turns the student's subjects into
+ * folders, a tour of the real sidebar, then a first constellation on Today.
+ * Each star is something the student actually does -- writes in a notebook,
+ * makes a flashcard and reviews it, asks Jami, answers a real exam question,
+ * sets a goal -- and it lights when the app hears it happen, not when a note
+ * is dismissed. Finishing earns the account's real first star, and the
+ * walkthrough ends by taking the student to see it in their sky.
  *
- * Progress is kept on the account and mirrored on the device, the subjects a
- * student picks become their folders, and finishing earns the real onboarding
- * star. `?first-night=preview` starts it afresh and `?first-night=off` ends it,
- * for anyone checking it by hand.
+ * Progress is kept on the account and mirrored on the device.
+ * `?first-night=preview` starts it afresh and `?first-night=off` ends it, for
+ * anyone checking it by hand.
  */
 
 export const FIRST_NIGHT_QUERY_PARAM = "first-night";
 const STORAGE_PREFIX = "jami:first-night:";
 
-export type FirstNightDiscoveryId = "notebook" | "exam" | "learn" | "tutor" | "stars";
-export type FirstNightStage = "welcome" | "tour" | "exploring" | "finished";
+export type FirstNightDiscoveryId = "notebook" | "cards" | "learn" | "tutor" | "exam" | "goal";
+/** `sky` is the last step: the star is earned, and the student is shown where it lives. */
+export type FirstNightStage = "welcome" | "tour" | "exploring" | "sky" | "finished";
 export type FirstNightRewardState = "not-earned" | "pending" | "awarded";
 
 export type FirstNightDiscovery = {
   id: FirstNightDiscoveryId;
   title: string;
-  /** The sidebar entry it lives under, exactly as the sidebar labels it. */
+  /** Where it happens, as the row under the title says it. */
+  where: string;
+  /** The sidebar entry that leads there, exactly as the sidebar labels it. */
   navLabel: string;
-  href: string;
   /** Where its star sits in the Today panel's sky, in percentages. */
   x: number;
   y: number;
 };
 
+/** In the order they build on each other: a card before reviewing it, a notebook before asking about it. */
 export const FIRST_NIGHT_DISCOVERIES: readonly FirstNightDiscovery[] = [
-  { id: "notebook", title: "Write in a notebook", navLabel: "Practice", href: "/dashboard/practice", x: 16, y: 64 },
-  { id: "exam", title: "Get an exam question marked", navLabel: "Practice", href: "/dashboard/practice", x: 34, y: 34 },
-  { id: "learn", title: "Flip a flashcard", navLabel: "Learn", href: "/dashboard/study", x: 54, y: 54 },
-  { id: "tutor", title: "Ask Tutor about your material", navLabel: "Tutor", href: "/dashboard/tutor", x: 71, y: 26 },
-  { id: "stars", title: "Turn your stars into a picture", navLabel: "Stars", href: "/dashboard/constellation", x: 86, y: 60 },
+  { id: "notebook", title: "Write in a notebook", where: "Practice", navLabel: "Practice", x: 10, y: 66 },
+  { id: "tutor", title: "Ask Jami about your notes", where: "your notebook", navLabel: "Practice", x: 26, y: 34 },
+  { id: "cards", title: "Make a flashcard", where: "Flashcards", navLabel: "Flashcards", x: 43, y: 60 },
+  { id: "learn", title: "Review your flashcard", where: "Learn", navLabel: "Learn", x: 58, y: 26 },
+  { id: "exam", title: "Get a real exam question marked", where: "Practice", navLabel: "Practice", x: 74, y: 54 },
+  { id: "goal", title: "Set your first goal", where: "Goals", navLabel: "Goals", x: 90, y: 30 },
 ];
+
+/** Which thing the app reports doing lights which star. */
+export const FIRST_NIGHT_ACTIONS: Partial<Record<OnboardingActionId, FirstNightDiscoveryId>> = {
+  "save-work": "notebook",
+  "ask-tutor": "tutor",
+  "create-card": "cards",
+  "complete-review": "learn",
+  "mark-exam-answer": "exam",
+  "create-goal": "goal",
+};
 
 export type FirstNightState = {
   version: 1;
   stage: FirstNightStage;
   tourStep: number;
   lit: FirstNightDiscoveryId[];
-  /** The discovery last asked for from Today, when two share a page. */
+  /** The discovery last asked for from Today, when several share a page. */
   intent: FirstNightDiscoveryId | null;
+  /**
+   * Whether a folder was set up with a course that has exam questions.
+   * Without one there is no question to answer, so that star is not asked for.
+   */
+  examReady: boolean;
   /** The finishing star: not yet earned, waiting for room in the sky, or given. */
   rewardState: FirstNightRewardState;
   /** When this copy last changed, so the device's and the account's can be merged. */
@@ -64,12 +87,17 @@ export const FIRST_NIGHT_TARGETS = {
   firstNotebook: '[data-tutorial-target="first-notebook"]',
   createNotebook: '[data-tutorial-target="create-notebook"]',
   pen: '[data-tutorial-target="pen"]',
-  examQuestions: '[data-tutorial-target="exam-questions"]',
-  markAnswer: '[data-tutorial-target="mark-answer"]',
-  flashcard: '[data-tutorial-target="flashcard"]',
+  askTutor: '[data-tutorial-target="ask-tutor"]',
+  createDeck: '[data-tutorial-target="create-deck"]',
+  deckAddCard: '[data-tutorial-target="deck-add-card"]',
+  createCard: '[data-tutorial-target="create-card"]',
   startReview: '[data-tutorial-target="start-review"]',
-  tutorMaterial: '[data-tutorial-target="tutor-material"]',
-  skyAsk: '[data-tutorial-target="sky-ask"]',
+  flashcard: '[data-tutorial-target="flashcard"]',
+  examQuestions: '[data-tutorial-target="exam-questions"]',
+  startExam: '[data-tutorial-target="start-exam"]',
+  markAnswer: '[data-tutorial-target="mark-answer"]',
+  newGoal: '[data-tutorial-target="new-goal"]',
+  createGoal: '[data-tutorial-target="create-goal"]',
 } as const;
 
 /** The page controls whose presence decides which note applies. */
@@ -79,12 +107,17 @@ export const FIRST_NIGHT_PAGE_TARGETS: readonly string[] = [
   FIRST_NIGHT_TARGETS.firstNotebook,
   FIRST_NIGHT_TARGETS.createNotebook,
   FIRST_NIGHT_TARGETS.pen,
-  FIRST_NIGHT_TARGETS.examQuestions,
-  FIRST_NIGHT_TARGETS.markAnswer,
-  FIRST_NIGHT_TARGETS.flashcard,
+  FIRST_NIGHT_TARGETS.askTutor,
+  FIRST_NIGHT_TARGETS.createDeck,
+  FIRST_NIGHT_TARGETS.deckAddCard,
+  FIRST_NIGHT_TARGETS.createCard,
   FIRST_NIGHT_TARGETS.startReview,
-  FIRST_NIGHT_TARGETS.tutorMaterial,
-  FIRST_NIGHT_TARGETS.skyAsk,
+  FIRST_NIGHT_TARGETS.flashcard,
+  FIRST_NIGHT_TARGETS.examQuestions,
+  FIRST_NIGHT_TARGETS.startExam,
+  FIRST_NIGHT_TARGETS.markAnswer,
+  FIRST_NIGHT_TARGETS.newGoal,
+  FIRST_NIGHT_TARGETS.createGoal,
 ];
 
 export function navTarget(label: string) {
@@ -92,20 +125,29 @@ export function navTarget(label: string) {
 }
 
 const DISCOVERY_IDS = new Set<string>(FIRST_NIGHT_DISCOVERIES.map((discovery) => discovery.id));
-const STAGES = new Set<string>(["welcome", "tour", "exploring", "finished"]);
+const STAGES = new Set<string>(["welcome", "tour", "exploring", "sky", "finished"]);
 const REWARD_STATES = new Set<string>(["not-earned", "pending", "awarded"]);
 
 export function getFirstNightDiscovery(id: FirstNightDiscoveryId) {
   return FIRST_NIGHT_DISCOVERIES.find((discovery) => discovery.id === id) ?? FIRST_NIGHT_DISCOVERIES[0];
 }
 
+/** The stars this student is asked to light. */
+export function firstNightDiscoveries(state: Pick<FirstNightState, "examReady">) {
+  return FIRST_NIGHT_DISCOVERIES.filter((discovery) => discovery.id !== "exam" || state.examReady);
+}
+
+export function allFirstNightLit(state: FirstNightState) {
+  return firstNightDiscoveries(state).every((discovery) => state.lit.includes(discovery.id));
+}
+
 export function createFirstNightState(now = Date.now()): FirstNightState {
-  return { version: 1, stage: "welcome", tourStep: 0, lit: [], intent: null, rewardState: "not-earned", updatedAt: now };
+  return { version: 1, stage: "welcome", tourStep: 0, lit: [], intent: null, examReady: false, rewardState: "not-earned", updatedAt: now };
 }
 
 export function readFirstNightState(value: unknown): FirstNightState | null {
   if (typeof value !== "object" || value === null) return null;
-  const { version, stage, tourStep, lit, intent, rewardState, updatedAt } = value as Record<string, unknown>;
+  const { version, stage, tourStep, lit, intent, examReady, rewardState, updatedAt } = value as Record<string, unknown>;
   if (version !== 1 || typeof stage !== "string" || !STAGES.has(stage)) return null;
   const litIds = Array.isArray(lit)
     ? Array.from(new Set(lit.filter((id): id is FirstNightDiscoveryId => typeof id === "string" && DISCOVERY_IDS.has(id))))
@@ -116,6 +158,7 @@ export function readFirstNightState(value: unknown): FirstNightState | null {
     tourStep: typeof tourStep === "number" && Number.isInteger(tourStep) && tourStep >= 0 ? tourStep : 0,
     lit: litIds,
     intent: typeof intent === "string" && DISCOVERY_IDS.has(intent) ? (intent as FirstNightDiscoveryId) : null,
+    examReady: examReady === true,
     rewardState:
       typeof rewardState === "string" && REWARD_STATES.has(rewardState) ? (rewardState as FirstNightRewardState) : "not-earned",
     updatedAt: typeof updatedAt === "number" && Number.isFinite(updatedAt) && updatedAt >= 0 ? updatedAt : 0,
@@ -158,65 +201,87 @@ export function mergeFirstNight(local: FirstNightState | null, remote: FirstNigh
   return local.updatedAt > remote.updatedAt ? local : remote;
 }
 
-export type FirstNightAnswers = {
-  subjects: readonly string[];
-  /** The level as the welcome labels it, such as "GCSE". */
-  level: string | null;
+export type FirstNightSubjectAnswer = {
+  name: string;
+  /** Set only when the level, board, course and any tier were all answered. */
+  examCourse: ExamCourseSelection | null;
 };
 
-const STUDY_LEVELS: Record<string, StudyLevel> = {
-  GCSE: "gcse-equivalent",
-  "A level": "post-16-equivalent",
-  IB: "post-16-equivalent",
-  University: "undergraduate",
+export type FirstNightAnswers = {
+  subjects: readonly FirstNightSubjectAnswer[];
+  studyLevel: StudyLevel | null;
 };
 
 export const MAX_FIRST_NIGHT_SUBJECTS = 12;
 
+type ExistingFolder = { id: string; name: string; studyLevel?: StudyLevel; examCourse?: ExamCourseSelection };
+
 /**
- * The folders the welcome's answers become: one per subject, each with a first notebook.
+ * The folders the welcome's answers become: one per subject, carrying its
+ * level and, where one was settled, its exam course.
  *
- * A subject the student already has a folder for is left alone, so replaying
- * the walkthrough, or answering on a second device, never makes a duplicate.
+ * No notebooks. A notebook made on the student's behalf arrived with no pages
+ * and nothing in it, and making their own is the first thing the walkthrough
+ * shows them how to do. A subject that already has a folder is not duplicated;
+ * it is given the course the student has just told Jami, if it had none.
  */
-export function planFirstNightSetup(answers: FirstNightAnswers, existingFolderNames: readonly string[]) {
-  const taken = new Set(existingFolderNames.map((name) => name.trim().toLowerCase()));
-  const folders: Array<{ name: string; notebookTitle: string }> = [];
+export function planFirstNightSetup(answers: FirstNightAnswers, existingFolders: readonly ExistingFolder[]) {
+  const byName = new Map(existingFolders.map((folder) => [folder.name.trim().toLowerCase(), folder]));
+  const seen = new Set<string>();
+  const create: Array<{ name: string; studyLevel: StudyLevel | null; examCourse: ExamCourseSelection | null }> = [];
+  const update: Array<{ id: string; studyLevel?: StudyLevel; examCourse: ExamCourseSelection }> = [];
+
   for (const subject of answers.subjects) {
-    const name = subject.trim().slice(0, 80);
+    const name = subject.name.trim().replace(/\s+/g, " ").slice(0, 80);
     const key = name.toLowerCase();
-    if (!name || taken.has(key)) continue;
-    taken.add(key);
-    folders.push({ name, notebookTitle: `${name} notebook` });
-    if (folders.length >= MAX_FIRST_NIGHT_SUBJECTS) break;
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    const existing = byName.get(key);
+    if (existing) {
+      if (subject.examCourse && !existing.examCourse) {
+        update.push({
+          id: existing.id,
+          examCourse: subject.examCourse,
+          ...(existing.studyLevel || !answers.studyLevel ? {} : { studyLevel: answers.studyLevel }),
+        });
+      }
+    } else if (create.length < MAX_FIRST_NIGHT_SUBJECTS) {
+      create.push({ name, studyLevel: answers.studyLevel, examCourse: subject.examCourse });
+    }
   }
-  return { studyLevel: answers.level ? (STUDY_LEVELS[answers.level] ?? null) : null, folders };
+
+  return { create, update, examReady: answers.subjects.some((subject) => Boolean(subject.examCourse)) };
 }
 
 export function isOnDiscoveryRoute(pathname: string, discovery: FirstNightDiscovery) {
+  const practiceNotQuestions =
+    pathname.startsWith("/dashboard/practice") && !pathname.startsWith("/dashboard/practice/questions");
   switch (discovery.id) {
     case "notebook":
-      return (
-        (pathname.startsWith("/dashboard/practice") && !pathname.startsWith("/dashboard/practice/questions")) ||
-        pathname.startsWith("/dashboard/folders") ||
-        pathname.startsWith("/dashboard/notebooks")
-      );
+    case "tutor":
+      return practiceNotQuestions || pathname.startsWith("/dashboard/folders") || pathname.startsWith("/dashboard/notebooks");
+    case "cards":
+      return pathname.startsWith("/dashboard/decks");
+    case "learn":
+      return pathname.startsWith("/dashboard/study");
     case "exam":
       return pathname.startsWith("/dashboard/practice");
-    default:
-      return pathname.startsWith(discovery.href);
+    case "goal":
+      return pathname.startsWith("/dashboard/goals");
   }
 }
 
-/** Sidebar entries that still hold an unlit star, so they can say so. */
+/** Sidebar entries that still lead to an unlit star, so they can say so. */
 export function pendingNavLabels(state: FirstNightState | null): string[] {
-  if (!state || (state.stage !== "tour" && state.stage !== "exploring")) return [];
+  if (!state) return [];
+  if (state.stage === "sky") return ["Stars"];
+  if (state.stage !== "tour" && state.stage !== "exploring") return [];
   return Array.from(
-    new Set(FIRST_NIGHT_DISCOVERIES.filter((discovery) => !state.lit.includes(discovery.id)).map((discovery) => discovery.navLabel))
+    new Set(firstNightDiscoveries(state).filter((discovery) => !state.lit.includes(discovery.id)).map((discovery) => discovery.navLabel))
   );
 }
 
-export type FirstNightGuideDone = "next-tour" | "finish-tour" | "clear-point" | "light" | "dismiss";
+export type FirstNightGuideDone = "next-tour" | "finish-tour" | "clear-point" | "dismiss" | "finish";
 
 export type FirstNightGuidePlan = {
   /** Stable per note, so a dismissed note stays dismissed. */
@@ -229,8 +294,6 @@ export type FirstNightGuidePlan = {
   doneLabel: string;
   done: FirstNightGuideDone;
   skippable?: boolean;
-  /** Pressing the target itself lights this star. */
-  lights?: FirstNightDiscoveryId;
 };
 
 type GuideInput = {
@@ -258,8 +321,8 @@ function tourSteps(isPhone: boolean): Omit<FirstNightGuidePlan, "key">[] {
       target: isPhone ? navTarget("Practice") : T.loopGroup,
       near: isPhone ? undefined : T.loopGroup,
       text: isPhone
-        ? "Practice holds your folders, notebooks and exam questions."
-        : "Your study loop lives up here: Today, Learn, Practice and Tutor. You'll use these most.",
+        ? "Practice holds your subject folders, their notebooks and real exam questions."
+        : "Your study loop lives up here. Practice holds your subject folders, Learn is where you review, and Tutor is Jami.",
       doneLabel: "Next",
       done: "next-tour",
       skippable: true,
@@ -269,7 +332,7 @@ function tourSteps(isPhone: boolean): Omit<FirstNightGuidePlan, "key">[] {
       near: isPhone ? undefined : T.supportGroup,
       text: isPhone
         ? "Keep swiping for Flashcards, Goals, your Stars and Progress."
-        : "Your flashcards, topics, goals, stars and progress are down here.",
+        : "Down here are your flashcards, topics, goals, your sky of stars, and your progress.",
       doneLabel: "Next",
       done: "next-tour",
       skippable: true,
@@ -277,7 +340,7 @@ function tourSteps(isPhone: boolean): Omit<FirstNightGuidePlan, "key">[] {
     {
       target: T.panel,
       near: isPhone ? undefined : T.panel,
-      text: "Now light your first constellation. Each star takes you somewhere new, so you'll know where everything lives.",
+      text: "Now light your first constellation. Each star is one real thing you'll do in Jami, so by the end you'll have used all of it.",
       doneLabel: "Let's go",
       done: "finish-tour",
     },
@@ -286,24 +349,55 @@ function tourSteps(isPhone: boolean): Omit<FirstNightGuidePlan, "key">[] {
 
 export const FIRST_NIGHT_TOUR_LENGTH = tourSteps(false).length;
 
+function note(key: string, target: string | null, text: string): FirstNightGuidePlan {
+  return { key, target, text, doneLabel: "Got it", done: "dismiss" };
+}
+
 /**
  * The one note that applies right now, if any.
  *
  * Decided from where the student is and what is actually on the page, so a
- * note only ever points at something they can see and press.
+ * note only ever points at something they can see and press. No note lights a
+ * star: every one waits for the thing itself to happen.
  */
 export function planFirstNightGuide({ state, pathname, isPhone, pointing, present }: GuideInput): FirstNightGuidePlan | null {
   const T = FIRST_NIGHT_TARGETS;
-  const lit = new Set(state.lit);
+  const where = isPhone ? "in the bar at the bottom" : "in the sidebar";
 
   if (state.stage === "tour") {
     const steps = tourSteps(isPhone);
     const index = Math.min(state.tourStep, steps.length - 1);
     return { ...steps[index], key: `tour-${index}` };
   }
+
+  if (state.stage === "sky") {
+    if (pathname.startsWith("/dashboard/constellation")) {
+      return {
+        key: "sky-here",
+        target: null,
+        text: "This is your sky, and that's your first star. Every goal you finish adds another. Drag them wherever you like, and once you have a few, ask Jami to draw them into a picture.",
+        doneLabel: "Finish",
+        done: "finish",
+      };
+    }
+    const stars = navTarget("Stars");
+    return {
+      key: "sky-go",
+      target: stars,
+      near: isPhone ? undefined : stars,
+      text: `Your first star is waiting in your sky. Tap Stars ${where} to see it.`,
+      doneLabel: "Later",
+      done: "finish",
+    };
+  }
+
   if (state.stage !== "exploring") return null;
 
-  if (pointing) {
+  const lit = new Set(state.lit);
+  const wanted = firstNightDiscoveries(state).filter((discovery) => !lit.has(discovery.id));
+  const needs = (id: FirstNightDiscoveryId) => wanted.some((discovery) => discovery.id === id);
+
+  if (pointing && needs(pointing)) {
     const discovery = getFirstNightDiscovery(pointing);
     if (!isOnDiscoveryRoute(pathname, discovery)) {
       const nav = navTarget(discovery.navLabel);
@@ -311,72 +405,130 @@ export function planFirstNightGuide({ state, pathname, isPhone, pointing, presen
         key: `point-${discovery.id}`,
         target: nav,
         near: isPhone ? undefined : nav,
-        text: `That's in ${discovery.navLabel}. Tap ${discovery.navLabel} ${isPhone ? "in the bar at the bottom" : "in the sidebar"} to go there.`,
+        text:
+          discovery.id === "tutor"
+            ? `You ask Jami from inside your notebook. Tap Practice ${where}, then open your notebook.`
+            : `That's in ${discovery.navLabel}. Tap ${discovery.navLabel} ${where} to go there.`,
         doneLabel: "Maybe later",
         done: "clear-point",
       };
     }
   }
 
-  if (pathname.startsWith("/dashboard/notebooks/") && !lit.has("notebook")) {
-    return present(T.pen)
-      ? { key: "notebook-pen", target: T.pen, text: "Pick the pen and write just like paper. Everything saves as you go.", doneLabel: "Got it", done: "light", lights: "notebook" }
-      : null;
-  }
+  // Of the stars a page could lead to, the one asked for from Today, else the first still unlit.
+  const focus = (...ids: FirstNightDiscoveryId[]) => {
+    const open = ids.filter(needs);
+    if (state.intent && open.includes(state.intent)) return state.intent;
+    return FIRST_NIGHT_DISCOVERIES.find((discovery) => open.includes(discovery.id))?.id ?? null;
+  };
 
-  if (pathname.startsWith("/dashboard/folders/") && !lit.has("notebook")) {
-    if (present(T.firstNotebook)) {
-      return { key: "notebook-open", target: T.firstNotebook, text: "Open a notebook to start writing.", doneLabel: "Got it", done: "dismiss" };
+  if (pathname.startsWith("/dashboard/notebooks/")) {
+    const next = focus("notebook", "tutor");
+    if (next === "notebook") {
+      return present(T.pen)
+        ? note("notebook-write", T.pen, "This is your notebook. Pick the pen and write anything, or tap the page to type. It saves by itself, and your star lights when it does.")
+        : note("notebook-type", null, "This is your notebook. Tap the page and type anything, like today's topic. It saves by itself, and your star lights when it does.");
     }
-    if (present(T.createNotebook)) {
-      return { key: "notebook-create", target: T.createNotebook, text: "Make a notebook for this folder, then open it to write.", doneLabel: "Got it", done: "dismiss" };
+    if (next === "tutor" && present(T.askTutor)) {
+      return note("tutor-ask", T.askTutor, "Now ask Jami about it. Tap Jami Tutor and ask a question about this page, like \"test me on this\".");
     }
     return null;
   }
 
-  if (pathname.startsWith("/dashboard/practice/questions") && !lit.has("exam")) {
+  if (pathname.startsWith("/dashboard/folders/")) {
+    const next = focus("notebook", "tutor");
+    if (!next) return null;
+    if (present(T.firstNotebook)) {
+      return note(
+        `${next}-open-notebook`,
+        T.firstNotebook,
+        next === "tutor" ? "Open your notebook. Jami Tutor is at the top of it." : "Open your notebook to start writing."
+      );
+    }
+    if (present(T.createNotebook)) {
+      return note("notebook-create", T.createNotebook, "This folder is empty for now. Make your first notebook here. Call it anything, like \"Class notes\".");
+    }
+    return null;
+  }
+
+  if (pathname.startsWith("/dashboard/practice/questions/new")) {
+    if (!needs("exam")) return null;
+    return present(T.startExam)
+      ? note("exam-start", T.startExam, "One or two questions is plenty for now. Set the mix, then press Start practice.")
+      : null;
+  }
+
+  if (pathname.startsWith("/dashboard/practice/questions/")) {
+    if (!needs("exam")) return null;
     return present(T.markAnswer)
-      ? { key: "exam-mark", target: T.markAnswer, text: "Write your answer, then press Mark answer. Jami marks it like an examiner.", doneLabel: "Got it", done: "light", lights: "exam" }
-      : { key: "exam-choose", target: null, text: "Choose a course and a question. Once you've answered, press Mark answer and Jami marks it like an examiner.", doneLabel: "Got it", done: "dismiss" };
+      ? note("exam-mark", T.markAnswer, "Write your answer, then press Mark answer. Jami marks it against the real mark scheme and your star lights.")
+      : null;
   }
 
   if (pathname === "/dashboard/practice") {
-    const examGuide: FirstNightGuidePlan | null =
-      !lit.has("exam") && present(T.examQuestions)
-        ? { key: "exam-open", target: T.examQuestions, text: "Real exam questions live here. Pick one and Jami marks it like an examiner.", doneLabel: "Got it", done: "dismiss" }
-        : null;
-    if (state.intent === "exam" && examGuide) return examGuide;
-    if (!lit.has("notebook")) {
+    const next = focus("notebook", "tutor", "exam");
+    if (next === "exam" && present(T.examQuestions)) {
+      return note("exam-open", T.examQuestions, "Real exam questions for your course live here. Open them to answer one.");
+    }
+    if (next === "notebook" || next === "tutor") {
       if (present(T.firstFolder)) {
-        return { key: "notebook-folder", target: T.firstFolder, text: "Each subject has its own folder. Open one to find its notebooks.", doneLabel: "Got it", done: "dismiss" };
+        return note(`${next}-folder`, T.firstFolder, "Your subjects are here, one folder each. Open one to find its notebooks.");
       }
       if (present(T.createFolder)) {
-        return { key: "notebook-new-folder", target: T.createFolder, text: "Make a folder for a subject. Its notebooks will live inside.", doneLabel: "Got it", done: "dismiss" };
+        return note("notebook-new-folder", T.createFolder, "Make a folder for one of your subjects. Its notebooks will live inside.");
       }
     }
-    return examGuide;
+    return null;
   }
 
-  if (pathname.startsWith("/dashboard/study") && !lit.has("learn")) {
+  if (pathname.startsWith("/dashboard/decks/")) {
+    return needs("cards") && present(T.createCard)
+      ? note("cards-add", T.createCard, "Write a question on the front and its answer on the back, then press Add card.")
+      : null;
+  }
+
+  if (pathname.startsWith("/dashboard/decks")) {
+    if (!needs("cards")) return null;
+    if (present(T.deckAddCard)) return note("cards-open-deck", T.deckAddCard, "Your deck is ready. Press Add card to write your first flashcard.");
+    if (present(T.createDeck)) return note("cards-deck", T.createDeck, "Flashcards live in decks. Give your first deck a name, like one of your subjects, and create it.");
+    return null;
+  }
+
+  if (pathname.startsWith("/dashboard/study")) {
+    if (!needs("learn")) return null;
     if (present(T.flashcard)) {
-      return { key: "learn-flip", target: T.flashcard, text: "Tap the card to see the answer, then say how well you knew it.", doneLabel: "Got it", done: "light", lights: "learn" };
+      return note("learn-flip", T.flashcard, "Think of the answer, then tap the card to flip it and say how well you knew it.");
     }
     if (present(T.startReview)) {
-      return { key: "learn-start", target: T.startReview, text: "Start a review and your first card appears.", doneLabel: "Got it", done: "dismiss" };
+      return note("learn-start", T.startReview, "Your flashcard is ready to review. Start your review.");
     }
-    return { key: "learn-empty", target: null, text: "Cards you're due to review show up here. Make a deck in Flashcards to get started.", doneLabel: "Got it", done: "light", lights: "learn" };
+    if (needs("cards")) {
+      const flashcards = navTarget("Flashcards");
+      return {
+        key: "learn-needs-card",
+        target: flashcards,
+        near: isPhone ? undefined : flashcards,
+        text: `There's nothing to review until you've made a flashcard. Tap Flashcards ${where} to make one.`,
+        doneLabel: "Got it",
+        done: "dismiss",
+      };
+    }
+    return null;
   }
 
-  if (pathname.startsWith("/dashboard/tutor") && !lit.has("tutor")) {
-    return present(T.tutorMaterial)
-      ? { key: "tutor-material", target: T.tutorMaterial, text: "Jami answers from your own material. Pick something to ask about.", doneLabel: "Got it", done: "light", lights: "tutor" }
-      : null;
+  if (pathname.startsWith("/dashboard/goals")) {
+    if (!needs("goal")) return null;
+    if (present(T.createGoal)) {
+      return note("goal-create", T.createGoal, "Pick how many cards to review and by when, then press Create goal. Finish it and it earns a star.");
+    }
+    if (present(T.newGoal)) {
+      return note("goal-new", T.newGoal, "Goals give your studying a target, and every goal you finish adds a star to your sky. Make your first one.");
+    }
+    return null;
   }
 
-  if (pathname.startsWith("/dashboard/constellation") && !lit.has("stars")) {
-    return present(T.skyAsk)
-      ? { key: "stars-ask", target: T.skyAsk, text: "Every goal you finish earns a star. Ask Jami to turn yours into a picture.", doneLabel: "Got it", done: "light", lights: "stars" }
-      : null;
+  if (pathname.startsWith("/dashboard/tutor") && needs("tutor")) {
+    return note("tutor-page", null, "Tutor reads only what you hand it. The quickest way to try it is from your notebook: open it and tap Jami Tutor at the top.");
   }
 
   return null;

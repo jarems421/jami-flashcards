@@ -22,9 +22,8 @@ import {
 import {
   readConstellationBackgroundConstellationId,
   readConstellationBackgroundEnabled,
-  setConstellationBackgroundConstellationId,
-  setConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
+import { updateAppearance } from "@/services/profile/appearance";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import {
   clampPercentage,
@@ -338,16 +337,19 @@ export default function ConstellationDashboardPage() {
       return;
     }
 
+    const saveFailed = (error: unknown) => {
+      console.warn("Could not save the background to your account.", error);
+    };
+
     if (isSelectedConstellationBackground) {
       setIsConstellationBackgroundEnabled(false);
-      setConstellationBackgroundEnabled(false);
+      void updateAppearance(user.uid, { sky: false }).catch(saveFailed);
       return;
     }
 
     setBackgroundConstellationId(selectedConstellation.id);
-    setConstellationBackgroundConstellationId(selectedConstellation.id);
     setIsConstellationBackgroundEnabled(true);
-    setConstellationBackgroundEnabled(true);
+    void updateAppearance(user.uid, { sky: true, skyConstellationId: selectedConstellation.id }).catch(saveFailed);
   };
 
   useEffect(() => {

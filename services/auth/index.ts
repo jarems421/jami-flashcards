@@ -26,6 +26,7 @@ import {
 } from "@/lib/auth/account-deletion-contract";
 import { getPasswordRequirementMessage } from "@/lib/auth/password-strength";
 import { writePhotoBackground } from "@/lib/app/photo-background";
+import { applyAppearanceToDevice, DEFAULT_APPEARANCE } from "@/lib/app/appearance";
 
 const provider = new GoogleAuthProvider();
 const AUTH_OPERATION_TIMEOUT_MS = 30_000;
@@ -127,9 +128,10 @@ export const handleGoogleRedirectResult = async () => {
 // Logout
 export const logout = async () => {
   await signOut(auth);
-  // The photo background is this account's. On a shared device the next person
-  // to sign in should not open on it.
+  // The photo background and the look are this account's. On a shared device
+  // the next person to sign in should not open on them.
   writePhotoBackground(null);
+  applyAppearanceToDevice(DEFAULT_APPEARANCE, null);
 };
 
 // Email sign-up

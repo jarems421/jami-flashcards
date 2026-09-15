@@ -19,7 +19,6 @@ import {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import {
-  BrandMark,
   Button,
   ButtonLink,
   Card,
@@ -36,6 +35,7 @@ import {
   advanceTutorialProgress,
   createInitialTutorialProgress,
   getTutorialMission,
+  isTutorialMissionId,
   TUTORIAL_ACTION_EVENT,
   TUTORIAL_MISSIONS,
   type TutorialContext as TutorialRouteContext,
@@ -96,65 +96,6 @@ function NorthernStarBadge({ className = "" }: { className?: string }) {
       <path d={NORTHERN_STAR_PATH} fill="currentColor" />
       <path d={NORTHERN_STAR_FACET_PATH} fill="var(--color-surface-panel-strong)" />
     </svg>
-  );
-}
-
-function WelcomeDialog({
-  open,
-  onStart,
-  onExplore,
-  onClose,
-}: {
-  open: boolean;
-  onStart: () => void;
-  onExplore: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <Dialog
-      open={open}
-      closeOnBackdrop={false}
-      /*
-       * Escape closes the invitation without answering it. Treating a stray
-       * Escape as "explore on my own" would quietly retire the walkthrough on
-       * a keypress that everywhere else in the app just means "not this".
-       */
-      onDismiss={onClose}
-      className="fixed inset-0 flex items-center justify-center p-4"
-    >
-      <DialogBackdrop className="absolute inset-0 bg-[color-mix(in_srgb,var(--app-background)_78%,transparent)]" />
-      <DialogPanel
-        data-testid="tutorial-welcome"
-        className="app-panel relative w-full max-w-lg overflow-hidden rounded-2xl border-[1.5px] border-[var(--color-border-strong)] p-6 shadow-shell sm:p-8"
-      >
-        <div className="flex items-center gap-3">
-          <BrandMark size="lg" />
-          <div>
-            <div className="text-2xs font-semibold uppercase tracking-[0.2em] text-text-muted">
-              Welcome to Jami
-            </div>
-            <DialogTitle className="mt-1 text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
-              Find your first study rhythm.
-            </DialogTitle>
-          </div>
-        </div>
-        <div className="mt-6 flex justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-5 text-text-primary">
-          <ConstellationTrail completed={MISSION_COUNT} size="lg" decorative />
-        </div>
-        <DialogDescription className="mt-6 text-sm leading-6 text-text-secondary">
-          {MISSION_COUNT} small missions take you from your first folder to a
-          real review and one useful question for Jami.
-        </DialogDescription>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <Button size="lg" onClick={onStart}>
-            Start walkthrough
-          </Button>
-          <Button size="lg" variant="secondary" onClick={onExplore}>
-            Explore on my own
-          </Button>
-        </div>
-      </DialogPanel>
-    </Dialog>
   );
 }
 
@@ -434,16 +375,15 @@ export default function TutorialProvider({
   const [progress, setProgress] = useState(() => createInitialTutorialProgress());
   const progressRef = useRef(progress);
   const [ready, setReady] = useState(false);
-  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
   const [completionOpen, setCompletionOpen] = useState(false);
   const [starReward, setStarReward] = useState<StarReward | null>(null);
   const awardingRef = useRef(false);
   const pendingRetryAtRef = useRef(0);
   /*
-   * The invitation is offered once a session. Without this the effect that
-   * opens it would re-open it the moment it was closed, because closing it
-   * without answering deliberately leaves the walkthrough eligible.
+   * First night is opened for an empty account once a session. Without this
+   * the effect on Today would open it again the moment the student left it,
+   * because an account that is still empty still looks new.
    */
   const invitedRef = useRef(false);
 
@@ -536,7 +476,8 @@ export default function TutorialProvider({
         missionId?: TutorialMissionId;
         context?: TutorialRouteContext;
       }>).detail;
-      if (!detail?.missionId) return;
+      // First night hears more of the app than the missions do.
+      if (!isTutorialMissionId(detail?.missionId)) return;
       const next = advanceTutorialProgress(
         progressRef.current,
         detail.missionId,
@@ -566,13 +507,6 @@ export default function TutorialProvider({
     void awardCompletion();
   }, [awardCompletion, pathname, progress.rewardState, ready]);
 
-  const invite = useCallback(() => {
-    if (invitedRef.current) return;
-    if (progressRef.current.status !== "idle") return;
-    invitedRef.current = true;
-    setWelcomeOpen(true);
-  }, []);
-
   /*
    * Every way into the walkthrough now opens First night.
    *
@@ -584,12 +518,18 @@ export default function TutorialProvider({
   const start = useCallback(() => {
     const previous = progressRef.current;
     invitedRef.current = true;
-    setWelcomeOpen(false);
     if (previous.status !== "completed" && previous.status !== "dismissed") {
       persist({ ...previous, status: "dismissed", updatedAt: Date.now() });
     }
     startFirstNight();
   }, [persist, startFirstNight]);
+
+  /** An empty account's first visit opens First night itself. */
+  const invite = useCallback(() => {
+    if (invitedRef.current) return;
+    if (progressRef.current.status !== "idle") return;
+    start();
+  }, [start]);
 
   const pause = useCallback(() => {
     setPauseOpen(false);
@@ -620,19 +560,6 @@ export default function TutorialProvider({
   return (
     <TutorialContext.Provider value={value}>
       {children}
-      <WelcomeDialog
-        open={welcomeOpen && !firstNight.active}
-        onStart={start}
-        onClose={() => setWelcomeOpen(false)}
-        onExplore={() => {
-          setWelcomeOpen(false);
-          persist({
-            ...progressRef.current,
-            status: "dismissed",
-            updatedAt: Date.now(),
-          });
-        }}
-      />
       <PauseDialog
         open={pauseOpen}
         onKeepGoing={() => setPauseOpen(false)}

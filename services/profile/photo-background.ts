@@ -38,7 +38,7 @@ import {
   type PhotoBackgroundRecord,
   type PhotoBackgroundView,
 } from "@/lib/app/photo-background";
-import { setConstellationBackgroundEnabled } from "@/lib/constellation/background";
+import { updateAppearance } from "@/services/profile/appearance";
 
 /** What a phone camera produces, before it is resized. */
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
@@ -315,8 +315,8 @@ export async function savePhotoBackground(userId: string, file: File): Promise<C
     storagePath
   );
 
-  // Choosing a photo is the newest choice on this device, so it replaces the sky here.
-  setConstellationBackgroundEnabled(false);
+  // Choosing a photo is the newest choice, so it replaces the sky, here and on the account.
+  await updateAppearance(userId, { sky: false }).catch(() => undefined);
   const cached: CachedPhotoBackground = { ...record, userId, imageUrl };
   writePhotoBackground(cached);
   return cached;

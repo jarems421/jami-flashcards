@@ -613,6 +613,7 @@ export default function GoalsPage() {
             <Button
               type="button"
               variant="warm"
+              data-tutorial-target="new-goal"
               onClick={() => {
                 setEditingGoalId(null);
                 setShowGoalComposer(true);
@@ -745,6 +746,7 @@ export default function GoalsPage() {
                   </p>
                   <Button
                     disabled={!canSaveGoal}
+                    data-tutorial-target="create-goal"
                     onClick={() => void handleSaveGoal()}
                     variant="warm"
                     size="lg"

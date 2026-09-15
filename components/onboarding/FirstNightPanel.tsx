@@ -3,24 +3,27 @@
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import { useFirstNight } from "@/components/onboarding/FirstNightProvider";
 import { DrawnLines, Sparkle, makeFirstNightStar } from "@/components/onboarding/FirstNightSky";
-import { FIRST_NIGHT_DISCOVERIES } from "@/lib/onboarding/first-night";
+import { firstNightDiscoveries } from "@/lib/onboarding/first-night";
 
 /**
- * "Your first constellation" on Today: five stars, lit one discovery at a time.
+ * "Your first constellation" on Today: a star for each real thing to do.
  *
- * Pressing a row does not open the place. It lights the sidebar entry where
- * that place lives, so the student gets there the way they always will.
+ * Pressing a row does not do it for the student. It lights the sidebar entry
+ * where that thing lives, so they get there the way they always will, and the
+ * star lights once the app hears it happen.
  */
 export default function FirstNightPanel() {
   const { active, state, justLit, finale, point, end } = useFirstNight();
   if (!active || !state || (state.stage !== "tour" && state.stage !== "exploring")) return null;
 
+  const discoveries = firstNightDiscoveries(state);
   const lit = state.lit;
-  const complete = lit.length === FIRST_NIGHT_DISCOVERIES.length;
-  const points = FIRST_NIGHT_DISCOVERIES.map(({ x, y }) => ({ x, y }));
-  const allPairs = FIRST_NIGHT_DISCOVERIES.slice(1).map((_, index) => [index, index + 1] as [number, number]);
-  const pairs = allPairs.filter(([a, b]) => lit.includes(FIRST_NIGHT_DISCOVERIES[a].id) && lit.includes(FIRST_NIGHT_DISCOVERIES[b].id));
-  const ring = FIRST_NIGHT_DISCOVERIES.find((discovery) => discovery.id === justLit);
+  const litCount = discoveries.filter((discovery) => lit.includes(discovery.id)).length;
+  const complete = litCount === discoveries.length;
+  const points = discoveries.map(({ x, y }) => ({ x, y }));
+  const allPairs = discoveries.slice(1).map((_, index) => [index, index + 1] as [number, number]);
+  const pairs = allPairs.filter(([a, b]) => lit.includes(discoveries[a].id) && lit.includes(discoveries[b].id));
+  const ring = discoveries.find((discovery) => discovery.id === justLit);
 
   return (
     <section data-tutorial-target="first-night" className={`app-panel rounded-2xl p-5 ${finale === "leaving" ? "fn-leave" : ""}`}>
@@ -33,7 +36,7 @@ export default function FirstNightPanel() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="app-chip whitespace-nowrap rounded-full px-3 py-1 text-xs text-text-secondary">
-            {lit.length} of {FIRST_NIGHT_DISCOVERIES.length} lit
+            {litCount} of {discoveries.length} lit
           </span>
           <button type="button" className="rounded-full px-2 py-1 text-xs text-text-muted transition duration-fast hover:text-text-primary" onClick={end}>
             Skip
@@ -45,7 +48,7 @@ export default function FirstNightPanel() {
         {/* The shape still to fill, faintly, so there is something to light. */}
         <DrawnLines ghost points={points} pairs={allPairs} />
         {pairs.length ? <DrawnLines key={pairs.length} points={points} pairs={pairs} delay={0.5} step={0} /> : null}
-        {FIRST_NIGHT_DISCOVERIES.map((discovery) =>
+        {discoveries.map((discovery) =>
           lit.includes(discovery.id) ? (
             <div key={discovery.id} className={`fn-star-wrap ${justLit === discovery.id ? "fn-fade-slow" : ""}`}>
               <ConstellationStar star={makeFirstNightStar(`first-night-${discovery.id}`, discovery.x, discovery.y, 3.6, 1)} variant="preview" visualSize={34} />
@@ -60,7 +63,7 @@ export default function FirstNightPanel() {
       </div>
 
       <ol className="flex flex-col gap-1">
-        {FIRST_NIGHT_DISCOVERIES.map((discovery) => {
+        {discoveries.map((discovery) => {
           const isLit = lit.includes(discovery.id);
           return (
             <li key={discovery.id}>
@@ -75,7 +78,7 @@ export default function FirstNightPanel() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className={`block text-sm font-medium ${isLit ? "text-text-muted" : "text-text-primary"}`}>{discovery.title}</span>
-                  <span className="block text-xs text-text-muted">In {discovery.navLabel}</span>
+                  <span className="block text-xs text-text-muted">In {discovery.where}</span>
                 </span>
                 <span className="text-xs text-text-muted">
                   {isLit ? (
