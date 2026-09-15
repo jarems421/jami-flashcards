@@ -59,7 +59,7 @@ const EXCEPTIONS = new Map([
   // this gate. Recording their current sizes makes the existing debt visible
   // and restores the ratchet: none can grow another line without failing CI.
   ["components/workspace/NotebookInkEditor.tsx", 1301],
-  ["services/ai/practice-paper-generation.server.ts", 1511],
+  // Removed on 2026-09-15: practice-paper generation was split into its stages.
   // Lowered on 2026-08-14: the assistant-context builder moved out to
   // hooks/useNotebookAssistantContext when the multi-model work pushed it over.
   ["app/dashboard/notebooks/[notebookId]/page.tsx", 2977],
