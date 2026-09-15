@@ -15,6 +15,8 @@ import {
 import { backfillStarPositions, getStars } from "@/services/constellation/stars";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import ConstellationLines from "@/components/constellation/ConstellationLines";
+import ShootingStars from "@/components/constellation/ShootingStars";
+import { getShootingStarCount } from "@/lib/constellation/shooting-stars";
 
 type ConstellationBackgroundProps = {
   selectedConstellationId?: string;
@@ -145,6 +147,11 @@ export default function ConstellationBackground({
           * constellation. Fainter here than on that page, because behind a
           * working surface it is atmosphere rather than the subject.
           */}
+        {/* Inside the sky layer, so they pause with it while a notebook is open. */}
+        <ShootingStars
+          count={getShootingStarCount(visibleStars.length, "background")}
+          seed={selectedConstellation?.id ?? "background"}
+        />
         <ConstellationLines
           lines={selectedConstellation?.lines ?? []}
           stars={visibleStars}

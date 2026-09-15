@@ -4,8 +4,10 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import ConstellationBackgroundErrorBoundary from "@/components/constellation/ConstellationBackgroundErrorBoundary";
+import NightSkyBackdrop from "@/components/constellation/NightSkyBackdrop";
 import {
   allowsConstellationBackground,
+  isNightSkyRoute,
   CONSTELLATION_BACKGROUND_EVENT,
   readConstellationBackgroundCrashMarked,
   readConstellationBackgroundConstellationId,
@@ -132,9 +134,11 @@ export default function ConstellationBackgroundShell({
    * notebooks, past-paper questions and the constellation page alike.
    */
   const skyIsPreferred = isEnabled && !isCrashMarked;
-  const photo = !skyIsPreferred ? photoBackground : null;
+  /** Signing in always happens under the night sky, whatever the app is set to. */
+  const nightRoute = isNightSkyRoute(pathname ?? "");
+  const photo = !skyIsPreferred && !nightRoute ? photoBackground : null;
   /** Either background brings its own palette, so the colour theme stands aside. */
-  const shouldShowBackground = showsSky || Boolean(photo);
+  const shouldShowBackground = showsSky || Boolean(photo) || nightRoute;
 
   useEffect(() => {
     if (!showsSky || isBackgroundReady) {
@@ -207,7 +211,7 @@ export default function ConstellationBackgroundShell({
     for (const target of backgroundTargets) {
       target.classList.toggle(
         "constellation-background-enabled",
-        showsSky
+        showsSky || nightRoute
       );
     }
 
@@ -216,7 +220,7 @@ export default function ConstellationBackgroundShell({
         target.classList.remove("constellation-background-enabled");
       }
     };
-  }, [showsSky]);
+  }, [nightRoute, showsSky]);
 
   /*
    * The photo and its palette, the same way the blocking script applies them.
@@ -266,7 +270,9 @@ export default function ConstellationBackgroundShell({
 
   return (
     <>
-      {showsSky ? (
+      {nightRoute ? (
+        <NightSkyBackdrop fixed />
+      ) : showsSky ? (
         <ConstellationBackgroundErrorBoundary>
           {isBackgroundReady ? (
             <ConstellationBackground

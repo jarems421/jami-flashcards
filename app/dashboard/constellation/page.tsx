@@ -52,6 +52,8 @@ import {
 } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import ConstellationLines from "@/components/constellation/ConstellationLines";
+import ShootingStars from "@/components/constellation/ShootingStars";
+import { getShootingStarCount } from "@/lib/constellation/shooting-stars";
 import ConstellationControls, {
   type ConstellationSkyMode,
 } from "@/components/constellation/ConstellationControls";
@@ -1121,6 +1123,11 @@ export default function ConstellationDashboardPage() {
                     backgroundColor: "#090413",
                   }}
                 >
+                  {/* More stars earned, a few more streaks: never enough to distract. */}
+                  <ShootingStars
+                    count={getShootingStarCount(visibleStars.length, "sky")}
+                    seed={selectedConstellation.id}
+                  />
                   <ConstellationLines
                     lines={selectedLines}
                     stars={visibleStars}

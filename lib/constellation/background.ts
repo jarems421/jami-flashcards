@@ -53,6 +53,18 @@ export const CONSTELLATION_BACKGROUND_EXCLUDED_PATHS = [
   "/dashboard/practice/questions/",
 ];
 
+/**
+ * Where the night sky is always the background: signing in, and the landing page.
+ *
+ * The first-night welcome happens on this sky, so a student arrives in it
+ * rather than seeing it appear. Whatever theme or photo they choose later
+ * belongs to the app itself. The blocking script in the head mirrors this
+ * check so the first painted frame is already the sky.
+ */
+export function isNightSkyRoute(pathname: string) {
+  return pathname === "/" || pathname === "/auth" || pathname.startsWith("/auth/");
+}
+
 export function allowsConstellationBackground(pathname: string) {
   return !CONSTELLATION_BACKGROUND_EXCLUDED_PATHS.some((prefix) =>
     pathname.startsWith(prefix)

@@ -157,6 +157,22 @@ describe("the sky is on the document before the first paint", () => {
     return classes;
   }
 
+  /*
+   * Signing in happens under the same night sky as the first-night welcome, so
+   * the walkthrough feels like arriving somewhere. A theme chosen inside the app
+   * never reaches these pages, or a light theme would put dark text on the sky.
+   */
+  it("always puts the landing page and sign-in under the night sky", () => {
+    for (const pathname of ["/", "/auth", "/auth/action"]) {
+      expect(run({ "jami:app-theme": "paper-white" }, pathname), pathname).toEqual([
+        "constellation-background-enabled",
+      ]);
+    }
+    expect(run({ "jami:app-theme": "paper-white" }, "/dashboard")).not.toContain(
+      "constellation-background-enabled"
+    );
+  });
+
   it("stamps the sky instead of the stored theme", () => {
     expect(
       run({
