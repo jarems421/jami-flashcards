@@ -248,7 +248,7 @@ export default function TutorPage() {
               </p>
             </div>
           </div>
-          <ButtonLink href="/dashboard/library" className="shrink-0">
+          <ButtonLink href="/dashboard/library" className="shrink-0" data-tutorial-target="tutor-material">
             Choose material
           </ButtonLink>
         </div>

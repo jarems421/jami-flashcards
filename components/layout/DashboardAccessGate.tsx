@@ -14,6 +14,7 @@ import {
 } from "@/lib/app/sidebar-preference";
 import { forgetLastRoute, rememberLastRoute } from "@/lib/app/last-route";
 import TutorialProvider from "@/components/onboarding/TutorialProvider";
+import FirstNightProvider from "@/components/onboarding/FirstNightProvider";
 
 function DashboardSpinner() {
   return (
@@ -39,6 +40,7 @@ function AuthenticatedDashboard({
 
   return (
     <UserProvider user={user}>
+      <FirstNightProvider>
       <TutorialProvider userId={user.uid}>
         <div
           data-dashboard-content
@@ -54,6 +56,7 @@ function AuthenticatedDashboard({
           onDesktopHiddenChange={handleSidebarHiddenChange}
         />
       </TutorialProvider>
+      </FirstNightProvider>
     </UserProvider>
   );
 }

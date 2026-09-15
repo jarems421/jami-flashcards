@@ -84,6 +84,7 @@ export default function StudyFlashcard({
   return (
     <div
       data-study-current-card-id={card.id}
+      data-tutorial-target="flashcard"
       className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-2xl"
       onClick={!flipped ? onReveal : undefined}
       onKeyDown={(event) => {

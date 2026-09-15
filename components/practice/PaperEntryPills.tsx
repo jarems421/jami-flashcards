@@ -30,6 +30,7 @@ export function ExamQuestionsPill({
   return (
     <Link
       href={href}
+      data-tutorial-target="exam-questions"
       className={`${pillBase} border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[var(--color-accent-muted)] pl-3.5 pr-2.5 text-text-primary hover:border-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_28%,transparent)]`}
     >
       <svg

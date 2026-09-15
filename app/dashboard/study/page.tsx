@@ -1652,6 +1652,7 @@ export default function StudyPage() {
                       <Button
                         type="button"
                         onClick={() => startSession("daily-required", "all")}
+                        data-tutorial-target="start-review"
                         variant="warm"
                         size="lg"
                         className="w-full sm:w-auto"

@@ -385,14 +385,15 @@ export default function PracticeWorkspace() {
             {folders.length > 0 ? (
               <>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-                  {folders.map((folder) => (
-                    <FolderObjectCard
-                      key={folder.id}
-                      href={`/dashboard/folders/${encodeURIComponent(folder.id)}`}
-                      title={folder.name}
-                      color={folder.color}
-                      icon={folder.icon}
-                    />
+                  {folders.map((folder, index) => (
+                    <div key={folder.id} className="h-full" data-tutorial-target={index === 0 ? "first-folder" : undefined}>
+                      <FolderObjectCard
+                        href={`/dashboard/folders/${encodeURIComponent(folder.id)}`}
+                        title={folder.name}
+                        color={folder.color}
+                        icon={folder.icon}
+                      />
+                    </div>
                   ))}
                 </div>
                 {folderCursor ? (

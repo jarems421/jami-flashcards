@@ -34,6 +34,8 @@ import {
   useTutorial,
 } from "@/components/onboarding/TutorialProvider";
 import { shouldInviteToTutorial } from "@/lib/onboarding/tutorial";
+import FirstNightPanel from "@/components/onboarding/FirstNightPanel";
+import { useFirstNight } from "@/components/onboarding/FirstNightProvider";
 
 const GETTING_STARTED_DISMISSED_KEY = "jami:getting-started-complete-dismissed";
 const GETTING_STARTED_OPEN_STORAGE_KEY = "jami:getting-started-open";
@@ -303,6 +305,7 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
 export default function DashboardHome() {
   const { user } = useUser();
   const tutorial = useTutorial();
+  const firstNight = useFirstNight();
 
   const [decks, setDecks] = useState<Deck[]>([]);
   const [dueCards, setDueCards] = useState<StudyCard[]>([]);
@@ -685,6 +688,8 @@ export default function DashboardHome() {
 
         <TutorialResumeCard />
 
+        <FirstNightPanel />
+
         {!isLoading ? (
           <>
             {/*
@@ -695,7 +700,7 @@ export default function DashboardHome() {
               * tracks what they have actually done rather than repeating the
               * walkthrough.
               */}
-            {!planUnavailable && !walkthroughLeading ? (
+            {!planUnavailable && !walkthroughLeading && !firstNight.active ? (
               <GettingStartedChecklist
                 items={gettingStartedItems}
                 isLoading={isLoading}

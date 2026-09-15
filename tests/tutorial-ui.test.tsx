@@ -3,6 +3,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import FirstNightProvider from "@/components/onboarding/FirstNightProvider";
 import TutorialProvider, {
   TutorialAccountCard,
   TutorialResumeCard,
@@ -83,9 +84,11 @@ function Harness({ cards = false }: { cards?: boolean }) {
 async function render(cards = false) {
   await act(async () => {
     root.render(
-      <TutorialProvider userId="user-1">
-        <Harness cards={cards} />
-      </TutorialProvider>
+      <FirstNightProvider>
+        <TutorialProvider userId="user-1">
+          <Harness cards={cards} />
+        </TutorialProvider>
+      </FirstNightProvider>
     );
   });
   // Let the account read settle before anything is asserted.
@@ -94,6 +97,7 @@ async function render(cards = false) {
 
 const testId = (id: string) => document.querySelector<HTMLElement>(`[data-testid='${id}']`);
 const status = () => testId("status")?.textContent;
+const firstNightWelcome = () => document.querySelector(".fn-root");
 
 function byText(text: string, selector = "button") {
   return Array.from(document.querySelectorAll<HTMLElement>(selector)).find(
@@ -140,11 +144,18 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
   localStorage.clear();
+  sessionStorage.clear();
   pathname.current = "/dashboard";
   loadTutorialProgress.mockResolvedValue(null);
   saveTutorialProgress.mockResolvedValue(undefined);
   createOnboardingStarIfMissing.mockResolvedValue({ status: "pending" });
   Element.prototype.scrollIntoView = vi.fn();
+  // First night's welcome guesses the device from the pointer; jsdom has none.
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -167,17 +178,17 @@ describe("the walkthrough invitation", () => {
     expect(byText("Explore on my own")).toBeDefined();
   });
 
-  it("starts the walkthrough at the first mission", async () => {
+  it("opens First night and retires the mission walkthrough", async () => {
     await render();
     click(testId("invite"));
     click(byText("Start walkthrough"));
 
-    expect(status()).toBe("active");
-    expect(push).toHaveBeenCalledWith("/dashboard/practice");
-    expect(testId("tutorial-quest")?.textContent).toContain("Mission 1 of 7");
-    expect(testId("tutorial-quest")?.textContent).toContain(
-      TUTORIAL_MISSIONS[0].title
-    );
+    expect(firstNightWelcome()).not.toBeNull();
+    expect(testId("tutorial-welcome")).toBeNull();
+    expect(testId("tutorial-quest")).toBeNull();
+    expect(status()).toBe("dismissed");
+    expect(lastSaved().status).toBe("dismissed");
+    expect(push).not.toHaveBeenCalledWith("/dashboard/practice");
   });
 
   it("retires the walkthrough only when Explore on my own is chosen", async () => {
@@ -390,7 +401,7 @@ describe("finishing the walkthrough", () => {
 });
 
 describe("resuming and replaying", () => {
-  it("offers a quiet Resume on Today while paused", async () => {
+  it("offers the new tour on Today to a student who paused the old one", async () => {
     loadTutorialProgress.mockResolvedValue({
       ...createInitialTutorialProgress("paused"),
       completedMissionIds: ["create-folder" as const],
@@ -399,13 +410,15 @@ describe("resuming and replaying", () => {
 
     await render(true);
 
-    expect(document.body.textContent).toContain("Walkthrough paused");
-    click(byText("Resume"));
-    expect(status()).toBe("active");
-    expect(push).toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Take the new tour of Jami");
+    click(byText("Start"));
+    expect(firstNightWelcome()).not.toBeNull();
+    expect(status()).toBe("dismissed");
+    // Once it is running, Today does not offer it a second time.
+    expect(document.body.textContent).not.toContain("Take the new tour of Jami");
   });
 
-  it("offers a replay from Account once the loop is finished", async () => {
+  it("replays First night from Account without touching a finished loop", async () => {
     loadTutorialProgress.mockResolvedValue({
       ...createInitialTutorialProgress("completed"),
       completedMissionIds: TUTORIAL_MISSIONS.map((mission) => mission.id),
@@ -414,11 +427,11 @@ describe("resuming and replaying", () => {
 
     await render(true);
 
-    expect(document.body.textContent).toContain("First loop complete");
+    expect(document.body.textContent).toContain("First night");
     click(byText("Replay walkthrough"));
-    expect(status()).toBe("active");
-    expect(lastSaved().rewardState).toBe("awarded");
-    expect(lastSaved().completedMissionIds).toEqual([]);
+    expect(firstNightWelcome()).not.toBeNull();
+    expect(status()).toBe("completed");
+    expect(saveTutorialProgress).not.toHaveBeenCalled();
   });
 
   it("keeps retrying a pending star while a replay is active", async () => {

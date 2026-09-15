@@ -902,9 +902,9 @@ export default function FolderDetailPage() {
             {notebooks.length > 0 || notebooksAvailability === "ready" ? (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
               {notebooks.length > 0 ? (
-                notebooks.map((notebook) => (
+                notebooks.map((notebook, index) => (
+                  <div key={notebook.id} className="h-full" data-tutorial-target={index === 0 ? "first-notebook" : undefined}>
                   <NotebookObjectCard
-                    key={notebook.id}
                     href={`/dashboard/notebooks/${notebook.id}`}
                     title={notebook.title}
                     typeLabel={notebook.type.replace("_", " ")}
@@ -919,6 +919,7 @@ export default function FolderDetailPage() {
                     deleting={deletingNotebookId === notebook.id}
                     compact
                   />
+                  </div>
                 ))
               ) : (
                 <div className="col-span-full">

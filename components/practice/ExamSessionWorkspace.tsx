@@ -908,7 +908,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                         ? "Your working below is sent with this answer."
                         : "Working below is optional — sent only if you use it."}
                     </p>
-                    <Button className="ml-auto" disabled={submitting} onClick={() => void submit()}>
+                    <Button className="ml-auto" disabled={submitting} onClick={() => void submit()} data-tutorial-target="mark-answer">
                       {submitting
                         ? hasInk
                           ? "Reading your working…"

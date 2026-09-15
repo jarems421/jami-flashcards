@@ -6,6 +6,8 @@ import { JamiTutorIcon } from "@/components/ui";
 import { usePathname } from "next/navigation";
 import { type TouchEvent, useEffect, useRef } from "react";
 import { BrandMark, IconBubble } from "@/components/ui";
+import { useFirstNight } from "@/components/onboarding/FirstNightProvider";
+import { FirstNightNavStar } from "@/components/onboarding/FirstNightSky";
 
 type TabGroup = "loop" | "support";
 
@@ -186,7 +188,7 @@ function NavIcon({ tab, active }: { tab: Tab; active: boolean }) {
   );
 }
 
-function DesktopNavItem({ tab, active }: { tab: Tab; active: boolean }) {
+function DesktopNavItem({ tab, active, pending = false }: { tab: Tab; active: boolean; pending?: boolean }) {
   return (
     <Link
       href={tab.href}
@@ -202,17 +204,20 @@ function DesktopNavItem({ tab, active }: { tab: Tab; active: boolean }) {
       {active ? (
         <span className="absolute inset-y-2 left-0 hidden w-1 rounded-r-full bg-warm-accent lg:block" />
       ) : null}
-      <IconBubble
-        size="sm"
-        shape="rounded"
-        className={`h-9 w-9 border transition duration-fast ${
-          active
-            ? "app-selected"
-            : "app-chip text-text-muted group-hover:border-border-strong group-hover:text-text-primary"
-        }`}
-      >
-        <NavIcon tab={tab} active={active} />
-      </IconBubble>
+      <span className="relative">
+        <IconBubble
+          size="sm"
+          shape="rounded"
+          className={`h-9 w-9 border transition duration-fast ${
+            active
+              ? "app-selected"
+              : "app-chip text-text-muted group-hover:border-border-strong group-hover:text-text-primary"
+          }`}
+        >
+          <NavIcon tab={tab} active={active} />
+        </IconBubble>
+        {pending ? <FirstNightNavStar /> : null}
+      </span>
       <span className="hidden min-w-0 lg:block">
         <span className="block truncate text-sm font-semibold">
           {tab.label}
@@ -225,7 +230,7 @@ function DesktopNavItem({ tab, active }: { tab: Tab; active: boolean }) {
   );
 }
 
-function MobileNavItem({ tab, active }: { tab: Tab; active: boolean }) {
+function MobileNavItem({ tab, active, pending = false }: { tab: Tab; active: boolean; pending?: boolean }) {
   return (
     <Link
       href={tab.href}
@@ -241,7 +246,10 @@ function MobileNavItem({ tab, active }: { tab: Tab; active: boolean }) {
       {active ? (
         <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-warm-accent" />
       ) : null}
-      <NavIcon tab={tab} active={active} />
+      <span className="relative">
+        <NavIcon tab={tab} active={active} />
+        {pending ? <FirstNightNavStar /> : null}
+      </span>
       <span className={active ? "font-semibold" : "font-medium"}>
         {tab.mobileLabel ?? tab.label}
       </span>
@@ -259,6 +267,7 @@ export default function TabBar({
   onDesktopHiddenChange,
 }: TabBarProps) {
   const pathname = usePathname();
+  const pendingNav = useFirstNight().pendingNavLabels;
   const mobileNavRef = useRef<HTMLElement>(null);
   const sidebarTouchStartXRef = useRef<number | null>(null);
   const sidebarTouchStartYRef = useRef<number | null>(null);
@@ -355,7 +364,7 @@ export default function TabBar({
       >
         {tabs.map((tab) => {
           const active = isActive(pathname, tab);
-          return <MobileNavItem key={tab.href} tab={tab} active={active} />;
+          return <MobileNavItem key={tab.href} tab={tab} active={active} pending={pendingNav.includes(tab.label)} />;
         })}
       </nav>
 
@@ -397,7 +406,7 @@ export default function TabBar({
 
         <div className="app-sidebar-scroll flex flex-1 flex-col gap-4 overflow-y-auto py-3 pl-0.5 pr-1.5">
           {navGroups.map((group) => (
-            <section key={group.id} className="space-y-2">
+            <section key={group.id} data-first-night-group={group.id} className="space-y-2">
               <div className="hidden px-3 lg:block">
                 <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                   {group.label}
@@ -416,6 +425,7 @@ export default function TabBar({
                         key={tab.href}
                         tab={tab}
                         active={active}
+                        pending={pendingNav.includes(tab.label)}
                       />
                     );
                   })}

@@ -52,6 +52,7 @@ import {
   saveTutorialProgress,
 } from "@/services/profile/tutorial";
 import { createOnboardingStarIfMissing } from "@/services/constellation/stars";
+import { useFirstNight } from "@/components/onboarding/FirstNightProvider";
 
 const MISSION_COUNT = TUTORIAL_MISSIONS.length;
 
@@ -77,7 +78,6 @@ type TutorialContextValue = {
   invite: () => void;
   start: () => void;
   pause: () => void;
-  resume: () => void;
 };
 
 const TutorialContext = createContext<TutorialContextValue | null>(null);
@@ -429,6 +429,8 @@ export default function TutorialProvider({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  // While the First night preview runs, it is the only guidance on screen.
+  const firstNight = useFirstNight();
   const [progress, setProgress] = useState(() => createInitialTutorialProgress());
   const progressRef = useRef(progress);
   const [ready, setReady] = useState(false);
@@ -571,18 +573,23 @@ export default function TutorialProvider({
     setWelcomeOpen(true);
   }, []);
 
+  /*
+   * Every way into the walkthrough now opens First night.
+   *
+   * The mission walkthrough it replaces is retired on the way, so its card does
+   * not come back once First night ends. The reward state is kept as it was:
+   * an earned star is never earned twice.
+   */
+  const startFirstNight = firstNight.start;
   const start = useCallback(() => {
     const previous = progressRef.current;
-    const next = {
-      ...createInitialTutorialProgress("active"),
-      // A replay teaches the loop again; it never mints a second star.
-      rewardState: previous.rewardState,
-    };
     invitedRef.current = true;
     setWelcomeOpen(false);
-    persist(next);
-    router.push("/dashboard/practice");
-  }, [persist, router]);
+    if (previous.status !== "completed" && previous.status !== "dismissed") {
+      persist({ ...previous, status: "dismissed", updatedAt: Date.now() });
+    }
+    startFirstNight();
+  }, [persist, startFirstNight]);
 
   const pause = useCallback(() => {
     setPauseOpen(false);
@@ -593,17 +600,6 @@ export default function TutorialProvider({
     });
   }, [persist]);
 
-  const resume = useCallback(() => {
-    const next = {
-      ...progressRef.current,
-      status: "active" as const,
-      updatedAt: Date.now(),
-    };
-    persist(next);
-    const mission = getTutorialMission(next.currentMissionId);
-    router.push(mission.href(next.context));
-  }, [persist, router]);
-
   const value = useMemo<TutorialContextValue>(
     () => ({
       progress,
@@ -612,9 +608,8 @@ export default function TutorialProvider({
       invite,
       start,
       pause,
-      resume,
     }),
-    [invite, pause, progress, ready, resume, start]
+    [invite, pause, progress, ready, start]
   );
 
   const activeMission =
@@ -626,7 +621,7 @@ export default function TutorialProvider({
     <TutorialContext.Provider value={value}>
       {children}
       <WelcomeDialog
-        open={welcomeOpen}
+        open={welcomeOpen && !firstNight.active}
         onStart={start}
         onClose={() => setWelcomeOpen(false)}
         onExplore={() => {
@@ -648,7 +643,7 @@ export default function TutorialProvider({
         rewardPending={progress.rewardState === "pending"}
         onClose={() => setCompletionOpen(false)}
       />
-      {activeMission ? (
+      {activeMission && !firstNight.active ? (
         <>
           <MissionSpotlight
             key={`${pathname}:${activeMission.id}`}
@@ -672,31 +667,25 @@ export default function TutorialProvider({
   );
 }
 
+/** On Today, for a student who left the old mission walkthrough part way. */
 export function TutorialResumeCard() {
   const tutorial = useTutorial();
-  if (!tutorial.ready || tutorial.progress.status !== "paused") return null;
-  const mission = getTutorialMission(tutorial.progress.currentMissionId);
+  const firstNight = useFirstNight();
+  if (!tutorial.ready || tutorial.progress.status !== "paused" || firstNight.active) {
+    return null;
+  }
   return (
     <div className="app-chip flex flex-col gap-3 rounded-xl p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-3">
-        <span className="hidden text-text-primary sm:block">
-          <ConstellationTrail
-            completed={tutorial.progress.completedMissionIds.length}
-            size="sm"
-            decorative
-          />
-        </span>
-        <div>
-          <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-            Walkthrough paused
-          </div>
-          <div className="mt-1 text-sm font-semibold text-text-primary">
-            {mission.title}
-          </div>
+      <div>
+        <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+          Walkthrough
+        </div>
+        <div className="mt-1 text-sm font-semibold text-text-primary">
+          Take the new tour of Jami
         </div>
       </div>
-      <Button size="sm" variant="secondary" onClick={tutorial.resume}>
-        Resume
+      <Button size="sm" variant="secondary" onClick={tutorial.start}>
+        Start
       </Button>
     </div>
   );
@@ -705,19 +694,6 @@ export function TutorialResumeCard() {
 export function TutorialAccountCard() {
   const tutorial = useTutorial();
   if (!tutorial.ready) return null;
-  const completed = tutorial.progress.completedMissionIds.length;
-  const action =
-    tutorial.progress.status === "paused"
-      ? { label: "Resume walkthrough", run: tutorial.resume }
-      : tutorial.progress.status === "active"
-        ? { label: "Continue walkthrough", run: tutorial.resume }
-        : {
-            label:
-              tutorial.progress.status === "completed"
-                ? "Replay walkthrough"
-                : "Start walkthrough",
-            run: tutorial.start,
-          };
   return (
     <Card padding="lg">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -726,19 +702,15 @@ export function TutorialAccountCard() {
             Jami walkthrough
           </div>
           <h2 className="mt-2 text-lg font-semibold text-text-primary">
-            {completed === MISSION_COUNT
-              ? "First loop complete"
-              : `${completed} of ${MISSION_COUNT} missions complete`}
+            First night
           </h2>
           <p className="mt-2 text-sm leading-6 text-text-secondary">
-            Learn the notebook-first study loop with short, guided actions.
+            A short tour of where everything lives. Each place you visit lights
+            a star in your first constellation.
           </p>
-          <div className="mt-4 text-text-primary">
-            <ConstellationTrail completed={completed} size="md" decorative />
-          </div>
         </div>
-        <Button variant="secondary" onClick={action.run}>
-          {action.label}
+        <Button variant="secondary" onClick={tutorial.start}>
+          {tutorial.progress.status === "idle" ? "Start walkthrough" : "Replay walkthrough"}
         </Button>
       </div>
     </Card>

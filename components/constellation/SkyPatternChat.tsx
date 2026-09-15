@@ -125,6 +125,7 @@ export default function SkyPatternChat({
           type="submit"
           size="icon"
           aria-label="Send to Jami"
+          data-tutorial-target="sky-ask"
           disabled={disabled || sending || !draft.trim()}
           className="!size-10 shrink-0 rounded-full"
         >
