@@ -234,6 +234,8 @@ export default function FirstNightWelcome({
   };
 
   const setBoardFor = (subject: string, value: string) => {
+    // Pressing the board already chosen keeps the course and tier picked under it.
+    if (boards[subject] === value) return;
     setBoards((current) => ({ ...current, [subject]: value }));
     // A different board is a different set of courses.
     setCourseIds((current) => without(current, subject));
@@ -267,6 +269,9 @@ export default function FirstNightWelcome({
         : null;
     return { board, boardId, loaded, choices, picked, choice, tier, course };
   };
+
+  /** A course still being found would be left off its folder if the student went on now. */
+  const findingCourses = subjects.some((subject) => courseFor(subject).loaded?.status === "loading");
 
   const confirm = () => {
     const studyLevel = level ? FIRST_NIGHT_LEVELS[level]?.studyLevel ?? null : null;
@@ -481,7 +486,7 @@ export default function FirstNightWelcome({
               ) : null}
 
               <Enter delay={500}>
-                <button type="button" className="fn-cta" disabled={!level} onClick={() => setStep("confirm")}>
+                <button type="button" className="fn-cta" disabled={!level || findingCourses} onClick={() => setStep("confirm")}>
                   Continue <Icon path={ICONS.arrow} />
                 </button>
               </Enter>

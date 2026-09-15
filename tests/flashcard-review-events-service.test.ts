@@ -3,34 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * Recording a flashcard answer in the learning history.
  *
- * Written once per answer, under the answer's own commit id, and only if it
- * is not already there -- so a sync that retries the answer finds its event
- * instead of recording it twice.
+ * Written once per answer, under the answer's own commit id, as a plain create
+ * that Firestore can queue offline. A retried answer whose event already
+ * exists is refused by the rules as an update, and that refusal means
+ * "already recorded", not a failure.
  */
 
-type FakeTransaction = {
-  get: (ref: unknown) => Promise<{ exists: () => boolean }>;
-  set: (ref: unknown, data: Record<string, unknown>) => void;
-};
+const mocks = vi.hoisted(() => ({
+  doc: vi.fn((_db: unknown, ...segments: string[]) => ({ path: segments.join("/") })),
+  setDoc: vi.fn(async (...args: unknown[]) => {
+    void args;
+  }),
+}));
 
-const mocks = vi.hoisted(() => {
-  const state = { alreadyRecorded: false };
-  const transactionSet = vi.fn();
-  return {
-    state,
-    transactionSet,
-    doc: vi.fn((_db: unknown, ...segments: string[]) => ({ path: segments.join("/") })),
-    runTransaction: vi.fn(
-      async (_db: unknown, apply: (transaction: FakeTransaction) => Promise<unknown>) =>
-        apply({
-          get: async () => ({ exists: () => state.alreadyRecorded }),
-          set: transactionSet,
-        })
-    ),
-  };
-});
-
-vi.mock("firebase/firestore", () => ({ doc: mocks.doc, runTransaction: mocks.runTransaction }));
+vi.mock("firebase/firestore", () => ({ doc: mocks.doc, setDoc: mocks.setDoc }));
 vi.mock("@/services/firebase/client", () => ({ db: {} }));
 vi.mock("@/services/firebase/firestore", () => ({
   withTimeout: async (promise: Promise<unknown>) => await promise,
@@ -58,9 +44,8 @@ const review = {
 };
 
 beforeEach(() => {
-  mocks.state.alreadyRecorded = false;
-  mocks.transactionSet.mockClear();
-  mocks.runTransaction.mockClear();
+  mocks.setDoc.mockReset();
+  mocks.setDoc.mockResolvedValue(undefined);
   mocks.doc.mockClear();
 });
 
@@ -69,23 +54,27 @@ describe("recording a flashcard review event", () => {
     await expect(recordFlashcardReviewEvent("user-1", review, REVIEWED_AT + 1)).resolves.toBe("recorded");
 
     expect(mocks.doc).toHaveBeenCalledWith({}, "users", "user-1", "flashcardReviewEvents", "commit-1");
-    expect(mocks.transactionSet).toHaveBeenCalledTimes(1);
-    const written = mocks.transactionSet.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(mocks.setDoc).toHaveBeenCalledTimes(1);
+    const written = mocks.setDoc.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(Object.keys(written).sort()).toEqual(
       ["cardId", "correct", "createdAt", "deckId", "rating", "reviewedAt", "schemaVersion", "studyDayKey"]
     );
   });
 
-  it("leaves an answer that is already recorded alone", async () => {
-    mocks.state.alreadyRecorded = true;
+  it("reads a refused second write as an answer already recorded", async () => {
+    mocks.setDoc.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
     await expect(recordFlashcardReviewEvent("user-1", review)).resolves.toBe("already-recorded");
-    expect(mocks.transactionSet).not.toHaveBeenCalled();
+  });
+
+  it("passes any other failure on, for the caller to ignore", async () => {
+    mocks.setDoc.mockRejectedValueOnce(Object.assign(new Error("gone"), { code: "unavailable" }));
+    await expect(recordFlashcardReviewEvent("user-1", review)).rejects.toThrow("gone");
   });
 
   it("skips an answer it cannot scope, without touching Firestore", async () => {
     await expect(
       recordFlashcardReviewEvent("user-1", { ...review, deckId: undefined })
     ).resolves.toBe("skipped");
-    expect(mocks.runTransaction).not.toHaveBeenCalled();
+    expect(mocks.setDoc).not.toHaveBeenCalled();
   });
 });

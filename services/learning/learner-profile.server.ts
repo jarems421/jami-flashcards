@@ -49,6 +49,8 @@ type AdminDb = ReturnType<typeof getAdminDb>;
 export const LEARNER_PROFILE_LOAD_LIMITS = {
   decks: 8,
   cardsPerDeck: 250,
+  /** Cards read directly because a recent review points at them and the deck's page missed them. */
+  reviewedCards: 200,
   flashcardEvents: 600,
   examSessions: 40,
   examAttemptsPerQuery: 300,
@@ -154,17 +156,22 @@ async function loadFolderDecks(db: AdminDb, uid: string, folderId: string, notes
         .get()
     )
   );
-  const decks = new Map<string, DeckSummary>();
+  const decks = new Map<string, DeckSummary & { createdAt: number }>();
   for (const snapshot of snapshots) {
     if (snapshot.docs.length >= LEARNER_PROFILE_LOAD_LIMITS.decks) notes.limits.add("decks");
     for (const deckDoc of snapshot.docs) {
       const data = deckDoc.data() as Record<string, unknown>;
       if (ownerOf(data) !== uid) continue;
-      decks.set(deckDoc.id, { id: deckDoc.id, name: deckName(data) });
+      const createdAt = typeof data.createdAt === "number" ? data.createdAt : 0;
+      decks.set(deckDoc.id, { id: deckDoc.id, name: deckName(data), createdAt });
     }
   }
   if (decks.size > LEARNER_PROFILE_LOAD_LIMITS.decks) notes.limits.add("decks");
-  return Array.from(decks.values()).slice(0, LEARNER_PROFILE_LOAD_LIMITS.decks);
+  // Each owner query is newest first; merged the same way, so the limit keeps the newest of both.
+  return Array.from(decks.values())
+    .sort((left, right) => right.createdAt - left.createdAt)
+    .slice(0, LEARNER_PROFILE_LOAD_LIMITS.decks)
+    .map(({ id, name }) => ({ id, name }));
 }
 
 async function loadOwnedDeck(db: AdminDb, uid: string, deckId: string) {
@@ -202,6 +209,49 @@ async function loadDeckCards(
     }
   }
   return Array.from(cards.values());
+}
+
+/**
+ * Cards that recent review events point at, but the per-deck card page missed.
+ *
+ * A deck's cards are read a bounded page at a time, in no particular order,
+ * so in a large deck the card a student reviewed this morning could fall
+ * outside the page and its newest evidence be dropped. Those cards are read
+ * directly, most recently reviewed first and within a cap, and still checked
+ * against the owner and the decks in scope.
+ */
+async function loadReviewedCards(
+  db: AdminDb,
+  uid: string,
+  deckIds: readonly string[],
+  cards: readonly FlashcardEvidenceCard[],
+  events: readonly FlashcardReviewEvent[],
+  notes: LoadNotes
+): Promise<FlashcardEvidenceCard[]> {
+  const known = new Set(cards.map((card) => card.id));
+  const missing = Array.from(new Set(events.map((event) => event.cardId))).filter(
+    (cardId) => cardId && !known.has(cardId)
+  );
+  if (missing.length === 0) return [];
+  if (missing.length > LEARNER_PROFILE_LOAD_LIMITS.reviewedCards) notes.limits.add("cards");
+  const inScope = new Set(deckIds);
+  try {
+    const snapshots = (
+      await Promise.all(
+        chunk(missing.slice(0, LEARNER_PROFILE_LOAD_LIMITS.reviewedCards), 100).map((ids) =>
+          db.getAll(...ids.map((cardId) => db.collection("cards").doc(cardId)))
+        )
+      )
+    ).flat();
+    return snapshots.flatMap((snapshot) => {
+      if (!snapshot.exists) return [];
+      const card = mapCardData(snapshot.id, (snapshot.data() ?? {}) as Record<string, unknown>);
+      return card.userId === uid && inScope.has(card.deckId) ? [card] : [];
+    });
+  } catch {
+    // The paged cards still stand; only the extra evidence is missing.
+    return [];
+  }
 }
 
 /**
@@ -637,7 +687,11 @@ export async function loadLearnerEvidence(
       folderId ? loadPracticePaperEvidence(db, uid, folderId, notes) : Promise.resolve([]),
       folderId ? loadFolderExposure(db, uid, folderId, notes) : Promise.resolve([]),
     ]);
-  const cards = cardLists.flat();
+  const pagedCards = cardLists.flat();
+  const cards = [
+    ...pagedCards,
+    ...(await loadReviewedCards(db, uid, deckIds, pagedCards, flashcardReviewEvents, notes)),
+  ];
   const declaredTopicIds = folder?.topicIds ?? [];
   const studentTopics = await loadStudentTopicConcepts(
     db,

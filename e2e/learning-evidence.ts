@@ -26,23 +26,39 @@ async function e2eUserId() {
   return body.localId;
 }
 
+/*
+ * Resolved once per worker. Tests poll `readReviewEvents` until an event
+ * appears, and neither the user nor the emulator connection changes between
+ * polls, so signing in and connecting on every poll was only load. A failure
+ * is forgotten, so the next poll tries again.
+ */
+let userIdPromise: Promise<string> | undefined;
+let environmentPromise: ReturnType<typeof initializeTestEnvironment> | undefined;
+
+function forgetOnFailure<T>(promise: Promise<T>, forget: () => void) {
+  promise.catch(forget);
+  return promise;
+}
+
 /** Every stored review event for one card. */
 export async function readReviewEvents(cardId: string) {
-  const userId = await e2eUserId();
-  const environment = await initializeTestEnvironment({ projectId: E2E_PROJECT_ID });
-  try {
-    let events: { id: string; data: Record<string, unknown> }[] = [];
-    await environment.withSecurityRulesDisabled(async (context) => {
-      const snapshot = await getDocs(
-        query(
-          collection(context.firestore(), "users", userId, "flashcardReviewEvents"),
-          where("cardId", "==", cardId)
-        )
-      );
-      events = snapshot.docs.map((eventDoc) => ({ id: eventDoc.id, data: eventDoc.data() }));
-    });
-    return events;
-  } finally {
-    await environment.cleanup();
-  }
+  userIdPromise ??= forgetOnFailure(e2eUserId(), () => {
+    userIdPromise = undefined;
+  });
+  environmentPromise ??= forgetOnFailure(initializeTestEnvironment({ projectId: E2E_PROJECT_ID }), () => {
+    environmentPromise = undefined;
+  });
+  const [userId, environment] = await Promise.all([userIdPromise, environmentPromise]);
+
+  let events: { id: string; data: Record<string, unknown> }[] = [];
+  await environment.withSecurityRulesDisabled(async (context) => {
+    const snapshot = await getDocs(
+      query(
+        collection(context.firestore(), "users", userId, "flashcardReviewEvents"),
+        where("cardId", "==", cardId)
+      )
+    );
+    events = snapshot.docs.map((eventDoc) => ({ id: eventDoc.id, data: eventDoc.data() }));
+  });
+  return events;
 }

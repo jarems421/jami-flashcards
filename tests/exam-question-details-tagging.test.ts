@@ -123,6 +123,13 @@ describe("tagging questions with concepts and command words", () => {
     expect(mocks.generateAiText).not.toHaveBeenCalled();
   });
 
+  it("does not ask again about a question that was read and has no topics", async () => {
+    seed([{ id: "q1", topicIds: [], conceptIds: [], commandWord: "" }]);
+    const result = await tagExamQuestionDetails({ specificationId: "8300", limit: 5 });
+    expect(result.considered).toBe(0);
+    expect(mocks.generateAiText).not.toHaveBeenCalled();
+  });
+
   it("adds a concept's topic beside the topics a question has, never replacing them", async () => {
     seed([{ id: "q1", topicIds: ["aqa-8300-probability"] }]);
     reply({ topicIds: ["aqa-8300-statistics"], conceptIds: [QUADRATICS], commandWord: "" });

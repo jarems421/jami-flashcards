@@ -46,7 +46,12 @@ export async function syncAppearance(userId: string, accountCreatedAt: number) {
     userId,
     remote,
     device: readDeviceAppearance(),
-    deviceOwner: readAppearanceOwner(),
+    /*
+     * Who owned the device before it was cleared. Read afterwards it is always
+     * nobody, and an older account would then save Jami's default look over
+     * the one on its own devices.
+     */
+    deviceOwner: owner,
     accountCreatedAt,
   });
   applyAppearanceToDevice(resolved.choice, userId);

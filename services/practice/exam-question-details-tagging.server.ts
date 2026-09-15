@@ -56,10 +56,17 @@ export function missingExamQuestionDetails(
   question: Pick<ExamQuestion, "topicIds" | "conceptIds" | "commandWord">,
   conceptsAvailable: boolean
 ) {
+  /*
+   * A command word, even an empty one, marks a question already read by
+   * extraction or by this backfill. Its topics were asked for at the same
+   * time, so an empty topic list is then an answer too -- and asking again
+   * would spend a call on every sweep for a question that has none.
+   */
+  const read = typeof question.commandWord === "string";
   return {
-    topics: (question.topicIds?.length ?? 0) === 0,
+    topics: !read && (question.topicIds?.length ?? 0) === 0,
     concepts: conceptsAvailable && !Array.isArray(question.conceptIds),
-    commandWord: typeof question.commandWord !== "string",
+    commandWord: !read,
   };
 }
 

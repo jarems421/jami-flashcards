@@ -54,6 +54,8 @@ const CREATE_MS = 30_000;
 const UPDATE_MS = 30_000;
 const DELETE_MS = 30_000;
 const BATCH_DELETE_LIMIT = 400;
+/** Pages of review history cleared with a deck: twenty thousand answers, well past any real deck. */
+const MAX_HISTORY_PAGES = 50;
 type DeckSnapshot = QueryDocumentSnapshot | DocumentSnapshot;
 
 function deckDataToDeck(id: string, data: DeckDoc): Deck | null {
@@ -185,17 +187,21 @@ async function deleteUserDeckHistory(
    * must never be the reason a deck cannot be deleted.
    */
   try {
-    const historySnapshot = await withTimeout(
-      getDocs(
-        query(
-          collection(db, "users", userId, "flashcardReviewEvents"),
-          where("deckId", "==", deckId)
-        )
-      ),
-      LOAD_MS,
-      "Load deck review history for deletion"
+    // A page at a time, so a heavily studied deck never loads its whole history at once.
+    const historyPage = query(
+      collection(db, "users", userId, "flashcardReviewEvents"),
+      where("deckId", "==", deckId),
+      limit(BATCH_DELETE_LIMIT)
     );
-    await deleteSnapshotsInBatches(historySnapshot.docs, "Delete deck review history");
+    for (let page = 0; page < MAX_HISTORY_PAGES; page += 1) {
+      const historySnapshot = await withTimeout(
+        getDocs(historyPage),
+        LOAD_MS,
+        "Load deck review history for deletion"
+      );
+      await deleteSnapshotsInBatches(historySnapshot.docs, "Delete deck review history");
+      if (historySnapshot.docs.length < BATCH_DELETE_LIMIT) break;
+    }
   } catch {
     // Left for account deletion, which removes everything under the user.
   }

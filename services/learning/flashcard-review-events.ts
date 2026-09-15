@@ -1,4 +1,4 @@
-import { doc, runTransaction } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 import { featureFlags } from "@/lib/app/feature-flags";
 import {
   FLASHCARD_REVIEW_EVENTS_COLLECTION,
@@ -16,8 +16,13 @@ export type FlashcardReviewEventOutcome = "recorded" | "already-recorded" | "ski
 /**
  * Records one flashcard answer in the student's learning history.
  *
- * The event is keyed by the answer's commit id and written only if it is not
- * already there, so the sync retrying an answer never records it twice.
+ * The event is keyed by the answer's commit id and written as a plain create.
+ * A write queues with Firestore's own offline persistence, so a connection
+ * that drops mid-sync delays the event rather than losing it -- which a
+ * transaction, needing the server at that moment, did not. The rules allow an
+ * event to be created and never changed, so a sync that retries an answer
+ * already recorded is refused instead of writing it twice.
+ *
  * Callers treat this as best-effort: it must never decide whether an answer
  * saved.
  */
@@ -32,14 +37,12 @@ export async function recordFlashcardReviewEvent(
   if (!userId.trim() || !eventId || !write) return "skipped";
 
   const eventRef = doc(db, "users", userId, FLASHCARD_REVIEW_EVENTS_COLLECTION, eventId);
-  return withTimeout(
-    runTransaction(db, async (transaction): Promise<FlashcardReviewEventOutcome> => {
-      const existing = await transaction.get(eventRef);
-      if (existing.exists()) return "already-recorded";
-      transaction.set(eventRef, write);
-      return "recorded";
-    }),
-    RECORD_MS,
-    "Record flashcard review event"
-  );
+  try {
+    await withTimeout(setDoc(eventRef, write), RECORD_MS, "Record flashcard review event");
+    return "recorded";
+  } catch (error) {
+    // Refused as an update: this answer's event already exists.
+    if ((error as { code?: unknown } | null)?.code === "permission-denied") return "already-recorded";
+    throw error;
+  }
 }
