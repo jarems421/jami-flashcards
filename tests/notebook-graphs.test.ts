@@ -4,6 +4,7 @@ import {
   describeNotebookGraphsForTutor,
   fitGraphYRange,
   formatGraphTick,
+  graphPlotArea,
   graphTicks,
   MAX_GRAPH_POINTS,
   moveNotebookGraphBlock,
@@ -70,6 +71,17 @@ describe("graph views", () => {
   it("zooms around its centre and pans in graph units", () => {
     expect(zoomGraphView({ xMin: -10, xMax: 10, yMin: -10, yMax: 10 }, 0.5)).toEqual({ xMin: -5, xMax: 5, yMin: -5, yMax: 5 });
     expect(panGraphView({ xMin: 0, xMax: 10, yMin: 0, yMax: 10 }, 2, -1)).toEqual({ xMin: 2, xMax: 12, yMin: -1, yMax: 9 });
+  });
+
+  it("keeps the margins even when the y-axis runs through the middle", () => {
+    const centred = graphPlotArea(460, 368, false, { xMin: -10, xMax: 10, yMin: -10, yMax: 10 });
+    expect(centred.left).toBe(460 - centred.right);
+    // At the edge the axis numbers need the full margin.
+    expect(graphPlotArea(460, 368, false, { xMin: 0, xMax: 360, yMin: -1, yMax: 1 }).left).toBe(44);
+    // Close to the edge, just enough extra for the numbers.
+    const nearEdge = graphPlotArea(460, 368, false, { xMin: -1, xMax: 100, yMin: 0, yMax: 1 });
+    expect(nearEdge.left).toBeGreaterThan(14);
+    expect(nearEdge.left).toBeLessThanOrEqual(44);
   });
 
   it("chooses round tick steps", () => {

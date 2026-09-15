@@ -14,6 +14,8 @@ import {
   parseTutorRoutingPreflight,
   sanitizeTutorResearchQuery,
   shouldOfferTutorIllustration,
+  isExplicitTutorGraphRequest,
+  isTutorGraphRequest,
   shouldRunTutorRoutingPreflight,
 } from "@/lib/ai/jami-assistant";
 import {
@@ -287,6 +289,42 @@ describe("Jami automatic routing and privacy helpers", () => {
         "Read https://www.aqa.org.uk/spec.pdf?student=Alice#answer and http://127.0.0.1/private"
       )
     ).toEqual(["https://www.aqa.org.uk/spec.pdf"]);
+  });
+
+  it("never sends a graph request to the image model", () => {
+    const context = { surface: "notebook" as const, notebookId: "notebook-1", pageId: "page-1" };
+    for (const message of ["draw an accurate graph of y = x^2 - 4", "Show me visually how the parabola turns", "plot f(x) = 2x + 1"]) {
+      expect(isTutorGraphRequest(message), message).toBe(true);
+      expect(
+        shouldOfferTutorIllustration({ message, answer: "The curve has roots at 2 and -2 and a turning point at (0, -4).", context }),
+        message
+      ).toBe(false);
+    }
+    expect(isTutorGraphRequest("Draw the water cycle")).toBe(false);
+  });
+
+  /*
+   * Asking the model again for a graph costs a second call and can replace a
+   * good answer, so it is only for a student who asked to see one drawn -- not
+   * for every question that mentions a gradient or an equation.
+   */
+  it("asks again for a missing graph only when the student asked to see one drawn", () => {
+    for (const message of [
+      "draw an accurate graph of y = x^2 - 4",
+      "Show me visually how the parabola turns",
+      "plot f(x) = 2x + 1",
+      "sketch the curve y = x^3",
+    ]) {
+      expect(isExplicitTutorGraphRequest(message), message).toBe(true);
+    }
+    for (const message of [
+      "What's the gradient of y = 2x + 3?",
+      "Show that the curve passes through (1, 2)",
+      "Can you show me how to find the gradient of y = 2x?",
+      "I plotted the points, is my gradient right?",
+    ]) {
+      expect(isExplicitTutorGraphRequest(message), message).toBe(false);
+    }
   });
 
   it("does not offer a visual for an answer that already drew one", () => {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import ShootingStars from "@/components/constellation/ShootingStars";
+import { NIGHT_SKY_SHOOTING_STARS } from "@/lib/constellation/shooting-stars";
 
 function seeded(seed: number) {
   let t = seed >>> 0;
@@ -52,7 +53,7 @@ export default function NightSkyBackdrop({ fixed = false }: { fixed?: boolean })
           }}
         />
       ))}
-      <ShootingStars count={2} seed="first-night" />
+      <ShootingStars count={NIGHT_SKY_SHOOTING_STARS} seed="first-night" />
     </div>
   );
 }

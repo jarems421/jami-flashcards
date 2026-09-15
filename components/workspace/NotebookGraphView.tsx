@@ -43,7 +43,7 @@ function describeGraph(graph: NotebookGraphDraft) {
  */
 function NotebookGraphView({ graph, width, height, className = "" }: Props) {
   const { view, series } = graph;
-  const plot = graphPlotArea(width, height, Boolean(graph.title));
+  const plot = graphPlotArea(width, height, Boolean(graph.title), view);
   const plotWidth = plot.right - plot.left;
   const plotHeight = plot.bottom - plot.top;
   const toX = (x: number) => plot.left + ((x - view.xMin) / (view.xMax - view.xMin)) * plotWidth;

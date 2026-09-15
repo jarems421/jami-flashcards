@@ -9,6 +9,7 @@ import {
   parseAssistantIllustrationRequest,
 } from "@/lib/ai/assistant-illustrations";
 import {
+  isTutorGraphRequest,
   normalizeAssistantIllustrations,
   type AssistantIllustration,
 } from "@/lib/ai/jami-assistant";
@@ -107,6 +108,17 @@ export async function POST(request: NextRequest) {
         entry.createdAt < assistantCreatedAt
     )
     .sort((left, right) => (right.createdAt as number) - (left.createdAt as number))[0];
+  // A graph is plotted from its functions in the answer; an image model draws
+  // a convincing curve through the wrong points, and costs more doing it.
+  // Answers saved before graphs stopped offering a picture are refused here too.
+  if (typeof precedingUserMessage?.text === "string" && isTutorGraphRequest(precedingUserMessage.text)) {
+    return assistantAssetError(
+      "Graphs are drawn as real graphs in Tutor's answer, not as pictures. Ask Tutor to draw the graph.",
+      400,
+      "graph_not_illustrated"
+    );
+  }
+
   const trustedPromptContext = {
     studentRequest:
       typeof precedingUserMessage?.text === "string"

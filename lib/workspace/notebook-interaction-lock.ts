@@ -30,9 +30,22 @@ function hasClosest(value: unknown): value is ClosestTarget {
   );
 }
 
+/** Form fields that are not part of the page itself: a dialog's, the Tutor's, a menu's. */
+const NOTEBOOK_FORM_FIELD_SELECTOR = "input, textarea, select, [contenteditable='true']";
+const NOTEBOOK_PAGE_SURFACE_SELECTOR = ".notebook-page-surface";
+
+/**
+ * Whether typing and selecting here is text editing the notebook must leave alone.
+ *
+ * Only the page's own text boxes used to count, so a field anywhere else --
+ * the graph editor's equation box above all -- was treated as the page: its
+ * letters ran the tool shortcuts, typing "tan x" switched to the text tool and
+ * then the eraser, and each switch moved focus away from the field mid-word.
+ */
 export function isNotebookTextEditingTarget(target: EventTarget | null) {
   if (!hasClosest(target)) return false;
-  return Boolean(target.closest(NOTEBOOK_TEXT_EDITOR_SELECTOR));
+  if (target.closest(NOTEBOOK_TEXT_EDITOR_SELECTOR)) return true;
+  return Boolean(target.closest(NOTEBOOK_FORM_FIELD_SELECTOR)) && !target.closest(NOTEBOOK_PAGE_SURFACE_SELECTOR);
 }
 
 /**
