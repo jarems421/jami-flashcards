@@ -111,16 +111,22 @@ describe("specification outlines", () => {
     );
   });
 
-  it("serves none of them until a person has checked them", () => {
+  /*
+   * Served exactly while checked, in both directions: the four sciences the
+   * owner checked are served, and an outline added later is inert until it is.
+   * Concepts need a checked topic list under them as well as their own check.
+   */
+  it("serves an outline's lists exactly while a person has checked them", () => {
     for (const outline of EXAM_SPECIFICATION_OUTLINES) {
-      if (!outline.checked?.topics) {
-        expect(servableExamSpecificationTopics(outline.specificationId)).toBeUndefined();
-        expect(servableExamSpecificationConcepts(outline.specificationId)).toEqual([]);
-      }
-      if (!outline.checked?.concepts) {
-        expect(servableExamSpecificationConcepts(outline.specificationId)).toEqual([]);
-        expect(examSpecificationConceptCatalogue(outline.specificationId)?.provenance).toBe("ai_suggested");
-      }
+      const topicsChecked = outline.checked?.topics === true;
+      const conceptsChecked = outline.checked?.concepts === true;
+      expect(Boolean(servableExamSpecificationTopics(outline.specificationId))).toBe(topicsChecked);
+      expect(servableExamSpecificationConcepts(outline.specificationId).length > 0).toBe(
+        topicsChecked && conceptsChecked
+      );
+      expect(examSpecificationConceptCatalogue(outline.specificationId)?.provenance).toBe(
+        conceptsChecked ? "verified_specification" : "ai_suggested"
+      );
     }
   });
 });

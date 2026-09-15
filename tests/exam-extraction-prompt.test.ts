@@ -98,9 +98,11 @@ describe("what extraction is told about concepts and command words", () => {
     expect(QUESTION_EXAMPLE).toContain('"commandWord"');
   });
 
-  it("offers a checked concept list as a closed list, and nothing for an unchecked one", () => {
+  it("offers a checked concept list as a closed list, and nothing without one", () => {
     expect(conceptRulesFor("8300")).toContain("aqa-8300-algebra-quadratic-equations (Solving quadratic equations)");
-    expect(conceptRulesFor("8461")).toBe(
+    expect(conceptRulesFor("8461")).toContain("aqa-8461-cell-biology-eukaryotes-and-prokaryotes");
+    // A specification nobody has drafted a list for, rather than one awaiting a check.
+    expect(conceptRulesFor("7402")).toBe(
       "Leave conceptIds as an empty array: this specification has no checked concept list."
     );
   });

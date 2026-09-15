@@ -160,7 +160,7 @@ describe("tagging a specification that has no checked catalogue", () => {
    */
   it("refuses without spending anything", async () => {
     await expect(
-      tagExamQuestionTopics({ specificationId: "8461", limit: 5 })
+      tagExamQuestionTopics({ specificationId: "7402", limit: 5 })
     ).rejects.toBeInstanceOf(ExamTopicTaggingError);
     expect(mocks.generateAiText).not.toHaveBeenCalled();
   });

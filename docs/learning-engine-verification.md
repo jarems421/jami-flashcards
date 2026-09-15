@@ -87,11 +87,11 @@ reasoned over by the Learning Engine.
 | Course | Topic list | Concept list | Where |
 | --- | --- | --- | --- |
 | AQA GCSE Mathematics (8300) | checked | checked by the owner, 2026-09-15 | `exam-specification-topics.ts`, `exam-specification-concepts.ts` |
-| Pearson Edexcel GCSE Mathematics (1MA1) | draft | draft | the `1MA1` entries in the same two files |
-| AQA GCSE Biology (8461) | draft | draft | `AQA_GCSE_BIOLOGY` in `exam-specification-outlines.ts` |
-| AQA GCSE Chemistry (8462) | draft | draft | `AQA_GCSE_CHEMISTRY` |
-| AQA GCSE Physics (8463) | draft | draft | `AQA_GCSE_PHYSICS` |
-| AQA GCSE Combined Science: Trilogy (8464) | draft | draft | `AQA_GCSE_COMBINED_SCIENCE_TRILOGY` |
+| Pearson Edexcel GCSE Mathematics (1MA1) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | the `1MA1` entries in the same two files |
+| AQA GCSE Biology (8461) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_BIOLOGY` in `exam-specification-outlines.ts` |
+| AQA GCSE Chemistry (8462) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_CHEMISTRY` |
+| AQA GCSE Physics (8463) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_PHYSICS` |
+| AQA GCSE Combined Science: Trilogy (8464) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_COMBINED_SCIENCE_TRILOGY` |
 
 How the drafts were made, so you know what you are checking:
 

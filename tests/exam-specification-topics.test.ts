@@ -33,15 +33,21 @@ describe("the canonical topic catalogue", () => {
   /*
    * The drafts exist so an owner has something to check rather than something
    * to write. Until then they must behave exactly like no catalogue at all.
+   *
+   * Every catalogue has now been checked, so what this guards is the rule
+   * itself -- served exactly while checked -- and the inert behaviour of any
+   * draft added later.
    */
-  it("drops every suggestion while the catalogue is unverified", () => {
-    const draft = EXAM_SPECIFICATION_TOPICS.find((entry) => !entry.verified);
-    expect(draft).toBeDefined();
-    const real = draft!.topics[0]!.id;
-    expect(filterCanonicalTopicIds(draft!.specificationId, [real])).toEqual({
-      topicIds: [],
-      rejected: [real],
-    });
+  it("serves a catalogue exactly while it is checked, and drops a draft's own ids", () => {
+    for (const catalogue of EXAM_SPECIFICATION_TOPICS) {
+      expect(Boolean(servableExamSpecificationTopics(catalogue.specificationId))).toBe(catalogue.verified);
+      if (catalogue.verified) continue;
+      const real = catalogue.topics[0]!.id;
+      expect(filterCanonicalTopicIds(catalogue.specificationId, [real])).toEqual({
+        topicIds: [],
+        rejected: [real],
+      });
+    }
   });
 
   /*
