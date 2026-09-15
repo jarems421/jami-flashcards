@@ -11,7 +11,8 @@ import { getActiveStudyFolders } from "@/services/study/folders";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
 import DeckEditorDialog, { type DeckDraft } from "@/components/decks/DeckEditorDialog";
-import { loadUserCards } from "@/services/study/cards";
+import ImportDeckDialog, { type DeckImportInput } from "@/components/study/ImportDeckDialog";
+import { CardBatchCreateError, createCardsInBatches, loadUserCards } from "@/services/study/cards";
 import { getDeckCardCounts, type DeckCounts } from "@/lib/study/deck-counts";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import AppPage from "@/components/layout/AppPage";
@@ -42,6 +43,8 @@ export default function DecksPage() {
   const [name, setName] = useState("");
   const [createFolderId, setCreateFolderId] = useState("");
   const [isCreatingDeck, setIsCreatingDeck] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(null);
   const rows = useInlineRowEditing<DeckDraft>();
   const draft = rows.draft ?? EMPTY_DECK_DRAFT;
   const [deckPendingDelete, setDeckPendingDelete] = useState<Deck | null>(null);
@@ -172,6 +175,39 @@ export default function DecksPage() {
     }
   };
 
+  /*
+   * Makes the deck, then its cards in batches, reporting each batch to the
+   * dialog. A failure is thrown back for the dialog to show; if it happens
+   * after the deck exists, the message says how many cards made it in, so a
+   * student is not left guessing whether to import again.
+   */
+  const handleImport = async ({ name: deckName, folderId, cards }: DeckImportInput) => {
+    clearFeedback();
+    setImportProgress({ completed: 0, total: cards.length });
+    let deckCreated = false;
+    try {
+      const deck = await createDeck(user.uid, deckName, { folderIds: folderId ? [folderId] : [] });
+      deckCreated = true;
+      await createCardsInBatches({ userId: user.uid, deckId: deck.id, drafts: cards }, (completed, total) =>
+        setImportProgress({ completed, total })
+      );
+      setIsImportDialogOpen(false);
+      success(`Imported ${cards.length.toLocaleString()} card${cards.length === 1 ? "" : "s"} into ${deckName}.`);
+    } catch (error) {
+      console.error("Failed to import cards.", error);
+      if (!deckCreated) {
+        throw new Error("The deck could not be created. Check your connection and try again.");
+      }
+      const saved = error instanceof CardBatchCreateError ? error.createdCards.length : 0;
+      throw new Error(
+        `The import stopped after ${saved.toLocaleString()} of ${cards.length.toLocaleString()} cards. They are in ${deckName}; check your connection before importing the rest.`
+      );
+    } finally {
+      setImportProgress(null);
+      void loadAll();
+    }
+  };
+
   const handleDeckDelete = async (deck: Deck) => {
     rows.setDeleting(deck.id);
     clearFeedback();
@@ -285,6 +321,15 @@ export default function DecksPage() {
             if (deck) setDeckPendingDelete(deck);
           }}
         />
+        
+        <ImportDeckDialog
+          open={isImportDialogOpen}
+          folders={folders}
+          defaultFolderId={createFolderId}
+          progress={importProgress}
+          onDismiss={() => setIsImportDialogOpen(false)}
+          onImport={handleImport}
+        />
 
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
           <PageHero
@@ -326,14 +371,24 @@ export default function DecksPage() {
                     </select>
                   </label>
                 </div>
-                <Button
-                  disabled={isCreatingDeck || !name.trim()}
-                  data-tutorial-target="create-deck"
-                  onClick={() => void handleCreate()}
-                  className="min-h-[2.9rem] w-full sm:w-auto sm:min-w-[10rem]"
-                >
-                  {isCreatingDeck ? "Creating..." : "Create deck"}
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    disabled={isCreatingDeck || !name.trim()}
+                    data-tutorial-target="create-deck"
+                    onClick={() => void handleCreate()}
+                    className="min-h-[2.9rem] w-full sm:w-auto sm:min-w-[10rem]"
+                  >
+                    {isCreatingDeck ? "Creating..." : "Create deck"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => setIsImportDialogOpen(true)}
+                    className="min-h-[2.9rem] w-full sm:w-auto sm:min-w-[10rem]"
+                  >
+                    Import cards
+                  </Button>
+                </div>
               </div>
             }
           />

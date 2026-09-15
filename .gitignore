@@ -29,6 +29,10 @@
 # production
 /build
 
+# Copied out of node_modules/sql.js on install by scripts/copy-sql-wasm.mjs.
+/public/sql-wasm.wasm
+/public/sql-wasm-browser.wasm
+
 # misc
 .DS_Store
 *.pem
