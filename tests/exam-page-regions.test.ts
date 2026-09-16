@@ -141,6 +141,26 @@ describe("finding where questions start", () => {
   });
 
   /*
+   * Question 1 has nothing before it to be counted from, so what follows
+   * anchors it instead. Without that, the first question of Edexcel Business
+   * 1BS0/02 stayed lost while every later question was restored, and its four
+   * parts were held back.
+   */
+  it("restores a first question that has nothing before it", () => {
+    const pages = [
+      page(1, [
+        ["1", 71, 750], ["Figure 1 shows a diagram of the product life cycle.", 89, 750],
+        ["(a)", 89, 700], ["What is Phase 4 called?", 108, 700],
+        ["2", 71, 600], ["(a)", 89, 600], ["Which one of these is a fixed cost?", 108, 600],
+        ["3", 71, 500], ["(a)", 89, 500], ["State one source of business finance.", 108, 500],
+      ]),
+    ];
+    expect(findQuestionStarts(pages).map((start) => start.label)).toEqual([
+      "1", "1(a)", "2(a)", "3(a)",
+    ]);
+  });
+
+  /*
    * Restored only where it fills a gap in the count: the number after the
    * question before it, and before the question after it. A number that fits
    * nowhere is a table row or a figure caption, and admitting those put a
