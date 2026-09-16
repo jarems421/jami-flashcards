@@ -81,6 +81,8 @@ export default async function main(args: string[] = []) {
         <article class="q">
           <header>
             <h3>${escapeHtml(question.label ?? question.id)}</h3>
+            <!-- Named so a question this sample throws back can be named to spot-check.ts. -->
+            <code class="qid">${escapeHtml(question.id)}</code>
             <span class="tariff">${question.marks} mark${question.marks === 1 ? "" : "s"}</span>
             <span class="calc">${
               question.calculatorAllowed === undefined
@@ -134,6 +136,7 @@ export default async function main(args: string[] = []) {
   h2 { font-size: 1.15rem; margin: 0 0 4px; }
   .meta { color: var(--muted); font-size: 0.85rem; margin: 0 0 18px; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82em; background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  .qid { color: var(--muted); user-select: all; }
   .q { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 16px; margin: 0 0 16px; }
   .q header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
   .q h3 { font-size: 1rem; margin: 0; }
