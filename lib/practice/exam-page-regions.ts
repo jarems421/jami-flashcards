@@ -397,6 +397,12 @@ function labelColumn(pages: PdfPageText[]): { bodyStart: number; candidates: Lab
  * after the question before it, and before the question after it. A bare
  * number with a sentence beside it is otherwise a table row or a figure
  * caption, and admitting those put a "72" among AQA maths's questions.
+ *
+ * Question 1 has no question before it to be counted from, so it is anchored
+ * by what follows instead. Without that, the first question of Edexcel
+ * Business 1BS0/02 -- "1" beside "Figure 1 shows a diagram of the product life
+ * cycle." -- stayed lost while every later question was restored, and its four
+ * parts were held back.
  */
 function questionsMissingFromTheCount(
   starts: readonly QuestionStart[],
@@ -416,8 +422,11 @@ function questionsMissingFromTheCount(
       start.page < candidate.page || (start.page === candidate.page && start.top < candidate.top);
     const before = ordered.filter(isBefore).pop();
     const after = ordered.find((start) => !isBefore(start));
-    if (!before || Number(rootQuestionLabel(before.label)) !== root - 1) continue;
+    if (before && Number(rootQuestionLabel(before.label)) !== root - 1) continue;
+    if (!before && root !== 1) continue;
     if (after && Number(rootQuestionLabel(after.label)) !== root + 1) continue;
+    // Anchored by one neighbour at least: a lone number counts nothing.
+    if (!before && !after) continue;
     known.add(candidate.label);
     restored.push({ label: candidate.label, page: candidate.page, top: candidate.top });
   }
