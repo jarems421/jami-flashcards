@@ -48,6 +48,54 @@ describe("finding where questions start", () => {
     expect(findQuestionStarts(withBodyNumbers).map((s) => s.label)).toEqual(["1"]);
   });
 
+  /*
+   * An AQA English Language paper sets its reading sources at x=51, left of
+   * the `0 1` it numbers questions with. Reading the margin from where prose
+   * starts put the boundary left of every label, and the paper yielded no
+   * questions at all.
+   */
+  it("finds the labels on a paper whose source text is set left of them", () => {
+    const source = (y: number, text: string): [string, number, number] => [text, 51, y];
+    const pages = [
+      page(1, [
+        ["0", 52, 700], ["1", 69, 700], ["Read again the first part of Source A.", 93, 700],
+        source(660, "The narrator describes the house at length."),
+        source(640, "It had stood empty for a decade before then."),
+        source(620, "Nobody in the village would go near it."),
+        source(600, "The windows were boarded from the inside."),
+        ["0", 52, 560], ["2", 69, 560], ["Look in detail at this extract.", 93, 560],
+        source(520, "A second source follows on the next page."),
+        source(500, "It was written nearly a century later."),
+      ]),
+    ];
+    expect(findQuestionStarts(pages).map((start) => start.label)).toEqual(["1", "2"]);
+  });
+
+  /*
+   * A Literature paper's set text is the busiest column on the page, and the
+   * verse's own line numbers sit left of it -- so both "leftmost prose" and
+   * "busiest prose" read 5, 10, 15 as questions. A paper counts from 1, which
+   * is what tells a question number from a line number.
+   */
+  it("does not mistake a poem's line numbers for questions", () => {
+    const verse = (y: number, text: string): [string, number, number] => [text, 138, y];
+    const pages = [
+      page(1, [
+        ["0", 53, 720], ["1", 72, 720], ["Macbeth", 102, 720],
+        ["Read the following extract and answer the question.", 102, 700],
+        verse(660, "Seyton! I am sick at heart,"),
+        ["5", 117, 640], verse(640, "When I behold this push"),
+        verse(620, "Will cheer me ever or disseat me now."),
+        ["10", 114, 600], verse(600, "I have lived long enough."),
+        verse(580, "My way of life is fallen into the sere."),
+        ["15", 114, 560], verse(560, "And that which should accompany old age."),
+        ["0", 53, 500], ["2", 72, 500], ["Romeo and Juliet", 102, 500],
+        ["Read the following extract and answer the question.", 102, 480],
+      ]),
+    ];
+    expect(findQuestionStarts(pages).map((start) => start.label)).toEqual(["1", "2"]);
+  });
+
   it("ignores part labels, which belong to the question above them", () => {
     const withParts = [
       page(1, [
@@ -150,6 +198,11 @@ describe("reading the printed tariff", () => {
     "1 Work out 8.46 ÷ 0.15 ...... (Total for Question 1 is 3 marks) " +
     "2 Work out 7 3 8 2 1 2 − Give your answer as a mixed number. ...... (Total for Question 2 is 3 marks) " +
     "3 Solve ...... (Total for Question 3 is 4 marks)";
+
+  it("reads a Pearson total written with an equals sign", () => {
+    // Business writes "= 12 marks" where maths writes "is 12 marks".
+    expect([...readPrintedTariffs("(Total for Question 3 = 12 marks)")]).toEqual([["3", 12]]);
+  });
 
   it("maps each question to the tariff the paper prints for it", () => {
     const tariffs = readPrintedTariffs(edexcel);
@@ -287,7 +340,12 @@ describe("a question numbered like AQA maths", () => {
  * paper with twenty-five.
  */
 describe("telling prose from page furniture", () => {
-  it("takes the leftmost busy column, not the busiest", () => {
+  /*
+   * The column the paper numbers in decides the boundary, and the leftmost
+   * busy column of prose is the fallback when nothing counts. Whichever
+   * decides it, furniture must never become the margin's edge.
+   */
+  it("never takes page furniture for the body column", () => {
     const body = (n: number) => page(n, [
       [`${n}`, 50, 750],
       // Each page asks its own question, as a real paper does: prose that

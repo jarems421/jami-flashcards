@@ -256,6 +256,131 @@ function questionsOpeningOnAFigure(
   return rescued;
 }
 
+/** A label is printed on the left of the page, never in the right-hand furniture. */
+const LABEL_SIDE_RATIO = 0.5;
+/** Labels in one column do not sit at exactly the same x on every page. */
+const LABEL_COLUMN_TOLERANCE = 4;
+/** `0` `1` `.` `1` is four runs; more than that is a sentence, not a label. */
+const MAX_LABEL_RUNS = 4;
+
+type LabelCandidate = {
+  label: string;
+  x: number;
+  /** Where the line's text carries on after the label, if it does. */
+  bodyX: number | null;
+  page: number;
+  top: number;
+};
+
+/**
+ * Every line's leading run, read as a label if it can be.
+ *
+ * The longest run that parses wins: `1` and `1(a)` both parse on an Edexcel
+ * part line, and the part is the more precise answer.
+ */
+function labelCandidates(pages: PdfPageText[]): LabelCandidate[] {
+  const candidates: LabelCandidate[] = [];
+  for (const page of pages) {
+    const leftOfPage = page.width * LABEL_SIDE_RATIO;
+    const lines: PdfTextItem[][] = [];
+    for (const item of page.items) {
+      const line = lines.find((candidate) => sameLine(candidate[0].y, item.y));
+      if (line) line.push(item);
+      else lines.push([item]);
+    }
+    for (const line of lines) {
+      const ordered = line.slice().sort((left, right) => left.x - right.x);
+      if (ordered[0].x > leftOfPage) continue;
+      for (let runs = Math.min(MAX_LABEL_RUNS, ordered.length); runs >= 1; runs -= 1) {
+        const label = normaliseQuestionLabel(ordered.slice(0, runs).map((item) => item.text).join(""));
+        if (!label) continue;
+        candidates.push({
+          label,
+          x: ordered[0].x,
+          bodyX: ordered[runs]?.x ?? null,
+          page: page.page,
+          top: page.height - ordered[0].y,
+        });
+        break;
+      }
+    }
+  }
+  return candidates;
+}
+
+/**
+ * How far a column counts the paper's questions off: 1, then 2, then 3.
+ *
+ * A question's own parts repeat its number, which is why the current number
+ * is allowed to recur. Anything else is skipped rather than ending the count,
+ * so one stray number in the column does not disqualify it.
+ */
+function sequenceLength(labels: readonly string[]) {
+  let expected = 1;
+  for (const label of labels) {
+    const root = Number(rootQuestionLabel(label));
+    if (root === expected) expected += 1;
+  }
+  return expected - 1;
+}
+
+/**
+ * Where the paper's body text begins, decided by the column it numbers in.
+ *
+ * Prose position alone cannot decide this. An AQA English Language paper sets
+ * its reading sources at x=51, left of the `0 1` it numbers questions with, so
+ * "the leftmost column of prose" put the margin's edge left of every label:
+ * `findQuestionStarts` returned nothing on a 24-page paper, and all five of
+ * its questions were held back for having no label, no region and no tariff.
+ *
+ * A Literature paper fails the other way. Its Shakespeare extract is the
+ * busiest column on the paper, and the verse's own line numbers -- 5, 10, 15,
+ * 20 -- sit left of it, where they read as questions.
+ *
+ * The sequence is what tells them apart. A paper counts its questions 1, 2, 3
+ * from the top; verse line numbers start at 5 and step by 5, and furniture
+ * repeats one value. So each line offers its leading run as a candidate, the
+ * candidates cluster by the x they sit at, and the column that counts
+ * furthest is the one the paper numbers in. Body text begins where those
+ * lines carry on after their label.
+ *
+ * Null when no column counts past one, which is a paper this cannot read
+ * rather than a licence to guess -- the caller falls back to the prose rule.
+ */
+function labelColumnBodyStart(pages: PdfPageText[]): number | null {
+  const ordered = labelCandidates(pages).sort(
+    (left, right) => left.page - right.page || left.top - right.top
+  );
+  const clusters: Array<{ x: number; items: LabelCandidate[] }> = [];
+  for (const candidate of ordered) {
+    const cluster = clusters.find((entry) => Math.abs(entry.x - candidate.x) <= LABEL_COLUMN_TOLERANCE);
+    if (cluster) cluster.items.push(candidate);
+    else clusters.push({ x: candidate.x, items: [candidate] });
+  }
+
+  let best: { score: number; x: number; items: LabelCandidate[] } | null = null;
+  for (const cluster of clusters) {
+    const score = sequenceLength(cluster.items.map((item) => item.label));
+    // Two in a row is the least that can be called counting.
+    if (score < 2) continue;
+    if (!best || score > best.score || (score === best.score && cluster.x < best.x)) {
+      best = { score, x: cluster.x, items: cluster.items };
+    }
+  }
+  if (!best) return null;
+
+  /*
+   * The median of where those lines resume, not the smallest: one label whose
+   * line happens to carry on early would otherwise move the boundary for the
+   * whole paper.
+   */
+  const bodies = best.items
+    .map((item) => item.bodyX)
+    .filter((value): value is number => value !== null && value > best!.x)
+    .sort((left, right) => left - right);
+  return bodies.length ? bodies[Math.floor(bodies.length / 2)] : null;
+}
+
 export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
   const starts: QuestionStart[] = [];
   /** Margin numbers with nothing beside them, kept in case a figure is why. */
@@ -266,7 +391,7 @@ export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
   // or a run of answer lines, and taking its own modal column then puts the
   // boundary in the wrong place for that page alone.
   const fallbackMargin = (pages[0]?.width ?? 600) * MARGIN_RATIO;
-  const bodyStart = bodyTextStart(pages, fallbackMargin);
+  const bodyStart = labelColumnBodyStart(pages) ?? bodyTextStart(pages, fallbackMargin);
   for (const page of pages) {
     const lines: PdfTextItem[][] = [];
     for (const item of page.items.filter((candidate) => candidate.x < bodyStart - COLUMN_TOLERANCE)) {
@@ -441,8 +566,9 @@ export function regionsForQuestion(input: {
 export function readPrintedTariffs(paperText: string): Map<string, number> {
   const tariffs = new Map<string, number>();
   const patterns = [
-    // Pearson Edexcel, and OCR in the same words.
-    /\(\s*Total for Question\s+(\d{1,2})[^)]*?\bis\s+(\d{1,2})\s+marks?\s*\)/gi,
+    // Pearson Edexcel, and OCR in the same words. Business writes "= 12 marks"
+    // where maths writes "is 12 marks".
+    /\(\s*Total for Question\s+(\d{1,2})[^)]*?(?:\bis|=)\s+(\d{1,2})\s+marks?\s*\)/gi,
     // AQA prints the question number first and the total on its own line.
     /\bQuestion\s+(\d{1,2})\s*(?:total)?\s*[:\-]?\s*\[?\s*(\d{1,2})\s+marks?\]?/gi,
   ];
