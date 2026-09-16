@@ -56,6 +56,36 @@ describe("listing a combined course's papers", () => {
     ]);
   });
 
+  /*
+   * "Paper 1" and "Paper 2" are two numbers to a student who has not sat
+   * either. What the board says about a paper -- what it asks, how long it
+   * runs, what comes with it -- is recorded in the rollout, and is what the
+   * picker should show.
+   */
+  it("prefers what the rollout says about a paper to the words in its title", () => {
+    const entries = [
+      {
+        componentCode: "3",
+        componentTitle: "Paper 3 Geographical applications",
+        componentDescription: "Issue evaluation from a pre-release booklet, and your fieldwork. 1 hour 15 minutes.",
+      },
+    ];
+    expect(examCoursePapers(entries, { tier: "" })).toEqual([
+      {
+        id: "paper-3",
+        label: "Paper 3",
+        detail: "Issue evaluation from a pre-release booklet, and your fieldwork. 1 hour 15 minutes.",
+      },
+    ]);
+  });
+
+  it("falls back to the title when the rollout says nothing", () => {
+    const entries = [{ componentCode: "1", componentTitle: "Paper 1 Investigating small business" }];
+    expect(examCoursePapers(entries, { tier: "" })).toEqual([
+      { id: "paper-1", label: "Paper 1", detail: "Investigating small business" },
+    ]);
+  });
+
   it("matches a question to its own subject's paper only", () => {
     const question = { provenance: { componentTitle: "Chemistry Paper 1 Higher", componentCode: "C/1H" } as never };
     expect(matchesPaperChoice(question, ["chemistry-paper-1"])).toBe(true);

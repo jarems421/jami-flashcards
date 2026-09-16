@@ -49,6 +49,7 @@ export async function seedExamFormatCatalogue(targets: readonly ExamCorpusTarget
         componentCode: component.code,
         componentTitle: component.title,
         ...(component.tier ? { tier: component.tier } : {}),
+        ...(component.description ? { componentDescription: component.description } : {}),
         status: "current" as const,
         officialUrls: [],
         aliases: [],
