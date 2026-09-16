@@ -381,10 +381,59 @@ function labelColumnBodyStart(pages: PdfPageText[]): number | null {
   return bodies.length ? bodies[Math.floor(bodies.length / 2)] : null;
 }
 
+/** `(b)` with no number in front of it. */
+const LOOSE_PART_PATTERN = /^\(([a-z])\)$/i;
+/** `1(a)`: a part numbered beside its question, which says the board numbers parts. */
+const INLINE_PART_PATTERN = /^\d{1,2}\([a-z]\)$/;
+
+/**
+ * A part printed as `(b)`, on a paper that numbers its first part beside the
+ * question.
+ *
+ * Edexcel Business prints `1 (a)` against question 1 and then `(b)`, `(c)`,
+ * `(d)` with no number at all. Read as nothing, every part after the first
+ * fell back to a question number that is not itself printed anywhere, so it
+ * found no region, no tariff and no label: 27 questions of a real paper were
+ * held back for it.
+ *
+ * Attached to the question whose number last appeared above them, they are
+ * their own questions on the page, exactly as `1 (a)` already is.
+ *
+ * Only where the paper prints a number beside a part somewhere, because that
+ * is what says the board numbers parts at all. Edexcel maths sets `(a)` under
+ * a bare `5` and prints one total for question 5 covering every part, so
+ * nothing there changes.
+ */
+function looseParts(
+  starts: readonly QuestionStart[],
+  loose: ReadonlyArray<{ letter: string; page: number; top: number }>
+): QuestionStart[] {
+  if (loose.length === 0 || !starts.some((start) => INLINE_PART_PATTERN.test(start.label))) return [];
+  const ordered = starts
+    .slice()
+    .sort((left, right) => left.page - right.page || left.top - right.top);
+  const attached: QuestionStart[] = [];
+  for (const part of loose) {
+    const above = ordered.filter(
+      (start) => start.page < part.page || (start.page === part.page && start.top < part.top)
+    );
+    const root = above[above.length - 1];
+    if (!root) continue;
+    attached.push({
+      label: `${rootQuestionLabel(root.label)}(${part.letter})`,
+      page: part.page,
+      top: part.top,
+    });
+  }
+  return attached;
+}
+
 export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
   const starts: QuestionStart[] = [];
   /** Margin numbers with nothing beside them, kept in case a figure is why. */
   const bare: Array<QuestionStart & { x: number }> = [];
+  /** Part letters printed with no number, kept until their question is known. */
+  const loose: Array<{ letter: string; page: number; top: number }> = [];
   /** Where each accepted question number sits, to recognise the column. */
   const labelColumns: number[] = [];
   // One column for the whole paper: a single page can be dominated by a table
@@ -401,15 +450,22 @@ export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
     }
     for (const line of lines) {
       const ordered = line.slice().sort((left, right) => left.x - right.x);
-      const label = normaliseQuestionLabel(ordered.map((item) => item.text).join(""));
-      if (!label) continue;
+      const joined = ordered.map((item) => item.text).join("");
+      const label = normaliseQuestionLabel(joined);
       const y = line[0].y;
-      const start = { label, page: page.page, top: page.height - y };
       // A label has its question beside it. A number alone in the margin is
       // usually a page number -- see `questionsOpeningOnAFigure` for when not.
       const hasQuestionBeside = page.items.some(
         (other) => sameLine(other.y, y) && other.x >= bodyStart - COLUMN_TOLERANCE
       );
+      if (!label) {
+        const part = joined.replace(/\s+/g, "").match(LOOSE_PART_PATTERN);
+        if (part && hasQuestionBeside) {
+          loose.push({ letter: part[1].toLowerCase(), page: page.page, top: page.height - y });
+        }
+        continue;
+      }
+      const start = { label, page: page.page, top: page.height - y };
       if (!hasQuestionBeside) {
         bare.push({ ...start, x: ordered[0].x });
         continue;
@@ -419,6 +475,7 @@ export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
     }
   }
   starts.push(...questionsOpeningOnAFigure(starts, bare, labelColumns));
+  starts.push(...looseParts(starts, loose));
   /*
    * A question number appears once on a paper, so a repeat is a false
    * positive -- a figure caption or an answer line that happens to sit in the
