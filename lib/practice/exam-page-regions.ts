@@ -598,6 +598,42 @@ function stemRegions(input: {
   return regions;
 }
 
+/**
+ * Where a paper stops asking.
+ *
+ * Boards say so in as many words, and they say it on the page rather than in
+ * the layout, which is the only reliable end to the last question: everything
+ * after it is answer space, a blank page or the copyright notice.
+ */
+const END_MATTER_PATTERN =
+  /END OF QUESTIONS|no questions printed on this page|Copyright information|BLANK PAGE/i;
+
+function endMatterTop(page: PdfPageText): number | null {
+  for (const item of page.items) {
+    if (END_MATTER_PATTERN.test(item.text)) return page.height - item.y;
+  }
+  return null;
+}
+
+/**
+ * Whether a page carries more of the question, or only room to answer it.
+ *
+ * The page after the last question is usually ruled answer space, and AQA
+ * English Language leaves six such pages before the paper ends. Carrying the
+ * crop across them made one question a seven-page image of blank lines. A
+ * page continues the question when it prints wording of its own: prose in the
+ * body of the page, rather than a header, a page number or a run of dots.
+ */
+function carriesQuestionWording(page: PdfPageText) {
+  const prose = page.items.filter((item) => {
+    const top = page.height - item.y;
+    if (top < page.height * 0.05 || top > page.height * 0.95) return false;
+    const text = item.text.trim();
+    return text.length >= 12 && /[a-z]{3}/i.test(text) && !/^\.{6,}$/.test(text);
+  });
+  return prose.length >= 2;
+}
+
 export function regionsForQuestion(input: {
   label: string;
   starts: QuestionStart[];
@@ -646,8 +682,32 @@ export function regionsForQuestion(input: {
     return [...trimmed.filter((region) => region.toRatio > region.fromRatio), ...own];
   };
 
-  // No following question: the rest of this page, and nothing beyond it.
-  if (!next) return withStem([{ page: start.page, fromRatio: from, toRatio: 1 }]);
+  /*
+   * No following question: the rest of this page, and on until the paper
+   * stops asking.
+   *
+   * It used to stop at the page edge. AQA sets the Literature essay's extract
+   * on one page and its task -- and its "[30 marks]" -- on the next, so the
+   * last question of 8702/1 was cropped before its own tariff and held back
+   * for having none. Ending instead where the paper says it has finished
+   * keeps the answer space out of the crop just as reliably.
+   */
+  if (!next) {
+    const regions: QuestionRegion[] = [{ page: start.page, fromRatio: from, toRatio: 1 }];
+    for (const page of pages.filter((entry) => entry.page > start.page)) {
+      const marker = endMatterTop(page);
+      if (marker !== null) {
+        const to = Math.min(1, Math.max(0, marker - headroom) / page.height);
+        if (to > 0.02 && carriesQuestionWording(page)) {
+          regions.push({ page: page.page, fromRatio: 0, toRatio: to });
+        }
+        break;
+      }
+      if (!carriesQuestionWording(page)) break;
+      regions.push({ page: page.page, fromRatio: 0, toRatio: 1 });
+    }
+    return withStem(regions);
+  }
 
   if (next.page === start.page) {
     const to = Math.min(1, Math.max(0, next.top - headroom) / startHeight);
@@ -681,13 +741,13 @@ export function readPrintedTariffs(paperText: string): Map<string, number> {
     // where maths writes "is 12 marks".
     /\(\s*Total for Question\s+(\d{1,2})[^)]*?(?:\bis|=)\s+(\d{1,2})\s+marks?\s*\)/gi,
     // AQA prints the question number first and the total on its own line.
-    /\bQuestion\s+(\d{1,2})\s*(?:total)?\s*[:\-]?\s*\[?\s*(\d{1,2})\s+marks?\]?/gi,
+    /\bQuestion\s+(\d{1,2})\s*(?:total)?\s*[:\-]?\s*\[?\s*(\d{1,3})\s+marks?\]?/gi,
   ];
   for (const pattern of patterns) {
     for (const match of paperText.matchAll(pattern)) {
       const label = match[1];
       const marks = Number(match[2]);
-      if (marks >= 1 && marks <= 30 && !tariffs.has(label)) tariffs.set(label, marks);
+      if (marks >= 1 && marks <= MAX_QUESTION_MARKS && !tariffs.has(label)) tariffs.set(label, marks);
     }
   }
   return tariffs;
@@ -711,13 +771,24 @@ export function readPrintedTariffs(paperText: string): Map<string, number> {
  * that is Edexcel, which prints `(3)` against the right margin and nothing
  * else.
  */
-const WORDED_TARIFF = /[([]\s*(\d{1,2})\s*marks?\s*[)\]]/gi;
+const WORDED_TARIFF = /[([]\s*(\d{1,3})\s*marks?\s*[)\]]/gi;
 const BARE_TARIFF = /[([]\s*(\d{1,2})\s*[)\]]/g;
+
+/**
+ * The most marks a single question is worth.
+ *
+ * Thirty stopped short of the essays. AQA English Language question 5 prints
+ * "[40 marks]" -- 24 for content and organisation, 16 for technical accuracy
+ * -- and dropping it left the question with no tariff at all, which held back
+ * one of only five questions on the paper. Sixty is above any single GCSE
+ * question and still refuses a year, a page number or a line of prose.
+ */
+const MAX_QUESTION_MARKS = 60;
 
 function tariffsIn(text: string, pattern: RegExp) {
   return [...text.matchAll(pattern)]
     .map((match) => Number(match[1]))
-    .filter((value) => value >= 1 && value <= 30);
+    .filter((value) => value >= 1 && value <= MAX_QUESTION_MARKS);
 }
 
 export function readPrintedTariff(text: string): number | null {
