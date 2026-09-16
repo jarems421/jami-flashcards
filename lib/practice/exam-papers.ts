@@ -101,9 +101,17 @@ export function examCoursePapers(
     const tier = typeof entry.tier === "string" ? entry.tier.trim() : "";
     if (tier && course.tier && !sameExamTier(tier, course.tier)) continue;
     const id = examPaperKey(title, code);
+    /*
+     * What the board says about the paper, where the rollout records it.
+     * Otherwise the detail is whatever the component's title carries after its
+     * number, which tells a student the paper's subject but not its shape.
+     */
+    const written = typeof entry.componentDescription === "string" ? entry.componentDescription.trim() : "";
     const described = describePaper(title, code);
+    const detailed = written ? { ...described, detail: written } : described;
     const existing = papers.get(id);
-    if (!existing) papers.set(id, { id, ...described });
+    if (!existing) papers.set(id, { id, ...detailed });
+    else if (written) existing.detail = written;
     else if (!existing.detail && described.detail) existing.detail = described.detail;
   }
   return [...papers.values()].sort((left, right) =>

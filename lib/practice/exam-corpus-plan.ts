@@ -21,8 +21,16 @@ export type ExamCorpusTarget = {
   level: "gcse" | "a_level";
   specificationId: string;
   specificationTitle: string;
-  /** The written components, as the board codes them. */
-  components: Array<{ code: string; title: string; tier?: string }>;
+  /**
+   * The written components, as the board codes them.
+   *
+   * `description` is what a student needs to tell one paper from another: what
+   * it asks about, how long it lasts and what comes with it. Read from the
+   * papers' own front covers and the board's subject content, because a
+   * student choosing between "Paper 1" and "Paper 2" is otherwise choosing
+   * between two numbers.
+   */
+  components: Array<{ code: string; title: string; tier?: string; description?: string }>;
 };
 
 export const ENGLAND_MATHS_AND_SCIENCE: readonly ExamCorpusTarget[] = [
@@ -193,9 +201,24 @@ export const ENGLAND_HUMANITIES_AND_LANGUAGES: readonly ExamCorpusTarget[] = [
     specificationId: "8035",
     specificationTitle: "GCSE Geography",
     components: [
-      { code: "1", title: "Paper 1 Living with the physical environment" },
-      { code: "2", title: "Paper 2 Challenges in the human environment" },
-      { code: "3", title: "Paper 3 Geographical applications" },
+      {
+        code: "1",
+        title: "Paper 1 Living with the physical environment",
+        description:
+          "Natural hazards, the living world, and UK physical landscapes. 1 hour 30 minutes; a calculator is allowed.",
+      },
+      {
+        code: "2",
+        title: "Paper 2 Challenges in the human environment",
+        description:
+          "Urban issues, the changing economic world, and resource management. 1 hour 30 minutes with an insert; a calculator is allowed.",
+      },
+      {
+        code: "3",
+        title: "Paper 3 Geographical applications",
+        description:
+          "Issue evaluation from a pre-release booklet, and your fieldwork. 1 hour 15 minutes; a calculator is allowed.",
+      },
     ],
   },
   {
@@ -205,8 +228,18 @@ export const ENGLAND_HUMANITIES_AND_LANGUAGES: readonly ExamCorpusTarget[] = [
     specificationId: "8700",
     specificationTitle: "GCSE English Language",
     components: [
-      { code: "1", title: "Paper 1 Explorations in creative reading and writing" },
-      { code: "2", title: "Paper 2 Writers' viewpoints and perspectives" },
+      {
+        code: "1",
+        title: "Paper 1 Explorations in creative reading and writing",
+        description:
+          "One fiction extract to read and analyse, then descriptive or narrative writing of your own. 1 hour 45 minutes; the source is a separate insert.",
+      },
+      {
+        code: "2",
+        title: "Paper 2 Writers' viewpoints and perspectives",
+        description:
+          "Two linked non-fiction texts from different centuries, then writing to present a viewpoint. 1 hour 45 minutes; both sources are a separate insert.",
+      },
     ],
   },
   {
@@ -216,8 +249,18 @@ export const ENGLAND_HUMANITIES_AND_LANGUAGES: readonly ExamCorpusTarget[] = [
     specificationId: "8702",
     specificationTitle: "GCSE English Literature",
     components: [
-      { code: "1", title: "Paper 1 Shakespeare and the 19th-century novel" },
-      { code: "2", title: "Paper 2 Modern texts and poetry" },
+      {
+        code: "1",
+        title: "Paper 1 Shakespeare and the 19th-century novel",
+        description:
+          "One question on your Shakespeare play and one on your 19th-century novel, each starting from a printed extract. 1 hour 45 minutes in an answer book; no dictionary.",
+      },
+      {
+        code: "2",
+        title: "Paper 2 Modern texts and poetry",
+        description:
+          "Your modern text, the poetry cluster you studied from the anthology, and two unseen poems.",
+      },
     ],
   },
   {
@@ -227,8 +270,18 @@ export const ENGLAND_HUMANITIES_AND_LANGUAGES: readonly ExamCorpusTarget[] = [
     specificationId: "1BS0",
     specificationTitle: "Pearson Edexcel GCSE Business",
     components: [
-      { code: "1BS0/01", title: "Paper 1 Investigating small business" },
-      { code: "1BS0/02", title: "Paper 2 Building a business" },
+      {
+        code: "1BS0/01",
+        title: "Paper 1 Investigating small business",
+        description:
+          "Enterprise and entrepreneurship: spotting an opportunity, putting a business idea into practice, making it effective, and the influences on it. 1 hour 45 minutes.",
+      },
+      {
+        code: "1BS0/02",
+        title: "Paper 2 Building a business",
+        description:
+          "A growing business: the marketing mix, and operational, financial and human resource decisions. 1 hour 45 minutes.",
+      },
     ],
   },
   {
@@ -244,10 +297,32 @@ export const ENGLAND_HUMANITIES_AND_LANGUAGES: readonly ExamCorpusTarget[] = [
     specificationId: "1FR0",
     specificationTitle: "Pearson Edexcel GCSE French",
     components: [
-      { code: "1FR0/3F", title: "Paper 3 Reading and understanding Foundation", tier: "Foundation" },
-      { code: "1FR0/3H", title: "Paper 3 Reading and understanding Higher", tier: "Higher" },
-      { code: "1FR0/4F", title: "Paper 4 Writing Foundation", tier: "Foundation" },
-      { code: "1FR0/4H", title: "Paper 4 Writing Higher", tier: "Higher" },
+      {
+        code: "1FR0/3F",
+        title: "Paper 3 Reading and understanding Foundation",
+        tier: "Foundation",
+        description: "Reading written French and answering in English and French, with a translation into English.",
+      },
+      {
+        code: "1FR0/3H",
+        title: "Paper 3 Reading and understanding Higher",
+        tier: "Higher",
+        description:
+          "Reading written French and answering in English and French, with a translation into English. 1 hour.",
+      },
+      {
+        code: "1FR0/4F",
+        title: "Paper 4 Writing Foundation",
+        tier: "Foundation",
+        description: "Writing in French: short messages and structured tasks, with a translation into French.",
+      },
+      {
+        code: "1FR0/4H",
+        title: "Paper 4 Writing Higher",
+        tier: "Higher",
+        description:
+          "Writing in French: extended structured tasks, with a translation into French. 1 hour 20 minutes.",
+      },
     ],
   },
 ];
