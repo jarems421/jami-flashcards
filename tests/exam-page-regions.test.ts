@@ -96,6 +96,28 @@ describe("finding where questions start", () => {
     expect(findQuestionStarts(pages).map((start) => start.label)).toEqual(["1", "2"]);
   });
 
+  /*
+   * Edexcel Business numbers the first part beside the question -- `1 (a)` --
+   * and then prints `(b)`, `(c)` with no number at all. Those later parts read
+   * as nothing, so they fell back to a question number the paper never prints
+   * on its own, found no region and no tariff, and 27 questions of a real
+   * paper were held back.
+   */
+  it("attaches a bare part letter to the question numbered above it", () => {
+    const pages = [
+      page(1, [
+        ["1", 71, 750], ["(a)", 89, 750], ["Which one of the following is a fixed cost?", 108, 750],
+        ["(b)", 89, 700], ["Explain one benefit of market mapping.", 108, 700],
+        ["(c)", 89, 650], ["Analyse one drawback of that approach.", 108, 650],
+        ["2", 71, 550], ["(a)", 89, 550], ["State one source of business finance.", 108, 550],
+        ["(b)", 89, 500], ["Explain one risk of that source.", 108, 500],
+      ]),
+    ];
+    expect(findQuestionStarts(pages).map((start) => start.label)).toEqual([
+      "1(a)", "1(b)", "1(c)", "2(a)", "2(b)",
+    ]);
+  });
+
   it("ignores part labels, which belong to the question above them", () => {
     const withParts = [
       page(1, [
