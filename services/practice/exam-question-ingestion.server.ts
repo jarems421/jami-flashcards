@@ -113,8 +113,51 @@ async function loadPdfJs() {
  */
 const PDF_WASM_URL = `${join(process.cwd(), "node_modules", "pdfjs-dist", "wasm")}/`;
 
+/**
+ * Every canvas pdf.js makes, from the same binding this file draws with.
+ *
+ * pdf.js polyfills `Path2D` from its own `require("@napi-rs/canvas")` and this
+ * file imports the package through the bundler, so the two can be different
+ * classes of the same name. Whichever wins `globalThis`, the other side's
+ * native `clip` is then handed a foreign object and throws "Value is none of
+ * these types `String`, `Path`".
+ *
+ * Installing the globals above fixed the pages this file renders itself. It
+ * could not fix a tiling pattern, which pdf.js renders into a canvas of its
+ * own making: every map on AQA Geography 8035/3 threw, which failed the
+ * paper's render stage, and all 24 of its extracted questions were lost
+ * before the write. Handing pdf.js this factory leaves one binding in play.
+ */
+class IngestionCanvasFactory {
+  create(width: number, height: number) {
+    if (width <= 0 || height <= 0) throw new Error("Invalid canvas size");
+    const canvas = createCanvas(Math.ceil(width), Math.ceil(height));
+    return { canvas, context: canvas.getContext("2d") };
+  }
+
+  reset(entry: { canvas: Canvas | null }, width: number, height: number) {
+    if (!entry.canvas) throw new Error("Canvas is not specified");
+    if (width <= 0 || height <= 0) throw new Error("Invalid canvas size");
+    entry.canvas.width = width;
+    entry.canvas.height = height;
+  }
+
+  destroy(entry: { canvas: Canvas | null; context: unknown }) {
+    if (!entry.canvas) throw new Error("Canvas is not specified");
+    entry.canvas.width = 0;
+    entry.canvas.height = 0;
+    entry.canvas = null;
+    entry.context = null;
+  }
+}
+
 function pdfSource(bytes: Buffer) {
-  return { data: new Uint8Array(bytes), useSystemFonts: true, wasmUrl: PDF_WASM_URL };
+  return {
+    data: new Uint8Array(bytes),
+    useSystemFonts: true,
+    wasmUrl: PDF_WASM_URL,
+    CanvasFactory: IngestionCanvasFactory,
+  };
 }
 
 /** The text layer with positions, which is what decides question boundaries. */
