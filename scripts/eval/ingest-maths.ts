@@ -1,5 +1,5 @@
 /**
- * Ingest GCSE Mathematics papers, one at a time, with the bill visible.
+ * Ingest past papers, one course at a time, with the bill visible.
  *
  * The HTTP route needs a signed-in reviewer, which a terminal does not have.
  * This drives the same job machine the route drives -- same manifest, same
@@ -19,7 +19,7 @@
  */
 import { getAdminDb } from "@/services/firebase/admin";
 import { EXAM_BOARD_LABELS, isExamBoardId, isExamQualification, type ExamBoardId } from "@/lib/practice/exam-formats";
-import { ENGLAND_MATHS_AND_SCIENCE } from "@/lib/practice/exam-corpus-plan";
+import { EXAM_CORPUS_TARGETS } from "@/lib/practice/exam-corpus-plan";
 import { getExamQuestionRights } from "@/lib/practice/exam-question-rights";
 import type { ExamSeries } from "@/lib/practice/exam-source-patterns";
 import {
@@ -53,7 +53,7 @@ export default async function main(args: string[] = []) {
   if (!isExamBoardId(board)) throw new Error(`Unknown board "${board}".`);
   const specificationId = flag(args, "spec") ?? DEFAULT_SPECIFICATION[board];
   if (!specificationId) throw new Error(`Pass --spec for ${board}.`);
-  const target = ENGLAND_MATHS_AND_SCIENCE.find(
+  const target = EXAM_CORPUS_TARGETS.find(
     (item) => item.board === board && item.specificationId === specificationId
   );
   const components = list(flag(args, "components"), "1H");
