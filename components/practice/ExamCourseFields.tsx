@@ -15,6 +15,7 @@ import {
   type ExamBoardId,
 } from "@/lib/practice/exam-formats";
 import type { ExamCourseSelection } from "@/lib/practice/exam-questions";
+import { servableExamSetTexts, type ExamSetText } from "@/lib/practice/exam-set-texts";
 import type { StudyLevel } from "@/lib/profile/study-level";
 
 type ExamCourseFieldsProps = {
@@ -95,6 +96,27 @@ export default function ExamCourseFields({
           : null;
   const hasChoices = suggested.length + others.length > 0 || Boolean(unlistedLabel);
   const tiers = selected?.tiers ?? [];
+  /*
+   * Only where the specification sets texts and a person has checked the list.
+   * Most courses set none, and an unchecked list would name texts the board
+   * does not set -- so the question is not asked at all rather than asked
+   * wrongly.
+   */
+  const setTexts = servableExamSetTexts(value.specificationId);
+  const chosenSetTexts = value.setTextIds ?? [];
+  const setTextChoices = setTexts.reduce<Array<[string, ExamSetText[]]>>((choices, text) => {
+    const existing = choices.find(([choice]) => choice === text.choice);
+    if (existing) existing[1].push(text);
+    else choices.push([text.choice, [text]]);
+    return choices;
+  }, []);
+  const toggleSetText = (id: string) =>
+    onChange({
+      ...value,
+      setTextIds: chosenSetTexts.includes(id)
+        ? chosenSetTexts.filter((chosen) => chosen !== id)
+        : [...chosenSetTexts, id],
+    });
 
   const placeholder = !value.board
     ? "Choose a board first"
@@ -182,6 +204,41 @@ export default function ExamCourseFields({
           >
             Try again
           </Button>
+        </div>
+      ) : null}
+
+      {setTexts.length > 0 ? (
+        <div>
+          <p className="text-sm font-medium text-text">Your set texts</p>
+          <p className="mt-1 text-xs leading-5 text-text-muted">
+            The paper prints a question on every text it sets, and you answer the one on yours.
+            Telling Jami which you studied keeps the rest out of your practice.
+          </p>
+          {setTextChoices.map(([choice, choiceTexts]) => (
+            <fieldset key={choice} className="mt-3 border-0 p-0">
+              <legend className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                {choice}
+              </legend>
+              <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
+                {choiceTexts.map((text) => (
+                  <label key={text.id} className="flex items-start gap-2 text-sm leading-5 text-text">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={chosenSetTexts.includes(text.id)}
+                      disabled={disabled}
+                      onChange={() => toggleSetText(text.id)}
+                    />
+                    <span>
+                      {text.label}
+                      {text.author ? <span className="text-text-muted"> · {text.author}</span> : null}
+                      {text.note ? <span className="text-text-muted"> · {text.note}</span> : null}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
         </div>
       ) : null}
 

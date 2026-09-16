@@ -24,6 +24,15 @@ export type ExamCourseSelection = {
   specificationTitle: string;
   tier?: string;
   componentIds: string[];
+  /**
+   * The books and poems this student studies, where the course sets any.
+   *
+   * Empty means they have not said yet, and everything is offered. A
+   * literature paper prints a question on every set text and the student
+   * answers the one on theirs, so once they have said, the rest are not
+   * questions they could sit.
+   */
+  setTextIds?: string[];
 };
 
 export type ExamRightsSnapshot = {
@@ -169,6 +178,13 @@ export type ExamQuestion = {
    */
   conceptIds?: string[];
   tier?: string;
+  /**
+   * The set text this question is answered on, where the paper names one.
+   *
+   * Absent is not "none": unseen poetry sets no text and belongs to every
+   * student, exactly as an untiered question does.
+   */
+  setTextId?: string;
   /**
    * Read off the paper's cover at ingestion, and absent when it said nothing.
    *
@@ -494,8 +510,10 @@ export function buildExamCourseSelection(input: {
   specificationTitle: string;
   tier?: string;
   componentIds?: string[];
+  setTextIds?: string[];
 }): ExamCourseSelection {
   const tier = input.tier?.trim();
+  const setTextIds = (input.setTextIds ?? []).map((id) => id.trim()).filter(Boolean);
   return {
     board: input.board,
     qualification: input.qualification,
@@ -503,6 +521,7 @@ export function buildExamCourseSelection(input: {
     specificationTitle: input.specificationTitle.trim(),
     componentIds: input.componentIds ?? [],
     ...(tier ? { tier } : {}),
+    ...(setTextIds.length ? { setTextIds } : {}),
   };
 }
 
@@ -561,12 +580,22 @@ export function examDocument<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+/**
+ * Whether a question is one this student could sit.
+ *
+ * A set text reads like a tier: a question that names one belongs to the
+ * students who study it, and a question that names none -- unseen poetry --
+ * belongs to everyone. A student who has not chosen yet is offered all of
+ * them rather than none, because an empty picker should not empty the paper.
+ */
 export function questionMatchesExamCourse(question: ExamQuestion, course: ExamCourseSelection) {
+  const setTexts = course.setTextIds ?? [];
   return question.origin === "official_past_paper" &&
     question.provenance.board === course.board &&
     question.provenance.qualification === course.qualification &&
     question.provenance.specificationId === course.specificationId &&
     (!question.tier || sameExamTier(question.tier, course.tier)) &&
+    (!question.setTextId || setTexts.length === 0 || setTexts.includes(question.setTextId)) &&
     (course.componentIds.length === 0 || course.componentIds.includes(question.provenance.componentCode));
 }
 

@@ -8,6 +8,7 @@
  * that silently drifts.
  */
 import { servableExamSpecificationConcepts } from "@/lib/practice/exam-specification-concepts";
+import { servableExamSetTexts } from "@/lib/practice/exam-set-texts";
 import { servableExamSpecificationTopics } from "@/lib/practice/exam-specification-topics";
 
 /*
@@ -38,6 +39,7 @@ export const QUESTION_EXAMPLE = JSON.stringify({
     topicIds: [],
     conceptIds: [],
     commandWord: "",
+    setText: "",
   }],
 }, null, 2);
 
@@ -94,6 +96,31 @@ export const QUESTION_RULES = [
  * A specification with no checked catalogue says so plainly and asks for none,
  * rather than inviting guesses that are going to be discarded anyway.
  */
+/**
+ * The set texts this paper's specification offers, where it offers any.
+ *
+ * A literature paper prints the text above the question -- "Macbeth",
+ * "Arthur Conan Doyle: The Sign of Four" -- and every question on the paper
+ * belongs to one of them. Read from the page rather than guessed from the
+ * wording, because "how does Shakespeare present ambition" names no play.
+ *
+ * A closed list for the same reason topics get one: an unmatched title is a
+ * question filed under a text the course does not set, and would be dropped.
+ */
+export function setTextRulesFor(specificationId: string) {
+  const texts = servableExamSetTexts(specificationId);
+  if (texts.length === 0) {
+    return "Leave setText as an empty string: this specification sets no texts.";
+  }
+  const list = texts.map((text) => (text.author ? `${text.label} (${text.author})` : text.label)).join("; ");
+  return (
+    `Set texts: ${list}. ` +
+    "setText is the set text named in the question's own heading, copied as the title alone and " +
+    "exactly as listed above. Use an empty string where the question names none, as an unseen " +
+    "poetry question does."
+  );
+}
+
 export function topicRulesFor(specificationId: string) {
   const catalogue = servableExamSpecificationTopics(specificationId);
   if (!catalogue) {
