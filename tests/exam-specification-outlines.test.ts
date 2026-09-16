@@ -87,7 +87,10 @@ describe("specification outlines", () => {
       const concepts = outlineConcepts(outline);
       expect(new Set(topics.map((topic) => topic.id)).size).toBe(topics.length);
       expect(new Set(concepts.map((concept) => concept.id)).size).toBe(concepts.length);
-      expect(new Set(concepts.map((concept) => concept.reference)).size).toBe(concepts.length);
+      // Only where the board prints one: a language specification numbers
+      // nothing, and blank references would all collide.
+      const references = concepts.map((concept) => concept.reference).filter(Boolean);
+      expect(new Set(references).size).toBe(references.length);
       for (const concept of concepts) {
         expect(concept.id).toMatch(/^[a-z0-9-]+$/);
         expect(concept.id.startsWith(`${concept.parentTopicId}-`)).toBe(true);
