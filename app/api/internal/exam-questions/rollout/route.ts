@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { authenticatePaperQualityReviewer } from "@/services/auth/paper-quality-reviewer.server";
 import { isExamBoardId } from "@/lib/practice/exam-formats";
-import { ENGLAND_MATHS_AND_SCIENCE } from "@/lib/practice/exam-corpus-plan";
+import { EXAM_CORPUS_TARGETS } from "@/lib/practice/exam-corpus-plan";
 import {
   queueExamCorpusBatch,
   seedExamFormatCatalogue,
@@ -14,7 +14,7 @@ export const maxDuration = 300;
 export async function GET(request: NextRequest) {
   const auth = await authenticatePaperQualityReviewer(request);
   if (!auth.ok) return Response.json({ error: auth.code }, { status: auth.status });
-  return Response.json({ targets: ENGLAND_MATHS_AND_SCIENCE });
+  return Response.json({ targets: EXAM_CORPUS_TARGETS });
 }
 
 /**

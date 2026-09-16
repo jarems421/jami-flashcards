@@ -93,6 +93,22 @@ function datesInWindow(year: number, window: { from: [number, number]; to: [numb
 }
 
 /**
+ * Where Pearson files each specification.
+ *
+ * The directory is the subject and the year the specification was issued,
+ * neither of which appears in the specification code -- Mathematics is under
+ * 2015, Business under 2017, French under 2016. Confirmed by fetching a real
+ * paper from each. A specification that is not here has no derivable address,
+ * which `pearsonCandidates` reports as no candidates rather than guessing a
+ * directory and probing hundreds of URLs that cannot exist.
+ */
+const PEARSON_SUBJECT_PATHS: Record<string, { subject: string; issued: number }> = {
+  "1ma1": { subject: "Mathematics", issued: 2015 },
+  "1bs0": { subject: "Business", issued: 2017 },
+  "1fr0": { subject: "French", issued: 2016 },
+};
+
+/**
  * Pearson: every plausible sitting day crossed with every plausible results
  * day, which is a lot of candidates and exactly why the caller checks them
  * cheaply and stops at the first that exists.
@@ -100,8 +116,9 @@ function datesInWindow(year: number, window: { from: [number, number]; to: [numb
 function pearsonCandidates(query: ExamSourceQuery): ExamSourceCandidate[] {
   const spec = query.specificationId.toLowerCase();
   const component = query.componentCode.replace(/^.*\//, "").toLowerCase();
-  const subjectPath = "Mathematics";
-  const base = `https://qualifications.pearson.com/content/dam/pdf/GCSE/${subjectPath}/2015/Exam-materials`;
+  const path = PEARSON_SUBJECT_PATHS[spec];
+  if (!path) return [];
+  const base = `https://qualifications.pearson.com/content/dam/pdf/GCSE/${path.subject}/${path.issued}/Exam-materials`;
   const resultsYear = query.series === "June" ? query.year : query.year + 1;
   const candidates: ExamSourceCandidate[] = [];
   for (const sat of datesInWindow(query.year, SITTING_WINDOWS[query.series])) {

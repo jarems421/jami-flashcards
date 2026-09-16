@@ -2,7 +2,7 @@ import "server-only";
 
 import { getAdminDb } from "@/services/firebase/admin";
 import {
-  ENGLAND_MATHS_AND_SCIENCE,
+  EXAM_CORPUS_TARGETS,
   type ExamCorpusTarget,
 } from "@/lib/practice/exam-corpus-plan";
 import { EXAM_BOARD_LABELS, type ExamBoardId } from "@/lib/practice/exam-formats";
@@ -25,7 +25,7 @@ import { startExamIngestionJob } from "@/services/practice/exam-ingestion-job.se
  * The AI research still runs and still adds what it finds. This only
  * guarantees the courses actually being ingested are there.
  */
-export async function seedExamFormatCatalogue(targets: readonly ExamCorpusTarget[] = ENGLAND_MATHS_AND_SCIENCE) {
+export async function seedExamFormatCatalogue(targets: readonly ExamCorpusTarget[] = EXAM_CORPUS_TARGETS) {
   const db = getAdminDb();
   const now = Date.now();
   let batch = db.batch();
@@ -98,7 +98,7 @@ export async function queueExamCorpusBatch(input: {
   years: number[];
   dryRun: boolean;
 }): Promise<ExamRolloutBatch> {
-  const target = ENGLAND_MATHS_AND_SCIENCE.find(
+  const target = EXAM_CORPUS_TARGETS.find(
     (item) => item.board === input.board && item.specificationId === input.specificationId
   );
   if (!target) throw new Error("specification_not_in_rollout");
