@@ -177,6 +177,48 @@ describe("finding where questions start", () => {
     expect(findQuestionStarts(pages).map((start) => start.label)).toEqual(["1(a)", "2(a)"]);
   });
 
+  /*
+   * AQA sets the Literature essay's extract on one page and its task -- and
+   * its "[30 marks]" -- on the next. Ending the last question at its own page
+   * edge cropped it before its own tariff, and the question was held back for
+   * having none.
+   */
+  it("carries the last question onto a page that prints more of it, stopping where the paper does", () => {
+    const pages = [
+      page(1, [
+        ["1", 50, 750], ["Read the following extract from the novel.", 120, 750],
+        ["The night was cold and the house stood empty.", 120, 700],
+      ]),
+      page(2, [
+        ["Starting with this extract, explore how far the writer presents fear.", 120, 700],
+        ["Write about how the writer uses language to do it.", 120, 660],
+        ["[30 marks]", 480, 620],
+        ["END OF QUESTIONS", 240, 560],
+      ]),
+      page(3, [["..............................................", 71, 700]]),
+    ];
+    const regions = regionsForQuestion({ label: "1", starts: findQuestionStarts(pages), pages });
+    expect(regions.map((region) => region.page)).toEqual([1, 2]);
+    // Stops above "END OF QUESTIONS", so the tariff is inside and the rest is not.
+    expect(regions[1]!.toRatio).toBeLessThan(0.35);
+  });
+
+  /*
+   * Six ruled pages follow AQA English Language's last question. Carrying the
+   * crop across them made one question a seven-page image of blank lines.
+   */
+  it("does not carry the last question across pages of answer lines", () => {
+    const pages = [
+      page(1, [["1", 50, 750], ["Describe a place at sunset.", 120, 750], ["[40 marks]", 480, 700]]),
+      page(2, [
+        ["..............................................", 71, 700],
+        ["..............................................", 71, 650],
+      ]),
+    ];
+    const regions = regionsForQuestion({ label: "1", starts: findQuestionStarts(pages), pages });
+    expect(regions.map((region) => region.page)).toEqual([1]);
+  });
+
   it("ignores part labels, which belong to the question above them", () => {
     const withParts = [
       page(1, [
@@ -297,6 +339,17 @@ describe("reading the printed tariff", () => {
    * number is the larger one. Scanning a region for the biggest number in a
    * bracket would have read the tariff as twelve.
    */
+  /*
+   * AQA English Language question 5 is worth 40: 24 for content and
+   * organisation, 16 for technical accuracy. A cap of thirty dropped it and
+   * left one of the paper's five questions with no tariff at all.
+   */
+  it("reads a tariff worth more than thirty marks", () => {
+    expect(
+      readPrintedTariff("(24 marks for content and organisation 16 marks for technical accuracy) [40 marks]")
+    ).toBe(40);
+  });
+
   it("does not mistake the question number for the tariff", () => {
     expect(readPrintedTariffs("(Total for Question 12 is 3 marks)").get("12")).toBe(3);
   });
