@@ -5,6 +5,7 @@ import {
 } from "@/lib/practice/exam-formats";
 import { examCourseName } from "@/lib/practice/exam-course-names";
 import { examStudyLevelForQualification } from "@/lib/practice/exam-ingestion-manifest";
+import { filterCanonicalSetTextIds } from "@/lib/practice/exam-set-texts";
 import {
   buildExamCourseSelection,
   type ExamCourseSelection,
@@ -32,12 +33,20 @@ export type ExamCourseDraft = {
   board: ExamBoardId | "";
   specificationId: string;
   tier: string;
+  /**
+   * The set texts this student studies, where the course sets any.
+   *
+   * Optional because a half-made draft predates the question being asked, and
+   * most courses never ask it.
+   */
+  setTextIds?: string[];
 };
 
 export const EMPTY_EXAM_COURSE_DRAFT: ExamCourseDraft = {
   board: "",
   specificationId: "",
   tier: "",
+  setTextIds: [],
 };
 
 export function examCourseDraftFrom(
@@ -48,6 +57,7 @@ export function examCourseDraftFrom(
     board: course.board,
     specificationId: course.specificationId,
     tier: course.tier ?? "",
+    setTextIds: course.setTextIds ?? [],
   };
 }
 
@@ -72,11 +82,14 @@ export function resolveExamCourseDraft(
   saved?: ExamCourseSelection | null
 ): ResolvedExamCourse {
   if (!draft.board || !draft.specificationId) return NO_EXAM_COURSE;
+  const sameTexts = (left: readonly string[], right: readonly string[]) =>
+    left.length === right.length && left.every((id, index) => id === right[index]);
   const keepSaved: ResolvedExamCourse | null =
     saved &&
     saved.board === draft.board &&
     saved.specificationId === draft.specificationId &&
-    (saved.tier ?? "") === draft.tier
+    (saved.tier ?? "") === draft.tier &&
+    sameTexts(saved.setTextIds ?? [], draft.setTextIds ?? [])
       ? { status: "ready", course: saved }
       : null;
 
@@ -108,6 +121,12 @@ export function resolveExamCourseDraft(
       componentIds: tier?.componentIds.length
         ? tier.componentIds
         : option.componentIds,
+      /*
+       * Only texts this specification actually sets. A student keeps what they
+       * chose, and an id from a course they have since changed is dropped
+       * rather than quietly filtering every question out.
+       */
+      setTextIds: filterCanonicalSetTextIds(option.specificationId, draft.setTextIds ?? []).setTextIds,
     }),
   };
 }

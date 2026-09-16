@@ -23,6 +23,7 @@ import {
   conceptParentTopicIds,
   filterCanonicalConceptIds,
 } from "@/lib/practice/exam-specification-concepts";
+import { matchExamSetText } from "@/lib/practice/exam-set-texts";
 import { filterCanonicalTopicIds } from "@/lib/practice/exam-specification-topics";
 import {
   canPublishExamQuestion,
@@ -249,6 +250,13 @@ export function buildExamQuestionsFromExtraction(
     );
     // Empty when the paper prints none: read and not found is a different answer from never read.
     const commandWord = normalizeCommandWord(item.commandWord, prompt) ?? "";
+    /*
+     * The book or poems this question is answered on, matched against the
+     * course's own list. An unmatched title is left off rather than stored:
+     * a question filed under a text the specification does not set would be
+     * hidden from every student, including the ones who study it.
+     */
+    const setText = matchExamSetText(manifest.specificationId, text(item.setText, 160));
 
     const issues = [
       !input.identityMatches ? "The paper does not identify itself as the one in the manifest." : "",
@@ -349,6 +357,7 @@ export function buildExamQuestionsFromExtraction(
         topicIds: questionTopics,
         conceptIds: canonicalConcepts,
         commandWord,
+        ...(setText ? { setTextId: setText.id } : {}),
         ...(calculatorAllowed === undefined ? {} : { calculatorAllowed }),
         difficulty: difficultyOf(item.difficulty),
         aiDifficulty: difficultyOf(item.difficulty),

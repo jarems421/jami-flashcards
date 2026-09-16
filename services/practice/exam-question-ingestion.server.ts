@@ -14,6 +14,7 @@ import {
   SCHEME_EXAMPLE,
   SCHEME_RULES,
   conceptRulesFor,
+  setTextRulesFor,
   topicRulesFor,
 } from "@/lib/practice/exam-extraction-prompt";
 import { parseJsonObject } from "@/services/ai/practice-paper-generation.server";
@@ -353,6 +354,8 @@ ${QUESTION_RULES}
 ${topicRulesFor(manifest.specificationId)}
 
 ${conceptRulesFor(manifest.specificationId)}
+
+${setTextRulesFor(manifest.specificationId)}
 
 ${COMMAND_WORD_RULES}` },
       { inlineData: { mimeType: "application/pdf", data: paperBytes.toString("base64") } },
