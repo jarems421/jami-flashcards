@@ -118,6 +118,45 @@ describe("finding where questions start", () => {
     ]);
   });
 
+  /*
+   * Edexcel Business opens question 5 with its number beside a sentence set in
+   * the column its parts' letters use, not the one their wording uses. The
+   * margin filter swallowed number and sentence together and read no label, so
+   * question 5 was never found -- and its parts attached to question 4, which
+   * stretched 4(b)'s image across the whole of question 5.
+   */
+  it("finds a question whose wording starts where its parts' letters sit", () => {
+    const pages = [
+      page(1, [
+        ["1", 71, 750], ["(a)", 89, 750], ["Outline one way financial information helps.", 108, 750],
+        ["(b)", 89, 700], ["Analyse the impact of non-financial aims.", 108, 700],
+        ["2", 71, 640], ["Table 2 shows forecasts from the business plan.", 89, 640],
+        ["(a)", 89, 590], ["Using the information in Table 2, calculate the balance.", 108, 590],
+        ["3", 71, 520], ["(a)", 89, 520], ["State one element of the marketing mix.", 108, 520],
+      ]),
+    ];
+    expect(findQuestionStarts(pages).map((start) => start.label)).toEqual([
+      "1(a)", "1(b)", "2", "2(a)", "3(a)",
+    ]);
+  });
+
+  /*
+   * Restored only where it fills a gap in the count: the number after the
+   * question before it, and before the question after it. A number that fits
+   * nowhere is a table row or a figure caption, and admitting those put a
+   * "72" among the questions of a real maths paper.
+   */
+  it("restores nothing when the count has no gap", () => {
+    const pages = [
+      page(1, [
+        ["1", 71, 750], ["(a)", 89, 750], ["Work out the mean of the readings.", 108, 750],
+        ["2", 71, 650], ["(a)", 89, 650], ["Solve the equation.", 108, 650],
+        ["40", 71, 600], ["kg of sand was delivered, as Table 1 shows.", 89, 600],
+      ]),
+    ];
+    expect(findQuestionStarts(pages).map((start) => start.label)).toEqual(["1(a)", "2(a)"]);
+  });
+
   it("ignores part labels, which belong to the question above them", () => {
     const withParts = [
       page(1, [

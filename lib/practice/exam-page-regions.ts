@@ -347,7 +347,7 @@ function sequenceLength(labels: readonly string[]) {
  * Null when no column counts past one, which is a paper this cannot read
  * rather than a licence to guess -- the caller falls back to the prose rule.
  */
-function labelColumnBodyStart(pages: PdfPageText[]): number | null {
+function labelColumn(pages: PdfPageText[]): { bodyStart: number; candidates: LabelCandidate[] } | null {
   const ordered = labelCandidates(pages).sort(
     (left, right) => left.page - right.page || left.top - right.top
   );
@@ -378,7 +378,50 @@ function labelColumnBodyStart(pages: PdfPageText[]): number | null {
     .map((item) => item.bodyX)
     .filter((value): value is number => value !== null && value > best!.x)
     .sort((left, right) => left - right);
-  return bodies.length ? bodies[Math.floor(bodies.length / 2)] : null;
+  if (bodies.length === 0) return null;
+  return { bodyStart: bodies[Math.floor(bodies.length / 2)], candidates: best.items };
+}
+
+/**
+ * A counted question the margin filter read as part of its own sentence.
+ *
+ * Edexcel Business opens question 5 with "5" beside "Table 2 shows ..." at
+ * x=89, while its parts print "(a)" there and their wording at x=108. The body
+ * column is the parts' one, so the filter swallowed the number and the
+ * sentence together, read no label from "5Table 2 shows ...", and question 5
+ * was never found. Its three parts then attached to question 4: two collided
+ * with real parts, and the third survived as a "4(c)" three pages later, which
+ * stretched question 4(b)'s image across the whole of question 5.
+ *
+ * Only a candidate that fills a gap in the count is restored -- the number
+ * after the question before it, and before the question after it. A bare
+ * number with a sentence beside it is otherwise a table row or a figure
+ * caption, and admitting those put a "72" among AQA maths's questions.
+ */
+function questionsMissingFromTheCount(
+  starts: readonly QuestionStart[],
+  candidates: readonly LabelCandidate[]
+): QuestionStart[] {
+  if (starts.length === 0 || candidates.length === 0) return [];
+  const known = new Set(starts.map((start) => start.label));
+  const ordered = starts
+    .slice()
+    .sort((left, right) => left.page - right.page || left.top - right.top);
+  const restored: QuestionStart[] = [];
+  for (const candidate of candidates) {
+    if (candidate.bodyX === null || known.has(candidate.label)) continue;
+    const root = Number(rootQuestionLabel(candidate.label));
+    if (!Number.isFinite(root)) continue;
+    const isBefore = (start: QuestionStart) =>
+      start.page < candidate.page || (start.page === candidate.page && start.top < candidate.top);
+    const before = ordered.filter(isBefore).pop();
+    const after = ordered.find((start) => !isBefore(start));
+    if (!before || Number(rootQuestionLabel(before.label)) !== root - 1) continue;
+    if (after && Number(rootQuestionLabel(after.label)) !== root + 1) continue;
+    known.add(candidate.label);
+    restored.push({ label: candidate.label, page: candidate.page, top: candidate.top });
+  }
+  return restored;
 }
 
 /** `(b)` with no number in front of it. */
@@ -440,7 +483,8 @@ export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
   // or a run of answer lines, and taking its own modal column then puts the
   // boundary in the wrong place for that page alone.
   const fallbackMargin = (pages[0]?.width ?? 600) * MARGIN_RATIO;
-  const bodyStart = labelColumnBodyStart(pages) ?? bodyTextStart(pages, fallbackMargin);
+  const column = labelColumn(pages);
+  const bodyStart = column?.bodyStart ?? bodyTextStart(pages, fallbackMargin);
   for (const page of pages) {
     const lines: PdfTextItem[][] = [];
     for (const item of page.items.filter((candidate) => candidate.x < bodyStart - COLUMN_TOLERANCE)) {
@@ -475,6 +519,7 @@ export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
     }
   }
   starts.push(...questionsOpeningOnAFigure(starts, bare, labelColumns));
+  starts.push(...questionsMissingFromTheCount(starts, column?.candidates ?? []));
   starts.push(...looseParts(starts, loose));
   /*
    * A question number appears once on a paper, so a repeat is a false
