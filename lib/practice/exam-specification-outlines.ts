@@ -1045,9 +1045,66 @@ export const AQA_GCSE_COMBINED_SCIENCE_TRILOGY: SpecificationOutline = {
   ],
 };
 
+/**
+ * AQA GCSE Geography (8035).
+ *
+ * The grain is a step finer than the sciences because the specification is
+ * shaped differently. 3.1 and 3.2 are the two written papers rather than
+ * topics, so a topic here is the named section beneath them -- "The challenge
+ * of natural hazards" -- which is what a student calls the thing they are
+ * revising.
+ *
+ * Concepts are the numbered headings the board prints under those sections.
+ * Two sections have none to print: 3.2.1 Urban issues and challenges and 3.2.2
+ * The changing economic world are published as unnumbered key ideas, so they
+ * carry a topic and no concepts. A concept invented to fill that gap would be
+ * Jami's structure wearing the board's name.
+ */
+export const AQA_GCSE_GEOGRAPHY: SpecificationOutline = {
+  specificationId: "8035",
+  idPrefix: "aqa-8035",
+  source:
+    "AQA GCSE Geography (8035) sections 3.1-3.3, read from the subject content pages on " +
+    "aqa.org.uk on 2026-09-16. Sections 3.2.1 and 3.2.2 publish key ideas rather than " +
+    "numbered headings and so carry no concepts. Not yet checked by a person.",
+  groups: [{
+    sections: [
+      ["3.1.1", "The challenge of natural hazards", [
+        ["3.1.1.1", "Natural hazards"],
+        ["3.1.1.2", "Tectonic hazards"],
+        ["3.1.1.3", "Weather hazards"],
+        ["3.1.1.4", "Climate change"],
+      ]],
+      ["3.1.2", "The living world", [
+        ["3.1.2.1", "Ecosystems"],
+        ["3.1.2.2", "Tropical rainforests"],
+        ["3.1.2.3", "Hot deserts"],
+        ["3.1.2.4", "Cold environments"],
+      ]],
+      ["3.1.3", "Physical landscapes in the UK", [
+        ["3.1.3.1", "UK physical landscapes"],
+        ["3.1.3.2", "Coastal landscapes in the UK"],
+        ["3.1.3.3", "River landscapes in the UK"],
+        ["3.1.3.4", "Glacial landscapes in the UK"],
+      ]],
+      ["3.2.1", "Urban issues and challenges"],
+      ["3.2.2", "The changing economic world"],
+      ["3.2.3", "The challenge of resource management", [
+        ["3.2.3.1", "Resource management"],
+        ["3.2.3.2", "Food"],
+        ["3.2.3.3", "Water"],
+        ["3.2.3.4", "Energy"],
+      ]],
+      ["3.3.1", "Issue evaluation"],
+      ["3.3.2", "Fieldwork"],
+    ],
+  }],
+};
+
 export const EXAM_SPECIFICATION_OUTLINES: readonly SpecificationOutline[] = [
   AQA_GCSE_BIOLOGY,
   AQA_GCSE_CHEMISTRY,
   AQA_GCSE_PHYSICS,
   AQA_GCSE_COMBINED_SCIENCE_TRILOGY,
+  AQA_GCSE_GEOGRAPHY,
 ];
