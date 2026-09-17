@@ -40,7 +40,9 @@ import { buildTopicStates } from "@/lib/learning/profile/topic-states";
 import { recommendFocus } from "@/lib/learning/recommendations/recommend-focus";
 import { evidenceConfidence } from "@/lib/learning/scoring/confidence-score";
 import { countUniqueItems } from "@/lib/learning/scoring/item-weights";
+import { tuningWithLearnerPrior } from "@/lib/learning/scoring/learner-prior";
 import { masteryScore, weightedAccuracy } from "@/lib/learning/scoring/mastery-score";
+import { DEFAULT_LEARNING_TUNING, type LearningTuning } from "@/lib/learning/scoring/tuning";
 import { measureTrend } from "@/lib/learning/scoring/trend-score";
 import {
   LEARNER_PROFILE_ALGORITHM_VERSION,
@@ -183,7 +185,7 @@ export function collectLearnerObservations(
 ) {
   const { observations, dropped } = canonicalizeObservations(
     [
-      ...flashcardObservations(evidence.cards, evidence.flashcardReviewEvents),
+      ...flashcardObservations(evidence.cards, evidence.flashcardReviewEvents, now),
       ...pastPaperObservations(evidence.pastPaperAttempts),
       ...practicePaperObservations(evidence.practicePaperAttempts),
     ],
@@ -225,26 +227,31 @@ export function buildLearningSignals(
   observations: readonly LearningObservation[],
   registry: ConceptRegistry,
   cards: readonly FlashcardEvidenceCard[],
-  now: number
+  now: number,
+  tuning: LearningTuning = DEFAULT_LEARNING_TUNING
 ): LearningSignal[] {
   const byTopic = groupObservationsByTopic(observations);
   const due = dueCardsByTopic(cards, registry, now);
+  // Decided once across the scope, so every topic is judged against the same
+  // picture of the student rather than each re-deriving one from its own few answers.
+  const scoped = tuningWithLearnerPrior(observations, now, tuning);
 
   const signals: LearningSignal[] = [];
   for (const [topicKey, topicObservations] of byTopic) {
     const concept = registry.concepts.get(topicKey);
     if (!concept) continue;
-    const trend = measureTrend(topicObservations);
+    const trend = measureTrend(topicObservations, scoped);
     const kinds = new Set(topicObservations.map((observation) => observation.kind));
     signals.push({
       topicKey,
       topic: concept.label,
       topicSource: concept.source,
-      mastery: masteryScore(topicObservations, now),
-      confidence: evidenceConfidence(topicObservations, now),
+      mastery: masteryScore(topicObservations, now, scoped),
+      evidenceMastery: masteryScore(topicObservations, now, tuning),
+      confidence: evidenceConfidence(topicObservations, now, scoped),
       attempts: topicObservations.reduce((total, observation) => total + observation.count, 0),
       uniqueItems: countUniqueItems(topicObservations),
-      accuracy: weightedAccuracy(topicObservations),
+      accuracy: weightedAccuracy(topicObservations, scoped),
       ...(trend
         ? {
             trend: trend.trend,
@@ -333,8 +340,8 @@ export function buildLearnerProfile(input: {
     .filter(
       (signal) =>
         signal.confidence >= MIN_SIGNAL_CONFIDENCE &&
-        (signal.mastery < WEAKNESS_MASTERY_BELOW ||
-          (signal.trend === "declining" && signal.mastery < DECLINING_ATTENTION_BELOW))
+        (signal.evidenceMastery < WEAKNESS_MASTERY_BELOW ||
+          (signal.trend === "declining" && signal.evidenceMastery < DECLINING_ATTENTION_BELOW))
     )
     .sort(byRankThenRecency((signal) => (1 - signal.mastery) * signal.confidence))
     .slice(0, LEARNER_PROFILE_LIMITS.weaknesses);
@@ -345,7 +352,9 @@ export function buildLearnerProfile(input: {
       (signal) =>
         !weakKeys.has(signal.topicKey) &&
         signal.trend !== "declining" &&
-        signal.mastery >= STRENGTH_MASTERY_FROM &&
+        // Calling a topic a strength tells the tutor to skip it, so it has to
+        // be earned by this topic's own evidence and not by the student's average.
+        signal.evidenceMastery >= STRENGTH_MASTERY_FROM &&
         signal.confidence >= MIN_STRENGTH_CONFIDENCE
     )
     .sort(byRankThenRecency((signal) => signal.mastery * signal.confidence))
@@ -358,7 +367,7 @@ export function buildLearnerProfile(input: {
         !weakKeys.has(signal.topicKey) &&
         !deferred.has(signal.topicKey) &&
         signal.confidence < MIN_SIGNAL_CONFIDENCE &&
-        signal.mastery < WEAKNESS_MASTERY_BELOW
+        signal.evidenceMastery < WEAKNESS_MASTERY_BELOW
     )
     .sort(byRankThenRecency((signal) => 1 - signal.mastery))
     .slice(0, LEARNER_PROFILE_LIMITS.uncertain);

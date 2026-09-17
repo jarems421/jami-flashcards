@@ -10,32 +10,30 @@ import type {
 } from "js-draw";
 import type { JsDrawModule } from "@/lib/workspace/notebook-js-draw";
 import { unionOfConvexPolygons } from "@/lib/workspace/notebook-convex-union";
+import { NIB_ANGLE_DEFAULT } from "@/lib/workspace/notebook-nib-angle";
 
 /**
  * A chisel-tip stroke builder, for the highlighter.
  *
  * A pen's outline is offset *perpendicular to the direction of travel*, which
  * is why it stays the same width whichever way it moves and ends in a round
- * cap. A chisel nib is a flat edge held at a fixed angle, so its outline is
- * offset along a *fixed vector* regardless of direction. That one difference
- * produces the whole highlighter character: broad horizontal strokes, slanted
- * ends, and a stroke that narrows as it turns towards the nib's own axis.
+ * cap. A chisel nib is a flat edge, so its outline is offset along a vector
+ * set by how the pen is held rather than by where it is going. That one
+ * difference produces the whole highlighter character: broad horizontal
+ * strokes, slanted ends, and a stroke that narrows as it turns towards the
+ * nib's own axis.
+ *
+ * Which way that edge faces is worked out in `notebook-nib-angle.ts` and read
+ * in here once per accepted sample, so the edge turns with the hand. A pointer
+ * that reports no orientation -- a mouse, a finger, a stylus without tilt --
+ * holds the fixed angle this drew with before, so nothing about those strokes
+ * changes.
  *
  * js-draw ships no calligraphic pen, so this implements its ComponentBuilder
  * interface directly. Nothing about the saved format changes -- the result is
  * an ordinary filled path -- so existing notebooks are untouched and strokes
  * drawn here open anywhere the old ones do.
  */
-
-/**
- * The angle of the flat edge, measured from horizontal.
- *
- * Steep enough that ordinary left-to-right highlighting keeps nearly the full
- * thickness (sin 65 degrees is about 0.91) while still slanting the ends
- * enough to read as a chisel rather than a rectangle. This is the one number
- * worth tuning if the shape feels wrong.
- */
-const NIB_ANGLE_DEGREES = 65;
 
 /**
  * The nib's narrow dimension, as a fraction of its width.
@@ -113,32 +111,63 @@ function convexHull(points: Point2[]): Point2[] {
 }
 
 export function createNotebookChiselStrokeFactory(
-  jsDraw: JsDrawModule
+  jsDraw: JsDrawModule,
+  /**
+   * Which way the flat edge is facing, asked once per accepted sample.
+   *
+   * A function rather than a value because the factory outlives the stroke --
+   * it is cached per pen in `applyNotebookStrokeShape` -- so an angle passed
+   * in here would be the one that happened to be current when the highlighter
+   * was first selected. Omitted, the edge is fixed, which is what a mouse and
+   * every stylus reporting no orientation get.
+   */
+  nibAngle: () => number = () => NIB_ANGLE_DEFAULT
 ): ComponentBuilderFactory {
   const { PathCommandType, Rect2, Stroke, Vec2 } = jsDraw;
-  const angle = (NIB_ANGLE_DEGREES * Math.PI) / 180;
 
   return (startPoint: StrokeDataPoint, viewport: Viewport): ComponentBuilder => {
     const color: Color4 = startPoint.color;
     const halfWidth = Math.max(startPoint.width, 0.1) / 2;
-    const nib = Vec2.of(Math.cos(angle), Math.sin(angle)).times(halfWidth);
-    // Across the nib's width, and across its thickness.
-    const narrow = Vec2.of(-Math.sin(angle), Math.cos(angle)).times(
-      halfWidth * NIB_NARROW_RATIO
-    );
+
+    /**
+     * A point on the path, carrying the tip that was held over it.
+     *
+     * The two vectors are worked out when the sample is accepted rather than
+     * when it is drawn. `preview` rebuilds every footprint on the path each
+     * frame, so deriving them there would put two sines and two cosines per
+     * point into the render loop, on every frame of every stroke -- for an
+     * angle that cannot have changed since the sample was taken.
+     */
+    type NibSample = {
+      at: Point2;
+      /** Half the flat edge, and half the tip's thickness across it. */
+      nib: Point2;
+      narrow: Point2;
+    };
+
+    const sampleAt = (at: Point2, angle: number): NibSample => ({
+      at,
+      nib: Vec2.of(Math.cos(angle), Math.sin(angle)).times(halfWidth),
+      narrow: Vec2.of(-Math.sin(angle), Math.cos(angle)).times(
+        halfWidth * NIB_NARROW_RATIO
+      ),
+    });
+
     /** The four corners of the tip, placed at a point on the path. */
-    const tipAt = (centre: Point2) => [
-      centre.plus(nib).plus(narrow),
-      centre.plus(nib).minus(narrow),
-      centre.minus(nib).minus(narrow),
-      centre.minus(nib).plus(narrow),
+    const tipAt = (sample: NibSample, centre: Point2 = sample.at) => [
+      centre.plus(sample.nib).plus(sample.narrow),
+      centre.plus(sample.nib).minus(sample.narrow),
+      centre.minus(sample.nib).minus(sample.narrow),
+      centre.minus(sample.nib).plus(sample.narrow),
     ];
     const minimumStep = Math.max(
       viewport.getSizeOfPixelOnCanvas() * 0.65,
       halfWidth * GUIDE_STEP_RATIO
     );
 
-    const points = [Vec2.of(startPoint.pos.x, startPoint.pos.y)];
+    const points = [
+      sampleAt(Vec2.of(startPoint.pos.x, startPoint.pos.y), nibAngle()),
+    ];
 
     /**
      * Eases the tremor out of the sampled path before it is swept.
@@ -147,17 +176,21 @@ export function createNotebookChiselStrokeFactory(
      * outline. Smoothing the outline instead only makes the edges prettier
      * while leaving the shape doing whatever the hand did.
      */
-    const steadied = (raw: Point2[]) => {
+    const steadied = (raw: NibSample[]) => {
       if (raw.length < 3) return raw;
 
+      // Positions are averaged; the tip is not. The edge is already filtered
+      // where it is measured, and averaging it a second time here would only
+      // add lag to a signal that is deliberately slow.
       const smoothed = [raw[0]];
       for (let index = 1; index < raw.length - 1; index += 1) {
-        smoothed.push(
-          raw[index - 1]
-            .plus(raw[index].times(2))
-            .plus(raw[index + 1])
-            .times(0.25)
-        );
+        smoothed.push({
+          ...raw[index],
+          at: raw[index - 1].at
+            .plus(raw[index].at.times(2))
+            .plus(raw[index + 1].at)
+            .times(0.25),
+        });
       }
       smoothed.push(raw[raw.length - 1]);
       return smoothed;
@@ -168,7 +201,7 @@ export function createNotebookChiselStrokeFactory(
      * run far enough, and nowhere else. Fewer, longer footprints describe the
      * same wash and leave the eraser far less to shred.
      */
-    const sweepPoints = (path: Point2[]) => {
+    const sweepPoints = (path: NibSample[]) => {
       if (path.length < 3) return path;
 
       const tolerance = halfWidth * FOOTPRINT_TOLERANCE_RATIO;
@@ -177,9 +210,9 @@ export function createNotebookChiselStrokeFactory(
       const kept = [path[0]];
 
       for (let index = 1; index < path.length - 1; index += 1) {
-        const anchor = kept[kept.length - 1];
-        const here = path[index];
-        const next = path[index + 1];
+        const anchor = kept[kept.length - 1].at;
+        const here = path[index].at;
+        const next = path[index + 1].at;
         const arriving = here.minus(anchor);
         const leaving = next.minus(here);
         const bends =
@@ -197,7 +230,7 @@ export function createNotebookChiselStrokeFactory(
               ) / length;
 
         if (bends || stray >= tolerance || here.distanceTo(anchor) >= span) {
-          kept.push(here);
+          kept.push(path[index]);
         }
       }
 
@@ -231,6 +264,12 @@ export function createNotebookChiselStrokeFactory(
         // is the hull of its footprint at both ends. Sweeping the tip rather
         // than a bare edge is what keeps the stroke alive when it turns to run
         // along the nib, where an edge would sweep nothing at all.
+        //
+        // The two ends may now be held at different angles, and the hull
+        // absorbs that without special handling: a tip that turned as it
+        // travelled sweeps the region between its two orientations, which is
+        // what it physically covers. It stays convex, so the guarantee that
+        // footprints can only add still holds.
         const corners = convexHull([
           ...tipAt(path[index - 1]),
           ...tipAt(path[index]),
@@ -265,7 +304,7 @@ export function createNotebookChiselStrokeFactory(
       }
 
       return {
-        startPoint: pathStart ?? points[0].plus(nib),
+        startPoint: pathStart ?? points[0].at.plus(points[0].nib),
         commands,
         style: { fill: color },
       };
@@ -273,12 +312,14 @@ export function createNotebookChiselStrokeFactory(
 
     return {
       getBBox() {
-        return Rect2.bboxOf(points).grownBy(halfWidth);
+        return Rect2.bboxOf(points.map((sample) => sample.at)).grownBy(halfWidth);
       },
       addPoint(newPoint: StrokeDataPoint) {
         const next = Vec2.of(newPoint.pos.x, newPoint.pos.y);
-        if (next.distanceTo(points[points.length - 1]) < minimumStep) return;
-        points.push(next);
+        if (next.distanceTo(points[points.length - 1].at) < minimumStep) return;
+        // The angle is read here, with the sample, rather than at the lift:
+        // this is the moment the tip was actually over this point.
+        points.push(sampleAt(next, nibAngle()));
       },
       preview(renderer) {
         renderer.drawPath(footprintPath(footprints()));

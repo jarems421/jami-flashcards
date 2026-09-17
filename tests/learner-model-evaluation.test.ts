@@ -5,6 +5,7 @@ import {
   summarizeLearnerModelEvaluation,
 } from "@/lib/learning/evaluation/learner-model-evaluation";
 import { evidenceConfidence } from "@/lib/learning/scoring/confidence-score";
+import { tuningWithLearnerPrior } from "@/lib/learning/scoring/learner-prior";
 import { masteryScore } from "@/lib/learning/scoring/mastery-score";
 import type { LearningObservation } from "@/lib/learning/types";
 
@@ -51,12 +52,27 @@ describe("replaying the learner model", () => {
     expect(predictions[0]).toEqual({
       topicKey: "topic:eigen",
       at: second.at,
-      predictedMastery: masteryScore([first], second.at),
-      confidence: evidenceConfidence([first], second.at),
+      // The scope-wide prior is replayed too, and at this point it has only
+      // ever seen `first` -- the same answer the topic estimate is built from.
+      predictedMastery: masteryScore([first], second.at, tuningWithLearnerPrior([first], second.at)),
+      confidence: evidenceConfidence([first], second.at, tuningWithLearnerPrior([first], second.at)),
       trend: "unknown",
       outcome: 0,
     });
-    expect(predictions[1]?.predictedMastery).toBe(masteryScore([first, second], third.at));
+    expect(predictions[1]?.predictedMastery).toBe(
+      masteryScore([first, second], third.at, tuningWithLearnerPrior([first, second], third.at))
+    );
+  });
+
+  it("cannot see an answer that had not happened yet", () => {
+    const first = observation("a", NOW - 3 * DAY, 1);
+    const second = observation("b", NOW - 2 * DAY, 0);
+    const later = observation("c", NOW - DAY, 1);
+    const withoutFuture = replayLearnerModelPredictions([first, second]);
+    const withFuture = replayLearnerModelPredictions([first, second, later]);
+    // Adding work that happened afterwards must not move an earlier prediction,
+    // whatever the model is made of -- including the scope-wide prior.
+    expect(withFuture[0]).toEqual(withoutFuture[0]);
   });
 
   it("replays a mixed answer as its share of each concept", () => {

@@ -27,11 +27,16 @@ import {
   areNotebookInkStylesEqual,
   loadJsDraw,
   makePrecisePenInputMapper,
+  registerNotebookNibAngleSource,
   serializeNotebookInkSynchronously,
   type JsDrawModule,
   type NotebookInkStyle,
   type NotebookInkTool,
 } from "@/lib/workspace/notebook-js-draw";
+import {
+  NIB_ANGLE_DEFAULT,
+  NotebookNibAngleTracker,
+} from "@/lib/workspace/notebook-nib-angle";
 import { NotebookPrecisionEraserGesture } from "@/lib/workspace/notebook-precision-eraser";
 import {
   applyNotebookScribbleErase,
@@ -185,6 +190,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const pointerLifecycleRef = useRef<NotebookInkPointerLifecycle | null>(null);
     pointerLifecycleRef.current ??= new NotebookInkPointerLifecycle();
     const inkSmoothersRef = useRef<Map<number, NotebookInkSmoother>>(new Map());
+    // Which way the highlighter flat edge is facing. One per editor rather than
+    // one per stroke: grip carries across strokes, so the angle a stroke opens
+    // at should be the one the hand was already holding.
+    const nibAngleRef = useRef<NotebookNibAngleTracker | null>(null);
+    nibAngleRef.current ??= new NotebookNibAngleTracker();
     const { inkHostStyle, renderWindowRef, syncViewportRef } =
       useNotebookInkRenderWindow(inkWindow);
     const penPreviewBatchRef = useRef<NotebookPenPreviewBatch | null>(null);
@@ -505,6 +515,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             primaryPen.setInputMapper(
               makePrecisePenInputMapper(jsDraw, editor, inkSmoothersRef.current)
             );
+            // The highlighter asks this per sample, so the factory cached on
+            // the pen keeps answering with whatever the hand is doing now.
+            registerNotebookNibAngleSource(editor, () =>
+              nibAngleRef.current?.current() ?? NIB_ANGLE_DEFAULT
+            );
             // The nib is swapped with the tool, but set the pen's here too so
             // the very first stroke cannot land on js-draw's default fitter.
             applyNotebookStrokeShape(primaryPen, "pen", jsDraw);
@@ -810,6 +825,12 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
       event: ReactPointerEvent<HTMLDivElement>
     ) => {
+      // Read before any of the branching below, so the edge keeps following
+      // the hand through gestures that never reach js-draw at all. Non-pen
+      // pointers and pens reporting no orientation are ignored inside.
+      if (type === "pointerdown" || type === "pointermove") {
+        nibAngleRef.current?.observe(event.nativeEvent);
+      }
       const existingPrecisionGesture = precisionEraserGestureRef.current;
       const continuesPrecisionGesture =
         shouldContinueNotebookPrecisionGesture({

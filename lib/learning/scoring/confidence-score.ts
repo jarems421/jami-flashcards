@@ -1,22 +1,22 @@
-import { MAX_EVIDENCE_PER_ITEM, evidenceShare } from "@/lib/learning/scoring/item-weights";
+import { evidenceShare } from "@/lib/learning/scoring/item-weights";
 import { recencyWeight } from "@/lib/learning/scoring/mastery-score";
+import { DEFAULT_LEARNING_TUNING, type LearningTuning } from "@/lib/learning/scoring/tuning";
 import type { LearningObservation } from "@/lib/learning/types";
 
 /**
  * How many answers' worth of recent evidence it takes to be fairly sure.
- *
- * With a scale of six, three answers give about 39% confidence, seventeen give
- * about 94%, and eighty give effectively certain. "33% from 3 questions" and
- * "58% across 84" should not read as the same kind of claim, and this is the
- * number that tells them apart.
+ * See `tuning.ts` for why it is set where it is.
  */
-export const CONFIDENCE_EVIDENCE_SCALE = 6;
+export const CONFIDENCE_EVIDENCE_SCALE = DEFAULT_LEARNING_TUNING.confidenceEvidenceScale;
 
 export type ConfidenceLabel = "low" | "medium" | "high";
 
-export function confidenceFromEvidence(amount: number) {
+export function confidenceFromEvidence(
+  amount: number,
+  tuning: LearningTuning = DEFAULT_LEARNING_TUNING
+) {
   if (!Number.isFinite(amount) || amount <= 0) return 0;
-  return 1 - Math.exp(-amount / CONFIDENCE_EVIDENCE_SCALE);
+  return 1 - Math.exp(-amount / tuning.confidenceEvidenceScale);
 }
 
 /**
@@ -29,13 +29,27 @@ export function confidenceFromEvidence(amount: number) {
  * is half the evidence about each however often it was answered.
  */
 export function evidenceConfidence(
-  observations: readonly (Pick<LearningObservation, "itemId" | "weight" | "at"> & { share?: number })[],
-  now: number
+  observations: readonly (Pick<LearningObservation, "itemId" | "weight" | "at"> & {
+    share?: number;
+    /**
+     * Accepted and deliberately ignored, unlike in `masteryScore`.
+     *
+     * A score from the scheduler's fitted memory is about now, so mastery must
+     * not fade it for age. How *much* evidence stands behind it is a different
+     * question with a different answer: those reviews still happened when they
+     * happened, and reviews from two years ago are thin evidence about a
+     * student today however durable the memory they left.
+     */
+    currentEstimate?: boolean;
+  })[],
+  now: number,
+  tuning: LearningTuning = DEFAULT_LEARNING_TUNING
 ) {
   const perItem = new Map<string, { units: number; share: number }>();
   for (const observation of observations) {
     const unit =
-      Math.min(1, Math.max(0, observation.weight)) * recencyWeight(observation.at, now);
+      Math.min(1, Math.max(0, observation.weight)) *
+      recencyWeight(observation.at, now, tuning.masteryRecencyHalfLifeDays);
     const entry = perItem.get(observation.itemId) ?? { units: 0, share: 0 };
     entry.units += unit;
     entry.share = Math.max(entry.share, evidenceShare(observation));
@@ -43,9 +57,9 @@ export function evidenceConfidence(
   }
   let amount = 0;
   for (const { units, share } of perItem.values()) {
-    amount += Math.min(MAX_EVIDENCE_PER_ITEM, units) * share;
+    amount += Math.min(tuning.maxEvidencePerItem, units) * share;
   }
-  return confidenceFromEvidence(amount);
+  return confidenceFromEvidence(amount, tuning);
 }
 
 export function confidenceLabel(confidence: number): ConfidenceLabel {

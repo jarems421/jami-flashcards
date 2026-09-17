@@ -289,7 +289,14 @@ export function applyNotebookStrokeShape(
   pen: JsDrawPenTool,
   tool: StrokeShapeTool,
   jsDraw: JsDrawModule,
-  penSmoothing = NOTEBOOK_PEN_SMOOTHING_DEFAULT
+  penSmoothing = NOTEBOOK_PEN_SMOOTHING_DEFAULT,
+  /**
+   * Where the highlighter reads its edge angle from, if the host tracks one.
+   *
+   * Not part of the cache key below: a host keeps one of these for its whole
+   * life, so the reference is stable even though what it answers is not.
+   */
+  nibAngle?: () => number
 ) {
   const applied = `${tool}:${clampNotebookPenSmoothing(penSmoothing)}`;
   if (appliedStrokeShapes.get(pen) === applied) return;
@@ -307,7 +314,7 @@ export function applyNotebookStrokeShape(
   const straightenOnHold = tool === "pen";
   pen.setStrokeFactory(
     tool === "highlighter"
-      ? createNotebookChiselStrokeFactory(jsDraw)
+      ? createNotebookChiselStrokeFactory(jsDraw, nibAngle)
       : createNotebookSmoothPenStrokeFactory(
           jsDraw,
           getNotebookPenFeel(penSmoothing)
@@ -317,6 +324,23 @@ export function applyNotebookStrokeShape(
     pen.setStrokeAutocorrectEnabled(straightenOnHold);
   }
   appliedStrokeShapes.set(pen, applied);
+}
+
+/**
+ * Where each editor's highlighter reads its edge angle from.
+ *
+ * Held against the editor rather than passed down with the style because it is
+ * not one: the style is what the student picked, and this is which way they
+ * happen to be holding the pen. An editor that never registers one keeps the
+ * fixed edge, which is what every test constructing an editor directly gets.
+ */
+const nibAngleSources = new WeakMap<object, () => number>();
+
+export function registerNotebookNibAngleSource(
+  editor: JsDrawEditor,
+  source: () => number
+) {
+  nibAngleSources.set(editor, source);
 }
 
 export function applyNotebookInkStyle(
@@ -364,7 +388,8 @@ export function applyNotebookInkStyle(
       primaryPen,
       style.activeTool,
       jsDraw,
-      style.penSmoothing
+      style.penSmoothing,
+      nibAngleSources.get(editor)
     );
     const selectedColor =
       style.activeTool === "highlighter"
