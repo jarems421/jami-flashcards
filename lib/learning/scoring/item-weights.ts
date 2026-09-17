@@ -1,15 +1,11 @@
+import { DEFAULT_LEARNING_TUNING, type LearningTuning } from "@/lib/learning/scoring/tuning";
 import type { LearningObservation } from "@/lib/learning/types";
 
 /**
  * The most one item -- a card, a question -- can count for, as a multiple of
- * its single heaviest answer.
- *
- * Retrying a question, or reviewing the same card every day for a month, is
- * not that many independent pieces of evidence about a topic. At 1.5 a
- * past-paper question plus its guided retry (which counts half) sits exactly at
- * the cap, so the cap only bites on genuine repetition.
+ * its single heaviest answer. See `tuning.ts` for why it is set where it is.
  */
-export const MAX_EVIDENCE_PER_ITEM = 1.5;
+export const MAX_EVIDENCE_PER_ITEM = DEFAULT_LEARNING_TUNING.maxEvidencePerItem;
 
 /**
  * The part of an answer that is about the concept being scored, 0 to 1.
@@ -24,7 +20,8 @@ export function evidenceShare(observation: { share?: number }) {
 
 /** Scales down each item's observations, proportionally, so no item exceeds the cap. */
 export function capItemWeights<T extends Pick<LearningObservation, "itemId" | "weight">>(
-  observations: readonly T[]
+  observations: readonly T[],
+  tuning: LearningTuning = DEFAULT_LEARNING_TUNING
 ): T[] {
   const totals = new Map<string, { total: number; heaviest: number }>();
   for (const observation of observations) {
@@ -37,7 +34,7 @@ export function capItemWeights<T extends Pick<LearningObservation, "itemId" | "w
   return observations.map((observation) => {
     const entry = totals.get(observation.itemId);
     if (!entry || entry.total <= 0) return observation;
-    const cap = entry.heaviest * MAX_EVIDENCE_PER_ITEM;
+    const cap = entry.heaviest * tuning.maxEvidencePerItem;
     if (entry.total <= cap) return observation;
     return { ...observation, weight: Math.max(0, observation.weight) * (cap / entry.total) };
   });

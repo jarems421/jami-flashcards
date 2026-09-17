@@ -20,7 +20,7 @@
  * That is "seen", not "known", and the engine keeps the two apart.
  */
 
-export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v5-2026-09-15";
+export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v6-2026-09-16";
 
 export type LearningEvidenceKind = "flashcards" | "practice" | "past-paper";
 
@@ -97,6 +97,16 @@ export type LearningObservation = {
    * nothing about when each review happened. True for a recorded review event.
    */
   trendEligible: boolean;
+  /**
+   * The score is an estimate of what is known *now*, not a measurement taken
+   * at `at`.
+   *
+   * True for a card scored from the scheduler's fitted memory, which has
+   * already accounted for the time since the last review. Recency weighting
+   * must not be applied on top of such a score or the age is charged twice --
+   * but the evidence behind it is still old, so confidence keeps fading it.
+   */
+  currentEstimate?: boolean;
   errorChecks: LearningErrorCheck[];
 };
 
@@ -153,8 +163,21 @@ export type LearningSignal = {
   /** Display name. Student-written for topics and decks, so never trusted. */
   topic: string;
   topicSource: LearningTopicSource;
-  /** 0 to 1: how well Jami thinks the student knows this. */
+  /**
+   * 0 to 1: how well Jami thinks the student knows this, pooled towards how
+   * they do across the whole scope. The better estimate, and what to show.
+   */
   mastery: number;
+  /**
+   * 0 to 1: what this topic's own evidence shows, before any pooling.
+   *
+   * Every threshold reads this rather than `mastery`, because the two answer
+   * different questions. Pooling is right about the estimate -- one wrong
+   * answer from a strong student probably is noise -- but a gap that is only
+   * hidden by the student's own average is exactly the gap worth finding, and
+   * judging "is this worth checking" on the pooled number would bury it.
+   */
+  evidenceMastery: number;
   /** 0 to 1: how much evidence stands behind `mastery`. */
   confidence: number;
   /** Answers behind the estimate: reviews for flashcards, marked answers otherwise. */

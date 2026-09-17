@@ -1,4 +1,6 @@
 import { groupObservationsByTopic } from "@/lib/learning/profile/observations";
+import { tuningWithLearnerPrior } from "@/lib/learning/scoring/learner-prior";
+import { DEFAULT_LEARNING_TUNING, type LearningTuning } from "@/lib/learning/scoring/tuning";
 import {
   confidenceLabel,
   evidenceConfidence,
@@ -62,13 +64,14 @@ export type LearnerModelEvaluation = {
 };
 
 export function replayLearnerModelPredictions(
-  observations: readonly LearningObservation[]
+  observations: readonly LearningObservation[],
+  tuning: LearningTuning = DEFAULT_LEARNING_TUNING
 ): LearnerModelPrediction[] {
-  const byTopic = groupObservationsByTopic(
-    observations.filter((observation) => observation.trendEligible)
-  );
+  const eligible = observations.filter((observation) => observation.trendEligible);
+  const byTopic = groupObservationsByTopic(eligible);
 
-  const predictions: LearnerModelPrediction[] = [];
+  // Every prediction point, with the answers on its own topic that came before it.
+  const points: { topicKey: string; at: number; prior: LearningObservation[]; outcome: number }[] = [];
   for (const topicKey of Array.from(byTopic.keys()).sort()) {
     const ordered = [...(byTopic.get(topicKey) ?? [])].sort(
       (left, right) => left.at - right.at || left.evidenceId.localeCompare(right.evidenceId)
@@ -80,18 +83,42 @@ export function replayLearnerModelPredictions(
         priorCount += 1;
       }
       if (priorCount === 0) return;
-      const prior = ordered.slice(0, priorCount);
-      predictions.push({
+      points.push({
         topicKey,
         at: current.at,
-        predictedMastery: masteryScore(prior, current.at),
-        confidence: evidenceConfidence(prior, current.at),
-        trend: measureTrend(prior)?.trend ?? "unknown",
+        prior: ordered.slice(0, priorCount),
         outcome: clampUnit(current.score),
       });
     });
   }
-  return predictions.sort((left, right) => left.at - right.at || left.topicKey.localeCompare(right.topicKey));
+  points.sort((left, right) => left.at - right.at || left.topicKey.localeCompare(right.topicKey));
+
+  // The scope-wide prior is itself replayed: at each point it may only know the
+  // answers that had already happened, or the model would be scored on its own future.
+  const scopeOrdered = [...eligible].sort(
+    (left, right) => left.at - right.at || left.evidenceId.localeCompare(right.evidenceId)
+  );
+  const pooled = tuning.studentPriorStrength > 0;
+  const scopeSoFar: LearningObservation[] = [];
+  let scopeCursor = 0;
+
+  return points.map((point) => {
+    if (pooled) {
+      while (scopeCursor < scopeOrdered.length && (scopeOrdered[scopeCursor]?.at ?? 0) < point.at) {
+        scopeSoFar.push(scopeOrdered[scopeCursor] as LearningObservation);
+        scopeCursor += 1;
+      }
+    }
+    const scoped = pooled ? tuningWithLearnerPrior(scopeSoFar, point.at, tuning) : tuning;
+    return {
+      topicKey: point.topicKey,
+      at: point.at,
+      predictedMastery: masteryScore(point.prior, point.at, scoped),
+      confidence: evidenceConfidence(point.prior, point.at, scoped),
+      trend: measureTrend(point.prior, scoped)?.trend ?? "unknown",
+      outcome: point.outcome,
+    };
+  });
 }
 
 function mean(values: readonly number[]) {

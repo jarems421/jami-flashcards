@@ -1,3 +1,9 @@
+import {
+  NOTEBOOK_INK_PREDICTION,
+  NotebookInkPredictor,
+  type InkPredictionOptions,
+} from "@/lib/workspace/notebook-ink-prediction";
+
 // Light input smoothing for notebook pen/highlighter strokes, based on the
 // One Euro filter (Casiez et al.): a low-pass filter whose cutoff frequency
 // rises with pointer speed. Slow strokes (where hand tremor and sensor noise
@@ -30,6 +36,14 @@ export type NotebookInkSmoothingOptions = {
    * starts) at the cost of a noisier speed estimate.
    */
   derivativeCutoff: number;
+  /**
+   * Whether the drawn point is stepped forward to cancel this filter's own
+   * lag, and under what bounds. Null filters without correcting.
+   *
+   * See `notebook-ink-prediction.ts`. It changes only what `next` returns, not
+   * what the filter keeps, so the filtering itself is identical either way.
+   */
+  prediction?: InkPredictionOptions | null;
 };
 
 /**
@@ -103,6 +117,15 @@ function lowPassAlpha(cutoffHz: number, deltaSeconds: number) {
 export class NotebookInkSmoother {
   private x: number;
   private y: number;
+  /**
+   * The last point handed out, which is the last point painted.
+   *
+   * Equal to the filter's own position unless lag correction is on, and the
+   * reason the lift has something to end on that cannot tick in either
+   * direction.
+   */
+  private emittedX: number;
+  private emittedY: number;
   // Signed, low-passed velocity components. Keeping the sign lets alternating
   // jitter cancel to ~zero speed (so jitter cannot loosen its own smoothing),
   // while sustained motion accumulates into a real speed estimate.
@@ -110,6 +133,15 @@ export class NotebookInkSmoother {
   private velocityY = 0;
   private lastTime: number;
   private hasMoved = false;
+  /**
+   * Cancels this filter's own lag, or null if the ink is drawn where the
+   * filter puts it.
+   *
+   * Kept separate from the filter state on purpose: it never feeds back. What
+   * the filter keeps is always the filtered point, so turning correction on or
+   * off cannot change the filtering, only where the result is drawn.
+   */
+  private readonly predictor: NotebookInkPredictor | null;
 
   constructor(
     seed: NotebookInkSample,
@@ -117,7 +149,13 @@ export class NotebookInkSmoother {
   ) {
     this.x = seed.x;
     this.y = seed.y;
+    this.emittedX = seed.x;
+    this.emittedY = seed.y;
     this.lastTime = seed.time;
+    this.predictor =
+      options.prediction === null
+        ? null
+        : new NotebookInkPredictor(options.prediction ?? NOTEBOOK_INK_PREDICTION);
   }
 
   /**
@@ -128,9 +166,15 @@ export class NotebookInkSmoother {
    * the pen has left the glass, so it is seen arriving rather than being drawn
    * -- which is the whole of the "ink extends after lifting" complaint. Ending
    * on the point already painted makes that impossible rather than small.
+   *
+   * Note that this is the point last *emitted*, which is not the filter's own
+   * position once lag correction is on. Returning the filter's position there
+   * would end the stroke a lead behind the ink already drawn -- a backwards
+   * tick at the lift, which is the same defect in the other direction. The
+   * invariant is about the last painted point, so that is what is kept.
    */
   current(): { x: number; y: number } {
-    return { x: this.x, y: this.y };
+    return { x: this.emittedX, y: this.emittedY };
   }
 
   next(sample: NotebookInkSample): { x: number; y: number } {
@@ -151,7 +195,7 @@ export class NotebookInkSmoother {
       this.velocityY = (sample.y - this.y) / deltaSeconds;
       this.x = sample.x;
       this.y = sample.y;
-      return { x: this.x, y: this.y };
+      return this.emit(this.x, this.y);
     }
 
     const derivativeAlpha = lowPassAlpha(this.options.derivativeCutoff, deltaSeconds);
@@ -163,6 +207,24 @@ export class NotebookInkSmoother {
     const alpha = lowPassAlpha(cutoff, deltaSeconds);
     this.x += alpha * (sample.x - this.x);
     this.y += alpha * (sample.y - this.y);
-    return { x: this.x, y: this.y };
+
+    if (!this.predictor) return this.emit(this.x, this.y);
+
+    // Drawn ahead of the filtered point, never stored ahead of it: the lead
+    // is added to what is handed out and never folded back into `x`/`y`, so
+    // it cannot compound across samples.
+    const lead = this.predictor.lead(
+      this.velocityX,
+      this.velocityY,
+      cutoff,
+      deltaSeconds
+    );
+    return this.emit(this.x + lead.x, this.y + lead.y);
+  }
+
+  private emit(x: number, y: number) {
+    this.emittedX = x;
+    this.emittedY = y;
+    return { x, y };
   }
 }

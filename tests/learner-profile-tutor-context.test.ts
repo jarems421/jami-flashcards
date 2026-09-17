@@ -30,6 +30,7 @@ function signal(overrides: Partial<LearningSignal>): LearningSignal {
     topic: "Eigenvectors",
     topicSource: "student-topic",
     mastery: 0.43,
+    evidenceMastery: 0.43,
     confidence: 0.9,
     attempts: 17,
     uniqueItems: 12,

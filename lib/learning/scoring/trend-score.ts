@@ -1,13 +1,14 @@
 import { countUniqueItems } from "@/lib/learning/scoring/item-weights";
 import { weightedAccuracy } from "@/lib/learning/scoring/mastery-score";
+import { DEFAULT_LEARNING_TUNING, type LearningTuning } from "@/lib/learning/scoring/tuning";
 import type { LearningObservation, LearningTrend } from "@/lib/learning/types";
 
 /** Each window needs at least this many answers, on this many different items, before a trend is claimed. */
 export const TREND_MIN_PER_WINDOW = 3;
 /** The recent window is at most this many answers, so an old run of work cannot hide a recent change. */
 export const TREND_MAX_WINDOW = 10;
-/** A change smaller than this, in accuracy, is noise rather than a trend. */
-export const TREND_THRESHOLD = 0.12;
+/** A change smaller than this, in accuracy, is noise rather than a trend. See `tuning.ts`. */
+export const TREND_THRESHOLD = DEFAULT_LEARNING_TUNING.trendThreshold;
 
 export type TrendMeasurement = {
   trend: LearningTrend;
@@ -15,10 +16,14 @@ export type TrendMeasurement = {
   previousAccuracy: number;
 };
 
-export function classifyTrend(recent: number, previous: number): LearningTrend {
+export function classifyTrend(
+  recent: number,
+  previous: number,
+  tuning: LearningTuning = DEFAULT_LEARNING_TUNING
+): LearningTrend {
   const change = recent - previous;
-  if (change >= TREND_THRESHOLD) return "improving";
-  if (change <= -TREND_THRESHOLD) return "declining";
+  if (change >= tuning.trendThreshold) return "improving";
+  if (change <= -tuning.trendThreshold) return "declining";
   return "stable";
 }
 
@@ -33,7 +38,8 @@ export function measureTrend(
   observations: readonly (Pick<
     LearningObservation,
     "score" | "weight" | "at" | "itemId" | "trendEligible"
-  > & { share?: number })[]
+  > & { share?: number })[],
+  tuning: LearningTuning = DEFAULT_LEARNING_TUNING
 ): TrendMeasurement | null {
   const ordered = observations
     .filter((observation) => observation.trendEligible)
@@ -49,10 +55,10 @@ export function measureTrend(
   ) {
     return null;
   }
-  const recentAccuracy = weightedAccuracy(recent);
-  const previousAccuracy = weightedAccuracy(previous);
+  const recentAccuracy = weightedAccuracy(recent, tuning);
+  const previousAccuracy = weightedAccuracy(previous, tuning);
   return {
-    trend: classifyTrend(recentAccuracy, previousAccuracy),
+    trend: classifyTrend(recentAccuracy, previousAccuracy, tuning),
     recentAccuracy,
     previousAccuracy,
   };

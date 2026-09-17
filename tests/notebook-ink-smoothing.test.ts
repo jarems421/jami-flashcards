@@ -4,6 +4,7 @@ import {
   NotebookInkSmoother,
   type NotebookInkSample,
 } from "@/lib/workspace/notebook-ink-smoothing";
+import { NOTEBOOK_INK_PREDICTION } from "@/lib/workspace/notebook-ink-prediction";
 
 const SAMPLE_INTERVAL_MS = 8; // ~120Hz stylus input
 
@@ -17,9 +18,21 @@ function makeSamples(
   }));
 }
 
+/**
+ * The filter with lag correction switched off.
+ *
+ * The tests below measure what the low pass itself does -- how much wobble it
+ * removes, how far behind the pen it sits -- and those are properties of the
+ * filter rather than of the ink. Lag correction is a separate stage that moves
+ * where the result is drawn without changing any of the filtering, and it has
+ * its own tests in `notebook-ink-prediction.test.ts`. Measuring it here would
+ * only make these numbers describe two things at once.
+ */
+const FILTER_ONLY = { ...NOTEBOOK_INK_SMOOTHING, prediction: null };
+
 describe("notebook ink smoothing", () => {
   it("keeps a stationary pointer exactly in place", () => {
-    const smoother = new NotebookInkSmoother({ x: 100, y: 200, time: 0 });
+    const smoother = new NotebookInkSmoother({ x: 100, y: 200, time: 0 }, FILTER_ONLY);
     for (let index = 1; index <= 30; index += 1) {
       const filtered = smoother.next({ x: 100, y: 200, time: index * SAMPLE_INTERVAL_MS });
       expect(filtered.x).toBeCloseTo(100, 6);
@@ -28,7 +41,7 @@ describe("notebook ink smoothing", () => {
   });
 
   it("attenuates high-frequency jitter around a straight line", () => {
-    const smoother = new NotebookInkSmoother({ x: 0, y: 50, time: 0 });
+    const smoother = new NotebookInkSmoother({ x: 0, y: 50, time: 0 }, FILTER_ONLY);
     // Slow horizontal stroke (25 px/s) with ±1px alternating vertical noise.
     const samples = makeSamples(
       Array.from({ length: 120 }, (_, index) => ({
@@ -54,7 +67,7 @@ describe("notebook ink smoothing", () => {
     // filter was already doing its job. Ordinary handwriting is nearer 220
     // px/s, and the cutoff rises with speed -- so this is the case that
     // decides whether writing looks clean.
-    const smoother = new NotebookInkSmoother({ x: 0, y: 50, time: 0 });
+    const smoother = new NotebookInkSmoother({ x: 0, y: 50, time: 0 }, FILTER_ONLY);
     const perSampleStep = (220 * SAMPLE_INTERVAL_MS) / 1000;
     const samples = makeSamples(
       Array.from({ length: 120 }, (_, index) => ({
@@ -80,7 +93,7 @@ describe("notebook ink smoothing", () => {
   });
 
   it("stays close to the pen during fast movement", () => {
-    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 }, FILTER_ONLY);
     // 1500 px/s — a fast handwriting stroke.
     const perSampleStep = (1500 * SAMPLE_INTERVAL_MS) / 1000;
     const samples = makeSamples(
@@ -103,6 +116,47 @@ describe("notebook ink smoothing", () => {
     expect(lag).toBeLessThan(maxExpectedLag);
   });
 
+  it("draws the ink at the pen once lag correction is on", () => {
+    /*
+     * The same fast stroke through the pipeline the notebook actually uses.
+     *
+     * The test above asserts the filter sits *behind* the pen, which was the
+     * whole truth before correction existed. It is not any more: correction
+     * closes that gap deliberately, so the ink can sit fractionally either
+     * side of the pen rather than always behind it. What still has to hold is
+     * that it stays close, and that it cannot run away -- the lead is capped
+     * at `maxLeadPx`, so overshoot is bounded by construction rather than by
+     * tuning.
+     */
+    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    const perSampleStep = (1500 * SAMPLE_INTERVAL_MS) / 1000;
+    const samples = makeSamples(
+      Array.from({ length: 60 }, (_, index) => ({
+        x: (index + 1) * perSampleStep,
+        y: 0,
+      }))
+    );
+
+    let gap = Number.POSITIVE_INFINITY;
+    for (const sample of samples) {
+      gap = sample.x - smoother.next(sample).x;
+    }
+
+    const uncorrected = new NotebookInkSmoother(
+      { x: 0, y: 0, time: 0 },
+      FILTER_ONLY
+    );
+    let plainLag = Number.POSITIVE_INFINITY;
+    for (const sample of samples) {
+      plainLag = sample.x - uncorrected.next(sample).x;
+    }
+
+    // Closer to the pen than the filter alone manages, and never past it by
+    // more than the lead is allowed to be.
+    expect(Math.abs(gap)).toBeLessThan(plainLag);
+    expect(gap).toBeGreaterThan(-NOTEBOOK_INK_PREDICTION.maxLeadPx);
+  });
+
   /**
    * How far the ink is trailing when the pen lifts is how far it has left to
    * travel after the stroke has been ended, which is what reads as ink
@@ -114,7 +168,7 @@ describe("notebook ink smoothing", () => {
     ["a short flick", 12],
     ["a full stroke", 60],
   ])("trails %s by well under the old four pixels", (_name, sampleCount) => {
-    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 }, FILTER_ONLY);
     // 1500 px/s — a fast handwriting stroke, where the trail is largest.
     const perSampleStep = (1500 * SAMPLE_INTERVAL_MS) / 1000;
     const samples = makeSamples(
@@ -137,7 +191,7 @@ describe("notebook ink smoothing", () => {
   });
 
   it("holds its position when asked, so a lift adds no ink", () => {
-    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 }, FILTER_ONLY);
     let latest = { x: 0, y: 0 };
     for (let step = 1; step <= 20; step += 1) {
       latest = smoother.next({ x: step * 12, y: step * 3, time: step * 8 });
@@ -151,7 +205,7 @@ describe("notebook ink smoothing", () => {
   it.each([8, 16])(
     "responds quickly at a %dms stylus sample interval",
     (sampleIntervalMs) => {
-      const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+      const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 }, FILTER_ONLY);
       const step = (1500 * sampleIntervalMs) / 1000;
       const first = smoother.next({ x: step, y: 0, time: sampleIntervalMs });
       let latest = first;
@@ -177,7 +231,7 @@ describe("notebook ink smoothing", () => {
 
   it("smooths slow strokes more strongly than fast strokes", () => {
     const measureFirstStepResponse = (speedPxPerSecond: number) => {
-      const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+      const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 }, FILTER_ONLY);
       const step = (speedPxPerSecond * SAMPLE_INTERVAL_MS) / 1000;
       let filtered = { x: 0, y: 0 };
       let raw = 0;
@@ -196,7 +250,7 @@ describe("notebook ink smoothing", () => {
   });
 
   it("does not warp diagonal strokes (isotropic smoothing)", () => {
-    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 }, FILTER_ONLY);
     // Constant-velocity diagonal stroke along y = x.
     const samples = makeSamples(
       Array.from({ length: 60 }, (_, index) => ({
@@ -213,7 +267,7 @@ describe("notebook ink smoothing", () => {
   });
 
   it("survives duplicate and out-of-order timestamps", () => {
-    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 100 });
+    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 100 }, FILTER_ONLY);
     const samples: NotebookInkSample[] = [
       { x: 1, y: 1, time: 100 },
       { x: 2, y: 2, time: 100 },

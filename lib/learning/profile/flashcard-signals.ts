@@ -3,6 +3,8 @@ import {
   type FlashcardReviewEvent,
 } from "@/lib/learning/events/flashcard-review-event";
 import { clampUnit } from "@/lib/learning/scoring/mastery-score";
+import { cardRetrievability } from "@/lib/learning/scoring/memory-model";
+import { DEFAULT_LEARNING_TUNING, type LearningTuning } from "@/lib/learning/scoring/tuning";
 import type { LearningObservation } from "@/lib/learning/types";
 import type { Card } from "@/lib/study/cards";
 
@@ -42,33 +44,42 @@ export function flashcardTopicKeys(card: Pick<FlashcardEvidenceCard, "topicIds" 
  * history says.
  */
 export function flashcardRecallScore(
-  card: Pick<FlashcardEvidenceCard, "reps" | "lapses" | "difficulty" | "fsrsState">
+  card: Pick<FlashcardEvidenceCard, "reps" | "lapses" | "difficulty" | "fsrsState">,
+  tuning: LearningTuning = DEFAULT_LEARNING_TUNING
 ) {
   const reps = Math.max(0, card.reps ?? 0);
   if (!(reps > 0)) return 0;
   let score = 1 - clampUnit(Math.max(0, card.lapses ?? 0) / reps);
   if (typeof card.difficulty === "number" && card.difficulty > 0) {
     const ease = 1 - clampUnit((card.difficulty - 1) / 9);
-    score = score * 0.7 + ease * 0.3;
+    score = score * tuning.flashcardLapseWeight + ease * (1 - tuning.flashcardLapseWeight);
   }
-  if (card.fsrsState === FSRS_RELEARNING_STATE) score = Math.min(score, 0.25);
+  if (card.fsrsState === FSRS_RELEARNING_STATE) {
+    score = Math.min(score, tuning.flashcardRelearningCap);
+  }
   return clampUnit(score);
 }
 
-function aggregateObservation(card: FlashcardEvidenceCard): LearningObservation[] {
+function aggregateObservation(
+  card: FlashcardEvidenceCard,
+  now: number,
+  tuning: LearningTuning
+): LearningObservation[] {
   const reps = Math.max(0, Math.floor(Number.isFinite(card.reps) ? (card.reps ?? 0) : 0));
   if (reps === 0 || typeof card.lastReview !== "number") return [];
+  const modelled = cardRetrievability(card, now, tuning);
   return [
     {
       kind: "flashcards",
       evidenceId: `card:${card.id}`,
       itemId: `card:${card.id}`,
       topicKeys: flashcardTopicKeys(card),
-      score: flashcardRecallScore(card),
+      score: modelled ?? flashcardRecallScore(card, tuning),
       weight: Math.min(1, reps / FLASHCARD_REVIEWS_FOR_FULL_WEIGHT),
       count: reps,
       at: card.lastReview,
       trendEligible: false,
+      ...(modelled !== null ? { currentEstimate: true } : {}),
       errorChecks: [],
     },
   ];
@@ -117,7 +128,9 @@ function firstReviewsPerDay(
  */
 export function flashcardObservations(
   cards: readonly FlashcardEvidenceCard[],
-  events: readonly FlashcardReviewEvent[] = []
+  events: readonly FlashcardReviewEvent[] = [],
+  now: number = Date.now(),
+  tuning: LearningTuning = DEFAULT_LEARNING_TUNING
 ): LearningObservation[] {
   const cardsById = new Map(cards.map((card) => [card.id, card]));
   const dailyFirst = firstReviewsPerDay(cardsById, events);
@@ -143,7 +156,9 @@ export function flashcardObservations(
   });
 
   return [
-    ...cards.flatMap((card) => (eventBacked.has(card.id) ? [] : aggregateObservation(card))),
+    ...cards.flatMap((card) =>
+      eventBacked.has(card.id) ? [] : aggregateObservation(card, now, tuning)
+    ),
     ...fromEvents,
   ];
 }

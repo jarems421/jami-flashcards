@@ -25,8 +25,11 @@ import type {
 export function demonstrationOf(signal: LearningSignal | undefined): LearningDemonstration {
   if (!signal) return "none";
   if (signal.confidence < MIN_SIGNAL_CONFIDENCE) return "insufficient";
-  if (signal.mastery < WEAKNESS_MASTERY_BELOW) return "weak";
-  if (signal.mastery >= STRENGTH_MASTERY_FROM && signal.confidence >= MIN_STRENGTH_CONFIDENCE) {
+  if (signal.evidenceMastery < WEAKNESS_MASTERY_BELOW) return "weak";
+  if (
+    signal.evidenceMastery >= STRENGTH_MASTERY_FROM &&
+    signal.confidence >= MIN_STRENGTH_CONFIDENCE
+  ) {
     return "strong";
   }
   return "developing";
@@ -84,7 +87,7 @@ export function decideTopic(input: {
         ? { action: "teach", reason: "low_mastery" }
         : { action: "diagnose", reason: "low_confidence" };
     case "insufficient":
-      if ((signal?.mastery ?? 1) < WEAKNESS_MASTERY_BELOW) {
+      if ((signal?.evidenceMastery ?? 1) < WEAKNESS_MASTERY_BELOW) {
         return { action: "diagnose", reason: "low_confidence" };
       }
       return due ? { action: "retrieve", reason: "due_for_retrieval" } : undefined;
