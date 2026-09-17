@@ -272,6 +272,21 @@ service cloud.firestore {
         }
       }
 
+      // A student's own revision plan: a timetable they wrote, not evidence of
+      // anything they know. It holds subject ids, weekdays, minutes and dates,
+      // plus their own short note about what they want to work on. It is never
+      // read by the Learning Engine, and the ticks under /entries say only that
+      // time was set aside -- never that anything was learned.
+      match /revisionPlans/{planId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+
+        match /entries/{dayKey} {
+          allow read: if isSelf(userId);
+          allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        }
+      }
+
       match /generatedContentDrafts/{draftId} {
         allow read: if isSelf(userId);
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();
@@ -363,11 +378,14 @@ service cloud.firestore {
           request.resource.data.keys().hasOnly(['inkSvg', 'pages', 'updatedAt']) &&
           request.resource.data.inkSvg is string &&
           request.resource.data.inkSvg.size() < 900000 &&
-          // Further pages of the same sheet, up to four pages in all. The
-          // whole document is still bound by Firestore's own size limit.
+          // Further pages of the same sheet, up to sixteen pages in all: a
+          // sheet is the question's own paper now, and a long English question
+          // runs to several printed pages plus the answer space behind them.
+          // The whole document is still bound by Firestore's own size limit,
+          // and the app keeps every page together under a tighter one.
           (!('pages' in request.resource.data) ||
             (request.resource.data.pages is list &&
-              request.resource.data.pages.size() <= 3));
+              request.resource.data.pages.size() <= 15));
         allow delete: if isSelf(userId) && !isDemoAccount() && editableAttempt();
       }
 

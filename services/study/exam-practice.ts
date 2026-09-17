@@ -5,7 +5,8 @@ import type { ExamCourseOption } from "@/lib/practice/exam-course-form";
 import type { ExamCalculatorChoice, ExamDifficulty, ExamSession } from "@/lib/practice/exam-questions";
 import type { ExamCoursePaper } from "@/lib/practice/exam-papers";
 import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
-import { EXAM_WORKING_MAX_PAGES } from "@/lib/practice/exam-working";
+import { EXAM_SHEET_MAX_PAGES } from "@/lib/practice/exam-question-sheet";
+import { examWorkingHasInk } from "@/lib/practice/exam-working";
 import { MAX_NOTEBOOK_INK_SVG_LENGTH } from "@/lib/workspace/notebooks";
 
 /** What the server sends back when a course cannot fill the requested mix. */
@@ -188,7 +189,7 @@ export async function loadExamScratchpad(userId: string, attemptId: string): Pro
   const extra = Array.isArray(data.pages)
     ? data.pages.filter((page): page is string => typeof page === "string")
     : [];
-  return [first, ...extra].slice(0, EXAM_WORKING_MAX_PAGES);
+  return [first, ...extra].slice(0, EXAM_SHEET_MAX_PAGES);
 }
 
 /**
@@ -219,11 +220,21 @@ export async function saveExamScratchpad(
   attemptId: string,
   pages: readonly string[]
 ) {
-  const kept = (pages.length > 0 ? pages : [""]).slice(0, EXAM_WORKING_MAX_PAGES);
+  const kept = [...(pages.length > 0 ? pages : [""])].slice(0, EXAM_SHEET_MAX_PAGES);
   const length = kept.reduce((total, page) => total + page.length, 0);
   if (length > EXAM_SCRATCHPAD_MAX_SVG_LENGTH) {
     throw new ExamScratchpadTooLargeError(length);
   }
+  /*
+   * Trailing blank pages are not written.
+   *
+   * A sheet is now as long as the question's own paper, so an answer that fits
+   * on the first printed page still carries every page after it -- and storing
+   * a run of empty strings costs a write and a read for nothing. The pages a
+   * student actually used keep their positions, which is all the sheet needs
+   * to line them back up against the paper when it reopens.
+   */
+  while (kept.length > 1 && !examWorkingHasInk(kept[kept.length - 1])) kept.pop();
   // A one-page sheet writes exactly what it always did, so it is accepted by
   // rules that predate pages.
   await setDoc(doc(db, "users", userId, "examScratchpads", attemptId), {

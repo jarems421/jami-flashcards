@@ -82,9 +82,41 @@ export function loadOfflineStudySnapshot(userId: string) {
   return snapshot?.userId === userId ? snapshot : null;
 }
 
+/**
+ * How long a queued answer may sit before it is worth mentioning.
+ *
+ * Every answer is written to this queue before it is sent, so the queue being
+ * non-empty is the normal state of a session that is working perfectly -- it is
+ * what makes an answer survive a closed tab. Telling a student their answers
+ * are "waiting to sync" the instant they answer describes the durability
+ * mechanism, not a problem, and it appeared on every single card.
+ *
+ * Past this, something is actually wrong: the write failed, or the connection
+ * went while the request was in flight. That is worth a line on screen. Before
+ * it, the answer is simply in flight, and saving is not news.
+ */
+export const OFFLINE_SYNC_GRACE_MS = 20_000;
+
 export function getOfflineQueuedReviews(userId: string) {
   return readJson<OfflineQueuedReview[]>(getQueueKey(userId), []).filter(
     (review) => review.userId === userId
+  );
+}
+
+/**
+ * The answers that have stopped moving, which is what a student needs told.
+ *
+ * Measured from when the answer was given rather than from a retry counter,
+ * because the student's question is "has my work been lost", and the honest
+ * answer to that is about how long it has been sitting here.
+ */
+export function getStuckOfflineReviews(
+  userId: string,
+  now = Date.now(),
+  graceMs = OFFLINE_SYNC_GRACE_MS
+) {
+  return getOfflineQueuedReviews(userId).filter(
+    (review) => now - review.reviewedAt >= graceMs
   );
 }
 

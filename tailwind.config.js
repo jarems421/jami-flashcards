@@ -26,6 +26,43 @@ const APP_THEME_SAFELIST = [
   "app-theme-light",
 ];
 
+/**
+ * The same trap as the theme classes above, for the typeface a student sets
+ * Jami in: `app-font-${id}` is built at runtime, so without this list
+ * Tailwind drops every `.app-font-*` rule from globals.css and choosing a
+ * face stamps a class that no CSS answers -- the picker works, the tick moves,
+ * and the lettering never changes.
+ *
+ * `tests/app-font.test.ts` fails if a face is added without being listed here.
+ */
+const APP_FONT_SAFELIST = [
+  "app-font-urbanist",
+  "app-font-jost",
+  "app-font-outfit",
+  "app-font-manrope",
+  "app-font-raleway",
+  "app-font-josefin-sans",
+  "app-font-questrial",
+  "app-font-comfortaa",
+  "app-font-syne",
+  "app-font-cormorant-garamond",
+  "app-font-eb-garamond",
+  "app-font-spectral",
+  "app-font-literata",
+  "app-font-newsreader",
+  "app-font-lora",
+  "app-font-crimson-pro",
+  "app-font-playfair-display",
+  "app-font-bodoni-moda",
+  "app-font-fraunces",
+  "app-font-cinzel",
+  "app-font-marcellus",
+  "app-font-tenor-sans",
+  "app-font-forum",
+  "app-font-italiana",
+  "app-font-gilda-display",
+];
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   /*
@@ -44,11 +81,11 @@ module.exports = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
-  safelist: APP_THEME_SAFELIST,
+  safelist: [...APP_THEME_SAFELIST, ...APP_FONT_SAFELIST],
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-urbanist)", "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Arial", "sans-serif"],
+        sans: ["var(--app-font, var(--font-urbanist))", "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Arial", "sans-serif"],
       },
       colors: {
         surface: {

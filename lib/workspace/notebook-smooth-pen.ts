@@ -198,15 +198,14 @@ const QUARTER_ARC_HANDLE = 0.5522847498;
  */
 const WIDTH_SMOOTHING_RADIUS = 2;
 
-/**
- * The thinnest a tapered stroke goes, as a fraction of its own average.
- *
- * Apple Pencil reports very little pressure for the first sample or two of a
- * contact, and a taper that honoured it exactly would start every stroke from
- * nothing -- which reads as the pen failing to catch rather than as a
- * calligraphic entry.
+/*
+ * The thinnest a tapered stroke goes is `feel.minimumWidthFraction`, and the
+ * floor exists because Apple Pencil reports very little pressure for the first
+ * sample or two of a contact: a taper that honoured it exactly would start
+ * every stroke from nothing, which reads as the pen failing to catch rather
+ * than as a calligraphic entry. How deep the taper runs is the reader's --
+ * see `pressurePercent`.
  */
-const MINIMUM_WIDTH_FRACTION = 0.35;
 
 /**
  * How much a stroke's width must vary before it is worth drawing as an outline.
@@ -409,6 +408,27 @@ export function createNotebookSmoothPenStrokeFactory(
     ];
   };
 
+  /**
+   * Each sample's width, pulled towards the stroke's own average.
+   *
+   * This is what `pressureResponse` does, and it has to happen before anything
+   * else looks at the widths: at zero every point comes out at the mean, so the
+   * variation test below then correctly reports a stroke of one width and the
+   * cheaper stroked path is taken. Flooring the widths instead -- which is all
+   * `minimumWidthFraction` can do -- cannot produce that, because a floor only
+   * lifts the light points and leaves the heavy ones heavy.
+   *
+   * Above one it pushes the other way, so a light touch reads lighter and a
+   * heavy one heavier than the digitiser reported.
+   */
+  const pressureShaped = (raw: number[]) => {
+    if (feel.pressureResponse === 1) return raw;
+    const mean = raw.reduce((sum, value) => sum + value, 0) / Math.max(raw.length, 1);
+    return raw.map((value) =>
+      Math.max(0.1, mean + (value - mean) * feel.pressureResponse)
+    );
+  };
+
   /** Whether this stroke was drawn with enough varying weight to be worth tapering. */
   const widthVaries = (raw: number[]) => {
     if (raw.length < 3) return false;
@@ -427,7 +447,7 @@ export function createNotebookSmoothPenStrokeFactory(
   /** Half the width at each point, averaged along the stroke and floored. */
   const halfWidthsAlong = (raw: number[], count: number) => {
     const mean = raw.reduce((sum, value) => sum + value, 0) / Math.max(raw.length, 1);
-    const floor = mean * MINIMUM_WIDTH_FRACTION;
+    const floor = mean * feel.minimumWidthFraction;
     const result: number[] = [];
 
     for (let index = 0; index < count; index += 1) {
@@ -729,6 +749,9 @@ export function createNotebookSmoothPenStrokeFactory(
       const reach = to.minus(from);
       const length = reach.magnitude();
       if (length < minimumStep) return to;
+      // Straightening and levelling are separable, and the second is the one
+      // people object to: a line snapped to an angle they did not draw.
+      if (!feel.snapToGuides) return to;
 
       const angle = Math.atan2(reach.y, reach.x);
       const nearest = Math.round(angle / GUIDE_ANGLE_STEP) * GUIDE_ANGLE_STEP;
@@ -883,7 +906,7 @@ export function createNotebookSmoothPenStrokeFactory(
        * steady width still takes the stroked path above: identical on screen,
        * and half the geometry to store and reparse.
        */
-      const sampledWidths = shapeWidths();
+      const sampledWidths = pressureShaped(shapeWidths());
       if (widthVaries(sampledWidths)) {
         const halfWidths = halfWidthsAlong(sampledWidths, shape.length);
         const last = shape.length - 1;

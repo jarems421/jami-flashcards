@@ -260,6 +260,37 @@ export function useStudyPreparation(input: {
   );
 
   /**
+   * Prepare one card now, because the student is looking at it.
+   *
+   * The head start covers the first few cards and the background pass catches
+   * the rest, but a student who answers faster than the pass can run still
+   * arrives at a card with nothing prepared -- and in a session locked to one
+   * mode, that card had nowhere to go but a panel apologising for itself. This
+   * is the same preparation for a single card, asked for at the moment it is
+   * needed, so the wait is a few seconds on one card rather than a question the
+   * student cannot have.
+   */
+  const prepareCardNow = useCallback(async (card: Card) => {
+    if (!studyModesEnabled) return null;
+    if (typeof navigator !== "undefined" && !navigator.onLine) return null;
+    const stop = { value: false };
+    const epoch = epochRef.current;
+    jobsRef.current.add(stop);
+    try {
+      await prepareStudyAssets({ deckId: card.deckId, cardIds: [card.id] });
+      const refreshed = await loadStudyAssets([card]);
+      if (stop.value || epoch !== epochRef.current) return null;
+      onAssetsReady(refreshed);
+      return refreshed[card.id] ?? null;
+    } catch (error) {
+      console.warn("Jami could not prepare this card in time.", error);
+      return null;
+    } finally {
+      jobsRef.current.delete(stop);
+    }
+  }, [onAssetsReady, studyModesEnabled]);
+
+  /**
    * Keep preparing after the session has opened.
    *
    * Nothing waits on this. Assets are merged in as they land, so a card the
@@ -294,5 +325,6 @@ export function useStudyPreparation(input: {
     skip: useCallback(() => skipPreparationRef.current?.(), []),
     prepareSessionAssets,
     prepareRemainingAssets,
+    prepareCardNow,
   };
 }

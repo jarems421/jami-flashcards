@@ -2,15 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 import {
   captureExamWorking,
   compactExamWorkingPages,
+  EXAM_WORKING_LEGIBLE_PAGE_WIDTH,
   EXAM_WORKING_MAX_IMAGE_SIDE,
-  EXAM_WORKING_MAX_PAGES,
   examWorkingFitWidth,
   examWorkingHasInk,
+  examWorkingInkedPages,
   examWorkingPagesWithInk,
-  examWorkingStackLayout,
+  examWorkingSheetLayout,
   examWorkingTouchIsPalm,
   requireExamWorkingSnapshot,
 } from "@/lib/practice/exam-working";
+import { EXAM_SHEET_MAX_PAGES } from "@/lib/practice/exam-question-sheet";
+
+/** An A4 page at the sheet's own width, which is what most pages are. */
+const A4 = { width: 900, height: 1273, caption: "Q1 — written on the printed page" };
+const sheetOf = (count: number) =>
+  Array.from({ length: count }, (_unused, index) => ({ ...A4, caption: `page ${index + 1}` }));
 
 /** What js-draw hands back for a sheet nobody has drawn on. */
 const EMPTY_SHEET =
@@ -125,35 +132,75 @@ describe("several pages of working", () => {
     ).toEqual([INKED_SHEET, SECOND_INKED_SHEET]);
   });
 
-  it("sends a single page at full size", () => {
+  it("keeps each page's place on the sheet, so its caption can name it", () => {
     expect(
-      examWorkingStackLayout({ pageCount: 1, pageWidth: 1200, pageHeight: 1653, gap: 24 })
-    ).toEqual({ width: 1200, height: 1653, pageHeight: 1653, offsets: [0] });
+      examWorkingInkedPages([EMPTY_SHEET, INKED_SHEET, "", SECOND_INKED_SHEET])
+    ).toEqual([
+      { index: 1, svg: INKED_SHEET },
+      { index: 3, svg: SECOND_INKED_SHEET },
+    ]);
+  });
+
+  it("sends a single page in one column, at the width handwriting reads at", () => {
+    const layout = examWorkingSheetLayout({ pages: [A4], gap: 28, captionHeight: 48 });
+    expect(layout.slots).toHaveLength(1);
+    expect(layout.slots[0]!.left).toBe(0);
+    // The caption band sits above the page rather than over it.
+    expect(layout.slots[0]!.top).toBe(layout.slots[0]!.captionHeight);
+    expect(layout.width).toBe(EXAM_WORKING_LEGIBLE_PAGE_WIDTH);
   });
 
   /*
-   * The server refuses an image taller than its limit, so a long piece of
-   * working has to fit inside it rather than be turned away at submission.
+   * The point of the columns. Six A4 pages stacked is over 8,000 pixels tall,
+   * so a single column had to be scaled to under half the width handwriting
+   * can be read at just to fit the server's limit.
    */
-  it("fits the most pages allowed inside the server's size limit", () => {
-    const layout = examWorkingStackLayout({
-      pageCount: EXAM_WORKING_MAX_PAGES,
-      pageWidth: 1200,
-      pageHeight: 1653,
-      gap: 24,
-    });
+  it("keeps six pages readable by laying them out in columns", () => {
+    const layout = examWorkingSheetLayout({ pages: sheetOf(6), gap: 28, captionHeight: 48 });
     expect(layout.height).toBeLessThanOrEqual(EXAM_WORKING_MAX_IMAGE_SIDE);
     expect(layout.width).toBeLessThanOrEqual(EXAM_WORKING_MAX_IMAGE_SIDE);
-    expect(layout.offsets).toHaveLength(EXAM_WORKING_MAX_PAGES);
-    // Each page follows the one before it without overlapping it.
-    for (let index = 1; index < layout.offsets.length; index += 1) {
-      expect(layout.offsets[index]! - layout.offsets[index - 1]!).toBeGreaterThanOrEqual(
-        layout.pageHeight
-      );
-    }
-    // Scaled by the same factor on both axes, so no page is squashed.
-    expect(layout.width / layout.pageHeight).toBeCloseTo(1200 / 1653, 2);
+    expect(layout.slots[0]!.width).toBeGreaterThan(700);
+    // Reading order is left to right, then down.
+    expect(layout.slots[1]!.left).toBeGreaterThan(layout.slots[0]!.left);
+    expect(layout.slots[1]!.top).toBe(layout.slots[0]!.top);
   });
+
+  it("fits a whole sheet of pages inside the server's size limit", () => {
+    const layout = examWorkingSheetLayout({
+      pages: sheetOf(EXAM_SHEET_MAX_PAGES),
+      gap: 28,
+      captionHeight: 48,
+    });
+    expect(layout.slots).toHaveLength(EXAM_SHEET_MAX_PAGES);
+    expect(layout.height).toBeLessThanOrEqual(EXAM_WORKING_MAX_IMAGE_SIDE);
+    expect(layout.width).toBeLessThanOrEqual(EXAM_WORKING_MAX_IMAGE_SIDE);
+    // Every page is drawn, and no two of them overlap.
+    for (const [index, slot] of layout.slots.entries()) {
+      expect(slot.width).toBeGreaterThan(0);
+      expect(slot.height).toBeGreaterThan(0);
+      for (const other of layout.slots.slice(index + 1)) {
+        const apart =
+          slot.left + slot.width <= other.left ||
+          other.left + other.width <= slot.left ||
+          slot.top + slot.height <= other.captionTop ||
+          other.top + other.height <= slot.captionTop;
+        expect(apart).toBe(true);
+      }
+    }
+  });
+
+  /** A crop that is a third of a page tall keeps its own shape beside a full one. */
+  it("scales every page by one factor and centres the short ones", () => {
+    const layout = examWorkingSheetLayout({
+      pages: [A4, { width: 900, height: 420, caption: "extra" }],
+      gap: 28,
+      captionHeight: 48,
+    });
+    const [full, stub] = layout.slots;
+    expect(full!.width).toBe(stub!.width);
+    expect(stub!.height / full!.height).toBeCloseTo(420 / 1273, 2);
+  });
+
 });
 
 describe("working must be known before submission", () => {
@@ -190,7 +237,7 @@ describe("working must be known before submission", () => {
     expect(await captureExamWorking({ serialize: async () => [INKED_SHEET],
       save: vi.fn().mockRejectedValue(new Error("offline")), rasterize }))
       .toEqual({ hasInk: true, ok: true, png });
-    expect(rasterize).toHaveBeenCalledWith([INKED_SHEET]);
+    expect(rasterize).toHaveBeenCalledWith([{ index: 0, svg: INKED_SHEET }]);
   });
 
   it("saves every page but rasterises only the ones with ink", async () => {
@@ -200,7 +247,10 @@ describe("working must be known before submission", () => {
     const pages = [INKED_SHEET, EMPTY_SHEET, SECOND_INKED_SHEET];
     await captureExamWorking({ serialize: async () => pages, save, rasterize });
     expect(save).toHaveBeenCalledWith(pages);
-    expect(rasterize).toHaveBeenCalledWith([INKED_SHEET, SECOND_INKED_SHEET]);
+    expect(rasterize).toHaveBeenCalledWith([
+      { index: 0, svg: INKED_SHEET },
+      { index: 2, svg: SECOND_INKED_SHEET },
+    ]);
   });
 
   it("blocks a failed image conversion", async () => {

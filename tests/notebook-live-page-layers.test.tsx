@@ -4,6 +4,7 @@ import {
   type ReactElement,
 } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { NOTEBOOK_PEN_SETTINGS_DEFAULT } from "@/lib/workspace/notebook-pen-feel";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NotebookFile } from "@/lib/workspace/notebooks";
 
@@ -84,7 +85,7 @@ function makeProps(
       activeTool: "eraser",
       eraserMode: "precision",
       penColor: "black",
-      penSmoothing: 62,
+      penSettings: NOTEBOOK_PEN_SETTINGS_DEFAULT,
       penThickness: 3,
       highlighterColor: "yellow",
       highlighterThickness: 18,

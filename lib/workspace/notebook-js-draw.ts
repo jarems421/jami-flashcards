@@ -13,11 +13,16 @@ import {
   type NotebookEraserMode,
 } from "@/lib/workspace/notebook-eraser";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
-import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
 import {
-  clampNotebookPenSmoothing,
-  getNotebookPenFeel,
-  NOTEBOOK_PEN_SMOOTHING_DEFAULT,
+  NOTEBOOK_INK_SMOOTHING,
+  NotebookInkSmoother,
+  type NotebookInkSmoothingOptions,
+} from "@/lib/workspace/notebook-ink-smoothing";
+import {
+  clampNotebookPenSettings,
+  getNotebookPenFeelFromSettings,
+  NOTEBOOK_PEN_SETTINGS_DEFAULT,
+  type NotebookPenSettings,
 } from "@/lib/workspace/notebook-pen-feel";
 
 export type JsDrawModule = typeof import("js-draw");
@@ -38,8 +43,14 @@ export type NotebookInkStyle = {
   highlighterThickness: number;
   penColor: NotebookStrokeColor;
   penThickness: number;
-  /** How much the pen tidies the line, 0 to 100. See `getNotebookPenFeel`. */
-  penSmoothing: number;
+  /**
+   * How the pen shapes and filters the line. See `notebook-pen-feel.ts`.
+   *
+   * The whole settings object rather than the one Smoothing number, because
+   * every field in it changes what the next stroke looks like, and so has to
+   * reach the stroke factory the way Smoothing always did.
+   */
+  penSettings: NotebookPenSettings;
 };
 
 let jsDrawModulePromise: Promise<JsDrawModule> | null = null;
@@ -61,7 +72,18 @@ export function loadJsDraw() {
 export function makePrecisePenInputMapper(
   jsDraw: JsDrawModule,
   editor: JsDrawEditor,
-  inkSmoothers: Map<number, NotebookInkSmoother>
+  inkSmoothers: Map<number, NotebookInkSmoother>,
+  /**
+   * The filter settings for the stroke about to start.
+   *
+   * Asked for per contact rather than passed in once, because the mapper is
+   * installed on the pen at startup and never replaced, while the settings
+   * behind it can change at any time. A smoother is built at pointer-down and
+   * keeps its options for the life of that stroke, so changing a setting
+   * mid-stroke cannot alter a line already being drawn.
+   */
+  inkSmoothingOptions: () => NotebookInkSmoothingOptions = () =>
+    NOTEBOOK_INK_SMOOTHING
 ) {
   /**
    * Where each pointer's ink was last actually drawn to, in screen pixels.
@@ -88,11 +110,14 @@ export function makePrecisePenInputMapper(
         if (event.kind === jsDraw.InputEvtType.PointerDownEvt) {
           inkSmoothers.set(
             current.id,
-            new NotebookInkSmoother({
-              x: current.screenPos.x,
-              y: current.screenPos.y,
-              time: current.timeStamp,
-            })
+            new NotebookInkSmoother(
+              {
+                x: current.screenPos.x,
+                y: current.screenPos.y,
+                time: current.timeStamp,
+              },
+              inkSmoothingOptions()
+            )
           );
           lastEmittedScreenPositions.set(current.id, {
             x: current.screenPos.x,
@@ -289,7 +314,7 @@ export function applyNotebookStrokeShape(
   pen: JsDrawPenTool,
   tool: StrokeShapeTool,
   jsDraw: JsDrawModule,
-  penSmoothing = NOTEBOOK_PEN_SMOOTHING_DEFAULT,
+  penSettings: NotebookPenSettings = NOTEBOOK_PEN_SETTINGS_DEFAULT,
   /**
    * Where the highlighter reads its edge angle from, if the host tracks one.
    *
@@ -298,7 +323,17 @@ export function applyNotebookStrokeShape(
    */
   nibAngle?: () => number
 ) {
-  const applied = `${tool}:${clampNotebookPenSmoothing(penSmoothing)}`;
+  const settings = clampNotebookPenSettings(penSettings);
+  // Every field that reaches the factory is in the key: a factory carries the
+  // settings it was built with, so any of them changing has to build a new one
+  // for the next stroke.
+  const applied = [
+    tool,
+    settings.smoothingPercent,
+    settings.cornerSharpnessPercent ?? "follow",
+    settings.pressurePercent,
+    settings.straightenOnHold,
+  ].join(":");
   if (appliedStrokeShapes.get(pen) === applied) return;
 
   /*
@@ -311,13 +346,14 @@ export function applyNotebookStrokeShape(
    * has nothing to snap to, and straightening one mid-sweep would be a
    * surprise rather than a help.
    */
-  const straightenOnHold = tool === "pen";
+  const straightenOnHold =
+    tool === "pen" && settings.straightenOnHold !== "off";
   pen.setStrokeFactory(
     tool === "highlighter"
       ? createNotebookChiselStrokeFactory(jsDraw, nibAngle)
       : createNotebookSmoothPenStrokeFactory(
           jsDraw,
-          getNotebookPenFeel(penSmoothing)
+          getNotebookPenFeelFromSettings(settings)
         )
   );
   if (pen.getStrokeAutocorrectionEnabled() !== straightenOnHold) {
@@ -388,7 +424,7 @@ export function applyNotebookInkStyle(
       primaryPen,
       style.activeTool,
       jsDraw,
-      style.penSmoothing,
+      style.penSettings,
       nibAngleSources.get(editor)
     );
     const selectedColor =
@@ -412,6 +448,20 @@ export function applyNotebookInkStyle(
   }
 }
 
+export function areNotebookPenSettingsEqual(
+  left: NotebookPenSettings,
+  right: NotebookPenSettings
+) {
+  return (
+    left.smoothingPercent === right.smoothingPercent &&
+    left.cornerSharpnessPercent === right.cornerSharpnessPercent &&
+    left.steadinessPercent === right.steadinessPercent &&
+    left.trackingPercent === right.trackingPercent &&
+    left.pressurePercent === right.pressurePercent &&
+    left.straightenOnHold === right.straightenOnHold
+  );
+}
+
 export function areNotebookInkStylesEqual(
   left: NotebookInkStyle | null,
   right: NotebookInkStyle
@@ -424,7 +474,7 @@ export function areNotebookInkStylesEqual(
     left.highlighterThickness === right.highlighterThickness &&
     left.penColor === right.penColor &&
     left.penThickness === right.penThickness &&
-    left.penSmoothing === right.penSmoothing
+    areNotebookPenSettingsEqual(left.penSettings, right.penSettings)
   );
 }
 

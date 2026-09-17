@@ -11,9 +11,16 @@ import {
   resolveSignInAppearance,
 } from "@/lib/app/appearance";
 import { APP_THEME_STORAGE_KEY } from "@/lib/app/theme-preference";
+import { APP_FONT_STORAGE_KEY, DEFAULT_APP_FONT } from "@/lib/app/app-font";
 import { CONSTELLATION_BACKGROUND_STORAGE_KEY } from "@/lib/constellation/background";
 
-const PINK = { theme: "pink" as const, sky: false, skyConstellationId: "", panelStyle: "glass" as const };
+const PINK = {
+  theme: "pink" as const,
+  sky: false,
+  skyConstellationId: "",
+  panelStyle: "glass" as const,
+  font: DEFAULT_APP_FONT,
+};
 const OLD_ACCOUNT = APPEARANCE_ON_ACCOUNT_SINCE - 30 * 24 * 60 * 60 * 1000;
 const NEW_ACCOUNT = APPEARANCE_ON_ACCOUNT_SINCE + 60 * 1000;
 
@@ -23,13 +30,18 @@ beforeEach(() => {
 
 describe("reading an account's look", () => {
   it("keeps what it recognises and refuses what it does not", () => {
-    expect(normalizeAccountAppearance({ theme: "pink", sky: true, skyConstellationId: "c1", panelStyle: "solid", updatedAt: 5 })).toEqual({
+    expect(normalizeAccountAppearance({ theme: "pink", sky: true, skyConstellationId: "c1", panelStyle: "solid", font: "cinzel", updatedAt: 5 })).toEqual({
       theme: "pink",
       sky: true,
       skyConstellationId: "c1",
       panelStyle: "solid",
+      font: "cinzel",
       updatedAt: 5,
     });
+    // A face Jami no longer offers falls back rather than voiding the whole look.
+    expect(
+      normalizeAccountAppearance({ theme: "pink", sky: false, skyConstellationId: "", panelStyle: "glass", font: "papyrus", updatedAt: 1 })
+    ).toMatchObject({ font: DEFAULT_APP_FONT });
     expect(normalizeAccountAppearance({ theme: "neon" })).toBeNull();
     expect(normalizeAccountAppearance(null)).toBeNull();
   });
@@ -78,11 +90,12 @@ describe("what a sign-in shows", () => {
 
 describe("painting it on the device", () => {
   it("writes the choice where the blocking script reads it, stamped with its owner", () => {
-    applyAppearanceToDevice({ theme: "pink", sky: true, skyConstellationId: "c1", panelStyle: "solid" }, "a");
+    applyAppearanceToDevice({ theme: "pink", sky: true, skyConstellationId: "c1", panelStyle: "solid", font: "cinzel" }, "a");
     expect(localStorage.getItem(APP_THEME_STORAGE_KEY)).toBe("pink");
     expect(localStorage.getItem(CONSTELLATION_BACKGROUND_STORAGE_KEY)).toBe("true");
     expect(localStorage.getItem(APPEARANCE_OWNER_STORAGE_KEY)).toBe("a");
-    expect(readDeviceAppearance()).toEqual({ theme: "pink", sky: true, skyConstellationId: "c1", panelStyle: "solid" });
+    expect(localStorage.getItem(APP_FONT_STORAGE_KEY)).toBe("cinzel");
+    expect(readDeviceAppearance()).toEqual({ theme: "pink", sky: true, skyConstellationId: "c1", panelStyle: "solid", font: "cinzel" });
   });
 
   it("goes back to Jami's own look, owned by nobody, on sign-out", () => {

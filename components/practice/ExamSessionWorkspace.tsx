@@ -39,6 +39,7 @@ import { getActiveNotebooks } from "@/services/study/notebooks";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import ExamQuestionAssets from "@/components/practice/ExamQuestionAssets";
 import { examQuestionShowsPrintedPage } from "@/lib/practice/exam-question-display";
+import { examSheetPrintedPages } from "@/lib/practice/exam-question-sheet";
 import ExamScratchpad, { type ExamScratchpadHandle } from "@/components/practice/ExamScratchpad";
 import ExamQuestionMarkReport from "@/components/practice/ExamQuestionMarkReport";
 import { requireExamWorkingSnapshot } from "@/lib/practice/exam-working";
@@ -50,6 +51,47 @@ const DRAFT_SAVE_MS = 700;
 
 type SessionData = Awaited<ReturnType<typeof loadPastPaperPracticeSession>>;
 type SessionQuestion = SessionData["session"]["questions"][number];
+
+/**
+ * The question's pages of paper, the same array for as long as it is the same
+ * question.
+ *
+ * The session is re-read every few seconds while an answer is being marked, and
+ * every read builds fresh objects all the way down -- so a plain `useMemo` on
+ * `question` hands back a new array on each poll even though nothing about the
+ * paper has changed. The sheet reads that as its pages having been replaced:
+ * it reloads, turns back to page one, and remounts the ink editor under a hand
+ * that is in the middle of a word.
+ *
+ * Keyed on what actually decides the pages. A re-ingest changes the content
+ * version, and that is the one case where the paper really is different.
+ */
+function usePrintedPages(question: SessionQuestion | undefined) {
+  const signature = question ? `${question.id}:${question.contentVersion}` : "";
+  const read = () => ({
+    signature,
+    pages: question ? examSheetPrintedPages(question) : [],
+  });
+  const [cached, setCached] = useState(read);
+  // React's own way of adjusting state when a prop changes: the re-render
+  // happens before anything is committed, so no effect sees the stale array.
+  if (cached.signature !== signature) setCached(read);
+  return cached.pages;
+}
+
+/**
+ * What a question is worth, and what else the paper offers for it.
+ *
+ * AQA English Literature prints "[30 marks] AO4 [4 marks]" under its Section A
+ * questions: thirty for the answer, four more for technical accuracy scored
+ * across the section from its own grid. Jami marks the thirty and says so,
+ * rather than showing a score out of thirty and leaving a student to wonder
+ * why their paper says thirty-four.
+ */
+function tariffNote(question: SessionQuestion) {
+  if (!question.separateAwardMarks) return "";
+  return `The paper awards ${question.separateAwardMarks} further marks for technical accuracy across this section. Jami marks the ${question.marks} for your answer, and does not mark spelling or punctuation.`;
+}
 
 function provenanceLine(question: SessionQuestion) {
   const { boardLabel, series, year, paperReference, questionNumber } = question.provenance;
@@ -131,35 +173,6 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     scratchpad.current = handle;
   }, []);
 
-  /*
-   * Focus follows the sheet, and the page behind it is hidden from screen
-   * readers while it is open -- without this a keyboard user could tab from a
-   * fullscreen working sheet into the answer box underneath it.
-   */
-  useEffect(() => {
-    // The question and the answer sit in different columns from the sheet, so
-    // each is marked rather than hiding a shared parent that holds the sheet.
-    const behind = Array.from(document.querySelectorAll<HTMLElement>("[data-behind-working]"));
-    if (!showWorking) {
-      behind.forEach((element) => element.removeAttribute("aria-hidden"));
-      focusBeforeWorking.current?.focus?.();
-      focusBeforeWorking.current = null;
-      return;
-    }
-    focusBeforeWorking.current = document.activeElement as HTMLElement | null;
-    behind.forEach((element) => element.setAttribute("aria-hidden", "true"));
-    const frame = window.requestAnimationFrame(() => {
-      const sheet = workingSheet.current;
-      if (!sheet) return;
-      sheet.setAttribute("tabindex", "-1");
-      sheet.focus({ preventScroll: true });
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-      behind.forEach((element) => element.removeAttribute("aria-hidden"));
-    };
-  }, [showWorking]);
-
   const refresh = useCallback(async () => {
     try {
       setData(await loadPastPaperPracticeSession(sessionId));
@@ -210,6 +223,62 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
         ? firstAttempt
         : undefined;
   const answering = session?.status === "active" && (!markedAttempt || retryOpen);
+  /**
+   * The question's own pages of paper, if ingestion rendered any.
+   *
+   * This is what decides which of two layouts a question is answered in. With
+   * pages, the paper is the page: the question is not a picture in a column
+   * beside an empty pad, it is the thing being written on, and the typed
+   * answer sits underneath it the way a printed answer line does.
+   *
+   * Without pages -- a question Jami wrote, or one ingested before the sheet
+   * existed -- nothing changes. The old layout is still correct for a question
+   * that has no paper, and it is what every session already running is using.
+   */
+  const printedPages = usePrintedPages(question);
+  const hasSheet = printedPages.length > 0;
+  const questionId = question?.id ?? "";
+  const assetPath = useCallback(
+    (assetId: string) =>
+      `/api/practice/exam-sessions/${encodeURIComponent(sessionId)}/assets/${encodeURIComponent(questionId)}/${encodeURIComponent(assetId)}`,
+    [questionId, sessionId]
+  );
+  /**
+   * Whether the working is covering the screen as its own dialog.
+   *
+   * Only ever for a question with no paper of its own. A sheet is the
+   * question, so it is never something to open over the question.
+   */
+  const workingOpen = showWorking && !hasSheet;
+
+  /*
+   * Focus follows the sheet, and the page behind it is hidden from screen
+   * readers while it is open -- without this a keyboard user could tab from a
+   * fullscreen working sheet into the answer box underneath it.
+   */
+  useEffect(() => {
+    // The question and the answer sit in different columns from the sheet, so
+    // each is marked rather than hiding a shared parent that holds the sheet.
+    const behind = Array.from(document.querySelectorAll<HTMLElement>("[data-behind-working]"));
+    if (!workingOpen) {
+      behind.forEach((element) => element.removeAttribute("aria-hidden"));
+      focusBeforeWorking.current?.focus?.();
+      focusBeforeWorking.current = null;
+      return;
+    }
+    focusBeforeWorking.current = document.activeElement as HTMLElement | null;
+    behind.forEach((element) => element.setAttribute("aria-hidden", "true"));
+    const frame = window.requestAnimationFrame(() => {
+      const sheet = workingSheet.current;
+      if (!sheet) return;
+      sheet.setAttribute("tabindex", "-1");
+      sheet.focus({ preventScroll: true });
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      behind.forEach((element) => element.removeAttribute("aria-hidden"));
+    };
+  }, [workingOpen]);
   const isLast = index === questions.length - 1;
   /*
    * A durable job does the marking, and it writes down its own failures, so an
@@ -685,21 +754,25 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
          */
         <div
           className={`grid items-start gap-4 lg:gap-6 ${
-            answering
-              ? "lg:landscape:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] 2xl:landscape:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]"
-              : "mx-auto w-full max-w-3xl"
+            answering && hasSheet
+              ? "mx-auto w-full max-w-5xl"
+              : answering
+                ? "lg:landscape:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] 2xl:landscape:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]"
+                : "mx-auto w-full max-w-3xl"
           }`}
         >
-          <div
-            data-behind-working
-            className={`min-w-0 ${
-              answering
-                ? "lg:landscape:sticky lg:landscape:top-[8.5rem] lg:landscape:max-h-[calc(100dvh-10rem)] lg:landscape:overflow-y-auto lg:landscape:rounded-2xl"
-                : ""
-            }`}
-          >
-            <QuestionCard sessionId={sessionId} question={question} number={index + 1} />
-          </div>
+          {answering && hasSheet ? null : (
+            <div
+              data-behind-working
+              className={`min-w-0 ${
+                answering
+                  ? "lg:landscape:sticky lg:landscape:top-[8.5rem] lg:landscape:max-h-[calc(100dvh-10rem)] lg:landscape:overflow-y-auto lg:landscape:rounded-2xl"
+                  : ""
+              }`}
+            >
+              <QuestionCard sessionId={sessionId} question={question} number={index + 1} />
+            </div>
+          )}
 
           <div className="min-w-0 space-y-4">
           <div data-behind-working className="space-y-4 empty:hidden">
@@ -854,9 +927,138 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
           </div>
 
           {answering && activeAttempt ? (
-            <section aria-label="Answer sheet" className="app-panel min-w-0">
+            <section aria-label="Answer sheet" className="app-panel min-w-0 overflow-hidden">
+              {/*
+                * With a sheet, the question is not a card in another column --
+                * it is the paper below. So what the column used to say about
+                * it moves here: its number, what it is worth, and which paper
+                * it came off.
+                */}
+              {hasSheet ? (
+                <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-[var(--color-border)] px-4 py-3 sm:px-5">
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h2 className="text-base font-semibold tracking-tight text-text-primary">
+                      Question {index + 1}
+                    </h2>
+                    <p className="truncate text-xs text-text-muted">{provenanceLine(question)}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-2.5 py-1 text-xs font-semibold tabular-nums text-text-primary">
+                    {question.marks} mark{question.marks === 1 ? "" : "s"}
+                  </span>
+                  {tariffNote(question) ? (
+                    <p className="basis-full text-xs leading-5 text-text-muted">
+                      {tariffNote(question)}
+                    </p>
+                  ) : null}
+                </header>
+              ) : null}
+
+              {/*
+                * A dialog by hand, deliberately.
+                *
+                * The shared Dialog renders its children only while open, and the
+                * pad has to stay mounted whether or not the sheet is: it holds the
+                * handle submission asks for, so on a phone a student who never
+                * opened working could not submit at all. So the sheet keeps its
+                * one mount point and takes on the dialog's obligations instead --
+                * a labelled modal role, focus moved in and restored on close,
+                * Escape, and the rest of the page hidden from assistive
+                * technology while it covers the screen.
+                *
+                * None of that applies to a question with its own paper. There the
+                * sheet is the question, it is on the page at every width, and the
+                * way to write on it at full size is the control the sheet already
+                * carries.
+                */}
+              <div
+                ref={workingSheet}
+                {...(workingOpen
+                  ? {
+                      role: "dialog" as const,
+                      "aria-modal": true,
+                      "aria-label": "Your working",
+                      onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => {
+                        if (event.key !== "Escape") return;
+                        event.stopPropagation();
+                        setShowWorking(false);
+                      },
+                    }
+                  : {})}
+                className={
+                  hasSheet
+                    ? "min-w-0"
+                    : `${
+                        workingOpen
+                          ? "fixed inset-0 z-50 overflow-y-auto bg-[var(--app-background)] p-3 pb-[env(safe-area-inset-bottom)]"
+                          : "hidden md:block"
+                      } md:static md:block md:overflow-visible md:bg-transparent md:p-0`
+                }
+              >
+                <div className={workingOpen ? "app-panel" : ""}>
+                  {hasSheet ? null : (
+                    <div
+                      className={`flex items-center justify-between gap-3 bg-[var(--color-glass-subtle)] px-4 py-2.5 sm:px-5 ${
+                        activeAttempt.status === "draft" && !workingOpen
+                          ? "border-t border-[var(--color-border)]"
+                          : ""
+                      }`}
+                    >
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <h2 className="text-sm font-semibold text-text-primary">Working</h2>
+                        <p className="truncate text-xs text-text-muted">
+                          {activeAttempt.status !== "draft"
+                            ? "As it was sent"
+                            : hasInk
+                              ? "Sent with your answer"
+                              : "Optional"}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="md:hidden"
+                        onClick={() => setShowWorking(false)}
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  )}
+                  <ExamScratchpad
+                    key={activeAttempt.id}
+                    embedded
+                    userId={user.uid}
+                    attemptId={activeAttempt.id}
+                    printedPages={printedPages}
+                    answerSpacePages={question.answerSpacePages}
+                    questionLabel={question.label}
+                    assetPath={assetPath}
+                    // Read-only the moment the attempt stops being a draft: the
+                    // sheet is then frozen evidence, and the rules refuse writes.
+                    disabled={submitting || activeAttempt.status !== "draft"}
+                    onHandle={handleScratchpad}
+                    onInkChange={setHasInk}
+                  />
+                </div>
+              </div>
+
+              {/*
+                * The typed answer, under the paper rather than over it.
+                *
+                * It sat above the working while the working was a pad and the
+                * question was a picture somewhere else. Now that the paper is
+                * the page, above the paper is above the question, and a box
+                * asking for an answer before the question has been read is the
+                * wrong way round. Underneath it reads as the answer line at the
+                * foot of a page, which is where a paper puts it too.
+                */}
               {activeAttempt.status === "draft" ? (
-                <div data-behind-working className="p-4 sm:p-5">
+                <div
+                  data-behind-working
+                  className={`p-4 sm:p-5 ${
+                    hasSheet ? "border-t border-[var(--color-border)]" : ""
+                  }`}
+                >
                   <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                     <label
                       htmlFor={answerFieldId}
@@ -897,18 +1099,24 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                     onDraft={handleDraft}
                   />
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="md:hidden"
-                      onClick={() => setShowWorking(true)}
-                    >
-                      {hasInk ? "Open working" : "Show your working"}
-                    </Button>
-                    <p className="hidden text-xs text-text-muted md:block">
-                      {hasInk
-                        ? "Your working below is sent with this answer."
-                        : "Working below is optional — sent only if you use it."}
+                    {hasSheet ? null : (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="md:hidden"
+                        onClick={() => setShowWorking(true)}
+                      >
+                        {hasInk ? "Open working" : "Show your working"}
+                      </Button>
+                    )}
+                    <p className={`text-xs text-text-muted ${hasSheet ? "" : "hidden md:block"}`}>
+                      {hasSheet
+                        ? hasInk
+                          ? "What you wrote on the paper is sent with this answer."
+                          : "Write on the paper above, type here, or both."
+                        : hasInk
+                          ? "Your working below is sent with this answer."
+                          : "Working below is optional — sent only if you use it."}
                     </p>
                     <Button className="ml-auto" disabled={submitting} onClick={() => void submit()} data-tutorial-target="mark-answer">
                       {submitting
@@ -922,83 +1130,6 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                   </div>
                 </div>
               ) : null}
-
-              {/*
-                * A dialog by hand, deliberately.
-                *
-                * The shared Dialog renders its children only while open, and the
-                * pad has to stay mounted whether or not the sheet is: it holds the
-                * handle submission asks for, so on a phone a student who never
-                * opened working could not submit at all. So the sheet keeps its
-                * one mount point and takes on the dialog's obligations instead --
-                * a labelled modal role, focus moved in and restored on close,
-                * Escape, and the rest of the page hidden from assistive
-                * technology while it covers the screen.
-                *
-                * From `md` up it is part of the answer sheet; only a phone opens
-                * it over the page.
-                */}
-              <div
-                ref={workingSheet}
-                {...(showWorking
-                  ? {
-                      role: "dialog" as const,
-                      "aria-modal": true,
-                      "aria-label": "Your working",
-                      onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => {
-                        if (event.key !== "Escape") return;
-                        event.stopPropagation();
-                        setShowWorking(false);
-                      },
-                    }
-                  : {})}
-                className={`${
-                  showWorking
-                    ? "fixed inset-0 z-50 overflow-y-auto bg-[var(--app-background)] p-3 pb-[env(safe-area-inset-bottom)]"
-                    : "hidden md:block"
-                } md:static md:block md:overflow-visible md:bg-transparent md:p-0`}
-              >
-                <div className={showWorking ? "app-panel" : ""}>
-                  <div
-                    className={`flex items-center justify-between gap-3 bg-[var(--color-glass-subtle)] px-4 py-2.5 sm:px-5 ${
-                      activeAttempt.status === "draft" && !showWorking
-                        ? "border-t border-[var(--color-border)]"
-                        : ""
-                    }`}
-                  >
-                    <div className="flex min-w-0 items-baseline gap-2">
-                      <h2 className="text-sm font-semibold text-text-primary">Working</h2>
-                      <p className="truncate text-xs text-text-muted">
-                        {activeAttempt.status !== "draft"
-                          ? "As it was sent"
-                          : hasInk
-                            ? "Sent with your answer"
-                            : "Optional"}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="md:hidden"
-                      onClick={() => setShowWorking(false)}
-                    >
-                      Done
-                    </Button>
-                  </div>
-                  <ExamScratchpad
-                    key={activeAttempt.id}
-                    embedded
-                    userId={user.uid}
-                    attemptId={activeAttempt.id}
-                    // Read-only the moment the attempt stops being a draft: the
-                    // sheet is then frozen evidence, and the rules refuse writes.
-                    disabled={submitting || activeAttempt.status !== "draft"}
-                    onHandle={handleScratchpad}
-                    onInkChange={setHasInk}
-                  />
-                </div>
-              </div>
             </section>
           ) : null}
           </div>
@@ -1319,6 +1450,9 @@ const QuestionCard = memo(function QuestionCard({
         </span>
       </div>
       <p className="mt-1 text-xs text-text-muted">{provenanceLine(question)}</p>
+      {tariffNote(question) ? (
+        <p className="mt-1.5 text-xs leading-5 text-text-muted">{tariffNote(question)}</p>
+      ) : null}
       {body}
     </Card>
   );

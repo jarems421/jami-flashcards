@@ -83,3 +83,8 @@ export function getDeckStudyHref(deckId: string, topicId?: string) {
     topicIds: topicId ? [topicId] : [],
   });
 }
+
+/** The student's revision plan: their own timetable, filled by the engine. */
+export function getRevisionPlanHref() {
+  return "/dashboard/tutor/plan";
+}

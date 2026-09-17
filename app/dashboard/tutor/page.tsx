@@ -37,6 +37,11 @@ import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import type { Source } from "@/lib/material/sources";
 import { getPendingGeneratedContentDrafts } from "@/services/study/generated-content";
 import { getActiveSources } from "@/services/study/sources";
+import TutorPlanCard from "@/components/planning/TutorPlanCard";
+import type { PlanNotice } from "@/lib/ai/assistant-plan";
+import type { RevisionPlan } from "@/lib/planning/types";
+import { loadActiveRevisionPlan } from "@/services/planning/revision-plans";
+import { loadPlanNotices } from "@/services/planning/plan-draft";
 
 /** Enough of the queue to act on without turning the page into a list. */
 const MAX_PENDING_DRAFTS = 20;
@@ -88,15 +93,22 @@ export default function TutorPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [activePlan, setActivePlan] = useState<RevisionPlan | null>(null);
+  const [planNotices, setPlanNotices] = useState<PlanNotice[]>([]);
   const { feedback, showError, clear: clearFeedback } = useFeedback();
 
   const loadTutorData = useCallback(
     async (reads: DashboardDataLoadOptions = {}) => {
-      const [userSources, pendingDrafts] = await Promise.all([
+      const [userSources, pendingDrafts, plan] = await Promise.all([
         getActiveSources(user.uid, reads),
         getPendingGeneratedContentDrafts(user.uid, MAX_PENDING_DRAFTS),
+        // A plan that cannot be read is the same as not having one here, and a
+        // page about asking Jami things should not fail over a timetable.
+        featureFlags.enableRevisionPlans
+          ? loadActiveRevisionPlan(user.uid).catch(() => null)
+          : Promise.resolve(null),
       ]);
-      return { sources: userSources, drafts: pendingDrafts };
+      return { sources: userSources, drafts: pendingDrafts, plan };
     },
     [user.uid],
   );
@@ -105,6 +117,17 @@ export default function TutorPage() {
     (data: Awaited<ReturnType<typeof loadTutorData>>) => {
       setSources(data.sources);
       setDrafts(data.drafts);
+      setActivePlan(data.plan);
+      /*
+       * What Jami has noticed, fetched after the page is usable.
+       *
+       * It costs a study-actions request and is only ever a few chips, so it
+       * must never be the reason the page waits -- and with a plan already
+       * made there is nothing to invite, so it is not fetched at all.
+       */
+      if (featureFlags.enableRevisionPlans && !data.plan) {
+        void loadPlanNotices().then(setPlanNotices);
+      }
     },
     [],
   );
@@ -186,18 +209,6 @@ export default function TutorPage() {
         />
       ) : null}
 
-      {featureFlags.enablePastPaperPractice ? (
-        <Card padding="md" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-text-primary">Past Paper Practice</p>
-            <p className="mt-1 text-sm text-text-muted">
-              Work through real questions one at a time, then ask Jami about the feedback.
-            </p>
-          </div>
-          <ButtonLink href="/dashboard/practice/questions/new" variant="secondary" size="sm">Choose questions</ButtonLink>
-        </Card>
-      ) : null}
-
       {/*
         * Who this is and how to start, on one line.
         *
@@ -253,6 +264,10 @@ export default function TutorPage() {
           </ButtonLink>
         </div>
       </Card>
+
+      {featureFlags.enableRevisionPlans ? (
+        <TutorPlanCard plan={activePlan} notices={planNotices} loading={loading} />
+      ) : null}
 
       {/*
         * Your material, first, because picking something is what you came to
@@ -413,6 +428,35 @@ export default function TutorPage() {
           )}
         </div>
       </Card>
+
+      {/*
+        * Another way in, at the end rather than the beginning.
+        *
+        * This card used to lead the page -- above Jami's own identity card --
+        * so the first thing on Tutor was a link somewhere else. It is a real
+        * route into asking Jami things, which is why it is still here.
+        */}
+      {featureFlags.enablePastPaperPractice ? (
+        <Card
+          padding="md"
+          className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-text-primary">Past Paper Practice</p>
+            <p className="mt-1 text-sm leading-6 text-text-muted">
+              Work through real questions one at a time, then ask Jami about the feedback.
+            </p>
+          </div>
+          <ButtonLink
+            href="/dashboard/practice/questions/new"
+            variant="secondary"
+            size="sm"
+            className="shrink-0"
+          >
+            Choose questions
+          </ButtonLink>
+        </Card>
+      ) : null}
     </AppPage>
   );
 }

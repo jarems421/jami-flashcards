@@ -396,7 +396,7 @@ describe("resuming and replaying", () => {
     await render(true);
 
     expect(document.body.textContent).toContain("First night");
-    click(byText("Replay walkthrough"));
+    click(byText("Begin first night"));
     expect(firstNightWelcome()).not.toBeNull();
     expect(status()).toBe("completed");
     expect(saveTutorialProgress).not.toHaveBeenCalled();

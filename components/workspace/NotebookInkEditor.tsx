@@ -44,6 +44,7 @@ import {
 } from "@/lib/workspace/notebook-scribble-gesture";
 import type { NotebookScribbleSample } from "@/lib/workspace/notebook-scribble-erase";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
+import { getNotebookInkSmoothingOptions } from "@/lib/workspace/notebook-pen-feel";
 import type { NotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 import {
   installBatchedNotebookPenPreview,
@@ -169,7 +170,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       pageId,
       pageWidth,
       penColor,
-      penSmoothing,
+      penSettings,
       penThickness,
       readOnly = false,
       scribbleToErase = false,
@@ -190,6 +191,19 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const pointerLifecycleRef = useRef<NotebookInkPointerLifecycle | null>(null);
     pointerLifecycleRef.current ??= new NotebookInkPointerLifecycle();
     const inkSmoothersRef = useRef<Map<number, NotebookInkSmoother>>(new Map());
+    /**
+     * The filter settings a stroke starting now would use.
+     *
+     * A ref because the input mapper is installed on the pen once, at startup,
+     * and reads this at each pointer-down -- so a settings change takes effect
+     * on the next stroke without the mapper being rebuilt under an editor that
+     * may be mid-gesture.
+     */
+    const inkSmoothingOptionsRef = useRef(
+      getNotebookInkSmoothingOptions(penSettings)
+    );
+    inkSmoothingOptionsRef.current =
+      getNotebookInkSmoothingOptions(penSettings);
     // Which way the highlighter flat edge is facing. One per editor rather than
     // one per stroke: grip carries across strokes, so the angle a stroke opens
     // at should be the one the hand was already holding.
@@ -240,7 +254,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       highlighterColor,
       highlighterThickness,
       penColor,
-      penSmoothing,
+      penSettings,
       penThickness,
     });
     const callbacksRef = useRef({
@@ -513,7 +527,12 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           const primaryPen = editor.toolController.getMatchingTools(jsDraw.PenTool)[0];
           if (primaryPen) {
             primaryPen.setInputMapper(
-              makePrecisePenInputMapper(jsDraw, editor, inkSmoothersRef.current)
+              makePrecisePenInputMapper(
+                jsDraw,
+                editor,
+                inkSmoothersRef.current,
+                () => inkSmoothingOptionsRef.current
+              )
             );
             // The highlighter asks this per sample, so the factory cached on
             // the pen keeps answering with whatever the hand is doing now.
@@ -685,7 +704,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         highlighterColor,
         highlighterThickness,
         penColor,
-        penSmoothing,
+        penSettings,
         penThickness,
       };
       if (!editor) return;
@@ -705,7 +724,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       highlighterColor,
       highlighterThickness,
       penColor,
-      penSmoothing,
+      penSettings,
       penThickness,
     ]);
 
@@ -932,7 +951,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             highlighterColor,
             highlighterThickness,
             penColor,
-            penSmoothing,
+            penSettings,
             penThickness,
           };
           desiredStyleRef.current = pointerStyle;

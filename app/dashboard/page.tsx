@@ -21,6 +21,9 @@ import type { Topic } from "@/lib/material/topics";
 import type { MasteryEvent } from "@/lib/material/mastery";
 import type { Source } from "@/lib/material/sources";
 import { buildTodayPlan, type TodayPlan, type TodayStudyAction } from "@/lib/dashboard/today-plan";
+import RevisionPlanStrip from "@/components/planning/RevisionPlanStrip";
+import { useRevisionPlanToday } from "@/hooks/useRevisionPlanToday";
+import { getRevisionPlanHref } from "@/lib/app/routes";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useStudyActions } from "@/hooks/useStudyActions";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
@@ -483,6 +486,20 @@ export default function DashboardHome() {
   );
   const refreshStudyActions = studyActions.refresh;
 
+  /*
+   * The plan is resolved against the same actions the rest of the page draws
+   * on, so it can never disagree with them -- it is the same answer, arranged
+   * on the student's own week.
+   */
+  const revisionPlan = useRevisionPlanToday({
+    uid: user.uid,
+    enabled: featureFlags.enableRevisionPlans,
+    actions: studyActions.actions,
+    folders: studyActions.folders,
+    cards,
+    decks,
+  });
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     clearFeedback();
@@ -615,7 +632,17 @@ export default function DashboardHome() {
    * evidence. The weak-topic card remains the fallback whenever the engine is
    * switched off, still loading or has nothing to say.
    */
-  const showStudyActions = todayPlan.studyActions.length > 0;
+  /*
+   * The plan takes over from the recommendations card when there is one.
+   *
+   * Both answer "what should I do now", from the same evidence -- and two
+   * surfaces saying it, in different orders, would leave a student choosing
+   * between two versions of Jami. The plan is the more specific of the two
+   * because the student chose its shape, so it wins, and the card comes back
+   * the moment the plan is archived.
+   */
+  const planStripVisible = Boolean(revisionPlan.plan && revisionPlan.day);
+  const showStudyActions = !planStripVisible && todayPlan.studyActions.length > 0;
   const showWeakTopics =
     !showStudyActions &&
     sectionStates.topics !== "unavailable" &&
@@ -744,6 +771,16 @@ export default function DashboardHome() {
             )
           }
         />
+
+        {planStripVisible && revisionPlan.plan && revisionPlan.day ? (
+          <RevisionPlanStrip
+            plan={revisionPlan.plan}
+            day={revisionPlan.day}
+            scopeNames={revisionPlan.scopeNames}
+            onToggleSlot={revisionPlan.toggleSlot}
+            planHref={getRevisionPlanHref()}
+          />
+        ) : null}
 
         <TutorialResumeCard />
 

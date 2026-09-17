@@ -151,9 +151,9 @@ import {
   saveNotebookScribbleErasePreference,
 } from "@/lib/workspace/notebook-toolbar";
 import {
-  clampNotebookPenSmoothing,
-  readNotebookPenSmoothingPreference,
-  saveNotebookPenSmoothingPreference,
+  clampNotebookPenSettings,
+  readNotebookPenSettings,
+  saveNotebookPenSettings,
 } from "@/lib/workspace/notebook-pen-feel";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
 import { getNotebookAssistantQuickActions } from "@/lib/workspace/notebook-assistant";
@@ -308,7 +308,7 @@ export default function NotebookEditorPage() {
     eraserMenuOpen, setEraserMenuOpen,
     touchInkHintVisible, setTouchInkHintVisible,
     scribbleToErase, setScribbleToErase,
-    penSmoothingPercent, setPenSmoothingPercent,
+    penSettings, setPenSettings,
   } = useNotebookDrawingToolState();
   const {
     pageZoom, setPageZoom, pagePan, setPagePan,
@@ -937,6 +937,22 @@ export default function NotebookEditorPage() {
     onTouchPointerEnd: handleTouchPointerEnd,
   });
 
+  /**
+   * Nothing on the page is selected any more.
+   *
+   * A page holds three kinds of placed thing -- text boxes, images and graphs
+   * -- and they were being let go of in different places and at different
+   * times. Tapping the page dropped a text box and left an image selected with
+   * its handles up, because the only thing tapping away called was the text
+   * controller's own clear. Selection is one idea to the person doing it, so
+   * there is one way to end it.
+   */
+  const clearPlacedSelection = useCallback(() => {
+    clearTextBlockSelection();
+    setSelectedImageId(null);
+    setSelectedGraphId(null);
+  }, [clearTextBlockSelection]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -949,8 +965,8 @@ export default function NotebookEditorPage() {
 
   useEffect(() => {
     setScribbleToErase(readNotebookScribbleErasePreference());
-    setPenSmoothingPercent(readNotebookPenSmoothingPreference());
-  }, [setPenSmoothingPercent, setScribbleToErase]);
+    setPenSettings(readNotebookPenSettings());
+  }, [setPenSettings, setScribbleToErase]);
 
   useEffect(() => {
     if (!selectedPage) {
@@ -2040,6 +2056,26 @@ export default function NotebookEditorPage() {
     viewportLayout.zoom,
   ]);
 
+  /**
+   * A tap anywhere in the page frame lets go of whatever was selected.
+   *
+   * The sheet is only part of what somebody is looking at: on a wide window or
+   * a zoomed-out page there is a margin all round it, and tapping there is
+   * "tapping somewhere else" by any reading. Nothing was listening out there,
+   * so a selected image kept its handles up until the page itself was touched.
+   *
+   * Deliberately the last word rather than a special case for the margin. This
+   * sits above the sheet in the tree, so anything that means to keep its
+   * selection stops the event on the way up -- which is what every layer
+   * already does when a placed thing is picked up. Being unconditional means a
+   * gap in that coverage lets go of the selection rather than stranding it.
+   */
+  const handleFramePointerDown = useCallback(() => {
+    if (!fullNotebookEditingEnabled) return;
+    if (pageNavigationLockedRef.current) return;
+    clearPlacedSelection();
+  }, [clearPlacedSelection, fullNotebookEditingEnabled]);
+
   const handlePagePointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (!fullNotebookEditingEnabled) return;
     if (pageNavigationLockedRef.current) {
@@ -2055,7 +2091,7 @@ export default function NotebookEditorPage() {
     setPenMenuOpen(false);
     setHighlighterMenuOpen(false);
     setEraserMenuOpen(false);
-    clearTextBlockSelection();
+    clearPlacedSelection();
     if (handleTouchPointerDown(event)) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handleStartPageSwipe(event);
@@ -2072,7 +2108,7 @@ export default function NotebookEditorPage() {
     if (!point) return;
     createTextBlockAtPoint(point);
   }, [
-    clearTextBlockSelection,
+    clearPlacedSelection,
     createTextBlockAtPoint,
     fullNotebookEditingEnabled,
     handleStartPageSwipe,
@@ -2286,14 +2322,14 @@ export default function NotebookEditorPage() {
         setPenMenuOpen(false);
         setHighlighterMenuOpen(false);
         setEraserMenuOpen(false);
-        clearTextBlockSelection();
+        clearPlacedSelection();
       }
     };
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [
-    clearTextBlockSelection,
+    clearPlacedSelection,
     fullNotebookEditingEnabled,
     handleRedo,
     handleUndo,
@@ -2331,6 +2367,12 @@ export default function NotebookEditorPage() {
   /** Selecting an inactive tool switches to it; the active one toggles options. */
   const handleSelectDrawingTool = useCallback(
     (nextTool: "pen" | "highlighter" | "eraser") => {
+      // Reaching for a tool is done with something else in mind, so whatever
+      // was selected is let go of whether or not the tool actually changes.
+      // Switching tools already dropped an image or a graph, on its own effect;
+      // pressing the tool that is already on did not, and that is the press
+      // where a selection is most obviously stale.
+      clearPlacedSelection();
       if (pageState.read().tool !== nextTool) {
         switchNotebookTool(nextTool);
         closeDrawingToolMenus();
@@ -2339,6 +2381,7 @@ export default function NotebookEditorPage() {
       setToolMenuOpen(nextTool, openToolMenu !== nextTool);
     },
     [
+      clearPlacedSelection,
       closeDrawingToolMenus,
       openToolMenu,
       pageState,
@@ -2348,9 +2391,17 @@ export default function NotebookEditorPage() {
   );
 
   const handleToggleTextTool = useCallback(() => {
+    // Both sides of this toggle move placed things, so neither drops a
+    // selection by changing tool. Pressing the button has to say it.
+    clearPlacedSelection();
     closeDrawingToolMenus();
     switchNotebookTool(pageState.read().tool === "text" ? "select" : "text");
-  }, [closeDrawingToolMenus, pageState, switchNotebookTool]);
+  }, [
+    clearPlacedSelection,
+    closeDrawingToolMenus,
+    pageState,
+    switchNotebookTool,
+  ]);
 
 
   const handleAddImage = useCallback(
@@ -2815,11 +2866,11 @@ export default function NotebookEditorPage() {
               setPenThicknessPercent(clampNotebookThicknessPercent(value));
               switchNotebookTool("pen");
             },
-            smoothingPercent: penSmoothingPercent,
-            onSmoothingChange: (value) => {
-              const next = clampNotebookPenSmoothing(value);
-              setPenSmoothingPercent(next);
-              saveNotebookPenSmoothingPreference(next);
+            settings: penSettings,
+            onSettingsChange: (value) => {
+              const next = clampNotebookPenSettings(value);
+              setPenSettings(next);
+              saveNotebookPenSettings(next);
               switchNotebookTool("pen");
             },
             scribbleToErase,
@@ -2930,6 +2981,7 @@ export default function NotebookEditorPage() {
         ) : null}
 
           <NotebookViewport
+            onFramePointerDown={handleFramePointerDown}
             frameRef={pageFrameRef}
             trackRef={pageTrackRef}
             previewLayerRef={pagePreviewLayerRef}
@@ -3024,7 +3076,7 @@ export default function NotebookEditorPage() {
                       eraserMode,
                       scribbleToErase,
                       penColor,
-                      penSmoothing: penSmoothingPercent,
+                      penSettings,
                       penThickness:
                         getPenWidthFromPercent(penThicknessPercent),
                       highlighterColor,
@@ -3041,7 +3093,7 @@ export default function NotebookEditorPage() {
                           setHighlighterMenuOpen(false);
                           setEraserMenuOpen(false);
                           setPagesDrawerOpen(false);
-                          clearTextBlockSelection();
+                          clearPlacedSelection();
                           cancelInkUiSync();
                           cancelScheduledPersistence();
                         } else {

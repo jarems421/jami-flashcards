@@ -5,6 +5,7 @@ import {
   matchExamSetText,
   matchSetTextIn,
   servableExamSetTexts,
+  uniqueSetTextIn,
   specificationSetsTexts,
 } from "@/lib/practice/exam-set-texts";
 import { buildExamCourseSelection, questionMatchesExamCourse, type ExamQuestion } from "@/lib/practice/exam-questions";
@@ -28,17 +29,68 @@ describe("the set texts a course offers", () => {
     ]);
   });
 
-  it("offers nothing until a person has checked the list", () => {
-    expect(catalogue.verified).toBe(false);
-    expect(servableExamSetTexts("8702")).toEqual([]);
-    expect(specificationSetsTexts("8702")).toBe(false);
-    expect(matchExamSetText("8702", "Macbeth")).toBeUndefined();
-    expect(filterCanonicalSetTextIds("8702", ["aqa-8702-macbeth"]).rejected).toEqual(["aqa-8702-macbeth"]);
+/*
+   * The list has now been read against the specification and accepted, so the
+   * texts are offered. What is still tested is the gate itself: nothing is
+   * servable for a specification whose list nobody has checked, which is the
+   * case below for one that has no list at all.
+   */
+  it("offers the texts once a person has checked the list", () => {
+    expect(catalogue.verified).toBe(true);
+    expect(servableExamSetTexts("8702")).toHaveLength(catalogue.texts.length);
+    expect(specificationSetsTexts("8702")).toBe(true);
+    expect(matchExamSetText("8702", "Macbeth")?.id).toBe("aqa-8702-macbeth");
+    expect(filterCanonicalSetTextIds("8702", ["aqa-8702-macbeth"])).toEqual({
+      setTextIds: ["aqa-8702-macbeth"],
+      rejected: [],
+    });
+  });
+
+  it("still refuses an id the checked list does not hold", () => {
+    expect(filterCanonicalSetTextIds("8702", ["aqa-8702-hamlet"]).rejected).toEqual([
+      "aqa-8702-hamlet",
+    ]);
   });
 
   it("offers nothing for a specification that sets no texts", () => {
     expect(servableExamSetTexts("8300")).toEqual([]);
     expect(specificationSetsTexts("8300")).toBe(false);
+  });
+});
+
+/**
+ * Reading a body of text that was never meant to name one thing, where the
+ * first match is not good enough.
+ */
+describe("reading the set text a question is about", () => {
+  const texts = examSetTextCatalogue("8702")!.texts;
+
+  it("takes the one text a question's wording names", () => {
+    expect(
+      uniqueSetTextIn(texts, "How does Shakespeare present Macbeth as a disturbed character?")?.label
+    ).toBe("Macbeth");
+  });
+
+  /*
+   * The case that matters. A page naming two texts cannot say which question
+   * is about which, and filing it under either hides it from half the students
+   * who study it.
+   */
+  it("refuses a passage that names more than one", () => {
+    expect(
+      uniqueSetTextIn(texts, "Section B: answer on Jane Eyre or on Frankenstein")
+    ).toBeUndefined();
+  });
+
+  it("refuses a passage that names none", () => {
+    expect(uniqueSetTextIn(texts, "Answer one question from this section.")).toBeUndefined();
+    expect(uniqueSetTextIn(texts, "")).toBeUndefined();
+  });
+
+  it("reads a title printed with its author", () => {
+    expect(
+      uniqueSetTextIn(texts, "Arthur Conan Doyle: The Sign of Four. Read the extract below.")?.label
+    ).toBe("The Sign of Four");
   });
 });
 

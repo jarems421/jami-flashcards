@@ -12,17 +12,18 @@ export type ExamScratchpadHandle = {
   snapshot(): Promise<ExamScratchpadSnapshot>;
 };
 
-/**
- * Pages of working a question can hold.
- *
- * Enough for a long calculation or an extended answer, and few enough that
- * every page still reads at a legible size once they are stacked into the one
- * image the marker is sent.
- */
-export const EXAM_WORKING_MAX_PAGES = 4;
-
 /** The server refuses a working image wider or taller than this. */
 export const EXAM_WORKING_MAX_IMAGE_SIDE = 4096;
+
+/**
+ * How wide one page has to be drawn for the handwriting on it to be readable.
+ *
+ * An A4 page at 960px is about 115 pixels to the inch, which is roughly what a
+ * phone camera photograph of a page gives a marker and comfortably enough for
+ * joined handwriting. Below about 700 the descenders of one line start meeting
+ * the ascenders of the next and a model begins guessing at words.
+ */
+export const EXAM_WORKING_LEGIBLE_PAGE_WIDTH = 960;
 
 /**
  * Whether a serialised sheet actually has anything drawn on it.
@@ -57,6 +58,20 @@ export function examWorkingHasInk(svg: string | null | undefined): boolean {
 export function examWorkingPagesWithInk(pages: readonly string[]) {
   return pages.filter((page) => examWorkingHasInk(page));
 }
+
+/**
+ * The same, keeping each page's place on the sheet.
+ *
+ * A sheet's pages are no longer interchangeable. Page three may be the third
+ * printed page of the question and page four the first blank sheet after it,
+ * so the position a page was drawn at is what says where its ink was written
+ * -- and dropping the blank pages between them loses exactly that.
+ */
+export function examWorkingInkedPages(pages: readonly string[]) {
+  return pages.flatMap((svg, index) => (examWorkingHasInk(svg) ? [{ index, svg }] : []));
+}
+
+export type ExamWorkingInkedPage = { index: number; svg: string };
 
 /**
  * Pages as they are stored: the same drawing with fewer points in it.
@@ -107,33 +122,121 @@ export function examWorkingTouchIsPalm(contact: { width: number; height: number 
   return Math.max(contact.width, contact.height) > EXAM_WORKING_PALM_CONTACT_SIZE;
 }
 
+export type ExamWorkingSheetPage = {
+  /** The page's own size, in the sheet's coordinates. */
+  width: number;
+  height: number;
+  /** What this page is, written above it so a marker can place the ink. */
+  caption: string;
+};
+
+export type ExamWorkingSheetSlot = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** The band above the page that carries its caption. */
+  captionTop: number;
+  captionHeight: number;
+};
+
 /**
  * Where each page sits in the single image a submission carries.
  *
  * Marking, the check, the Tutor and the notebook copy all read one working
- * image, so several pages are stacked top to bottom rather than sent as
- * several. Scaled down only as far as the server's size limit needs; the
- * heights are floored so the stack can never round past it.
+ * image, so the pages are laid out into one rather than sent as several.
+ *
+ * They used to be stacked in a single column, which was right while a sheet
+ * was four small blank pads and wrong the moment it became the paper itself.
+ * A question can now run to several printed pages plus the answer space the
+ * board left after it, and six A4 pages in one column is 8,500 pixels tall --
+ * so the whole thing was scaled to fit a 4,096 limit, and every page arrived
+ * at under half the width handwriting can be read at.
+ *
+ * So the pages are laid out in columns instead. The number of columns is the
+ * one that leaves each page widest inside the limit, which for one or two
+ * pages is still a single column and for six is three. Reading order is left
+ * to right then down, and never has to be inferred: each page is captioned
+ * with what it is.
  */
-export function examWorkingStackLayout(input: {
-  pageCount: number;
-  pageWidth: number;
-  pageHeight: number;
+export function examWorkingSheetLayout(input: {
+  pages: readonly ExamWorkingSheetPage[];
   gap: number;
+  captionHeight: number;
   maxSide?: number;
+  /** For tests, and for a sheet whose pages are already small. */
+  maxPageWidth?: number;
 }) {
   const maxSide = input.maxSide ?? EXAM_WORKING_MAX_IMAGE_SIDE;
-  const count = Math.max(1, Math.round(input.pageCount));
-  const naturalHeight = count * input.pageHeight + (count - 1) * input.gap;
-  const scale = Math.min(1, maxSide / naturalHeight, maxSide / input.pageWidth);
-  const width = Math.floor(input.pageWidth * scale);
-  const pageHeight = Math.floor(input.pageHeight * scale);
-  const gap = count > 1 ? Math.floor(input.gap * scale) : 0;
+  const pages = input.pages.length ? input.pages : [{ width: 1, height: 1, caption: "" }];
+  const cellWidth = Math.max(...pages.map((page) => page.width));
+  const maxPageWidth = input.maxPageWidth ?? EXAM_WORKING_LEGIBLE_PAGE_WIDTH;
+
+  /** The grid for a given number of columns, at natural size. */
+  const plan = (columns: number) => {
+    const rows: number[][] = [];
+    for (let index = 0; index < pages.length; index += columns) {
+      rows.push(pages.slice(index, index + columns).map((_page, offset) => index + offset));
+    }
+    const rowHeights = rows.map((row) =>
+      Math.max(...row.map((index) => pages[index].height)) + input.captionHeight
+    );
+    const width = columns * cellWidth + (columns - 1) * input.gap;
+    const height =
+      rowHeights.reduce((sum, value) => sum + value, 0) + (rows.length - 1) * input.gap;
+    return { columns, rows, rowHeights, width, height };
+  };
+
+  /*
+   * Not clamped at 1. Ink is stored as vector markup, so drawing a page larger
+   * than its own coordinates costs nothing and loses nothing -- and a sheet's
+   * coordinate width is 900, just under the width handwriting wants. The cap
+   * that matters is the legible width below, which this is then held to.
+   */
+  let best = plan(1);
+  let bestScale = Math.min(maxSide / best.width, maxSide / best.height);
+  for (let columns = 2; columns <= pages.length; columns += 1) {
+    const candidate = plan(columns);
+    const scale = Math.min(maxSide / candidate.width, maxSide / candidate.height);
+    // Strictly wider only: a tie keeps the fewest columns, which keeps the
+    // simplest reading order.
+    if (scale > bestScale + 1e-9) {
+      best = candidate;
+      bestScale = scale;
+    }
+  }
+
+  const scale = Math.min(bestScale, maxPageWidth / cellWidth);
+  const gap = best.columns > 1 || best.rows.length > 1 ? Math.floor(input.gap * scale) : 0;
+  const captionHeight = Math.floor(input.captionHeight * scale);
+  const drawnCellWidth = Math.floor(cellWidth * scale);
+
+  const slots: ExamWorkingSheetSlot[] = new Array(pages.length);
+  let top = 0;
+  best.rows.forEach((row, rowIndex) => {
+    const rowHeight = Math.floor((best.rowHeights[rowIndex] - input.captionHeight) * scale);
+    row.forEach((pageIndex, column) => {
+      const page = pages[pageIndex];
+      const width = Math.floor(page.width * scale);
+      const height = Math.floor(page.height * scale);
+      slots[pageIndex] = {
+        // Centred in its column, so a short crop and a full page share an axis.
+        left: column * (drawnCellWidth + gap) + Math.floor((drawnCellWidth - width) / 2),
+        top: top + captionHeight,
+        width,
+        height,
+        captionTop: top,
+        captionHeight,
+      };
+    });
+    top += captionHeight + rowHeight + gap;
+  });
+
   return {
-    width,
-    height: count * pageHeight + (count - 1) * gap,
-    pageHeight,
-    offsets: Array.from({ length: count }, (_unused, index) => index * (pageHeight + gap)),
+    width: best.columns * drawnCellWidth + (best.columns - 1) * gap,
+    height: Math.max(0, top - gap),
+    scale,
+    slots,
   };
 }
 
@@ -141,11 +244,11 @@ export function examWorkingStackLayout(input: {
 export async function captureExamWorking(input: {
   serialize(): Promise<readonly string[] | null | undefined>;
   save(pages: readonly string[]): Promise<unknown>;
-  rasterize(pages: readonly string[]): Promise<ExamScratchpadSnapshot["png"]>;
+  rasterize(pages: readonly ExamWorkingInkedPage[]): Promise<ExamScratchpadSnapshot["png"]>;
 }): Promise<ExamScratchpadSnapshot> {
   const pages = await input.serialize();
   if (pages == null) return { hasInk: false, ok: false, reason: "not_ready" };
-  const inked = examWorkingPagesWithInk(pages);
+  const inked = examWorkingInkedPages(pages);
   if (inked.length === 0) return { hasInk: false, ok: true };
   // The frozen PNG is submitted even if the separate draft save is offline.
   await input.save(pages).catch(() => undefined);

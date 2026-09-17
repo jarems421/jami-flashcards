@@ -34,6 +34,7 @@ import {
 } from "@/lib/constellation/background";
 import { PHOTO_BACKGROUND_EVENT, readPhotoBackground } from "@/lib/app/photo-background";
 import PhotoBackgroundCard from "@/components/profile/PhotoBackgroundCard";
+import AppFontCard from "@/components/profile/AppFontCard";
 import { TutorialAccountCard } from "@/components/onboarding/TutorialProvider";
 
 function ThemePreferenceCard() {
@@ -413,18 +414,7 @@ export default function ProfilePage() {
       */}
       <ThemePreferenceCard />
       <PhotoBackgroundCard />
-
-      {/* One line, because a setting that moved should say where it went once. */}
-      <p className="app-subtle-panel rounded-xl px-4 py-3 text-xs leading-5 text-text-muted">
-        Study level and subjects moved to{" "}
-        <Link
-          href="/dashboard/tutor/personalise"
-          className="font-semibold text-text-primary underline underline-offset-2"
-        >
-          Personalise Jami
-        </Link>
-        .
-      </p>
+      <AppFontCard />
 
       <TutorialAccountCard />
 

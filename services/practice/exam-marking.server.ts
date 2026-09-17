@@ -261,6 +261,7 @@ export async function runExamQuestionMarking(uid: string, attemptId: string, tok
       : undefined;
     const answerParts = buildSingleQuestionAnswerParts({
       questionId: attempt.questionId, answerText: attempt.answerText,
+      ...(bankQuestion.separateAwardMarks ? { separateAwardMarks: bankQuestion.separateAwardMarks } : {}),
       workingImage: bytes ? { inlineData: { mimeType: "image/png", data: bytes.toString("base64") } } : undefined,
     });
     const marked = await markSingleQuestionAdaptively({

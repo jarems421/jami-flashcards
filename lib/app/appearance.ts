@@ -11,6 +11,13 @@ import {
   setConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
 import { readPanelStyle, savePanelStyle, type PanelStyle } from "@/lib/app/panel-style";
+import {
+  DEFAULT_APP_FONT,
+  isAppFontId,
+  readAppFont,
+  saveAppFont,
+  type AppFontId,
+} from "@/lib/app/app-font";
 
 /**
  * How Jami looks, as one account's choice rather than one device's.
@@ -29,6 +36,8 @@ export type AccountAppearance = {
   sky: boolean;
   skyConstellationId: string;
   panelStyle: PanelStyle;
+  /** The typeface Jami is set in; see `lib/app/app-font.ts`. */
+  font: AppFontId;
   updatedAt: number;
 };
 
@@ -40,6 +49,7 @@ export const DEFAULT_APPEARANCE: AppearanceChoice = {
   sky: false,
   skyConstellationId: "",
   panelStyle: "glass",
+  font: DEFAULT_APP_FONT,
 };
 
 export const APPEARANCE_OWNER_STORAGE_KEY = "jami:appearance-owner";
@@ -64,6 +74,8 @@ export function normalizeAccountAppearance(value: unknown): AccountAppearance | 
     sky: data.sky === true,
     skyConstellationId: typeof data.skyConstellationId === "string" ? data.skyConstellationId.slice(0, 160) : "",
     panelStyle: data.panelStyle === "solid" ? "solid" : "glass",
+    // Accounts saved before the face was a choice simply have Jami's own.
+    font: isAppFontId(data.font) ? data.font : DEFAULT_APP_FONT,
     updatedAt: typeof data.updatedAt === "number" && Number.isFinite(data.updatedAt) ? data.updatedAt : 0,
   };
 }
@@ -74,6 +86,7 @@ export function readDeviceAppearance(): AppearanceChoice {
     sky: readConstellationBackgroundEnabled(),
     skyConstellationId: readConstellationBackgroundConstellationId(),
     panelStyle: readPanelStyle(),
+    font: readAppFont(),
   };
 }
 
@@ -96,6 +109,7 @@ export function applyAppearanceToDevice(choice: AppearanceChoice, ownerId: strin
   }
   if (current.sky !== choice.sky) setConstellationBackgroundEnabled(choice.sky);
   if (current.panelStyle !== choice.panelStyle) savePanelStyle(choice.panelStyle);
+  if (current.font !== choice.font) saveAppFont(choice.font);
   try {
     if (ownerId) window.localStorage.setItem(APPEARANCE_OWNER_STORAGE_KEY, ownerId);
     else window.localStorage.removeItem(APPEARANCE_OWNER_STORAGE_KEY);
@@ -122,8 +136,8 @@ export function resolveSignInAppearance(input: {
   accountCreatedAt: number;
 }): { choice: AppearanceChoice; save: boolean } {
   if (input.remote) {
-    const { theme, sky, skyConstellationId, panelStyle } = input.remote;
-    return { choice: { theme, sky, skyConstellationId, panelStyle }, save: false };
+    const { theme, sky, skyConstellationId, panelStyle, font } = input.remote;
+    return { choice: { theme, sky, skyConstellationId, panelStyle, font }, save: false };
   }
   if (input.deviceOwner === input.userId) return { choice: input.device, save: true };
   if (

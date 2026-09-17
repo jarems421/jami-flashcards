@@ -68,11 +68,11 @@ export const EXAM_SET_TEXT_CATALOGUES: readonly ExamSetTextCatalogue[] = [
   {
     specificationId: "8702",
     version: 1,
-    verified: false,
+    verified: true,
     source:
       "AQA GCSE English Literature (8702) specification sections 3.1.1, 3.1.2, 3.2.1 and 3.2.2, read " +
       "from the published PDF on 2026-09-16. Unseen poetry (3.2.3) sets no text and so has none here. " +
-      "Not yet checked by a person.",
+      "Read against the specification and accepted by the owner on 2026-09-17.",
     texts: [
       ...texts("8702", "1", "Shakespeare", [
         ["Macbeth"],
@@ -186,4 +186,40 @@ export function matchSetTextIn(
 /** The same, against the texts this course may actually offer. */
 export function matchExamSetText(specificationId: string, printed: string): ExamSetText | undefined {
   return matchSetTextIn(servableExamSetTexts(specificationId), printed);
+}
+
+/**
+ * The one text a passage names, or nothing.
+ *
+ * `matchSetTextIn` reads a heading, where whatever it finds is the answer. This
+ * reads a body of text that was never meant to name one thing -- a question's
+ * wording, or a whole region of a page -- and there the first match is not
+ * good enough. A page carrying two titles is a page that does not say which
+ * question is about which, and filing the question under either would hide it
+ * from half the students who study it. Silence is recoverable; a wrong text is
+ * not, because nobody would think to look for it.
+ */
+export function uniqueSetTextIn(
+  candidates: readonly ExamSetText[],
+  passage: string
+): ExamSetText | undefined {
+  const needle = comparable(passage);
+  if (!needle) return undefined;
+  const found = candidates.filter((text) => {
+    const title = comparable(text.label);
+    return title.length >= 4 && needle.includes(title);
+  });
+  if (found.length === 1) return found[0];
+  /*
+   * Several titles, but all of them the same text: the catalogue can hold one
+   * work under more than one entry when two components set it, and that is not
+   * an ambiguity about which book the question is about.
+   */
+  const labels = new Set(found.map((text) => comparable(text.label)));
+  return labels.size === 1 ? found[0] : undefined;
+}
+
+/** The same, against the texts this course may actually offer. */
+export function uniqueExamSetText(specificationId: string, passage: string) {
+  return uniqueSetTextIn(servableExamSetTexts(specificationId), passage);
 }
