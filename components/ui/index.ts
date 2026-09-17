@@ -37,6 +37,8 @@ export { default as ElapsedTime } from "./ElapsedTime";
 export { default as ViewTabs } from "./ViewTabs";
 export type { ViewTabItem } from "./ViewTabs";
 export { default as SectionHeader } from "./SectionHeader";
+export { default as SettingSwitch } from "./SettingSwitch";
+export { default as FormDisclosure } from "./FormDisclosure";
 export { default as Skeleton } from "./Skeleton";
 export { default as SymbolKeyboard } from "./SymbolKeyboard";
 export { default as StatTile } from "./StatTile";

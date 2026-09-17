@@ -235,8 +235,13 @@
   body {
     background-attachment: fixed;
     color: var(--color-text-primary);
+    /*
+      The chosen face, with Jami's own behind it: an `app-font-*` class on the
+      document repoints `--app-font`, so one declaration here sets the whole
+      app rather than every component naming a family of its own.
+    */
     font-family:
-      var(--font-urbanist),
+      var(--app-font, var(--font-urbanist)),
       ui-sans-serif,
       system-ui,
       -apple-system,
@@ -246,6 +251,112 @@
       sans-serif;
     overflow-x: hidden;
     position: relative;
+  }
+
+
+  /*
+    One rule per face the chooser offers. The class is stamped on the document
+    before the first paint, so a student who set Jami in a book serif never
+    sees a frame of the default sans underneath it.
+  */
+  .app-font-urbanist {
+    --app-font: var(--font-urbanist), ui-sans-serif;
+  }
+
+  .app-font-jost {
+    --app-font: var(--font-jost), ui-sans-serif;
+  }
+
+  .app-font-outfit {
+    --app-font: var(--font-outfit), ui-sans-serif;
+  }
+
+  .app-font-manrope {
+    --app-font: var(--font-manrope), ui-sans-serif;
+  }
+
+  .app-font-raleway {
+    --app-font: var(--font-raleway), ui-sans-serif;
+  }
+
+  .app-font-josefin-sans {
+    --app-font: var(--font-josefin-sans), ui-sans-serif;
+  }
+
+  .app-font-questrial {
+    --app-font: var(--font-questrial), ui-sans-serif;
+  }
+
+  .app-font-comfortaa {
+    --app-font: var(--font-comfortaa), ui-sans-serif;
+  }
+
+  .app-font-syne {
+    --app-font: var(--font-syne), ui-sans-serif;
+  }
+
+  .app-font-cormorant-garamond {
+    --app-font: var(--font-cormorant-garamond), ui-serif, Georgia;
+  }
+
+  .app-font-eb-garamond {
+    --app-font: var(--font-eb-garamond), ui-serif, Georgia;
+  }
+
+  .app-font-spectral {
+    --app-font: var(--font-spectral), ui-serif, Georgia;
+  }
+
+  .app-font-literata {
+    --app-font: var(--font-literata), ui-serif, Georgia;
+  }
+
+  .app-font-newsreader {
+    --app-font: var(--font-newsreader), ui-serif, Georgia;
+  }
+
+  .app-font-lora {
+    --app-font: var(--font-lora), ui-serif, Georgia;
+  }
+
+  .app-font-crimson-pro {
+    --app-font: var(--font-crimson-pro), ui-serif, Georgia;
+  }
+
+  .app-font-playfair-display {
+    --app-font: var(--font-playfair-display), ui-serif, Georgia;
+  }
+
+  .app-font-bodoni-moda {
+    --app-font: var(--font-bodoni-moda), ui-serif, Georgia;
+  }
+
+  .app-font-fraunces {
+    --app-font: var(--font-fraunces), ui-serif, Georgia;
+  }
+
+  .app-font-cinzel {
+    --app-font: var(--font-cinzel), ui-serif, Georgia;
+  }
+
+  .app-font-marcellus {
+    --app-font: var(--font-marcellus), ui-serif, Georgia;
+  }
+
+  .app-font-tenor-sans {
+    --app-font: var(--font-tenor-sans), ui-sans-serif;
+  }
+
+  .app-font-forum {
+    --app-font: var(--font-forum), ui-serif, Georgia;
+  }
+
+  .app-font-italiana {
+    --app-font: var(--font-italiana), ui-serif, Georgia;
+  }
+
+  .app-font-gilda-display {
+    --app-font: var(--font-gilda-display), ui-serif, Georgia;
   }
 
   body::before {

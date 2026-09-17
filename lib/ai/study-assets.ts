@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { CardStudySettings } from "@/lib/study/study-modes";
 import type { StudyLearningTask } from "@/lib/study/learning-task";
+import { optionsLookGuessable } from "@/lib/study/mcq-shape";
 export { STUDY_ASSET_PROMPT_VERSION, STUDY_ASSET_SCHEMA_VERSION } from "@/lib/study/study-asset-versions";
 import { STUDY_ASSET_PROMPT_VERSION, STUDY_ASSET_SCHEMA_VERSION } from "@/lib/study/study-asset-versions";
 
@@ -143,10 +144,15 @@ distractors -- the wrong options for multiple choice, and the part that matters 
   - If the answer names a thing, every distractor names a thing of the same kind. Do not answer "which organelle" with three organelles and one process.
   Length is the tell students use to skip the question: a set where the true answer is the long, complete, specific one is guessable by somebody who cannot read the subject, and it is worse than no question at all.
 - Be specific in the wrong options too. A distractor that is vague, hedged, or obviously a non-answer ("none of these", "it varies", "a type of cell") gives the game away as surely as a short one.
+- NEVER let one option restate the question and the others not. If the card's answer opens by repeating the question back ("When a plant cell is placed in pure water, water moves in...") then either every distractor opens with that same clause, or none does and you write the correct option without it ("Water moves in..."). An option that names the question it is answering is the one a student picks without reading the others.
+- All four options must be interchangeable on sight: same opening word class, same tense, same length to within a few words, same level of detail. Read your four options with the answer hidden. If you can still tell which is right, rewrite them.
+- Make the wrong options genuinely tempting. The best distractor is the one a student who half-learned this would defend: the right mechanism with the wrong direction, the right process under the wrong name, the correct effect for the opposite condition. Trivially wrong options waste the question.
 - Give ${MIN_DISTRACTORS} or ${MAX_DISTRACTORS} so the weakest can be discarded.
 - misconceptions must have one entry per distractor, keyed by that distractor's exact text, saying in one sentence what a student was probably thinking of. This is shown to them after they choose, so it must teach the difference, not scold.
 - If you cannot write three genuinely wrong-but-tempting options for this card, return an empty distractors array. An empty list costs the student nothing. A guessable question costs them a wrong idea about what they know.
 - Each mcqVariant needs exactly three distractors and a checked explanation for all four options. Variants must use substantively different misconception sets; shuffling does not make a new variant. A concise correctAnswer is allowed only when it is exactly equivalent to the card answer.
+- correctAnswer is where you match the shape. Write the card's answer the way the three distractors are written -- same length, same opening, no restatement of the question -- while saying exactly and only what the card's answer says. Never narrow it, broaden it or add a claim the card does not make.
+- Every mcqVariant is checked after you return it: any variant whose distractors are not within roughly half to twice the correct option's word count, or where only one option restates the question, is discarded and the card is asked a different way instead. A variant you take care over is worth three you do not.
 
 Respond as: { "assets": [ ... ] }`;
 
@@ -228,7 +234,21 @@ function cleanGapVariants(value: unknown, back: string): NonNullable<StudyAsset[
   return variants;
 }
 
-function cleanMcqVariants(value: unknown, answer: string): NonNullable<StudyAsset["mcqVariants"]> {
+/**
+ * Keep the variants a student could not answer by looking at them.
+ *
+ * The prompt asks for options of a matching shape and says this check exists,
+ * and a model still returns the occasional set where the right answer is the
+ * long one, or the only one that opens by restating the question. Those are
+ * dropped here rather than shown: the card is asked another way, which teaches
+ * nothing but costs nothing, where a guessable question teaches a student that
+ * they know something they do not.
+ */
+function cleanMcqVariants(
+  value: unknown,
+  answer: string,
+  front: string
+): NonNullable<StudyAsset["mcqVariants"]> {
   if (!Array.isArray(value)) return [];
   const variants: NonNullable<StudyAsset["mcqVariants"]> = [];
   for (const raw of value.slice(0, 3)) {
@@ -249,6 +269,7 @@ function cleanMcqVariants(value: unknown, answer: string): NonNullable<StudyAsse
       }
     }
     if (![correctAnswer, ...distractors].every((option) => Boolean(explanations[option]))) continue;
+    if (optionsLookGuessable(front, correctAnswer, distractors)) continue;
     variants.push({ id, correctAnswer, distractors, explanations });
   }
   return variants;
@@ -304,7 +325,7 @@ export function validateStudyAsset(
   const preferredModes = cleanModes(data.preferredModes);
   const suitableModes = cleanModes(data.suitableModes);
   const gapVariants = cleanGapVariants(data.gapVariants, card.back);
-  const mcqVariants = cleanMcqVariants(data.mcqVariants, card.back);
+  const mcqVariants = cleanMcqVariants(data.mcqVariants, card.back, card.front ?? "");
 
   return {
     cardId: card.id,

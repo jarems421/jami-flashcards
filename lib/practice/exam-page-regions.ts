@@ -634,6 +634,33 @@ function carriesQuestionWording(page: PdfPageText) {
   return prose.length >= 2;
 }
 
+/**
+ * Slices of the same page that touch, joined into one.
+ *
+ * A part that borrows its root's stem produces two regions on the page they
+ * share -- the stem, then the part below it -- and drawn as two sheet pages
+ * that is one piece of paper shown as two, with a join across the middle of a
+ * diagram. They are contiguous by construction, so they are one slice.
+ */
+export function mergeAdjacentRegions(regions: QuestionRegion[]): QuestionRegion[] {
+  const merged: QuestionRegion[] = [];
+  for (const region of regions) {
+    const last = merged[merged.length - 1];
+    // A hair of tolerance: the trim that joins a stem to its part lands the
+    // two edges on the same ratio, and floating point does not always agree.
+    if (last && last.page === region.page && region.fromRatio <= last.toRatio + 0.002) {
+      merged[merged.length - 1] = {
+        page: last.page,
+        fromRatio: Math.min(last.fromRatio, region.fromRatio),
+        toRatio: Math.max(last.toRatio, region.toRatio),
+      };
+      continue;
+    }
+    merged.push({ ...region });
+  }
+  return merged;
+}
+
 export function regionsForQuestion(input: {
   label: string;
   starts: QuestionStart[];
@@ -791,6 +818,33 @@ function tariffsIn(text: string, pattern: RegExp) {
     .filter((value) => value >= 1 && value <= MAX_QUESTION_MARKS);
 }
 
+/**
+ * Marks the paper awards beside a question, for something other than the answer.
+ *
+ * AQA English Literature prints `[30 marks] AO4 [4 marks]` under its Section A
+ * questions: thirty for answering, and four more for spelling, punctuation,
+ * vocabulary and sentence structure, assessed across the section and scored
+ * from its own grid of performance descriptors.
+ *
+ * Thirty is therefore the question's tariff and is stored as such -- the bank
+ * is right about that. What was missing is any record that the other four
+ * exist. A student saw "30 marks" with no hint that the paper in front of them
+ * offers thirty-four, and the marker was never told there was an award it was
+ * not being asked to make.
+ *
+ * Read rather than assumed, so a paper that prints no such note gets nothing.
+ */
+const SEPARATE_AWARD = /\bAO4\b[^\[\]]{0,40}?[([]\s*(\d{1,2})\s*marks?\s*[)\]]/i;
+/** Above a handful of marks it is not a technical-accuracy award any more. */
+const MAX_SEPARATE_AWARD_MARKS = 10;
+
+export function readSeparateAwardMarks(text: string): number | null {
+  const match = SEPARATE_AWARD.exec(text);
+  if (!match) return null;
+  const marks = Number(match[1]);
+  return marks >= 1 && marks <= MAX_SEPARATE_AWARD_MARKS ? marks : null;
+}
+
 export function readPrintedTariff(text: string): number | null {
   const worded = tariffsIn(text, WORDED_TARIFF);
   if (worded.length) return Math.max(...worded);
@@ -811,4 +865,64 @@ export function schemeCoversQuestion(schemeText: string, label: string): boolean
   const header = schemeText.search(/Question\s+(?:Working\s+)?Answer\s+Mark/i);
   const table = header >= 0 ? schemeText.slice(header) : schemeText;
   return new RegExp(`(?:^|\\s)${label}(?:\\s*\\([a-z]+\\))?\\s`, "m").test(table);
+}
+
+/**
+ * The most ruled pages one question can be credited with.
+ *
+ * AQA English Language leaves six, which is the largest allowance any paper
+ * read so far prints. The bound exists so a paper whose end matter is missing
+ * or unrecognised cannot hand a student thirty blank sheets.
+ */
+export const MAX_ANSWER_SPACE_PAGES = 8;
+
+/**
+ * How many pages of ruled answer space the board left after a question, that
+ * the crop deliberately does not carry.
+ *
+ * `regionsForQuestion` stops the last question of a paper at the first page
+ * that prints no wording of its own, because a crop is a picture of a question
+ * and six pages of blank lines is not one. That is the right answer for an
+ * image and the wrong one for a surface to write on: those pages are the space
+ * the board allotted, and a student answering on screen should have as much
+ * room as a student answering on paper.
+ *
+ * So the pages are counted rather than cropped. Nothing blank is rendered,
+ * stored or sent for marking; the sheet gives the student that many of its own
+ * continuation pages instead.
+ *
+ * Mid-paper questions score zero, and correctly: their answer space sits
+ * between their own label and the next one, so the crop already contains it.
+ */
+export function answerSpacePagesAfter(input: {
+  label: string;
+  starts: QuestionStart[];
+  pages: PdfPageText[];
+}): number {
+  const index = input.starts.findIndex((start) => start.label === input.label);
+  if (index === -1 || input.starts[index + 1]) return 0;
+  const start = input.starts[index];
+  const after = input.pages
+    .filter((page) => page.page > start.page)
+    .sort((left, right) => left.page - right.page);
+
+  /*
+   * Walked exactly as the crop walks it, so the two agree on where the
+   * question's own pages stop. A page the crop took is not also answer space.
+   */
+  let index_ = 0;
+  while (
+    index_ < after.length &&
+    endMatterTop(after[index_]) === null &&
+    carriesQuestionWording(after[index_])
+  ) {
+    index_ += 1;
+  }
+
+  let count = 0;
+  for (; index_ < after.length && count < MAX_ANSWER_SPACE_PAGES; index_ += 1) {
+    if (endMatterTop(after[index_]) !== null) break;
+    count += 1;
+  }
+  return count;
 }

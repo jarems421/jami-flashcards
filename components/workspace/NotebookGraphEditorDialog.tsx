@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import NotebookGraphView from "@/components/workspace/NotebookGraphView";
+import FormDisclosure from "@/components/ui/FormDisclosure";
+import SettingSwitch from "@/components/ui/SettingSwitch";
 import {
   Button,
   Dialog,
@@ -43,6 +45,13 @@ const ANGLE_OPTIONS = [
 ] as const;
 /** Settings for a field of maths: iPad autocorrect turns "sinx" into "since". */
 const MATH_FIELD = { autoCapitalize: "off", autoCorrect: "off", autoComplete: "off", spellCheck: false } as const;
+/** Small enough that a from-and-to pair fits on one line without crowding. */
+const COMPACT_FIELD = "px-3 py-2 text-sm";
+/** The two ranges, and the two ends of each. */
+const RANGE_ROWS = [
+  { axis: "x", from: "xMin", to: "xMax" },
+  { axis: "y", from: "yMin", to: "yMax" },
+] as const;
 
 type Equation = { id: string; expression: string; color: string };
 
@@ -63,12 +72,57 @@ export default function NotebookGraphEditorDialog({ open, ...props }: Props) {
   return open ? <GraphEditor {...props} /> : null;
 }
 
-function OptionGroup({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * One labelled setting: what it is on the left, the control for it on the right.
+ *
+ * These were headed groups, each a small title above its own stack -- so nine
+ * fields came to three headings and three stacks, and the panel read as a form
+ * to be worked through rather than a short list of things that can be changed.
+ * Reading across a row is quicker than reading down a column, and it is what
+ * the rest of the app's settings surfaces already do.
+ *
+ * Stacked below the small breakpoint, where there is no width for two columns
+ * and a squeezed label is worse than a plain one above.
+ */
+function SettingRow({
+  label,
+  htmlFor,
+  hint,
+  children,
+}: {
+  label: string;
+  /** Set when a single control owns the row, so the label points at it. */
+  htmlFor?: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  const heading = (
+    <>
+      <span className="block text-sm font-semibold text-text-primary">{label}</span>
+      {hint ? <span className="mt-0.5 block text-xs leading-4 text-text-muted">{hint}</span> : null}
+    </>
+  );
+
   return (
-    <div className="space-y-2">
-      <p className="text-xs font-semibold text-text-secondary">{title}</p>
-      {children}
+    <div className="grid gap-1.5 sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:items-start sm:gap-4">
+      {htmlFor ? (
+        <label htmlFor={htmlFor} className="sm:pt-2">
+          {heading}
+        </label>
+      ) : (
+        <div className="sm:pt-2">{heading}</div>
+      )}
+      <div className="min-w-0 space-y-2">{children}</div>
     </div>
+  );
+}
+
+/** The axis a field belongs to, in the italic the graph itself uses. */
+function AxisMark({ children }: { children: ReactNode }) {
+  return (
+    <span aria-hidden="true" className="w-3 shrink-0 text-sm font-semibold italic text-text-secondary">
+      {children}
+    </span>
   );
 }
 
@@ -82,6 +136,7 @@ function OptionGroup({ title, children }: { title: string; children: ReactNode }
  * is typed until the student moves it. Everything else waits under More options.
  */
 function GraphEditor({ graph, onCancel, onSave }: Omit<Props, "open">) {
+  const titleFieldId = useId();
   const [equations, setEquations] = useState<Equation[]>(() => {
     const rows =
       graph?.series.flatMap((entry) =>
@@ -180,6 +235,25 @@ function GraphEditor({ graph, onCancel, onSave }: Omit<Props, "open">) {
       : series.length === 0
         ? "Type an equation to see its graph."
         : "";
+
+  /**
+   * What is set inside, for the closed section to show.
+   *
+   * A section folded away has to say whether anything in it has been touched,
+   * or the only way to find out is to open it -- which is the cost the folding
+   * was meant to save.
+   */
+  const optionsSummary =
+    [
+      title.trim() ? "Title" : null,
+      parsedPoints.points.length > 0
+        ? `${parsedPoints.points.length} point${parsedPoints.points.length === 1 ? "" : "s"}`
+        : null,
+      chosenView ? "Set range" : null,
+      showGrid ? null : "No grid",
+    ]
+      .filter(Boolean)
+      .join(" · ") || "Nothing set";
 
   const updateEquation = (id: string, expression: string) =>
     setEquations((rows) => rows.map((row) => (row.id === id ? { ...row, expression } : row)));
@@ -301,100 +375,114 @@ function GraphEditor({ graph, onCancel, onSave }: Omit<Props, "open">) {
               />
             ) : null}
 
-            <details className="group rounded-xl border border-[var(--color-border)]">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-text-primary [&::-webkit-details-marker]:hidden">
-                More options
-                <span aria-hidden="true" className="text-text-muted transition group-open:rotate-180">
-                  ⌄
-                </span>
-              </summary>
-              <div className="space-y-5 border-t border-[var(--color-border)] px-4 pb-4 pt-4">
-                <OptionGroup title="Title">
+            <FormDisclosure title="More options" summary={optionsSummary}>
+              <div className="space-y-4">
+                <SettingRow label="Title" htmlFor={titleFieldId}>
                   <Input
+                    id={titleFieldId}
                     aria-label="Graph title"
                     value={title}
                     maxLength={80}
                     placeholder="Optional"
+                    className={COMPACT_FIELD}
                     onChange={(event) => setTitle(event.target.value)}
                   />
-                </OptionGroup>
+                </SettingRow>
 
-                <OptionGroup title="Plot points">
-                  <Textarea
-                    {...MATH_FIELD}
-                    aria-label="Points, one x, y pair to a line"
-                    value={pointsText}
-                    rows={3}
-                    placeholder={"1, 2\n3, 5"}
-                    onChange={(event) => setPointsText(event.target.value)}
-                  />
-                  {parsedPoints.invalid.length > 0 ? (
-                    <p role="alert" className="text-xs leading-5 text-[var(--color-error-mark)]">
-                      Write each point as x, y on its own line.
-                    </p>
-                  ) : null}
-                  <label className="flex items-center gap-2 text-sm text-text-secondary">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 accent-accent"
-                      checked={joinPoints}
-                      onChange={(event) => setJoinPoints(event.target.checked)}
-                    />
-                    Join the points with a line
-                  </label>
-                </OptionGroup>
-
-                <OptionGroup title="Axes">
-                  {/* Keyed to the view, so moving the graph refreshes them; applied when a box is left. */}
-                  <div key={`${view.xMin}:${view.xMax}:${view.yMin}:${view.yMax}`} className="grid grid-cols-2 gap-2">
-                    {(
-                      [
-                        ["xMin", "x from"],
-                        ["xMax", "x to"],
-                        ["yMin", "y from"],
-                        ["yMax", "y to"],
-                      ] as const
-                    ).map(([key, label]) => (
-                      <Input
-                        key={key}
-                        {...MATH_FIELD}
-                        aria-label={label}
-                        placeholder={label}
-                        inputMode="decimal"
-                        defaultValue={formatAxis(view[key])}
-                        onBlur={(event) => setAxis(key, event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") setAxis(key, event.currentTarget.value);
-                        }}
-                      />
-                    ))}
+                <SettingRow label="Axis labels">
+                  <div className="flex items-center gap-2">
+                    <AxisMark>x</AxisMark>
                     <Input
                       aria-label="x-axis label"
-                      placeholder="x-axis label"
                       value={xLabel}
                       maxLength={40}
+                      containerClassName="min-w-0 flex-1"
+                      className={COMPACT_FIELD}
                       onChange={(event) => setXLabel(event.target.value)}
                     />
+                    <AxisMark>y</AxisMark>
                     <Input
                       aria-label="y-axis label"
-                      placeholder="y-axis label"
                       value={yLabel}
                       maxLength={40}
+                      containerClassName="min-w-0 flex-1"
+                      className={COMPACT_FIELD}
                       onChange={(event) => setYLabel(event.target.value)}
                     />
                   </div>
-                  <label className="flex items-center gap-2 text-sm text-text-secondary">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 accent-accent"
-                      checked={showGrid}
-                      onChange={(event) => setShowGrid(event.target.checked)}
+                </SettingRow>
+
+                <SettingRow label="Range" hint={chosenView ? undefined : "Fitted to the graph"}>
+                  {/*
+                   * Keyed to the view, so moving the graph refreshes them; applied when a box
+                   * is left. The from-and-to pair replaces four boxes that said which was
+                   * which only in their placeholders -- which vanish the moment a number is
+                   * typed, leaving a grid of anonymous fields.
+                   */}
+                  <div key={`${view.xMin}:${view.xMax}:${view.yMin}:${view.yMax}`} className="space-y-2">
+                    {RANGE_ROWS.map(({ axis, from, to }) => (
+                      <div key={axis} className="flex items-center gap-2">
+                        <AxisMark>{axis}</AxisMark>
+                        <Input
+                          {...MATH_FIELD}
+                          aria-label={`${axis} from`}
+                          inputMode="decimal"
+                          defaultValue={formatAxis(view[from])}
+                          containerClassName="min-w-0 flex-1"
+                          className={COMPACT_FIELD}
+                          onBlur={(event) => setAxis(from, event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") setAxis(from, event.currentTarget.value);
+                          }}
+                        />
+                        <span aria-hidden="true" className="shrink-0 text-xs text-text-muted">
+                          to
+                        </span>
+                        <Input
+                          {...MATH_FIELD}
+                          aria-label={`${axis} to`}
+                          inputMode="decimal"
+                          defaultValue={formatAxis(view[to])}
+                          containerClassName="min-w-0 flex-1"
+                          className={COMPACT_FIELD}
+                          onBlur={(event) => setAxis(to, event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") setAxis(to, event.currentTarget.value);
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </SettingRow>
+
+                <SettingSwitch label="Grid lines" checked={showGrid} onChange={setShowGrid} />
+
+                <div className="border-t border-[var(--color-border)] pt-4">
+                  <SettingRow label="Points" hint="One x, y pair to a line">
+                    <Textarea
+                      {...MATH_FIELD}
+                      aria-label="Points, one x, y pair to a line"
+                      value={pointsText}
+                      rows={3}
+                      placeholder={"1, 2\n3, 5"}
+                      className={COMPACT_FIELD}
+                      onChange={(event) => setPointsText(event.target.value)}
                     />
-                    Grid lines
-                  </label>
-                </OptionGroup>
+                    {parsedPoints.invalid.length > 0 ? (
+                      <p role="alert" className="text-xs leading-5 text-[var(--color-error-mark)]">
+                        Write each point as x, y on its own line.
+                      </p>
+                    ) : null}
+                    <SettingSwitch
+                      label="Join with a line"
+                      checked={joinPoints}
+                      onChange={setJoinPoints}
+                      className="-ml-2"
+                    />
+                  </SettingRow>
+                </div>
               </div>
-            </details>
+            </FormDisclosure>
           </div>
 
           <div className="space-y-2 md:sticky md:top-0 md:self-start">

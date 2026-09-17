@@ -7,7 +7,8 @@ export type FeatureFlagKey =
   | "enableTutorPersonalisation"
   | "enableLearnerProfile"
   | "enableFlashcardReviewEvents"
-  | "enableStudyActions";
+  | "enableStudyActions"
+  | "enableRevisionPlans";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
@@ -45,6 +46,13 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    * recommendations can be taken off the home page without touching Tutor.
    */
   enableStudyActions: true,
+  /*
+   * Revision plans: the student's own timetable, filled by the Learning
+   * Engine. On, with the plan living inside Tutor and shown at the top of
+   * Today once a student has made one -- so nothing appears for anybody who
+   * has not asked for it. A public override still removes the surface.
+   */
+  enableRevisionPlans: true,
 };
 
 /**
@@ -64,6 +72,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableLearnerProfile: process.env.NEXT_PUBLIC_ENABLE_LEARNER_PROFILE,
   enableFlashcardReviewEvents: process.env.NEXT_PUBLIC_ENABLE_FLASHCARD_REVIEW_EVENTS,
   enableStudyActions: process.env.NEXT_PUBLIC_ENABLE_STUDY_ACTIONS,
+  enableRevisionPlans: process.env.NEXT_PUBLIC_ENABLE_REVISION_PLANS,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -88,4 +97,5 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableLearnerProfile: isFeatureEnabled("enableLearnerProfile"),
   enableFlashcardReviewEvents: isFeatureEnabled("enableFlashcardReviewEvents"),
   enableStudyActions: isFeatureEnabled("enableStudyActions"),
+  enableRevisionPlans: isFeatureEnabled("enableRevisionPlans"),
 };

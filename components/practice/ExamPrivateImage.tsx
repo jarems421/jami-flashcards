@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { acquireCachedImageUrl } from "@/lib/practice/exam-private-image-cache";
 import { auth } from "@/services/firebase/client";
 
 /**
@@ -20,6 +21,11 @@ export default function ExamPrivateImage({
   className = "",
   imageClassName = "",
   fallback,
+  fill = false,
+  width,
+  height,
+  cache = false,
+  onReady,
 }: {
   path: string;
   alt: string;
@@ -31,6 +37,33 @@ export default function ExamPrivateImage({
    * with a readable alternative -- a mark scheme page that also exists as text.
    */
   fallback?: ReactNode;
+  /**
+   * Stretched to fill a positioned parent that already has the right shape,
+   * rather than laid out by its own width.
+   *
+   * This is how a page of the paper is drawn under an ink layer: the sheet
+   * decides the page's size from the asset's own dimensions, and the image has
+   * to land on exactly that box or the writing sits somewhere the print is not.
+   */
+  fill?: boolean;
+  /**
+   * The image's own pixel size, when it is known before the bytes arrive.
+   *
+   * Without it the placeholder has to guess, and it guessed 4:3 -- so every
+   * page of a paper, which is nothing like 4:3, jumped to its real height the
+   * moment it loaded and took the page under it along.
+   */
+  width?: number;
+  height?: number;
+  /**
+   * Kept for the life of the tab, so the same image is not fetched twice.
+   *
+   * For pages of the paper, which a student turns back and forth through while
+   * answering. Not for one-off evidence -- a frozen working image is looked at
+   * once and should not sit in memory afterwards.
+   */
+  cache?: boolean;
+  onReady?(): void;
 }) {
   const [url, setUrl] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -45,14 +78,27 @@ export default function ExamPrivateImage({
 
   useEffect(() => {
     let active = true;
+    const load = async () => {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("image_unavailable");
+      const response = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error("image_unavailable");
+      return response.blob();
+    };
+
+    if (cache) {
+      const held = acquireCachedImageUrl(path, load);
+      void held.url
+        .then((value) => active && setUrl(value))
+        .catch(() => active && setFailedAttempt(attempt));
+      return () => {
+        active = false;
+        held.release();
+      };
+    }
+
     let objectUrl = "";
-    void auth.currentUser
-      ?.getIdToken()
-      .then((token) => fetch(path, { headers: { Authorization: `Bearer ${token}` } }))
-      .then((response) => {
-        if (!response?.ok) throw new Error("image_unavailable");
-        return response.blob();
-      })
+    void load()
       .then((blob) => {
         objectUrl = URL.createObjectURL(blob);
         if (active) setUrl(objectUrl);
@@ -63,7 +109,7 @@ export default function ExamPrivateImage({
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attempt, path]);
+  }, [attempt, cache, path]);
 
   if (failed && fallback) return <>{fallback}</>;
   if (failed) {
@@ -73,11 +119,15 @@ export default function ExamPrivateImage({
      * offers the one thing that fixes that, instead of a dead end.
      */
     return (
-      <div className={`rounded-2xl bg-[var(--color-glass-subtle)] p-3 ${className}`}>
+      <div
+        className={`grid place-items-center gap-2 bg-[var(--color-glass-subtle)] p-3 text-center ${
+          fill ? "absolute inset-0" : "rounded-2xl"
+        } ${className}`}
+      >
         <p className="text-sm text-text-muted">This image could not be loaded.</p>
         <button
           type="button"
-          className="mt-2 text-sm font-medium text-accent underline-offset-2 hover:underline"
+          className="text-sm font-medium text-accent underline-offset-2 hover:underline"
           onClick={() => setAttempt((value) => value + 1)}
         >
           Try again
@@ -86,7 +136,15 @@ export default function ExamPrivateImage({
     );
   }
   if (!url) {
-    return <div className={`aspect-[4/3] animate-pulse rounded-2xl bg-[var(--color-glass-subtle)] ${className}`} />;
+    return (
+      <div
+        aria-hidden="true"
+        className={`animate-pulse bg-[var(--color-glass-subtle)] ${
+          fill ? "absolute inset-0" : width && height ? "rounded-2xl" : "min-h-40 rounded-2xl"
+        } ${className}`}
+        style={fill || !width || !height ? undefined : { aspectRatio: `${width} / ${height}` }}
+      />
+    );
   }
   return (
     // A blob URL from the session-authorised route, so next/image cannot help.
@@ -94,7 +152,12 @@ export default function ExamPrivateImage({
     <img
       src={url}
       alt={alt}
-      className={`h-auto w-full rounded-2xl object-contain ${className} ${imageClassName}`}
+      onLoad={onReady}
+      className={
+        fill
+          ? `absolute inset-0 h-full w-full ${className} ${imageClassName}`
+          : `h-auto w-full object-contain ${className} ${imageClassName}`
+      }
     />
   );
 }

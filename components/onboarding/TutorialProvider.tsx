@@ -53,6 +53,13 @@ import {
 } from "@/services/profile/tutorial";
 import { createOnboardingStarIfMissing } from "@/services/constellation/stars";
 import { useFirstNight } from "@/components/onboarding/FirstNightProvider";
+import ConstellationStar from "@/components/constellation/ConstellationStar";
+import {
+  DrawnLines,
+  Sparkle,
+  makeFirstNightStar,
+} from "@/components/onboarding/FirstNightSky";
+import { firstNightDiscoveries } from "@/lib/onboarding/first-night";
 
 const MISSION_COUNT = TUTORIAL_MISSIONS.length;
 
@@ -618,28 +625,126 @@ export function TutorialResumeCard() {
   );
 }
 
+/**
+ * First night, in Account: the walkthrough as the sky it actually draws.
+ *
+ * It used to be a heading, a sentence and a button -- a settings row for
+ * something that is not a setting. The tour's whole promise is that real work
+ * lights a real star, so the card shows that promise: the constellation's
+ * shape faint behind it, the student's own stars lit where they have been, and
+ * the places still dark. Someone who has never run it sees the shape they
+ * would be filling in; someone part way sees exactly how far they got.
+ *
+ * It reads First night's own state rather than the retired mission progress,
+ * because that is what the button now opens and what the stars belong to.
+ */
 export function TutorialAccountCard() {
   const tutorial = useTutorial();
+  const firstNight = useFirstNight();
   if (!tutorial.ready) return null;
+
+  const state = firstNight.state;
+  const discoveries = firstNightDiscoveries({ examReady: state?.examReady ?? false });
+  const lit = state?.lit ?? [];
+  const litCount = discoveries.filter((discovery) => lit.includes(discovery.id)).length;
+  const complete = litCount === discoveries.length;
+  const started = Boolean(state) && (litCount > 0 || state?.stage !== "welcome");
+
+  const points = discoveries.map(({ x, y }) => ({ x, y }));
+  const allPairs = discoveries
+    .slice(1)
+    .map((_, index) => [index, index + 1] as [number, number]);
+  /* Only between two lit stars: a line to nowhere would claim progress that is not there. */
+  const pairs = allPairs.filter(
+    ([a, b]) => lit.includes(discoveries[a].id) && lit.includes(discoveries[b].id)
+  );
+
   return (
     <Card padding="lg">
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+          <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
             Jami walkthrough
           </div>
-          <h2 className="mt-2 text-lg font-semibold text-text-primary">
-            First night
+          <h2 className="mt-1.5 text-lg font-semibold text-text-primary">
+            {complete ? "Your first constellation is complete" : "First night"}
           </h2>
-          <p className="mt-2 text-sm leading-6 text-text-secondary">
-            A short tour of where everything lives. Each place you visit lights
-            a star in your first constellation.
-          </p>
         </div>
+        <span className="app-chip shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs text-text-secondary">
+          {litCount} of {discoveries.length} lit
+        </span>
+      </div>
+
+      <p className="mt-2 max-w-prose text-sm leading-6 text-text-secondary">
+        A short tour of where everything lives. Each place you visit lights a
+        star in your first constellation.
+      </p>
+
+      {/*
+        The same sky the tour draws on Today, so finding it here is recognising
+        it rather than meeting a second picture of the same thing.
+      */}
+      <div
+        className="fn-first-sky"
+        role="img"
+        aria-label={`Your first constellation: ${litCount} of ${discoveries.length} stars lit`}
+      >
+        <DrawnLines ghost points={points} pairs={allPairs} />
+        {pairs.length ? <DrawnLines points={points} pairs={pairs} delay={0} step={0} /> : null}
+        {discoveries.map((discovery) =>
+          lit.includes(discovery.id) ? (
+            <div key={discovery.id} className="fn-star-wrap">
+              <ConstellationStar
+                star={makeFirstNightStar(`account-first-night-${discovery.id}`, discovery.x, discovery.y, 3.4, 1)}
+                variant="preview"
+                visualSize={30}
+              />
+            </div>
+          ) : (
+            <span
+              key={discovery.id}
+              className="fn-unlit"
+              style={{ left: `${discovery.x}%`, top: `${discovery.y}%` }}
+            >
+              <Sparkle size={15} />
+            </span>
+          )
+        )}
+      </div>
+
+      {/* What each star stands for, so the shape above is a list as well as a picture. */}
+      <ul className="mt-3 flex flex-wrap gap-1.5">
+        {discoveries.map((discovery) => {
+          const isLit = lit.includes(discovery.id);
+          return (
+            <li
+              key={discovery.id}
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-2xs leading-4 transition duration-fast ${
+                isLit
+                  ? "border-[var(--color-accent)] bg-[var(--color-accent-muted)] text-text-primary"
+                  : "border-[var(--color-border)] text-text-muted"
+              }`}
+            >
+              <span className={isLit ? "text-[var(--color-accent)]" : "text-text-muted opacity-60"}>
+                <Sparkle size={9} />
+              </span>
+              {discovery.title}
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button variant="secondary" onClick={tutorial.start}>
-          {tutorial.progress.status === "idle" ? "Start walkthrough" : "Replay walkthrough"}
+          {started ? "Walk it again" : "Begin first night"}
         </Button>
+        {started ? (
+          <p className="text-xs leading-5 text-text-muted">
+            Starting again keeps every star you have already lit.
+          </p>
+        ) : null}
       </div>
     </Card>
   );
 }
+

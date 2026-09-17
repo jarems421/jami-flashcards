@@ -5,6 +5,7 @@ import {
   CONSTELLATION_BACKGROUND_EXCLUDED_PATHS,
   CONSTELLATION_BACKGROUND_STORAGE_KEY,
 } from "@/lib/constellation/background";
+import { APP_FONT_STORAGE_KEY, APP_FONT_CLASS_NAMES } from "@/lib/app/app-font";
 import {
   PANEL_STYLE_STORAGE_KEY,
   SOLID_PANELS_CLASS_NAME,
@@ -171,7 +172,11 @@ export const APP_THEME_BOOTSTRAP_SCRIPT = `(function(){try{var c=${JSON.stringif
   CONSTELLATION_BACKGROUND_STORAGE_KEY
 )})==="true"&&s.getItem(${JSON.stringify(
   CONSTELLATION_BACKGROUND_CRASH_MARKER_STORAGE_KEY
-)})!=="true";if(s.getItem(${JSON.stringify(
+)})!=="true";var f=s.getItem(${JSON.stringify(
+  APP_FONT_STORAGE_KEY
+)});if(f&&${JSON.stringify(
+  APP_FONT_CLASS_NAMES
+)}.indexOf("app-font-"+f)>=0)d.classList.add("app-font-"+f);if(s.getItem(${JSON.stringify(
   PANEL_STYLE_STORAGE_KEY
 )})==="solid")d.classList.add(${JSON.stringify(
   SOLID_PANELS_CLASS_NAME

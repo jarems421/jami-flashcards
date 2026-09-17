@@ -85,6 +85,8 @@ export function projectExamSessionQuestion(
     origin: question.origin,
     provenance: question.provenance,
     contentVersion: question.contentVersion,
+    ...(question.answerSpacePages ? { answerSpacePages: question.answerSpacePages } : {}),
+    ...(question.separateAwardMarks ? { separateAwardMarks: question.separateAwardMarks } : {}),
     topicIds: question.topicIds ?? [],
     conceptIds: question.conceptIds ?? [],
     ...(question.commandWord ? { commandWord: question.commandWord } : {}),

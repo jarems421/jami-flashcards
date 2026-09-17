@@ -19,7 +19,11 @@ import {
 } from "@/lib/practice/exam-extraction-prompt";
 import { parseJsonObject } from "@/services/ai/practice-paper-generation.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
-import { type PdfPageText, type QuestionRegion } from "@/lib/practice/exam-page-regions";
+import { mergeAdjacentRegions, type PdfPageText, type QuestionRegion } from "@/lib/practice/exam-page-regions";
+import {
+  EXAM_SHEET_MAX_PRINTED_PAGES,
+  examSheetPageAssetId,
+} from "@/lib/practice/exam-question-sheet";
 import {
   buildExamQuestionsFromExtraction,
   summariseExamExtraction,
@@ -162,7 +166,7 @@ function pdfSource(bytes: Buffer) {
 }
 
 /** The text layer with positions, which is what decides question boundaries. */
-async function readPageText(bytes: Buffer): Promise<PdfPageText[]> {
+export async function readPageText(bytes: Buffer): Promise<PdfPageText[]> {
   const pdfjs = await loadPdfJs();
   const task = pdfjs.getDocument(pdfSource(bytes));
   const document = await task.promise;
@@ -188,42 +192,165 @@ async function readPageText(bytes: Buffer): Promise<PdfPageText[]> {
 }
 
 /**
+ * How finely a page of the paper is rendered.
+ *
+ * The sheet scale is what a student writes on, so it is the one that has to
+ * survive being zoomed: a page drawn at 1.7 and then enlarged on a retina
+ * tablet is upscaled before it reaches the glass, and the printed rules and
+ * the small type go soft exactly where a diagram has to be read closely. 2.4
+ * puts an A4 page at about 1430 by 2020, which a 2x screen can show at full
+ * width without inventing a pixel.
+ *
+ * The stitched extract stays where it was. It is read by a model rather than
+ * an eye, and every pixel of it is paid for on the wire at every marking.
+ */
+const SHEET_PAGE_SCALE = 2.4;
+const QUESTION_EXTRACT_SCALE = 1.7;
+
+/**
+ * How much of a page a slice has to be before it is a page of its own.
+ *
+ * A question that ends near the foot of a page takes the top of the next one
+ * with it -- the board's headroom above the following question number, which
+ * is a couple of centimetres of margin and the last of the answer lines. As
+ * part of a stitched picture that is invisible. As a *page of the sheet* it is
+ * a two-centimetre strip a student is invited to write on, and nearly every
+ * maths question has one.
+ *
+ * So a slice under a fifth of its page joins the slice before it, and the two
+ * are drawn as one sheet page. Nothing is discarded -- the strip is still
+ * there, under the page it continues -- and a question stops claiming to be
+ * two pages when it is one page and an offcut.
+ */
+const SHEET_MIN_PAGE_RATIO = 0.2;
+
+/**
  * A question's own slice of the paper, rather than the whole page it sits on.
  *
  * Rendering the page and cropping it keeps the board's own typesetting -- the
  * diagrams, the answer lines, the layout a student is expected to read -- while
  * excluding the questions either side of it.
+ *
+ * Two things come out of one render. The stitched extract is the question as a
+ * single image, which is what a marker is sent and what every layout before
+ * the writable sheet displayed. The pages are those same slices kept apart,
+ * one image per piece of paper, which is what a student writes on: a page
+ * break is then a page break rather than a seam across a very tall picture.
+ *
+ * Each page of the PDF is rendered once however many slices fall on it,
+ * because a part that carries its root's stem takes two off the page they
+ * share.
  */
-async function renderRegions(bytes: Buffer, regions: QuestionRegion[]) {
+export async function renderQuestionSheet(bytes: Buffer, regions: QuestionRegion[]) {
+  const merged = mergeAdjacentRegions(regions);
+  if (merged.length === 0) throw new Error("The question has no page region to render.");
   const pdfjs = await loadPdfJs();
   const task = pdfjs.getDocument(pdfSource(bytes));
   const document = await task.promise;
   try {
+    const rendered = new Map<number, Canvas>();
     const slices: Array<{ canvas: Canvas; top: number; height: number }> = [];
-    for (const region of regions) {
+    for (const region of merged) {
       if (region.page < 1 || region.page > document.numPages) throw new Error("Question page is outside the PDF.");
-      const page = await document.getPage(region.page);
-      const viewport = page.getViewport({ scale: 1.7 });
-      const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
-      const context = canvas.getContext("2d");
-      await page.render({ canvas: canvas as unknown as HTMLCanvasElement, canvasContext: context as unknown as CanvasRenderingContext2D, viewport }).promise;
-      const top = Math.floor(region.fromRatio * canvas.height);
-      const height = Math.max(1, Math.ceil((region.toRatio - region.fromRatio) * canvas.height));
-      slices.push({ canvas, top, height });
+      let canvas = rendered.get(region.page);
+      if (!canvas) {
+        const page = await document.getPage(region.page);
+        const viewport = page.getViewport({ scale: SHEET_PAGE_SCALE });
+        canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+        const context = canvas.getContext("2d");
+        /*
+         * White under the page before anything is drawn on it.
+         *
+         * A fresh canvas is transparent and a PDF page paints only its own
+         * marks, so everywhere the board left blank came out transparent --
+         * which a viewer shows as whatever sits behind it, and which fades to
+         * nothing under a rounded corner or a soft page shadow.
+         */
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvas: canvas as unknown as HTMLCanvasElement, canvasContext: context as unknown as CanvasRenderingContext2D, viewport }).promise;
+        rendered.set(region.page, canvas);
+      }
+      const top = Math.max(0, Math.min(canvas.height - 1, Math.round(region.fromRatio * canvas.height)));
+      const bottom = Math.max(top + 1, Math.min(canvas.height, Math.round(region.toRatio * canvas.height)));
+      slices.push({ canvas, top, height: bottom - top });
     }
-    if (slices.length === 0) throw new Error("The question has no page region to render.");
-    const width = Math.max(...slices.map((slice) => slice.canvas.width));
-    const totalHeight = slices.reduce((sum, slice) => sum + slice.height, 0);
+
+    /*
+     * Slices grouped into the pages a student actually turns between. A slice
+     * too short to be a page joins the one before it, or the one after it when
+     * it is the first thing on the sheet -- a question whose stem begins in the
+     * last inch of a page opens on that inch, and it belongs to the page its
+     * wording continues onto.
+     */
+    const groups: Array<typeof slices> = [];
+    for (const slice of slices) {
+      const substantial = slice.height >= slice.canvas.height * SHEET_MIN_PAGE_RATIO;
+      if (!substantial && groups.length > 0) {
+        groups[groups.length - 1].push(slice);
+        continue;
+      }
+      groups.push([slice]);
+    }
+    // A short opening slice has nothing before it to join, so it waits for the
+    // next page and is merged forward here.
+    if (groups.length > 1) {
+      const first = groups[0];
+      if (first.length === 1 && first[0].height < first[0].canvas.height * SHEET_MIN_PAGE_RATIO) {
+        groups[1].unshift(...groups.shift()!);
+      }
+    }
+
+    const pages = groups.slice(0, EXAM_SHEET_MAX_PRINTED_PAGES).map((group) => {
+      const width = Math.max(...group.map((slice) => slice.canvas.width));
+      const height = group.reduce((total, slice) => total + slice.height, 0);
+      const page = createCanvas(width, height);
+      const context = page.getContext("2d");
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, width, height);
+      let offset = 0;
+      for (const slice of group) {
+        context.drawImage(
+          slice.canvas,
+          0, slice.top, slice.canvas.width, slice.height,
+          Math.round((width - slice.canvas.width) / 2), offset, slice.canvas.width, slice.height
+        );
+        offset += slice.height;
+      }
+      return { bytes: page.toBuffer("image/png"), width: page.width, height: page.height };
+    });
+
+    /*
+     * The stitch, at the scale a marker reads. Slices are centred rather than
+     * left-aligned: a paper whose pages are not all one width used to stack
+     * them against the left edge, which put a white step down one side of the
+     * question and moved the printed margin from page to page.
+     */
+    const ratio = QUESTION_EXTRACT_SCALE / SHEET_PAGE_SCALE;
+    const scaled = slices.map((slice) => ({
+      ...slice,
+      drawnWidth: Math.max(1, Math.round(slice.canvas.width * ratio)),
+      drawnHeight: Math.max(1, Math.round(slice.height * ratio)),
+    }));
+    const width = Math.max(...scaled.map((slice) => slice.drawnWidth));
+    const totalHeight = scaled.reduce((sum, slice) => sum + slice.drawnHeight, 0);
     const output = createCanvas(width, totalHeight);
     const context = output.getContext("2d");
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, width, totalHeight);
     let offset = 0;
-    for (const slice of slices) {
-      context.drawImage(slice.canvas, 0, slice.top, slice.canvas.width, slice.height, 0, offset, slice.canvas.width, slice.height);
-      offset += slice.height;
+    for (const slice of scaled) {
+      context.drawImage(
+        slice.canvas,
+        0, slice.top, slice.canvas.width, slice.height,
+        Math.round((width - slice.drawnWidth) / 2), offset, slice.drawnWidth, slice.drawnHeight
+      );
+      offset += slice.drawnHeight;
     }
-    return { bytes: output.toBuffer("image/png"), width: output.width, height: output.height };
+    return {
+      extract: { bytes: output.toBuffer("image/png"), width: output.width, height: output.height },
+      pages,
+    };
   } finally { await task.destroy(); }
 }
 
@@ -467,9 +594,12 @@ export async function renderIngestionAsset(
   if (!item) return state;
   const bucket = getAdminStorageBucket();
   const paperBytes = await sourceBytes(state.paperStoragePath);
-  const rendered = item.regions.length
-    ? await renderRegions(paperBytes, item.regions)
-    : await renderPage(paperBytes, item.page);
+  const sheet = item.regions.length
+    ? await renderQuestionSheet(paperBytes, item.regions)
+    : await (async () => {
+        const whole = await renderPage(paperBytes, item.page);
+        return { extract: whole, pages: [whole] };
+      })();
   /*
    * The version is in the path, so a re-ingest writes a new file rather than
    * over the old one. A fixed path meant re-ingesting a paper replaced the
@@ -480,15 +610,46 @@ export async function renderIngestionAsset(
    */
   const version = item.question.contentVersion;
   const assetPath = `internal/examQuestionBank/${state.manifest.board}/${state.paperId}/${item.question.id}-${version}-question.png`;
-  await bucket.file(assetPath).save(rendered.bytes, { resumable: false, contentType: "image/png" });
+  await bucket.file(assetPath).save(sheet.extract.bytes, { resumable: false, contentType: "image/png" });
   const assets = [{
     id: "question-extract", type: "image" as const,
     title: "Original question layout", content: "",
     altText: `The paper as printed for ${item.question.label}`,
     storagePath: assetPath, mimeType: "image/png",
-    width: rendered.width, height: rendered.height,
+    width: sheet.extract.width, height: sheet.extract.height,
     source: "deterministic" as const, validationStatus: "valid" as const,
   }];
+
+  /*
+   * The same question again, one image per page of paper.
+   *
+   * Written beside the stitch rather than instead of it. The stitch is what
+   * the marker reads and what every projection built before this expects to
+   * find, so replacing it would have changed the content version of every
+   * question in the bank and orphaned the sessions running on them. These are
+   * additive: a question ingested before they existed simply has none, and the
+   * sheet falls back to the stitch for it.
+   *
+   * A one-page question writes a page asset too. It costs one small object and
+   * it means the sheet never has to decide between two shapes of question.
+   */
+  for (const [pageIndex, page] of sheet.pages.entries()) {
+    const pagePath = `internal/examQuestionBank/${state.manifest.board}/${state.paperId}/${item.question.id}-${version}-page-${pageIndex + 1}.png`;
+    await bucket.file(pagePath).save(page.bytes, { resumable: false, contentType: "image/png" });
+    assets.push({
+      id: examSheetPageAssetId(pageIndex), type: "image" as const,
+      title: sheet.pages.length > 1
+        ? `Page ${pageIndex + 1} of ${sheet.pages.length}, as printed`
+        : "The page as printed",
+      content: "",
+      altText: sheet.pages.length > 1
+        ? `Page ${pageIndex + 1} of ${sheet.pages.length} of the paper for ${item.question.label}`
+        : `The paper as printed for ${item.question.label}`,
+      storagePath: pagePath, mimeType: "image/png",
+      width: page.width, height: page.height,
+      source: "deterministic" as const, validationStatus: "valid" as const,
+    });
+  }
 
   const reviewAssets: typeof assets = [];
   const schemePage = Math.round(Number(item.schemePageNumber));

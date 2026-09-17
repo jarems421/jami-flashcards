@@ -1,6 +1,11 @@
 import type { Card } from "@/lib/study/cards";
 import { markTypedAnswer, normalizeAnswerText, parseNumericAnswer } from "@/lib/study/answer-marking";
 import { getCardContentHash } from "@/lib/study/study-modes";
+import {
+  optionsLookGuessable,
+  withoutStemEcho,
+  wordCount,
+} from "@/lib/study/mcq-shape";
 
 export type McqOption = { id: string; text: string };
 
@@ -33,22 +38,6 @@ export const MCQ_OPTION_COUNT = 4;
 const REQUIRED_DISTRACTORS = MCQ_OPTION_COUNT - 1;
 /** Anything longer is a paragraph, and four of them is a reading test. */
 const MAX_OPTION_LENGTH = 160;
-
-/**
- * How far the correct answer's length may stray from the wrong ones.
- *
- * The single loudest tell in a multiple-choice question is length. When the
- * real answer is the full sentence off the back of the card and the three wrong
- * ones are the phrases a model wrote, the question is answerable without
- * reading it: pick the long one. It is answerable the other way too -- a
- * two-word answer sat under three written-out clauses is just as obvious.
- *
- * So the correct answer has to sit inside this band of at least one distractor,
- * measured in words. A question where it is an outlier against all three is not
- * a hard question with a formatting problem, it is a question that tests
- * nothing, and it is refused rather than shown.
- */
-const OPTION_LENGTH_BAND = { min: 0.5, max: 2 };
 
 /**
  * A small deterministic generator.
@@ -85,10 +74,6 @@ function shuffle<T>(items: T[], random: () => number) {
   return result;
 }
 
-function wordCount(text: string) {
-  return text.trim().split(/\s+/).filter(Boolean).length;
-}
-
 /**
  * How much an option *looks* like the answer, ignoring what it says.
  *
@@ -119,24 +104,6 @@ function shapeDistance(answer: string, option: string) {
   const startsNumber = (text: string) => /^[+-]?\d/.test(text.trim());
   if (startsNumber(answer) !== startsNumber(option)) distance += 2;
   return distance;
-}
-
-/**
- * Whether the right answer hides among these three, or stands out from them.
- *
- * Only length is checked, because length is the tell that survives everything
- * else: a student who cannot read the subject can still count words. One
- * distractor in the same band is enough -- the question is guessable when the
- * answer is an outlier against *all* of them, not when it happens to be the
- * longest.
- */
-function answerBlendsIn(answer: string, distractors: string[]) {
-  const answerWords = wordCount(answer);
-  if (answerWords === 0) return false;
-  return distractors.some((distractor) => {
-    const ratio = wordCount(distractor) / answerWords;
-    return ratio >= OPTION_LENGTH_BAND.min && ratio <= OPTION_LENGTH_BAND.max;
-  });
 }
 
 /**
@@ -221,11 +188,13 @@ export function buildMultipleChoiceQuestion(input: {
     .slice(0, REQUIRED_DISTRACTORS)
     .map((entry) => entry.text);
 
-  if (!answerBlendsIn(correctAnswer, chosen)) return null;
+  const front = card.front ?? "";
+  if (optionsLookGuessable(front, correctAnswer, chosen)) return null;
+  const shownAnswer = withoutStemEcho(front, correctAnswer, chosen);
 
   const options = shuffle(
     [
-      { id: correctOptionId, text: correctAnswer },
+      { id: correctOptionId, text: shownAnswer },
       ...chosen.map((text, position) => ({
         id: `opt-${position + 1}`,
         text,
@@ -240,7 +209,8 @@ export function buildMultipleChoiceQuestion(input: {
   // before the shuffle.
   const written = variant?.explanations ?? card.studySettings?.mcqExplanations ?? {};
   const explanations: Record<string, string> = {
-    [correctOptionId]: written[correctAnswer] ?? "This matches the idea the question is testing.",
+    [correctOptionId]:
+      written[correctAnswer] ?? written[shownAnswer] ?? "This matches the idea the question is testing.",
   };
   for (const option of options) {
     if (option.id === correctOptionId) continue;

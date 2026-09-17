@@ -29,7 +29,14 @@ const server = await createServer({
   root: rootDir,
   configFile: false,
   appType: "custom",
-  server: { middlewareMode: true },
+  /*
+   * No file watcher. This loads one module, runs it and exits, so there is
+   * nothing for HMR to do -- and watching the whole project while it runs is
+   * not merely wasted: a long run alongside `next dev` died part way through
+   * with EBUSY on a .next file the dev server was rewriting underneath it,
+   * taking forty minutes of rendering with it.
+   */
+  server: { middlewareMode: true, watch: null },
   resolve: {
     alias: {
       "@": rootDir,

@@ -162,6 +162,32 @@ export type ExamQuestion = {
   prompt: string;
   marks: number;
   assets: PracticePaperQuestionAsset[];
+  /**
+   * Pages of ruled answer space the board left after this question, which its
+   * own crop deliberately does not carry.
+   *
+   * Absent and zero mean the same thing to a reader and different things to a
+   * writer: absent is every question ingested before the count existed, zero
+   * is a question measured and found to need none. Both open a sheet with no
+   * extra pages, which is the right answer for a mid-paper question whose
+   * answer lines are inside its crop already.
+   */
+  answerSpacePages?: number;
+  /**
+   * Marks the paper awards beside this question for something other than
+   * answering it -- AQA's AO4, four marks for technical accuracy across a
+   * section, scored from its own grid.
+   *
+   * Recorded, shown, and deliberately not marked. The marker reads handwriting
+   * through a transcription it made itself, so it is in no position to judge
+   * spelling and punctuation; awarding these would be inventing an assessment
+   * rather than making one. Saying they exist and are not being marked is the
+   * honest version, and it stops a student reading a score out of thirty as a
+   * score out of the thirty-four their paper offers.
+   *
+   * Absent means the paper prints no such award, which is almost every paper.
+   */
+  separateAwardMarks?: number;
   /** Server-private extraction evidence, never candidate question material. */
   reviewAssets?: PracticePaperQuestionAsset[];
   /**
@@ -246,6 +272,10 @@ export type ExamSessionQuestion = Pick<
   | "prompt"
   | "marks"
   | "assets"
+  /* How much room the board left, so the sheet can offer the same. */
+  | "answerSpacePages"
+  /* Marks the paper awards beside the question and Jami does not mark. */
+  | "separateAwardMarks"
   | "difficulty"
   | "origin"
   | "provenance"
@@ -431,6 +461,21 @@ export const EXAM_SESSION_MAX_QUESTIONS = 50;
 /** Bump when marking prompts, scheme interpretation or routing policy changes. */
 export const EXAM_MARKING_CHECKPOINT_VERSION = "practice-marking-v3";
 export const EXAM_ANSWER_MAX_LENGTH = 30_000;
+/**
+ * The largest submitted working image, and why it is not larger.
+ *
+ * A sheet can now run to a dozen pages, so the obvious move when the pages
+ * grew was to grow this with them. It cannot grow. The image is posted as
+ * base64 inside the answer's JSON, which is a third larger again, and the
+ * platform refuses a request body over about 4.5MB -- so at four megabytes a
+ * long answer would be rejected at the edge, before any of this code could say
+ * anything useful about it. Three leaves room for the rest of the body.
+ *
+ * What made the pages fit instead is the layout. `examWorkingSheetLayout`
+ * arranges them in columns rather than one tall column, so more pages make the
+ * image wider rather than longer, and it is ink on white either way: line art
+ * of this kind is a few hundred kilobytes a page however large the page is.
+ */
 export const EXAM_WORKING_MAX_BYTES = 3 * 1024 * 1024;
 export const EXAM_ID_PATTERN = /^[A-Za-z0-9_-]{1,160}$/;
 

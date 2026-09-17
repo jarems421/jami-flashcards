@@ -13,6 +13,7 @@ import {
 } from "@/components/ui";
 import { EXAM_BOARD_LABELS, type ExamBoardId } from "@/lib/practice/exam-formats";
 import ExamRolloutPanel from "@/components/practice/ExamRolloutPanel";
+import ExamSheetBackfillPanel from "@/components/practice/ExamSheetBackfillPanel";
 import { ENGLAND_MATHS_AND_SCIENCE } from "@/lib/practice/exam-corpus-plan";
 import type { ExamPaperManifestDraft } from "@/lib/practice/exam-ingestion-manifest";
 import {
@@ -225,6 +226,8 @@ export default function ExamCorpusWorkspace() {
       {notice ? <FeedbackBanner type="success" message={notice} onDismiss={() => setNotice("")} /> : null}
 
       <ExamRolloutPanel onIngested={() => void loadPending()} />
+
+      <ExamSheetBackfillPanel />
 
       {/*
         * Placed after the review queue in the workflow, not before it: a

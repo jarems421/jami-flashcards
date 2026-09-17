@@ -31,7 +31,7 @@ import { resolveCurrentExercise, type ExercisePin } from "@/lib/study/exercise-r
 import { canCarryModeEventually, getModeEligibility } from "@/lib/study/mode-eligibility";
 import { buildSessionExerciseSnapshots } from "@/lib/study/session-exercises";
 import { buildSimpleStudyQueue } from "@/lib/study/simple-study";
-import { getOfflineQueuedReviews, loadOfflineStudySnapshot, saveOfflineStudySnapshot } from "@/lib/study/offline-study";
+import { getOfflineQueuedReviews, getStuckOfflineReviews, loadOfflineStudySnapshot, saveOfflineStudySnapshot } from "@/lib/study/offline-study";
 import {
   buildPersistedStudySession,
   canRestorePersistedSession,
@@ -80,6 +80,9 @@ type SessionKind = StudySessionKind;
 
 const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
 type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
+
+/** How often a session retries a send that did not land, on its own. */
+const OFFLINE_SYNC_RETRY_MS = 15_000;
 
 export default function StudyPage() {
   const searchParams = useSearchParams();
@@ -155,6 +158,7 @@ export default function StudyPage() {
     skip: skipPreparation,
     prepareSessionAssets,
     prepareRemainingAssets,
+    prepareCardNow,
   } = useStudyPreparation({
     enabled: studyModesEnabled,
     modePolicy,
@@ -165,6 +169,10 @@ export default function StudyPage() {
     ),
   });
   const sessionSeedRef = useRef(0);
+  /** The card being prepared while the student waits on it, if any. */
+  const [preparingCardId, setPreparingCardId] = useState<string | null>(null);
+  /** Cards already sent for last-moment preparation, so it is asked for once. */
+  const justInTimePreparedRef = useRef(new Set<string>());
   const handleStarRewardDone = useCallback(
     () => setStarReward(null),
     [setStarReward]
@@ -334,7 +342,7 @@ export default function StudyPage() {
 
       if (options.keepSessionMounted && latestPersistedSessionRef.current) {
         setOfflineMode(true);
-        setPendingOfflineReviews(getOfflineQueuedReviews(user.uid).length);
+        setPendingOfflineReviews(getStuckOfflineReviews(user.uid).length);
         success("Still using your current study session. New data will refresh when the connection settles.");
         return;
       }
@@ -481,7 +489,7 @@ export default function StudyPage() {
       }
 
       setOfflineMode(typeof navigator !== "undefined" ? !navigator.onLine : false);
-      setPendingOfflineReviews(getOfflineQueuedReviews(user.uid).length);
+      setPendingOfflineReviews(getStuckOfflineReviews(user.uid).length);
       retryClosedSessionSync();
 
       if (latestPersistedSessionRef.current) {
@@ -509,8 +517,17 @@ export default function StudyPage() {
     };
   }, [loadAll, setOfflineMode, setPendingOfflineReviews, user.uid]);
 
+  /**
+   * Count only the answers that have stopped moving.
+   *
+   * Every answer passes through the device queue on its way up, so counting the
+   * queue counted normal saving and put a sync notice on screen for a student
+   * whose session was working perfectly. What is worth showing is an answer
+   * that has been sitting there past the point where a send should have
+   * finished.
+   */
   const refreshPendingOfflineReviews = useCallback(() => {
-    setPendingOfflineReviews(getOfflineQueuedReviews(user.uid).length);
+    setPendingOfflineReviews(getStuckOfflineReviews(user.uid).length);
   }, [setPendingOfflineReviews, user.uid]);
 
   const syncPendingOfflineReviews = useCallback(async () => {
@@ -526,10 +543,9 @@ export default function StudyPage() {
     }
 
     const result = await syncOfflineStudyReviews(user.uid);
-    setPendingOfflineReviews(result.remaining);
+    refreshPendingOfflineReviews();
 
     if (result.synced > 0) {
-      success(`Synced ${result.synced} offline review${result.synced === 1 ? "" : "s"}.`);
       if (latestPersistedSessionRef.current) {
         return;
       }
@@ -537,9 +553,9 @@ export default function StudyPage() {
     }
   }, [
     loadAll,
+    refreshPendingOfflineReviews,
     setOfflineMode,
     setPendingOfflineReviews,
-    success,
     user.uid,
   ]);
 
@@ -562,7 +578,24 @@ export default function StudyPage() {
       }
     }
 
+    /*
+     * Keep trying, quietly.
+     *
+     * A send that failed mid-session used to wait for the next answer, the next
+     * focus or a button. None of those happen for a student reading the card
+     * they are stuck on, so the retry runs on its own clock -- and the same
+     * tick moves an answer into the stuck count once it has sat long enough,
+     * which is what puts the notice on screen at all.
+     */
+    const retry = window.setInterval(() => {
+      refreshPendingOfflineReviews();
+      if (typeof navigator === "undefined" || navigator.onLine) {
+        void syncPendingOfflineReviews();
+      }
+    }, OFFLINE_SYNC_RETRY_MS);
+
     return () => {
+      window.clearInterval(retry);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
@@ -1248,7 +1281,6 @@ export default function StudyPage() {
     bumpSessionRevision,
     refreshPendingOfflineReviews,
     clearFeedback,
-    notifySuccess: success,
     notifyError: showError,
   });
 
@@ -1530,6 +1562,43 @@ export default function StudyPage() {
     setSavingRating(null);
     setAnswerFeedback(null);
   };
+
+  /**
+   * Why the card in front of the student cannot be asked the way they chose.
+   *
+   * Null whenever there is an exercise, which is the usual case; a reason code
+   * only when a session locked to one mode has reached a card that mode cannot
+   * use yet.
+   */
+  const fixedModeRefusal =
+    studyModesEnabled && modePolicy.kind === "fixed" && current && !currentExercise
+      ? getModeEligibility(preparedCurrent ?? current, modePolicy.mode, {
+          seed: sessionSeedRef.current,
+        })
+      : null;
+  const fixedModeRefusalReason =
+    fixedModeRefusal && !fixedModeRefusal.eligible ? fixedModeRefusal.reason : null;
+
+  /*
+   * A card that is only unprepared is prepared now rather than refused.
+   *
+   * Every other reason is permanent -- a picture answer, an author who turned
+   * the mode off, an answer that is all maths -- and no amount of waiting
+   * changes them. "Not prepared yet" is the one reason that is about timing,
+   * and a student who has outrun the background pass should wait a few seconds
+   * for their question rather than be told they cannot have it. One attempt per
+   * card: if it comes back with nothing, the panel below says so.
+   */
+  useEffect(() => {
+    const card = current;
+    if (!card || fixedModeRefusalReason !== "needs-preparation") return;
+    if (justInTimePreparedRef.current.has(card.id)) return;
+    justInTimePreparedRef.current.add(card.id);
+    setPreparingCardId(card.id);
+    void prepareCardNow(card).finally(() =>
+      setPreparingCardId((preparing) => (preparing === card.id ? null : preparing))
+    );
+  }, [current, fixedModeRefusalReason, prepareCardNow]);
 
   return (
     <AppPage
@@ -2104,7 +2173,29 @@ export default function StudyPage() {
                       draftResponse={currentExercise.presentationId ? draftResponses[currentExercise.presentationId] : undefined}
                       onDraftChange={currentExercise.presentationId ? (response) => setDraftResponses((previous) => ({ ...previous, [currentExercise.presentationId!]: response })) : undefined}
                     />
-                  ) : studyModesEnabled && modePolicy.kind === "fixed" && !getModeEligibility(preparedCurrent ?? current, modePolicy.mode, { seed: sessionSeedRef.current }).eligible ? (
+                  ) : preparingCardId === current.id ? (
+                    <div className="study-flashcard-face mx-auto flex min-h-[16rem] w-full max-w-[62rem] flex-col items-center justify-center gap-5 rounded-2xl p-6 text-center sm:p-10">
+                      <div aria-hidden className="flex items-center gap-2">
+                        {[0, 1, 2].map((dot) => (
+                          <span
+                            key={dot}
+                            className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent"
+                            style={{ animationDelay: `${dot * 160}ms` }}
+                          />
+                        ))}
+                      </div>
+                      <div className="max-w-lg space-y-2">
+                        <h2 className="text-xl font-semibold text-text-primary">Getting this card ready</h2>
+                        <p role="status" className="text-sm leading-relaxed text-text-secondary">
+                          Jami is writing the options for this one. It takes a few seconds, and only the first time a card is asked this way.
+                        </p>
+                      </div>
+                      <Button type="button" variant="secondary" onClick={() => {
+                        setSessionCards((previous) => [...previous.slice(0, index), ...previous.slice(index + 1)]);
+                        pinnedExerciseRef.current = null;
+                      }}>Skip this card</Button>
+                    </div>
+                  ) : fixedModeRefusalReason ? (
                     <div className="study-flashcard-face mx-auto flex min-h-[16rem] w-full max-w-[62rem] flex-col items-center justify-center gap-5 rounded-2xl p-6 text-center sm:p-10">
                       <div className="max-w-lg space-y-2">
                         <h2 className="text-xl font-semibold text-text-primary">This card isn&apos;t ready for that mode</h2>

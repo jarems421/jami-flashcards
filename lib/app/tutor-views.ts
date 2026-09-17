@@ -1,3 +1,5 @@
+import { featureFlags } from "@/lib/app/feature-flags";
+
 /** Structurally what `ViewTabs` renders, without reaching into it. */
 export type TutorView = {
   href: string;
@@ -24,6 +26,23 @@ export const TUTOR_VIEWS: TutorView[] = [
     label: "Ask Jami",
     detail: "Questions and drafts to review",
   },
+  /*
+   * Planning is Jami's, not Today's.
+   *
+   * A revision plan is made by talking to the tutor about what is coming up, so
+   * it belongs beside the other things a student asks Jami for rather than as
+   * an entry of its own in the sidebar. Today shows the day it produces; this
+   * is where the plan itself is decided.
+   */
+  ...(featureFlags.enableRevisionPlans
+    ? [
+        {
+          href: "/dashboard/tutor/plan",
+          label: "Revision plan",
+          detail: "Shape your week with Jami",
+        },
+      ]
+    : []),
   {
     href: "/dashboard/library",
     label: "Sources",

@@ -108,3 +108,24 @@ export function repairModelJsonBackslashes(raw: string): string {
 
   return out;
 }
+
+/**
+ * Pulls the JSON object out of a model response that wrapped it.
+ *
+ * A model asked for JSON returns JSON most of the time and, the rest of the
+ * time, returns JSON inside a code fence or with a sentence in front of it. A
+ * bare JSON.parse treats every one of those as a total failure, and a caller
+ * that then falls back to a canned line shows the student a reply nobody wrote.
+ *
+ * Returns the input unchanged when there is no object to find, so the caller's
+ * own parse still reports the original text.
+ */
+export function unwrapModelJsonObject(text: string) {
+  const trimmed = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  return start >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed;
+}

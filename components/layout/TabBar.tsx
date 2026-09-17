@@ -70,7 +70,9 @@ const tabs: Tab[] = [
   },
   {
     href: "/dashboard/tutor",
-    owns: ["/dashboard/library"],
+    // The plan is made by talking to Jami, so the Tutor entry stays lit while a
+    // student is in it rather than the sidebar growing a second home for it.
+    owns: ["/dashboard/library", "/dashboard/tutor/plan"],
     iconComponent: JamiTutorIcon,
     label: "Tutor",
     description: "Ask Jami, review drafts",

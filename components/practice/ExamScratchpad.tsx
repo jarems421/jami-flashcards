@@ -21,14 +21,32 @@ import {
 import {
   captureExamWorking,
   compactExamWorkingPages,
-  EXAM_WORKING_MAX_PAGES,
   EXAM_WORKING_ZOOM_STEPS,
   examWorkingFitWidth,
   examWorkingHasInk,
-  examWorkingStackLayout,
+  examWorkingSheetLayout,
   examWorkingTouchIsPalm,
   type ExamScratchpadHandle,
+  type ExamWorkingInkedPage,
 } from "@/lib/practice/exam-working";
+import {
+  EXAM_SHEET_A4_PAGE_HEIGHT,
+  EXAM_SHEET_PAGE_WIDTH,
+  examSheetContinuationRoom,
+  examSheetOpeningContinuations,
+  examSheetPageCaption,
+  examSheetPages,
+  type ExamSheetPage,
+} from "@/lib/practice/exam-question-sheet";
+import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
+import ExamSheetPageBackground from "@/components/practice/ExamSheetPageBackground";
+import NotebookPageDefaultsPicker from "@/components/workspace/NotebookPageDefaultsPicker";
+import {
+  examSheetPageGround,
+  readExamSheetPaperPreference,
+  saveExamSheetPaperPreference,
+  type ExamSheetPaper,
+} from "@/lib/practice/exam-sheet-paper";
 export type { ExamScratchpadHandle } from "@/lib/practice/exam-working";
 import { NOTEBOOK_INK_UI_SYNC_IDLE_MS } from "@/lib/workspace/notebook-autosave";
 import {
@@ -45,10 +63,12 @@ import {
   installNotebookViewportZoomBlock,
   NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
 } from "@/lib/workspace/notebook-interaction-lock";
+import { getNotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 import { getNotebookStrokePaintColor } from "@/lib/workspace/notebook-page-content";
 import {
-  readNotebookPenSmoothingPreference,
-  saveNotebookPenSmoothingPreference,
+  clampNotebookPenSettings,
+  readNotebookPenSettings,
+  saveNotebookPenSettings,
 } from "@/lib/workspace/notebook-pen-feel";
 import {
   readNotebookScribbleErasePreference,
@@ -61,15 +81,23 @@ import {
   saveExamScratchpad,
 } from "@/services/study/exam-practice";
 
-/** The sheet's own page units, and the size each page is snapshotted at. */
-export const EXAM_WORKING_PAGE_WIDTH = 900;
-export const EXAM_WORKING_PAGE_HEIGHT = 1_240;
-const SNAPSHOT_WIDTH = 1_200;
-const SNAPSHOT_HEIGHT = Math.round(
-  (SNAPSHOT_WIDTH * EXAM_WORKING_PAGE_HEIGHT) / EXAM_WORKING_PAGE_WIDTH
-);
-/** The band between stacked pages in the submitted image, at snapshot size. */
-const SNAPSHOT_PAGE_GAP = 24;
+/**
+ * The page a sheet falls back to when the question has no printed paper.
+ *
+ * A question Jami wrote has no crop to write on, so its sheet is blank pages
+ * at the shape of the paper every board prints on.
+ */
+const BLANK_PAGE: ExamSheetPage = {
+  kind: "continuation",
+  number: 1,
+  width: EXAM_SHEET_PAGE_WIDTH,
+  height: EXAM_SHEET_A4_PAGE_HEIGHT,
+};
+/** The band between pages in the submitted image, in the sheet's own units. */
+const SNAPSHOT_PAGE_GAP = 28;
+/** The strip above each page in that image, which says what the page is. */
+const SNAPSHOT_CAPTION_HEIGHT = 48;
+const SNAPSHOT_CAPTION_FONT = 26;
 
 /*
  * How long the pen has to stay lifted before the sheet is written.
@@ -112,22 +140,52 @@ function loadSvgImage(svg: string) {
 }
 
 /**
- * Every inked page, stacked into the one image the marker reads.
+ * Every inked page, laid into the one image the marker reads.
  *
  * A marker reads ink on paper, so the pages are flattened onto white rather
- * than sent as transparent overlays whose ground it would have to guess, and a
- * grey band between them keeps each page its own.
+ * than sent as transparent overlays whose ground it would have to guess.
+ *
+ * What is not flattened in is the paper. A student now writes on the board's
+ * own page, and burning that page into the submission would put licensed
+ * question material inside a student's own stored evidence, and hand the
+ * marker one image in which the printing and the handwriting are the same
+ * kind of mark. The question is already sent separately, and labelled as
+ * question material; this stays the student's side of it.
+ *
+ * So each page is captioned instead. "Written on printed page 2 of 3" says
+ * where on the paper the ink was, which is the part flattening was for, and
+ * says it in a form no one can mistake for the student's own writing.
  */
-async function pagesToPng(pages: readonly string[]) {
-  if (pages.length === 0) return undefined;
+async function pagesToPng(
+  inked: readonly ExamWorkingInkedPage[],
+  sheet: readonly ExamSheetPage[],
+  questionLabel: string,
+  paper: ExamSheetPaper
+) {
+  if (inked.length === 0) return undefined;
   try {
-    const layout = examWorkingStackLayout({
-      pageCount: pages.length,
-      pageWidth: SNAPSHOT_WIDTH,
-      pageHeight: SNAPSHOT_HEIGHT,
-      gap: SNAPSHOT_PAGE_GAP,
+    const printedPageCount = sheet.filter((page) => page.kind === "printed").length;
+    const entries = inked.map((entry) => {
+      const page = sheet[entry.index] ?? BLANK_PAGE;
+      return {
+        svg: entry.svg,
+        width: page.width,
+        height: page.height,
+        caption: examSheetPageCaption({ page, questionLabel, printedPageCount }),
+        /*
+         * Its own ground, not white. A light pen on a dark sheet is an
+         * ordinary thing to write, and flattening it onto white would submit a
+         * blank page as the student's answer.
+         */
+        ground: examSheetPageGround(page, paper),
+      };
     });
-    const images = await Promise.all(pages.map(loadSvgImage));
+    const layout = examWorkingSheetLayout({
+      pages: entries,
+      gap: SNAPSHOT_PAGE_GAP,
+      captionHeight: SNAPSHOT_CAPTION_HEIGHT,
+    });
+    const images = await Promise.all(entries.map((entry) => loadSvgImage(entry.svg)));
     const canvas = document.createElement("canvas");
     canvas.width = layout.width;
     canvas.height = layout.height;
@@ -135,11 +193,20 @@ async function pagesToPng(pages: readonly string[]) {
     if (!context) return undefined;
     context.fillStyle = "#e5e7eb";
     context.fillRect(0, 0, layout.width, layout.height);
+    context.textBaseline = "middle";
+    context.font = `600 ${Math.round(SNAPSHOT_CAPTION_FONT * layout.scale)}px ui-sans-serif, system-ui, sans-serif`;
     images.forEach((image, index) => {
-      const top = layout.offsets[index] ?? 0;
-      context.fillStyle = "#ffffff";
-      context.fillRect(0, top, layout.width, layout.pageHeight);
-      context.drawImage(image, 0, top, layout.width, layout.pageHeight);
+      const slot = layout.slots[index];
+      if (!slot) return;
+      context.fillStyle = "#334155";
+      context.fillText(
+        entries[index].caption,
+        slot.left,
+        slot.captionTop + slot.captionHeight / 2
+      );
+      context.fillStyle = entries[index].ground;
+      context.fillRect(slot.left, slot.top, slot.width, slot.height);
+      context.drawImage(image, slot.left, slot.top, slot.width, slot.height);
     });
     return {
       mimeType: "image/png" as const,
@@ -199,7 +266,7 @@ type ConfirmRequest = "clear-page" | "delete-page" | null;
 type WorkingTool = "pen" | "highlighter" | "eraser";
 
 /**
- * The pages of working for one attempt.
+ * The question, as a sheet of paper to answer on.
  *
  * It is the notebook's ink editor with the notebook's tools and settings,
  * deliberately: a student who has learned to write in Jami should not meet a
@@ -207,15 +274,26 @@ type WorkingTool = "pen" | "highlighter" | "eraser";
  * scribble-to-erase are read from the same saved preferences, so a hand tuned
  * once stays tuned here.
  *
- * What it is not is a notebook page. There is no text layer and no images:
- * the typed answer sits above the sheet, and what is sent for marking is the
- * ink on these pages and nothing else.
+ * What changed is what is under the ink. This used to be four blank pads
+ * beside a picture of the question, which is why answering felt like a
+ * separate exercise from reading: the paper was one thing on the screen and
+ * the work was another. The pages are now the board's own pages -- its
+ * wording, its diagrams, its ruled answer lines, at the size it printed them
+ * -- followed by as many blank sheets as the question needs.
+ *
+ * What it is still not is a notebook page. There is no text layer and no
+ * images a student can add: the typed answer sits under the sheet, and what is
+ * sent for marking is the ink on these pages and nothing else.
  */
 function ExamScratchpad({
   userId,
   attemptId,
   disabled = false,
   embedded = false,
+  printedPages,
+  answerSpacePages,
+  questionLabel,
+  assetPath,
   onHandle,
   onInkChange,
 }: {
@@ -224,6 +302,20 @@ function ExamScratchpad({
   disabled?: boolean;
   /** Drawn flush inside a surrounding sheet, without a frame of its own. */
   embedded?: boolean;
+  /**
+   * The question's own pages of paper, in printed order, or empty for a
+   * question that has none.
+   *
+   * Held stable by the caller: this is the identity the whole sheet is built
+   * from, and a fresh array every render would rebuild the editor under a
+   * student's hand.
+   */
+  printedPages: readonly PracticePaperQuestionAsset[];
+  /** Ruled pages the board left after the question, which its crop drops. */
+  answerSpacePages?: number;
+  questionLabel: string;
+  /** Where a printed page's image is fetched from, given its asset id. */
+  assetPath(assetId: string): string;
   onHandle(handle: ExamScratchpadHandle | null): void;
   onInkChange?(hasInk: boolean): void;
 }) {
@@ -265,6 +357,29 @@ function ExamScratchpad({
   const [expanded, setExpanded] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(0);
   const [fitWidth, setFitWidth] = useState(0);
+  /**
+   * The full-screen frame, and where the page has been scrolled inside it.
+   *
+   * Only read while writing full screen, and only used to decide how much of
+   * the page is worth painting. See `notebook-ink-window.ts`: js-draw clears
+   * and repaints its whole backing store on every frame of a stroke, so a page
+   * zoomed to 3x costs nine times the work per frame and shows nine times less
+   * of it. The pages are the paper's own size now, which makes that worse: an
+   * A4 page zoomed in far enough to write comfortably on a dense printed part
+   * is a large canvas being thrown away nine tenths of the time.
+   */
+  const [frame, setFrame] = useState({ width: 0, height: 0 });
+  const [scroll, setScroll] = useState({ left: 0, top: 0 });
+  /**
+   * Blank sheets after the printed ones.
+   *
+   * Not stored. It is the larger of what the board left room for and what the
+   * student has actually written on, so a sheet reopens with every page that
+   * carries ink and never fewer pages than the paper allotted.
+   */
+  const [continuationCount, setContinuationCount] = useState(() =>
+    examSheetOpeningContinuations({ answerSpacePages, printedPageCount: printedPages.length })
+  );
 
   const [tool, setTool] = useState<WorkingTool>("pen");
   const [openMenu, setOpenMenu] = useState<NotebookToolMenu>(null);
@@ -273,18 +388,30 @@ function ExamScratchpad({
   const [penThicknessPercent, setPenThicknessPercent] = useState(50);
   // Read once, lazily: the saved preferences are this sheet's starting values,
   // and nothing on the first paint depends on them.
-  const [penSmoothingPercent, setPenSmoothingPercent] = useState(
-    readNotebookPenSmoothingPreference
-  );
+  const [penSettings, setPenSettings] = useState(readNotebookPenSettings);
   const [scribbleToErase, setScribbleToErase] = useState(
     readNotebookScribbleErasePreference
   );
+  /** The paper the student's own sheets are made of. Never the board's pages. */
+  const [paper, setPaper] = useState<ExamSheetPaper>(readExamSheetPaperPreference);
+  const [paperOpen, setPaperOpen] = useState(false);
+  const paperRef = useRef(paper);
+  paperRef.current = paper;
   const [highlighterColor, setHighlighterColor] = useState<NotebookStrokeColor>("yellow");
   const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(50);
   const [eraserMode, setEraserMode] = useState<NotebookEraserMode>("precision");
   const [eraserSize, setEraserSize] = useState<NotebookEraserSize>("medium");
 
-  const pageCount = pageSvgs?.length ?? 1;
+  const sheetPages = useMemo(
+    () => examSheetPages({ printedPages: [...printedPages], continuationCount }),
+    [continuationCount, printedPages]
+  );
+  const pageCount = sheetPages.length;
+  const printedPageCount = printedPages.length;
+  const canAddPage = continuationCount < examSheetContinuationRoom(printedPageCount);
+  /** Every page the sheet has, so the handle can caption them for the marker. */
+  const sheetPagesRef = useRef(sheetPages);
+  sheetPagesRef.current = sheetPages;
 
   const setPages = useCallback((pages: string[]) => {
     pagesRef.current = pages;
@@ -295,9 +422,32 @@ function ExamScratchpad({
     let active = true;
     loadedRef.current = false;
     void loadExamScratchpad(userId, attemptId)
-      .then((pages) => {
+      .then((stored) => {
         if (!active) return;
-        const loaded = pages.length > 0 ? pages : [""];
+        /*
+         * A page's position on the sheet is what says where its ink was
+         * written, so the stored pages are laid back down at the index they
+         * were saved at rather than packed to the front. Saving drops blank
+         * pages off the end, so a sheet reopens with the board's own allowance
+         * again, or with however many pages the student had written on --
+         * whichever is more.
+         */
+        const printedCount = printedPages.length;
+        const opening = examSheetOpeningContinuations({
+          answerSpacePages,
+          printedPageCount: printedCount,
+        });
+        const written = Math.max(0, stored.length - printedCount);
+        const extra = Math.min(
+          Math.max(opening, written),
+          examSheetContinuationRoom(printedCount)
+        );
+        const sheet = examSheetPages({
+          printedPages: [...printedPages],
+          continuationCount: extra,
+        });
+        const loaded = Array.from({ length: sheet.length }, (_unused, index) => stored[index] ?? "");
+        setContinuationCount(extra);
         setPages(loaded);
         pageIndexRef.current = 0;
         loadedRef.current = true;
@@ -311,7 +461,7 @@ function ExamScratchpad({
     return () => {
       active = false;
     };
-  }, [attemptId, onInkChange, reloadKey, setPages, userId]);
+  }, [answerSpacePages, attemptId, onInkChange, printedPages, reloadKey, setPages, userId]);
 
   /** Every page as it stands now, read at once. For page turns and leaving only. */
   const collectPages = useCallback(() => {
@@ -438,12 +588,13 @@ function ExamScratchpad({
             await saveExamScratchpad(userId, attemptId, compactExamWorkingPages(pages));
             dirtyRef.current = false;
           },
-          rasterize: pagesToPng,
+          rasterize: (inked) =>
+            pagesToPng(inked, sheetPagesRef.current, questionLabel, paperRef.current),
         }),
     };
     onHandle(handle);
     return () => onHandle(null);
-  }, [attemptId, onHandle, setPages, userId]);
+  }, [attemptId, onHandle, questionLabel, setPages, userId]);
 
   /*
    * The notebook's Pencil guard.
@@ -595,13 +746,54 @@ function ExamScratchpad({
     if (!expanded) return;
     document.body.classList.add(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
     const releaseZoom = installNotebookViewportZoomBlock(document);
-    // Captured first, so Escape closes this before the sheet the page opened it in.
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      setExpanded(false);
+    /*
+     * The notebook's keys, and only while the sheet has the screen.
+     *
+     * A student who has learned P, H, E and Ctrl+Z in a notebook should not
+     * have to put the pen down and reach for a toolbar here. Bound to the
+     * full-screen sheet rather than the page, because inline the answer box is
+     * a few centimetres away and "p" belongs to whatever is being typed.
+     *
+     * Captured first, so Escape closes this before the sheet the page opened
+     * it in.
+     */
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setExpanded(false);
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable || /^(input|textarea|select)$/i.test(target?.tagName ?? "")) {
+        return;
+      }
+      const shortcut = event.ctrlKey || event.metaKey;
+      if (shortcut && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) editorRef.current?.redo();
+        else editorRef.current?.undo();
+        return;
+      }
+      if (shortcut && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        editorRef.current?.redo();
+        return;
+      }
+      if (shortcut || event.altKey) return;
+      const tool =
+        event.key.toLowerCase() === "p"
+          ? "pen"
+          : event.key.toLowerCase() === "h"
+            ? "highlighter"
+            : event.key.toLowerCase() === "e"
+              ? "eraser"
+              : null;
+      if (!tool) return;
+      event.preventDefault();
+      setTool(tool);
+      setOpenMenu(null);
     };
-    document.addEventListener("keydown", closeOnEscape, true);
+    document.addEventListener("keydown", onKeyDown, true);
     const frame = window.requestAnimationFrame(() =>
       rootRef.current?.focus({ preventScroll: true })
     );
@@ -609,9 +801,14 @@ function ExamScratchpad({
       window.cancelAnimationFrame(frame);
       document.body.classList.remove(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
       releaseZoom();
-      document.removeEventListener("keydown", closeOnEscape, true);
+      document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [expanded]);
+
+  /** The page under the pen. Its shape is the paper's, not a fixed one. */
+  const currentPage = sheetPages[pageIndex] ?? sheetPages[0] ?? BLANK_PAGE;
+  const currentPageWidth = currentPage.width;
+  const currentPageHeight = currentPage.height;
 
   useEffect(() => {
     if (!expanded) return;
@@ -619,19 +816,57 @@ function ExamScratchpad({
     if (!container || typeof ResizeObserver === "undefined") return;
     // The observer reports the starting size too, so this is the only measurement.
     const observer = new ResizeObserver(() => {
+      setFrame({ width: container.clientWidth, height: container.clientHeight });
       setFitWidth(
         examWorkingFitWidth({
           containerWidth: container.clientWidth,
           containerHeight: container.clientHeight,
-          pageWidth: EXAM_WORKING_PAGE_WIDTH,
-          pageHeight: EXAM_WORKING_PAGE_HEIGHT,
+          pageWidth: currentPageWidth,
+          pageHeight: currentPageHeight,
           padding: EXPANDED_SHEET_PADDING,
         })
       );
     });
     observer.observe(container);
     return () => observer.disconnect();
-  }, [expanded]);
+    // Re-fitted when the page changes shape: a question's first page is a crop
+    // that can be a third of a sheet tall, and the one after it a whole one.
+  }, [currentPageHeight, currentPageWidth, expanded]);
+
+  /*
+   * Where the page has been scrolled to, read at most once a frame.
+   *
+   * Nothing is measured while a stroke is being drawn: the sheet blocks
+   * scrolling for the length of one, so there is nothing to follow, and a
+   * layout read on the pointer path is the one thing worth keeping off it.
+   */
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!expanded || !container || zoomIndex === 0) {
+      setScroll((current) => (current.left === 0 && current.top === 0 ? current : { left: 0, top: 0 }));
+      return;
+    }
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      if (inkInteractionActiveRef.current) return;
+      setScroll((current) =>
+        current.left === container.scrollLeft && current.top === container.scrollTop
+          ? current
+          : { left: container.scrollLeft, top: container.scrollTop }
+      );
+    };
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(read);
+    };
+    read();
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      container.removeEventListener("scroll", onScroll);
+    };
+  }, [expanded, pageIndex, zoomIndex]);
 
   /** Zooms about the middle of what is on screen, so the writing stays in view. */
   const changeZoom = (nextIndex: number) => {
@@ -677,22 +912,38 @@ function ExamScratchpad({
     markChanged();
   };
 
+  /**
+   * More room, the way the real paper gives it.
+   *
+   * A student who runs out of space in an exam asks for an extra answer
+   * booklet; they do not decide in advance how much of the page each part of
+   * the question deserves. This is the same offer, and it is deliberately not
+   * a decision: the sheet never refuses ink for want of space until it has
+   * handed out every page it is allowed to.
+   */
   const addPage = () => {
-    if (disabled || pageCount >= EXAM_WORKING_MAX_PAGES) return;
-    const pages = [...collectPages(), ""];
+    if (disabled || !canAddPage) return;
+    const pages = [...collectPages()];
+    while (pages.length < pageCount) pages.push("");
+    pages.push("");
+    setContinuationCount((value) => value + 1);
     showPage(pages, pages.length - 1);
     markChanged();
   };
 
+  /** Printed pages belong to the paper; only the sheet's own can be removed. */
   const deletePage = () => {
-    if (disabled || pageCount <= 1) return;
+    const page = sheetPages[pageIndexRef.current];
+    if (disabled || pageCount <= 1 || page?.kind !== "continuation") return;
     const pages = collectPages().filter((_page, index) => index !== pageIndexRef.current);
+    setContinuationCount((value) => Math.max(0, value - 1));
     showPage(pages, Math.min(pageIndexRef.current, pages.length - 1));
     markChanged();
   };
 
   /** Pressing the active tool opens its options; pressing another switches. */
   const selectTool = (next: WorkingTool) => {
+    setPaperOpen(false);
     if (tool === next) {
       setOpenMenu((current) => (current === next ? null : next));
       return;
@@ -709,6 +960,36 @@ function ExamScratchpad({
     }),
     [eraserSize, highlighterThicknessPercent, penThicknessPercent]
   );
+
+  /**
+   * The slice of the page the ink canvas is asked to paint.
+   *
+   * Null unless the page is zoomed past its fitted size, which is the only
+   * time the sheet is larger than the frame showing it -- so an inline sheet
+   * and a fitted full-screen one are painted exactly as they were before this.
+   */
+  const sheetWidthPx = expanded && fitWidth > 0 ? Math.round(fitWidth * zoomAt(zoomIndex)) : 0;
+  const inkWindow = useMemo(() => {
+    if (sheetWidthPx <= 0 || frame.width <= 0 || currentPageWidth <= 0) return null;
+    return getNotebookInkRenderWindow({
+      sheetWidth: sheetWidthPx,
+      sheetHeight: Math.round((sheetWidthPx * currentPageHeight) / currentPageWidth),
+      // The page is scrolled rather than transformed, so its origin inside the
+      // frame is the negated scroll offset.
+      pageX: -scroll.left,
+      pageY: -scroll.top,
+      frameWidth: frame.width,
+      frameHeight: frame.height,
+    });
+  }, [
+    currentPageHeight,
+    currentPageWidth,
+    frame.height,
+    frame.width,
+    scroll.left,
+    scroll.top,
+    sheetWidthPx,
+  ]);
 
   const openedPageHasInk = useMemo(
     () => examWorkingHasInk(pageSvgs?.[pageIndex] ?? ""),
@@ -746,7 +1027,13 @@ function ExamScratchpad({
         {(["pen", "highlighter", "eraser"] as const).map((item) => (
           <div key={item} className="relative shrink-0">
             <ToolbarIconButton
-              label={item === "pen" ? "Pen" : item === "highlighter" ? "Highlighter" : "Eraser"}
+              label={
+                item === "pen"
+                  ? expanded ? "Pen (P)" : "Pen"
+                  : item === "highlighter"
+                    ? expanded ? "Highlighter (H)" : "Highlighter"
+                    : expanded ? "Eraser (E)" : "Eraser"
+              }
               icon={item}
               active={tool === item || openMenu === item}
               disabled={disabled}
@@ -770,14 +1057,35 @@ function ExamScratchpad({
           </div>
         ))}
         <span aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-[var(--color-border)]" />
+        {/*
+          * Offered even when the sheet is all printed pages.
+          *
+          * It was hidden until a student had a page of their own, which read
+          * as tidy and was wrong: nearly every maths question is one printed
+          * page, and squared paper is most wanted exactly there. A student has
+          * to be able to say "grid" before adding the sheet, not after.
+          */}
+        {!disabled ? (
+          <ToolbarIconButton
+            label="Paper"
+            icon="pages"
+            active={paperOpen}
+            expanded={paperOpen}
+            controls="exam-sheet-paper"
+            onClick={() => {
+              setOpenMenu(null);
+              setPaperOpen((open) => !open);
+            }}
+          />
+        ) : null}
         <ToolbarIconButton
-          label="Undo"
+          label={expanded ? "Undo (Ctrl+Z)" : "Undo"}
           icon="undo"
           disabled={disabled || history.undo === 0}
           onClick={() => editorRef.current?.undo()}
         />
         <ToolbarIconButton
-          label="Redo"
+          label={expanded ? "Redo (Ctrl+Shift+Z)" : "Redo"}
           icon="redo"
           disabled={disabled || history.redo === 0}
           onClick={() => editorRef.current?.redo()}
@@ -796,6 +1104,9 @@ function ExamScratchpad({
           >
             {pageIndex + 1} / {pageCount}
           </span>
+          <span className="sr-only" aria-live="polite">
+            {examSheetPageCaption({ page: currentPage, questionLabel, printedPageCount })}
+          </span>
           <ToolbarIconButton
             label="Next page"
             icon="forward"
@@ -803,19 +1114,19 @@ function ExamScratchpad({
             onClick={() => goToPage(pageIndex + 1)}
           />
           <ToolbarIconButton
-            label={
-              pageCount >= EXAM_WORKING_MAX_PAGES
-                ? `Up to ${EXAM_WORKING_MAX_PAGES} pages`
-                : "Add a page"
-            }
+            label={canAddPage ? "Add another sheet" : `Up to ${pageCount} pages`}
             icon="plus"
-            disabled={disabled || pageCount >= EXAM_WORKING_MAX_PAGES}
+            disabled={disabled || !canAddPage}
             onClick={addPage}
           />
           <ToolbarIconButton
-            label="Delete this page"
+            label={
+              currentPage.kind === "printed"
+                ? "The printed page cannot be removed"
+                : "Delete this sheet"
+            }
             icon="trash"
-            disabled={disabled || pageCount <= 1}
+            disabled={disabled || pageCount <= 1 || currentPage.kind === "printed"}
             onClick={() => (currentPageHasInk ? setConfirm("delete-page") : deletePage())}
           />
           <span aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-[var(--color-border)]" />
@@ -867,10 +1178,11 @@ function ExamScratchpad({
           thicknessPercent: penThicknessPercent,
           onColorChange: setPenColor,
           onThicknessChange: setPenThicknessPercent,
-          smoothingPercent: penSmoothingPercent,
-          onSmoothingChange: (percent) => {
-            setPenSmoothingPercent(percent);
-            saveNotebookPenSmoothingPreference(percent);
+          settings: penSettings,
+          onSettingsChange: (value) => {
+            const next = clampNotebookPenSettings(value);
+            setPenSettings(next);
+            saveNotebookPenSettings(next);
           },
           scribbleToErase,
           onScribbleToEraseChange: (enabled) => {
@@ -896,6 +1208,34 @@ function ExamScratchpad({
           },
         }}
       />
+
+      {paperOpen ? (
+        <div
+          id="exam-sheet-paper"
+          className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-3"
+        >
+          <p className="mb-2 text-xs text-text-muted">
+            {sheetPages.some((page) => page.kind === "continuation")
+              ? "Your own sheets. The printed pages stay exactly as the board printed them."
+              : "The sheets you add. The printed pages stay exactly as the board printed them."}
+          </p>
+          <NotebookPageDefaultsPicker
+            pageColor={paper.pageColor}
+            pageStyle={paper.pageStyle}
+            disabled={disabled}
+            onPageColorChange={(pageColor) => {
+              const next = { ...paperRef.current, pageColor };
+              setPaper(next);
+              saveExamSheetPaperPreference(next);
+            }}
+            onPageStyleChange={(pageStyle) => {
+              const next = { ...paperRef.current, pageStyle };
+              setPaper(next);
+              saveExamSheetPaperPreference(next);
+            }}
+          />
+        </div>
+      ) : null}
 
       {saveProblem ? (
         <p className="shrink-0 border-b border-[var(--color-border)] bg-error/10 px-3 py-2 text-sm text-text-primary">
@@ -926,13 +1266,19 @@ function ExamScratchpad({
             * text selection, callout or drag, no overscroll, no native pan. Paint
             * containment keeps every ink frame's repaint inside the page instead
             * of invalidating the scrolling page around it.
+            *
+            * Square corners, because the paper has square corners. This was
+            * rounded along the top and clipped to the radius, which on a white
+            * page over a pale workspace read as the sheet being smudged or torn
+            * away at its corners -- and on a printed page it cut off the board's
+            * own margin rule and the question number printed beside it. The clip
+            * stays, since the ink canvas has to be held inside the page, but it
+            * no longer cuts anything but a right angle.
             */}
           <div
             ref={surfaceRef}
-            // Rounded along the top like a notebook page. The clip also keeps
-            // the ink canvas inside those corners.
-            className="notebook-page-surface relative w-full overflow-hidden rounded-t-2xl bg-white shadow-e1 [contain:layout_paint]"
-            style={{ aspectRatio: `${EXAM_WORKING_PAGE_WIDTH} / ${EXAM_WORKING_PAGE_HEIGHT}` }}
+            className="notebook-page-surface relative w-full overflow-hidden bg-white shadow-e1 ring-1 ring-black/[0.07] [contain:layout_paint]"
+            style={{ aspectRatio: `${currentPageWidth} / ${currentPageHeight}` }}
           >
             {loadFailed ? (
               <div className="absolute inset-0 grid place-items-center gap-3 p-6 text-center">
@@ -952,31 +1298,47 @@ function ExamScratchpad({
                 </Button>
               </div>
             ) : pageSvgs !== null ? (
-              <WorkingInkEditor
-                key={`${attemptId}:${pageMount}`}
-                ref={editorRef}
-                activeTool={tool}
-                eraserMode={eraserMode}
-                eraserThickness={widths.eraser}
-                highlighterColor={highlighterColor}
-                highlighterThickness={widths.highlighter}
-                initialSvg={pageSvgs[pageIndex] ?? ""}
-                pageHeight={EXAM_WORKING_PAGE_HEIGHT}
-                pageId={`${attemptId}:${pageIndex}`}
-                pageWidth={EXAM_WORKING_PAGE_WIDTH}
-                penColor={penColor}
-                penSmoothing={penSmoothingPercent}
-                penThickness={widths.pen}
-                readOnly={disabled}
-                scribbleToErase={scribbleToErase}
-                onChange={handleInkChange}
-                onHistoryChange={handleHistoryChange}
-                onInteractionChange={handleInteractionChange}
-                onPointerCancel={handleTouchEnd}
-                onPointerDown={handleTouchDown}
-                onPointerMove={handleTouchMove}
-                onPointerUp={handleTouchEnd}
-              />
+              <>
+                {/*
+                  * The paper under the ink. Drawn inside the same clipped,
+                  * paint-contained box, so a stroke repaints the page and
+                  * nothing above it, and the print never moves relative to
+                  * what is written on it.
+                  */}
+                <ExamSheetPageBackground
+                  key={`bg:${attemptId}:${pageIndex}`}
+                  page={currentPage}
+                  assetPath={assetPath}
+                  questionLabel={questionLabel}
+                  paper={paper}
+                />
+                <WorkingInkEditor
+                  key={`${attemptId}:${pageMount}`}
+                  ref={editorRef}
+                  activeTool={tool}
+                  eraserMode={eraserMode}
+                  eraserThickness={widths.eraser}
+                  highlighterColor={highlighterColor}
+                  highlighterThickness={widths.highlighter}
+                  initialSvg={pageSvgs[pageIndex] ?? ""}
+                  inkWindow={inkWindow}
+                  pageHeight={currentPageHeight}
+                  pageId={`${attemptId}:${pageIndex}`}
+                  pageWidth={currentPageWidth}
+                  penColor={penColor}
+                  penSettings={penSettings}
+                  penThickness={widths.pen}
+                  readOnly={disabled}
+                  scribbleToErase={scribbleToErase}
+                  onChange={handleInkChange}
+                  onHistoryChange={handleHistoryChange}
+                  onInteractionChange={handleInteractionChange}
+                  onPointerCancel={handleTouchEnd}
+                  onPointerDown={handleTouchDown}
+                  onPointerMove={handleTouchMove}
+                  onPointerUp={handleTouchEnd}
+                />
+              </>
             ) : (
               <div className="absolute inset-0 grid place-items-center text-sm text-text-muted">
                 Opening your working…
@@ -986,15 +1348,39 @@ function ExamScratchpad({
         </div>
       </div>
 
+      {/*
+        * More room, offered where a student runs out of it.
+        *
+        * The control in the toolbar is for someone who already knows the sheet
+        * grows. This is for someone writing at the foot of the last page, who
+        * needs to be told rather than asked -- so it appears only there, and
+        * says what it gives rather than asking them to ration what is left.
+        * Nothing here counts down the space remaining: a student who thinks
+        * they are running out writes a worse answer than one who is not
+        * thinking about it at all.
+        */}
+      {!disabled && canAddPage && pageIndex === pageCount - 1 ? (
+        <div
+          className={`flex shrink-0 items-center justify-center gap-3 border-t border-[var(--color-border)] px-4 py-3 ${
+            expanded ? "pb-[max(0.75rem,env(safe-area-inset-bottom))]" : ""
+          }`}
+        >
+          <p className="text-xs text-text-muted">Run out of room?</p>
+          <Button type="button" size="sm" variant="secondary" onClick={addPage}>
+            Add another sheet
+          </Button>
+        </div>
+      ) : null}
+
       <ConfirmDialog
         open={confirm !== null}
-        title={confirm === "delete-page" ? "Delete this page?" : "Clear this page?"}
+        title={confirm === "delete-page" ? "Delete this sheet?" : "Clear this page?"}
         description={
           confirm === "delete-page"
-            ? "Everything written on this page of working is removed."
+            ? "Everything written on this extra sheet is removed."
             : "Everything written on this page is removed. You can undo it straight after."
         }
-        confirmLabel={confirm === "delete-page" ? "Delete page" : "Clear page"}
+        confirmLabel={confirm === "delete-page" ? "Delete sheet" : "Clear page"}
         onClose={() => setConfirm(null)}
         onConfirm={() => {
           if (confirm === "delete-page") deletePage();

@@ -102,6 +102,8 @@ type Props = {
   onActivePointerCancel: PointerEventHandler<HTMLDivElement>;
   onActivePointerMove: PointerEventHandler<HTMLDivElement>;
   onActivePointerUp: PointerEventHandler<HTMLDivElement>;
+  /** A tap anywhere in the frame, including the margin around the sheet. */
+  onFramePointerDown?: PointerEventHandler<HTMLDivElement>;
   onTrackTransitionCancel: TransitionEventHandler<HTMLDivElement>;
   onTrackTransitionEnd: TransitionEventHandler<HTMLDivElement>;
   overlay?: ReactNode;
@@ -120,6 +122,7 @@ function NotebookViewport({
   onActivePointerCancel,
   onActivePointerMove,
   onActivePointerUp,
+  onFramePointerDown,
   onTrackTransitionCancel,
   onTrackTransitionEnd,
   overlay,
@@ -147,6 +150,7 @@ function NotebookViewport({
        * whatever the sheet does.
        */
       className="absolute inset-0 isolate overflow-hidden"
+      onPointerDown={onFramePointerDown}
     >
       {overlay}
       {activeContent !== null && geometry.pageWidth > 0 ? (

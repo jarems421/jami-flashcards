@@ -4,7 +4,7 @@ import {
   getNotebookNibThicknessForViewport,
   type NotebookInkStyle,
 } from "@/lib/workspace/notebook-js-draw";
-import { NOTEBOOK_PEN_SMOOTHING_DEFAULT } from "@/lib/workspace/notebook-pen-feel";
+import { NOTEBOOK_PEN_SETTINGS_DEFAULT } from "@/lib/workspace/notebook-pen-feel";
 
 /**
  * js-draw lays down `thickness / viewport.getScaleFactor()`, treating tool
@@ -48,7 +48,7 @@ const style = (
   highlighterColor: "yellow",
   highlighterThickness: 24,
   penColor: "black",
-  penSmoothing: NOTEBOOK_PEN_SMOOTHING_DEFAULT,
+  penSettings: NOTEBOOK_PEN_SETTINGS_DEFAULT,
   penThickness: 6,
   ...overrides,
 });

@@ -134,7 +134,6 @@ type ControllerOptions = {
   bumpSessionRevision: () => number;
   refreshPendingOfflineReviews: () => void;
   clearFeedback: () => void;
-  notifySuccess: (message: string) => void;
   notifyError: (message: string) => void;
 };
 
@@ -193,7 +192,6 @@ export function useStudyExerciseController(
     bumpSessionRevision,
     refreshPendingOfflineReviews,
     clearFeedback,
-    notifySuccess,
     notifyError,
   } = options;
 
@@ -203,7 +201,6 @@ export function useStudyExerciseController(
   const hintedRevisitsRef = useRef(new Set<string>());
   /** Background saves run one after another, so a card's answers land in order. */
   const persistChainRef = useRef<Promise<void>>(Promise.resolve());
-  const saveDelayNotifiedRef = useRef(false);
 
   const reveal = useCallback(() => {
     if (!current || flipped) return;
@@ -258,24 +255,28 @@ export function useStudyExerciseController(
         try {
           const saved = await persistStudyReview(userId, queued);
           removeOfflineQueuedReviews(userId, [queued.id]);
-          saveDelayNotifiedRef.current = false;
           onSaved?.(saved);
           // Anything an earlier failure left behind goes up with it.
           if (getOfflineQueuedReviews(userId).length > 0) {
             await syncOfflineStudyReviews(userId);
           }
         } catch (error) {
+          /*
+           * No message here.
+           *
+           * The answer is on the device and the session keeps retrying, so a
+           * send that has not landed yet is not something the student can act
+           * on or needs to read between two cards. If it stays unsent long
+           * enough to matter, the sync notice on the page says so -- once,
+           * rather than once per answer.
+           */
           console.warn("A study answer could not be saved yet; it stays on this device.", error);
-          if (!saveDelayNotifiedRef.current) {
-            saveDelayNotifiedRef.current = true;
-            notifySuccess("Your answers are saved on this device and will sync when the connection settles.");
-          }
         } finally {
           refreshPendingOfflineReviews();
         }
       });
     },
-    [notifySuccess, refreshPendingOfflineReviews, userId]
+    [refreshPendingOfflineReviews, userId]
   );
 
   const queuedReviewFor = useCallback(
@@ -388,14 +389,12 @@ export function useStudyExerciseController(
       }
       applyOutcome(card, attempt, kind, outcome);
       setOfflineMode(true);
-      notifySuccess("Saved offline. This answer will sync when you are back online.");
     },
     [
       applyOutcome,
       cards,
       dailyReviewState,
       decks,
-      notifySuccess,
       queuedReviewFor,
       refreshPendingOfflineReviews,
       setOfflineMode,

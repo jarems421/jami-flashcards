@@ -86,15 +86,24 @@ describe("the tutor owns the sidebar entry sources used to have", () => {
     expect(tabBar).toContain('label: "Tutor"');
   });
 
-  it("stays lit while the student is in sources", () => {
-    expect(tabBar).toContain('owns: ["/dashboard/library"]');
+  it("stays lit wherever the tutor's own surfaces are", () => {
+    // Sources, and now planning: both are things a student does with Jami, so
+    // neither grows a second home in the sidebar while they are in it.
+    // The Tutor entry's own list, not whichever tab declares `owns` first.
+    const owns =
+      [...tabBar.matchAll(/owns: \[([^\]]*)\]/g)]
+        .map((match) => match[1] ?? "")
+        .find((entry) => entry.includes("/dashboard/library")) ?? "";
+    expect(owns).toContain('"/dashboard/library"');
+    expect(owns).toContain('"/dashboard/tutor/plan"');
   });
 
   it("keeps the sources address working", () => {
-    expect(TUTOR_VIEWS.map((view) => view.href)).toEqual([
-      "/dashboard/tutor",
-      "/dashboard/library",
-    ]);
+    const hrefs = TUTOR_VIEWS.map((view) => view.href);
+    // Asking comes first and sources last, whatever sits between them.
+    expect(hrefs[0]).toBe("/dashboard/tutor");
+    expect(hrefs[hrefs.length - 1]).toBe("/dashboard/library");
+    expect(hrefs).toContain("/dashboard/library");
     for (const page of [tutorPage, libraryPage]) {
       expect(page).toContain("views={TUTOR_VIEWS}");
       expect(page).toContain("TUTOR_TITLE");

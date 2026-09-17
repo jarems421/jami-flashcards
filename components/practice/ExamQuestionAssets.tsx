@@ -6,6 +6,7 @@ import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers"
 import ExamPrivateImage from "@/components/practice/ExamPrivateImage";
 import PracticePaperAssets from "@/components/practice/PracticePaperAssets";
 import { EXAM_PRINTED_QUESTION_ASSET_ID } from "@/lib/practice/exam-question-display";
+import { examSheetPageAssetNumber } from "@/lib/practice/exam-question-sheet";
 
 /**
  * A question's figures, at a size a student can actually read.
@@ -34,7 +35,19 @@ export default function ExamQuestionAssets({
   const [enlarged, setEnlarged] = useState<PracticePaperQuestionAsset | null>(null);
   const [zoom, setZoom] = useState(0);
 
-  const images = assets.filter((asset) => asset.type === "image" || asset.type === "illustration");
+  /*
+   * The stitched question, never the pages it was cut into.
+   *
+   * Ingestion stores a question's paper twice: once as one image, and again as
+   * one image per page for the sheet a student writes on. Both are images and
+   * both are servable, so a plain type filter drew the question and then drew
+   * every page of it again underneath.
+   */
+  const images = assets.filter(
+    (asset) =>
+      (asset.type === "image" || asset.type === "illustration") &&
+      examSheetPageAssetNumber(asset.id) === null
+  );
   const structured = assets.filter((asset) => asset.type !== "image" && asset.type !== "illustration");
   const pathFor = (asset: PracticePaperQuestionAsset) =>
     `/api/practice/exam-sessions/${encodeURIComponent(sessionId)}/assets/${encodeURIComponent(questionId)}/${encodeURIComponent(asset.id)}`;
@@ -54,37 +67,60 @@ export default function ExamQuestionAssets({
         */}
       {images.map((asset) => {
         const printed = asset.id === EXAM_PRINTED_QUESTION_ASSET_ID;
+        const label = printed
+          ? "Enlarge question"
+          : `Enlarge ${asset.title ? asset.title.toLowerCase() : "figure"}`;
+        const open = () => {
+          setEnlarged(asset);
+          setZoom(0);
+        };
         return (
+          /*
+            * The page itself opens it.
+            *
+            * The only way in used to be a small button in the corner that
+            * appeared on hover -- so on a touch screen, which is where a
+            * cramped figure is least readable, it was invisible until it was
+            * pressed by accident. The whole figure is the control now, the
+            * button beside it is a visible affordance rather than the
+            * mechanism, and neither of them is hidden.
+            *
+            * Padded rather than clipped. A rounded box with the page flush
+            * inside it cut the corners off the paper, which read as the
+            * question being smudged away at its edges.
+            */
           <figure
             key={`${questionId}:${asset.id}`}
-            className="group relative mt-4 overflow-hidden rounded-xl border border-[var(--color-border)] bg-white"
+            className="mt-4 rounded-xl border border-[var(--color-border)] bg-white p-1.5"
           >
-            <ExamPrivateImage
-              alt={asset.altText}
-              imageClassName={`rounded-none ${printed ? "" : "max-h-[34rem]"}`}
-              path={pathFor(asset)}
-            />
-            <Button
+            <button
               type="button"
-              size="icon"
-              variant="surface"
-              aria-label={printed ? "Enlarge question" : `Enlarge ${asset.title ? asset.title.toLowerCase() : "figure"}`}
-              className="absolute right-2 top-2 !h-9 !w-9 opacity-90 transition-opacity group-hover:opacity-100"
-              onClick={() => {
-                setEnlarged(asset);
-                setZoom(0);
-              }}
+              aria-label={label}
+              onClick={open}
+              className="group relative block w-full cursor-zoom-in overflow-hidden rounded-lg text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
             >
-              <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" className="h-4 w-4">
-                <path
-                  d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </Button>
+              <ExamPrivateImage
+                alt={asset.altText}
+                width={asset.width}
+                height={asset.height}
+                imageClassName={printed ? "" : "max-h-[34rem]"}
+                path={pathFor(asset)}
+              />
+              <span
+                aria-hidden="true"
+                className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/90 text-text-secondary shadow-e1 backdrop-blur transition-colors group-hover:text-text-primary"
+              >
+                <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4">
+                  <path
+                    d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            </button>
           </figure>
         );
       })}
@@ -134,7 +170,8 @@ export default function ExamQuestionAssets({
                 <ExamPrivateImage
                   key={`enlarged:${enlarged.id}`}
                   alt={enlarged.altText}
-                  imageClassName="rounded-none"
+                  width={enlarged.width}
+                  height={enlarged.height}
                   path={pathFor(enlarged)}
                 />
               </div>
