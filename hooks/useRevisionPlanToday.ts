@@ -7,6 +7,8 @@ import {
   type PlanActivityCard,
   type PlanActivityDeck,
 } from "@/lib/planning/plan-activity";
+import { buildPlanWeek, PLAN_WEEK_LENGTH, type PlanWeek } from "@/lib/planning/plan-week";
+import { planWeekStartDayKey } from "@/lib/planning/plan-schedule";
 import { resolvePlanDay } from "@/lib/planning/resolve-plan-day";
 import { planScopeKey, type PlanSlot, type RevisionPlan, type RevisionPlanEntry } from "@/lib/planning/types";
 import {
@@ -14,7 +16,7 @@ import {
   loadRevisionPlanEntries,
   saveRevisionPlanEntry,
 } from "@/services/planning/revision-plans";
-import { getStudyDayKey } from "@/lib/study/day";
+import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 
 /**
  * Today's plan, resolved against whatever the Learning Engine currently says.
@@ -32,6 +34,8 @@ import { getStudyDayKey } from "@/lib/study/day";
 export type RevisionPlanTodayState = {
   plan: RevisionPlan | null;
   day: ReturnType<typeof resolvePlanDay> | null;
+  /** The week today sits in, for the strip above the agenda. */
+  week: PlanWeek | null;
   scopeNames: Map<string, string>;
   loading: boolean;
   toggleSlot: (slot: PlanSlot) => void;
@@ -48,16 +52,24 @@ export function useRevisionPlanToday(input: {
 }): RevisionPlanTodayState {
   const { uid, enabled } = input;
   const [plan, setPlan] = useState<RevisionPlan | null>(null);
-  const [entry, setEntry] = useState<RevisionPlanEntry | null>(null);
+  /**
+   * The whole visible week, not just today.
+   *
+   * Seven documents at most, and only the ones the student actually changed
+   * exist, so this is usually one read returning one or two rows. Today is
+   * picked back out of it rather than fetched separately.
+   */
+  const [entries, setEntries] = useState<RevisionPlanEntry[]>([]);
   const [loading, setLoading] = useState(enabled);
   const dayKey = getStudyDayKey();
+  const weekStartDayKey = planWeekStartDayKey(dayKey);
   // Held so an optimistic tick can be written without the save racing a reload.
   const savingRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!enabled || !uid) {
       setPlan(null);
-      setEntry(null);
+      setEntries([]);
       setLoading(false);
       return;
     }
@@ -66,25 +78,26 @@ export function useRevisionPlanToday(input: {
       const active = await loadActiveRevisionPlan(uid);
       setPlan(active);
       if (!active) {
-        setEntry(null);
+        setEntries([]);
         return;
       }
-      const entries = await loadRevisionPlanEntries(uid, active.id, {
-        fromDayKey: dayKey,
-        toDayKey: dayKey,
-        max: 1,
-      });
-      setEntry(entries[0] ?? null);
+      setEntries(
+        await loadRevisionPlanEntries(uid, active.id, {
+          fromDayKey: weekStartDayKey,
+          toDayKey: shiftStudyDayKey(weekStartDayKey, PLAN_WEEK_LENGTH - 1),
+          max: PLAN_WEEK_LENGTH,
+        })
+      );
     } catch {
       // Today must render without a plan. A plan that cannot be read is the
       // same as not having one, and saying so loudly on the home page would be
       // worse than the absence.
       setPlan(null);
-      setEntry(null);
+      setEntries([]);
     } finally {
       setLoading(false);
     }
-  }, [dayKey, enabled, uid]);
+  }, [enabled, uid, weekStartDayKey]);
 
   useEffect(() => {
     void load();
@@ -114,12 +127,31 @@ export function useRevisionPlanToday(input: {
     [dayKey, input.cards, input.decks, plan]
   );
 
+  const entry = useMemo(
+    () => entries.find((stored) => stored.dayKey === dayKey) ?? null,
+    [dayKey, entries]
+  );
+
   const day = useMemo(
     () =>
       plan
         ? resolvePlanDay({ plan, dayKey, entry, actionsByScope, activityByScope })
         : null,
     [actionsByScope, activityByScope, dayKey, entry, plan]
+  );
+
+  /*
+   * The week from stored entries alone.
+   *
+   * Only today is resolved against the Learning Engine; the other six say how
+   * much they ask for and how much the student ticked off. See `plan-week.ts`
+   * for why replaying the engine across a week is not worth seven profile
+   * reads to draw seven bars.
+   */
+  const week = useMemo(
+    () =>
+      plan ? buildPlanWeek({ plan, entries, todayDayKey: dayKey, weekStartDayKey }) : null,
+    [dayKey, entries, plan, weekStartDayKey]
   );
 
   const scopeNames = useMemo(() => {
@@ -143,19 +175,23 @@ export function useRevisionPlanToday(input: {
         ? current.filter((id) => id !== slot.id)
         : [...current, slot.id];
       const updated: RevisionPlanEntry = { ...(entry ?? { dayKey }), dayKey, completedSlotIds: next };
-      setEntry(updated);
+      const previous = entries;
+      setEntries((current) => [
+        ...current.filter((stored) => stored.dayKey !== dayKey),
+        updated,
+      ]);
       savingRef.current = true;
       void saveRevisionPlanEntry(uid, plan.id, updated)
         .catch(() => {
           // Put it back rather than leaving a tick that did not save.
-          setEntry(entry);
+          setEntries(previous);
         })
         .finally(() => {
           savingRef.current = false;
         });
     },
-    [dayKey, entry, plan, uid]
+    [dayKey, entries, entry, plan, uid]
   );
 
-  return { plan, day, scopeNames, loading, toggleSlot, refresh: load };
+  return { plan, day, week, scopeNames, loading, toggleSlot, refresh: load };
 }

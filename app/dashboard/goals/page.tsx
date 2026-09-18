@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useDashboardData } from "@/hooks/useDashboardData";
@@ -20,7 +20,17 @@ import {
 } from "@/lib/constellation/stars";
 import { getDeadlineDisplay } from "@/lib/study/time";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card, EmptyState, FeedbackBanner, Input, ProgressBar, SectionHeader, Skeleton } from "@/components/ui";
+import {
+  Button,
+  Card,
+  DateField,
+  EmptyState,
+  FeedbackBanner,
+  Input,
+  ProgressBar,
+  SectionHeader,
+  Skeleton,
+} from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { getDecks } from "@/services/study/decks";
@@ -64,102 +74,6 @@ function parseTargetAccuracyInput(value: string) {
   if (!Number.isFinite(nextValue)) return null;
   const normalizedValue = nextValue > 1 ? nextValue / 100 : nextValue;
   return normalizedValue >= 0 && normalizedValue <= 1 ? normalizedValue : null;
-}
-
-type GoalDeadlineFieldProps = {
-  type: "date" | "time";
-  label: string;
-  value: string;
-  placeholder: string;
-  onValueChange: (value: string) => void;
-};
-
-function formatGoalDeadlineValue(type: "date" | "time", value: string) {
-  if (!value) return "";
-  if (type === "time") return value;
-
-  const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return value;
-  return `${day}/${month}/${year}`;
-}
-
-function GoalDeadlineIcon({ type }: { type: "date" | "time" }) {
-  if (type === "time") {
-    return (
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        className="size-[1.125rem]"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <circle cx="12" cy="12" r="8.25" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.75v4.7l3.1 1.8" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      className="size-[1.125rem]"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-    >
-      <rect x="4" y="5.5" width="16" height="14" rx="2.25" />
-      <path strokeLinecap="round" d="M8 3.75v3.5M16 3.75v3.5M4 9.25h16" />
-    </svg>
-  );
-}
-
-function GoalDeadlineField({
-  type,
-  label,
-  value,
-  placeholder,
-  onValueChange,
-}: GoalDeadlineFieldProps) {
-  const id = useId();
-  const displayValue = formatGoalDeadlineValue(type, value);
-
-  return (
-    <div className="goal-deadline-field min-w-0">
-      <label
-        htmlFor={id}
-        className="mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary"
-      >
-        {label}
-      </label>
-      <div className="app-field relative flex min-h-11 min-w-0 items-center gap-3 overflow-hidden rounded-lg px-4 py-2.5">
-        <span
-          aria-hidden="true"
-          className={`min-w-0 flex-1 truncate text-sm ${
-            value
-              ? "text-[var(--color-field-text)]"
-              : "text-[var(--color-field-placeholder)]"
-          }`}
-        >
-          {displayValue || placeholder}
-        </span>
-        <span
-          aria-hidden="true"
-          className="pointer-events-none flex shrink-0 text-[var(--color-field-placeholder)]"
-        >
-          <GoalDeadlineIcon type={type} />
-        </span>
-        <input
-          id={id}
-          type={type}
-          value={value}
-          onChange={(event) => onValueChange(event.target.value)}
-          className="goal-deadline-native absolute inset-0 z-10 h-full w-full cursor-pointer opacity-[0.001]"
-        />
-      </div>
-    </div>
-  );
 }
 
 export default function GoalsPage() {
@@ -722,7 +636,7 @@ export default function GoalsPage() {
                   Optional. Leave both fields blank for an open-ended goal.
                 </p>
               </div>
-              <GoalDeadlineField
+              <DateField
                 type="date"
                 value={deadlineDate}
                 onValueChange={(value) => {
@@ -732,7 +646,7 @@ export default function GoalsPage() {
                 label="Finish by date"
                 placeholder="Choose a date"
               />
-              <GoalDeadlineField
+              <DateField
                 type="time"
                 value={deadlineTime}
                 onValueChange={setDeadlineTime}
@@ -860,7 +774,7 @@ export default function GoalsPage() {
                           {deadline.label}
                         </span>
                       </div>
-                      <ProgressBar progress={progressPct} size="sm" variant="warm" className="mt-4" />
+                      <ProgressBar grow progress={progressPct} size="sm" variant="warm" className="mt-4" />
                       <div className="mt-4 flex flex-wrap gap-2">
                         <Button
                           type="button"

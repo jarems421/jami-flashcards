@@ -49,7 +49,13 @@ export default function TutorPlanCard({
 
   if (plan) {
     const daysLeft = Math.max(0, planDaysBetween(getStudyDayKey(), plan.endDayKey));
-    const perWeek = plan.cadence.reduce((total, entry) => total + entry.minutes, 0);
+    const perWeek = plan.sessions.reduce((total, session) => total + session.minutes, 0);
+    // One chip per study day, not per sitting: two sittings on a Monday is one
+    // Monday, and a row reading "Mon Mon Tue" says nothing anybody wanted.
+    const studyDays = [...new Set(plan.sessions.map((session) => session.weekday))].sort(
+      (left, right) => left - right
+    );
+    const timed = plan.sessions.filter((session) => session.startTime).length;
 
     return (
       <Card padding="md">
@@ -69,16 +75,17 @@ export default function TutorPlanCard({
           }
         />
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          {plan.cadence.map((entry) => (
+          {studyDays.map((weekday) => (
             <span
-              key={entry.weekday}
+              key={weekday}
               className="app-chip rounded-full px-2.5 py-1 text-2xs font-semibold"
             >
-              {PLAN_WEEKDAY_LABELS[entry.weekday]}
+              {PLAN_WEEKDAY_LABELS[weekday]}
             </span>
           ))}
           <span className="ml-1 text-2xs text-text-muted">
-            {plan.cadence[0]?.minutes ?? 0} min a session
+            {plan.sessions.length} session{plan.sessions.length === 1 ? "" : "s"} a week
+            {timed > 0 ? ", timed" : ""}
           </span>
         </div>
         <p className="mt-3 text-2xs leading-5 text-text-muted">

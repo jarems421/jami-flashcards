@@ -425,7 +425,9 @@ export default function DecksPage() {
             action={<Button type="button" onClick={() => nameInputRef.current?.focus()} variant="warm">Name a deck</Button>}
           />
         ) : (
-          <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
+          // Staggered rather than rising as one block, so a list of decks
+          // arrives in order instead of all at once.
+          <div className="app-rise grid gap-3 sm:gap-4 lg:grid-cols-2">
             {decks.map((deck, index) => {
               const counts = deckCounts[deck.id] ?? { due: 0, total: 0 };
               const deckColor = getDeckColorPreset(deck.colorPreset);

@@ -21,7 +21,7 @@ import type { Topic } from "@/lib/material/topics";
 import type { MasteryEvent } from "@/lib/material/mastery";
 import type { Source } from "@/lib/material/sources";
 import { buildTodayPlan, type TodayPlan, type TodayStudyAction } from "@/lib/dashboard/today-plan";
-import RevisionPlanStrip from "@/components/planning/RevisionPlanStrip";
+import PlanDayAgenda from "@/components/planning/PlanDayAgenda";
 import { useRevisionPlanToday } from "@/hooks/useRevisionPlanToday";
 import { getRevisionPlanHref } from "@/lib/app/routes";
 import { featureFlags } from "@/lib/app/feature-flags";
@@ -641,8 +641,8 @@ export default function DashboardHome() {
    * because the student chose its shape, so it wins, and the card comes back
    * the moment the plan is archived.
    */
-  const planStripVisible = Boolean(revisionPlan.plan && revisionPlan.day);
-  const showStudyActions = !planStripVisible && todayPlan.studyActions.length > 0;
+  const planAgendaVisible = Boolean(revisionPlan.plan && revisionPlan.day);
+  const showStudyActions = !planAgendaVisible && todayPlan.studyActions.length > 0;
   const showWeakTopics =
     !showStudyActions &&
     sectionStates.topics !== "unavailable" &&
@@ -772,10 +772,11 @@ export default function DashboardHome() {
           }
         />
 
-        {planStripVisible && revisionPlan.plan && revisionPlan.day ? (
-          <RevisionPlanStrip
+        {planAgendaVisible && revisionPlan.plan && revisionPlan.day ? (
+          <PlanDayAgenda
             plan={revisionPlan.plan}
             day={revisionPlan.day}
+            week={revisionPlan.week}
             scopeNames={revisionPlan.scopeNames}
             onToggleSlot={revisionPlan.toggleSlot}
             planHref={getRevisionPlanHref()}
@@ -819,7 +820,7 @@ export default function DashboardHome() {
 
                 {hasSecondaryCards ? (
                   <div
-                    className={`grid items-start gap-4 ${
+                    className={`app-rise grid items-start gap-4 ${
                       secondaryCardCount === 1
                         ? "grid-cols-1"
                         : "md:grid-cols-2 2xl:grid-cols-3"

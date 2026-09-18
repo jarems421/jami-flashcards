@@ -253,7 +253,6 @@
     position: relative;
   }
 
-
   /*
     One rule per face the chooser offers. The class is stamped on the document
     before the first paint, so a student who set Jami in a book serif never
@@ -1380,6 +1379,181 @@
     container: goal-form / inline-size;
   }
 
+  /*
+   * The plan dates go side by side when their own panel is wide enough.
+   *
+   * A viewport breakpoint was the wrong question: an iPad is wide enough for
+   * `sm:` and the panel holding these two fields is not wide enough for two
+   * native date controls, so the columns opened and the fields overlapped.
+   */
+  .plan-dates-layout {
+    container: plan-dates / inline-size;
+  }
+
+  .plan-dates-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @container plan-dates (min-width: 26rem) {
+    .plan-dates-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  /*
+   * The planning surfaces' atmosphere.
+   *
+   * A revision plan is the one surface a student opens on purpose, in the
+   * evening, to decide something -- so it is allowed to feel like more than a
+   * form. What it is not allowed to do is mint stars: a star means a goal was
+   * earned, and scattering decorative ones here would make every earned star
+   * worth less. So the feeling comes from light and from motion -- a slow wash
+   * that drifts, a line that carries light down it, a node that breathes --
+   * and never from drawing another star.
+   *
+   * Cheap on purpose. Today already carries up to sixty stars behind it, so
+   * everything here animates `transform` and `opacity` only, adds at most one
+   * element per panel, and carries no blend mode or `will-change`.
+   */
+  .plan-aurora {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    block-size: 8rem;
+    pointer-events: none;
+    opacity: 0.7;
+    background:
+      radial-gradient(60% 100% at 30% 0%, var(--color-accent-muted) 0%, transparent 68%),
+      radial-gradient(52% 96% at 78% 6%, var(--color-warm-glow) 0%, transparent 72%);
+  }
+
+  /* A second, fainter layer so the drift never reveals a hard edge. */
+  .plan-aurora::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0.55;
+    background: radial-gradient(46% 90% at 55% 0%, var(--color-accent-muted) 0%, transparent 70%);
+  }
+
+  /* The line a day is read down, and the light that travels it. */
+  .plan-spine {
+    position: absolute;
+    inline-size: 1px;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      var(--color-border) 12%,
+      var(--color-border) 88%,
+      transparent 100%
+    );
+    overflow: hidden;
+  }
+
+  .plan-spine::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    block-size: 28%;
+    top: -28%;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      var(--color-accent) 50%,
+      transparent 100%
+    );
+    opacity: 0;
+  }
+
+  /*
+   * Each child rises in turn. Used by every list and grid in the app.
+   *
+   * Capped at six because past that the last one arrives late enough to feel
+   * like the page is still loading rather than settling.
+   */
+  .app-rise > * {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .plan-aurora {
+      animation: plan-aurora-drift 34s var(--ease-standard) infinite alternate;
+    }
+
+    .plan-aurora::after {
+      animation: plan-aurora-drift 27s var(--ease-standard) infinite alternate-reverse;
+    }
+
+    .plan-spine::after {
+      animation: plan-spine-travel 7s var(--ease-standard) infinite;
+    }
+
+    .app-rise > * {
+      animation: app-rise-in var(--duration-slow) var(--ease-standard) both;
+    }
+
+    .app-rise > *:nth-child(1) {
+      animation-delay: 40ms;
+    }
+
+    .app-rise > *:nth-child(2) {
+      animation-delay: 110ms;
+    }
+
+    .app-rise > *:nth-child(3) {
+      animation-delay: 180ms;
+    }
+
+    .app-rise > *:nth-child(4) {
+      animation-delay: 250ms;
+    }
+
+    .app-rise > *:nth-child(n + 5) {
+      animation-delay: 310ms;
+    }
+
+    /* A proposal arriving: one soft sweep, then still. */
+    .plan-sweep {
+      animation: plan-sweep-in var(--duration-slow) var(--ease-standard) both;
+    }
+  }
+
+  /*
+   * A dialog arriving.
+   *
+   * Every modal in the app used to appear instantly, backdrop and all, which
+   * reads as a jump cut rather than as something opening in front of you. The
+   * backdrop fades and the panel rises a little and settles; on a phone, where
+   * a dialog is docked to the bottom edge, that same rise reads as a sheet
+   * coming up.
+   *
+   * Neither carries a fill mode, so with motion suppressed the dialog is
+   * simply there -- which is the correct still version of opening.
+   */
+  /*
+   * A meter filling up.
+   *
+   * Scaled rather than widened, so the growth is compositor work and costs
+   * nothing per frame. The element keeps its real width, so what a screen
+   * reader and the layout see is the final value from the start.
+   */
+  .app-meter-fill {
+    transform-origin: left center;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .app-dialog-backdrop {
+      animation: app-dialog-backdrop-in var(--duration-normal) var(--ease-standard);
+    }
+
+    .app-dialog-panel {
+      animation: app-dialog-panel-in var(--duration-normal) var(--ease-spring);
+    }
+
+    .app-meter-fill {
+      animation: app-meter-grow var(--duration-slow) var(--ease-standard);
+    }
+  }
+
   .goal-form-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1388,8 +1562,17 @@
     grid-column: 1 / -1;
   }
 
+  /*
+   * A native date or time control may be narrower than it would like.
+   *
+   * Without this, Safari sizes `-webkit-date-and-time-edit` from its own
+   * content and the field overflows whatever column it was put in -- which is
+   * how two date fields in a two-column grid came to overlap on an iPad.
+   */
   .goal-deadline-field,
-  .goal-deadline-native {
+  .goal-deadline-native,
+  .date-field,
+  .date-field-native {
     min-inline-size: 0;
     max-inline-size: 100%;
   }
@@ -2763,9 +2946,6 @@ html.panels-solid body.constellation-background-enabled .app-nav {
   }
 }
 
-
-
-
 /* Reduced-motion fallback */
 
 @media (max-width: 640px) {
@@ -3102,7 +3282,6 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 .fn-summary{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center}
 .fn-tag{display:inline-flex;align-items:center;gap:.45rem;padding:.5rem .8rem;border-radius:12px;background:rgba(255,255,255,.045);border:1px solid rgba(226,220,255,.1);font-size:.88rem;color:rgba(240,236,255,.88)}
 
-
 .fn-nav-star{position:absolute;right:-4px;top:-4px;display:grid;color:var(--color-accent);filter:drop-shadow(0 0 4px rgba(150,120,255,.9));animation:fn-breathe 2.6s ease-in-out infinite}
 .fn-spot{position:fixed;z-index:70;border-radius:18px;pointer-events:none;box-shadow:0 0 0 9999px rgba(4,2,12,.55),0 0 0 1px rgba(205,190,255,.6),0 0 36px 8px rgba(142,112,255,.45);transition:left .5s cubic-bezier(.22,1,.36,1),top .5s cubic-bezier(.22,1,.36,1),width .5s,height .5s;animation:fn-halo 3.4s ease-in-out infinite}
 .fn-note{position:fixed;z-index:71;width:340px;padding:1.05rem 1.15rem 1rem;border-radius:22px;background:linear-gradient(180deg,rgba(34,23,72,.96),rgba(14,9,32,.98));border:1px solid rgba(226,220,255,.16);color:#f4f0ff;box-shadow:0 24px 70px -20px rgba(0,0,0,.85),0 0 44px -10px rgba(142,112,255,.4);animation:fn-enter .9s .2s cubic-bezier(.22,1,.36,1) both}
@@ -3163,3 +3342,82 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 /* First night: which course, and which tier, under a subject's board. */
 .fn-course-question{width:100%;display:flex;flex-direction:column;gap:.4rem;padding-top:.15rem}
 .fn-course-label{font-size:.72rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:rgba(222,214,255,.62)}
+
+/* Planning atmosphere. Declared at top level, like every other animation in
+ * this file, so nothing depends on how a layer is processed. */
+@keyframes plan-aurora-drift {
+  from {
+    transform: translate3d(-3%, -2%, 0) scale(1.04);
+  }
+  to {
+    transform: translate3d(3%, 2%, 0) scale(1.1);
+  }
+}
+
+@keyframes plan-spine-travel {
+  0% {
+    top: -28%;
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.55;
+  }
+  72% {
+    opacity: 0.35;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes app-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes plan-sweep-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes app-dialog-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes app-dialog-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes app-meter-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}

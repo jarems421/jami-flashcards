@@ -2,13 +2,15 @@ import type { StudyAction } from "@/lib/learning/actions/study-actions";
 import {
   clampPlanMinutes,
   isWithinPlanHorizon,
-  planItemCount,
-  planMinutesOn,
+  planSessionEndTime,
+  planSessionsOn,
   planScopeSequence,
+  planSlotCounts,
 } from "@/lib/planning/plan-schedule";
 import {
   planScopeKey,
   type PlanDay,
+  type PlanDaySession,
   type PlanSlot,
   type PlanSlotItem,
   type RevisionPlan,
@@ -48,7 +50,14 @@ export type ResolvePlanDayInput = {
   activityByScope?: ReadonlyMap<string, number>;
 };
 
-/** Stable across reads so a manual tick keeps pointing at the same slot. */
+/**
+ * Stable across reads so a manual tick keeps pointing at the same slot.
+ *
+ * Deliberately positional rather than keyed on a session id. A day's slots are
+ * numbered in the order they are worked through, whichever sitting they fall
+ * in, which means a plan migrated from version 1 -- one sitting a day -- keeps
+ * every id it had, and nobody loses yesterday's ticks to a schema change.
+ */
 export function planSlotId(planId: string, dayKey: string, position: number) {
   return `${planId}:${dayKey}:${position}`;
 }
@@ -61,20 +70,49 @@ export function resolvePlanDay(input: ResolvePlanDayInput): PlanDay {
     scheduled: false,
     skipped: Boolean(entry?.skipped),
     minutes: 0,
+    sessions: [],
     slots: [],
     doneCount: 0,
   };
 
   if (plan.status !== "active" || !isWithinPlanHorizon(plan, dayKey)) return base;
 
-  const minutes = planMinutesOn(plan.cadence, dayKey);
-  if (minutes <= 0) return base;
+  const sessions = planSessionsOn(plan.sessions, dayKey);
+  if (sessions.length === 0) return base;
 
   const pinned = entry?.pinned ?? [];
-  const count = Math.max(planItemCount(minutes), pinned.length);
-  const sequence = planScopeSequence(plan.scopes, count, planScopeKey);
-  // A pinned day with no scopes left still has its pinned work to show.
-  const slotMinutes = Math.max(1, Math.round(clampPlanMinutes(minutes) / Math.max(1, count)));
+  const counts = planSlotCounts(sessions, pinned.length);
+
+  /*
+   * Which subject each slot is for, decided before any work is chosen.
+   *
+   * A sitting the student pinned to a subject fills every one of its slots with
+   * that subject. The rest are dealt out by weight across the whole plan, in
+   * the order they will be worked through. The weighting does not subtract what
+   * the pinned sittings already took -- a student who says "Monday is
+   * Chemistry" has said what Monday is for, not that Chemistry should now get
+   * less of Tuesday.
+   */
+  const unscopedCount = sessions.reduce(
+    (total, session, index) => total + (session.scopeKey ? 0 : (counts[index] as number)),
+    0
+  );
+  const weighted = planScopeSequence(plan.scopes, unscopedCount, planScopeKey);
+  const fallbackScopeKey = planScopeKey(plan.scopes[0] ?? {});
+  let weightedCursor = 0;
+
+  type SlotPlan = { sessionIndex: number; scopeKey: string; minutes: number };
+  const layout: SlotPlan[] = [];
+  sessions.forEach((session, sessionIndex) => {
+    const count = counts[sessionIndex] as number;
+    const slotMinutes = Math.max(1, Math.round(clampPlanMinutes(session.minutes) / Math.max(1, count)));
+    for (let index = 0; index < count; index += 1) {
+      const scopeKey = session.scopeKey
+        ? session.scopeKey
+        : weighted[weightedCursor++] ?? fallbackScopeKey;
+      layout.push({ sessionIndex, scopeKey, minutes: slotMinutes });
+    }
+  });
 
   /*
    * Pinned items take the front of the day.
@@ -86,47 +124,49 @@ export function resolvePlanDay(input: ResolvePlanDayInput): PlanDay {
    */
   const slots: PlanSlot[] = [];
   const used = new Set<string>();
-  pinned.forEach((item, index) => {
-    used.add(item.actionId);
-    slots.push({
-      id: planSlotId(plan.id, dayKey, index),
-      position: index,
-      minutes: slotMinutes,
-      scopeKey: sequence[index] ?? planScopeKey(plan.scopes[0] ?? {}),
-      item: { kind: "pinned", pinned: item },
-      state: "todo",
-    });
-  });
-
   // Where each scope has got to, so a day never proposes the same work twice.
   const taken = new Map<string, number>();
-  for (let position = pinned.length; position < count; position += 1) {
-    const scopeKey = sequence[position];
-    let item: PlanSlotItem = { kind: "open" };
-    if (scopeKey) {
-      const candidates = actionsByScope.get(scopeKey) ?? [];
-      let cursor = taken.get(scopeKey) ?? 0;
-      while (cursor < candidates.length) {
-        const candidate = candidates[cursor] as StudyAction;
-        cursor += 1;
-        // Only work that leads somewhere: a slot the student cannot act on is
-        // worse than an honest gap, because it looks like something to do.
-        if (!candidate.destination || used.has(candidate.id)) continue;
-        used.add(candidate.id);
-        item = { kind: "action", action: candidate };
-        break;
-      }
-      taken.set(scopeKey, cursor);
+
+  layout.forEach((entryPlan, position) => {
+    const pinnedItem = pinned[position];
+    if (pinnedItem) {
+      used.add(pinnedItem.actionId);
+      slots.push({
+        id: planSlotId(plan.id, dayKey, position),
+        position,
+        minutes: entryPlan.minutes,
+        scopeKey: entryPlan.scopeKey,
+        item: { kind: "pinned", pinned: pinnedItem },
+        state: "todo",
+      });
+      return;
     }
+
+    const scopeKey = entryPlan.scopeKey;
+    let item: PlanSlotItem = { kind: "open" };
+    const candidates = actionsByScope.get(scopeKey) ?? [];
+    let cursor = taken.get(scopeKey) ?? 0;
+    while (cursor < candidates.length) {
+      const candidate = candidates[cursor] as StudyAction;
+      cursor += 1;
+      // Only work that leads somewhere: a slot the student cannot act on is
+      // worse than an honest gap, because it looks like something to do.
+      if (!candidate.destination || used.has(candidate.id)) continue;
+      used.add(candidate.id);
+      item = { kind: "action", action: candidate };
+      break;
+    }
+    taken.set(scopeKey, cursor);
+
     slots.push({
       id: planSlotId(plan.id, dayKey, position),
       position,
-      minutes: slotMinutes,
-      scopeKey: scopeKey ?? "none",
+      minutes: entryPlan.minutes,
+      scopeKey,
       item,
       state: "todo",
     });
-  }
+  });
 
   const resolved = applyPlanDayCompletion(slots, {
     skipped: Boolean(entry?.skipped),
@@ -134,10 +174,30 @@ export function resolvePlanDay(input: ResolvePlanDayInput): PlanDay {
     activityByScope: input.activityByScope ?? new Map(),
   });
 
+  const daySessions: PlanDaySession[] = sessions.map((session, sessionIndex) => {
+    const sessionSlots = resolved.filter(
+      (_, position) => (layout[position] as SlotPlan).sessionIndex === sessionIndex
+    );
+    return {
+      id: session.id,
+      index: sessionIndex,
+      minutes: clampPlanMinutes(session.minutes),
+      ...(session.startTime ? { startTime: session.startTime } : {}),
+      ...(session.startTime
+        ? { endTime: planSessionEndTime(session.startTime, session.minutes) }
+        : {}),
+      ...(session.label ? { label: session.label } : {}),
+      scopeKey: sessionSlots[0]?.scopeKey ?? session.scopeKey ?? fallbackScopeKey,
+      slots: sessionSlots,
+      doneCount: sessionSlots.filter((slot) => slot.state === "done").length,
+    };
+  });
+
   return {
     ...base,
     scheduled: true,
-    minutes,
+    minutes: sessions.reduce((total, session) => total + clampPlanMinutes(session.minutes), 0),
+    sessions: daySessions,
     slots: resolved,
     doneCount: resolved.filter((slot) => slot.state === "done").length,
   };

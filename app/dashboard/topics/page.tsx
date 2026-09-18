@@ -404,7 +404,7 @@ export default function TopicsPage() {
         <>
           <div
             id={!hasSearchQuery ? "recent-topics-grid" : undefined}
-            className="grid auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-4"
+            className="app-rise grid auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-4"
           >
             {visibleSummaries.map((summary) => {
               return (

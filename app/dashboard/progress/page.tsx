@@ -458,7 +458,7 @@ export default function ProgressPage() {
                         aria-valuenow={summary.holdingPercent}
                       >
                         <div
-                          className="h-full rounded-full bg-success transition-all duration-slow"
+                          className="app-meter-fill h-full rounded-full bg-success transition-all duration-slow"
                           style={{ width: `${summary.holdingPercent}%` }}
                         />
                       </div>

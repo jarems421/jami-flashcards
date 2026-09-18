@@ -240,7 +240,7 @@ export default function LibraryWorkspace({
 
           <nav
             aria-label="Saved sources"
-            className={[styles.sourceList, "flex-1"].join(" ")}
+            className={[styles.sourceList, "app-rise", "flex-1"].join(" ")}
           >
             {browser.filteredSources.length === 0 ? (
               <div className="px-5 py-10 text-center">

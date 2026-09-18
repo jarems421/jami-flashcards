@@ -12,6 +12,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
+import { migrateStoredRevisionPlan } from "@/lib/planning/migrate-plan";
 import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
 import {
   REVISION_PLAN_SCHEMA_VERSION,
@@ -46,7 +47,11 @@ const entryPath = (uid: string, planId: string, dayKey: string) =>
 function readPlan(id: string, data: Record<string, unknown>): RevisionPlan {
   // Normalised on the way out as well as in: a document written by an older
   // build, or edited in the console, still has to come back as a usable plan.
-  const { draft } = normalizeRevisionPlanDraft(data as Partial<RevisionPlanDraft>);
+  // Migrated first, so a version 1 `cadence` arrives as sessions rather than as
+  // a plan with no days at all.
+  const { draft } = normalizeRevisionPlanDraft(
+    migrateStoredRevisionPlan(data) as Partial<RevisionPlanDraft>
+  );
   return {
     ...draft,
     id,

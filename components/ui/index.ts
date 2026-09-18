@@ -4,6 +4,8 @@ export { ButtonLink } from "./Button";
 export { default as Card } from "./Card";
 export { default as ConfirmDialog } from "./ConfirmDialog";
 export { default as ConstellationTrail } from "./ConstellationTrail";
+export { default as DateField } from "./DateField";
+export type { DateFieldProps } from "./DateField";
 export { CONSTELLATION_TRAIL_LENGTH } from "./ConstellationTrail";
 export {
   Dialog,

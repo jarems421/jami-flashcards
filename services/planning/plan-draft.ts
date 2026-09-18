@@ -6,6 +6,53 @@ import type { RevisionPlanDraft } from "@/lib/planning/types";
 /** One side of the planning conversation, as the panel holds it. */
 export type PlanDraftTurn = { role: "student" | "jami"; text: string };
 
+/**
+ * Why a planning message failed, in the words the student should read.
+ *
+ * The route has always distinguished its failures and the client has always
+ * thrown the distinction away, so "Jami couldn't answer just now" was the reply
+ * to a missing sign-in, an unconfigured provider, a timeout and a genuine
+ * outage alike -- and a student pressing send again on a provider that is not
+ * there was the commonest version of that. The code comes from the server; the
+ * sentence is chosen here, next to the panel that shows it.
+ */
+export type PlanDraftErrorCode =
+  | "signed_out"
+  | "ai_unconfigured"
+  | "plan_draft_timeout"
+  | "plan_draft_unavailable";
+
+const PLAN_DRAFT_MESSAGES: Record<PlanDraftErrorCode, string> = {
+  signed_out: "Sign in again to plan with Jami.",
+  ai_unconfigured:
+    "Jami's planning help isn't switched on here. You can still build a plan yourself.",
+  plan_draft_timeout: "Jami took too long to answer. Try again, or build the plan yourself.",
+  plan_draft_unavailable:
+    "Jami couldn't answer just now. You can still build a plan yourself.",
+};
+
+export class PlanDraftError extends Error {
+  readonly code: PlanDraftErrorCode;
+  /** Whether pressing send again could plausibly work. */
+  readonly retryable: boolean;
+
+  constructor(code: PlanDraftErrorCode) {
+    super(PLAN_DRAFT_MESSAGES[code]);
+    this.name = "PlanDraftError";
+    this.code = code;
+    this.retryable = code === "plan_draft_timeout" || code === "plan_draft_unavailable";
+  }
+}
+
+function readErrorCode(status: number, body: unknown): PlanDraftErrorCode {
+  const code =
+    body && typeof body === "object" ? (body as Record<string, unknown>).code : undefined;
+  if (code === "ai_unconfigured" || code === "plan_draft_timeout") return code;
+  if (status === 401) return "signed_out";
+  if (status === 504) return "plan_draft_timeout";
+  return "plan_draft_unavailable";
+}
+
 export type PlanDraftAnswer = {
   reply: string;
   /** A plan to open in the builder, or null while Jami is still asking. */
@@ -24,9 +71,11 @@ export type PlanDraftAnswer = {
 export async function draftPlanWithJami(input: {
   message: string;
   history: readonly PlanDraftTurn[];
+  /** The draft on screen, so Jami adjusts it rather than starting again. */
+  draft?: RevisionPlanDraft | null;
 }): Promise<PlanDraftAnswer> {
   const user = auth.currentUser;
-  if (!user) throw new Error("Sign in again to plan with Jami.");
+  if (!user) throw new PlanDraftError("signed_out");
 
   const response = await fetch("/api/ai/plan-draft", {
     method: "POST",
@@ -34,9 +83,18 @@ export async function draftPlanWithJami(input: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${await user.getIdToken()}`,
     },
-    body: JSON.stringify({ message: input.message, history: input.history }),
+    body: JSON.stringify({
+      message: input.message,
+      history: input.history,
+      ...(input.draft ? { draft: input.draft } : {}),
+    }),
   });
-  if (!response.ok) throw new Error("Jami could not suggest a plan just now.");
+  if (!response.ok) {
+    // Read rather than discarded: the route says which failure this was, and
+    // the panel can only tell the student if the reason survives the fetch.
+    const failure: unknown = await response.json().catch(() => null);
+    throw new PlanDraftError(readErrorCode(response.status, failure));
+  }
 
   const body: unknown = await response.json();
   const record = body && typeof body === "object" ? (body as Record<string, unknown>) : {};

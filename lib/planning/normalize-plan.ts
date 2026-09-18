@@ -2,17 +2,19 @@ import {
   clampPlanMinutes,
   clampPlanWeight,
   isPlanDayKey,
+  isPlanTime,
   planDaysBetween,
 } from "@/lib/planning/plan-schedule";
 import {
   PLAN_MAX_HORIZON_DAYS,
+  PLAN_MAX_SESSIONS_PER_DAY,
   PLAN_WEEKDAYS,
   planScopeKey,
   type PlanWeekday,
-  type RevisionPlanCadence,
   type RevisionPlanDraft,
   type RevisionPlanEmphasis,
   type RevisionPlanScope,
+  type RevisionPlanSession,
 } from "@/lib/planning/types";
 import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 
@@ -29,18 +31,34 @@ import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 export const MAX_PLAN_SCOPES = 6;
 export const MAX_PLAN_TITLE_LENGTH = 80;
 export const MAX_PLAN_NOTE_LENGTH = 240;
+export const MAX_PLAN_SESSION_LABEL_LENGTH = 40;
 
 export type PlanValidationProblem =
   | "no-scopes"
-  | "no-cadence"
+  | "no-sessions"
   | "bad-dates"
-  | "horizon-too-long";
+  | "horizon-too-long"
+  | "overlapping-sessions";
 
 export type NormalizedPlanDraft = {
   draft: RevisionPlanDraft;
   problems: PlanValidationProblem[];
+  /**
+   * Problems that stop a plan being saved.
+   *
+   * Overlapping sittings are told to the student and then allowed: two things
+   * booked at half four is usually a student rearranging their week, and
+   * refusing to save it would trap them halfway through the edit.
+   */
   valid: boolean;
 };
+
+const BLOCKING_PROBLEMS: ReadonlySet<PlanValidationProblem> = new Set([
+  "no-scopes",
+  "no-sessions",
+  "bad-dates",
+  "horizon-too-long",
+]);
 
 function cleanText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -70,22 +88,85 @@ function normalizeScopes(input: unknown): RevisionPlanScope[] {
   return scopes;
 }
 
-function normalizeCadence(input: unknown): RevisionPlanCadence[] {
+/**
+ * The week's sittings, bounded.
+ *
+ * Version 1 kept one entry per weekday and silently merged any others, because
+ * the shape could not hold a second sitting. It can now, so the de-duplication
+ * is gone and the cap is per day instead -- four sittings in one evening is
+ * already further than anybody plans, and past that the arithmetic in
+ * `resolvePlanDay` starts producing days nobody could do.
+ *
+ * A bad `startTime` costs the time, not the session: a student who typed
+ * something odd into the clock still meant to study that day, and dropping the
+ * whole sitting would quietly delete it.
+ */
+function normalizeSessions(
+  input: unknown,
+  scopes: readonly RevisionPlanScope[]
+): RevisionPlanSession[] {
   if (!Array.isArray(input)) return [];
-  // One entry per weekday. Two sessions on the same Monday is a level of
-  // detail the plan does not carry, and merging them silently would tell the
-  // student something other than what they set.
-  const byWeekday = new Map<PlanWeekday, number>();
+  const allowedScopes = new Set(scopes.map(planScopeKey));
+  const perWeekday = new Map<PlanWeekday, number>();
+  const usedIds = new Set<string>();
+  const sessions: RevisionPlanSession[] = [];
+
   for (const raw of input) {
     if (typeof raw !== "object" || raw === null) continue;
-    const candidate = raw as Partial<RevisionPlanCadence>;
+    const candidate = raw as Partial<RevisionPlanSession>;
     const weekday = Number(candidate.weekday);
     if (!PLAN_WEEKDAYS.includes(weekday as PlanWeekday)) continue;
-    byWeekday.set(weekday as PlanWeekday, clampPlanMinutes(Number(candidate.minutes)));
+
+    const day = weekday as PlanWeekday;
+    const onDay = perWeekday.get(day) ?? 0;
+    if (onDay >= PLAN_MAX_SESSIONS_PER_DAY) continue;
+    perWeekday.set(day, onDay + 1);
+
+    // An id that arrived twice is not an id. Regenerating the duplicate keeps
+    // React keys and per-session editing honest without losing the sitting.
+    const given = cleanText(candidate.id, 64);
+    const id = given && !usedIds.has(given) ? given : `w${day}-${onDay}-${sessions.length}`;
+    usedIds.add(id);
+
+    const scopeKey = cleanText(candidate.scopeKey, 160);
+    const label = cleanText(candidate.label, MAX_PLAN_SESSION_LABEL_LENGTH);
+
+    sessions.push({
+      id,
+      weekday: day,
+      minutes: clampPlanMinutes(Number(candidate.minutes)),
+      ...(isPlanTime(candidate.startTime) ? { startTime: candidate.startTime } : {}),
+      // A sitting pinned to a subject the plan does not cover is a stray
+      // reference, exactly as a stray emphasis would be, and a drafted plan is
+      // where one would appear.
+      ...(scopeKey && allowedScopes.has(scopeKey) ? { scopeKey } : {}),
+      ...(label ? { label } : {}),
+    });
   }
-  return [...byWeekday.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([weekday, minutes]) => ({ weekday, minutes }));
+
+  return sessions.sort((left, right) => left.weekday - right.weekday);
+}
+
+/**
+ * Whether two timed sittings on the same day collide.
+ *
+ * Only timed ones can: two sessions with no clock times are a morning and an
+ * afternoon, and saying they overlap would be inventing a conflict the student
+ * never expressed.
+ */
+function hasOverlappingSessions(sessions: readonly RevisionPlanSession[]) {
+  const byWeekday = new Map<PlanWeekday, { start: number; end: number }[]>();
+  for (const session of sessions) {
+    if (!isPlanTime(session.startTime)) continue;
+    const [hours, minutes] = session.startTime.split(":").map(Number);
+    const start = (hours ?? 0) * 60 + (minutes ?? 0);
+    const span = { start, end: start + clampPlanMinutes(session.minutes) };
+    const existing = byWeekday.get(session.weekday) ?? [];
+    if (existing.some((other) => span.start < other.end && other.start < span.end)) return true;
+    existing.push(span);
+    byWeekday.set(session.weekday, existing);
+  }
+  return false;
 }
 
 function normalizeEmphasis(
@@ -127,7 +208,7 @@ export function normalizeRevisionPlanDraft(
 ): NormalizedPlanDraft {
   const today = getStudyDayKey(now);
   const scopes = normalizeScopes(input?.scopes);
-  const cadence = normalizeCadence(input?.cadence);
+  const sessions = normalizeSessions(input?.sessions, scopes);
   const startDayKey = isPlanDayKey(input?.startDayKey) ? input.startDayKey : today;
   const endDayKey = isPlanDayKey(input?.endDayKey)
     ? input.endDayKey
@@ -135,7 +216,8 @@ export function normalizeRevisionPlanDraft(
 
   const problems: PlanValidationProblem[] = [];
   if (scopes.length === 0) problems.push("no-scopes");
-  if (cadence.length === 0) problems.push("no-cadence");
+  if (sessions.length === 0) problems.push("no-sessions");
+  if (hasOverlappingSessions(sessions)) problems.push("overlapping-sessions");
   const span = planDaysBetween(startDayKey, endDayKey);
   if (span < 0) problems.push("bad-dates");
   else if (span >= PLAN_MAX_HORIZON_DAYS) problems.push("horizon-too-long");
@@ -148,17 +230,18 @@ export function normalizeRevisionPlanDraft(
       startDayKey,
       endDayKey,
       scopes,
-      cadence,
+      sessions,
       emphasis: normalizeEmphasis(input?.emphasis, scopes),
     },
     problems,
-    valid: problems.length === 0,
+    valid: problems.every((problem) => !BLOCKING_PROBLEMS.has(problem)),
   };
 }
 
 export const PLAN_PROBLEM_MESSAGES: Record<PlanValidationProblem, string> = {
   "no-scopes": "Choose at least one subject to revise.",
-  "no-cadence": "Pick at least one day of the week to study.",
+  "no-sessions": "Pick at least one day of the week to study.",
   "bad-dates": "The finish date is before the start date.",
   "horizon-too-long": "A plan can run for up to about a year.",
+  "overlapping-sessions": "Two sessions clash. You can save it, but check the times.",
 };

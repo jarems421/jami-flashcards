@@ -47,7 +47,7 @@ export function MemoryPanel({
               .map((group) => (
                 <div
                   key={group.key}
-                  className={`h-full ${GROUP_COLOUR[group.key]}`}
+                  className={`app-meter-fill h-full ${GROUP_COLOUR[group.key]}`}
                   style={{ width: `${group.percent}%` }}
                 />
               ))}

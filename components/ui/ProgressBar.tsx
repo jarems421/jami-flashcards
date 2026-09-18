@@ -5,6 +5,15 @@ type ProgressBarProps = {
   progress: number;
   size?: ProgressBarSize;
   variant?: ProgressBarVariant;
+  /**
+   * Grow from empty when the bar first appears.
+   *
+   * Opt-in, because it is only right for a bar that *reports* something -- a
+   * goal, a day, a set of results. A bar tracking live work re-mounts while the
+   * work is running, and growing from zero each time would say the job had
+   * restarted.
+   */
+  grow?: boolean;
   className?: string;
 };
 
@@ -24,6 +33,7 @@ export default function ProgressBar({
   progress,
   size = "md",
   variant = "accent",
+  grow = false,
   className = "",
 }: ProgressBarProps) {
   const pct = Math.max(0, Math.min(100, progress));
@@ -38,7 +48,7 @@ export default function ProgressBar({
       className={`rounded-full bg-glass-medium shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] ${sizeClasses[size]} ${className}`}
     >
       <div
-        className={`rounded-full transition-all duration-slow ${sizeClasses[size]} ${fillClasses[variant]}`}
+        className={`rounded-full transition-all duration-slow ${grow ? "app-meter-fill" : ""} ${sizeClasses[size]} ${fillClasses[variant]}`}
         style={{ width: `${pct}%` }}
       />
     </div>

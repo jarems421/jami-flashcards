@@ -109,7 +109,10 @@ describe("goals deadline layout", () => {
     expect(timeInput).toBeInstanceOf(HTMLInputElement);
     expect(dateInput?.getAttribute("type")).toBe("date");
     expect(timeInput?.getAttribute("type")).toBe("time");
-    expect(dateInput?.className).toContain("goal-deadline-native");
+    // The pattern this page pioneered now lives in `components/ui/DateField`,
+    // and the plan builder uses the same one -- which is what stopped its two
+    // date fields overlapping on a tablet.
+    expect(dateInput?.className).toContain("date-field-native");
     expect(dateInput?.className).toContain("absolute");
     expect(dateInput?.className).toContain("inset-0");
     expect(dateInput?.className).not.toContain("goal-deadline-input");

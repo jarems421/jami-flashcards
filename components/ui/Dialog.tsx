@@ -411,7 +411,12 @@ export const DialogBackdrop = forwardRef<
   HTMLButtonElement,
   ButtonHTMLAttributes<HTMLButtonElement>
 >(function DialogBackdrop(
-  { onPointerDown, "aria-label": ariaLabel = "Close dialog", ...props },
+  {
+    onPointerDown,
+    className = "",
+    "aria-label": ariaLabel = "Close dialog",
+    ...props
+  },
   ref
 ) {
   const { modal, backdropDismissible, dismissFromBackdrop } = useDialogContext(
@@ -423,6 +428,9 @@ export const DialogBackdrop = forwardRef<
     <button
       {...props}
       ref={ref}
+      // Prepended rather than replacing, so a caller's own classes still win on
+      // anything they set.
+      className={`app-dialog-backdrop ${className}`}
       type="button"
       tabIndex={-1}
       disabled={!backdropDismissible}
@@ -449,6 +457,7 @@ export const DialogPanel = forwardRef<HTMLDivElement, DialogPanelProps>(
     {
       role = "dialog",
       tabIndex = -1,
+      className = "",
       "aria-labelledby": ariaLabelledBy,
       "aria-describedby": ariaDescribedBy,
       ...props
@@ -476,6 +485,7 @@ export const DialogPanel = forwardRef<HTMLDivElement, DialogPanelProps>(
       <div
         {...props}
         ref={panelRef}
+        className={`app-dialog-panel ${className}`}
         role={role}
         tabIndex={tabIndex}
         aria-modal={modal ? "true" : undefined}

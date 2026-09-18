@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Button, JamiTutorIcon } from "@/components/ui";
+import { JamiTutorIcon } from "@/components/ui";
 import {
   MicrophoneIcon,
   SendIcon,
@@ -10,7 +10,11 @@ import {
 import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import type { PlanNotice } from "@/lib/ai/assistant-plan";
 import type { RevisionPlanDraft } from "@/lib/planning/types";
-import { draftPlanWithJami, type PlanDraftTurn } from "@/services/planning/plan-draft";
+import {
+  draftPlanWithJami,
+  PlanDraftError,
+  type PlanDraftTurn,
+} from "@/services/planning/plan-draft";
 
 /**
  * A short conversation about the shape of a student's week.
@@ -76,9 +80,9 @@ function Turn({ turn }: { turn: PlanDraftTurn }) {
   return (
     <div className={`flex ${fromJami ? "justify-start" : "justify-end"}`}>
       <p
-        className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-6 ${
+        className={`max-w-[85%] animate-slide-up rounded-2xl px-4 py-2.5 text-sm leading-6 ${
           fromJami
-            ? "app-subtle-panel text-text-primary"
+            ? "app-subtle-panel text-text-primary ring-1 ring-[var(--color-accent-muted)]"
             : "bg-[var(--color-glass-medium)] text-text-primary"
         }`}
       >
@@ -90,13 +94,20 @@ function Turn({ turn }: { turn: PlanDraftTurn }) {
 
 export default function PlanWithJami({
   notices,
+  draft,
   onProposal,
-  onBuildMyOwn,
 }: {
   notices: readonly PlanNotice[];
-  /** A plan Jami proposed, for the builder to open. Nothing is saved yet. */
+  /**
+   * The plan on screen beside this conversation.
+   *
+   * Sent with every message so Jami adjusts what is there rather than starting
+   * again -- including the parts the student edited by hand, which Jami would
+   * otherwise know nothing about.
+   */
+  draft?: RevisionPlanDraft | null;
+  /** A plan Jami proposed. Nothing is saved; it lands in the preview to edit. */
   onProposal: (draft: RevisionPlanDraft) => void;
-  onBuildMyOwn: () => void;
 }) {
   const [turns, setTurns] = useState<PlanDraftTurn[]>([]);
   const [message, setMessage] = useState("");
@@ -115,20 +126,31 @@ export default function PlanWithJami({
       setTurns(asked);
       setThinking(true);
       try {
-        const answer = await draftPlanWithJami({ message: said, history: turns });
+        const answer = await draftPlanWithJami({ message: said, history: turns, draft });
         setTurns([...asked, { role: "jami", text: answer.reply }]);
         if (answer.plan) onProposal(answer.plan);
-      } catch {
-        // Never a dead end: building one yourself is always right there, and
-        // saying so is more use than an apology.
-        setProblem("Jami couldn't answer just now. You can still build a plan yourself.");
+      } catch (error) {
+        /*
+         * Never a dead end, and never a lie about why.
+         *
+         * Building one yourself is always right there in the panel beside this
+         * one, which is what the message says. What it no longer does is say the
+         * same thing to a student who needs to sign in again, one whose
+         * deployment has no provider configured, and one who hit a slow minute
+         * -- only the last of those is worth pressing send again for.
+         */
+        setProblem(
+          error instanceof PlanDraftError
+            ? error.message
+            : "Jami couldn't answer just now. You can still build a plan yourself."
+        );
         setTurns(asked);
       } finally {
         setThinking(false);
         boxRef.current?.focus();
       }
     },
-    [onProposal, thinking, turns]
+    [draft, onProposal, thinking, turns]
   );
 
   const submit = useCallback(() => {
@@ -156,8 +178,12 @@ export default function PlanWithJami({
             <Turn key={`${turn.role}-${index}`} turn={turn} />
           ))}
           {thinking ? (
-            <p className="px-1 text-xs text-text-muted" role="status">
-              Jami is thinking…
+            <p className="flex items-center gap-2 px-1 text-xs text-text-muted" role="status">
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--color-accent)]"
+              />
+              <span>Jami is thinking…</span>
             </p>
           ) : null}
         </div>
@@ -183,7 +209,7 @@ export default function PlanWithJami({
 
       {/* The Tutor drawer's composer, so a conversation with Jami looks the
           same wherever it happens. */}
-      <div className="app-field rounded-2xl">
+      <div className="app-field rounded-2xl transition duration-normal focus-within:shadow-accent">
         <textarea
           ref={boxRef}
           rows={2}
@@ -209,7 +235,7 @@ export default function PlanWithJami({
               disabled={thinking}
               className={`inline-grid h-9 w-9 place-items-center rounded-full transition duration-fast active:scale-95 disabled:cursor-not-allowed disabled:text-text-muted ${
                 dictation.listening
-                  ? "bg-error text-white shadow-e1 hover:brightness-110"
+                  ? "bg-error text-text-inverse shadow-e1 hover:brightness-110"
                   : "text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
               }`}
               onClick={() => {
@@ -253,11 +279,6 @@ export default function PlanWithJami({
         </p>
       ) : null}
 
-      <div className="border-t border-[var(--color-border)] pt-4">
-        <Button type="button" variant="secondary" size="sm" onClick={onBuildMyOwn}>
-          I&rsquo;ll build it myself
-        </Button>
-      </div>
     </div>
   );
 }

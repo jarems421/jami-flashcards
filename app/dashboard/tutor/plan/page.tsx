@@ -7,36 +7,56 @@ import { Button, EmptyState, FeedbackBanner, SectionHeader, Skeleton } from "@/c
 import RevisionPlanBuilder, {
   type PlanScopeOption,
 } from "@/components/planning/RevisionPlanBuilder";
+import PlanWeekTimetable from "@/components/planning/PlanWeekTimetable";
+import PinToDayDialog from "@/components/planning/PinToDayDialog";
+import PlanDraftPreview from "@/components/planning/PlanDraftPreview";
 import PlanWithJami from "@/components/planning/PlanWithJami";
 import type { PlanNotice } from "@/lib/ai/assistant-plan";
 import { loadPlanNotices } from "@/services/planning/plan-draft";
 import { useUser } from "@/components/providers/UserProvider";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import { useFeedback } from "@/hooks/useFeedback";
+import { useStudyActions } from "@/hooks/useStudyActions";
 import { featureFlags } from "@/lib/app/feature-flags";
 import {
-  PLAN_WEEKDAY_LABELS,
+  PLAN_WEEKDAY_FULL_LABELS,
   planScopeKey,
+  type PinnedPlanItem,
   type RevisionPlan,
   type RevisionPlanDraft,
+  type RevisionPlanEntry,
 } from "@/lib/planning/types";
-import { planDaysBetween } from "@/lib/planning/plan-schedule";
+import {
+  planDaysBetween,
+  planWeekdayOf,
+  planWeekStartDayKey,
+} from "@/lib/planning/plan-schedule";
+import { buildPlanWeek, PLAN_WEEK_LENGTH } from "@/lib/planning/plan-week";
+import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
+import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import type { Deck } from "@/lib/study/decks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getDecks } from "@/services/study/decks";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import {
   archiveRevisionPlan,
+  loadRevisionPlanEntries,
   loadRevisionPlans,
   saveRevisionPlan,
+  saveRevisionPlanEntry,
 } from "@/services/planning/revision-plans";
 
 /**
  * Where a plan is made and looked after.
  *
  * Today shows the day; this shows the shape. Keeping them apart means the
- * strip on the home page can stay quiet -- it is read every morning and most
+ * agenda on the home page can stay quiet -- it is read every morning and most
  * mornings has nothing new to say -- while the decisions behind it have room.
+ *
+ * The shape is drawn as the week it is, rather than described as a row of
+ * chips. A student who set two sittings on a Tuesday should be able to see two
+ * sittings on a Tuesday, and should have somewhere to put the essay that is due
+ * on Thursday.
  */
 
 /**
@@ -59,7 +79,15 @@ function planId() {
   return `plan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function PlanSummary({
+function describeWeekly(plan: RevisionPlan) {
+  const perWeek = plan.sessions.reduce((total, session) => total + session.minutes, 0);
+  const studyDays = new Set(plan.sessions.map((session) => session.weekday)).size;
+  const time =
+    perWeek >= 60 ? `about ${Math.round(perWeek / 60)}h a week` : `${perWeek} min a week`;
+  return `${studyDays} day${studyDays === 1 ? "" : "s"} a week · ${time}`;
+}
+
+function PlanHeader({
   plan,
   scopeNames,
   onEdit,
@@ -70,61 +98,35 @@ function PlanSummary({
   onEdit: () => void;
   onArchive: () => void;
 }) {
-  const daysLeft = Math.max(0, planDaysBetween(new Date().toISOString().slice(0, 10), plan.endDayKey));
-  const perWeek = plan.cadence.reduce((total, entry) => total + entry.minutes, 0);
+  const daysLeft = Math.max(0, planDaysBetween(getStudyDayKey(), plan.endDayKey));
 
   return (
-    <div className="app-panel relative px-5 py-5 sm:px-7 sm:py-6">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-24 opacity-70"
-        style={{
-          background:
-            "radial-gradient(70% 100% at 50% 0%, var(--color-accent-muted) 0%, transparent 70%)",
-        }}
-      />
-      <div className="relative">
-        <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-          Your plan
-        </p>
-        <h2 className="mt-1.5 text-2xl font-semibold tracking-tight text-text-primary">
-          {plan.title}
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-text-secondary">
-          {daysLeft > 0 ? `${daysLeft} days left` : "Finishing today"} ·{" "}
-          {Math.round(perWeek / 60) > 0
-            ? `about ${Math.round(perWeek / 60)}h a week`
-            : `${perWeek} min a week`}
-        </p>
-
-        <div className="mt-5 flex flex-wrap gap-1.5">
-          {plan.cadence.map((entry) => (
-            <span
-              key={entry.weekday}
-              className="rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1.5 text-xs font-semibold text-text-primary"
-            >
-              {PLAN_WEEKDAY_LABELS[entry.weekday]} · {entry.minutes}m
-            </span>
-          ))}
+    <div className="app-panel relative overflow-hidden px-5 py-5 sm:px-7 sm:py-6">
+      <div aria-hidden="true" className="plan-aurora" />
+      <div className="relative flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+        <div className="min-w-0">
+          <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+            Your plan
+          </p>
+          <h2 className="mt-1.5 text-2xl font-semibold tracking-tight text-text-primary">
+            {plan.title}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            {daysLeft > 0 ? `${daysLeft} days left` : "Finishing today"} · {describeWeekly(plan)}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {plan.scopes.map((scope) => (
+              <span
+                key={planScopeKey(scope)}
+                className="app-chip rounded-full px-3 py-1 text-xs font-medium"
+              >
+                {scopeNames.get(planScopeKey(scope)) ?? "A subject you removed"}
+              </span>
+            ))}
+          </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {plan.scopes.map((scope) => (
-            <span
-              key={planScopeKey(scope)}
-              className="rounded-full border border-[var(--color-accent-muted)] px-3 py-1.5 text-xs font-medium text-text-secondary"
-            >
-              {scopeNames.get(planScopeKey(scope)) ?? "A subject you removed"}
-            </span>
-          ))}
-        </div>
-
-        <p className="mt-5 text-xs leading-5 text-text-muted">
-          What goes in each session is chosen from your recent work, so the plan
-          keeps up as you go.
-        </p>
-
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row">
           <Button type="button" variant="secondary" onClick={onArchive}>
             Finish this plan
           </Button>
@@ -142,10 +144,12 @@ export default function RevisionPlanPage() {
   const router = useRouter();
   const { feedback, showError, clear } = useFeedback();
   const [plans, setPlans] = useState<RevisionPlan[]>([]);
+  const [entries, setEntries] = useState<RevisionPlanEntry[]>([]);
   const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pinningDayKey, setPinningDayKey] = useState<string | null>(null);
   const [notices, setNotices] = useState<PlanNotice[]>([]);
   /** Set when saved plans could not be read, which is not the same as having none. */
   const [plansUnavailable, setPlansUnavailable] = useState<"denied" | "error" | null>(null);
@@ -157,14 +161,32 @@ export default function RevisionPlanPage() {
    * screen rather than hidden behind a refusal.
    */
   const [route, setRoute] = useState<"jami" | "manual" | null>(null);
-  /** A plan Jami proposed, not yet saved and fully editable. */
+  /** The plan being built: Jami's suggestions and the student's edits, unsaved. */
   const [proposed, setProposed] = useState<RevisionPlanDraft | null>(null);
+  /**
+   * How many times Jami has changed the draft.
+   *
+   * Only used to tell the preview that something moved. Comparing drafts to
+   * work that out would be more code and less honest -- a proposal that happens
+   * to match what was already there is still Jami having answered.
+   */
+  const [proposalCount, setProposalCount] = useState(0);
 
   const uid = user?.uid;
+  const todayDayKey = getStudyDayKey();
+  const weekStartDayKey = planWeekStartDayKey(todayDayKey);
+  // What the engine suggests, so a pin can be chosen rather than typed out.
+  const studyActions = useStudyActions(uid ?? "", Boolean(uid) && featureFlags.enableStudyActions);
 
   const load = useCallback(async () => {
     if (!uid) {
-      return { plans: [], folders: [], decks: [], plansProblem: null as "denied" | "error" | null };
+      return {
+        plans: [],
+        entries: [] as RevisionPlanEntry[],
+        folders: [],
+        decks: [],
+        plansProblem: null as "denied" | "error" | null,
+      };
     }
     /*
      * The saved plans are read on their own terms.
@@ -186,19 +208,32 @@ export default function RevisionPlanPage() {
       getActiveStudyFolders(uid),
       getDecks(uid),
     ]);
+
+    // The week's exceptions, and only for the plan actually being shown.
+    const active = plansResult.plans.find((plan) => plan.status === "active") ?? null;
+    const loadedEntries = active
+      ? await loadRevisionPlanEntries(uid, active.id, {
+          fromDayKey: weekStartDayKey,
+          toDayKey: shiftStudyDayKey(weekStartDayKey, PLAN_WEEK_LENGTH - 1),
+          max: PLAN_WEEK_LENGTH,
+        }).catch(() => [] as RevisionPlanEntry[])
+      : [];
+
     return {
       plans: plansResult.plans,
+      entries: loadedEntries,
       plansProblem: plansResult.problem,
       folders: loadedFolders,
       decks: loadedDecks,
     };
-  }, [uid]);
+  }, [uid, weekStartDayKey]);
 
   const { loading } = useDashboardData({
     requestKey: uid ?? "",
     load,
     apply: (value) => {
       setPlans(value.plans);
+      setEntries(value.entries);
       setPlansUnavailable(value.plansProblem);
       setFolders(value.folders);
       setDecks(value.decks);
@@ -235,6 +270,27 @@ export default function RevisionPlanPage() {
     return names;
   }, [options]);
 
+  const week = useMemo(
+    () => (active ? buildPlanWeek({ plan: active, entries, todayDayKey, weekStartDayKey }) : null),
+    [active, entries, todayDayKey, weekStartDayKey]
+  );
+
+  /**
+   * The draft on screen, whether or not anything has been decided yet.
+   *
+   * An empty normalised draft rather than null, so the preview has a real plan
+   * to render from the first frame and the student can see the shape of what
+   * they are about to fill in.
+   */
+  const draftInProgress = useMemo(
+    () => proposed ?? normalizeRevisionPlanDraft(null).draft,
+    [proposed]
+  );
+
+  const pinningEntry = pinningDayKey
+    ? entries.find((entry) => entry.dayKey === pinningDayKey)
+    : undefined;
+
   const handleSave = useCallback(
     async (draft: RevisionPlanDraft) => {
       if (!uid) return;
@@ -255,6 +311,35 @@ export default function RevisionPlanPage() {
       }
     },
     [active?.id, clear, showError, uid]
+  );
+
+  /**
+   * One day's pinned items, written whole.
+   *
+   * Optimistic, and put back on failure: a pin that silently did not save would
+   * have the student planning around something the plan does not know about.
+   */
+  const writePinned = useCallback(
+    async (dayKey: string, pinned: PinnedPlanItem[]) => {
+      if (!uid || !active) return;
+      const previous = entries;
+      const existing = entries.find((entry) => entry.dayKey === dayKey);
+      const updated: RevisionPlanEntry = { ...(existing ?? { dayKey }), dayKey, pinned };
+      setEntries((current) => [
+        ...current.filter((entry) => entry.dayKey !== dayKey),
+        updated,
+      ]);
+      setSaving(true);
+      try {
+        await saveRevisionPlanEntry(uid, active.id, updated);
+      } catch {
+        setEntries(previous);
+        showError("That could not be added to the day. Try again.");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [active, entries, showError, uid]
   );
 
   const handleArchive = useCallback(async () => {
@@ -282,9 +367,7 @@ export default function RevisionPlanPage() {
   }
 
   return (
-    <AppPage
-      title="Revision plan"
-    >
+    <AppPage title="Revision plan">
       {feedback ? (
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={clear} />
       ) : null}
@@ -297,7 +380,7 @@ export default function RevisionPlanPage() {
         * suggesting a retry that cannot work.
         */}
       {plansUnavailable ? (
-        <p className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm leading-6 text-text-secondary">
+        <p className="app-subtle-panel rounded-xl px-4 py-3 text-sm leading-6 text-text-secondary">
           {plansUnavailable === "denied"
             ? "Saved plans can't be read on this project yet — the Firestore rules for them still need deploying. You can build a plan here, but it won't save until then."
             : "Jami couldn't read your saved plans just now. You can still build one, and anything already saved will reappear once the connection settles."}
@@ -307,69 +390,140 @@ export default function RevisionPlanPage() {
       {loading ? (
         <Skeleton className="h-64 w-full rounded-2xl" />
       ) : !active && route === null ? (
-        <section className="app-panel px-5 py-6 sm:px-7 sm:py-7">
-          <div>
-            <SectionHeader
-              title="Plan your revision"
-              description="Tell Jami what you're working towards and it will suggest a shape, or set it out yourself. You can change everything either way."
-            />
-            <div className="mt-6">
+        /*
+         * The conversation and the plan, together.
+         *
+         * A proposal used to replace this whole screen with the builder, so the
+         * chat disappeared at the exact moment it became useful and the student
+         * never watched anything being built. Both live here now: Jami fills the
+         * panel in as they talk, and the two ways out -- edit it by hand, start
+         * it -- sit on the panel rather than waiting for Jami to decide it is
+         * finished. It is not Jami's to finish.
+         */
+        <div className="space-y-4 sm:space-y-6">
+          <SectionHeader
+            title="Plan your revision"
+            description="Tell Jami what you're working towards and it will shape the plan beside you. Edit any part of it, or start it, whenever you like."
+          />
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+            <section className="app-panel px-5 py-6 sm:px-7 sm:py-7">
               <PlanWithJami
                 notices={notices}
+                draft={draftInProgress}
                 onProposal={(draft) => {
                   setProposed(draft);
-                  setRoute("manual");
+                  // Counted rather than compared, so the panel can show it moved.
+                  setProposalCount((count) => count + 1);
                 }}
-                onBuildMyOwn={() => setRoute("manual")}
+              />
+            </section>
+            {/* Sticky on a wide screen: the plan is what the conversation is
+                about, so it should not scroll away from the composer. */}
+            <div className="lg:sticky lg:top-4">
+              <PlanDraftPreview
+                draft={draftInProgress}
+                options={options}
+                changeKey={proposalCount}
+                saving={saving}
+                onEdit={() => setRoute("manual")}
+                onStart={() => void handleSave(draftInProgress)}
               />
             </div>
           </div>
-        </section>
+        </div>
       ) : editing || !active ? (
         <section className="app-panel px-5 py-6 sm:px-7 sm:py-7">
           <SectionHeader
-            title={active ? "Edit your plan" : proposed ? "Jami's suggestion" : "Build your plan"}
+            title={active || proposed ? "Edit your plan" : "Build your plan"}
             description={
               active
                 ? "Changing the shape changes what tomorrow asks for. Nothing you have already done is lost."
                 : proposed
-                  ? "Nothing is saved yet. Change anything that doesn't fit before you start it."
-                  : "Three things: what you're revising, when you'll sit down, and how long it runs."
+                  ? "Nothing is saved yet. Change anything you like, then go back to Jami or start it."
+                  : "What you're revising, when you'll sit down, and how long it runs."
             }
           />
           <div className="mt-6">
             <RevisionPlanBuilder
               // Keyed so a fresh suggestion replaces what is in the form rather
               // than leaving the first draft's state behind it.
-              key={proposed ? `proposed:${proposed.startDayKey}:${proposed.scopes.length}` : "own"}
+              key={active ? `active:${active.id}` : `draft:${proposalCount}`}
               options={options}
               initial={active ?? proposed ?? undefined}
               saving={saving}
               onSave={handleSave}
-              onCancel={
+              onCancel={active ? () => setEditing(false) : undefined}
+              // Back to the conversation carrying the edits, so Jami's next
+              // answer builds on them rather than talking past them.
+              onBack={
                 active
-                  ? () => setEditing(false)
-                  : () => {
-                      setProposed(null);
+                  ? undefined
+                  : (draft) => {
+                      setProposed(draft);
                       setRoute(null);
                     }
               }
+              backLabel="Back to Jami"
             />
           </div>
         </section>
       ) : (
         <div className="space-y-5">
-          <PlanSummary
+          <PlanHeader
             plan={active}
             scopeNames={scopeNames}
             onEdit={() => setEditing(true)}
             onArchive={handleArchive}
           />
+
+          {week ? (
+            <section className="space-y-3">
+              <SectionHeader
+                title="This week"
+                description="What each session holds is chosen from your recent work on the day. Anything you add yourself stays put."
+              />
+              <PlanWeekTimetable
+                plan={active}
+                week={week}
+                entries={entries}
+                scopeNames={scopeNames}
+                onPin={setPinningDayKey}
+              />
+            </section>
+          ) : null}
+
           <Button type="button" variant="secondary" onClick={() => router.push("/dashboard")}>
             See today
           </Button>
         </div>
       )}
+
+      {pinningDayKey ? (
+        <PinToDayDialog
+          /*
+           * Keyed on the day, so opening this on Thursday does not still hold
+           * what was half-typed for Tuesday. A fresh day is a fresh dialog,
+           * which is cheaper and more obviously correct than resetting its
+           * fields from an effect.
+           */
+          key={pinningDayKey}
+          open
+          dayLabel={`${PLAN_WEEKDAY_FULL_LABELS[planWeekdayOf(pinningDayKey)]} ${pinningDayKey.slice(-2)}`}
+          actions={studyActions.actions}
+          existing={pinningEntry?.pinned ?? []}
+          saving={saving}
+          onPin={(item) =>
+            void writePinned(pinningDayKey, [...(pinningEntry?.pinned ?? []), item])
+          }
+          onUnpin={(actionId) =>
+            void writePinned(
+              pinningDayKey,
+              (pinningEntry?.pinned ?? []).filter((item) => item.actionId !== actionId)
+            )
+          }
+          onClose={() => setPinningDayKey(null)}
+        />
+      ) : null}
     </AppPage>
   );
 }
