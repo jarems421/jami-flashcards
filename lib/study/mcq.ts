@@ -2,6 +2,7 @@ import type { Card } from "@/lib/study/cards";
 import { markTypedAnswer, normalizeAnswerText, parseNumericAnswer } from "@/lib/study/answer-marking";
 import { getCardContentHash } from "@/lib/study/study-modes";
 import {
+  condensesAnswer,
   optionsLookGuessable,
   withoutStemEcho,
   wordCount,
@@ -133,7 +134,7 @@ export function buildMultipleChoiceQuestion(input: {
 }): McqQuestion | null {
   const { card } = input;
   const answerText = card.back.trim();
-  if (!answerText || answerText.length > MAX_OPTION_LENGTH) return null;
+  if (!answerText) return null;
 
   const variants = (card.studySettings?.mcqDistractors !== undefined ? [] : card.studySettings?.generatedStudy?.mcqVariants ?? []).filter(
     (variant) => !card.studySettings?.generatedStudy?.retiredVariantIds?.includes(variant.id)
@@ -143,11 +144,38 @@ export function buildMultipleChoiceQuestion(input: {
   const variant = variantPool.length > 0
     ? variantPool[(input.variantIndex ?? 0) % variantPool.length]
     : undefined;
+  /*
+   * A prepared correct option is kept when it is the card's answer said
+   * another way, or the card's answer said more briefly.
+   *
+   * The condensation case is the one that matters. The prompt asks the model to
+   * write this option in the distractors' shape, so on any card with a long
+   * answer it comes back shortened -- deliberately, and correctly. That was
+   * then failing `equivalentOption`, which is an answer-marking test and does
+   * not recognise a summary; the option was discarded, the card's raw answer
+   * put back in its place, and the question refused a line later for standing
+   * out against three much shorter wrong ones. The variant was unusable from
+   * the moment it was written, and Multiple Choice sessions lost most of their
+   * queue to it.
+   */
   const preparedCorrect = variant?.correctAnswer?.trim();
   const correctAnswer = preparedCorrect && (
     equivalentOption(preparedCorrect, answerText) ||
+    condensesAnswer(preparedCorrect, answerText) ||
     (card.studySettings?.acceptedAnswers ?? []).some((alias) => equivalentOption(preparedCorrect, alias))
   ) ? preparedCorrect : answerText;
+
+  /*
+   * The cap belongs to the option that is shown, not to the card.
+   *
+   * It was applied to the card's raw answer before this point, which refused
+   * every long-answer card outright -- including the ones preparation had
+   * handled properly by writing a short correct option and three short wrong
+   * ones. Four readable options is the thing the limit protects; where a
+   * condensed correct option exists, the card's own answer length says nothing
+   * about whether the student is faced with a wall of text.
+   */
+  if (correctAnswer.length > MAX_OPTION_LENGTH) return null;
 
   const seen = new Set([normalizeAnswerText(correctAnswer)]);
   const distractors: string[] = [];

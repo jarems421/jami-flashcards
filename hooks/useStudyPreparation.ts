@@ -26,13 +26,20 @@ export type StudyPreparationProgress = {
  * watches.
  *
  * What does fix it is that the student is about to spend ten to twenty seconds
- * on each card. Preparing the first three buys a minute of runway, and the rest
- * of the queue is prepared behind them while they work: assets arrive as they
- * land, and a card reached before its own have arrived is simply asked a way
- * that needs none. So the visible wait is one small batch, and the queue is
+ * on each card. Preparing the first few buys a minute or two of runway, and the
+ * rest of the queue is prepared behind them while they work: assets arrive as
+ * they land, and a card reached before its own have arrived is simply asked a
+ * way that needs none. So the visible wait is one small batch, and the queue is
  * fully prepared long before the student reaches the end of it.
+ *
+ * Five rather than three. Three was tuned for Smart Mix, where outrunning the
+ * background pass costs nothing -- the card is asked a way that needs no
+ * assets. A session pinned to Multiple Choice has no such fallback, so every
+ * card the student reaches early is one they have to read a refusal about. The
+ * requests run in parallel and the visible wait is capped either way, so the
+ * extra two cost runway, not time.
  */
-const PREPARATION_HEAD_START = 3;
+const PREPARATION_HEAD_START = 5;
 /**
  * One card a request for the head start, all of them at once.
  *
@@ -62,6 +69,15 @@ const PREPARATION_CHUNK_SIZE = 12;
 const PREPARATION_CONCURRENCY = 2;
 /** A queue longer than this is prepared as far as it goes and no further. */
 const MAX_PREPARED_CARDS_PER_SESSION = 100;
+/**
+ * The card being waited on, plus the next two.
+ *
+ * Small on purpose: this request is the one a student is actually watching, and
+ * output tokens dominate its latency, so every card added to it lengthens the
+ * wait they can see. Three covers the gap until the background pass catches up
+ * without turning a wait into a batch job.
+ */
+const JUST_IN_TIME_BATCH_SIZE = 3;
 
 /**
  * Send a set of cards to the preparation endpoint, a chunk at a time.
@@ -270,15 +286,36 @@ export function useStudyPreparation(input: {
    * needed, so the wait is a few seconds on one card rather than a question the
    * student cannot have.
    */
-  const prepareCardNow = useCallback(async (card: Card) => {
+  /**
+   * Prepare the card a student is waiting on, and the next few behind it.
+   *
+   * One card a request was the whole cost of outrunning the background pass: a
+   * student who reached an unprepared card waited for it, answered it, and then
+   * reached the next unprepared card and waited again. In a session pinned to
+   * Multiple Choice -- where there is no other way to ask the card -- that is a
+   * refusal panel every time, which is what made a fifteen-card session feel
+   * like six.
+   *
+   * The look-ahead rides along in the same request, so it costs no extra slot
+   * of the daily allowance and no extra wait: the student is already waiting
+   * for the first card, and the next two arrive with it. Only cards from the
+   * same deck, because the endpoint checks ownership one deck at a time.
+   */
+  const prepareCardNow = useCallback(async (card: Card, lookAhead: readonly Card[] = []) => {
     if (!studyModesEnabled) return null;
     if (typeof navigator !== "undefined" && !navigator.onLine) return null;
     const stop = { value: false };
     const epoch = epochRef.current;
     jobsRef.current.add(stop);
+
+    const batch = [
+      card,
+      ...lookAhead.filter((next) => next.deckId === card.deckId && next.id !== card.id),
+    ].slice(0, JUST_IN_TIME_BATCH_SIZE);
+
     try {
-      await prepareStudyAssets({ deckId: card.deckId, cardIds: [card.id] });
-      const refreshed = await loadStudyAssets([card]);
+      await prepareStudyAssets({ deckId: card.deckId, cardIds: batch.map((item) => item.id) });
+      const refreshed = await loadStudyAssets(batch);
       if (stop.value || epoch !== epochRef.current) return null;
       onAssetsReady(refreshed);
       return refreshed[card.id] ?? null;
@@ -302,14 +339,44 @@ export function useStudyPreparation(input: {
     const stop = { value: false };
     const epoch = epochRef.current;
     jobsRef.current.add(stop);
+    /*
+     * Published as it lands, rather than once at the end.
+     *
+     * This used to read the assets a single time, after every chunk of the
+     * remainder had finished. On a long queue that is minutes away, so the
+     * first chunk sat prepared and unusable while the student worked through
+     * cards that could already have been asked as Gap Fill or Multiple
+     * Choice -- and the session kept serving the two modes that need no assets
+     * at all. Publishing per chunk means the modes widen as the queue is read
+     * rather than all at once, long after it matters.
+     *
+     * Guarded against overlap so a slow read cannot stack up behind the
+     * chunks, and a failed one is simply retried by the next chunk.
+     */
+    let refreshing = false;
+    const publish = async () => {
+      if (refreshing || stop.value || epoch !== epochRef.current) return;
+      refreshing = true;
+      try {
+        const landed = await loadStudyAssets(remainder);
+        if (!stop.value && epoch === epochRef.current) onAssetsReady(landed);
+      } catch {
+        // The next chunk publishes again; a read that failed is not fatal.
+      } finally {
+        refreshing = false;
+      }
+    };
+
     try {
       await runPreparationChunks(remainder, {
         chunkSize: PREPARATION_CHUNK_SIZE,
         concurrency: PREPARATION_CONCURRENCY,
         stop,
+        onChunkDone: () => {
+          void publish();
+        },
       });
-      const refreshed = await loadStudyAssets(remainder);
-      if (!stop.value && epoch === epochRef.current) onAssetsReady(refreshed);
+      await publish();
     } catch (error) {
       console.warn("Background study preparation stopped.", error);
     } finally {

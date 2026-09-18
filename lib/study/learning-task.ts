@@ -56,7 +56,16 @@ export function classifyStudyTask(
     return profile("quantity", ["type-answer", "classic"], ["multiple-choice"], "quantity-answer");
   }
   if (shape === "list" || /\b(list|name all|give \d+|state \d+)\b/.test(question)) {
-    return profile("list", ["type-answer", "classic"], ["gap-fill"], "list-recall");
+    /*
+     * Producing the whole list is still the best evidence, so Type Answer
+     * leads. Multiple Choice joins it rather than merely being allowed: listed
+     * at the lower rank it scored two against Type Answer's seven and never
+     * came within the fit band, which is most of why Multiple Choice was
+     * running at half its intended share. Recognising the right set among
+     * near-miss sets is a real question about a list, and a bad one is still
+     * refused downstream when its options do not stand up.
+     */
+    return profile("list", ["type-answer", "multiple-choice"], ["gap-fill", "classic"], "list-recall");
   }
   if (/\b(compare|difference|similarit|whereas|contrast)\b/.test(question)) {
     return profile("comparison", ["classic", "multiple-choice"], ["gap-fill", "type-answer"], "comparison-command");
@@ -65,7 +74,14 @@ export function classifyStudyTask(
     return profile("explanation", ["classic", "gap-fill"], answerWords <= 24 ? ["type-answer"] : [], "explanation-command");
   }
   if (/\b(order|sequence|stages|steps|process)\b/.test(joined.toLowerCase())) {
-    return profile("process", ["classic", "gap-fill"], answerWords <= 20 ? ["type-answer"] : [], "ordered-process");
+    // A short process can be recognised out of order before it can be
+    // produced; a long one cannot be put in options at all.
+    return profile(
+      "process",
+      answerWords <= 20 ? ["classic", "gap-fill", "multiple-choice"] : ["classic", "gap-fill"],
+      answerWords <= 20 ? ["type-answer"] : [],
+      "ordered-process"
+    );
   }
   if (/\b(quote|quotation|line from|phrase from)\b/.test(question)) {
     return profile("quotation", ["gap-fill", "classic"], ["type-answer"], "quotation-recall");

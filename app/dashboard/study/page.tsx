@@ -1098,7 +1098,6 @@ export default function StudyPage() {
     [current, studyAssets]
   );
 
-
   const totalCards = sessionCards.length;
   const remainingCards = current ? totalCards - index : 0;
   const accuracyPercentage = sessionStats.reviewedCards > 0 ? Math.round((sessionStats.correctAnswers / sessionStats.reviewedCards) * 100) : 0;
@@ -1595,10 +1594,24 @@ export default function StudyPage() {
     if (justInTimePreparedRef.current.has(card.id)) return;
     justInTimePreparedRef.current.add(card.id);
     setPreparingCardId(card.id);
-    void prepareCardNow(card).finally(() =>
+    /*
+     * The cards behind this one ride along in the same request.
+     *
+     * A student who has outrun the background pass has almost certainly outrun
+     * it for the next card too, and preparing one at a time meant waiting again
+     * at each of them. The look-ahead costs nothing extra: same request, same
+     * slot of the daily allowance.
+     *
+     * They are deliberately not marked as attempted. If this request prepared
+     * them they will simply be ready and this never fires for them; if it did
+     * not, they keep their own attempt rather than inheriting a failure from a
+     * request that was really about another card.
+     */
+    const lookAhead = sessionCards.slice(index + 1, index + 3);
+    void prepareCardNow(card, lookAhead).finally(() =>
       setPreparingCardId((preparing) => (preparing === card.id ? null : preparing))
     );
-  }, [current, fixedModeRefusalReason, prepareCardNow]);
+  }, [current, fixedModeRefusalReason, index, prepareCardNow, sessionCards]);
 
   return (
     <AppPage

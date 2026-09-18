@@ -27,6 +27,13 @@ export function selectClozeGaps(input: {
   settings?: CardStudySettings;
   variantIndex?: number;
   recentVariantIds?: string[];
+  /**
+   * Whether the question is a picture.
+   *
+   * Only suppresses the locally chosen gap; prepared variants and author
+   * pins are deliberate choices about this card and still apply.
+   */
+  hasImagePrompt?: boolean;
 }): StudyGap[] {
   const back = input.back ?? "";
   const ranges = protectedRanges(back);
@@ -67,9 +74,45 @@ export function selectClozeGaps(input: {
     return [];
   }
 
-  // Local word-shape heuristics cannot know which phrase carries the idea.
-  // Without an author choice or a validated prepared variant, Gap Fill waits.
-  return [];
+  /*
+   * Nothing prepared and nothing pinned: choose one gap here.
+   *
+   * This used to return nothing, on the grounds that word shape cannot know
+   * which phrase carries the idea. True, and it cost more than it bought: Gap
+   * Fill needs model-written variants, so until preparation landed it was
+   * ineligible on every card -- and so was Multiple Choice, for the same
+   * reason. Smart Mix was left choosing between the only two modes that need
+   * no assets, and a session read as Classic and Type Answer alternating, which
+   * is the exact failure Smart Mix exists to prevent.
+   *
+   * A locally chosen gap is the weaker question and it is a real one. It hides
+   * a scored content word -- never a stop word, never a word the question
+   * already gave away, never anything inside maths or code -- and it is
+   * deterministic, so a resumed session shows the same blank. A prepared
+   * variant still wins the moment it arrives; this only fills the gap until
+   * then.
+   *
+   * Never for a card whose question is a picture, though. The words of such an
+   * answer only mean anything alongside the image, so a blank chosen from the
+   * text alone can be unanswerable or given away by the picture. A prepared
+   * variant or an author's pin is a deliberate choice about this card and still
+   * stands; a locally chosen one is a guess, and this is the one place it must
+   * not guess.
+   */
+  if (input.hasImagePrompt) return [];
+
+  const span = selectClozeSpan({ front: input.front, back, settings: input.settings });
+  if (!span) return [];
+  return [
+    {
+      id: `local-${span.start}`,
+      start: span.start,
+      end: span.end,
+      answer: span.answer,
+      acceptedAnswers: [],
+      concept: span.answer,
+    },
+  ];
 }
 
 /**

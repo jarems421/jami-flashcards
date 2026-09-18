@@ -115,6 +115,7 @@ export function getGapFillEligibility(card: Card): ModeEligibility {
     front: card.front,
     back: card.back,
     settings: card.studySettings,
+    hasImagePrompt: Boolean(card.frontImage),
   });
   if (gaps.length > 0) return ELIGIBLE;
   if (card.studySettings?.pinnedGaps !== undefined) {
@@ -458,6 +459,7 @@ export function buildDeterministicExercise(
       front: card.front,
       back: card.back,
       settings: card.studySettings,
+      hasImagePrompt: Boolean(card.frontImage),
       variantIndex: context.presentation ?? 0,
       recentVariantIds: context.recentVariantIds,
     });

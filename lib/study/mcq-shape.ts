@@ -26,6 +26,60 @@ export function wordCount(text: string) {
 export const OPTION_LENGTH_BAND = { min: 0.6, max: 1.7 };
 
 /**
+ * Whether a shorter correct option says only what the card's answer says.
+ *
+ * The prompt asks the model to write the correct option in the distractors'
+ * shape -- "same length, same opening" -- because a twenty-nine word answer sat
+ * under three ten-word wrong ones is answerable by looking at it. That rewrite
+ * is the point, and it is also the risk: a condensation that quietly adds or
+ * changes a claim would mark a student against something their card never said.
+ *
+ * So the test is containment rather than equivalence. Every content word of the
+ * short option has to appear in the card's answer, which allows a faithful
+ * condensation and refuses anything that brings in a new idea. It cannot catch
+ * a condensation that *narrows* the answer -- only reading it can -- and the
+ * prompt forbids that separately.
+ *
+ * Deliberately lives here, beside the other shape rules, because the validator
+ * that stores a variant and the builder that shows it have to apply exactly the
+ * same test. They did not: the validator accepted shortened correct options and
+ * the builder then rejected them and fell back to the card's raw answer, which
+ * failed the length band every time. Cards were stored with variants that could
+ * never be built, and a Multiple Choice session dropped most of its queue.
+ */
+export function condensesAnswer(option: string, answer: string) {
+  const short = contentWords(option).map(stemWord);
+  const full = new Set(contentWords(answer).map(stemWord));
+  if (short.length === 0 || full.size === 0) return false;
+  if (wordCount(option) >= wordCount(answer)) return false;
+  return short.every((word) => full.has(word));
+}
+
+/**
+ * Enough of a stem to survive rewording, and no more.
+ *
+ * Shortening a sentence changes the grammar around the words that stay:
+ * "by providing an alternative pathway" becomes "it provides an alternative
+ * pathway", and an exact-match containment test reads that one ending as a new
+ * claim and throws the variant away. Clipping the common endings fixes it.
+ *
+ * Deliberately not a real stemmer, and deliberately not a proportion of words
+ * matched. The whole value of the check is that it refuses a condensation
+ * carrying an idea the card does not -- and the dangerous version of that is a
+ * single word, "lower" written as "higher". Those two do not share a stem, so
+ * this still catches them, where "eighty per cent of the words matched" would
+ * wave them through.
+ */
+function stemWord(word: string) {
+  for (const ending of ["ing", "ed", "es", "s"]) {
+    if (word.length > ending.length + 2 && word.endsWith(ending)) {
+      return word.slice(0, word.length - ending.length);
+    }
+  }
+  return word;
+}
+
+/**
  * Whether the right answer hides among these three, or stands out from them.
  *
  * Only length is checked, because length is the tell that survives everything
