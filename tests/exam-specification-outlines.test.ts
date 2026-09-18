@@ -15,6 +15,8 @@ import {
   examSpecificationTopicCatalogue,
   servableExamSpecificationTopics,
 } from "@/lib/practice/exam-specification-topics";
+import { EXAM_CORPUS_TARGETS } from "@/lib/practice/exam-corpus-plan";
+import { examCoursePapers } from "@/lib/practice/exam-papers";
 
 /**
  * Science catalogues derived from the specification's own numbered headings.
@@ -56,7 +58,9 @@ describe("specification outlines", () => {
   });
 
   it("makes sections topics and the finest headings beneath them concepts", () => {
-    expect(outlineTopics(SAMPLE)).toEqual([{ id: "board-test-forces", label: "Physics: Forces" }]);
+    expect(outlineTopics(SAMPLE)).toEqual([
+      { id: "board-test-forces", label: "Physics: Forces", group: "Physics" },
+    ]);
     expect(outlineConcepts(SAMPLE)).toEqual([
       {
         id: "board-test-forces-work-done-and-energy-transfer",
@@ -131,5 +135,58 @@ describe("specification outlines", () => {
         conceptsChecked ? "verified_specification" : "ai_suggested"
       );
     }
+  });
+});
+
+/**
+ * A course sat as more than one subject, kept apart in Practice.
+ *
+ * Combined Science is one qualification and three sciences. Its topics and its
+ * papers both had the science in their wording and nowhere else, so the picker
+ * offered twenty-one topics in one flat run and a session drew Biology,
+ * Chemistry and Physics at once. Both sides now carry the part they belong to,
+ * and the filter only works while the two sides agree on its name.
+ */
+describe("a combined course's parts", () => {
+  const trilogy = servableExamSpecificationTopics("8464");
+  const course = EXAM_CORPUS_TARGETS.find((entry) => entry.specificationId === "8464");
+
+  it("puts every combined science topic in one of the three sciences", () => {
+    expect(trilogy).toBeDefined();
+    expect([...new Set(trilogy!.topics.map((topic) => topic.group))]).toEqual([
+      "Biology",
+      "Chemistry",
+      "Physics",
+    ]);
+  });
+
+  /* The label is stored on questions and sessions, so it stays as written. */
+  it("leaves the label saying it too", () => {
+    for (const topic of trilogy!.topics) {
+      expect(topic.label.startsWith(`${topic.group}: `)).toBe(true);
+    }
+  });
+
+  it("names a paper's part exactly as its topics name theirs", () => {
+    expect(course).toBeDefined();
+    const papers = examCoursePapers(
+      course!.components.map((component) => ({
+        componentCode: component.code,
+        componentTitle: component.title,
+        tier: component.tier ?? "",
+      })),
+      { tier: "Higher" }
+    );
+    expect([...new Set(papers.map((paper) => paper.group))]).toEqual([
+      "Biology",
+      "Chemistry",
+      "Physics",
+    ]);
+  });
+
+  /* A single-subject course has no parts, so no part picker appears on it. */
+  it("gives a single-subject course no parts", () => {
+    const maths = servableExamSpecificationTopics("8300");
+    expect(maths!.topics.every((topic) => !topic.group)).toBe(true);
   });
 });

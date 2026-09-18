@@ -410,6 +410,8 @@ export async function getExamQuestionAvailability(input: {
   const topics = (catalogue?.topics ?? []).map((topic) => ({
     id: topic.id,
     label: topic.label,
+    /** Which part of the course it belongs to, where the course has parts. */
+    ...(topic.group ? { group: topic.group } : {}),
     /*
      * The finer concepts beneath it, from the checked list where there is one.
      * Offered whether or not the corpus holds a question on each yet: a

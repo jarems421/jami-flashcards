@@ -14,6 +14,10 @@ import { Button, ConfirmDialog } from "@/components/ui";
 import type { NotebookToolMenu } from "@/components/workspace/NotebookDrawingToolbar";
 import NotebookToolSettingsPopover from "@/components/workspace/NotebookToolSettingsPopover";
 import ToolbarIconButton from "@/components/workspace/NotebookToolbarIconButton";
+
+/** The notebook's floating pill, so the working sheet wears the same control. */
+const PILL_CLASS =
+  "notebook-floating-control flex items-center gap-1 rounded-full border border-[var(--color-border)] p-1.5";
 import {
   NotebookInkEditor,
   type NotebookInkEditorHandle,
@@ -56,7 +60,17 @@ import {
 } from "@/lib/workspace/notebook-eraser";
 import {
   getHighlighterWidthFromPercent,
+  getNotebookCreatePagePull,
+  getNotebookPageDragIntent,
+  getNotebookSwipeDragOffset,
+  getNotebookSwipeReleaseDecision,
+  getNotebookSwipeSettleDuration,
+  getNotebookSwipeVelocity,
   getPenWidthFromPercent,
+  shouldCreateNotebookPageOnRelease,
+  shouldPointerSwipePages,
+  NOTEBOOK_PAGE_SWIPE_VELOCITY_WINDOW_MS,
+  type NotebookSwipeSample,
 } from "@/lib/workspace/notebook-inking";
 import {
   installNotebookStylusTouchListeners,
@@ -250,15 +264,38 @@ function scrollableAncestor(element: HTMLElement | null): Element | null {
   return document.scrollingElement;
 }
 
-type FingerPan = {
+/**
+ * One finger on the sheet, before it has said what it means.
+ *
+ * A drag is either the page moving under the frame or the page turning, and
+ * which it is cannot be known at the moment of contact. So the contact is
+ * recorded, nothing happens until it has travelled, and the first travel
+ * decides: sideways on a fitted sheet turns the page, anything else scrolls.
+ * That is the notebook's rule, and the thresholds below are the notebook's own
+ * numbers -- turning a page should not be a different gesture here.
+ */
+type FingerGesture = {
   pointerId: number;
   originX: number;
   originY: number;
   lastX: number;
   lastY: number;
-  panning: boolean;
+  intent: "undecided" | "pan" | "swipe";
   target: Element | null;
+  /** Recent x positions, for the flick check on release. */
+  samples: NotebookSwipeSample[];
+  /** How far the sheet has been dragged, in px. */
+  offset: number;
+  /** The pull past the last page that asks for another sheet. */
+  creating: boolean;
 };
+
+/** How far a committed page turn slides the sheet before it is replaced. */
+const SWIPE_HANDOFF_TRAVEL = 0.32;
+/** The notebook's settle curve, so a page lands here the way it lands there. */
+const SWIPE_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+/** Enough recent positions to read a flick from; older ones say nothing. */
+const SWIPE_SAMPLE_LIMIT = 12;
 
 type ConfirmRequest = "clear-page" | "delete-page" | null;
 
@@ -343,7 +380,35 @@ function ExamScratchpad({
   const pageInkRef = useRef<boolean[]>([]);
   const pageIndexRef = useRef(0);
   const loadedRef = useRef(false);
-  const panRef = useRef<FingerPan | null>(null);
+  const gestureRef = useRef<FingerGesture | null>(null);
+  /** The element a page turn slides: the sheet and the shadow under it. */
+  const pageShellRef = useRef<HTMLDivElement | null>(null);
+  const addSheetHintRef = useRef<HTMLDivElement | null>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * What the sheet is, read at the moment a finger lifts rather than at the
+   * moment it landed. The gesture handlers are held stable so the ink editor
+   * is never reconciled mid-stroke, so they cannot close over this.
+   */
+  const sheetRef = useRef({
+    pageIndex: 0,
+    pageCount: 1,
+    canAddPage: false,
+    disabled: false,
+    zoom: 1,
+    goToPage: (index: number) => {
+      void index;
+    },
+    addPage: () => {},
+  } as {
+    pageIndex: number;
+    pageCount: number;
+    canAddPage: boolean;
+    disabled: boolean;
+    zoom: number;
+    goToPage: (index: number) => void;
+    addPage: () => void;
+  });
   const flushOnLeaveRef = useRef<() => void>(() => undefined);
   /** What each page opens with. Refreshed whenever the open page changes. */
   const [pageSvgs, setPageSvgs] = useState<string[] | null>(null);
@@ -563,6 +628,10 @@ function ExamScratchpad({
         clearTimeout(uiSyncTimer.current);
         uiSyncTimer.current = null;
       }
+      if (settleTimer.current) {
+        clearTimeout(settleTimer.current);
+        settleTimer.current = null;
+      }
       releaseTouchLockRef.current?.();
       releaseTouchLockRef.current = null;
       flushOnLeaveRef.current();
@@ -613,6 +682,80 @@ function ExamScratchpad({
       getInkInteractionActive: () => inkInteractionActiveRef.current,
     });
   }, []);
+
+  /** Slides the sheet. Written to the element, never through React state. */
+  const writeSheetOffset = useCallback((offset: number, durationMs = 0) => {
+    const shell = pageShellRef.current;
+    if (!shell) return;
+    shell.style.transition =
+      durationMs > 0 ? `transform ${durationMs}ms ${SWIPE_SETTLE_EASING}` : "none";
+    shell.style.transform = offset === 0 ? "" : `translate3d(${offset}px, 0, 0)`;
+  }, []);
+
+  /** The ring that fills as the last page is pulled past. */
+  const writeCreatePull = useCallback((progress: number) => {
+    const hint = addSheetHintRef.current;
+    if (!hint) return;
+    const bounded = Math.max(0, Math.min(1, progress));
+    hint.style.opacity = bounded <= 0 ? "0" : String(0.3 + bounded * 0.7);
+    hint.style.transform = `translateY(-50%) scale(${0.72 + bounded * 0.28})`;
+    const ring = hint.querySelector("[data-pull-ring]");
+    if (ring instanceof SVGCircleElement) {
+      ring.style.strokeDashoffset = String(2 * Math.PI * 16 * (1 - bounded));
+    }
+  }, []);
+
+  /*
+   * Lets the sheet finish the movement the finger started, then acts.
+   *
+   * A page that changes under a finger still halfway through a swipe reads as
+   * a glitch rather than a turn, so the committed direction is carried on a
+   * little further and the page is replaced at the end of it. Reduced motion
+   * skips straight to the new page.
+   */
+  const settleSheet = useCallback(
+    (input: {
+      fromOffset: number;
+      targetOffset: number;
+      velocityX: number;
+      pageWidth: number;
+      act?: () => void;
+    }) => {
+      if (settleTimer.current) {
+        clearTimeout(settleTimer.current);
+        settleTimer.current = null;
+      }
+      const reducedMotion =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const duration = getNotebookSwipeSettleDuration({
+        currentOffset: input.fromOffset,
+        targetOffset: input.targetOffset,
+        travelDistance: input.pageWidth,
+        velocityX: input.velocityX,
+        reducedMotion,
+      });
+      const finish = () => {
+        settleTimer.current = null;
+        writeSheetOffset(0);
+        input.act?.();
+      };
+      if (duration <= 0) {
+        finish();
+        return;
+      }
+      writeSheetOffset(input.targetOffset, duration);
+      settleTimer.current = setTimeout(finish, duration);
+    },
+    [writeSheetOffset]
+  );
+
+  const cancelGesture = useCallback(() => {
+    gestureRef.current = null;
+    writeCreatePull(0);
+    writeSheetOffset(0);
+  }, [writeCreatePull, writeSheetOffset]);
 
   /*
    * Toolbar state, a moment after the pen lifts.
@@ -668,7 +811,7 @@ function ExamScratchpad({
           clearTimeout(uiSyncTimer.current);
           uiSyncTimer.current = null;
         }
-        panRef.current = null;
+        cancelGesture();
         releaseTouchLockRef.current ??= lockTouchScrolling();
         return;
       }
@@ -678,7 +821,7 @@ function ExamScratchpad({
       if (dirtyRef.current) scheduleSave();
       scheduleUiSync();
     },
-    [scheduleSave, scheduleUiSync]
+    [cancelGesture, scheduleSave, scheduleUiSync]
   );
 
   /*
@@ -691,16 +834,20 @@ function ExamScratchpad({
    * drag in progress stops.
    */
   const handleTouchDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== "touch" || inkInteractionActiveRef.current || panRef.current) return;
+    if (!shouldPointerSwipePages(event.pointerType)) return;
+    if (inkInteractionActiveRef.current || gestureRef.current) return;
     if (examWorkingTouchIsPalm(event)) return;
-    panRef.current = {
+    gestureRef.current = {
       pointerId: event.pointerId,
       originX: event.clientX,
       originY: event.clientY,
       lastX: event.clientX,
       lastY: event.clientY,
-      panning: false,
+      intent: "undecided",
       target: scrollableAncestor(event.currentTarget),
+      samples: [{ x: event.clientX, time: event.timeStamp }],
+      offset: 0,
+      creating: false,
     };
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -709,26 +856,131 @@ function ExamScratchpad({
     }
   }, []);
 
-  const handleTouchMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const pan = panRef.current;
-    if (!pan || pan.pointerId !== event.pointerId) return;
-    if (inkInteractionActiveRef.current) {
-      panRef.current = null;
-      return;
-    }
-    if (!pan.panning) {
-      const travelled = Math.hypot(event.clientX - pan.originX, event.clientY - pan.originY);
-      if (travelled < PAN_START_DISTANCE) return;
-      pan.panning = true;
-    }
-    pan.target?.scrollBy({ left: pan.lastX - event.clientX, top: pan.lastY - event.clientY });
-    pan.lastX = event.clientX;
-    pan.lastY = event.clientY;
-  }, []);
+  const handleTouchMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const gesture = gestureRef.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      // The pen wins every argument: a drag under a stroke is a resting hand.
+      if (inkInteractionActiveRef.current) {
+        cancelGesture();
+        return;
+      }
+      const dx = event.clientX - gesture.originX;
+      const dy = event.clientY - gesture.originY;
+      gesture.samples.push({ x: event.clientX, time: event.timeStamp });
+      if (gesture.samples.length > SWIPE_SAMPLE_LIMIT) gesture.samples.shift();
 
-  const handleTouchEnd = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (panRef.current?.pointerId === event.pointerId) panRef.current = null;
-  }, []);
+      if (gesture.intent === "undecided") {
+        if (Math.hypot(dx, dy) < PAN_START_DISTANCE) return;
+        const intent = getNotebookPageDragIntent({
+          axis: Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical",
+          // Zoomed in, most of the sheet is off screen and a drag can only
+          // sensibly move it, so no page turn is offered until it is fitted.
+          zoom: sheetRef.current.zoom,
+        });
+        gesture.intent = intent === "page" ? "swipe" : "pan";
+      }
+
+      if (gesture.intent === "pan") {
+        gesture.target?.scrollBy({
+          left: gesture.lastX - event.clientX,
+          top: gesture.lastY - event.clientY,
+        });
+      }
+      gesture.lastX = event.clientX;
+      gesture.lastY = event.clientY;
+      if (gesture.intent === "pan") return;
+
+      const sheet = sheetRef.current;
+      const pageWidth = surfaceRef.current?.clientWidth ?? 1;
+      const pullingPastTheEnd =
+        dx < 0 &&
+        sheet.pageIndex >= sheet.pageCount - 1 &&
+        sheet.canAddPage &&
+        !sheet.disabled;
+      if (pullingPastTheEnd) {
+        const pull = getNotebookCreatePagePull({ totalDx: dx, pageWidth });
+        gesture.creating = true;
+        gesture.offset = pull.resistedOffset;
+        writeCreatePull(pull.progress);
+        writeSheetOffset(pull.resistedOffset);
+        return;
+      }
+      if (gesture.creating) {
+        gesture.creating = false;
+        writeCreatePull(0);
+      }
+      gesture.offset = getNotebookSwipeDragOffset({
+        totalDx: dx,
+        currentIndex: sheet.pageIndex,
+        pageCount: sheet.pageCount,
+      });
+      writeSheetOffset(gesture.offset);
+    },
+    [cancelGesture, writeCreatePull, writeSheetOffset]
+  );
+
+  const handleTouchEnd = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const gesture = gestureRef.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      gestureRef.current = null;
+      writeCreatePull(0);
+      if (gesture.intent !== "swipe") return;
+
+      const sheet = sheetRef.current;
+      const pageWidth = surfaceRef.current?.clientWidth ?? 1;
+      const totalDx = gesture.lastX - gesture.originX;
+      const velocityX = getNotebookSwipeVelocity(
+        gesture.samples,
+        NOTEBOOK_PAGE_SWIPE_VELOCITY_WINDOW_MS
+      );
+
+      if (gesture.creating) {
+        const creating =
+          sheet.canAddPage &&
+          !sheet.disabled &&
+          shouldCreateNotebookPageOnRelease({ totalDx, pageWidth, velocityX });
+        settleSheet({
+          fromOffset: gesture.offset,
+          targetOffset: creating ? -pageWidth * SWIPE_HANDOFF_TRAVEL : 0,
+          velocityX,
+          pageWidth,
+          act: creating ? () => sheetRef.current.addPage() : undefined,
+        });
+        return;
+      }
+
+      const decision = getNotebookSwipeReleaseDecision({
+        totalDx,
+        pageWidth,
+        velocityX,
+        currentIndex: sheet.pageIndex,
+        pageCount: sheet.pageCount,
+      });
+      const targetIndex = decision.targetIndex;
+      settleSheet({
+        fromOffset: gesture.offset,
+        targetOffset: decision.shouldCommit
+          ? (decision.direction === "next" ? -1 : 1) * pageWidth * SWIPE_HANDOFF_TRAVEL
+          : 0,
+        velocityX,
+        pageWidth,
+        act: decision.shouldCommit
+          ? () => sheetRef.current.goToPage(targetIndex)
+          : undefined,
+      });
+    },
+    [settleSheet, writeCreatePull]
+  );
+
+  const handleTouchCancel = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (gestureRef.current?.pointerId !== event.pointerId) return;
+      cancelGesture();
+    },
+    [cancelGesture]
+  );
 
   /*
    * Writing full screen, the way a notebook page is written on.
@@ -941,6 +1193,22 @@ function ExamScratchpad({
     markChanged();
   };
 
+  /*
+   * The sheet as it stands, for the swipe handlers.
+   *
+   * Assigned during the render rather than in an effect, so a finger lifting
+   * in the same frame as a page change acts on the page that is actually open.
+   */
+  sheetRef.current = {
+    pageIndex,
+    pageCount,
+    canAddPage,
+    disabled,
+    zoom: zoomAt(zoomIndex),
+    goToPage,
+    addPage,
+  };
+
   /** Pressing the active tool opens its options; pressing another switches. */
   const selectTool = (next: WorkingTool) => {
     setPaperOpen(false);
@@ -1013,85 +1281,100 @@ function ExamScratchpad({
             : "relative overflow-hidden rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-shell"
       }
     >
+      {/*
+        * The tools, as the notebook draws them: rounded, floating, and over
+        * the paper rather than above it.
+        *
+        * This was a full-width strip with a rule under it that scrolled
+        * sideways when it ran out of room -- a piece of page furniture, which
+        * on a sheet of exam paper read as browser chrome sitting on the desk.
+        * The notebook's own pill is the thing a student already knows, so the
+        * same shape is used here, split into what writes and what turns pages
+        * so the two wrap onto their own lines on a phone instead of scrolling
+        * out of reach.
+        *
+        * Sticky, so the pen is still under your thumb halfway down a page of
+        * working. The settings popover and the paper picker travel with it:
+        * both are anchored to this wrapper, so a menu opened after scrolling
+        * still opens under the button that opened it.
+        */}
       <div
-        role="toolbar"
-        aria-label="Working tools"
-        className={`flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-glass-subtle)] py-1.5 ${
+        className={`sticky z-30 flex flex-wrap items-center justify-center gap-2 ${
           expanded
-            ? "px-3 pt-[max(0.375rem,env(safe-area-inset-top))]"
-            : embedded
-              ? "px-3"
-              : "px-2"
+            ? "top-0 shrink-0 px-3 pb-2 pt-[max(0.375rem,env(safe-area-inset-top))]"
+            : "top-2 px-2 py-2 sm:top-3"
         }`}
       >
-        {(["pen", "highlighter", "eraser"] as const).map((item) => (
-          <div key={item} className="relative shrink-0">
+        <div role="toolbar" aria-label="Working tools" className={PILL_CLASS}>
+          {(["pen", "highlighter", "eraser"] as const).map((item) => (
+            <div key={item} className="relative shrink-0">
+              <ToolbarIconButton
+                label={
+                  item === "pen"
+                    ? expanded ? "Pen (P)" : "Pen"
+                    : item === "highlighter"
+                      ? expanded ? "Highlighter (H)" : "Highlighter"
+                      : expanded ? "Eraser (E)" : "Eraser"
+                }
+                icon={item}
+                active={tool === item || openMenu === item}
+                disabled={disabled}
+                expanded={openMenu === item}
+                controls="notebook-tool-settings"
+                onClick={() => selectTool(item)}
+              >
+                {item !== "eraser" ? (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
+                    style={{
+                      backgroundColor: getNotebookStrokePaintColor(
+                        item === "pen" ? penColor : highlighterColor,
+                        item
+                      ),
+                    }}
+                  />
+                ) : null}
+              </ToolbarIconButton>
+            </div>
+          ))}
+          <span aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-[var(--color-border)]" />
+          {/*
+            * Offered even when the sheet is all printed pages.
+            *
+            * It was hidden until a student had a page of their own, which read
+            * as tidy and was wrong: nearly every maths question is one printed
+            * page, and squared paper is most wanted exactly there. A student has
+            * to be able to say "grid" before adding the sheet, not after.
+            */}
+          {!disabled ? (
             <ToolbarIconButton
-              label={
-                item === "pen"
-                  ? expanded ? "Pen (P)" : "Pen"
-                  : item === "highlighter"
-                    ? expanded ? "Highlighter (H)" : "Highlighter"
-                    : expanded ? "Eraser (E)" : "Eraser"
-              }
-              icon={item}
-              active={tool === item || openMenu === item}
-              disabled={disabled}
-              expanded={openMenu === item}
-              controls="notebook-tool-settings"
-              onClick={() => selectTool(item)}
-            >
-              {item !== "eraser" ? (
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
-                  style={{
-                    backgroundColor: getNotebookStrokePaintColor(
-                      item === "pen" ? penColor : highlighterColor,
-                      item
-                    ),
-                  }}
-                />
-              ) : null}
-            </ToolbarIconButton>
-          </div>
-        ))}
-        <span aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-[var(--color-border)]" />
-        {/*
-          * Offered even when the sheet is all printed pages.
-          *
-          * It was hidden until a student had a page of their own, which read
-          * as tidy and was wrong: nearly every maths question is one printed
-          * page, and squared paper is most wanted exactly there. A student has
-          * to be able to say "grid" before adding the sheet, not after.
-          */}
-        {!disabled ? (
+              label="Paper"
+              icon="pages"
+              active={paperOpen}
+              expanded={paperOpen}
+              controls="exam-sheet-paper"
+              onClick={() => {
+                setOpenMenu(null);
+                setPaperOpen((open) => !open);
+              }}
+            />
+          ) : null}
           <ToolbarIconButton
-            label="Paper"
-            icon="pages"
-            active={paperOpen}
-            expanded={paperOpen}
-            controls="exam-sheet-paper"
-            onClick={() => {
-              setOpenMenu(null);
-              setPaperOpen((open) => !open);
-            }}
+            label={expanded ? "Undo (Ctrl+Z)" : "Undo"}
+            icon="undo"
+            disabled={disabled || history.undo === 0}
+            onClick={() => editorRef.current?.undo()}
           />
-        ) : null}
-        <ToolbarIconButton
-          label={expanded ? "Undo (Ctrl+Z)" : "Undo"}
-          icon="undo"
-          disabled={disabled || history.undo === 0}
-          onClick={() => editorRef.current?.undo()}
-        />
-        <ToolbarIconButton
-          label={expanded ? "Redo (Ctrl+Shift+Z)" : "Redo"}
-          icon="redo"
-          disabled={disabled || history.redo === 0}
-          onClick={() => editorRef.current?.redo()}
-        />
+          <ToolbarIconButton
+            label={expanded ? "Redo (Ctrl+Shift+Z)" : "Redo"}
+            icon="redo"
+            disabled={disabled || history.redo === 0}
+            onClick={() => editorRef.current?.redo()}
+          />
+        </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
+        <div role="toolbar" aria-label="Pages" className={PILL_CLASS}>
           <ToolbarIconButton
             label="Previous page"
             icon="back"
@@ -1168,74 +1451,74 @@ function ExamScratchpad({
             onClick={() => setExpanded((value) => !value)}
           />
         </div>
+
+        <NotebookToolSettingsPopover
+          dock="top"
+          openMenu={disabled ? null : openMenu}
+          pen={{
+            color: penColor,
+            thicknessPercent: penThicknessPercent,
+            onColorChange: setPenColor,
+            onThicknessChange: setPenThicknessPercent,
+            settings: penSettings,
+            onSettingsChange: (value) => {
+              const next = clampNotebookPenSettings(value);
+              setPenSettings(next);
+              saveNotebookPenSettings(next);
+            },
+            scribbleToErase,
+            onScribbleToEraseChange: (enabled) => {
+              setScribbleToErase(enabled);
+              saveNotebookScribbleErasePreference(enabled);
+            },
+          }}
+          highlighter={{
+            color: highlighterColor,
+            thicknessPercent: highlighterThicknessPercent,
+            onColorChange: setHighlighterColor,
+            onThicknessChange: setHighlighterThicknessPercent,
+          }}
+          eraser={{
+            mode: eraserMode,
+            size: eraserSize,
+            onModeChange: setEraserMode,
+            onSizeChange: setEraserSize,
+            canClearPage: !disabled && currentPageHasInk,
+            onClearPage: () => {
+              setOpenMenu(null);
+              setConfirm("clear-page");
+            },
+          }}
+        />
+
+        {paperOpen ? (
+          <div
+            id="exam-sheet-paper"
+            className="notebook-floating-control absolute left-1/2 top-[4.85rem] z-40 w-[min(92vw,22rem)] -translate-x-1/2 rounded-lg border border-[var(--color-border)] p-3.5 shadow-e2"
+          >
+            <p className="mb-2 text-xs text-text-muted">
+              {sheetPages.some((page) => page.kind === "continuation")
+                ? "Your own sheets. The printed pages stay exactly as the board printed them."
+                : "The sheets you add. The printed pages stay exactly as the board printed them."}
+            </p>
+            <NotebookPageDefaultsPicker
+              pageColor={paper.pageColor}
+              pageStyle={paper.pageStyle}
+              disabled={disabled}
+              onPageColorChange={(pageColor) => {
+                const next = { ...paperRef.current, pageColor };
+                setPaper(next);
+                saveExamSheetPaperPreference(next);
+              }}
+              onPageStyleChange={(pageStyle) => {
+                const next = { ...paperRef.current, pageStyle };
+                setPaper(next);
+                saveExamSheetPaperPreference(next);
+              }}
+            />
+          </div>
+        ) : null}
       </div>
-
-      <NotebookToolSettingsPopover
-        dock="top"
-        openMenu={disabled ? null : openMenu}
-        pen={{
-          color: penColor,
-          thicknessPercent: penThicknessPercent,
-          onColorChange: setPenColor,
-          onThicknessChange: setPenThicknessPercent,
-          settings: penSettings,
-          onSettingsChange: (value) => {
-            const next = clampNotebookPenSettings(value);
-            setPenSettings(next);
-            saveNotebookPenSettings(next);
-          },
-          scribbleToErase,
-          onScribbleToEraseChange: (enabled) => {
-            setScribbleToErase(enabled);
-            saveNotebookScribbleErasePreference(enabled);
-          },
-        }}
-        highlighter={{
-          color: highlighterColor,
-          thicknessPercent: highlighterThicknessPercent,
-          onColorChange: setHighlighterColor,
-          onThicknessChange: setHighlighterThicknessPercent,
-        }}
-        eraser={{
-          mode: eraserMode,
-          size: eraserSize,
-          onModeChange: setEraserMode,
-          onSizeChange: setEraserSize,
-          canClearPage: !disabled && currentPageHasInk,
-          onClearPage: () => {
-            setOpenMenu(null);
-            setConfirm("clear-page");
-          },
-        }}
-      />
-
-      {paperOpen ? (
-        <div
-          id="exam-sheet-paper"
-          className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-3"
-        >
-          <p className="mb-2 text-xs text-text-muted">
-            {sheetPages.some((page) => page.kind === "continuation")
-              ? "Your own sheets. The printed pages stay exactly as the board printed them."
-              : "The sheets you add. The printed pages stay exactly as the board printed them."}
-          </p>
-          <NotebookPageDefaultsPicker
-            pageColor={paper.pageColor}
-            pageStyle={paper.pageStyle}
-            disabled={disabled}
-            onPageColorChange={(pageColor) => {
-              const next = { ...paperRef.current, pageColor };
-              setPaper(next);
-              saveExamSheetPaperPreference(next);
-            }}
-            onPageStyleChange={(pageStyle) => {
-              const next = { ...paperRef.current, pageStyle };
-              setPaper(next);
-              saveExamSheetPaperPreference(next);
-            }}
-          />
-        </div>
-      ) : null}
 
       {saveProblem ? (
         <p className="shrink-0 border-b border-[var(--color-border)] bg-error/10 px-3 py-2 text-sm text-text-primary">
@@ -1258,8 +1541,14 @@ function ExamScratchpad({
         }
       >
         <div
+          ref={pageShellRef}
           className={expanded ? "mx-auto shadow-shell" : undefined}
-          style={expanded && fitWidth > 0 ? { width: Math.round(fitWidth * zoom) } : undefined}
+          style={{
+            ...(expanded && fitWidth > 0 ? { width: Math.round(fitWidth * zoom) } : null),
+            // Promoted for the length of the gesture only; the transform is
+            // written straight to this element while a finger is on the sheet.
+            willChange: "transform",
+          }}
         >
           {/*
             * `notebook-page-surface` is the notebook sheet's own ground rules: no
@@ -1333,7 +1622,7 @@ function ExamScratchpad({
                   onChange={handleInkChange}
                   onHistoryChange={handleHistoryChange}
                   onInteractionChange={handleInteractionChange}
-                  onPointerCancel={handleTouchEnd}
+                  onPointerCancel={handleTouchCancel}
                   onPointerDown={handleTouchDown}
                   onPointerMove={handleTouchMove}
                   onPointerUp={handleTouchEnd}
@@ -1347,6 +1636,57 @@ function ExamScratchpad({
           </div>
         </div>
       </div>
+
+      {/*
+        * The page being asked for, while it is being asked for.
+        *
+        * It appears only under the finger's own pull: a student who is writing
+        * is never shown a control for running out of paper. Written to
+        * directly during the gesture, so nothing here re-renders the sheet.
+        */}
+      {!disabled && canAddPage ? (
+        <div
+          ref={addSheetHintRef}
+          aria-hidden="true"
+          className="pointer-events-none absolute right-3 top-1/2 z-20 flex flex-col items-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2.5 shadow-e2 backdrop-blur-sm"
+          style={{ opacity: 0, transform: "translateY(-50%) scale(0.72)" }}
+        >
+          <span className="relative grid h-9 w-9 place-items-center">
+            <svg viewBox="0 0 40 40" className="absolute inset-0 h-full w-full -rotate-90">
+              <circle
+                cx="20"
+                cy="20"
+                r="16"
+                fill="none"
+                strokeWidth="3"
+                className="stroke-[var(--color-border)]"
+              />
+              <circle
+                data-pull-ring
+                cx="20"
+                cy="20"
+                r="16"
+                fill="none"
+                strokeWidth="3"
+                strokeLinecap="round"
+                className="stroke-[var(--color-accent)]"
+                strokeDasharray={2 * Math.PI * 16}
+                style={{ strokeDashoffset: 2 * Math.PI * 16 }}
+              />
+            </svg>
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-text-secondary" aria-hidden="true">
+              <path
+                d="M12 5v14M5 12h14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </span>
+          <span className="text-2xs font-semibold text-text-secondary">New sheet</span>
+        </div>
+      ) : null}
 
       {/*
         * More room, offered where a student runs out of it.

@@ -111,7 +111,7 @@ export function ScoreMeter({
       className={`block h-1.5 overflow-hidden rounded-full bg-[var(--color-glass-medium)] ${className}`}
     >
       <span
-        className={`block h-full rounded-full transition-all duration-slow ${tone.mark}`}
+        className={`app-meter-fill block h-full rounded-full transition-all duration-slow ${tone.mark}`}
         style={{ width: `${share}%` }}
       />
     </span>

@@ -3,6 +3,7 @@ import {
   examCalculatorChoiceOffered,
   examCoursePapers,
   examPaperKey,
+  examPaperLabelWithin,
   matchesPaperChoice,
   withPaperCalculatorRules,
 } from "@/lib/practice/exam-papers";
@@ -50,10 +51,39 @@ describe("listing a combined course's papers", () => {
       { componentCode: "B/1F", componentTitle: "Biology Paper 1 Foundation", tier: "Foundation" },
     ];
     expect(examCoursePapers(entries, { tier: "Higher" })).toEqual([
-      { id: "biology-paper-1", label: "Biology Paper 1" },
-      { id: "biology-paper-2", label: "Biology Paper 2" },
-      { id: "chemistry-paper-1", label: "Chemistry Paper 1" },
+      { id: "biology-paper-1", label: "Biology Paper 1", group: "Biology" },
+      { id: "biology-paper-2", label: "Biology Paper 2", group: "Biology" },
+      { id: "chemistry-paper-1", label: "Chemistry Paper 1", group: "Chemistry" },
     ]);
+  });
+
+  /*
+   * The science a paper belongs to, said as a field rather than left inside
+   * the label. Combined Science's picker offers Biology, Chemistry and Physics
+   * as three parts of one course, and it cannot do that by reading words back
+   * out of a string it also has to show.
+   */
+  it("gives a combined course's papers the subject they belong to", () => {
+    const entries = [
+      { componentCode: "P/2H", componentTitle: "Physics Paper 2 Higher", tier: "Higher" },
+    ];
+    expect(examCoursePapers(entries, { tier: "Higher" })[0].group).toBe("Physics");
+  });
+
+  it("leaves a single-subject course's papers in no part at all", () => {
+    const entries = [
+      { componentCode: "1H", componentTitle: "Paper 1 Higher", tier: "Higher" },
+      { componentCode: "2H", componentTitle: "Paper 2 Higher", tier: "Higher" },
+    ];
+    expect(examCoursePapers(entries, { tier: "Higher" }).every((paper) => !paper.group)).toBe(true);
+  });
+
+  /* Once a student has said Biology, every label repeating it is noise. */
+  it("drops the subject from a paper's label inside that subject", () => {
+    const paper = { id: "biology-paper-1", label: "Biology Paper 1", group: "Biology" };
+    expect(examPaperLabelWithin(paper, "Biology")).toBe("Paper 1");
+    expect(examPaperLabelWithin(paper, "Chemistry")).toBe("Biology Paper 1");
+    expect(examPaperLabelWithin(paper, "")).toBe("Biology Paper 1");
   });
 
   /*

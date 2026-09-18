@@ -65,7 +65,12 @@ export async function getExamAvailability(
     /** A count that stopped at a session's worth rather than at the corpus. */
     hasMore: Record<ExamDifficulty, boolean>;
     /** Each topic with the finer concepts beneath it, where the course has a checked list. */
-    topics: Array<{ id: string; label: string; concepts?: Array<{ id: string; label: string }> }>;
+    topics: Array<{
+      id: string;
+      label: string;
+      group?: string;
+      concepts?: Array<{ id: string; label: string }>;
+    }>;
     papers: ExamCoursePaper[];
     /** Whether any of this course's papers carries a calculator rule. */
     calculatorPolicyKnown: boolean;

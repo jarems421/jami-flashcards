@@ -555,6 +555,38 @@ export function findQuestionStarts(pages: PdfPageText[]): QuestionStart[] {
  * exactly the continuation the whole-page render used to drop.
  */
 /**
+ * The slice of paper between two points on it, however many pages apart.
+ *
+ * The shape every carried-in region has: from one label down to the next,
+ * running to the foot of a page and on from the head of the one after when
+ * they are not on the same sheet.
+ */
+function spanBetween(
+  start: QuestionStart,
+  next: QuestionStart,
+  pages: PdfPageText[],
+  headroom: number
+): QuestionRegion[] {
+  const height = pages.find((page) => page.page === start.page)?.height ?? 0;
+  if (!height) return [];
+  const from = Math.max(0, (start.top - headroom) / height);
+  if (next.page === start.page) {
+    const to = Math.min(1, Math.max(0, next.top - headroom) / height);
+    return to > from ? [{ page: start.page, fromRatio: from, toRatio: to }] : [];
+  }
+  const regions: QuestionRegion[] = [{ page: start.page, fromRatio: from, toRatio: 1 }];
+  for (let page = start.page + 1; page < next.page; page += 1) {
+    regions.push({ page, fromRatio: 0, toRatio: 1 });
+  }
+  const nextHeight = pages.find((page) => page.page === next.page)?.height ?? 0;
+  if (nextHeight) {
+    const to = Math.min(1, Math.max(0, next.top - headroom) / nextHeight);
+    if (to > 0.02) regions.push({ page: next.page, fromRatio: 0, toRatio: to });
+  }
+  return regions;
+}
+
+/**
  * The shared opening a question's parts all depend on.
  *
  * `11 (a) Write down P(A n B)` is unanswerable on its own: the Venn diagram it
@@ -576,26 +608,80 @@ function stemRegions(input: {
       index > rootIndex && start.label !== input.root && rootQuestionLabel(start.label) === input.root
   );
   if (firstPart === -1) return [];
-  const start = input.starts[rootIndex];
-  const next = input.starts[firstPart];
-  const height = input.pages.find((page) => page.page === start.page)?.height ?? 0;
-  if (!height) return [];
-  const headroom = input.headroom ?? 12;
-  const from = Math.max(0, (start.top - headroom) / height);
-  if (next.page === start.page) {
-    const to = Math.min(1, Math.max(0, next.top - headroom) / height);
-    return to > from ? [{ page: start.page, fromRatio: from, toRatio: to }] : [];
+  return spanBetween(input.starts[rootIndex], input.starts[firstPart], input.pages, input.headroom ?? 12);
+}
+
+/** A figure or table named the way a question's wording names it. */
+const FIGURE_CITATION = /\b(Figure|Table|Diagram|Chart|Graph|Map)\s+(\d+)\b/gi;
+
+/** The names a piece of wording cites, normalised so "figure 3" matches "Figure 3". */
+export function citedFigureNames(wording: string): string[] {
+  const names = new Set<string>();
+  for (const match of wording.matchAll(FIGURE_CITATION)) {
+    names.add(`${match[1][0].toUpperCase()}${match[1].slice(1).toLowerCase()} ${match[2]}`);
   }
-  const regions: QuestionRegion[] = [{ page: start.page, fromRatio: from, toRatio: 1 }];
-  for (let page = start.page + 1; page < next.page; page += 1) {
-    regions.push({ page, fromRatio: 0, toRatio: 1 });
+  return [...names];
+}
+
+/**
+ * Where each figure is printed, taken as the first place it is named.
+ *
+ * A figure is captioned once and then cited by the parts that use it, so the
+ * first printing is the caption and the rest are references to it.
+ */
+function captionPositions(pages: PdfPageText[]): Map<string, { page: number; top: number }> {
+  const found = new Map<string, { page: number; top: number }>();
+  for (const page of pages) {
+    for (const item of page.items) {
+      for (const name of citedFigureNames(item.text)) {
+        if (!found.has(name)) found.set(name, { page: page.page, top: page.height - item.y });
+      }
+    }
   }
-  const nextHeight = input.pages.find((page) => page.page === next.page)?.height ?? 0;
-  if (nextHeight) {
-    const to = Math.min(1, Math.max(0, next.top - headroom) / nextHeight);
-    if (to > 0.02) regions.push({ page: next.page, fromRatio: 0, toRatio: to });
+  return found;
+}
+
+/** Whether a point on the paper falls inside a crop. */
+function regionsCover(
+  regions: readonly QuestionRegion[],
+  at: { page: number; top: number },
+  pages: PdfPageText[]
+) {
+  const height = pages.find((page) => page.page === at.page)?.height ?? 0;
+  if (!height) return false;
+  const ratio = at.top / height;
+  return regions.some(
+    (region) => region.page === at.page && ratio >= region.fromRatio && ratio <= region.toRatio
+  );
+}
+
+/**
+ * The slice of the question that a figure was printed in.
+ *
+ * Not simply the part above: a figure introduced once can serve every part
+ * after it. AQA prints Figure 14 between 09.4 and 09.5, and 09.6 asks about it
+ * too -- so reaching back a single sibling recovered 09.5 and left 09.6 exactly
+ * as broken. What is wanted is the slice the caption actually falls in,
+ * however many parts back that is, and never further than the question's own
+ * first part, because above that is the stem and the question before it.
+ */
+function sliceHolding(
+  at: { page: number; top: number },
+  label: string,
+  starts: readonly QuestionStart[],
+  pages: PdfPageText[],
+  headroom: number
+): QuestionRegion[] {
+  const index = starts.findIndex((start) => start.label === label);
+  if (index <= 0) return [];
+  const root = rootQuestionLabel(label);
+  for (let previous = index - 1; previous >= 0; previous -= 1) {
+    const candidate = starts[previous];
+    if (rootQuestionLabel(candidate.label) !== root) break;
+    const slice = spanBetween(candidate, starts[previous + 1], pages, headroom);
+    if (regionsCover(slice, at, pages)) return slice;
   }
-  return regions;
+  return [];
 }
 
 /**
@@ -675,6 +761,19 @@ export function regionsForQuestion(input: {
   headroom?: number;
   /** Prepend this question's stem, for a part that would lose its figure. */
   withStemOf?: string;
+  /**
+   * The part's own wording, so a figure it names can be carried in.
+   *
+   * The stem covers a figure printed once above the first part. It cannot
+   * cover one printed *between* two parts: that sits in the slice of the part
+   * before, because that slice runs down to this part's label. AQA Biology
+   * 8461/2H June 2022 prints Figure 14 after 09.4 and asks about it in 09.5
+   * and 09.6, and both were rejected for showing Figure 13 instead.
+   *
+   * Given the wording, a part that names a figure it cannot see reaches back
+   * for it. Left out, nothing changes and the crop is what it always was.
+   */
+  wording?: string;
 }): QuestionRegion[] {
   const { starts, pages } = input;
   const index = starts.findIndex((start) => start.label === input.label);
@@ -709,6 +808,35 @@ export function regionsForQuestion(input: {
     return [...trimmed.filter((region) => region.toRatio > region.fromRatio), ...own];
   };
 
+  /**
+   * A figure the wording names but the crop does not reach, fetched from the
+   * sibling above.
+   *
+   * Only ever one sibling back, and only within the same question: a part that
+   * refers to something printed further away than that is not a crop this can
+   * fix, and reaching for it would drag in another question's paper.
+   */
+  const withCitedFigures = (built: QuestionRegion[]) => {
+    if (!input.wording || built.length === 0) return built;
+    const names = citedFigureNames(input.wording);
+    if (names.length === 0) return built;
+    const captions = captionPositions(pages);
+    const wanted = names
+      .map((name) => captions.get(name))
+      .filter((at): at is { page: number; top: number } => Boolean(at))
+      .filter((at) => !regionsCover(built, at, pages));
+    if (wanted.length === 0) return built;
+    const carried = wanted.flatMap((at) => sliceHolding(at, input.label, starts, pages, headroom));
+    // Nothing found means the figure is somewhere this cannot reach -- another
+    // question's page, or a caption the text layer never spelled out -- and
+    // widening the crop on a guess would buy noise instead of a figure.
+    if (carried.length === 0) return built;
+    const merged = [...carried, ...built]
+      .filter((region) => region.toRatio > region.fromRatio)
+      .sort((left, right) => left.page - right.page || left.fromRatio - right.fromRatio);
+    return mergeAdjacentRegions(merged);
+  };
+
   /*
    * No following question: the rest of this page, and on until the paper
    * stops asking.
@@ -733,12 +861,12 @@ export function regionsForQuestion(input: {
       if (!carriesQuestionWording(page)) break;
       regions.push({ page: page.page, fromRatio: 0, toRatio: 1 });
     }
-    return withStem(regions);
+    return withCitedFigures(withStem(regions));
   }
 
   if (next.page === start.page) {
     const to = Math.min(1, Math.max(0, next.top - headroom) / startHeight);
-    return to > from ? withStem([{ page: start.page, fromRatio: from, toRatio: to }]) : [];
+    return to > from ? withCitedFigures(withStem([{ page: start.page, fromRatio: from, toRatio: to }])) : [];
   }
 
   const regions: QuestionRegion[] = [{ page: start.page, fromRatio: from, toRatio: 1 }];
@@ -750,7 +878,7 @@ export function regionsForQuestion(input: {
     const to = Math.min(1, Math.max(0, next.top - headroom) / nextHeight);
     if (to > 0.02) regions.push({ page: next.page, fromRatio: 0, toRatio: to });
   }
-  return withStem(regions);
+  return withCitedFigures(withStem(regions));
 }
 
 /**

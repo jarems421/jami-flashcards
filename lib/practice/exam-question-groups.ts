@@ -1,5 +1,9 @@
 import { normaliseQuestionLabel, rootQuestionLabel } from "@/lib/practice/exam-page-regions";
-import type { ExamDifficulty, ExamQuestion } from "@/lib/practice/exam-questions";
+import type {
+  ExamDifficulty,
+  ExamQuestion,
+  ExamQuestionProvenance,
+} from "@/lib/practice/exam-questions";
 
 /**
  * A numbered question with all of its parts, which is what a session serves.
@@ -29,6 +33,104 @@ export function examQuestionGroupKey(part: Pick<ExamQuestion, "id" | "paperId" |
   const root = rootQuestionLabel(part.provenance?.questionNumber ?? "");
   // A question with no readable number, or no paper, stands alone.
   return part.paperId && root ? `${part.paperId}#${root}` : `question#${part.id}`;
+}
+
+/**
+ * Which question a part belongs to, read from a session rather than the bank.
+ *
+ * A session stores its parts projected, and the projection does not carry
+ * `paperId` -- so `examQuestionGroupKey` cannot be used on one. Provenance
+ * names the same paper in the board's own terms, and every session ever
+ * written carries it, so grouping works on sessions that were started long
+ * before anybody thought to group them.
+ */
+export function examSessionPartGroupKey(
+  part: Pick<ExamQuestion, "id"> & { provenance?: Partial<ExamQuestionProvenance> }
+) {
+  const root = rootQuestionLabel(part.provenance?.questionNumber ?? "");
+  const paper = [
+    part.provenance?.board,
+    part.provenance?.specificationId,
+    part.provenance?.componentCode,
+    part.provenance?.year,
+    part.provenance?.series,
+    part.provenance?.paperReference,
+  ]
+    .filter(Boolean)
+    .join("|");
+  return paper && root ? `${paper}#${root}` : `question#${part.id}`;
+}
+
+/** One numbered question inside a session: where its parts start, and how many. */
+export type ExamSessionQuestionRun = {
+  key: string;
+  /** The number the paper prints, e.g. "3". Empty when the label cannot be read. */
+  number: string;
+  /** Index into the session's flat list of parts. */
+  from: number;
+  count: number;
+};
+
+/**
+ * A session's parts read back as the questions they came from.
+ *
+ * A session asked for two questions and listed fourteen parts, so it counted
+ * itself "1 of 14" -- a number the student never chose and could not place
+ * against the two they did. The parts of a question are stored together and in
+ * order, so consecutive parts sharing a question are one run: the session can
+ * say "question 1 of 2, part (b) of 7" without changing what is stored, what
+ * is answered, or what is marked.
+ *
+ * Runs, not a map, precisely because the order is the session's. A question
+ * that somehow appeared twice in one session stays two runs rather than being
+ * silently merged across the questions between them.
+ */
+export function examSessionQuestionRuns(
+  parts: ReadonlyArray<Pick<ExamQuestion, "id"> & { provenance?: Partial<ExamQuestionProvenance> }>
+): ExamSessionQuestionRun[] {
+  const runs: ExamSessionQuestionRun[] = [];
+  parts.forEach((part, index) => {
+    const key = examSessionPartGroupKey(part);
+    const open = runs[runs.length - 1];
+    if (open && open.key === key) {
+      open.count += 1;
+      return;
+    }
+    runs.push({
+      key,
+      number: rootQuestionLabel(part.provenance?.questionNumber ?? "") ?? "",
+      from: index,
+      count: 1,
+    });
+  });
+  return runs;
+}
+
+/**
+ * What the paper calls this part on its own: "(b)", ".2", or nothing.
+ *
+ * The part of the printed label that is not the question number. A part that
+ * is the whole question -- an unlettered question 5 -- has no suffix, which is
+ * how the session knows not to call it "part" anything.
+ */
+export function examQuestionPartLabel(questionNumber: string) {
+  const label = normaliseQuestionLabel(questionNumber ?? "");
+  if (!label) return "";
+  const root = rootQuestionLabel(questionNumber ?? "");
+  return label.startsWith(root) ? label.slice(root.length) : "";
+}
+
+/** The run a part is in, and where in it. Never out of range for a part in the list. */
+export function examSessionRunAt(runs: readonly ExamSessionQuestionRun[], index: number) {
+  const position = runs.findIndex((run) => index >= run.from && index < run.from + run.count);
+  const runIndex = position < 0 ? 0 : position;
+  const run = runs[runIndex];
+  return {
+    run,
+    runIndex,
+    /** 0 when there is no run, which only happens for an empty session. */
+    partIndex: run ? index - run.from : 0,
+  };
 }
 
 /** The order the paper prints them in: 14 before 14(a), 1.2 before 1.10. */

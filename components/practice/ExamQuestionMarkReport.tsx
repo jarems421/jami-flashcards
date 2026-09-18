@@ -79,7 +79,15 @@ export default function ExamQuestionMarkReport({
   const advice = result.nextStep?.trim() || (fullMarks ? "Full marks — move on." : "");
 
   return (
-    <div className="space-y-4 sm:space-y-5">
+    /*
+     * The report arrives in order rather than all at once.
+     *
+     * This is the moment a student finds out how they did, and everything here
+     * landing in the same frame gives them no idea where to look first. The
+     * summary and its score come in, then the question, then the working, then
+     * the reasons -- which is the order anybody reads it in anyway.
+     */
+    <div className="app-rise space-y-4 sm:space-y-5">
       <MarkSummary attempt={attempt} firstAttempt={earlier} />
 
       {question}

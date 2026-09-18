@@ -280,11 +280,6 @@ export default function TutorPage() {
           <SectionHeader
             title="Recent material"
             description="Pick one to ask about."
-            action={
-              <ButtonLink href="/dashboard/library" variant="secondary" size="sm">
-                See all
-              </ButtonLink>
-            }
           />
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             {loading ? (
@@ -428,35 +423,6 @@ export default function TutorPage() {
           )}
         </div>
       </Card>
-
-      {/*
-        * Another way in, at the end rather than the beginning.
-        *
-        * This card used to lead the page -- above Jami's own identity card --
-        * so the first thing on Tutor was a link somewhere else. It is a real
-        * route into asking Jami things, which is why it is still here.
-        */}
-      {featureFlags.enablePastPaperPractice ? (
-        <Card
-          padding="md"
-          className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-text-primary">Past Paper Practice</p>
-            <p className="mt-1 text-sm leading-6 text-text-muted">
-              Work through real questions one at a time, then ask Jami about the feedback.
-            </p>
-          </div>
-          <ButtonLink
-            href="/dashboard/practice/questions/new"
-            variant="secondary"
-            size="sm"
-            className="shrink-0"
-          >
-            Choose questions
-          </ButtonLink>
-        </Card>
-      ) : null}
     </AppPage>
   );
 }

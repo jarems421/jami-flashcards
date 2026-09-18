@@ -22,6 +22,16 @@ export type ExamSpecificationTopic = {
   /** Stable across versions. Never renumbered: questions are stored against it. */
   id: string;
   label: string;
+  /**
+   * The part of the course this topic belongs to, where the specification
+   * divides itself into named parts: "Biology" on Combined Science.
+   *
+   * It is also the first words of `label`, which stays as it has always been
+   * written because questions and sessions are stored against it. This is the
+   * same fact told separately, so a picker can group and filter by it rather
+   * than reading it back out of a string.
+   */
+  group?: string;
 };
 
 export type ExamSpecificationTopicCatalogue = {

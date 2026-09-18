@@ -196,6 +196,13 @@ export function buildExamQuestionsFromExtraction(
           starts: questionStarts,
           pages: paperPages,
           ...(partIsItsOwnQuestion ? { withStemOf: rootLabel } : {}),
+          /*
+           * Only the crop the student sees is told what the part cites. The
+           * tariff is read from `ownRegions`, which must stay the part's own
+           * lines: carrying a figure in would carry a neighbour's `[3 marks]`
+           * with it, and one part would verify against another's tariff.
+           */
+          wording: prompt,
         })
       : [];
     /*

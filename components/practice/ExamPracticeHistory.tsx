@@ -6,6 +6,7 @@ import { Button, ButtonLink, Card, EmptyState, FeedbackBanner, Skeleton } from "
 import { examCourseName } from "@/lib/practice/exam-course-names";
 import { EXAM_BOARD_LABELS } from "@/lib/practice/exam-formats";
 import type { ExamSession } from "@/lib/practice/exam-questions";
+import { examSessionQuestionRuns } from "@/lib/practice/exam-question-groups";
 import { listPastPaperPracticeSessions } from "@/services/study/exam-practice";
 
 function dateLabel(value: number) {
@@ -87,7 +88,7 @@ export default function ExamPracticeHistory({
     );
   } else {
     content = (
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="app-rise grid gap-3 md:grid-cols-2">
         {sessions.map((session) => {
           const complete = session.status === "completed";
           /*
@@ -102,6 +103,7 @@ export default function ExamPracticeHistory({
           const percent = denominator
             ? Math.round((session.awardedTotal / denominator) * 100)
             : 0;
+          const questionCount = examSessionQuestionRuns(session.questions).length;
           return (
             <Card key={session.id} padding="md">
               <div className="flex items-start justify-between gap-4">
@@ -126,14 +128,29 @@ export default function ExamPracticeHistory({
                   {complete ? "Complete" : "In progress"}
                 </span>
               </div>
+              {/* The numbered questions its parts came from. */}
               <div className="mt-6 flex items-end justify-between gap-4">
                 <div>
                   <p className="text-3xl font-semibold tracking-tight text-text-primary">
                     {session.awardedTotal}
                     <span className="text-base font-normal text-text-muted">/{denominator}</span>
                   </p>
+                  {/*
+                    * Questions and parts, said as two numbers rather than one.
+                    *
+                    * This read "3 of 14 marked" for a session of two questions,
+                    * which is the count the session itself used to show and the
+                    * one nobody chose. `answeredCount` is parts and stays parts,
+                    * because Progress is built on it -- so the questions are
+                    * named alongside instead of in place of them.
+                    */}
                   <p className="mt-1 text-xs text-text-muted">
-                    {session.answeredCount} of {session.questions.length} marked · {percent}%
+                    {questionCount} question{questionCount === 1 ? "" : "s"}
+                    {session.questions.length > questionCount
+                      ? ` · ${session.answeredCount} of ${session.questions.length} parts marked`
+                      : ` · ${session.answeredCount} of ${session.questions.length} marked`}
+                    {" · "}
+                    {percent}%
                     {complete ? "" : " so far"}
                   </p>
                 </div>

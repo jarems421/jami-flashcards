@@ -8,6 +8,7 @@ import {
   Card,
   ConfirmDialog,
   FeedbackBanner,
+  FormDisclosure,
   ProgressBar,
   Select,
   Skeleton,
@@ -43,6 +44,11 @@ import { examSheetPrintedPages } from "@/lib/practice/exam-question-sheet";
 import ExamScratchpad, { type ExamScratchpadHandle } from "@/components/practice/ExamScratchpad";
 import ExamQuestionMarkReport from "@/components/practice/ExamQuestionMarkReport";
 import { requireExamWorkingSnapshot } from "@/lib/practice/exam-working";
+import {
+  examQuestionPartLabel,
+  examSessionQuestionRuns,
+  examSessionRunAt,
+} from "@/lib/practice/exam-question-groups";
 import ExamSubmittedAnswer from "@/components/practice/ExamSubmittedAnswer";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import { reportTutorialAction } from "@/lib/onboarding/tutorial";
@@ -152,6 +158,15 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   const [savedNotebook, setSavedNotebook] = useState("");
   const [showWorking, setShowWorking] = useState(false);
   const [hasInk, setHasInk] = useState(false);
+  /**
+   * Whether the sheet has been read yet, so an empty sheet is only called
+   * empty once it is known to be. Ink loads after the page mounts, and a
+   * question returned to already has ink on it -- treating "not reported yet"
+   * as "nothing written" would grey out the mark button on the way back.
+   */
+  const [inkKnown, setInkKnown] = useState(false);
+  /** Reported by the answer box, which holds its own text. */
+  const [hasTypedText, setHasTypedText] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const answerFieldId = useId();
@@ -171,6 +186,11 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   /** Stable, so the memoised working sheet is not re-rendered for a new function. */
   const handleScratchpad = useCallback((handle: ExamScratchpadHandle | null) => {
     scratchpad.current = handle;
+  }, []);
+  /** Stable for the same reason, and the point at which the sheet is known. */
+  const handleInkChange = useCallback((value: boolean) => {
+    setHasInk(value);
+    setInkKnown(true);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -237,6 +257,47 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
    */
   const printedPages = usePrintedPages(question);
   const hasSheet = printedPages.length > 0;
+  /**
+   * The questions this session is made of, read back out of its parts.
+   *
+   * A student asks for two questions and the session stores fourteen parts, so
+   * it used to count itself "Question 1 of 14" -- a number nobody chose. The
+   * parts have not changed: each is still answered on its own and marked on
+   * its own. Only the counting has, so the session says the same thing the
+   * setup screen did.
+   */
+  const runs = useMemo(() => examSessionQuestionRuns(questions), [questions]);
+  const { run, runIndex, partIndex } = examSessionRunAt(runs, index);
+  /** "(b)" where the paper letters its parts, empty where the question is whole. */
+  const partLabel = examQuestionPartLabel(question?.provenance?.questionNumber ?? "");
+  const questionNumber = run?.number || String(runIndex + 1);
+  /** "3(b)" on a question with parts, "3" on one without. */
+  const questionCardLabel = `${questionNumber}${run && run.count > 1 ? partLabel : ""}`;
+
+  const activeAttemptId = activeAttempt?.id ?? "";
+  const storedAnswer = activeAttempt?.answerText ?? "";
+
+  /*
+   * Each question opens on its own evidence, not the last one's. The sheet is
+   * unread until it reports, and a typed box asked for on one question is not
+   * still open on the next.
+   */
+  useEffect(() => {
+    setHasInk(false);
+    setInkKnown(false);
+  }, [activeAttemptId]);
+
+  /*
+   * A draft typed earlier wins over what the server last stored: a box the
+   * student has just emptied has no text in it, whatever is still saved.
+   */
+  useEffect(() => {
+    const text = latestDrafts.current.get(activeAttemptId) ?? storedAnswer;
+    setHasTypedText(text.trim().length > 0);
+  }, [activeAttemptId, storedAnswer]);
+
+  /** Nothing written anywhere. Only true once the sheet has actually been read. */
+  const nothingToSend = inkKnown && !hasInk && !hasTypedText;
   const questionId = question?.id ?? "";
   const assetPath = useCallback(
     (assetId: string) =>
@@ -387,6 +448,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
   const handleDraft = useCallback(
     (attemptId: string, text: string, storedText: string) => {
       latestDrafts.current.set(attemptId, text);
+      setHasTypedText(text.trim().length > 0);
       // Typing back to what is stored still has to replace an edit already queued.
       if (text === storedText && !pendingDrafts.current.has(attemptId)) return;
       pendingDrafts.current.set(attemptId, text);
@@ -539,8 +601,20 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
     );
   }
 
-  const markedCount = attempts.filter(
-    (item) => item.attemptNumber === 1 && item.status === "marked"
+  const markedPartIds = new Set(
+    attempts
+      .filter((item) => item.attemptNumber === 1 && item.status === "marked")
+      .map((item) => item.questionId)
+  );
+  /*
+   * A question counts as marked once all of its parts are: 3(a) marked and
+   * 3(b) still blank is a question still to finish, and calling it done would
+   * be the same miscount the other way round.
+   */
+  const markedCount = runs.filter((item) =>
+    questions
+      .slice(item.from, item.from + item.count)
+      .every((part) => markedPartIds.has(part.id))
   ).length;
   const retryTargets = (firstAttempt?.result?.criterionResults ?? []).filter(
     (item) => (item.awardedMarks ?? 0) === 0
@@ -628,32 +702,63 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
           className="sticky top-[4.5rem] z-30 flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--app-background)] py-2 pl-3 pr-2 shadow-shell"
         >
           <p className="hidden shrink-0 text-sm font-semibold text-text-primary sm:block">
-            Question {index + 1}
-            <span className="font-normal text-text-muted"> of {questions.length}</span>
+            Question {runIndex + 1}
+            <span className="font-normal text-text-muted"> of {runs.length}</span>
+            {run && run.count > 1 ? (
+              <span className="font-normal text-text-muted">
+                {" · part "}
+                {partIndex + 1} of {run.count}
+              </span>
+            ) : null}
           </p>
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-0.5 sm:justify-center">
-            {questions.map((item, itemIndex) => {
-              const itemAttempts = attempts.filter((attempt) => attempt.questionId === item.id);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-current={itemIndex === index ? "step" : undefined}
-                  aria-label={`Question ${itemIndex + 1} of ${questions.length}`}
-                  onClick={() => goTo(itemIndex)}
-                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold tabular-nums transition duration-fast ${
-                    itemIndex === index
-                      ? "bg-accent text-[var(--color-text-inverse)] shadow-accent"
-                      : pillTone(itemAttempts)
-                  }`}
-                >
-                  {itemIndex + 1}
-                </button>
-              );
-            })}
+          {/*
+            * One group of dots per question, not one per part.
+            *
+            * A flat row of fourteen numbered circles said the session was
+            * fourteen questions long as plainly as the counter did. Grouped,
+            * the row reads the way the paper does: two questions, each with
+            * its parts under its own number, and the gap between groups is
+            * where one question ends.
+            */}
+          <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto py-0.5 sm:justify-center">
+            {runs.map((item, itemRunIndex) => (
+              <div key={item.key} className="flex shrink-0 items-center gap-1">
+                <span className="shrink-0 pr-0.5 text-xs font-semibold tabular-nums text-text-muted">
+                  {item.number || itemRunIndex + 1}
+                </span>
+                {questions.slice(item.from, item.from + item.count).map((part, offset) => {
+                  const partIndexInSession = item.from + offset;
+                  const itemAttempts = attempts.filter((attempt) => attempt.questionId === part.id);
+                  const suffix = examQuestionPartLabel(part.provenance?.questionNumber ?? "");
+                  const current = partIndexInSession === index;
+                  return (
+                    <button
+                      key={part.id}
+                      type="button"
+                      aria-current={current ? "step" : undefined}
+                      aria-label={
+                        item.count > 1
+                          ? `Question ${itemRunIndex + 1} of ${runs.length}, part ${offset + 1} of ${item.count}`
+                          : `Question ${itemRunIndex + 1} of ${runs.length}`
+                      }
+                      onClick={() => goTo(partIndexInSession)}
+                      className={`grid h-8 shrink-0 place-items-center rounded-full px-2 text-xs font-semibold tabular-nums transition duration-fast ${
+                        item.count > 1 ? "min-w-8" : "w-8"
+                      } ${
+                        current
+                          ? "bg-accent text-[var(--color-text-inverse)] shadow-accent"
+                          : pillTone(itemAttempts)
+                      }`}
+                    >
+                      {item.count > 1 ? suffix.replace(/[().]/g, "") || offset + 1 : "•"}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
           <span className="shrink-0 text-xs font-medium tabular-nums text-text-muted">
-            {markedCount}/{questions.length} marked
+            {markedCount}/{runs.length} marked
           </span>
           {session.status === "active" ? (
             <Button size="sm" variant="secondary" disabled={finishing} onClick={() => void finish()}>
@@ -675,7 +780,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
               firstAttempt={firstAttempt}
               sessionId={sessionId}
               question={
-                <QuestionCard sessionId={sessionId} question={question} number={index + 1} collapsible />
+                <QuestionCard sessionId={sessionId} question={question} label={questionCardLabel} collapsible />
               }
               reviewing={reviewing}
               nextLabel={isLast ? "Finish session" : "Next question"}
@@ -742,9 +847,9 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
         ) : (
         /*
          * The question, in full, on the left; one answer sheet on the right,
-         * with the typed answer as its top strip and the working as the paper
-         * under it. Everything that gets marked is in one place beside the
-         * question it answers.
+         * the paper being written on with the optional typed answer folded
+         * away beneath it. Everything that gets marked is in one place beside
+         * the question it answers.
          *
          * Side by side only on a wide screen held landscape, with the sheet
          * given the larger share: an even split left an iPad a page of working
@@ -770,7 +875,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                   : ""
               }`}
             >
-              <QuestionCard sessionId={sessionId} question={question} number={index + 1} />
+              <QuestionCard sessionId={sessionId} question={question} label={questionCardLabel} />
             </div>
           )}
 
@@ -927,8 +1032,18 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
           </div>
 
           {answering && activeAttempt ? (
-            <section aria-label="Answer sheet" className="app-panel min-w-0 overflow-hidden">
+            <section
+              aria-label="Answer sheet"
+              className={`app-panel min-w-0 ${hasSheet ? "" : "overflow-hidden"}`}
+            >
               {/*
+                * The panel is not clipped while there is paper in it: the
+                * working sheet pins its tool pill to the top as the page
+                * scrolls, and a clipped ancestor is a scrollport that never
+                * scrolls, so the pill would simply sit where it started. With
+                * no paper the panel opens on a filled header instead, which
+                * does need the rounded corner cut.
+                *
                 * With a sheet, the question is not a card in another column --
                 * it is the paper below. So what the column used to say about
                 * it moves here: its number, what it is worth, and which paper
@@ -938,8 +1053,16 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                 <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-[var(--color-border)] px-4 py-3 sm:px-5">
                   <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
                     <h2 className="text-base font-semibold tracking-tight text-text-primary">
-                      Question {index + 1}
+                      Question {questionNumber}
+                      {run && run.count > 1 ? (
+                        <span className="text-text-secondary"> {partLabel || `part ${partIndex + 1}`}</span>
+                      ) : null}
                     </h2>
+                    {run && run.count > 1 ? (
+                      <p className="shrink-0 text-xs text-text-muted">
+                        Part {partIndex + 1} of {run.count}
+                      </p>
+                    ) : null}
                     <p className="truncate text-xs text-text-muted">{provenanceLine(question)}</p>
                   </div>
                   <span className="shrink-0 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-2.5 py-1 text-xs font-semibold tabular-nums text-text-primary">
@@ -1037,20 +1160,33 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                     // sheet is then frozen evidence, and the rules refuse writes.
                     disabled={submitting || activeAttempt.status !== "draft"}
                     onHandle={handleScratchpad}
-                    onInkChange={setHasInk}
+                    onInkChange={handleInkChange}
                   />
                 </div>
               </div>
 
               {/*
-                * The typed answer, under the paper rather than over it.
+                * The typed answer, under the paper rather than over it, and
+                * only if it is wanted.
                 *
                 * It sat above the working while the working was a pad and the
                 * question was a picture somewhere else. Now that the paper is
                 * the page, above the paper is above the question, and a box
                 * asking for an answer before the question has been read is the
-                * wrong way round. Underneath it reads as the answer line at the
-                * foot of a page, which is where a paper puts it too.
+                * wrong way round.
+                *
+                * It is also no longer how an answer is given. A student writes
+                * on the printed sheet, the way they would in the exam, and the
+                * marker reads the sheet -- so on a question with paper the box
+                * folds away, says what it is, and opens for anyone who wants to
+                * type as well. Typing an answer out a second time to satisfy a
+                * form was work the paper had already done. A question with no
+                * paper has nowhere else to answer, so there the box stays the
+                * answer line it was.
+                *
+                * Folded, not unmounted: the field keeps its text and its
+                * autosave whether or not the section is open, so closing it is
+                * putting the sheet down rather than losing the page.
                 */}
               {activeAttempt.status === "draft" ? (
                 <div
@@ -1059,13 +1195,28 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                     hasSheet ? "border-t border-[var(--color-border)]" : ""
                   }`}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                    <label
-                      htmlFor={answerFieldId}
-                      className="text-base font-semibold tracking-tight text-text-primary"
+                  {hasSheet ? (
+                    <FormDisclosure
+                      key={activeAttempt.id}
+                      title={retryOpen ? "Try your answer again" : "Type your answer"}
+                      summary={hasTypedText ? "Answer typed" : "Optional"}
+                      /*
+                       * Read once, at mount. An answer already typed -- saved
+                       * earlier, or drafted before leaving the question -- opens
+                       * with it showing, so nobody has to go looking for it.
+                       */
+                      defaultOpen={Boolean(
+                        (
+                          latestDrafts.current.get(activeAttempt.id) ??
+                          activeAttempt.answerText ??
+                          ""
+                        ).trim()
+                      )}
                     >
-                      {retryOpen ? "Try your answer again" : "Your answer"}
-                    </label>
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <label htmlFor={answerFieldId} className="text-sm text-text-muted">
+                          Marked alongside what you wrote on the paper.
+                        </label>
                     <p aria-live="polite" className="flex items-center gap-2 text-xs text-text-muted">
                       <span
                         aria-hidden="true"
@@ -1087,7 +1238,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                             ? "Saved."
                             : "Saves as you write."}
                     </p>
-                  </div>
+                      </div>
                   <ExamAnswerField
                     key={activeAttempt.id}
                     id={answerFieldId}
@@ -1098,6 +1249,50 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                     readDraft={readDraft}
                     onDraft={handleDraft}
                   />
+                    </FormDisclosure>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <label
+                          htmlFor={answerFieldId}
+                          className="text-base font-semibold tracking-tight text-text-primary"
+                        >
+                          {retryOpen ? "Try your answer again" : "Your answer"}
+                        </label>
+                    <p aria-live="polite" className="flex items-center gap-2 text-xs text-text-muted">
+                      <span
+                        aria-hidden="true"
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          saveState === "failed"
+                            ? "bg-[var(--color-error-mark)]"
+                            : saveState === "saving"
+                              ? "animate-pulse bg-[var(--color-warning-mark)]"
+                              : saveState === "saved"
+                                ? "bg-[var(--color-success-mark)]"
+                                : "bg-[var(--color-border-strong)]"
+                        }`}
+                      />
+                      {saveState === "saving"
+                        ? "Saving…"
+                        : saveState === "failed"
+                          ? "Couldn't save just now — it will retry."
+                          : saveState === "saved"
+                            ? "Saved."
+                            : "Saves as you write."}
+                    </p>
+                      </div>
+                  <ExamAnswerField
+                    key={activeAttempt.id}
+                    id={answerFieldId}
+                    prompt={question.prompt}
+                    attemptId={activeAttempt.id}
+                    storedText={activeAttempt.answerText ?? ""}
+                    disabled={submitting}
+                    readDraft={readDraft}
+                    onDraft={handleDraft}
+                  />
+                    </>
+                  )}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     {hasSheet ? null : (
                       <Button
@@ -1110,22 +1305,35 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                       </Button>
                     )}
                     <p className={`text-xs text-text-muted ${hasSheet ? "" : "hidden md:block"}`}>
-                      {hasSheet
-                        ? hasInk
-                          ? "What you wrote on the paper is sent with this answer."
-                          : "Write on the paper above, type here, or both."
-                        : hasInk
-                          ? "Your working below is sent with this answer."
-                          : "Working below is optional — sent only if you use it."}
+                      {nothingToSend
+                        ? hasSheet
+                          ? "Write on the paper above, or type an answer, then mark it."
+                          : "Type an answer, or show your working, then mark it."
+                        : hasSheet
+                          ? hasInk && hasTypedText
+                            ? "The paper and your typed answer are both sent."
+                            : hasInk
+                              ? "What you wrote on the paper is sent to be marked."
+                              : "Your typed answer is sent to be marked."
+                          : hasInk
+                            ? "Your working below is sent with this answer."
+                            : "Working below is optional — sent only if you use it."}
                     </p>
-                    <Button className="ml-auto" disabled={submitting} onClick={() => void submit()} data-tutorial-target="mark-answer">
+                    <Button
+                      className="ml-auto"
+                      disabled={submitting || nothingToSend}
+                      onClick={() => void submit()}
+                      data-tutorial-target="mark-answer"
+                    >
                       {submitting
                         ? hasInk
                           ? "Reading your working…"
                           : "Marking your answer…"
-                        : hasInk
+                        : hasInk && hasTypedText
                           ? "Mark answer and working"
-                          : "Mark answer"}
+                          : hasInk
+                            ? "Mark my working"
+                            : "Mark answer"}
                     </Button>
                   </div>
                 </div>
@@ -1370,12 +1578,19 @@ const ExamAnswerField = memo(function ExamAnswerField({
 const QuestionCard = memo(function QuestionCard({
   sessionId,
   question,
-  number,
+  label,
   collapsible = false,
 }: {
   sessionId: string;
   question: SessionQuestion;
-  number: number;
+  /**
+   * What the paper calls it -- "3", or "3(b)" for one part of it.
+   *
+   * It was this part's position in the session, so the fourth part of question
+   * 3 was headed "Question 4". A student checking their working against the
+   * paper in front of them was reading two different numbering systems.
+   */
+  label: string;
   collapsible?: boolean;
 }) {
   const marks = `${question.marks} mark${question.marks === 1 ? "" : "s"}`;
@@ -1412,7 +1627,7 @@ const QuestionCard = memo(function QuestionCard({
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 sm:px-6 [&::-webkit-details-marker]:hidden">
           <span className="min-w-0">
             <span className="block text-sm font-semibold text-text-primary">
-              Question {number}
+              Question {label}
               <span className="font-normal text-text-muted"> · {marks}</span>
             </span>
             <span className="mt-0.5 block truncate text-xs text-text-muted">{provenanceLine(question)}</span>
@@ -1442,7 +1657,7 @@ const QuestionCard = memo(function QuestionCard({
     <Card padding="md">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-          <h2 className="text-lg font-semibold tracking-tight text-text-primary">Question {number}</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-text-primary">Question {label}</h2>
           {chips}
         </div>
         <span className="shrink-0 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1 text-xs font-semibold tabular-nums text-text-primary">

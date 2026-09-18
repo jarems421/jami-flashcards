@@ -1063,9 +1063,9 @@ describe("Firestore security rules", () => {
     await assertFails(updateDoc(doc(aliceDb, "users", ALICE, "examAttempts", "attempt1"), { status: "marked" }));
     const scratchpad = doc(aliceDb, "users", ALICE, "examScratchpads", "attempt1");
     await assertSucceeds(setDoc(scratchpad, { inkSvg: "<svg/>", updatedAt: 2 }));
-    // Further pages of working ride along, up to four pages in all.
-    await assertSucceeds(setDoc(scratchpad, { inkSvg: "<svg/>", pages: ["<svg/>", "<svg/>", "<svg/>"], updatedAt: 2 }));
-    await assertFails(setDoc(scratchpad, { inkSvg: "<svg/>", pages: ["<svg/>", "<svg/>", "<svg/>", "<svg/>"], updatedAt: 2 }));
+    // Further pages of working ride along, up to sixteen pages in all.
+    await assertSucceeds(setDoc(scratchpad, { inkSvg: "<svg/>", pages: Array(15).fill("<svg/>"), updatedAt: 2 }));
+    await assertFails(setDoc(scratchpad, { inkSvg: "<svg/>", pages: Array(16).fill("<svg/>"), updatedAt: 2 }));
     await assertFails(setDoc(scratchpad, { inkSvg: "<svg/>", pages: "<svg/>", updatedAt: 2 }));
     await testEnv.withSecurityRulesDisabled(async (context) => updateDoc(doc(context.firestore(), "users", ALICE, "examAttempts", "attempt1"), { status: "marked" }));
     await assertFails(updateDoc(scratchpad, { inkSvg: "<svg>changed</svg>", updatedAt: 3 }));

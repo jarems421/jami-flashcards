@@ -494,3 +494,72 @@ describe("telling prose from page furniture", () => {
     expect(findQuestionStarts(pages).map((start) => start.label)).toEqual(["1", "2", "3", "4", "5"]);
   });
 });
+
+/**
+ * A figure printed between two parts, and the parts after it that ask about it.
+ *
+ * A part is cropped from its own label to the next, so a figure introduced
+ * partway through a question falls inside the slice of the part *before* the
+ * ones that cite it. AQA Biology 8461/2H June 2022 prints Figure 14 after 09.4
+ * and asks about it in 09.5 and 09.6; both were rejected for showing Figure 13.
+ */
+describe("carrying in a figure a part cites", () => {
+  const pages = [
+    page(1, [
+      ["9", 50, 760],
+      ["A student investigated shoots.", 120, 760],
+      ["Figure 13", 120, 700],
+      ["9", 50, 640],
+      [".4", 60, 640],
+      ["Name the response shown in Figure 13.", 120, 640],
+      ["Figure 14", 120, 560],
+      ["9", 50, 480],
+      [".5", 60, 480],
+      ["Describe the evidence in Figure 14.", 120, 480],
+      ["9", 50, 360],
+      [".6", 60, 360],
+      ["Give the evidence from Figure 14.", 120, 360],
+    ]),
+  ];
+  const starts = findQuestionStarts(pages);
+  const regionsFor = (label: string, wording?: string) =>
+    regionsForQuestion({
+      label,
+      starts,
+      pages,
+      withStemOf: "9",
+      ...(wording ? { wording } : {}),
+    });
+  /** Where "Figure 14" is printed, as a fraction of the page. */
+  const figure14 = (800 - 560) / 800;
+  const covers = (regions: ReturnType<typeof regionsFor>, ratio: number) =>
+    regions.some((region) => ratio >= region.fromRatio && ratio <= region.toRatio);
+
+  it("finds every part of the question", () => {
+    expect(starts.map((start) => start.label)).toEqual(["9", "9.4", "9.5", "9.6"]);
+  });
+
+  it("leaves the crop alone when the part cites nothing", () => {
+    expect(regionsFor("9.5")).toEqual(regionsFor("9.5", "Describe what you see."));
+  });
+
+  it("does not reach the figure without being told what the part cites", () => {
+    expect(covers(regionsFor("9.5"), figure14)).toBe(false);
+  });
+
+  it("carries the figure in for the part printed after it", () => {
+    expect(covers(regionsFor("9.5", "Describe the evidence in Figure 14."), figure14)).toBe(true);
+  });
+
+  /*
+   * The one a single sibling back does not fix: Figure 14 is two parts above
+   * 09.6, and a figure introduced once serves every part after it.
+   */
+  it("carries it for a later part too, however many parts back it was printed", () => {
+    expect(covers(regionsFor("9.6", "Give the evidence from Figure 14."), figure14)).toBe(true);
+  });
+
+  it("leaves the crop alone for a figure that does not exist on the paper", () => {
+    expect(regionsFor("9.6", "Use Figure 99.")).toEqual(regionsFor("9.6"));
+  });
+});

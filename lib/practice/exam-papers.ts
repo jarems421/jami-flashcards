@@ -17,7 +17,25 @@ export type ExamCoursePaper = {
   label: string;
   /** Whatever else the board's title says about it, e.g. "Markets and business behaviour". */
   detail?: string;
+  /**
+   * The part of the course the paper belongs to, on a course sat as more than
+   * one subject: "Biology" for Combined Science's Biology Paper 1.
+   *
+   * Read off the words the board prints before the paper number -- the same
+   * words `examPaperKey` already uses to keep three Paper 1s apart -- so it
+   * needs nothing the catalogue does not already say.
+   */
+  group?: string;
 };
+
+/**
+ * A paper's label with its course part taken off: "Biology Paper 1" is
+ * "Paper 1" once a student has already said they are doing Biology.
+ */
+export function examPaperLabelWithin(paper: ExamCoursePaper, group: string) {
+  if (!group || paper.group !== group) return paper.label;
+  return paper.label.slice(group.length).trim() || paper.label;
+}
 
 const NUMBERED = /\b(paper|component|unit)\s*0*(\d+)\b/i;
 const TIER_WORDS = /\b(foundation|higher)(\s+tier)?\b/gi;
@@ -80,7 +98,7 @@ function describePaper(title: string, code: string): Omit<ExamCoursePaper, "id">
     .replace(/\s{2,}/g, " ")
     .trim();
   const label = `${prefix ? `${prefix} ` : ""}${word} ${Number(numbered[2])}`;
-  return { label, ...(detail ? { detail } : {}) };
+  return { label, ...(detail ? { detail } : {}), ...(prefix ? { group: prefix } : {}) };
 }
 
 /**

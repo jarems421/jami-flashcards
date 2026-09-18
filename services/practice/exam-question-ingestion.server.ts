@@ -36,11 +36,18 @@ export type { ExamPaperIngestionManifest };
 
 /*
  * Both PDFs are attached inline to two separate vision calls, so a paper costs
- * roughly four times its own size in base64 on the wire. Eight megabytes a
- * document is comfortably above a real question paper and keeps a single
- * ingestion inside the provider's request ceiling.
+ * roughly four times its own size in base64 on the wire. The ceiling is there
+ * to keep a single ingestion inside the provider's request limit, not to judge
+ * what a paper ought to weigh.
+ *
+ * Eight megabytes turned out to be below a real question paper rather than
+ * comfortably above one: AQA Geography 8035/1 June 2022 is 11.35MB, because a
+ * geography paper is mostly maps and photographs, and it was refused outright
+ * as "empty or too large" after three attempts. Sixteen leaves the printed
+ * papers that carry figures inside the limit while still refusing anything that
+ * could only be a mistake.
  */
-const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
+const MAX_SOURCE_BYTES = 16 * 1024 * 1024;
 /** Firestore commits at most 500 operations, and each question writes two. */
 const MAX_BATCH_OPERATIONS = 400;
 /** Questions per mark-scheme pass, so no one response has to be enormous. */

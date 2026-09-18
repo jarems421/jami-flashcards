@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
 import { Button, Card, EmptyState, FeedbackBanner, Select, Skeleton } from "@/components/ui";
 import OptionSwitch from "@/components/ui/OptionSwitch";
-import { examCalculatorChoiceOffered, type ExamCoursePaper } from "@/lib/practice/exam-papers";
+import {
+  examCalculatorChoiceOffered,
+  examPaperLabelWithin,
+  type ExamCoursePaper,
+} from "@/lib/practice/exam-papers";
 import type { ExamCalculatorChoice, ExamDifficulty } from "@/lib/practice/exam-questions";
 import { EXAM_SESSION_MAX_QUESTIONS, examBoardAppliesTo } from "@/lib/practice/exam-questions";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
@@ -33,6 +37,7 @@ const CALCULATOR_CHOICES: Array<{ value: ExamCalculatorChoice; label: string }> 
 ];
 
 const ALL_PAPERS = "all";
+const ALL_PARTS = "all";
 
 const MAX_QUESTIONS = EXAM_SESSION_MAX_QUESTIONS;
 
@@ -41,7 +46,27 @@ function totalOf(mix: Record<ExamDifficulty, number>) {
 }
 
 /** A topic the course names, with the finer concepts beneath it where it has a checked list. */
-type ExamTopicOption = { id: string; label: string; concepts?: Array<{ id: string; label: string }> };
+type ExamTopicOption = {
+  id: string;
+  label: string;
+  /** The part of the course it belongs to, on a course sat as several subjects. */
+  group?: string;
+  concepts?: Array<{ id: string; label: string }>;
+};
+
+/**
+ * A topic's name inside a part already chosen.
+ *
+ * The catalogue writes Combined Science's topics as "Biology: Cell biology",
+ * because across the whole course that is what tells them apart. Once a
+ * student has said Biology, every line saying so again is noise in front of
+ * the word they are actually reading.
+ */
+function topicLabelWithin(topic: ExamTopicOption, part: string) {
+  if (!part || topic.group !== part) return topic.label;
+  const prefix = `${part}: `;
+  return topic.label.startsWith(prefix) ? topic.label.slice(prefix.length) : topic.label;
+}
 
 export default function ExamSessionSetup({
   initialFolderId = "",
@@ -81,6 +106,21 @@ export default function ExamSessionSetup({
    */
   const [paperId, setPaperId] = useState(ALL_PAPERS);
   const [papers, setPapers] = useState<ExamCoursePaper[]>([]);
+  /**
+   * Which part of the course is being practised, where the course is sat as
+   * more than one subject.
+   *
+   * Combined Science is one qualification and three sciences, so its papers
+   * and its topic list held Biology, Chemistry and Physics at once: twenty-one
+   * topics in one flat run, and a session that drew from all three unless a
+   * single paper was picked. They are the same course and stay one course --
+   * this only decides which part of it is on screen.
+   *
+   * Triple science needs nothing here: Biology, Chemistry and Physics are
+   * already three separate courses in the catalogue, so a folder set to one of
+   * them only ever had that one.
+   */
+  const [part, setPart] = useState(ALL_PARTS);
   const [calculator, setCalculator] = useState<ExamCalculatorChoice>("any");
   const [calculatorFolderId, setCalculatorFolderId] = useState("");
   const [topics, setTopics] = useState<ExamTopicOption[]>([]);
@@ -114,10 +154,49 @@ export default function ExamSessionSetup({
     };
   }, [user.uid]);
 
+  /**
+   * The parts this course is sat in, in the order the catalogue names them.
+   *
+   * Taken from the papers and the topics together: a course early in ingestion
+   * may have a checked topic list before it has a question from every paper.
+   */
+  const parts = useMemo(() => {
+    const seen: string[] = [];
+    for (const group of [
+      ...papers.map((paper) => paper.group),
+      ...topics.map((topic) => topic.group),
+    ]) {
+      if (group && !seen.includes(group)) seen.push(group);
+    }
+    return seen;
+  }, [papers, topics]);
+  const showParts = parts.length > 1;
+  const partChosen = showParts && part !== ALL_PARTS;
+  const visiblePapers = useMemo(
+    () => (partChosen ? papers.filter((paper) => paper.group === part) : papers),
+    [papers, part, partChosen]
+  );
+  const visibleTopics = useMemo(
+    () => (partChosen ? topics.filter((topic) => topic.group === part) : topics),
+    [topics, part, partChosen]
+  );
+  /*
+   * A part narrows to its own papers, which is how the questions themselves
+   * are told apart -- there is nothing on a question that says "Biology" other
+   * than the paper it came off. A single paper chosen inside a part is
+   * narrower still and wins.
+   */
+  const paperIdsAsked = useMemo(() => {
+    if (paperId !== ALL_PAPERS) return [paperId];
+    return partChosen ? visiblePapers.map((paper) => paper.id) : [];
+  }, [paperId, partChosen, visiblePapers]);
+  /** Stable while the ids are, so asking for availability does not loop. */
+  const paperKey = paperIdsAsked.join(",");
+
   useEffect(() => {
     if (!folderId) return;
     let active = true;
-    void getExamAvailability(folderId, topicIds, calculator, paperId === ALL_PAPERS ? [] : [paperId], conceptIds)
+    void getExamAvailability(folderId, topicIds, calculator, paperKey ? paperKey.split(",") : [], conceptIds)
       .then((result) => {
         if (!active) return;
         setAvailability({ folderId, counts: result.counts, hasMore: result.hasMore });
@@ -133,7 +212,7 @@ export default function ExamSessionSetup({
     return () => {
       active = false;
     };
-  }, [calculator, conceptIds, courseRevision, folderId, paperId, topicIds]);
+  }, [calculator, conceptIds, courseRevision, folderId, paperKey, topicIds]);
 
   const counts = availability?.folderId === folderId ? availability.counts : null;
   const hasMore = availability?.folderId === folderId ? availability.hasMore : null;
@@ -141,21 +220,53 @@ export default function ExamSessionSetup({
   const narrowedCount = topicIds.length + conceptIds.length;
   const selectedFolder = folders.find((folder) => folder.id === folderId);
   const ready = Boolean(folderId && selectedFolder?.examCourse && total > 0);
-  const showPapers = papers.length > 1;
+  const showPapers = visiblePapers.length > 1;
   const showCalculator = examCalculatorChoiceOffered({
     paperChosen: paperId !== ALL_PAPERS,
     policyKnown: calculatorFolderId === folderId,
     calculatorChosen: calculator !== "any",
   });
-  const paperDetails = papers.some((paper) => paper.detail);
+  const paperDetails = visiblePapers.some((paper) => paper.detail);
   const paperOptions = [
     {
       value: ALL_PAPERS,
       label: "All papers",
-      ...(paperDetails ? { detail: "Anything on the course" } : {}),
+      ...(paperDetails ? { detail: partChosen ? `Anything in ${part}` : "Anything on the course" } : {}),
     },
-    ...papers.map((paper) => ({ value: paper.id, label: paper.label, detail: paper.detail })),
+    ...visiblePapers.map((paper) => ({
+      value: paper.id,
+      label: partChosen ? examPaperLabelWithin(paper, part) : paper.label,
+      detail: paper.detail,
+    })),
   ];
+  const partOptions = [
+    { value: ALL_PARTS, label: "All", detail: "Draw from the whole course" },
+    ...parts.map((name) => ({ value: name, label: name, detail: `Only ${name}` })),
+  ];
+
+  /*
+   * A part is a different course to practise, so nothing chosen inside the
+   * last one carries over: a Chemistry paper is not a paper of Biology's, and
+   * a topic picked under Physics would silently narrow a Biology session to
+   * nothing.
+   */
+  const selectPart = (value: string) => {
+    setPart(value);
+    setPaperId(ALL_PAPERS);
+    setCalculator("any");
+    setShortage(null);
+    if (value === ALL_PARTS) return;
+    const kept = new Set(
+      topics.filter((topic) => topic.group === value).map((topic) => topic.id)
+    );
+    const keptConcepts = new Set(
+      topics
+        .filter((topic) => topic.group === value)
+        .flatMap((topic) => (topic.concepts ?? []).map((concept) => concept.id))
+    );
+    setTopicIds((current) => current.filter((id) => kept.has(id)));
+    setConceptIds((current) => current.filter((id) => keptConcepts.has(id)));
+  };
 
   const selectFolder = (id: string) => {
     setFolderId(id);
@@ -164,6 +275,7 @@ export default function ExamSessionSetup({
     setTopics([]);
     setPaperId(ALL_PAPERS);
     setPapers([]);
+    setPart(ALL_PARTS);
     setCalculator("any");
     setShortage(null);
   };
@@ -254,7 +366,7 @@ export default function ExamSessionSetup({
         conceptIds,
         originNotebookId,
         calculator,
-        paperIds: paperId === ALL_PAPERS ? [] : [paperId],
+        paperIds: paperIdsAsked,
         ...requestOptions,
       });
       // The progress stays up until the session page replaces this one.
@@ -353,16 +465,32 @@ export default function ExamSessionSetup({
         />
       ) : null}
 
-      {selectedFolder?.examCourse && (showPapers || showCalculator) ? (
+      {selectedFolder?.examCourse && (showParts || showPapers || showCalculator) ? (
         <Card padding="md">
-          <h3 className="text-lg font-semibold text-text-primary">Which papers?</h3>
+          <h3 className="text-lg font-semibold text-text-primary">
+            {showParts ? "Which part of the course?" : "Which papers?"}
+          </h3>
           <p className="mt-1 text-sm leading-5 text-text-muted">
-            {showPapers
+            {showParts
+              ? `This course is sat as ${parts.join(", ").replace(/, ([^,]*)$/, " and $1")}. Practise one at a time, or draw from all of it.`
+              : showPapers
               ? calculatorFolderId === folderId
                 ? "Each paper examines a different part of the course and sets whether a calculator is allowed. Practise one, or draw from them all."
                 : "Each paper examines a different part of the course. Practise one, or draw from them all."
               : "Practise with or without a calculator."}
           </p>
+          {showParts ? (
+            <OptionSwitch
+              label="Part of the course"
+              hideLabel
+              className="mt-4"
+              value={part}
+              options={partOptions}
+              columns={Math.min(partOptions.length, 5) as 3 | 4 | 5}
+              detail="selected"
+              onChange={selectPart}
+            />
+          ) : null}
           {showPapers ? (
             <OptionSwitch
               label="Paper"
@@ -450,7 +578,7 @@ export default function ExamSessionSetup({
         * list is worse than none, because a wrong topic silently narrows
         * practice to the wrong questions.
         */}
-      {topics.length === 0 ? (
+      {visibleTopics.length === 0 ? (
         <p className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm text-text-muted">
           Topics aren&apos;t available for this course yet, so this session draws on the whole
           specification. Nothing is missing from your practice.
@@ -458,10 +586,11 @@ export default function ExamSessionSetup({
       ) : (
         <details className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
           <summary className="cursor-pointer text-sm font-semibold text-text-primary">
-            Narrow to topics{narrowedCount ? ` · ${narrowedCount} selected` : ""}
+            Narrow to {partChosen ? `${part.toLowerCase()} topics` : "topics"}
+            {narrowedCount ? ` · ${narrowedCount} selected` : ""}
           </summary>
           <div className="mt-4 grid items-start gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {topics.map((topic) => {
+            {visibleTopics.map((topic) => {
               const concepts = topic.concepts ?? [];
               const chosenInside = concepts.filter((concept) => conceptIds.includes(concept.id)).length;
               return (
@@ -476,7 +605,7 @@ export default function ExamSessionSetup({
                       className="h-4 w-4 accent-[var(--color-accent)]"
                       onChange={() => toggleTopic(topic)}
                     />
-                    {topic.label}
+                    {topicLabelWithin(topic, part)}
                   </label>
                   {/*
                     * Finer concepts fold away under their topic. A student who

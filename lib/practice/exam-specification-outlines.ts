@@ -86,6 +86,7 @@ export function outlineTopics(outline: SpecificationOutline): ExamSpecificationT
   return sectionsOf(outline).map(({ group, section, id }) => ({
     id,
     label: group.label ? `${group.label}: ${outlineLabel(section[1])}` : outlineLabel(section[1]),
+    ...(group.label ? { group: group.label } : {}),
   }));
 }
 
