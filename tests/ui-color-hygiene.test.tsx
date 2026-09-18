@@ -41,6 +41,8 @@ const auditedFiles = [
   "app/dashboard/goals/page.tsx",
   "app/dashboard/decks/page.tsx",
   "app/dashboard/profile/page.tsx",
+  "app/dashboard/profile/personalise/page.tsx",
+  "components/profile/ThemePreferenceCard.tsx",
   "app/dashboard/page.tsx",
   "app/dashboard/study/page.tsx",
   "app/dashboard/cards/page.tsx",
@@ -53,6 +55,15 @@ const auditedFiles = [
   "components/stats/AnalyticsPanels.tsx",
   "components/layout/AppTopBar.tsx",
   "components/decks/DeckDetailPageClient.tsx",
+  "components/ui/DateField.tsx",
+  "components/planning/PlanDayAgenda.tsx",
+  "components/planning/PlanWeekStrip.tsx",
+  "components/planning/PlanWeekTimetable.tsx",
+  "components/planning/PinToDayDialog.tsx",
+  "components/planning/RevisionPlanBuilder.tsx",
+  "components/planning/PlanDraftPreview.tsx",
+  "components/planning/PlanWithJami.tsx",
+  "app/dashboard/tutor/plan/page.tsx",
 ];
 
 const unsafePatterns = [
