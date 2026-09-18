@@ -6,7 +6,7 @@ import {
   mergeStudyActions,
   type StudyAction,
 } from "@/lib/learning/actions/study-actions";
-import { mapStudyFolderData } from "@/lib/workspace/study-folders";
+import { mapStudyFolderData, type StudyFolder } from "@/lib/workspace/study-folders";
 import { getAdminDb } from "@/services/firebase/admin";
 import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
 
@@ -22,7 +22,17 @@ export const STUDY_ACTION_LIMIT = 4;
 
 export type StudyActionsResult = {
   actions: StudyAction[];
-  folders: { id: string; name: string }[];
+  /**
+   * The folders the actions were decided from, in full.
+   *
+   * Whole folder documents rather than `{id, name}`, because they are already
+   * read and mapped here through the admin SDK. Narrowing them meant the plan
+   * route had to read the same folders a second time to learn a course or a
+   * study level -- and it did so through the *browser* Firestore SDK, which on
+   * a server has no signed-in user and so waits out its timeout. Nothing was
+   * cheaper about the narrow shape; it just cost a request.
+   */
+  folders: StudyFolder[];
   evaluatedFolders: number;
   failedFolders: number;
   generatedAt: number;
@@ -79,7 +89,7 @@ export async function loadStudyActions(input: {
       results.map((result) => result ?? []),
       { limit: input.limit ?? STUDY_ACTION_LIMIT, executableOnly: true }
     ),
-    folders: folders.map((folder) => ({ id: folder.id, name: folder.name })),
+    folders,
     evaluatedFolders: folders.length,
     failedFolders: results.filter((result) => result === null).length,
     generatedAt: now,

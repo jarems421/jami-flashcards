@@ -2,7 +2,11 @@ import type { NextRequest } from "next/server";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { createLogger } from "@/lib/observability/logger";
 import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
-import { buildPlanNotices, type PlanSubjectOption } from "@/lib/ai/assistant-plan";
+import {
+  buildPlanNotices,
+  describeAssistantPlanDraft,
+  type PlanSubjectOption,
+} from "@/lib/ai/assistant-plan";
 import {
   draftRevisionPlan,
   MAX_PLAN_MESSAGE_LENGTH,
@@ -10,12 +14,25 @@ import {
   type PlanDraftTurn,
 } from "@/services/ai/plan-draft.server";
 import { loadStudyActions } from "@/services/learning/study-actions.server";
-import { planScopeKey } from "@/lib/planning/types";
-import { getActiveStudyFolders } from "@/services/study/folders";
+import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
+import { planScopeKey, type RevisionPlanDraft } from "@/lib/planning/types";
+import { describeUnmetAiProviderRequirements } from "@/lib/ai/provider-policy";
+import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
 import { servableExamSetTexts } from "@/lib/practice/exam-set-texts";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 
 export const runtime = "nodejs";
+
+/**
+ * The platform's budget, which has to be at least the one below.
+ *
+ * Without this the function took the account default -- ten to fifteen seconds
+ * -- while `draftRevisionPlan` alone allows the model twenty, so the platform
+ * killed the request before the model could answer and every single message to
+ * Jami came back as "couldn't answer just now". Every other AI route here
+ * declares one; this was the only one that did not.
+ */
+export const maxDuration = 60;
 
 const log = createLogger({ route: "ai.plan-draft" });
 
@@ -88,6 +105,26 @@ export async function POST(request: NextRequest) {
   const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
+  /*
+   * Said before anything is attempted, and said by name.
+   *
+   * A half-configured environment -- a key present and a flag unset, say --
+   * fails identically to a broken model call once the request is underway, and
+   * this route used to report both as the same 503. Names only, never values,
+   * and after the token check, so an unauthenticated caller learns nothing
+   * about how this deployment is put together.
+   */
+  if (!isAnyAiProviderConfigured()) {
+    log.error("provider.not_configured", {
+      unmet: describeUnmetAiProviderRequirements(process.env),
+    });
+    return apiFailure(
+      "Jami's planning help isn't switched on here. You can still build a plan yourself.",
+      503,
+      "ai_unconfigured"
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -101,19 +138,20 @@ export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   try {
     /*
-     * Two reads, and they answer different questions.
+     * One read, answering both questions.
      *
-     * The engine says what it has noticed and in which folders; the folders
-     * themselves say what each subject actually is -- the course, the level,
-     * the set texts. A plan needs both, and a folder the engine has nothing to
-     * say about is still a subject somebody may want to revise.
+     * The engine says what it has noticed and in which folders; the folder
+     * documents say what each subject actually is -- the course, the level, the
+     * set texts. This used to be two reads, and the second went through the
+     * *browser* Firestore SDK, which on a server has no signed-in user: it
+     * either waited out its own thirty-second timeout or was refused by the
+     * rules, and either way it spent the whole request budget before the model
+     * was ever called. `loadStudyActions` already reads these folders in full
+     * through the admin SDK.
      */
-    const [{ actions, folders }, studyFolders] = await Promise.all([
-      loadStudyActions({ uid }),
-      getActiveStudyFolders(uid).catch(() => [] as StudyFolder[]),
-    ]);
+    const { actions, folders: studyFolders } = await loadStudyActions({ uid });
 
-    const subjectNames = new Map(folders.map((folder) => [`folder:${folder.id}`, folder.name]));
+    const subjectNames = new Map<string, string>();
     const detailById = new Map(studyFolders.map((folder) => [folder.id, describeFolder(folder)]));
     for (const folder of studyFolders) subjectNames.set(`folder:${folder.id}`, folder.name);
     const inScope = new Map<string, PlanSubjectOption>();
@@ -132,7 +170,7 @@ export async function POST(request: NextRequest) {
     }
     // A folder the engine had nothing to say about is still a subject somebody
     // may want to revise -- it is simply one Jami cannot comment on.
-    for (const folder of [...studyFolders, ...folders]) {
+    for (const folder of studyFolders) {
       const scopeKey = `folder:${folder.id}`;
       if (inScope.has(scopeKey) || inScope.size >= MAX_SUBJECTS) continue;
       inScope.set(scopeKey, {
@@ -146,11 +184,29 @@ export async function POST(request: NextRequest) {
     const subjects = [...inScope.values()];
     const notices = buildPlanNotices(actions, subjectNames);
 
+    /*
+     * The draft the student is looking at, normalised before it is described.
+     *
+     * It arrives from the client, so it is not trusted: it goes through the
+     * same gate a saved plan does, and what reaches the prompt is a summary in
+     * refs rather than anything the caller wrote. Nothing here is persisted --
+     * it only tells Jami what is on the student's screen, so a small change
+     * they ask for does not come back as an entirely new plan.
+     */
+    const current =
+      record.draft && typeof record.draft === "object"
+        ? describeAssistantPlanDraft(
+            normalizeRevisionPlanDraft(record.draft as Partial<RevisionPlanDraft>).draft,
+            subjects
+          )
+        : null;
+
     const result = await draftRevisionPlan({
       message: message.slice(0, MAX_PLAN_MESSAGE_LENGTH),
       history: readTurns(record.history),
       subjects,
       notices,
+      current,
     });
 
     log.info("plan_draft.answered", {
@@ -167,11 +223,31 @@ export async function POST(request: NextRequest) {
       subjects: subjects.map((subject) => ({ ref: subject.ref, label: subject.label })),
     });
   } catch (error) {
-    log.warn("plan_draft.failed", { latencyMs: Date.now() - startedAt, error });
-    return apiFailure(
-      "Jami could not suggest a plan just now. You can still build one yourself.",
-      503,
-      "plan_draft_unavailable"
-    );
+    /*
+     * Told apart, because the answers differ.
+     *
+     * A timeout is worth trying again; a provider that is not there is not, and
+     * a student pressing send a third time on a request that cannot succeed is
+     * the worst version of this. The client reads the code, so the message a
+     * student sees follows the reason rather than being one line for all of it.
+     */
+    const timedOut =
+      error instanceof Error && /timed out|timeout|abort/i.test(`${error.name} ${error.message}`);
+    log.warn("plan_draft.failed", {
+      latencyMs: Date.now() - startedAt,
+      timedOut,
+      error,
+    });
+    return timedOut
+      ? apiFailure(
+          "Jami took too long to answer. Try again, or build the plan yourself.",
+          504,
+          "plan_draft_timeout"
+        )
+      : apiFailure(
+          "Jami could not suggest a plan just now. You can still build one yourself.",
+          503,
+          "plan_draft_unavailable"
+        );
   }
 }

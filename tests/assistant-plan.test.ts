@@ -65,10 +65,10 @@ describe("reading a plan Jami drafted", () => {
       { folderId: "chem", weight: 3 },
       { folderId: "bio", weight: 1 },
     ]);
-    expect(parsed?.draft.cadence).toEqual([
-      { weekday: 1, minutes: 45 },
-      { weekday: 3, minutes: 45 },
-      { weekday: 5, minutes: 45 },
+    expect(parsed?.draft.sessions).toEqual([
+      { id: "w1", weekday: 1, minutes: 45 },
+      { id: "w3", weekday: 3, minutes: 45 },
+      { id: "w5", weekday: 5, minutes: 45 },
     ]);
     expect(parsed?.draft.emphasis).toEqual([
       { scopeKey: "folder:chem", wants: "diagnose" },
@@ -104,11 +104,11 @@ describe("reading a plan Jami drafted", () => {
     expect(asJson).not.toContain("2H");
     expect(asJson).not.toContain("bonding");
     expect(Object.keys(parsed?.draft ?? {}).sort()).toEqual([
-      "cadence",
       "emphasis",
       "endDayKey",
       "origin",
       "scopes",
+      "sessions",
       "startDayKey",
       "status",
       "title",
@@ -160,7 +160,7 @@ describe("reading a plan Jami drafted", () => {
 
     expect(parsed?.draft.title.length).toBe(80);
     expect(parsed?.draft.scopes[0]?.weight).toBe(3);
-    expect(parsed?.draft.cadence).toEqual([{ weekday: 1, minutes: 240 }]);
+    expect(parsed?.draft.sessions).toEqual([{ id: "w1", weekday: 1, minutes: 240 }]);
     // An unreadable start date falls back to today rather than to nothing --
     // today being the study day, which turns over at its own hour rather than
     // at midnight UTC.
@@ -181,6 +181,100 @@ describe("reading a plan Jami drafted", () => {
       NOW
     );
     expect(parsed?.draft.scopes).toEqual([{ folderId: "chem", weight: 1 }]);
+  });
+});
+
+describe("a timetable Jami drafted", () => {
+  it("reads sittings with times and subjects", () => {
+    const parsed = parseAssistantPlanSpec(
+      spec({
+        title: "Mocks",
+        subjects: [{ ref: "S1", weight: 2 }],
+        sessions: [
+          { day: 1, minutes: 45, time: "16:30", ref: "S1" },
+          { day: 1, minutes: 30 },
+        ],
+        start: "2026-09-14",
+        end: "2026-10-12",
+      }),
+      SUBJECTS,
+      NOW
+    );
+
+    expect(parsed?.draft.sessions).toHaveLength(2);
+    expect(parsed?.draft.sessions[0]).toMatchObject({
+      weekday: 1,
+      minutes: 45,
+      startTime: "16:30",
+      scopeKey: "folder:chem",
+    });
+    // The second sitting said only how long it was, and that is a complete
+    // answer -- an evening with no clock on it is still an evening.
+    expect(parsed?.draft.sessions[1]).toMatchObject({ weekday: 1, minutes: 30 });
+    expect(parsed?.draft.sessions[1]?.startTime).toBeUndefined();
+  });
+
+  it("still reads the older shape a model may answer in", () => {
+    const parsed = parseAssistantPlanSpec(
+      spec({
+        subjects: [{ ref: "S1", weight: 1 }],
+        days: [1, 3],
+        minutes: 30,
+      }),
+      SUBJECTS,
+      NOW
+    );
+    expect(parsed?.draft.sessions).toEqual([
+      { id: "w1", weekday: 1, minutes: 30 },
+      { id: "w3", weekday: 3, minutes: 30 },
+    ]);
+  });
+
+  it("keeps a sitting whose time or subject it could not use", () => {
+    const parsed = parseAssistantPlanSpec(
+      spec({
+        subjects: [{ ref: "S1", weight: 1 }],
+        sessions: [
+          { day: 1, minutes: 45, time: "half four", ref: "S9" },
+          { day: 99, minutes: 45 },
+        ],
+      }),
+      SUBJECTS,
+      NOW
+    );
+    expect(parsed?.draft.sessions).toHaveLength(1);
+    expect(parsed?.draft.sessions[0]?.startTime).toBeUndefined();
+    expect(parsed?.draft.sessions[0]?.scopeKey).toBeUndefined();
+  });
+
+  it("still has nowhere to put what a student should revise", () => {
+    /*
+     * The guarantee that matters, restated for the newer shape. A model that
+     * ignored every word of the prompt still cannot write content into a plan,
+     * because no field of a session can carry any.
+     */
+    const parsed = parseAssistantPlanSpec(
+      spec({
+        subjects: [{ ref: "S1", weight: 1 }],
+        sessions: [
+          {
+            day: 1,
+            minutes: 45,
+            time: "16:30",
+            topic: "Moles",
+            task: "Do paper 2H",
+            label: "Bonding revision",
+          },
+        ],
+      }),
+      SUBJECTS,
+      NOW
+    );
+
+    const asJson = JSON.stringify(parsed?.draft);
+    expect(asJson).not.toContain("Moles");
+    expect(asJson).not.toContain("2H");
+    expect(asJson).not.toContain("Bonding");
   });
 });
 

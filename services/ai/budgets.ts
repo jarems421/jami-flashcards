@@ -195,6 +195,8 @@ export async function refundAiBudget(grant: AiBudgetGrant) {
 }
 
 const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
+  planDraft:
+    "Jami has helped shape as many plans as it can today. You can still build one yourself.",
   studyAssetGeneration:
     "Jami has prepared as many decks as it can today. Try again tomorrow.",
   // Deliberately not phrased as a failure: running out costs a self-grade tap,

@@ -4,6 +4,7 @@ export type AiBudgetAction =
   | "autocompleteCard"
   | "constellationPattern"
   | "assistant"
+  | "planDraft"
   | "tutorIllustration"
   | "practicePaperGeneration"
   | "practicePaperMarking"
@@ -109,6 +110,27 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     // Comfortably above a full set of chosen sources and well below the model's
     // window, so it only ever catches a request that is genuinely outsized.
     inputTokenCap: 250_000,
+  },
+  /*
+   * Shaping a week is a short conversation, and the reply is a couple of
+   * sentences plus a small JSON object.
+   *
+   * The cap was 700, which looked generous for that and was not: the worker
+   * model reasons before it answers and its reasoning tokens are excluded
+   * from the content, so they spent the whole allowance and the completion
+   * came back empty -- which the provider client raises as an error. Every
+   * message to Jami failed. Four thousand leaves room for the thinking and
+   * still refuses a model that has started writing an essay.
+   */
+  planDraft: {
+    dailyRequestLimit: 40,
+    burstRequestLimit: 8,
+    burstWindowMs: 60_000,
+    burstScope: "assistantInteractive",
+    tokenCap: 4_000,
+    // The prompt carries at most eight subjects and eight short turns, so the
+    // input is bounded by construction long before this would catch anything.
+    inputTokenCap: 8_000,
   },
   tutorIllustration: {
     dailyRequestLimit: 10,

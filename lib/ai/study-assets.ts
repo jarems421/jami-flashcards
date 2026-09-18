@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { CardStudySettings } from "@/lib/study/study-modes";
 import type { StudyLearningTask } from "@/lib/study/learning-task";
-import { optionsLookGuessable } from "@/lib/study/mcq-shape";
+import { condensesAnswer, optionsLookGuessable } from "@/lib/study/mcq-shape";
 export { STUDY_ASSET_PROMPT_VERSION, STUDY_ASSET_SCHEMA_VERSION } from "@/lib/study/study-asset-versions";
 import { STUDY_ASSET_PROMPT_VERSION, STUDY_ASSET_SCHEMA_VERSION } from "@/lib/study/study-asset-versions";
 
@@ -270,6 +270,20 @@ function cleanMcqVariants(
     }
     if (![correctAnswer, ...distractors].every((option) => Boolean(explanations[option]))) continue;
     if (optionsLookGuessable(front, correctAnswer, distractors)) continue;
+    /*
+     * The correct option has to still be the card's answer.
+     *
+     * Nothing checked this, so a variant whose correct option said something
+     * the card did not was stored and shown, and a student was marked on a
+     * claim their own card never made. It also let through rewrites the builder
+     * would refuse, which is how a stored variant could be unusable -- the
+     * builder applies this same pair of tests, and the two must agree or cards
+     * are admitted to a session they can never be asked in.
+     */
+    const restatesAnswer =
+      correctAnswer.trim().toLocaleLowerCase() === answer.trim().toLocaleLowerCase() ||
+      condensesAnswer(correctAnswer, answer);
+    if (!restatesAnswer) continue;
     variants.push({ id, correctAnswer, distractors, explanations });
   }
   return variants;

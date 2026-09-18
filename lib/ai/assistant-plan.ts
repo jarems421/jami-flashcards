@@ -1,6 +1,8 @@
 import type { StudyAction } from "@/lib/learning/actions/study-actions";
 import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
 import {
+  PLAN_TIME_PATTERN,
+  PLAN_WEEKDAY_LABELS,
   PLAN_WEEKDAYS,
   planScopeKey,
   type PlanWeekday,
@@ -73,6 +75,62 @@ function readDayKey(value: unknown) {
 }
 
 /**
+ * The sittings a model proposed, if it proposed any.
+ *
+ * Both shapes are accepted. The older one -- a list of weekdays and one length
+ * for all of them -- is what a model that has not read the newer instruction
+ * will produce, and it is also the right answer whenever the student said
+ * nothing about times, so it is not a fallback so much as the plain case. The
+ * newer one lets a sitting carry a time and a subject, which is the only way a
+ * student who said "Chemistry at half four, maths after dinner" gets back what
+ * they described.
+ *
+ * `time` is dropped if it is not a clock time and `ref` is dropped if it is not
+ * a subject on offer, in both cases without dropping the sitting: a model that
+ * fumbled one field still meant the student to study that evening.
+ */
+function readSessions(
+  spec: Record<string, unknown>,
+  byRef: ReadonlyMap<string, PlanSubjectOption>
+): RevisionPlanDraft["sessions"] {
+  const fallbackMinutes = Number(spec.minutes);
+  const defaultMinutes = Number.isFinite(fallbackMinutes) ? fallbackMinutes : 45;
+
+  if (Array.isArray(spec.sessions)) {
+    const sessions: RevisionPlanDraft["sessions"] = [];
+    for (const raw of spec.sessions) {
+      if (typeof raw !== "object" || raw === null) continue;
+      const entry = raw as Record<string, unknown>;
+      const weekday = Number(entry.day ?? entry.weekday);
+      if (!PLAN_WEEKDAYS.includes(weekday as PlanWeekday)) continue;
+      const minutes = Number(entry.minutes);
+      const time = typeof entry.time === "string" ? entry.time.trim() : "";
+      const ref = typeof entry.ref === "string" ? entry.ref.trim().toUpperCase() : "";
+      const subject = ref ? byRef.get(ref) : undefined;
+      const scope = subject
+        ? subject.folderId
+          ? { folderId: subject.folderId }
+          : { deckId: subject.deckId as string }
+        : null;
+      sessions.push({
+        id: `s${sessions.length}`,
+        weekday: weekday as PlanWeekday,
+        minutes: Number.isFinite(minutes) ? minutes : defaultMinutes,
+        ...(PLAN_TIME_PATTERN.test(time) ? { startTime: time } : {}),
+        ...(scope ? { scopeKey: planScopeKey(scope) } : {}),
+      });
+    }
+    if (sessions.length > 0) return sessions;
+  }
+
+  return readWeekdays(spec.days).map((weekday) => ({
+    id: `w${weekday}`,
+    weekday,
+    minutes: defaultMinutes,
+  }));
+}
+
+/**
  * The model's plan, or null if what came back does not read as one.
  *
  * Everything survives `normalizeRevisionPlanDraft` afterwards, so this only has
@@ -134,8 +192,6 @@ export function parseAssistantPlanSpec(
   const today = getStudyDayKey(now);
   const startDayKey = readDayKey(spec.start) ?? today;
   const endDayKey = readDayKey(spec.end) ?? shiftStudyDayKey(startDayKey, 27);
-  const minutes = Number(spec.minutes);
-  const weekdays = readWeekdays(spec.days);
 
   const { draft } = normalizeRevisionPlanDraft(
     {
@@ -145,16 +201,69 @@ export function parseAssistantPlanSpec(
       startDayKey,
       endDayKey,
       scopes,
-      cadence: weekdays.map((weekday) => ({
-        weekday,
-        minutes: Number.isFinite(minutes) ? minutes : 45,
-      })),
+      sessions: readSessions(spec, byRef),
       emphasis,
     },
     now
   );
 
   return { draft, unknownSubjects };
+}
+
+/**
+ * The plan as it currently stands, for the model to adjust rather than replace.
+ *
+ * Without this, every turn started from nothing: Jami's own replies are the
+ * only history it gets, and a reply does not carry the plan that went with it.
+ * So a student who edited the draft themselves and then asked for one small
+ * change got a brand new plan with their edits silently gone.
+ *
+ * Written in refs, the same handles the model is offered subjects by, so there
+ * is nothing here it could mistake for a new subject. A scope the subject list
+ * no longer covers is named as unknown rather than dropped -- the model should
+ * be able to say "you have something in here I cannot see" instead of quietly
+ * rewriting it away.
+ */
+export function describeAssistantPlanDraft(
+  draft: Pick<RevisionPlanDraft, "title" | "scopes" | "sessions" | "startDayKey" | "endDayKey">,
+  subjects: readonly PlanSubjectOption[]
+): string | null {
+  if (draft.scopes.length === 0 && draft.sessions.length === 0) return null;
+
+  const refByScopeKey = new Map(
+    subjects.map((subject) => [
+      planScopeKey(subject.folderId ? { folderId: subject.folderId } : { deckId: subject.deckId }),
+      subject.ref,
+    ])
+  );
+
+  const lines: string[] = [`- Title: ${JSON.stringify(draft.title)}`];
+
+  if (draft.scopes.length > 0) {
+    lines.push(
+      `- Subjects: ${draft.scopes
+        .map((scope) => `${refByScopeKey.get(planScopeKey(scope)) ?? "unknown"} weight ${scope.weight}`)
+        .join(", ")}`
+    );
+  }
+
+  if (draft.sessions.length > 0) {
+    lines.push(
+      `- Sessions: ${draft.sessions
+        .map((session) => {
+          const parts = [PLAN_WEEKDAY_LABELS[session.weekday]];
+          if (session.startTime) parts.push(session.startTime);
+          parts.push(`${session.minutes} min`);
+          const ref = session.scopeKey ? refByScopeKey.get(session.scopeKey) : undefined;
+          if (ref) parts.push(`(${ref})`);
+          return parts.join(" ");
+        })
+        .join("; ")}`
+    );
+  }
+
+  lines.push(`- Runs ${draft.startDayKey} to ${draft.endDayKey}`);
+  return lines.join("\n");
 }
 
 /**

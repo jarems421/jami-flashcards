@@ -27,7 +27,14 @@ export async function GET(request: NextRequest) {
       actions: result.actions.length,
       reasons: result.actions.map((action) => action.reason),
     });
-    return Response.json(result);
+    return Response.json({
+      ...result,
+      // Narrowed at the boundary. `loadStudyActions` carries whole folder
+      // documents now for the callers that need a course or a study level, and
+      // Today needs a name to label a recommendation with -- there is no reason
+      // to put the rest of a folder on the wire.
+      folders: result.folders.map((folder) => ({ id: folder.id, name: folder.name })),
+    });
   } catch (error) {
     log.warn("study_actions.failed", {
       consumer: "today",

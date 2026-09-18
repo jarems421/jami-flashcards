@@ -68,6 +68,7 @@ describe("AI budget configuration", () => {
         "practicePaperMarking",
         "examQuestionMarking",
         "examQuestionReview",
+        "planDraft",
         "sourceFlashcardDrafts",
         "sourcePracticeDrafts",
         "videoCardImport",
