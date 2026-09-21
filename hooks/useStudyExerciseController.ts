@@ -310,7 +310,21 @@ export function useStudyExerciseController(
       sessionKind: kind,
       cardUpdates: outcome.cardUpdates,
       clearMemoryRiskOverrideDayKey: Boolean(outcome.schedule && outcome.isCorrect),
-      ...(interventionId ? { interventionId } : {}),
+      /*
+       * Which advice this answer belongs to.
+       *
+       * The session's own wins: a student sent here by a recommendation is
+       * answering that one, whatever else produced the card. Failing that, a
+       * card Jami wrote attributes its reviews to the recommendation that
+       * asked for it -- otherwise "create some cards" could never be shown to
+       * have led anywhere, because the student usually reviews them later by
+       * their own route rather than from the link.
+       */
+      ...(interventionId
+        ? { interventionId }
+        : card.createdByInterventionId
+          ? { interventionId: card.createdByInterventionId }
+          : {}),
     }),
     [folderIdsForCard, interventionId, measureResponseTime, userId]
   );

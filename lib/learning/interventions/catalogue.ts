@@ -46,6 +46,15 @@ export type InterventionType =
 export type InterventionAvailability = {
   /** Cards exist on this concept. */
   hasFlashcards: boolean;
+  /**
+   * How many, where the caller knows.
+   *
+   * The threshold matters: offering to write cards for a concept that has two
+   * is useful, and offering for one that has thirty is noise. Absent means the
+   * count is unknown, and the rule falls back to presence alone rather than
+   * guessing.
+   */
+  flashcardCount?: number;
   /** Generated practice questions exist for it. */
   hasPractice: boolean;
   /** The licensed corpus can serve real questions for it. */
@@ -105,6 +114,22 @@ export type InterventionReason =
  * once, and the cost of never offering is a gap that stays open.
  */
 export const MIN_USEFUL_FLASHCARDS = 3;
+
+/**
+ * Whether making cards would actually add something.
+ *
+ * The product rule, and it is a rule about usefulness rather than weakness:
+ * Jami offers to write cards when the student lacks them, never merely because
+ * a concept is weak. A weak concept with thirty cards does not need more cards
+ * -- it needs the student to work through the ones they have.
+ */
+export function needsMoreFlashcards(availability: InterventionAvailability) {
+  if (!availability.canCreateFlashcards) return false;
+  if (availability.flashcardCount !== undefined) {
+    return availability.flashcardCount < MIN_USEFUL_FLASHCARDS;
+  }
+  return !availability.hasFlashcards;
+}
 
 /** Whether a concept has enough of its own material to study from at all. */
 export function hasWorkableMaterial(availability: InterventionAvailability) {
@@ -238,7 +263,7 @@ export function selectIntervention(
           "create_practice",
         ]);
       }
-      if (!availability.hasFlashcards && availability.canCreateFlashcards) {
+      if (needsMoreFlashcards(availability)) {
         return choose("weak_without_flashcards", ["create_flashcards", "create_practice"]);
       }
       if (!availability.hasPractice && !availability.hasPastPaper) {

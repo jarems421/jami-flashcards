@@ -6,6 +6,16 @@ import { createLogger } from "@/lib/observability/logger";
 import { getAdminDb } from "@/services/firebase/admin";
 import { getExamQuestionCountsByConcept } from "@/services/practice/exam-question-bank.server";
 import { featureFlags } from "@/lib/app/feature-flags";
+import {
+  buildConceptCoverage,
+  type ConceptCoverageState,
+} from "@/lib/learning/interventions/coverage";
+import {
+  gapCandidates,
+  settleGap,
+  type GapVerdict,
+} from "@/lib/learning/interventions/gap-detection";
+import type { LearningTopicState } from "@/lib/learning/types";
 
 const log = createLogger({ route: "learning.concept_availability" });
 
@@ -160,4 +170,67 @@ export function questionCountsFor(
       ? { pastPaper: availability.pastPaper.byConcept?.[conceptId] ?? 0 }
       : {}),
   };
+}
+
+/**
+ * Coverage for a folder's concepts, asking the banks only where it matters.
+ *
+ * The shape the recommendation path can afford. Cheap signals settle almost
+ * every concept -- a concept with material is not a gap whatever the corpus
+ * holds -- and the expensive scan runs only if at least one concept is still
+ * in question. A folder where every concept is stocked never touches the
+ * corpus at all, which is the common case and the one Today pays for.
+ *
+ * Measured before it was built this way: the scan alone exceeded the whole
+ * 2,500 ms profile budget, so paying it on every load was never an option.
+ * See `scripts/eval/concept-availability-latency.ts`.
+ */
+export async function loadCoverageWithLazyBanks(input: {
+  uid: string;
+  folderId: string;
+  folder?: StudyFolder;
+  topics: readonly LearningTopicState[];
+}): Promise<{
+  coverage: Map<string, ConceptCoverageState>;
+  verdicts: Map<string, GapVerdict>;
+  bankLookupPerformed: boolean;
+}> {
+  // Everything the profile already knows, for nothing.
+  const cheap = new Map<string, ConceptCoverageState>(
+    input.topics.map((topic) => [topic.topicKey, buildConceptCoverage(topic)])
+  );
+
+  const candidates = gapCandidates(input.topics, cheap);
+  if (candidates.length === 0) {
+    return { coverage: cheap, verdicts: new Map(), bankLookupPerformed: false };
+  }
+
+  const availability = await loadConceptAvailability({
+    uid: input.uid,
+    folderId: input.folderId,
+    ...(input.folder ? { folder: input.folder } : {}),
+  });
+
+  const coverage = new Map(cheap);
+  const verdicts = new Map<string, GapVerdict>();
+  for (const candidate of candidates) {
+    const conceptId = candidate.topicKey.startsWith("spec:")
+      ? candidate.topicKey.slice("spec:".length)
+      : "";
+    const counts = conceptId ? questionCountsFor(availability, conceptId) : {};
+    const settled = buildConceptCoverage(candidate, counts);
+    coverage.set(candidate.topicKey, settled);
+    verdicts.set(
+      candidate.topicKey,
+      settleGap({
+        ownMaterial: settled.coverage.flashcards + settled.coverage.material,
+        ...(counts.pastPaper !== undefined ? { pastPaper: counts.pastPaper } : {}),
+        ...(counts.practice !== undefined ? { practice: counts.practice } : {}),
+        pastPaperAvailable: availability.pastPaper.available,
+        practiceAvailable: availability.practice.available,
+      })
+    );
+  }
+
+  return { coverage, verdicts, bankLookupPerformed: true };
 }

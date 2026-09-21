@@ -42,6 +42,8 @@ type CreateCardInput = {
   backImage?: CardImage;
   topicIds?: readonly string[];
   createdAt?: number;
+  /** The recommendation that asked for this card, when Jami wrote it. */
+  createdByInterventionId?: string;
 };
 
 type CreateCardsInBatchesInput = {
