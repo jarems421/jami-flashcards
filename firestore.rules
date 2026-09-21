@@ -272,6 +272,35 @@ service cloud.firestore {
         }
       }
 
+      /*
+       * What became of the engine's advice: shown, started, completed or
+       * dismissed. Ids and an outcome only -- no wording, no topic labels, no
+       * reason a student typed. Create-only like the review events beside it,
+       * because a record of what was suggested must not be rewritable after
+       * the fact by anything that reads it.
+       */
+      match /studyActionEvents/{eventId} {
+        allow read: if isSelf(userId);
+        allow create: if isSelf(userId) && isStudyActionEvent(request.resource.data);
+        allow update: if false;
+        allow delete: if isSelf(userId) && !isDemoAccount();
+
+        function isStudyActionEvent(data) {
+          return data.keys().hasOnly(['schemaVersion', 'actionId', 'reason', 'targetKey', 'folderId', 'deckId', 'outcome', 'at', 'studyDayKey', 'createdAt']) &&
+            data.keys().hasAll(['schemaVersion', 'actionId', 'reason', 'targetKey', 'outcome', 'at', 'studyDayKey', 'createdAt']) &&
+            data.schemaVersion == 1 &&
+            data.actionId is string && data.actionId.size() > 0 && data.actionId.size() <= 200 &&
+            data.targetKey is string && data.targetKey.size() > 0 && data.targetKey.size() <= 200 &&
+            data.reason in ['persistent_error', 'declining_mastery', 'knowledge_decay', 'low_mastery', 'low_confidence', 'due_for_retrieval', 'recent_improvement_needs_reinforcement', 'untested_exposure', 'not_yet_assessed'] &&
+            data.outcome in ['shown', 'started', 'completed', 'dismissed'] &&
+            data.at is number &&
+            data.createdAt is number &&
+            data.studyDayKey is string && data.studyDayKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+            (!('folderId' in data) || (data.folderId is string && data.folderId.size() <= 200)) &&
+            (!('deckId' in data) || (data.deckId is string && data.deckId.size() <= 200));
+        }
+      }
+
       // A student's own revision plan: a timetable they wrote, not evidence of
       // anything they know. It holds subject ids, weekdays, minutes and dates,
       // plus their own short note about what they want to work on. It is never

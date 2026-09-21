@@ -26,6 +26,11 @@ import { getNextDueCard, type Card } from "@/lib/study/cards";
 import { isFeatureEnabled } from "@/lib/app/feature-flags";
 import { DEFAULT_STUDY_MODE_POLICY, readStudyModePolicy, saveStudyModePolicy } from "@/lib/study/study-mode-preference";
 import { getCardContentHash, STUDY_MODE_LABELS, type StudyMode, type StudyModePolicy } from "@/lib/study/study-modes";
+import {
+  applyStudySessionShape,
+  readStudySessionShape,
+} from "@/lib/study/session-spec-queue";
+import { noteStudyActionOutcomeById } from "@/services/learning/study-action-events";
 import { countedDraftKey, presentationDraftKey, resolvePresentationId } from "@/lib/study/presentation-identity";
 import { resolveCurrentExercise, type ExercisePin } from "@/lib/study/exercise-resolution";
 import { canCarryModeEventually, getModeEligibility } from "@/lib/study/mode-eligibility";
@@ -91,6 +96,17 @@ export default function StudyPage() {
   const rawDecksParam = searchParams.get("decks");
   const rawTopicsParam = searchParams.get("topics");
   const rawTagsParam = searchParams.get("tags");
+  /*
+   * What the Learning Engine asked this session to do, when it opened it.
+   *
+   * Null for a student who opened Learn themselves, and the queue is then the
+   * ordinary scheduler one -- they are not carrying out a recommendation, so
+   * nothing should be narrowed or cut short on their behalf.
+   */
+  const sessionShape = useMemo(
+    () => readStudySessionShape(searchParams.get("focus"), searchParams.get("focusCount")),
+    [searchParams]
+  );
   const requestedMode =
     rawMode === "custom" || rawMode === "daily" ? rawMode : null;
   const requestedDeckIds = useMemo(() => parseIdsParam(rawDecksParam), [rawDecksParam]);
@@ -633,8 +649,12 @@ export default function StudyPage() {
   const hasCarryoverRequiredCards = remainingCarryoverRequiredCards.length > 0;
   const hasCards = cards.length > 0;
   const customPreviewCards = useMemo(
-    () => buildCustomReviewCards(cards, selectedDeckIds, selectedTopicIds),
-    [cards, selectedDeckIds, selectedTopicIds]
+    () =>
+      applyStudySessionShape(
+        buildCustomReviewCards(cards, selectedDeckIds, selectedTopicIds),
+        sessionShape
+      ),
+    [cards, selectedDeckIds, selectedTopicIds, sessionShape]
   );
   const simpleStudyQueue = useMemo(() => buildSimpleStudyQueue(cards), [cards]);
   const hasCustomFilters = selectedDeckIds.length > 0 || selectedTopicIds.length > 0;
@@ -1066,6 +1086,30 @@ export default function StudyPage() {
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
   useEffect(() => { if (done) cancelPreparation(); }, [done, cancelPreparation]);
+
+  /*
+   * Tell the Learning Engine the work it asked for actually got done.
+   *
+   * Only when a recommendation opened this session, and only once cards were
+   * genuinely answered -- arriving at an empty queue is not doing the work,
+   * and recording it as such would rest the advice without anything having
+   * happened. Recorded once per session; the write is deduplicated by day
+   * anyway, and the ref keeps it from being sent on every later render.
+   */
+  const completionNotedRef = useRef(false);
+  const fromActionId = searchParams.get("from");
+  useEffect(() => {
+    if (!done || !fromActionId || !user.uid) return;
+    if (sessionStats.reviewedCards === 0) return;
+    if (completionNotedRef.current) return;
+    completionNotedRef.current = true;
+    noteStudyActionOutcomeById(
+      user.uid,
+      fromActionId,
+      "completed",
+      sessionStudyDayKeyRef.current ?? getStudyDayKey()
+    );
+  }, [done, fromActionId, sessionStats.reviewedCards, user.uid]);
   const [daysRunning, setDaysRunning] = useState<number | null>(null);
   const reviewedThisSession = sessionStats.reviewedCards;
 

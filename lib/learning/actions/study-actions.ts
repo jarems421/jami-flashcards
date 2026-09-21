@@ -6,6 +6,16 @@ import {
   getTopicHref,
 } from "@/lib/app/routes";
 import { recommendationTargetKey } from "@/lib/learning/recommendations/recommend-focus";
+import {
+  actionCooldown,
+  type ActionHistory,
+  type CooldownReason,
+} from "@/lib/learning/actions/action-cooldown";
+import {
+  buildStudySessionSpec,
+  type StudySessionSelection,
+  type StudySessionSpec,
+} from "@/lib/learning/actions/session-spec";
 import type { LearnerProfile, LearningRecommendation } from "@/lib/learning/types";
 
 /**
@@ -28,6 +38,13 @@ export type StudyActionDestinationKind =
 export type StudyActionDestination = {
   kind: StudyActionDestinationKind;
   href: string;
+  /**
+   * What the destination should work on, for a surface that can take direction.
+   *
+   * The href already carries this as query parameters; this is the same choice
+   * in a form the engine and its tests can read without parsing a URL.
+   */
+  selection: StudySessionSelection;
 };
 
 export type StudyAction = LearningRecommendation & {
@@ -37,6 +54,16 @@ export type StudyAction = LearningRecommendation & {
   /** `reason.action`, for logs and for copy that must stay in step with the decision. */
   explanationCode: string;
   destination?: StudyActionDestination;
+  /** What the engine wants the destination to do; absent when nothing can carry it out. */
+  spec?: StudySessionSpec;
+  /**
+   * Why this action is being held back, when it is.
+   *
+   * Kept on the action rather than filtered out here, so a caller that wants
+   * the full picture -- the evaluation, a debug view -- can still see it, and
+   * only the surfaces choose to hide it.
+   */
+  cooldown?: CooldownReason;
 };
 
 export type StudyActionContext = {
@@ -60,10 +87,19 @@ export function resolveStudyActionDestination(
   if (target.kind === "error") {
     const sources = recommendation.evidence.sources;
     if (folderId && context.questionPracticeAvailable && sources.includes("past-paper")) {
-      return { kind: "question-practice", href: getQuestionPracticeSetupHref({ folderId }) };
+      return {
+        kind: "question-practice",
+        href: getQuestionPracticeSetupHref({ folderId }),
+        // An error spans topics, so its practice is the folder's own question pool.
+        selection: {},
+      };
     }
     if (folderId && sources.includes("practice")) {
-      return { kind: "practice-papers", href: getFolderHref(folderId, "practice") };
+      return {
+        kind: "practice-papers",
+        href: getFolderHref(folderId, "practice"),
+        selection: {},
+      };
     }
     return undefined;
   }
@@ -79,11 +115,11 @@ export function resolveStudyActionDestination(
       return undefined;
     }
     // A concept sits beneath a topic, so its practice narrows to the concept rather than the whole topic.
+    const narrowing = state?.parentKey ? { conceptIds: [id] } : { topicIds: [id] };
     return {
       kind: "question-practice",
-      href: getQuestionPracticeSetupHref(
-        state?.parentKey ? { folderId, conceptIds: [id] } : { folderId, topicIds: [id] }
-      ),
+      href: getQuestionPracticeSetupHref({ folderId, ...narrowing }),
+      selection: narrowing,
     };
   }
 
@@ -91,23 +127,45 @@ export function resolveStudyActionDestination(
     (state?.exposure.cards ?? 0) > 0 || recommendation.evidence.sources.includes("flashcards");
 
   if (target.source === "deck") {
-    if (action === "teach") return { kind: "deck", href: getDeckHref(id) };
+    if (action === "teach") {
+      return { kind: "deck", href: getDeckHref(id), selection: { deckIds: [id] } };
+    }
     return hasCards
-      ? { kind: "flashcards", href: getCustomStudyHref({ mode: "custom", deckIds: [id] }) }
+      ? {
+          kind: "flashcards",
+          href: getCustomStudyHref({ mode: "custom", deckIds: [id] }),
+          selection: { deckIds: [id] },
+        }
       : undefined;
   }
 
-  if (action === "teach") return { kind: "topic", href: getTopicHref(id) };
+  if (action === "teach") {
+    return { kind: "topic", href: getTopicHref(id), selection: { topicIds: [id] } };
+  }
   if (hasCards) {
-    return { kind: "flashcards", href: getCustomStudyHref({ mode: "custom", topicIds: [id] }) };
+    return {
+      kind: "flashcards",
+      href: getCustomStudyHref({ mode: "custom", topicIds: [id] }),
+      selection: { topicIds: [id] },
+    };
   }
   // Without cards a topic can still be revisited through its material, but not diagnosed.
-  return action === "diagnose" ? undefined : { kind: "topic", href: getTopicHref(id) };
+  return action === "diagnose"
+    ? undefined
+    : { kind: "topic", href: getTopicHref(id), selection: { topicIds: [id] } };
 }
 
 export function buildStudyActions(
   profile: LearnerProfile,
-  context: StudyActionContext
+  context: StudyActionContext,
+  /**
+   * What has already become of this student's advice, by action id.
+   *
+   * Optional: a caller with no history loaded gets the engine's raw opinion,
+   * which is the right answer for the evaluation and for a first request.
+   */
+  history?: ReadonlyMap<string, ActionHistory>,
+  now = Date.now()
 ): StudyAction[] {
   const scope = profile.scope.folderId
     ? { folderId: profile.scope.folderId }
@@ -116,46 +174,109 @@ export function buildStudyActions(
       : {};
   const scopeKey = scope.folderId ? `folder:${scope.folderId}` : scope.deckId ? `deck:${scope.deckId}` : "none";
   return profile.recommendedFocus.map((recommendation) => {
+    const id = `${scopeKey}|${recommendation.reason}|${recommendationTargetKey(recommendation.target)}`;
     const destination = resolveStudyActionDestination(recommendation, profile, context);
+    const spec = destination
+      ? buildStudySessionSpec(recommendation, destination.selection)
+      : undefined;
+    /*
+     * A flashcard session is the one destination that can be told what to do,
+     * so its link carries the spec. The others are pages rather than sessions:
+     * a Topic page has no queue to shape, and Past Paper Practice picks its own
+     * questions from the corpus. Rebuilt here rather than inside the resolver
+     * because the spec is derived from the selection the resolver returns.
+     */
+    const directed =
+      destination && spec && destination.kind === "flashcards"
+        ? {
+            ...destination,
+            href: getCustomStudyHref({
+              mode: "custom",
+              ...(destination.selection.deckIds ? { deckIds: destination.selection.deckIds } : {}),
+              ...(destination.selection.topicIds ? { topicIds: destination.selection.topicIds } : {}),
+              focus: { emphasis: spec.emphasis, targetItems: spec.targetItems },
+              fromActionId: id,
+            }),
+          }
+        : destination;
+    const cooldown = actionCooldown(history?.get(id), recommendation.evidence, now);
     return {
       ...recommendation,
-      id: `${scopeKey}|${recommendation.reason}|${recommendationTargetKey(recommendation.target)}`,
+      id,
       scope,
       explanationCode: `${recommendation.reason}.${recommendation.action}`,
-      ...(destination ? { destination } : {}),
+      ...(directed ? { destination: directed } : {}),
+      ...(spec ? { spec } : {}),
+      ...(cooldown ? { cooldown } : {}),
     };
   });
 }
 
 /**
- * Actions from several scopes, ranked together.
+ * Actions from several scopes, ranked together without letting one subject win.
  *
  * Each scope's actions were decided from that scope's evidence alone, so this
- * compares decisions, never mixes subjects. Order: priority, then the scope's
- * own position (most recently used folder first), then id. Two actions leading
- * to the same place are shown once.
+ * compares decisions and never mixes subjects. But raw priority is not fully
+ * comparable across scopes: within a reason band it is scaled by confidence,
+ * and confidence grows with how much evidence a folder happens to hold. Ranked
+ * on that alone, the folder a student has worked in most takes every slot and
+ * their other subjects silently vanish from Today -- which is the opposite of
+ * what someone revising four subjects needs.
+ *
+ * So each scope gets a fair share of the limit first, taken in priority order
+ * within the scope. Slots no scope claims are then filled from everything left,
+ * highest priority first, so a student with one active subject still gets a
+ * full list. Actions in cooldown are skipped unless nothing else can fill the
+ * space, and two actions leading to the same place are shown once.
  */
 export function mergeStudyActions(
   groups: readonly (readonly StudyAction[])[],
-  options: { limit: number; executableOnly?: boolean }
+  options: { limit: number; executableOnly?: boolean; includeCooling?: boolean }
 ): StudyAction[] {
+  const limit = Math.max(0, options.limit);
+  if (limit === 0) return [];
+
   const ranked = groups
     .flatMap((group, groupIndex) => group.map((action) => ({ action, groupIndex })))
     .filter(({ action }) => !options.executableOnly || Boolean(action.destination))
+    .filter(({ action }) => options.includeCooling || !action.cooldown)
     .sort(
       (left, right) =>
         right.action.priority - left.action.priority ||
         left.groupIndex - right.groupIndex ||
         left.action.id.localeCompare(right.action.id)
     );
+
+  const scopesPresent = new Set(ranked.map(({ groupIndex }) => groupIndex)).size;
+  const share = scopesPresent > 1 ? Math.max(1, Math.ceil(limit / scopesPresent)) : limit;
+
   const seen = new Set<string>();
+  const takenPerGroup = new Map<number, number>();
   const merged: StudyAction[] = [];
-  for (const { action } of ranked) {
+  const deferred: typeof ranked = [];
+
+  const take = ({ action, groupIndex }: (typeof ranked)[number]) => {
     const key = action.destination?.href ?? action.id;
-    if (seen.has(key)) continue;
+    if (seen.has(key)) return;
     seen.add(key);
+    takenPerGroup.set(groupIndex, (takenPerGroup.get(groupIndex) ?? 0) + 1);
     merged.push(action);
-    if (merged.length >= Math.max(0, options.limit)) break;
+  };
+
+  for (const entry of ranked) {
+    if (merged.length >= limit) break;
+    if ((takenPerGroup.get(entry.groupIndex) ?? 0) >= share) {
+      deferred.push(entry);
+      continue;
+    }
+    take(entry);
   }
+
+  // A student with one active subject still gets a full list.
+  for (const entry of deferred) {
+    if (merged.length >= limit) break;
+    take(entry);
+  }
+
   return merged;
 }

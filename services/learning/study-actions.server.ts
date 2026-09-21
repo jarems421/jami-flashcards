@@ -9,6 +9,7 @@ import {
 import { mapStudyFolderData, type StudyFolder } from "@/lib/workspace/study-folders";
 import { getAdminDb } from "@/services/firebase/admin";
 import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
+import { loadStudyActionHistory } from "@/services/learning/study-action-history.server";
 
 /**
  * How many folders one Today request considers: the most recently used.
@@ -35,6 +36,13 @@ export type StudyActionsResult = {
   folders: StudyFolder[];
   evaluatedFolders: number;
   failedFolders: number;
+  /**
+   * Whether the student's own history of taking or refusing this advice could
+   * be read. False means the list is the engine's raw opinion, with nothing
+   * resting -- which is the right fallback, and worth being able to see in a
+   * log when Today starts repeating itself.
+   */
+  historyAvailable: boolean;
   generatedAt: number;
 };
 
@@ -53,7 +61,14 @@ export async function loadStudyActions(input: {
   const uid = input.uid.trim();
   const now = input.now ?? Date.now();
   if (!uid) {
-    return { actions: [], folders: [], evaluatedFolders: 0, failedFolders: 0, generatedAt: now };
+    return {
+      actions: [],
+      folders: [],
+      evaluatedFolders: 0,
+      failedFolders: 0,
+      historyAvailable: false,
+      generatedAt: now,
+    };
   }
 
   const snapshot = await getAdminDb()
@@ -68,30 +83,50 @@ export async function loadStudyActions(input: {
     .map((folderDoc) => mapStudyFolderData(folderDoc.id, folderDoc.data() as Record<string, unknown>))
     .filter((folder) => !folder.archived);
 
-  const results = await Promise.all(
-    folders.map(async (folder) => {
-      try {
-        const profile = await loadLearnerProfile({ uid, folderId: folder.id, folder, now });
-        return profile
-          ? buildStudyActions(profile, {
-              questionPracticeAvailable:
-                featureFlags.enablePastPaperPractice && Boolean(folder.examCourse),
-            })
-          : [];
-      } catch {
-        return null;
-      }
-    })
-  );
+  /*
+   * Read alongside the profiles, not before them: it is one small query and
+   * every folder needs the same answer, so serialising it would add its
+   * latency to a page that already has a budget to keep.
+   */
+  const [historyResult, results] = await Promise.all([
+    loadStudyActionHistory({ uid, now }),
+    Promise.all(
+      folders.map(async (folder) => {
+        try {
+          const profile = await loadLearnerProfile({ uid, folderId: folder.id, folder, now });
+          return profile
+            ? { profile, folder }
+            : { profile: null, folder };
+        } catch {
+          return null;
+        }
+      })
+    ),
+  ]);
+
+  const built = results.map((result) => {
+    if (!result) return null;
+    if (!result.profile) return [];
+    return buildStudyActions(
+      result.profile,
+      {
+        questionPracticeAvailable:
+          featureFlags.enablePastPaperPractice && Boolean(result.folder.examCourse),
+      },
+      historyResult.history,
+      now
+    );
+  });
 
   return {
     actions: mergeStudyActions(
-      results.map((result) => result ?? []),
+      built.map((actions) => actions ?? []),
       { limit: input.limit ?? STUDY_ACTION_LIMIT, executableOnly: true }
     ),
     folders,
     evaluatedFolders: folders.length,
-    failedFolders: results.filter((result) => result === null).length,
+    failedFolders: built.filter((actions) => actions === null).length,
+    historyAvailable: historyResult.available,
     generatedAt: now,
   };
 }

@@ -20,7 +20,8 @@ import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable"
 import type { Topic } from "@/lib/material/topics";
 import type { MasteryEvent } from "@/lib/material/mastery";
 import type { Source } from "@/lib/material/sources";
-import { buildTodayPlan, type TodayPlan, type TodayStudyAction } from "@/lib/dashboard/today-plan";
+import { buildTodayPlan, type TodayPlan } from "@/lib/dashboard/today-plan";
+import StudyActionsCard from "@/components/learning/StudyActionsCard";
 import PlanDayAgenda from "@/components/planning/PlanDayAgenda";
 import { useRevisionPlanToday } from "@/hooks/useRevisionPlanToday";
 import { getRevisionPlanHref } from "@/lib/app/routes";
@@ -271,41 +272,6 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
             Weak topics appear after a little study history.
           </p>
         )}
-      </div>
-    </Card>
-  );
-}
-
-/**
- * What to do next, from the student's own recorded work.
- *
- * Only actions Jami can actually open are listed, each with the reason it was
- * chosen, and the list stays short: a surface that always has five more things
- * to do stops being read.
- */
-function StudyActionsCard({ actions }: { actions: TodayStudyAction[] }) {
-  return (
-    <Card padding="lg">
-      <SectionHeader eyebrow="From your recent work" title="Recommended for you" />
-      <div className="mt-5 grid gap-3">
-        {actions.map((action) => (
-          <Link
-            key={action.id}
-            href={action.href}
-            className="app-subtle-panel grid gap-3 rounded-lg p-4 transition duration-fast hover:-translate-y-[1px] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-          >
-            <div className="min-w-0">
-              <div className="break-words text-sm font-semibold text-text-primary">{action.title}</div>
-              <p className="mt-1 text-sm leading-6 text-text-secondary">{action.description}</p>
-              {action.folderName ? (
-                <div className="mt-1 break-words text-xs text-text-muted">{action.folderName}</div>
-              ) : null}
-            </div>
-            <span className="app-chip justify-self-start rounded-full px-3 py-1 text-xs font-semibold sm:justify-self-end">
-              {action.label}
-            </span>
-          </Link>
-        ))}
       </div>
     </Card>
   );
@@ -826,7 +792,9 @@ export default function DashboardHome() {
                         : "md:grid-cols-2 2xl:grid-cols-3"
                     }`}
                   >
-                    {showStudyActions ? <StudyActionsCard actions={todayPlan.studyActions} /> : null}
+                    {showStudyActions ? (
+                      <StudyActionsCard actions={todayPlan.studyActions} uid={user.uid} />
+                    ) : null}
                     {sectionStates.drafts !== "unavailable" && todayPlan.drafts.length > 0 ? (
                       <DraftQueueCard plan={todayPlan} />
                     ) : null}

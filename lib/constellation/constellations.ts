@@ -179,3 +179,12 @@ export function getResolvedBackgroundConstellation(
 export function isConstellationReadyToFinish(constellation: Constellation) {
   return constellation.starCount >= constellation.maxStars;
 }
+
+/** How full a constellation is, 0-100, for its progress bar. */
+export function getConstellationProgressPercent(constellation: Constellation | null) {
+  if (!constellation || constellation.maxStars <= 0) return 0;
+  return Math.min(
+    100,
+    Math.round((constellation.starCount / constellation.maxStars) * 100)
+  );
+}

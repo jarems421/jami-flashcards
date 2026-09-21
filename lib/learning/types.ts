@@ -22,7 +22,18 @@
 
 export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v6-2026-09-16";
 
-export type LearningEvidenceKind = "flashcards" | "practice" | "past-paper";
+/**
+ * Where a piece of evidence came from.
+ *
+ * `notebook` is the weakest of the four and is kept separate for that reason.
+ * The others are answers to a question with a known right answer, marked
+ * against a scheme. Notebook working is marked by Tutor against a question the
+ * student was answering, which is real evidence -- it is the student's own
+ * reasoning, graded -- but it is graded by a model rather than a scheme, on
+ * work the student chose rather than work that was set. It counts, at a
+ * fraction of the weight, and never on its own: see `NOTEBOOK_EVIDENCE_WEIGHT`.
+ */
+export type LearningEvidenceKind = "flashcards" | "practice" | "past-paper" | "notebook";
 
 export type LearningTrend = "improving" | "stable" | "declining";
 

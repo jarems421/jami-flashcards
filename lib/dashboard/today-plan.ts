@@ -104,6 +104,16 @@ export type TodayStudyAction = {
   label: string;
   href: string;
   folderName?: string;
+  /**
+   * What this action is about and which scope decided it, carried through so
+   * the card can record what the student did with it. Kept as the engine's own
+   * shapes rather than flattened, so the recording path and the ranking path
+   * cannot drift apart.
+   */
+  target: StudyAction["target"];
+  scope: StudyAction["scope"];
+  /** How many items the engine thinks this is worth, when a surface can honour it. */
+  targetItems?: number;
 };
 
 export type TodayPlan = {
@@ -373,6 +383,9 @@ function buildStudyActions(input: BuildTodayPlanInput): TodayStudyAction[] {
           ...describeStudyAction(action),
           href: action.destination.href,
           ...(folderName ? { folderName } : {}),
+          target: action.target,
+          scope: action.scope,
+          ...(action.spec ? { targetItems: action.spec.targetItems } : {}),
         },
       ];
     })

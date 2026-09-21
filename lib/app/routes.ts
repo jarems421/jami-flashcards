@@ -34,6 +34,17 @@ export function getCustomStudyHref(options?: {
   mode?: "daily" | "custom";
   deckIds?: string[];
   topicIds?: string[];
+  /**
+   * What the Learning Engine wants this session to do, when it opened the link.
+   *
+   * Carried in the URL rather than held in memory because the student may
+   * arrive by any route -- a new tab, a bookmark, a reload mid-session -- and
+   * a recommendation that silently became an ordinary session on reload would
+   * be worse than one that never claimed to be anything else.
+   */
+  focus?: { emphasis: string; targetItems: number };
+  /** The recommendation that opened this session, so finishing it can be recorded. */
+  fromActionId?: string;
 }) {
   const searchParams = new URLSearchParams();
   const mode = options?.mode ?? "custom";
@@ -48,6 +59,15 @@ export function getCustomStudyHref(options?: {
   if (topicIds.length > 0) {
     searchParams.set("topics", topicIds.join(","));
   }
+
+  const focus = options?.focus;
+  if (focus && focus.emphasis && focus.targetItems > 0) {
+    searchParams.set("focus", focus.emphasis);
+    searchParams.set("focusCount", String(Math.round(focus.targetItems)));
+  }
+
+  const fromActionId = options?.fromActionId?.trim();
+  if (fromActionId) searchParams.set("from", fromActionId);
 
   return `/dashboard/study?${searchParams.toString()}`;
 }

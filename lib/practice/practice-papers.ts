@@ -20,53 +20,48 @@ import {
 import { normalizeManualCorrectionAudits, normalizePracticePaperMarkRange, type PracticePaperManualCorrectionAudit, type PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
 import { normalizePracticePaperPdfLayout, type PracticePaperPdfLayout } from "@/lib/practice/paper-pdf-layout";
 import { normalizePracticePaperCorpusCalibration, type PracticePaperCorpusCalibration } from "@/lib/practice/paper-corpus-calibration";
+import {
+  isAssetSource,
+  isAssetType,
+  isAssetValidationStatus,
+  isConfidence,
+  isFocus,
+  isLength,
+  isMarkSchemeKind,
+  isStatus,
+  isTimingMode,
+  isTimingState,
+  type PracticePaperAssetSource,
+  type PracticePaperAssetType,
+  type PracticePaperAssetValidationStatus,
+  type PracticePaperConfidence,
+  type PracticePaperFocus,
+  type PracticePaperLength,
+  type PracticePaperMarkSchemeKind,
+  type PracticePaperOrigin,
+  type PracticePaperStatus,
+  type PracticePaperTimingMode,
+  type PracticePaperTimingState,
+} from "@/lib/practice/practice-paper-fields";
+export type {
+  PracticePaperAssetSource,
+  PracticePaperAssetType,
+  PracticePaperAssetValidationStatus,
+  PracticePaperConfidence,
+  PracticePaperFocus,
+  PracticePaperLength,
+  PracticePaperMarkSchemeKind,
+  PracticePaperOrigin,
+  PracticePaperStatus,
+  PracticePaperTimingMode,
+  PracticePaperTimingState,
+} from "@/lib/practice/practice-paper-fields";
 export { mapPracticePaperMarkingJobData } from "@/lib/practice/practice-paper-marking-types";
 export { mapPracticePaperJobData } from "@/lib/practice/practice-paper-jobs";
 export type { PracticePaperEvidenceIssue, PracticePaperEvidenceManifest, PracticePaperEvidencePage, PracticePaperManualCorrectionAudit, PracticePaperMarkingJob, PracticePaperMarkingJobKind, PracticePaperMarkingJobStage, PracticePaperMarkingJobStatus, PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
 
 export const MAX_PRACTICE_PAPER_SOURCE_IDS = 15;
 export const MAX_PRACTICE_PAPER_QUESTIONS = 30;
-
-export type PracticePaperOrigin = "generated" | "uploaded";
-export type PracticePaperStatus =
-  | "setup"
-  | "ready"
-  | "in_progress"
-  | "submitted"
-  | "marked";
-export type PracticePaperLength = "full";
-export type PracticePaperFocus = "balanced" | "weak_areas" | "custom";
-export type PracticePaperTimingMode = "timed" | "untimed";
-export type PracticePaperTimingState =
-  | "not_started"
-  | "running"
-  | "paused"
-  | "awaiting_overtime"
-  | "overtime"
-  | "submitted";
-export type PracticePaperConfidence = "low" | "medium" | "high";
-export type PracticePaperMarkSchemeKind =
-  | "generated"
-  | "official"
-  | "estimated"
-  | "missing";
-export type PracticePaperAssetType =
-  | "table"
-  | "graph"
-  | "diagram"
-  | "formula_sheet"
-  | "source_extract"
-  | "image"
-  | "illustration";
-
-export type PracticePaperAssetSource =
-  | "deterministic"
-  | "generated"
-  | "uploaded";
-export type PracticePaperAssetValidationStatus =
-  | "pending"
-  | "valid"
-  | "invalid";
 
 export type PracticePaperQuestionAsset = {
   id: string;
@@ -500,74 +495,6 @@ function finiteInteger(value: unknown, fallback = 0) {
 
 function normalizeTextList(value: unknown, maximum: number, maxLength = 800) {
   return normalizeStringArray(value, maximum, maxLength);
-}
-
-function isConfidence(value: unknown): value is PracticePaperConfidence {
-  return value === "low" || value === "medium" || value === "high";
-}
-
-function isStatus(value: unknown): value is PracticePaperStatus {
-  return (
-    value === "setup" ||
-    value === "ready" ||
-    value === "in_progress" ||
-    value === "submitted" ||
-    value === "marked"
-  );
-}
-
-function isLength(value: unknown): value is PracticePaperLength {
-  return value === "full";
-}
-
-function isTimingMode(value: unknown): value is PracticePaperTimingMode {
-  return value === "timed" || value === "untimed";
-}
-
-function isTimingState(value: unknown): value is PracticePaperTimingState {
-  return (
-    value === "not_started" ||
-    value === "running" ||
-    value === "paused" ||
-    value === "awaiting_overtime" ||
-    value === "overtime" ||
-    value === "submitted"
-  );
-}
-
-function isFocus(value: unknown): value is PracticePaperFocus {
-  return value === "balanced" || value === "weak_areas" || value === "custom";
-}
-
-function isMarkSchemeKind(value: unknown): value is PracticePaperMarkSchemeKind {
-  return (
-    value === "generated" ||
-    value === "official" ||
-    value === "estimated" ||
-    value === "missing"
-  );
-}
-
-function isAssetType(value: unknown): value is PracticePaperAssetType {
-  return (
-    value === "table" ||
-    value === "graph" ||
-    value === "diagram" ||
-    value === "formula_sheet" ||
-    value === "source_extract" ||
-    value === "image" ||
-    value === "illustration"
-  );
-}
-
-function isAssetSource(value: unknown): value is PracticePaperAssetSource {
-  return value === "deterministic" || value === "generated" || value === "uploaded";
-}
-
-function isAssetValidationStatus(
-  value: unknown
-): value is PracticePaperAssetValidationStatus {
-  return value === "pending" || value === "valid" || value === "invalid";
 }
 
 export function normalizeQuestionAssets(value: unknown): PracticePaperQuestionAsset[] {

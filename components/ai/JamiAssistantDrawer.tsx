@@ -29,12 +29,10 @@ import {
   createAssistantIllustration,
   insertAssistantIllustration,
 } from "@/services/ai/assistant-illustrations";
+import { useAssistantThreadList } from "@/hooks/useAssistantThreadList";
 import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import {
-  deleteJamiAssistantThread,
   getJamiAssistantThreadMessages,
-  getJamiAssistantThreads,
-  renameJamiAssistantThread,
   toDrawerMessages,
 } from "@/services/ai/jami-assistant-history";
 import { auth } from "@/services/firebase/client";
@@ -174,10 +172,7 @@ export default function JamiAssistantDrawer({
   const [error, setError] = useState<string | null>(null);
   const [historyNotice, setHistoryNotice] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
-  const [threads, setThreads] = useState<JamiAssistantThread[]>([]);
   const [activeThread, setActiveThread] = useState<JamiAssistantThread | null>(null);
   const [useRelatedSources, setUseRelatedSources] = useState(true);
   const [showAiNotice, setShowAiNotice] = useState(false);
@@ -291,32 +286,6 @@ export default function JamiAssistantDrawer({
     onOpenChange(false);
   }, [abandonActiveRequest, onOpenChange, resetKey]);
 
-  const refreshThreads = useCallback(async () => {
-    const user = auth.currentUser;
-    if (!user) {
-      setThreads([]);
-      return;
-    }
-    setHistoryLoading(true);
-    setHistoryError(null);
-    try {
-      setThreads(await getJamiAssistantThreads(user.uid));
-    } catch (loadError) {
-      setHistoryError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Your previous chats could not be loaded."
-      );
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    void refreshThreads();
-  }, [open, refreshThreads]);
-
   useEffect(() => {
     const query = window.matchMedia("(min-width: 1024px)");
     const sync = () => setSidePanel(query.matches);
@@ -348,6 +317,39 @@ export default function JamiAssistantDrawer({
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }, [abandonActiveRequest]);
 
+  const {
+    threads,
+    loading: historyLoading,
+    error: historyError,
+    setError: setHistoryError,
+    refresh: refreshThreads,
+    promote: promoteThread,
+    rename: renameThread,
+    remove: removeThread,
+  } = useAssistantThreadList({
+    activeThreadId: activeThread?.id ?? null,
+    onActiveThreadRemoved: startNewChat,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    void refreshThreads();
+  }, [open, refreshThreads]);
+
+  /**
+   * Renaming the open chat has to rename it in the header too, not just in the
+   * saved list the hook owns.
+   */
+  const handleRenameThread = useCallback(
+    async (thread: JamiAssistantThread, title: string) => {
+      const renamedTitle = await renameThread(thread, title);
+      setActiveThread((current) =>
+        current?.id === thread.id ? { ...current, title: renamedTitle } : current
+      );
+    },
+    [renameThread]
+  );
+
   const openThread = useCallback(async (thread: JamiAssistantThread) => {
     const user = auth.currentUser;
     if (!user) {
@@ -373,47 +375,7 @@ export default function JamiAssistantDrawer({
     } finally {
       setThreadLoading(false);
     }
-  }, [abandonActiveRequest]);
-
-  const renameThread = useCallback(
-    async (thread: JamiAssistantThread, title: string) => {
-      const user = auth.currentUser;
-      if (!user) throw new Error("Sign in again to rename this chat.");
-      const renamedTitle = await renameJamiAssistantThread(user.uid, thread.id, title);
-      setThreads((current) =>
-        current.map((candidate) =>
-          candidate.id === thread.id
-            ? { ...candidate, title: renamedTitle, updatedAt: Date.now() }
-            : candidate
-        )
-      );
-      setActiveThread((current) =>
-        current?.id === thread.id ? { ...current, title: renamedTitle } : current
-      );
-    },
-    []
-  );
-
-  const removeThread = useCallback(
-    async (thread: JamiAssistantThread) => {
-      const user = auth.currentUser;
-      if (!user) throw new Error("Sign in again to delete this chat.");
-      await deleteJamiAssistantThread(user.uid, thread.id);
-      setThreads((current) =>
-        current.filter((candidate) => candidate.id !== thread.id)
-      );
-      if (activeThread?.id === thread.id) {
-        setActiveThread(null);
-        setHistoryNotice(null);
-        setError(null);
-        setInput("");
-        setLoading(false);
-        abandonActiveRequest();
-        setMessages([]);
-      }
-    },
-    [abandonActiveRequest, activeThread?.id]
-  );
+  }, [abandonActiveRequest, setHistoryError]);
 
   const viewingForeignThread =
     activeThread !== null && activeThread.contextKey !== contextKey;
@@ -619,10 +581,7 @@ export default function JamiAssistantDrawer({
             if (requestIdRef.current !== requestId) return;
             const savedMessageId = savedThread.lastAssistantMessageId;
             setActiveThread(savedThread);
-            setThreads((current) => [
-              savedThread,
-              ...current.filter((thread) => thread.id !== savedThread.id),
-            ]);
+            promoteThread(savedThread);
             if (savedMessageId) {
               setMessages((current) => {
                 const next = [...current];
@@ -681,6 +640,7 @@ export default function JamiAssistantDrawer({
       activeThread,
       contextKey,
       getContext,
+      promoteThread,
       historyContextLabel,
       messages,
       useRelatedSources,
@@ -824,7 +784,7 @@ export default function JamiAssistantDrawer({
               error={historyError}
               onOpen={(thread) => void openThread(thread)}
               onNew={startNewChat}
-              onRename={renameThread}
+              onRename={handleRenameThread}
               onDelete={removeThread}
             />
           ) : threadLoading ? (

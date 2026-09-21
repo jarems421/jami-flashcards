@@ -50,7 +50,7 @@ function studyAction(
     evidence: { count: 12, uniqueItems: 6, sources: ["flashcards"] },
     scope: { folderId: folder.id },
     explanationCode: `${overrides.reason}.${overrides.action}`,
-    destination: { kind: "topic", href: "/dashboard/topics/eigen" },
+    destination: { kind: "topic" as const, href: "/dashboard/topics/eigen", selection: {} },
     ...overrides,
   };
 }
@@ -74,9 +74,9 @@ describe("Today with study actions", () => {
     const plan = buildTodayPlan(
       planInput({
         studyActions: [
-          studyAction({ id: "1", reason: "persistent_error", action: "practice", target: { kind: "error", category: "missing_units", label: "Missing or incorrect units" }, evidence: { count: 3, uniqueItems: 3, sources: ["past-paper"] }, destination: { kind: "question-practice", href: "/dashboard/practice/questions/new?folderId=folder-1" } }),
+          studyAction({ id: "1", reason: "persistent_error", action: "practice", target: { kind: "error", category: "missing_units", label: "Missing or incorrect units" }, evidence: { count: 3, uniqueItems: 3, sources: ["past-paper"] }, destination: { kind: "question-practice" as const, href: "/dashboard/practice/questions/new?folderId=folder-1", selection: {} } }),
           studyAction({ id: "2", reason: "untested_exposure", action: "diagnose", destination: undefined }),
-          studyAction({ id: "3", reason: "low_confidence", action: "diagnose", destination: { kind: "flashcards", href: "/dashboard/study?mode=custom&topics=eigen" } }),
+          studyAction({ id: "3", reason: "low_confidence", action: "diagnose", destination: { kind: "flashcards" as const, href: "/dashboard/study?mode=custom&topics=eigen", selection: {} } }),
           studyAction({ id: "4", reason: "due_for_retrieval", action: "retrieve", evidence: { count: 6, uniqueItems: 6, dueCards: 6, sources: ["flashcards"] } }),
           studyAction({ id: "5", reason: "not_yet_assessed", action: "diagnose" }),
           studyAction({ id: "6", reason: "recent_improvement_needs_reinforcement", action: "reinforce" }),
@@ -95,6 +95,9 @@ describe("Today with study actions", () => {
       label: "Practise",
       href: "/dashboard/practice/questions/new?folderId=folder-1",
       folderName: "Maths",
+      // Carried through so the card can record what the student did with it.
+      target: { kind: "error", category: "missing_units", label: "Missing or incorrect units" },
+      scope: { folderId: "folder-1" },
     });
     expect(plan.studyActions[1]?.description).toContain("not enough evidence yet");
     expect(plan.studyActions[2]?.description).toBe("6 cards due now.");

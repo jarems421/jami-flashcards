@@ -202,6 +202,56 @@ describe("Firestore security rules", () => {
     await assertSucceeds(deleteDoc(event("commit-1")));
   });
 
+  it("keeps the record of what became of advice private, append-only and free of wording", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const event = (id: string) => doc(aliceDb, "users", ALICE, "studyActionEvents", id);
+    const valid = {
+      schemaVersion: 1,
+      actionId: "folder:f1|low_mastery|topic:osmosis",
+      reason: "low_mastery",
+      targetKey: "topic:osmosis",
+      folderId: "f1",
+      outcome: "shown",
+      at: 1_789_000_000_000,
+      studyDayKey: "2026-09-21",
+      createdAt: 1_789_000_000_001,
+    };
+
+    await assertSucceeds(setDoc(event("2026-09-21_shown_abc"), valid));
+    await assertSucceeds(getDoc(event("2026-09-21_shown_abc")));
+    await assertSucceeds(
+      setDoc(event("2026-09-21_started_abc"), { ...valid, outcome: "started" })
+    );
+    // A deck-scoped action carries a deckId instead of a folderId.
+    const deckScoped = Object.fromEntries(
+      Object.entries(valid).filter(([key]) => key !== "folderId")
+    );
+    await assertSucceeds(
+      setDoc(event("2026-09-21_dismissed_abc"), {
+        ...deckScoped,
+        deckId: "d1",
+        outcome: "dismissed",
+      })
+    );
+
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "studyActionEvents", "2026-09-21_shown_abc")));
+    await assertFails(
+      setDoc(doc(bobDb, "users", ALICE, "studyActionEvents", "other"), valid)
+    );
+    // Written once: what was suggested must not be rewritable after the fact.
+    await assertFails(updateDoc(event("2026-09-21_shown_abc"), { outcome: "completed" }));
+    // Nothing beyond the compact shape: no labels, no student wording.
+    await assertFails(setDoc(event("bad-1"), { ...valid, label: "Revisit Osmosis" }));
+    await assertFails(setDoc(event("bad-2"), { ...valid, outcome: "ignored" }));
+    await assertFails(setDoc(event("bad-3"), { ...valid, reason: "because" }));
+    await assertFails(setDoc(event("bad-4"), { ...valid, schemaVersion: 2 }));
+    await assertFails(setDoc(event("bad-5"), { ...valid, studyDayKey: "today" }));
+    await assertFails(setDoc(event("bad-6"), { ...valid, actionId: "" }));
+
+    await assertSucceeds(deleteDoc(event("2026-09-21_shown_abc")));
+  });
+
   it("allows owners to read decks stored with either userId or legacy uid", async () => {
     await seedData();
 

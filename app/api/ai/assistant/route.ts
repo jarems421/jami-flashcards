@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { enterAiSpendContext } from "@/lib/ai/spend-context";
-import {
-  Type,
-  type Schema,
-} from "@google/genai";
 import type { NextRequest } from "next/server";
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import {
@@ -45,6 +41,7 @@ import {
   refundAiBudget,
 } from "@/services/ai/budgets";
 import { getAiInputTokenCap } from "@/lib/ai/budgets";
+import { buildAssistantResponseSchema } from "./response-schema";
 import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
 import { cleanAiResponseText } from "@/lib/ai/response-text";
 import {
@@ -493,64 +490,7 @@ export async function POST(request: NextRequest) {
   }
 
   const allowedSourceRefs = readable.map((result) => result.sourceRef);
-  const sourceRefItems: Schema =
-    allowedSourceRefs.length > 0
-      ? {
-          type: Type.STRING,
-          format: "enum",
-          enum: allowedSourceRefs,
-          description: "A source reference that materially informed the answer.",
-        }
-      : {
-          type: Type.STRING,
-          description: "No source references are available for this request.",
-        };
-  const responseSchema = {
-    type: Type.OBJECT,
-    properties: {
-      answer: {
-        type: Type.STRING,
-        description:
-          "The complete student-facing answer, following the requested response-length mode.",
-      },
-      sourceRefs: {
-        type: Type.ARRAY,
-        items: sourceRefItems,
-        description:
-          "Only source references that materially informed the answer. Use an empty array when none did.",
-      },
-      usedCurrentContext: {
-        type: Type.BOOLEAN,
-        description: "Whether the current card, source, or notebook page informed the answer.",
-      },
-      usedGeneralKnowledge: {
-        type: Type.BOOLEAN,
-        description: "Whether general academic knowledge informed the answer.",
-      },
-      usedWebResearch: {
-        type: Type.BOOLEAN,
-        description:
-          "Whether the grounded W1 web research brief materially informed the answer.",
-      },
-      graphs: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.STRING,
-          description: "One graph, as a JSON object written as a string.",
-        },
-        description:
-          "Graphs to plot exactly, each a JSON object written as a string. Use an empty array when there is no graph.",
-      },
-    },
-    required: [
-      "answer",
-      "sourceRefs",
-      "usedCurrentContext",
-      "usedGeneralKnowledge",
-      "usedWebResearch",
-      "graphs",
-    ],
-  } satisfies Schema;
+  const responseSchema = buildAssistantResponseSchema(allowedSourceRefs);
   const systemInstruction = `You are Jami, a capable, calm study tutor.
 ${resolved.studyLevelContext ? `${resolved.studyLevelContext}\n` : ""}Treat the student's latest explicit request as the strongest signal for the depth and kind of help they want.
 Use your reliable general academic knowledge freely. The student's current work and optional Jami sources are extra context, not a restriction on what you know.

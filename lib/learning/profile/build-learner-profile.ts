@@ -20,6 +20,10 @@ import {
   groupObservationsByTopic,
 } from "@/lib/learning/profile/observations";
 import {
+  notebookObservations,
+  type NotebookMarkedWorking,
+} from "@/lib/learning/profile/notebook-signals";
+import {
   pastPaperObservations,
   type PastPaperEvidenceAttempt,
 } from "@/lib/learning/profile/past-paper-signals";
@@ -90,6 +94,11 @@ export type LearnerEvidence = {
   pastPaperAttempts: readonly PastPaperEvidenceAttempt[];
   practicePaperAttempts: readonly PracticePaperEvidenceAttempt[];
   /**
+   * Notebook working Tutor has marked. Weaker than the three above and
+   * weighted accordingly; see `notebook-signals.ts` for why.
+   */
+  notebookMarkings?: readonly NotebookMarkedWorking[];
+  /**
    * Plain display names by key, for concepts with no hierarchy. A key with no
    * label or concept -- deleted, merged away, or from a catalogue that is not
    * servable -- is left out of the profile rather than shown as "Unknown".
@@ -117,7 +126,12 @@ export const LEARNER_PROFILE_LIMITS = {
   recommendations: 5,
 } as const;
 
-const EVIDENCE_ORDER: readonly LearningEvidenceKind[] = ["flashcards", "practice", "past-paper"];
+const EVIDENCE_ORDER: readonly LearningEvidenceKind[] = [
+  "flashcards",
+  "practice",
+  "past-paper",
+  "notebook",
+];
 
 const PROVENANCE_FOR_SOURCE: Readonly<Record<LearningTopicSource, ConceptProvenance>> = {
   specification: "verified_specification",
@@ -188,6 +202,7 @@ export function collectLearnerObservations(
       ...flashcardObservations(evidence.cards, evidence.flashcardReviewEvents, now),
       ...pastPaperObservations(evidence.pastPaperAttempts),
       ...practicePaperObservations(evidence.practicePaperAttempts),
+      ...notebookObservations(evidence.notebookMarkings ?? []),
     ],
     now
   );

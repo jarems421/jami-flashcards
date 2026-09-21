@@ -8,7 +8,6 @@ import {
   getActiveConstellation,
   getFallbackConstellation,
   isConstellationReadyToFinish,
-  toggleConstellationLine,
   type Constellation,
   type ConstellationLine,
 } from "@/lib/constellation/constellations";
@@ -17,13 +16,11 @@ import {
   ensureConstellationSetup,
   finishConstellation,
   renameConstellation,
-  saveConstellationLines,
 } from "@/services/constellation/constellations";
 import {
   readConstellationBackgroundConstellationId,
   readConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
-import { updateAppearance } from "@/services/profile/appearance";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import {
   clampPercentage,
@@ -59,19 +56,13 @@ import ConstellationControls, {
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import PanelStyleSetting from "@/components/profile/PanelStyleSetting";
 import SkyPatternChat from "@/components/constellation/SkyPatternChat";
-import type { SkyDrawing } from "@/lib/constellation/sky-drawing";
-import type { SkyPatternTurn } from "@/lib/constellation/sky-pattern";
-import {
-  requestSkyPattern,
-  saveSkyArrangement,
-} from "@/services/constellation/sky-pattern";
+
+import { getConstellationProgressPercent } from "@/lib/constellation/constellations";
+import { useConstellationLineEditing } from "@/hooks/useConstellationLineEditing";
+import { useSkyPattern } from "@/hooks/useSkyPattern";
+import { saveSkyBackgroundChoice } from "@/services/profile/appearance";
 
 const STAR_GESTURE_BODY_CLASS = "jami-star-gesture-active";
-
-function getConstellationProgressPercent(constellation: Constellation | null) {
-  if (!constellation || constellation.maxStars <= 0) return 0;
-  return Math.min(100, Math.round((constellation.starCount / constellation.maxStars) * 100));
-}
 
 export default function ConstellationDashboardPage() {
   const { user } = useUser();
@@ -112,10 +103,6 @@ export default function ConstellationDashboardPage() {
   // Clearing every line is one click away from a pattern someone built by
   // hand, so the button asks once before it does it.
   const [isConfirmingClearLines, setIsConfirmingClearLines] = useState(false);
-  const [lineRedoHistory, setLineRedoHistory] = useState<{
-    constellationId: string;
-    lines: ConstellationLine[];
-  }>({ constellationId: "", lines: [] });
   const [linkPoint, setLinkPoint] = useState<{ x: number; y: number } | null>(null);
   /**
    * The star the half-drawn line is currently over.
@@ -126,16 +113,6 @@ export default function ConstellationDashboardPage() {
    */
   const [linkHoverStarId, setLinkHoverStarId] = useState<string | null>(null);
   /** The sky as it was before Jami's last arrangement, so it can be put back. */
-  const [skyPatternUndo, setSkyPatternUndo] = useState<{
-    constellationId: string;
-    positions: Record<string, NormalizedStar["position"]>;
-    lines: ConstellationLine[];
-  } | null>(null);
-  /** Jami's last drawing for this sky, so a follow-up like "bigger" can build on it. */
-  const [lastSkyDrawing, setLastSkyDrawing] = useState<{
-    constellationId: string;
-    drawing: SkyDrawing;
-  } | null>(null);
   /**
    * Whether the press now in progress already settled what it meant.
    *
@@ -309,13 +286,6 @@ export default function ConstellationDashboardPage() {
   const canArrangeSelectedConstellation = Boolean(selectedConstellation);
   const isConnecting = skyMode === "connect";
   const selectedLines = selectedConstellation?.lines ?? [];
-  const redoLines = useMemo(
-    () =>
-      selectedConstellation?.id === lineRedoHistory.constellationId
-        ? lineRedoHistory.lines
-        : [],
-    [lineRedoHistory, selectedConstellation?.id]
-  );
 
   const visibleStars = useMemo(
     () =>
@@ -333,23 +303,17 @@ export default function ConstellationDashboardPage() {
     backgroundConstellationId === selectedConstellation?.id;
 
   const handleToggleSelectedBackground = () => {
-    if (!selectedConstellation) {
-      return;
-    }
-
-    const saveFailed = (error: unknown) => {
-      console.warn("Could not save the background to your account.", error);
-    };
+    if (!selectedConstellation) return;
 
     if (isSelectedConstellationBackground) {
       setIsConstellationBackgroundEnabled(false);
-      void updateAppearance(user.uid, { sky: false }).catch(saveFailed);
+      void saveSkyBackgroundChoice(user.uid, false);
       return;
     }
 
     setBackgroundConstellationId(selectedConstellation.id);
     setIsConstellationBackgroundEnabled(true);
-    void updateAppearance(user.uid, { sky: true, skyConstellationId: selectedConstellation.id }).catch(saveFailed);
+    void saveSkyBackgroundChoice(user.uid, true, selectedConstellation.id);
   };
 
   useEffect(() => {
@@ -456,68 +420,24 @@ export default function ConstellationDashboardPage() {
    * three. Bailing when the array is unchanged means a no-op never costs a
    * write.
    */
-  const applyLines = useCallback(
-    (next: ConstellationLine[]) => {
-      const constellation = selectedConstellation;
-      if (!constellation || next === constellation.lines) return;
-
-      setConstellations((current) =>
-        current.map((entry) =>
-          entry.id === constellation.id ? { ...entry, lines: next } : entry
-        )
-      );
-      void saveConstellationLines(user.uid, constellation.id, next).catch(
-        (error: unknown) => {
-          console.error("Failed to save constellation lines.", error);
-          showError("Failed to save your constellation lines.");
-        }
-      );
-    },
-    [selectedConstellation, showError, user.uid]
-  );
-
-  const handleToggleLine = useCallback(
-    (starA: string, starB: string) => {
-      if (!selectedConstellation) return;
-      setLineRedoHistory({ constellationId: "", lines: [] });
-      applyLines(
-        toggleConstellationLine(selectedConstellation.lines, starA, starB)
-      );
-    },
-    [applyLines, selectedConstellation]
-  );
-
-  const handleUndoLine = useCallback(() => {
-    const lastLine = selectedConstellation?.lines.at(-1);
-    if (!selectedConstellation || !lastLine) return;
-
-    setLineRedoHistory((current) => ({
-      constellationId: selectedConstellation.id,
-      lines:
-        current.constellationId === selectedConstellation.id
-          ? [...current.lines, lastLine]
-          : [lastLine],
-    }));
-    applyLines(selectedConstellation.lines.slice(0, -1));
-  }, [applyLines, selectedConstellation]);
-
-  const handleRedoLine = useCallback(() => {
-    const restoredLine = redoLines.at(-1);
-    if (!selectedConstellation || !restoredLine) return;
-
-    applyLines([...selectedConstellation.lines, restoredLine]);
-    setLineRedoHistory((current) => ({
-      constellationId: selectedConstellation.id,
-      lines: current.lines.slice(0, -1),
-    }));
-  }, [applyLines, redoLines, selectedConstellation]);
+  const {
+    redoLines,
+    clearRedoHistory,
+    toggleLine: handleToggleLine,
+    undoLine: handleUndoLine,
+    redoLine: handleRedoLine,
+    clearLines: clearConstellationLines,
+  } = useConstellationLineEditing({
+    uid: user.uid,
+    selectedConstellation,
+    setConstellations,
+    onSaveError: showError,
+  });
 
   const handleClearLines = useCallback(() => {
-    if (!selectedConstellation?.lines.length) return;
-    applyLines([]);
-    setLineRedoHistory({ constellationId: "", lines: [] });
+    clearConstellationLines();
     setIsConfirmingClearLines(false);
-  }, [applyLines, selectedConstellation]);
+  }, [clearConstellationLines]);
 
   /**
    * Puts a whole arrangement on the sky and saves it: Jami's, or the one it replaced.
@@ -526,88 +446,25 @@ export default function ConstellationDashboardPage() {
    * returns has already been limited to real stars, and this holds that line
    * again on the page that saves it.
    */
-  const applySkyArrangement = useCallback(
-    async (
-      constellationId: string,
-      positions: Record<string, NormalizedStar["position"]>,
-      lines: ConstellationLine[]
-    ) => {
-      setAllStars((current) =>
-        current.map((star) => {
-          const position = positions[star.id];
-          return position ? { ...star, position } : star;
-        })
-      );
-      setConstellations((current) =>
-        current.map((entry) => (entry.id === constellationId ? { ...entry, lines } : entry))
-      );
-      setLineRedoHistory({ constellationId: "", lines: [] });
+  const {
+    undoSnapshot: skyPatternUndo,
+    ask: handleAskJamiForPattern,
+    undo: handleUndoSkyPattern,
+  } = useSkyPattern({
+    uid: user.uid,
+    selectedConstellation,
+    visibleStars,
+    setAllStars,
+    setConstellations,
+    onArrangementApplied: () => {
+      clearRedoHistory();
       setLinkFromStarId(null);
       setLinkPoint(null);
       setLinkHoverStarId(null);
-      await saveSkyArrangement(user.uid, constellationId, positions, lines);
     },
-    [user.uid]
-  );
-
-  const handleAskJamiForPattern = useCallback(
-    async (request: string, history: SkyPatternTurn[]) => {
-      const constellation = selectedConstellation;
-      if (!constellation) throw new Error("Choose a sky first.");
-
-      const rect = document.getElementById("constellation-container")?.getBoundingClientRect();
-      const pattern = await requestSkyPattern({
-        constellationId: constellation.id,
-        request,
-        history,
-        previousDrawing:
-          lastSkyDrawing?.constellationId === constellation.id ? lastSkyDrawing.drawing : undefined,
-        aspectRatio: rect && rect.height > 0 ? rect.width / rect.height : undefined,
-      });
-
-      const present = new Set(visibleStars.map((star) => star.id));
-      const positions = Object.fromEntries(
-        Object.entries(pattern.positions).filter(([starId]) => present.has(starId))
-      );
-      const lines = pattern.lines?.filter((line) => present.has(line.a) && present.has(line.b)) ?? null;
-      // Jami answered without changing anything -- a question, or a request it declined.
-      if (Object.keys(positions).length === 0 && lines === null) return pattern.reply;
-
-      const before = {
-        constellationId: constellation.id,
-        positions: Object.fromEntries(visibleStars.map((star) => [star.id, star.position])),
-        lines: constellation.lines,
-      };
-      try {
-        await applySkyArrangement(constellation.id, positions, lines ?? constellation.lines);
-      } catch (error) {
-        console.error("Failed to save Jami's arrangement.", error);
-        void loadAll();
-        throw new Error("Jami arranged your stars, but they could not be saved. Try again.");
-      }
-      setSkyPatternUndo(before);
-      if (pattern.drawing) {
-        setLastSkyDrawing({ constellationId: constellation.id, drawing: pattern.drawing });
-      }
-      return pattern.reply;
-    },
-    [applySkyArrangement, lastSkyDrawing, loadAll, selectedConstellation, visibleStars]
-  );
-
-  const handleUndoSkyPattern = useCallback(() => {
-    const before = skyPatternUndo;
-    if (!before) return;
-    setSkyPatternUndo(null);
-    // What is on the sky is no longer Jami's drawing, so a follow-up starts fresh.
-    setLastSkyDrawing(null);
-    void applySkyArrangement(before.constellationId, before.positions, before.lines).catch(
-      (error: unknown) => {
-        console.error("Failed to undo Jami's arrangement.", error);
-        showError("Could not put your sky back. Try again.");
-        void loadAll();
-      }
-    );
-  }, [applySkyArrangement, loadAll, showError, skyPatternUndo]);
+    onReloadNeeded: () => void loadAll(),
+    onError: showError,
+  });
 
   /*
    * Stable, because the drawn figure is memoised on it. An arrow function
