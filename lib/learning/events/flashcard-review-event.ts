@@ -33,6 +33,15 @@ export type FlashcardReviewEvent = {
   correct: boolean;
   /** Absent for simple study, which has a right/wrong result and no rating. */
   rating?: CardRating;
+  /**
+   * The recommendation that opened the session this answer was given in.
+   *
+   * Absent for ordinary study, which is most of it. Present, it is what lets
+   * the engine ask the only question that matters about its own advice: of the
+   * evidence that arrived after a student acted, which of it arrived *because*
+   * they acted.
+   */
+  interventionId?: string;
 };
 
 export type FlashcardReviewEventWrite = Omit<FlashcardReviewEvent, "id"> & {
@@ -40,10 +49,10 @@ export type FlashcardReviewEventWrite = Omit<FlashcardReviewEvent, "id"> & {
   createdAt: number;
 };
 
-function readId(value: unknown) {
+function readId(value: unknown, maxLength = MAX_ID_LENGTH) {
   if (typeof value !== "string") return "";
   const id = value.trim();
-  return id.length > 0 && id.length <= MAX_ID_LENGTH && !id.includes("/") ? id : "";
+  return id.length > 0 && id.length <= maxLength && !id.includes("/") ? id : "";
 }
 
 function isCardRating(value: unknown): value is CardRating {
@@ -62,7 +71,14 @@ export function flashcardReviewEventId(review: Pick<OfflineQueuedReview, "commit
 export function buildFlashcardReviewEventWrite(
   review: Pick<
     OfflineQueuedReview,
-    "cardId" | "deckId" | "reviewedAt" | "studyDayKey" | "isCorrect" | "rating" | "sessionKind"
+    | "cardId"
+    | "deckId"
+    | "reviewedAt"
+    | "studyDayKey"
+    | "isCorrect"
+    | "rating"
+    | "sessionKind"
+    | "interventionId"
   >,
   createdAt: number
 ): FlashcardReviewEventWrite | null {
@@ -86,6 +102,7 @@ export function buildFlashcardReviewEventWrite(
     ...(review.sessionKind !== "simple" && isCardRating(review.rating)
       ? { rating: review.rating }
       : {}),
+    ...(readId(review.interventionId) ? { interventionId: readId(review.interventionId) } : {}),
     createdAt,
   };
 }
@@ -113,6 +130,7 @@ export function decodeFlashcardReviewEvent(
   ) {
     return null;
   }
+  const interventionId = readId(data.interventionId, 400);
   return {
     id,
     cardId,
@@ -121,6 +139,7 @@ export function decodeFlashcardReviewEvent(
     studyDayKey,
     correct: data.correct,
     ...(isCardRating(data.rating) ? { rating: data.rating } : {}),
+    ...(interventionId ? { interventionId } : {}),
   };
 }
 

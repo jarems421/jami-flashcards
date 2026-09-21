@@ -45,6 +45,9 @@ export type ActionHistory = {
   lastActedAt?: number;
   dismissals: number;
   lastDismissedAt?: number;
+  /** Times the student opened the work and left it unfinished. */
+  abandons: number;
+  lastAbandonedAt?: number;
 };
 
 /** Group a student's raw events by the action they are about. */
@@ -53,9 +56,20 @@ export function summariseActionHistory(
 ): Map<string, ActionHistory> {
   const byAction = new Map<string, ActionHistory>();
   for (const event of events) {
-    const current = byAction.get(event.actionId) ?? { dismissals: 0 };
+    const current = byAction.get(event.actionId) ?? { dismissals: 0, abandons: 0 };
     if (event.outcome === "started" || event.outcome === "completed") {
       current.lastActedAt = Math.max(current.lastActedAt ?? 0, event.at);
+    } else if (event.outcome === "abandoned") {
+      /*
+       * Walking away is not refusing, and it is not doing it either.
+       *
+       * It does not rest the advice as acting would -- the work is still
+       * undone -- and it does not count towards the dismissal threshold, which
+       * is about a student telling Jami "not this". Someone who opens a session
+       * and gets interrupted has said nothing at all.
+       */
+      current.abandons += 1;
+      current.lastAbandonedAt = Math.max(current.lastAbandonedAt ?? 0, event.at);
     } else if (event.outcome === "dismissed") {
       current.dismissals += 1;
       current.lastDismissedAt = Math.max(current.lastDismissedAt ?? 0, event.at);

@@ -1,3 +1,8 @@
+
+import {
+  normalizeTopicSpecificationRelation,
+  type TopicSpecificationRelation,
+} from "@/lib/learning/concepts/topic-relations";
 import {
   normalizeOptionalString,
   normalizeStringArray,
@@ -20,6 +25,14 @@ export type Topic = {
   createdAt: number;
   updatedAt: number;
   statsSummary?: Record<string, unknown>;
+  /**
+   * How this Topic relates to the exam specification, when someone has said.
+   *
+   * Absent for almost every Topic, and absent is not "unknown so guess" -- it
+   * means this Topic's evidence stays where it is. See
+   * `lib/learning/concepts/topic-relations.ts`.
+   */
+  specificationRelation?: TopicSpecificationRelation;
 };
 
 export const MAX_TOPIC_NAME_LENGTH = 80;
@@ -90,5 +103,6 @@ export function mapTopicData(id: string, data: Record<string, unknown>): Topic {
       data.statsSummary && typeof data.statsSummary === "object" && !Array.isArray(data.statsSummary)
         ? (data.statsSummary as Record<string, unknown>)
         : undefined,
+    specificationRelation: normalizeTopicSpecificationRelation(data.specificationRelation),
   };
 }

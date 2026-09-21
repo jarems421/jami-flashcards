@@ -8,7 +8,8 @@ export type FeatureFlagKey =
   | "enableLearnerProfile"
   | "enableFlashcardReviewEvents"
   | "enableStudyActions"
-  | "enableRevisionPlans";
+  | "enableRevisionPlans"
+  | "enableConceptRelations";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
@@ -53,6 +54,17 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    * has not asked for it. A public override still removes the surface.
    */
   enableRevisionPlans: true,
+  /*
+   * Off, deliberately, and the only flag here that starts that way.
+   *
+   * Joining a student's own Topics to the specification changes numbers a
+   * student has already been shown: evidence that was split across two
+   * unrelated concepts starts meeting, and a topic's mastery moves as a
+   * result. That is correct rather than a fault, but it is visible, and it
+   * should be looked at on real evidence before anyone sees it -- see
+   * `scripts/eval/concept-relation-diff.ts`.
+   */
+  enableConceptRelations: false,
 };
 
 /**
@@ -73,6 +85,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableFlashcardReviewEvents: process.env.NEXT_PUBLIC_ENABLE_FLASHCARD_REVIEW_EVENTS,
   enableStudyActions: process.env.NEXT_PUBLIC_ENABLE_STUDY_ACTIONS,
   enableRevisionPlans: process.env.NEXT_PUBLIC_ENABLE_REVISION_PLANS,
+  enableConceptRelations: process.env.NEXT_PUBLIC_ENABLE_CONCEPT_RELATIONS,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -98,4 +111,5 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableFlashcardReviewEvents: isFeatureEnabled("enableFlashcardReviewEvents"),
   enableStudyActions: isFeatureEnabled("enableStudyActions"),
   enableRevisionPlans: isFeatureEnabled("enableRevisionPlans"),
+  enableConceptRelations: isFeatureEnabled("enableConceptRelations"),
 };

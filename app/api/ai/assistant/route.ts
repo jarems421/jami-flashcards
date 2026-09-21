@@ -17,6 +17,7 @@ import {
   getTutorRoutingSignals,
   getJamiAssistantResponseGuidance,
   isRoutineNotebookMarkMyWork,
+  invitesNotebookMarking,
   parseJamiAssistantModelAnswer,
   parseJamiAssistantRequest,
   parseTutorRoutingPreflight,
@@ -42,6 +43,7 @@ import {
 } from "@/services/ai/budgets";
 import { getAiInputTokenCap } from "@/lib/ai/budgets";
 import { buildAssistantResponseSchema } from "./response-schema";
+import { recordNotebookMarking } from "@/services/learning/notebook-markings.server";
 import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
 import { cleanAiResponseText } from "@/lib/ai/response-text";
 import {
@@ -85,6 +87,25 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /** One attempt, and the whole call including a fall back to the second model. */
+/**
+ * What Tutor is told when the student has asked to be marked.
+ *
+ * Added only on those turns. The whole of the second half is about when NOT
+ * to answer: a marking that is left out costs nothing and can be asked for
+ * again, while a guessed one becomes a permanent record of an assessment that
+ * never happened.
+ */
+const MARKING_INSTRUCTION = [
+  "The student has asked to be marked. If, and only if, you can justify every mark",
+  "against working you can actually see, also return a \"marking\" object: the marks",
+  "earned, the marks available, and one entry per mark-worthy point saying what it",
+  "was for and whether they earned it. The marks you award across those points must",
+  "add up to the total you give.",
+  "If the page is unclear, incomplete, or you would be estimating, leave \"marking\"",
+  "out entirely and say so in your answer. Describe each point in your own words;",
+  "never quote what the student wrote into it.",
+].join(" ");
+
 const REQUEST_TIMEOUT_MS = 30_000;
 const REQUEST_DEADLINE_MS = 50_000;
 /**
@@ -490,7 +511,18 @@ export async function POST(request: NextRequest) {
   }
 
   const allowedSourceRefs = readable.map((result) => result.sourceRef);
-  const responseSchema = buildAssistantResponseSchema(allowedSourceRefs);
+  /*
+   * Whether this turn may carry a marking at all.
+   *
+   * Decided here, before the model is asked anything, so an ordinary tutoring
+   * turn is never even offered the field. A student asking "can you check my
+   * working" is asking for help, and help must not become assessed evidence.
+   */
+  const markingInvited = invitesNotebookMarking({
+    message: parsedRequest.message,
+    context: parsedRequest.context,
+  });
+  const responseSchema = buildAssistantResponseSchema(allowedSourceRefs, markingInvited);
   const systemInstruction = `You are Jami, a capable, calm study tutor.
 ${resolved.studyLevelContext ? `${resolved.studyLevelContext}\n` : ""}Treat the student's latest explicit request as the strongest signal for the depth and kind of help they want.
 Use your reliable general academic knowledge freely. The student's current work and optional Jami sources are extra context, not a restriction on what you know.
@@ -513,6 +545,7 @@ ${resolved.learningContext ? `${resolved.learningContext}\n` : ""}${resolved.per
 sourceRefs must contain only references that materially informed the response. It may be empty. Set each used boolean truthfully.
 Be specific, supportive, and focused on helping the student understand.
 
+${markingInvited ? MARKING_INSTRUCTION : ""}
 ${getJsonAnswerFormatPrompt("answer")}
 
 ${responseGuidance.instruction}`;
@@ -1084,6 +1117,47 @@ ${responseGuidance.instruction}`;
           updatedAt: now,
         });
         await batch.commit();
+
+        /*
+         * Record Tutor's verdict, if it actually produced one.
+         *
+         * After the answer is saved and deliberately outside the batch: a
+         * rejected marking, or a failure to write one, must cost the student
+         * nothing. They asked a question and they have their answer. The
+         * record is filed per page, so a retry or a regenerated response
+         * replaces the verdict rather than adding a second one.
+         *
+         * Both outcomes are logged, because a marker that is always rejected
+         * looks exactly like a marker nobody uses.
+         */
+        if (markingInvited && parsedRequest.context.surface === "notebook") {
+          try {
+            const outcome = await recordNotebookMarking({
+              uid,
+              notebookId: parsedRequest.context.notebookId,
+              pageId: parsedRequest.context.pageId,
+              topicIds: resolved.topicIds ?? [],
+              verdict: parsedAnswer.marking,
+            });
+            /*
+             * Four outcomes, named apart, because three of them look like
+             * failure and only one is. A model that declines an unmarkable
+             * page did the right thing; a model that offered nothing may have
+             * done the right thing too. Neither is a rejected marking.
+             */
+            if (outcome.recorded) {
+              log.info("marking.accepted");
+            } else if (parsedAnswer.marking === undefined) {
+              log.info("marking.not_offered");
+            } else if (outcome.reason === "declined") {
+              log.info("marking.declined");
+            } else {
+              log.info("marking.rejected", { reason: outcome.reason });
+            }
+          } catch (error) {
+            log.warn("marking.write_failed", { error });
+          }
+        }
 
         // The retry path, and any cleanup applied to the streamed text, can
         // leave what was shown out of step with the final answer. Sending the

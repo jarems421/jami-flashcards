@@ -2,6 +2,7 @@ import {
   normalizeOptionalString,
   normalizeStringArray,
 } from "@/lib/material/content";
+import { filterCanonicalConceptIds } from "@/lib/practice/exam-specification-concepts";
 import {
   calculatePracticePaperPercentage,
   getPracticePaperGradeLabel,
@@ -157,6 +158,21 @@ export type PracticePaperQuestion = {
    * stored paper predates this.
    */
   section?: string;
+  /**
+   * The specification concepts this question tests, where they are known.
+   *
+   * Written when the paper is generated: the pipeline is told which concepts
+   * the paper is for and asks for each question to name the one it was written
+   * against, so nothing has to be rediscovered afterwards from the wording.
+   *
+   * Absent on every paper generated before this existed, and absent means
+   * absent -- the Learning Engine counts such a question towards recurring
+   * errors and the overall trend, as it always did, and towards no concept at
+   * all. Guessing a concept from the prompt is the inference the engine exists
+   * to avoid making. See `scripts/eval/practice-concept-backfill.ts` for the
+   * legacy path.
+   */
+  conceptIds?: string[];
 };
 
 export type PracticePaperChoiceGroup = {
@@ -565,7 +581,11 @@ export function normalizePracticePaperAssessmentProfile(
   };
 }
 
-export function normalizePracticePaperQuestions(value: unknown) {
+export function normalizePracticePaperQuestions(
+  value: unknown,
+  /** The course whose catalogue any concept id must belong to; without it, none are kept. */
+  specificationId?: string
+) {
   if (!Array.isArray(value)) return [];
   const questions: PracticePaperQuestion[] = [];
   const seen = new Set<string>();
@@ -576,6 +596,16 @@ export function normalizePracticePaperQuestions(value: unknown) {
     const prompt = normalizeOptionalString(item.prompt, 4_000) ?? "";
     if (!id || !prompt || seen.has(id)) continue;
     seen.add(id);
+    /*
+     * Kept only where a checked catalogue holds the id. A concept the course
+     * does not have is not a near miss worth correcting: it is a concept this
+     * student's specification never mentions, and attributing evidence to it
+     * would be worse than attributing none.
+     */
+    const conceptIds = specificationId
+      ? filterCanonicalConceptIds(specificationId, normalizeStringArray(item.conceptIds, 8, 160))
+          .conceptIds
+      : [];
     questions.push({
       id,
       label: normalizeOptionalString(item.label, 80) ?? `Question ${questions.length + 1}`,
@@ -585,6 +615,7 @@ export function normalizePracticePaperQuestions(value: unknown) {
         ? { section: normalizeOptionalString(item.section, 80)! }
         : {}),
       assets: normalizeQuestionAssets(item.assets),
+      ...(conceptIds.length > 0 ? { conceptIds } : {}),
     });
   }
   return questions;
@@ -998,9 +1029,19 @@ export function mapPracticePaperAttemptData(
 
 export function mapPracticePaperData(
   id: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  /**
+   * The catalogue any stored concept id is checked against.
+   *
+   * The paper itself records its course only as the wording a student would
+   * read ("AQA GCSE Mathematics 8300"), which is not a catalogue id. The
+   * folder the paper lives in holds the real one, so the caller supplies it.
+   * Without it no concept is kept, which is the safe direction: unattributed
+   * evidence rather than evidence attributed to a course it is not from.
+   */
+  specificationId?: string
 ): PracticePaper {
-  const questions = normalizePracticePaperQuestions(data.questions);
+  const questions = normalizePracticePaperQuestions(data.questions, specificationId);
   const choiceGroups = normalizePracticePaperChoiceGroups(data.choiceGroups, questions);
   const totalMarks = calculatePracticePaperTotalMarks(questions, choiceGroups);
   return {

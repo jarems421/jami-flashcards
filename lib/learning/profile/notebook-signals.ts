@@ -1,4 +1,8 @@
-import { readMarkedAnswer, type StoredMarkedAnswer } from "@/lib/learning/profile/marked-answer";
+import {
+  markedAnswerWeight,
+  readMarkedAnswer,
+  type StoredMarkedAnswer,
+} from "@/lib/learning/profile/marked-answer";
 import { isValidEvidenceTime } from "@/lib/learning/evidence-time";
 import type { LearningObservation } from "@/lib/learning/types";
 
@@ -25,17 +29,6 @@ import type { LearningObservation } from "@/lib/learning/types";
  * past the confidence needed to call it strong. Everything downstream --
  * capping per item, sharing across concepts, recency -- applies unchanged.
  */
-
-/**
- * What one marked notebook page is worth against one marked exam question.
- *
- * A third. Chosen to sit below a past-paper answer (1.0) and a practice-paper
- * question, and above nothing, which is what it was worth before. This is a
- * hand-set starting point like every constant in `tuning.ts` and it belongs in
- * the same fitting process once there is enough marked notebook work to fit it
- * against.
- */
-export const NOTEBOOK_EVIDENCE_WEIGHT = 1 / 3;
 
 export type NotebookMarkedWorking = {
   /** The marking record's own id, so one marking can never count twice. */
@@ -102,7 +95,9 @@ export function notebookObservations(
       topicKeys,
       topicShares: Object.fromEntries(topicKeys.map((key) => [key, share])),
       score: read.score,
-      weight: NOTEBOOK_EVIDENCE_WEIGHT,
+      // Scales with the work marked, like every other marked source; how much
+      // notebook marking is trusted lives in `evidenceSourceWeight`.
+      weight: markedAnswerWeight(read.maxMarks),
       count: 1,
       at: marking.markedAt,
       // Each marking is dated, so a series of them is a real change over time.

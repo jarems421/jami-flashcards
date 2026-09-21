@@ -24,6 +24,11 @@ import {
   type NotebookMarkedWorking,
 } from "@/lib/learning/profile/notebook-signals";
 import {
+  applyTopicRelations,
+  resolveTopicRelations,
+  type TopicRelationInput,
+} from "@/lib/learning/concepts/topic-relations";
+import {
   pastPaperObservations,
   type PastPaperEvidenceAttempt,
 } from "@/lib/learning/profile/past-paper-signals";
@@ -108,6 +113,12 @@ export type LearnerEvidence = {
   concepts?: readonly LearningConcept[];
   /** Keys that now mean another concept, such as a merged Topic. */
   conceptRedirects?: Readonly<Record<string, string>>;
+  /**
+   * How the student's own Topics relate to the specification, where anyone has
+   * said. Empty unless `enableConceptRelations` is on; see
+   * `lib/learning/concepts/topic-relations.ts`.
+   */
+  topicRelations?: readonly TopicRelationInput[];
   /** Topic-linked notebooks and sources in scope: exposure, never evidence. */
   exposureItems?: readonly LearnerExposureItem[];
   /** Concepts the folder itself lists, which exist for it whatever the evidence. */
@@ -155,8 +166,7 @@ const EMPTY_DEMONSTRATION_COUNTS: Record<LearningDemonstration, number> = {
  * key. Drafts and unchecked catalogue entries never enter.
  */
 export function buildEvidenceConceptRegistry(evidence: LearnerEvidence): ConceptRegistry {
-  return buildConceptRegistry({
-    concepts: [
+  const declared: LearningConcept[] = [
       ...(evidence.specification?.topics ?? []).map(
         (topic): LearningConcept => ({
           key: `spec:${topic.id}`,
@@ -175,9 +185,27 @@ export function buildEvidenceConceptRegistry(evidence: LearnerEvidence): Concept
           verified: true,
         })
       ),
-      ...(evidence.concepts ?? []),
-    ],
-    ...(evidence.conceptRedirects ? { redirects: evidence.conceptRedirects } : {}),
+    ...(evidence.concepts ?? []),
+  ];
+
+  /*
+   * Relations are laid over the concepts rather than mixed in with them,
+   * because they change how existing concepts hang rather than adding new
+   * ones: a covered specification concept gets the student's Topic as its
+   * parent, and that Topic takes the parent the concept used to have.
+   *
+   * Nothing downstream changes. Evidence still expands upward only, so a
+   * flashcard on the broad Topic stays broad while an exam answer on one
+   * covered concept counts there and rolls up to meet it.
+   */
+  const resolution = resolveTopicRelations(
+    evidence.topicRelations ?? [],
+    declared.filter((concept) => concept.key.startsWith("spec:"))
+  );
+
+  return buildConceptRegistry({
+    concepts: applyTopicRelations(declared, resolution),
+    redirects: { ...(evidence.conceptRedirects ?? {}), ...resolution.redirects },
   });
 }
 

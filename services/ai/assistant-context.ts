@@ -784,6 +784,14 @@ export async function resolveJamiAssistantContext(input: {
     studyLevelContext: preferences.studyLevelContext,
     personalisationContext: preferences.personalisationContext,
     ...(learningContext ? { learningContext } : {}),
+    /**
+     * The Topics this material is filed under.
+     *
+     * Needed so a marking of a notebook page can be placed on a concept:
+     * evidence that cannot be attributed is discarded, so a page in an
+     * untagged notebook produces none. Already loaded for source selection.
+     */
+    topicIds: resolved.relations.topicIds,
     reasoningEffort: preferences.reasoningEffort,
   };
 }

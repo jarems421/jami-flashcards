@@ -194,6 +194,14 @@ describe("Firestore security rules", () => {
     // Written once, never edited.
     await assertFails(updateDoc(event("commit-1"), { correct: false }));
     // Nothing beyond the compact shape: no card or answer text rides along.
+    // Which recommendation opened the session an answer was given in.
+    await assertSucceeds(
+      setDoc(event("commit-8"), {
+        ...valid,
+        interventionId: "folder:f1|low_mastery|topic:osmosis",
+      })
+    );
+    await assertFails(setDoc(event("commit-9"), { ...valid, interventionId: "" }));
     await assertFails(setDoc(event("commit-4"), { ...valid, front: "Question" }));
     await assertFails(setDoc(event("commit-5"), { ...valid, rating: "perfect" }));
     await assertFails(setDoc(event("commit-6"), { ...valid, schemaVersion: 2 }));
@@ -243,6 +251,9 @@ describe("Firestore security rules", () => {
     await assertFails(updateDoc(event("2026-09-21_shown_abc"), { outcome: "completed" }));
     // Nothing beyond the compact shape: no labels, no student wording.
     await assertFails(setDoc(event("bad-1"), { ...valid, label: "Revisit Osmosis" }));
+    await assertSucceeds(
+      setDoc(event("2026-09-21_abandoned_abc"), { ...valid, outcome: "abandoned" })
+    );
     await assertFails(setDoc(event("bad-2"), { ...valid, outcome: "ignored" }));
     await assertFails(setDoc(event("bad-3"), { ...valid, reason: "because" }));
     await assertFails(setDoc(event("bad-4"), { ...valid, schemaVersion: 2 }));
@@ -250,6 +261,64 @@ describe("Firestore security rules", () => {
     await assertFails(setDoc(event("bad-6"), { ...valid, actionId: "" }));
 
     await assertSucceeds(deleteDoc(event("2026-09-21_shown_abc")));
+  });
+
+  it("keeps Tutor's marking of a page server-written and owner-readable", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const marking = doc(aliceDb, "users", ALICE, "notebookMarkings", "nb-1_page-3");
+    const record = {
+      schemaVersion: 1,
+      notebookId: "nb-1",
+      pageId: "page-3",
+      topicIds: ["quadratics"],
+      markedAt: 1_789_000_000_000,
+      awardedMarks: 3,
+      maxMarks: 5,
+      criterionResults: [{ criterion: "States the gradient", awarded: true }],
+      provenance: "tutor",
+      markerVersion: "tutor-notebook-marking-v1-2026-09-21",
+      createdAt: 1_789_000_000_001,
+    };
+
+    // A student who could write their own marks could write their own evidence.
+    await assertFails(setDoc(marking, record));
+    await assertFails(setDoc(doc(bobDb, "users", ALICE, "notebookMarkings", "x"), record));
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(context.firestore(), "users", ALICE, "notebookMarkings", "nb-1_page-3"),
+        record
+      );
+    });
+    await assertSucceeds(getDoc(marking));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "notebookMarkings", "nb-1_page-3")));
+    // Deletable with the page it describes.
+    await assertSucceeds(deleteDoc(marking));
+  });
+
+  it("keeps a Topic's specification relation inside the owner's own subtree", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const topic = doc(aliceDb, "users", ALICE, "topics", "quadratics");
+    const relation = {
+      name: "Quadratics",
+      subject: "Maths",
+      status: "active",
+      specificationRelation: {
+        type: "covers",
+        conceptIds: ["completing-the-square", "factorisation"],
+        confirmedByOwner: true,
+      },
+    };
+
+    await assertSucceeds(setDoc(topic, relation));
+    await assertSucceeds(getDoc(topic));
+    // A relation decides how this student's evidence is attributed; nobody else may set it.
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "topics", "quadratics")));
+    await assertFails(setDoc(doc(bobDb, "users", ALICE, "topics", "other"), relation));
+    // Reversible: withdrawing the relation is an ordinary owner write.
+    await assertSucceeds(updateDoc(topic, { specificationRelation: null }));
   });
 
   it("allows owners to read decks stored with either userId or legacy uid", async () => {
