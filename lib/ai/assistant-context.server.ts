@@ -15,6 +15,8 @@ export type SourceRelations = {
 };
 
 export type ResolvedJamiAssistantContext = {
+  /** Topics this material is filed under, so a marking can be placed on a concept. */
+  topicIds?: readonly string[];
   currentId: string;
   currentLabel: string;
   currentParts: AiContentPart[];

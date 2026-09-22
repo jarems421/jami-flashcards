@@ -1,6 +1,6 @@
 import { normalizeCardImage, type CardImage } from "@/lib/study/card-images";
 import { normalizeStudyTextInput } from "@/lib/study/display-text";
-import { normalizeStringArray } from "@/lib/material/content";
+import { normalizeOptionalString, normalizeStringArray } from "@/lib/material/content";
 import type { CardStudySettings } from "@/lib/study/study-modes";
 
 export const MAX_FRONT_LENGTH = 400;
@@ -26,6 +26,15 @@ export type Card = {
   tags: string[];
   topicIds?: string[];
   sourceIds?: string[];
+  /**
+   * The recommendation that caused this card to be written, when Jami made it.
+   *
+   * Provenance only. Creating a card is not evidence that anybody knows
+   * anything -- the reviews that follow are, and this is what lets those
+   * reviews be attributed to the advice that produced the card even when the
+   * student comes back to it days later by their own route.
+   */
+  createdByInterventionId?: string;
   // Legacy SM-2 fields (kept for backward compat)
   interval?: number;
   repetitions?: number;
@@ -495,6 +504,7 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     tags: normalizeCardTags(data.tags),
     topicIds: normalizeStringArray(data.topicIds, MAX_CARD_LEGACY_TOPIC_IDS, 120),
+    createdByInterventionId: normalizeOptionalString(data.createdByInterventionId, 400),
     sourceIds: normalizeStringArray(data.sourceIds, 30, 160),
     interval: typeof data.interval === "number" ? data.interval : undefined,
     repetitions: typeof data.repetitions === "number" ? data.repetitions : undefined,

@@ -11,6 +11,8 @@
  * so the tuning object stays a plain description of the model's constants.
  */
 
+import type { LearningEvidenceKind } from "@/lib/learning/types";
+
 export type LearningTuning = {
   /** How quickly old evidence fades, in days, as a half-life. */
   masteryRecencyHalfLifeDays: number;
@@ -39,6 +41,19 @@ export type LearningTuning = {
    * how this student does across the whole scope. Zero never pools.
    */
   studentPriorStrength: number;
+  /**
+   * What an answer is worth according to where it came from, before its size
+   * and its age are considered.
+   *
+   * Every source already scaled with the marks at stake, and nothing scaled
+   * with how much the source could be trusted -- so a six-mark question Jami
+   * wrote, marked by a scheme Jami also wrote, counted exactly as much as a
+   * six-mark question from a real paper marked against the board's own scheme.
+   * Twelve generated questions then outweighed three real ones, which is the
+   * wrong way round: volume is the one thing generated practice has in
+   * unlimited supply.
+   */
+  evidenceSourceWeight: Record<LearningEvidenceKind, number>;
 };
 
 /**
@@ -94,4 +109,37 @@ export const DEFAULT_LEARNING_TUNING: LearningTuning = {
   flashcardRelearningCap: 0.25,
   masteryHorizonDays: 7,
   studentPriorStrength: 1,
+  /*
+   * A real exam question is the reference at 1: a question a board set, marked
+   * against a scheme a board published.
+   *
+   * `past-paper` 1. The thing everything else is measured against.
+   *
+   * `practice` 0.6. A generated question testing a real concept, marked by a
+   * generated scheme. Genuine evidence about application -- it is the student's
+   * own work on a question they could not see the answer to -- but the question
+   * and the marking are both Jami's, and there is no shortage of them. At 0.6
+   * it takes five generated questions to say what three real ones say.
+   *
+   * `flashcards` 1, deliberately. A flashcard answered is a flashcard
+   * answered: there is nothing untrustworthy about the source. Recall is a
+   * different *claim* from application, not a less reliable one, and that
+   * distinction is already carried by the concept hierarchy -- cards sit on
+   * the broad Topic, exam answers on the concept beneath it, and the two never
+   * merge. Trying to express it here as well was both wrong and harmful:
+   * scaling every card down uniformly strengthens the prior against them,
+   * which flattened nothing and made `fitLearningTuning` start reporting a
+   * half-life that is really noise. The fitting harness caught it.
+   *
+   * `notebook` 0.35, and this is the one that also changes shape: it used to be
+   * a flat third regardless of how much work was marked, so a twenty-mark page
+   * and a two-mark aside counted alike. It now scales with the marks like every
+   * other marked source, and carries its own low multiplier instead.
+   */
+  evidenceSourceWeight: {
+    "past-paper": 1,
+    practice: 0.6,
+    flashcards: 1,
+    notebook: 0.35,
+  },
 };

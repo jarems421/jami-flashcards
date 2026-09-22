@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  NOTEBOOK_EVIDENCE_WEIGHT,
   notebookObservations,
   type NotebookMarkedWorking,
 } from "@/lib/learning/profile/notebook-signals";
 import { masteryScore } from "@/lib/learning/scoring/mastery-score";
+import { sourceWeight } from "@/lib/learning/scoring/item-weights";
+import { DEFAULT_LEARNING_TUNING } from "@/lib/learning/scoring/tuning";
 import { evidenceConfidence } from "@/lib/learning/scoring/confidence-score";
 import { MIN_STRENGTH_CONFIDENCE } from "@/lib/learning/profile/thresholds";
 
@@ -33,8 +34,12 @@ describe("marked notebook working as evidence", () => {
 
   it("counts for less than an answer marked against a scheme", () => {
     const [observation] = notebookObservations([marking()]);
-    expect(observation?.weight).toBe(NOTEBOOK_EVIDENCE_WEIGHT);
-    expect(NOTEBOOK_EVIDENCE_WEIGHT).toBeLessThan(1);
+    // Scales with the marks like every marked source; how far it is trusted
+    // is `evidenceSourceWeight.notebook`, applied by the scorer.
+    expect(sourceWeight(observation!)).toBeLessThan(observation!.weight);
+    expect(DEFAULT_LEARNING_TUNING.evidenceSourceWeight.notebook).toBeLessThan(
+      DEFAULT_LEARNING_TUNING.evidenceSourceWeight["past-paper"]
+    );
   });
 
   it("cannot by itself make a topic read as well evidenced", () => {
@@ -75,7 +80,12 @@ describe("marked notebook working as evidence", () => {
 
   it("moves a mastery estimate, but less than a marked exam answer would", () => {
     const notebook = notebookObservations([marking({ result: { attempted: true, counted: true, awardedMarks: 0, maxMarks: 4 } })]);
-    const asExamAnswer = notebook.map((observation) => ({ ...observation, weight: 1 }));
+    // The same answer, reconsidered as if a real paper had asked it: the only
+    // thing that changes is where it came from.
+    const asExamAnswer = notebook.map((observation) => ({
+      ...observation,
+      kind: "past-paper" as const,
+    }));
     const neutral = masteryScore([], NOW);
     expect(masteryScore(notebook, NOW)).toBeLessThan(neutral);
     expect(masteryScore(notebook, NOW)).toBeGreaterThan(masteryScore(asExamAnswer, NOW));

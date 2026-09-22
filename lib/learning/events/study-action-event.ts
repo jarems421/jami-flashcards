@@ -38,10 +38,32 @@ const MAX_ID_LENGTH = 200;
  * `started` means the destination was opened. `completed` means work actually
  * landed -- a session finished, a question marked -- and is written by the
  * surface that did it, never by the link.
+ *
+ * `abandoned` means the student opened the work and left it unfinished, and it
+ * is recorded by the surface at the moment they go. It is deliberately NOT
+ * derived from the absence of a `completed`: a session still open, a page
+ * closed mid-answer and a browser crash all look identical from the outside,
+ * and none of them is a student deciding to stop. An intervention with a
+ * `started` and no terminal event is simply still open.
+ *
+ * Nor is it the same as producing no evidence. A student can finish a session
+ * having answered nothing, which is `completed` with no attributed answers --
+ * a different fact about a different thing.
  */
-export type StudyActionOutcome = "shown" | "started" | "completed" | "dismissed";
+export type StudyActionOutcome =
+  | "shown"
+  | "started"
+  | "completed"
+  | "dismissed"
+  | "abandoned";
 
-const OUTCOMES: readonly StudyActionOutcome[] = ["shown", "started", "completed", "dismissed"];
+const OUTCOMES: readonly StudyActionOutcome[] = [
+  "shown",
+  "started",
+  "completed",
+  "dismissed",
+  "abandoned",
+];
 
 export type StudyActionEvent = {
   id: string;

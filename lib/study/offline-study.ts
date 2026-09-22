@@ -27,6 +27,16 @@ export type OfflineQueuedReview = {
   durationMs?: number;
   sessionKind: "daily-required" | "daily-optional" | "custom" | "simple";
   intent?: import("@/services/study/commit-intent").StudyCommitIntent;
+  /**
+   * The recommendation whose session this answer was given in, when one opened
+   * it. See `lib/learning/events/study-action-event.ts`.
+   *
+   * Carried on the answer rather than inferred later because timestamps cannot
+   * do this job: a student starts nine cards, does six, comes back two days
+   * later and studies something else entirely. Without the id, deciding which
+   * evidence belongs to which intervention is guesswork dressed as a window.
+   */
+  interventionId?: string;
   cardUpdates: CardReviewValueUpdates;
   clearMemoryRiskOverrideDayKey?: boolean;
 };

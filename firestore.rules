@@ -259,7 +259,7 @@ service cloud.firestore {
         allow delete: if isSelf(userId) && !isDemoAccount();
 
         function isFlashcardReviewEvent(data) {
-          return data.keys().hasOnly(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'rating', 'createdAt']) &&
+          return data.keys().hasOnly(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'rating', 'interventionId', 'createdAt']) &&
             data.keys().hasAll(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'createdAt']) &&
             data.schemaVersion == 1 &&
             data.cardId is string && data.cardId.size() > 0 && data.cardId.size() <= 160 &&
@@ -268,8 +268,24 @@ service cloud.firestore {
             data.createdAt is number &&
             data.studyDayKey is string && data.studyDayKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
             data.correct is bool &&
-            (!('rating' in data) || data.rating in ['again', 'hard', 'good', 'easy']);
+            (!('rating' in data) || data.rating in ['again', 'hard', 'good', 'easy']) &&
+            // Which recommendation opened the session this answer was given in.
+            (!('interventionId' in data) || (data.interventionId is string && data.interventionId.size() > 0 && data.interventionId.size() <= 400));
         }
+      }
+
+      /*
+       * Tutor's verdict on a page of the student's own working.
+       *
+       * Server-written only. A client that could write here could award itself
+       * marks, and this is evidence about what a student knows -- the one kind
+       * of record where an unverifiable self-report is worse than nothing.
+       * Readable by its owner, and deletable with the page it describes.
+       */
+      match /notebookMarkings/{markingId} {
+        allow read: if isSelf(userId);
+        allow create, update: if false;
+        allow delete: if isSelf(userId) && !isDemoAccount();
       }
 
       /*
@@ -292,7 +308,7 @@ service cloud.firestore {
             data.actionId is string && data.actionId.size() > 0 && data.actionId.size() <= 200 &&
             data.targetKey is string && data.targetKey.size() > 0 && data.targetKey.size() <= 200 &&
             data.reason in ['persistent_error', 'declining_mastery', 'knowledge_decay', 'low_mastery', 'low_confidence', 'due_for_retrieval', 'recent_improvement_needs_reinforcement', 'untested_exposure', 'not_yet_assessed'] &&
-            data.outcome in ['shown', 'started', 'completed', 'dismissed'] &&
+            data.outcome in ['shown', 'started', 'completed', 'dismissed', 'abandoned'] &&
             data.at is number &&
             data.createdAt is number &&
             data.studyDayKey is string && data.studyDayKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&

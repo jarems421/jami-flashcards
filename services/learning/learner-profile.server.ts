@@ -11,6 +11,7 @@ import {
   type LearnerSpecification,
 } from "@/lib/learning/profile/build-learner-profile";
 import type { LearnerExposureItem } from "@/lib/learning/profile/exposure";
+import type { TopicRelationInput } from "@/lib/learning/concepts/topic-relations";
 import type { FlashcardEvidenceCard } from "@/lib/learning/profile/flashcard-signals";
 import type { StoredMarkedAnswer } from "@/lib/learning/profile/marked-answer";
 import type { PastPaperEvidenceAttempt } from "@/lib/learning/profile/past-paper-signals";
@@ -28,10 +29,14 @@ import { mapSourceData } from "@/lib/material/sources";
 import { mapTopicData, type Topic } from "@/lib/material/topics";
 import { servableExamSpecificationConcepts } from "@/lib/practice/exam-specification-concepts";
 import { servableExamSpecificationTopics } from "@/lib/practice/exam-specification-topics";
-import { mapPracticePaperAttemptData } from "@/lib/practice/practice-papers";
+import {
+  mapPracticePaperAttemptData,
+  mapPracticePaperData,
+} from "@/lib/practice/practice-papers";
 import { mapCardData } from "@/lib/study/cards";
 import { mapNotebookData } from "@/lib/workspace/notebooks";
 import { mapStudyFolderData, type StudyFolder } from "@/lib/workspace/study-folders";
+import { loadNotebookMarkings } from "@/services/learning/notebook-markings.server";
 import { getAdminDb } from "@/services/firebase/admin";
 
 type AdminDb = ReturnType<typeof getAdminDb>;
@@ -375,7 +380,11 @@ async function loadStudentTopicConcepts(
     exposureItems: readonly LearnerExposureItem[];
   },
   notes: LoadNotes
-): Promise<{ concepts: LearningConcept[]; redirects: Record<string, string> }> {
+): Promise<{
+  concepts: LearningConcept[];
+  redirects: Record<string, string>;
+  relations: TopicRelationInput[];
+}> {
   const usage = new Map<string, number>();
   const use = (topicId: string) => {
     if (topicId) usage.set(topicId, (usage.get(topicId) ?? 0) + 1);
@@ -425,6 +434,7 @@ async function loadStudentTopicConcepts(
 
   const concepts: LearningConcept[] = [];
   const redirects: Record<string, string> = {};
+  const relations: TopicRelationInput[] = [];
   for (const [topicId, topic] of Array.from(loaded).sort(([left], [right]) => left.localeCompare(right))) {
     if (topic.status === "merged" && topic.mergedIntoTopicId) {
       redirects[`topic:${topicId}`] = `topic:${topic.mergedIntoTopicId}`;
@@ -441,8 +451,17 @@ async function loadStudentTopicConcepts(
       ...(parent && parent.status === "active" ? { parentKey: `topic:${parent.id}` } : {}),
       ...(topic.aliases && topic.aliases.length > 0 ? { aliases: [...topic.aliases] } : {}),
     });
+    /*
+     * Collected whatever the flag says; the registry decides whether to use
+     * them. Reading is free once the Topic is already loaded, and a loader
+     * that quietly returned a different shape per flag would make the two
+     * paths harder to compare than the feature is worth.
+     */
+    if (topic.specificationRelation) {
+      relations.push({ topicId, relation: topic.specificationRelation });
+    }
   }
-  return { concepts, redirects };
+  return { concepts, redirects, relations };
 }
 
 /** Verified finer concepts beneath the folder's specification topics, if its catalogue has any. */
@@ -580,7 +599,9 @@ async function loadPracticePaperEvidence(
   db: AdminDb,
   uid: string,
   folderId: string,
-  notes: LoadNotes
+  notes: LoadNotes,
+  /** The folder's course, so a paper's stored concept ids can be checked. */
+  specificationId?: string
 ) {
   const userRef = db.collection("users").doc(uid);
   const papers = await userRef
@@ -603,6 +624,25 @@ async function loadPracticePaperEvidence(
     )
   );
   const known = new Set(paperIds);
+  /*
+   * Each paper's own record of what its questions were written against, read
+   * from the paper rather than the attempt, so a paper re-tagged later does
+   * not leave past sittings disagreeing about the same question.
+   */
+  const conceptsByPaper = new Map<string, Record<string, readonly string[]>>();
+  for (const paperDoc of papers.docs) {
+    const paper = mapPracticePaperData(
+      paperDoc.id,
+      paperDoc.data() as Record<string, unknown>,
+      specificationId
+    );
+    const byQuestion: Record<string, readonly string[]> = {};
+    for (const question of paper.questions) {
+      if (question.conceptIds?.length) byQuestion[question.id] = question.conceptIds;
+    }
+    if (Object.keys(byQuestion).length > 0) conceptsByPaper.set(paperDoc.id, byQuestion);
+  }
+
   const attempts = new Map<string, PracticePaperEvidenceAttempt>();
   for (const snapshot of snapshots) {
     if (snapshot.docs.length >= LEARNER_PROFILE_LOAD_LIMITS.practiceAttemptsPerQuery) {
@@ -623,6 +663,9 @@ async function loadPracticePaperEvidence(
         ...(attempt.markedAt !== undefined ? { markedAt: attempt.markedAt } : {}),
         updatedAt: attempt.updatedAt,
         questionResults: attempt.result.questionResults,
+        ...(conceptsByPaper.has(attempt.paperId)
+          ? { conceptIdsByQuestion: conceptsByPaper.get(attempt.paperId) }
+          : {}),
       });
     }
   }
@@ -684,7 +727,15 @@ export async function loadLearnerEvidence(
       folderId
         ? loadPastPaperEvidence(db, uid, folderId, notes)
         : Promise.resolve({ attempts: [], labels: {} }),
-      folderId ? loadPracticePaperEvidence(db, uid, folderId, notes) : Promise.resolve([]),
+      folderId
+        ? loadPracticePaperEvidence(
+            db,
+            uid,
+            folderId,
+            notes,
+            folder?.examCourse?.specificationId
+          )
+        : Promise.resolve([]),
       folderId ? loadFolderExposure(db, uid, folderId, notes) : Promise.resolve([]),
     ]);
   const pagedCards = cardLists.flat();
@@ -701,12 +752,24 @@ export async function loadLearnerEvidence(
   );
   const specification = folder ? folderSpecification(folder) : undefined;
   const specificationConcepts = folder ? folderSpecificationConcepts(folder) : [];
+  /*
+   * Marked notebook working, narrowed to the notebooks already in scope for
+   * exposure -- the same pages the folder contains, now read for what Tutor
+   * made of them rather than only that they exist.
+   */
+  const notebookMarkings = await loadNotebookMarkings({
+    uid,
+    notebookIds: exposureItems
+      .filter((item) => item.kind === "notebook")
+      .map((item) => item.id),
+  });
 
   const evidence: LearnerEvidence = {
     cards,
     flashcardReviewEvents,
     pastPaperAttempts: pastPaper.attempts,
     practicePaperAttempts,
+    notebookMarkings,
     topicLabels: {
       ...Object.fromEntries(
         decks.map((deck) => [`deck:${deck.id}`, { label: deck.name, source: "deck" as const }])
@@ -715,6 +778,9 @@ export async function loadLearnerEvidence(
     },
     concepts: [...studentTopics.concepts, ...specificationConcepts],
     conceptRedirects: studentTopics.redirects,
+    ...(featureFlags.enableConceptRelations
+      ? { topicRelations: studentTopics.relations }
+      : {}),
     exposureItems,
     declaredTopicKeys: [
       ...declaredTopicIds.map((topicId) => `topic:${topicId}`),

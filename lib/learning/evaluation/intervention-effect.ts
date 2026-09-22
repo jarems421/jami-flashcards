@@ -44,6 +44,15 @@ export type InterventionOutcome = {
   actionId: string;
   topicKey: string;
   actedAt: number;
+  /**
+   * Answers that carry this intervention's own id.
+   *
+   * The difference between "evidence that arrived after they acted" and
+   * "evidence that arrived because they acted". Zero means the student opened
+   * the session and produced nothing in it, which is a real outcome and not
+   * the same as never having started.
+   */
+  attributedAnswers: number;
   baselineAccuracy: number;
   outcomeAccuracy: number;
   /** Positive means the topic improved after the student acted. */
@@ -59,6 +68,15 @@ export type InterventionEffect = {
     samples: number;
     meanChange: number | null;
     improved: number;
+    /**
+     * Of those, how many produced answers carrying the intervention's own id.
+     *
+     * Until sessions started stamping evidence this is zero, and the mean
+     * change above is then a before-and-after over a window rather than over
+     * the work itself. Worth reporting rather than hiding: the two are not the
+     * same claim.
+     */
+    withAttributedEvidence: number;
   };
   /** Topics over the same period that no recommendation was taken on. */
   untouched: {
@@ -149,7 +167,16 @@ export function measureInterventionEffect(
     if (!event || !topicObservations) continue;
     const measured = changeFor(topicObservations, event.at, now);
     if (!measured) continue;
-    outcomes.push({ actionId: event.actionId, topicKey, actedAt: event.at, ...measured });
+    const attributedAnswers = topicObservations.filter(
+      (observation) => observation.interventionId === event.actionId
+    ).length;
+    outcomes.push({
+      actionId: event.actionId,
+      topicKey,
+      actedAt: event.at,
+      attributedAnswers,
+      ...measured,
+    });
   }
 
   /*
@@ -180,6 +207,7 @@ export function measureInterventionEffect(
       samples: outcomes.length,
       meanChange: actedMean,
       improved: actedChanges.filter((change) => change > 0).length,
+      withAttributedEvidence: outcomes.filter((outcome) => outcome.attributedAnswers > 0).length,
     },
     untouched: {
       samples: untouchedChanges.length,

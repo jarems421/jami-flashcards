@@ -1097,6 +1097,7 @@ export default function StudyPage() {
    * anyway, and the ref keeps it from being sent on every later render.
    */
   const completionNotedRef = useRef(false);
+  const abandonNotedRef = useRef(false);
   const fromActionId = searchParams.get("from");
   useEffect(() => {
     if (!done || !fromActionId || !user.uid) return;
@@ -1110,6 +1111,38 @@ export default function StudyPage() {
       sessionStudyDayKeyRef.current ?? getStudyDayKey()
     );
   }, [done, fromActionId, sessionStats.reviewedCards, user.uid]);
+
+  /*
+   * Tell the engine when the student opened its work and walked away.
+   *
+   * Recorded at the moment they go, never inferred later from the absence of a
+   * completion: a session still open, a closed tab and a lost connection are
+   * indistinguishable afterwards, and none of them is a decision to stop.
+   *
+   * `pagehide` rather than `beforeunload`, because it also fires when a phone
+   * backgrounds the tab, and a student who switches app mid-session has done
+   * the same thing as one who closes it. Recorded once; finishing first wins.
+   */
+  useEffect(() => {
+    if (!fromActionId || !user.uid) return;
+    const noteAbandoned = () => {
+      if (abandonNotedRef.current || completionNotedRef.current) return;
+      if (sessionKind === null || done) return;
+      abandonNotedRef.current = true;
+      noteStudyActionOutcomeById(
+        user.uid,
+        fromActionId,
+        "abandoned",
+        sessionStudyDayKeyRef.current ?? getStudyDayKey()
+      );
+    };
+    window.addEventListener("pagehide", noteAbandoned);
+    return () => {
+      window.removeEventListener("pagehide", noteAbandoned);
+      // Leaving the page within the app is leaving the session just the same.
+      noteAbandoned();
+    };
+  }, [done, fromActionId, sessionKind, user.uid]);
   const [daysRunning, setDaysRunning] = useState<number | null>(null);
   const reviewedThisSession = sessionStats.reviewedCards;
 
@@ -1300,6 +1333,8 @@ export default function StudyPage() {
     presentation,
   } = useStudyExerciseController({
     userId: user.uid,
+    // Stamped on every answer this session produces, when a recommendation opened it.
+    ...(fromActionId ? { interventionId: fromActionId } : {}),
     current,
     sessionKind,
     flipped,

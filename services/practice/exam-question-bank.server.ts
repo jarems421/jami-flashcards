@@ -461,6 +461,64 @@ export async function getExamQuestionAvailability(input: {
   };
 }
 
+/**
+ * How many whole questions the corpus can serve for each concept.
+ *
+ * Lives here, beside the eligibility rules, because that is the only place
+ * that knows them: tier, component, licence and paper eligibility all apply,
+ * and a count taken anywhere else would be a second, quietly different answer
+ * to the same question.
+ *
+ * One scan grouped afterwards rather than one scan per concept. The rules are
+ * applied by the loader either way, so asking once and counting what comes
+ * back gives the same answer as asking sixty times, at a sixtieth of the cost.
+ *
+ * Counts whole questions, not parts, matching what a student would be given.
+ * A question tagged with several concepts counts once for each -- this is
+ * about whether there is anything to work with, not about how much evidence
+ * it could produce.
+ */
+export async function getExamQuestionCountsByConcept(input: {
+  uid: string;
+  folderId: string;
+}): Promise<{ byConcept: Record<string, number>; exhausted: boolean }> {
+  const { folder, subjectKey, papers } = await loadContext(input.uid, input.folderId);
+  const paperParts = new Map<string, Promise<ExamQuestion[]>>();
+  const results = await Promise.all(
+    (["easy", "medium", "hard"] as const).map((difficulty) =>
+      loadEligibleQuestions({
+        subjectKey,
+        studyLevel: folder.studyLevel!,
+        specificationId: folder.examCourse!.specificationId,
+        course: folder.examCourse!,
+        difficulty,
+        topicIds: [],
+        conceptIds: [],
+        need: Number.POSITIVE_INFINITY,
+        paperIds: knownPaperIds(papers, []),
+        paperParts,
+      })
+    )
+  );
+
+  const byConcept: Record<string, number> = {};
+  const seen = new Set<string>();
+  let exhausted = false;
+  for (const result of results) {
+    if (!result.exhausted) exhausted = true;
+    for (const group of result.groups) {
+      // One question, however many parts it was split into.
+      if (seen.has(group.key)) continue;
+      seen.add(group.key);
+      const concepts = new Set(group.parts.flatMap((part) => part.conceptIds ?? []));
+      for (const conceptId of concepts) {
+        byConcept[conceptId] = (byConcept[conceptId] ?? 0) + 1;
+      }
+    }
+  }
+  return { byConcept, exhausted };
+}
+
 export async function createExamSession(input: {
   uid: string;
   folderId: string;

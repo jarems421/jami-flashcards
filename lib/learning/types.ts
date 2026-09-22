@@ -92,6 +92,14 @@ export type LearningObservation = {
   topicShares?: Readonly<Record<string, number>>;
   /** The command word a marked question opened with, where it printed one. */
   commandWord?: string;
+  /**
+   * The recommendation whose session produced this answer, when one did.
+   *
+   * Provenance, not scoring: nothing weighs an observation differently for
+   * having it. It exists so the engine can ask whether the work it asked for
+   * was actually done, without inferring that from timestamps.
+   */
+  interventionId?: string;
   /** 0 to 1: the share of the available credit that was earned. */
   score: number;
   /** How much this observation counts towards mastery, before recency. */

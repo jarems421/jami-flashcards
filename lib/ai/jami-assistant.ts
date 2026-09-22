@@ -124,6 +124,17 @@ export type ParsedJamiAssistantModelAnswer = {
   usedCurrentContext: boolean;
   usedGeneralKnowledge: boolean;
   usedWebResearch: boolean;
+  /**
+   * A structured verdict on the page, when one was asked for and the model
+   * offered one.
+   *
+   * Passed through exactly as it arrived, unread. Deciding whether it is a
+   * marking is `readNotebookMarking`'s job and only its job: a second opinion
+   * here would be a second place to be lenient, and the whole point of that
+   * contract is that there is one gate and it fails closed. Absent is the
+   * normal case -- most Tutor turns are not marking.
+   */
+  marking?: unknown;
 };
 
 export type TutorRoutingPreflight = {
@@ -139,6 +150,7 @@ type ModelAnswerPayload = {
   usedGeneralKnowledge?: unknown;
   usedWebResearch?: unknown;
   graphs?: unknown;
+  marking?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -230,6 +242,49 @@ export function isExplicitTutorGraphRequest(message: string) {
 export function isExplicitTutorIllustrationRequest(message: string) {
   const trimmed = message.trim();
   return ILLUSTRATION_REQUEST_PATTERN.test(trimmed) && !isTutorGraphRequest(trimmed);
+}
+
+/**
+ * Words that ask for a mark, as opposed to asking for help.
+ *
+ * Deliberately much narrower than `MARKING_PATTERN`, which exists to route a
+ * model and happily matches "check", "review" and "feedback". Those are how
+ * students ask for ordinary help, and ordinary help must never become an
+ * assessed record: a student saying "can you check my working" is asking a
+ * question, not sitting an exam. What is wanted here is an explicit request
+ * for a mark.
+ */
+const MARK_REQUEST_PATTERN =
+  /\b(?:mark (?:this|my|it)|give me a mark|how many marks|what would (?:i|this) (?:get|score)|grade (?:this|my|it)|out of \d+|score (?:this|my|it))\b/i;
+
+/**
+ * Asking to understand, which is the opposite request even when it arrives in
+ * the same sentence as a mark word.
+ */
+const EXPLANATION_REQUEST_PATTERN =
+  /\b(?:explain|why (?:is|does|did|am|are)|how do i|help me understand|what does .{1,40} mean|teach me|walk me through)\b/i;
+
+/**
+ * Whether this turn may produce a marking at all.
+ *
+ * The gate on the whole notebook-evidence path, and it is the reason ordinary
+ * educational conversation cannot quietly become evidence about what a student
+ * knows. Three things must hold: the student is on a notebook page, they asked
+ * to be marked in as many words, and they did not actually ask for an
+ * explanation.
+ *
+ * A page id is required because a marking with nothing to attach it to is
+ * discarded downstream anyway; refusing it here means never asking the model
+ * for one that cannot be kept.
+ */
+export function invitesNotebookMarking(input: {
+  message: string;
+  context: JamiAssistantContext;
+}) {
+  if (input.context.surface !== "notebook") return false;
+  if (!input.context.pageId) return false;
+  if (EXPLANATION_REQUEST_PATTERN.test(input.message)) return false;
+  return MARK_REQUEST_PATTERN.test(input.message);
 }
 
 export function isRoutineNotebookMarkMyWork(input: {
@@ -825,6 +880,9 @@ export function parseJamiAssistantModelAnswer(
     answer,
     graphs,
     sourceRefs,
+    ...(payload.marking !== undefined && payload.marking !== null
+      ? { marking: payload.marking }
+      : {}),
     usedCurrentContext: payload.usedCurrentContext,
     usedGeneralKnowledge: payload.usedGeneralKnowledge,
     usedWebResearch:
