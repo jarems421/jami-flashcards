@@ -1247,6 +1247,30 @@ describe("Firestore security rules", () => {
         },
       })
     );
+
+    /*
+     * A generated paper is the server's to write, not the browser's.
+     *
+     * Even with the mark scheme stripped to its public projection, a paper
+     * carrying questions and marks is an assessment definition, and those do
+     * not originate in a client. This is not hypothetical: the intervention
+     * flow first wrote one straight from the browser, which would have been
+     * refused for every student on four counts at once, and the mark scheme
+     * would have been silently dropped even if it had not been.
+     */
+    await assertFails(
+      setDoc(doc(aliceDb, "users", ALICE, "pastPapers", "attempted-generated"), {
+        folderId: "folder-linear-algebra",
+        title: "Completing the square",
+        origin: "generated",
+        status: "ready",
+        questions: [{ id: "q1", label: "Question 1", prompt: "Solve", marks: 3, assets: [] }],
+        totalMarks: 3,
+        markScheme: { kind: "generated", label: "Guide", notice: "", items: [] },
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
   });
 
   it("allows demo accounts to update study-safe card scheduling fields only", async () => {

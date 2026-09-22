@@ -14,6 +14,8 @@ import { withTimeout } from "@/services/firebase/firestore";
 
 /** Generation runs two model calls at worst and is started by a deliberate press. */
 const GENERATE_MS = 60_000;
+/** Storing is a handful of writes; it should never sit as long as a generation. */
+const STORE_MS = 30_000;
 
 export class InterventionGenerationError extends Error {
   readonly code: string;
@@ -58,6 +60,45 @@ function asQuestions(value: unknown): PracticeQuestionDraft[] {
       Array.isArray(record.points)
     );
   });
+}
+
+/**
+ * Hand the confirmed questions to the server to keep.
+ *
+ * Returns the notebook they now live in. Throws on refusal, including when the
+ * student's own edits left a mark scheme that no longer accounts for its
+ * question -- better to say so while the review screen is still open than to
+ * store a paper Jami will later fail to mark.
+ */
+export async function storeInterventionPractice(input: {
+  conceptId: string;
+  folderId: string;
+  interventionId: string;
+  questions: readonly PracticeQuestionDraft[];
+}): Promise<{ notebookId: string }> {
+  const user = auth.currentUser;
+  if (!user) throw new InterventionGenerationError("You are not signed in.", "unauthorized");
+  const token = await user.getIdToken();
+
+  const response = await withTimeout(
+    fetch("/api/learning/interventions/practice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input),
+    }),
+    STORE_MS,
+    "Save practice questions"
+  );
+  const data = (await response.json().catch(() => null)) as
+    | { notebookId?: unknown; error?: unknown; code?: unknown }
+    | null;
+  if (!response.ok || typeof data?.notebookId !== "string" || !data.notebookId) {
+    throw new InterventionGenerationError(
+      typeof data?.error === "string" ? data.error : "Could not save these questions.",
+      typeof data?.code === "string" ? data.code : "store_failed"
+    );
+  }
+  return { notebookId: data.notebookId };
 }
 
 export async function generateInterventionDraft(input: {

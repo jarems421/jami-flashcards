@@ -1,12 +1,11 @@
 import { getCustomStudyHref } from "@/lib/app/routes";
 import type { GeneratedCardDraft } from "@/lib/ai/card-generation";
 import type { InterventionDraft } from "@/lib/learning/interventions/draft";
-import { practiceToStore } from "@/lib/learning/interventions/practice-store";
 import type { Deck } from "@/lib/study/decks";
 import { createCardsInBatches } from "@/services/study/cards";
 import { createDeck } from "@/services/study/decks";
-import { createNotebook } from "@/services/study/notebooks";
-import { createInterventionPracticePaper } from "@/services/study/practice-papers";
+import { storeInterventionPractice } from "@/services/learning/intervention-generation";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
 
 /**
  * Writing the material a student has just agreed to.
@@ -88,34 +87,32 @@ async function confirmCards(input: {
   };
 }
 
+/**
+ * Keeping practice questions, through the server.
+ *
+ * Not a client write, and the rules are explicit about why: a browser may
+ * create only an *uploaded* paper carrying no questions and no marks, because
+ * no assessment definition or answer-bearing guide may originate there. The
+ * answers also have to be stored where no client can read them, which a
+ * browser cannot do on its own behalf.
+ */
 async function confirmPractice(input: {
   uid: string;
   draft: InterventionDraft;
   questions: Extract<InterventionDraft["payload"], { kind: "create_practice" }>["questions"];
   folderId: string;
 }): Promise<ConfirmedMaterial> {
-  const stored = practiceToStore(input.questions, {
+  const { notebookId } = await storeInterventionPractice({
     conceptId: input.draft.conceptId,
-    interventionId: input.draft.interventionId,
-  });
-  const notebook = await createNotebook(input.uid, {
     folderId: input.folderId,
-    title: input.draft.conceptLabel,
-    type: "practice_paper",
-    topicIds: [input.draft.conceptId],
-  });
-  await createInterventionPracticePaper({
-    userId: input.uid,
-    notebook,
-    conceptLabel: input.draft.conceptLabel,
-    questions: stored.questions,
-    markScheme: stored.markScheme,
     interventionId: input.draft.interventionId,
+    questions: input.questions,
   });
+  invalidateDashboardData(input.uid);
   return {
     kind: "create_practice",
-    created: stored.questions.length,
-    href: `/dashboard/notebooks/${encodeURIComponent(notebook.id)}`,
+    created: input.questions.length,
+    href: `/dashboard/notebooks/${encodeURIComponent(notebookId)}`,
   };
 }
 
