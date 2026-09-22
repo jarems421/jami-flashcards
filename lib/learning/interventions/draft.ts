@@ -62,7 +62,12 @@ export function isConfirmable(draft: InterventionDraft) {
   return draftSize(draft) > 0;
 }
 
-export type DraftEditRejection = "empty_field" | "unknown_item" | "marks_disagree";
+export type DraftEditRejection =
+  | "empty_field"
+  | "unknown_item"
+  | "marks_disagree"
+  /** A card offered for a question draft, or the reverse. */
+  | "wrong_item_type";
 
 export type DraftEditResult =
   | { ok: true; draft: InterventionDraft }
@@ -70,6 +75,31 @@ export type DraftEditResult =
 
 function nonEmpty(value: string) {
   return value.trim().length > 0;
+}
+
+/*
+ * The payload kind says which editor is on screen, and the item should match
+ * it. TypeScript cannot join those two facts across a callback, so rather than
+ * assert the pairing with a cast and hope every caller stays disciplined, the
+ * shape is checked. A system whose value is fail-closed contracts should not
+ * have one place that trusts its caller because the current one happens to be
+ * correct.
+ */
+function isCardItem(value: unknown): value is GeneratedCardDraft {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.front === "string" && typeof record.back === "string";
+}
+
+function isQuestionItem(value: unknown): value is PracticeQuestionDraft {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.prompt === "string" &&
+    typeof record.answer === "string" &&
+    typeof record.marks === "number" &&
+    Array.isArray(record.points)
+  );
 }
 
 /**
@@ -89,7 +119,8 @@ export function editDraftItem(
   if (index < 0 || index >= draftSize(draft)) return { ok: false, reason: "unknown_item" };
 
   if (draft.payload.kind === "create_flashcards") {
-    const card = next as GeneratedCardDraft;
+    if (!isCardItem(next)) return { ok: false, reason: "wrong_item_type" };
+    const card = next;
     if (!nonEmpty(card.front) || !nonEmpty(card.back)) {
       return { ok: false, reason: "empty_field" };
     }
@@ -98,7 +129,8 @@ export function editDraftItem(
     return { ok: true, draft: { ...draft, payload: { kind: "create_flashcards", cards } } };
   }
 
-  const question = next as PracticeQuestionDraft;
+  if (!isQuestionItem(next)) return { ok: false, reason: "wrong_item_type" };
+  const question = next;
   if (!nonEmpty(question.prompt) || !nonEmpty(question.answer) || question.points.length === 0) {
     return { ok: false, reason: "empty_field" };
   }

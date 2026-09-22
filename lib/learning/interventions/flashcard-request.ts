@@ -81,12 +81,18 @@ export function buildFlashcardRequest(input: {
   if (!conceptId) return { ok: false, reason: "unknown_concept" };
 
   /*
-   * What the student already has, as exclusions rather than as a guarantee.
+   * What the student already has, told to the model as exclusions.
    *
-   * This is the cheap, honest half of deduplication: the model is told what
-   * exists and asked not to repeat it. It is not a similarity check and must
-   * not be described as one -- the real safeguard is the student reading the
-   * draft before it is written, which is why that step is not optional.
+   * Measured, so worth stating plainly: this does not work very well. Given
+   * six cards covering a concept and asked for five more "however differently
+   * worded", the model returned three that were the same questions with a word
+   * inserted -- "how do you multiply numbers" became "how do you multiply two
+   * numbers" -- and the filter below caught none of them.
+   *
+   * So this is a request, not a mechanism, and the student reading the draft
+   * is what actually prevents redundant cards being added. See
+   * `scripts/eval/intervention-generation-batch.ts`, case
+   * `near-duplicate-pressure`.
    */
   const existingFronts = Array.from(
     new Set(
@@ -116,7 +122,15 @@ export type FlashcardDraftResult =
   | { ok: true; drafts: GeneratedCardDraft[]; droppedDuplicates: number }
   | { ok: false; reason: FlashcardDraftRejection };
 
-function fingerprint(front: string) {
+/**
+ * A key for spotting the *same text twice*, and nothing more.
+ *
+ * Deliberately not called a fingerprint or a dedup key: it collapses case and
+ * punctuation, so it catches a model repeating a front verbatim and misses
+ * every rewording. Calling it deduplication would invite someone downstream to
+ * believe redundant cards cannot get through, which is the opposite of true.
+ */
+function exactTextKey(front: string) {
   return front.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
@@ -128,9 +142,10 @@ function fingerprint(front: string) {
  * done -- Jami asking for cards and producing none is not the student having
  * been helped.
  *
- * The duplicate check here is exact-text only, catching the case where the
- * model repeats a front it was explicitly given. Anything subtler is left to
- * the person reading the draft.
+ * The check here is exact-text only. It catches a front repeated verbatim and
+ * nothing else -- a single inserted word defeats it, which was measured rather
+ * than assumed. Everything subtler is left to the person reading the draft,
+ * and that is the whole of the protection, not a backstop to it.
  */
 export function readFlashcardDrafts(
   drafts: readonly GeneratedCardDraft[],
@@ -138,14 +153,14 @@ export function readFlashcardDrafts(
 ): FlashcardDraftResult {
   if (drafts.length === 0) return { ok: false, reason: "no_usable_cards" };
 
-  const existing = new Set(request.existingFronts.map(fingerprint));
+  const existing = new Set(request.existingFronts.map(exactTextKey));
   const seen = new Set<string>();
   const kept: GeneratedCardDraft[] = [];
   let droppedDuplicates = 0;
 
   for (const draft of drafts) {
     if (!draft.front.trim() || !draft.back.trim()) continue;
-    const key = fingerprint(draft.front);
+    const key = exactTextKey(draft.front);
     if (!key) continue;
     if (existing.has(key) || seen.has(key)) {
       droppedDuplicates += 1;

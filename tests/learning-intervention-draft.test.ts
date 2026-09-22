@@ -134,6 +134,25 @@ describe("editing may not break what the generator was held to", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("refuses an item of the wrong kind for this draft", () => {
+    // The payload says which editor is on screen; TypeScript cannot carry that
+    // across a callback, so the shape is checked rather than assumed.
+    const question = {
+      prompt: "Solve it",
+      marks: 1,
+      answer: "x",
+      points: [{ marks: 1, text: "y" }],
+    };
+    expect(editDraftItem(cardDraft(), 0, question)).toEqual({
+      ok: false,
+      reason: "wrong_item_type",
+    });
+    expect(editDraftItem(questionDraft(), 0, { front: "a", back: "b" })).toEqual({
+      ok: false,
+      reason: "wrong_item_type",
+    });
+  });
+
   it("refuses an item that is not there", () => {
     expect(editDraftItem(cardDraft(), 9, { front: "a", back: "b" })).toEqual({
       ok: false,

@@ -19,6 +19,46 @@ const log = createLogger({ route: "learning.practice_intervention" });
 
 const GENERATION_TIMEOUT_MS = 45_000;
 
+/**
+ * The shape the answer must take.
+ *
+ * A MIME type alone was not enough. Asked for questions with per-point marks,
+ * the model returned excellent questions whose points were plain strings with
+ * the tariff written inside them -- "Substitutes x = 0 to get f(0) = 5 (B1)".
+ * Every question was usable and every one was rejected, because reading a mark
+ * out of that string would mean inferring it, which is the guessing this whole
+ * path exists to avoid.
+ *
+ * So the shape is declared rather than described. Spelled with plain strings
+ * because only `lib/ai/gemini.ts` may import the provider SDK; these are the
+ * enum's own values.
+ */
+const PRACTICE_RESPONSE_SCHEMA = {
+  type: "ARRAY",
+  items: {
+    type: "OBJECT",
+    properties: {
+      prompt: { type: "STRING", description: "The question as a student would read it." },
+      marks: { type: "INTEGER", description: "What the question is worth." },
+      answer: { type: "STRING", description: "A full worked answer." },
+      points: {
+        type: "ARRAY",
+        description:
+          "One entry per award. Put the marks in the `marks` field, never inside the text.",
+        items: {
+          type: "OBJECT",
+          properties: {
+            marks: { type: "INTEGER", description: "Marks this point awards." },
+            text: { type: "STRING", description: "What earns it." },
+          },
+          required: ["marks", "text"],
+        },
+      },
+    },
+    required: ["prompt", "marks", "answer", "points"],
+  },
+} as const;
+
 export type PracticeInterventionFailure =
   | PracticeRequestRejection
   | PracticeDraftRejection
@@ -76,7 +116,10 @@ export async function generateInterventionPractice(input: {
         ],
       },
       timeoutMs: GENERATION_TIMEOUT_MS,
-      generationConfig: { responseMimeType: "application/json" },
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: PRACTICE_RESPONSE_SCHEMA,
+      },
     });
     raw = typeof result === "string" ? result : (result as { text?: string }).text ?? "";
   } catch (error) {
@@ -85,17 +128,28 @@ export async function generateInterventionPractice(input: {
     return { ok: false, reason: "generation_failed" };
   }
 
+  /*
+   * A bounded sample of what came back, on rejection only.
+   *
+   * "Rejected" is not a diagnosis: a model that returned prose, one that
+   * returned questions with no scheme, and one whose schemes never add up all
+   * look identical from the reason alone, and they need different fixes. This
+   * is generated content rather than anything a student wrote, so there is
+   * nothing here that should not be in a log.
+   */
+  const sample = raw.slice(0, 600);
+
   let parsed: unknown = null;
   try {
     parsed = JSON.parse(extractJsonArray(raw));
   } catch {
-    log.warn("drafts.rejected", { reason: "no_usable_questions" });
+    log.warn("drafts.rejected", { reason: "no_usable_questions", stage: "parse", sample });
     return { ok: false, reason: "no_usable_questions" };
   }
 
   const read = readPracticeDrafts(parsed);
   if (!read.ok) {
-    log.warn("drafts.rejected", { reason: read.reason });
+    log.warn("drafts.rejected", { reason: read.reason, stage: "validate", sample });
     return { ok: false, reason: read.reason };
   }
 

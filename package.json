@@ -17,6 +17,7 @@
     "test": "vitest run",
     "check:sizes": "node scripts/check-file-sizes.mjs",
     "check:disk": "node scripts/check-disk.mjs",
+    "eval:interventions": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/intervention-generation-batch.ts",
     "check:availability-latency": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/concept-availability-latency.ts",
     "clean:artifacts": "node scripts/check-disk.mjs --clean",
     "check:ai-release": "node --env-file-if-exists=.env.local scripts/check-ai-provider-release.mjs --live",
