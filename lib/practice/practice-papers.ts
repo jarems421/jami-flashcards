@@ -453,6 +453,13 @@ export type PracticePaper = {
   totalMarks: number;
   markScheme: PracticePaperMarkScheme;
   markSchemeSourceId?: string;
+  /**
+   * The recommendation that asked for this paper, when Jami wrote it. The same
+   * provenance a generated card carries: without it a paper written in answer
+   * to advice is indistinguishable from one the student made themselves, and
+   * nothing can ask whether the advice was ever carried out.
+   */
+  createdByInterventionId?: string;
   preparedAt?: number;
   startedAt?: number;
   submittedAt?: number;
@@ -1098,6 +1105,7 @@ export function mapPracticePaperData(
     totalMarks: totalMarks || finiteInteger(data.totalMarks),
     markScheme: normalizePracticePaperMarkScheme(data.markScheme, questions),
     markSchemeSourceId: normalizeOptionalString(data.markSchemeSourceId, 160),
+    createdByInterventionId: normalizeOptionalString(data.createdByInterventionId, 400),
     preparedAt: finiteInteger(data.preparedAt) || undefined,
     startedAt: finiteInteger(data.startedAt) || undefined,
     submittedAt: finiteInteger(data.submittedAt) || undefined,
@@ -1153,6 +1161,7 @@ export function buildPracticePaperPayload(
     ),
     focusDetail: input.focusDetail?.trim().slice(0, 1_000) || null,
     markSchemeSourceId: input.markSchemeSourceId?.trim().slice(0, 160) || null,
+    createdByInterventionId: input.createdByInterventionId?.trim().slice(0, 400) || null,
     preparedAt: input.preparedAt ?? null,
     startedAt: input.startedAt ?? null,
     submittedAt: input.submittedAt ?? null,

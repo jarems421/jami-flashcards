@@ -71,6 +71,7 @@ describe("AI budget configuration", () => {
         "planDraft",
         "sourceFlashcardDrafts",
         "sourcePracticeDrafts",
+        "interventionMaterial",
         "videoCardImport",
         "studyAssetGeneration",
         "studyAnswerCheck",

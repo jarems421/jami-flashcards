@@ -31,6 +31,8 @@ import {
   readStudySessionShape,
 } from "@/lib/study/session-spec-queue";
 import { noteStudyActionOutcomeById } from "@/services/learning/study-action-events";
+import { noteMissionCompleted } from "@/lib/learning/mission-handoff";
+import MissionHandback from "@/components/study/MissionHandback";
 import { countedDraftKey, presentationDraftKey, resolvePresentationId } from "@/lib/study/presentation-identity";
 import { resolveCurrentExercise, type ExercisePin } from "@/lib/study/exercise-resolution";
 import { canCarryModeEventually, getModeEligibility } from "@/lib/study/mode-eligibility";
@@ -1110,6 +1112,12 @@ export default function StudyPage() {
       "completed",
       sessionStudyDayKeyRef.current ?? getStudyDayKey()
     );
+    /*
+     * And tell Today, so the page the student came from can say so when they
+     * go back. Separate from the record above on purpose: that one is evidence
+     * the engine reads, this one is a sentence, and losing it costs nothing.
+     */
+    noteMissionCompleted(fromActionId, sessionStats.reviewedCards);
   }, [done, fromActionId, sessionStats.reviewedCards, user.uid]);
 
   /*
@@ -2046,6 +2054,10 @@ export default function StudyPage() {
                 secondaryAction={sessionKind === "custom" ? <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-button-secondary transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Edit cards</Link> : undefined}
               />
             ) : (
+              <>
+              {fromActionId && sessionStats.reviewedCards > 0 ? (
+                <MissionHandback answered={sessionStats.reviewedCards} />
+              ) : null}
               <SurfaceCard tone="warm" padding="lg" className="animate-warm-glow-pulse">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                   <div>
@@ -2173,6 +2185,7 @@ export default function StudyPage() {
                   <Button type="button" onClick={exitSession} variant="secondary" size="lg">Back to study home</Button>
                 </div>
               </SurfaceCard>
+              </>
             )
           ) : current ? (
             <div key={current.id} className="animate-slide-up space-y-4 sm:space-y-5">
