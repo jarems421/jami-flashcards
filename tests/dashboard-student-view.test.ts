@@ -86,10 +86,11 @@ describe("the backlog is used, not counted at the student", () => {
 /**
  * Home serves two people. Somebody opening Jami for the first time needs to be
  * shown the way in; somebody who studies every day needs their review and
- * nothing in front of it. It used to serve neither: the setup checklist sat
- * above the recommended action for everyone, and because it counted "set a
- * goal" and "earn a star" -- which most students never do -- it never
- * completed and never went away.
+ * nothing in front of it. It used to serve neither: a setup checklist sat above
+ * the recommended action for everyone, and because it counted things most
+ * students never do it never completed and never went away.
+ *
+ * Showing the way in is the walkthrough's job now, and only the walkthrough's.
  */
 describe("home leads with the next step for everyone", () => {
   const source = read("app/dashboard/page.tsx");
@@ -122,31 +123,24 @@ describe("home leads with the next step for everyone", () => {
     expect(source).toContain("action.id !== mission.action?.id");
   });
 
-  it("stops setup at the first review, so it can finish", () => {
-    const items = source.slice(
-      source.indexOf("const gettingStartedItems"),
-      source.indexOf("const hasStudyMaterial")
-    );
-
-    expect(items).toContain('label: "Create a folder"');
-    expect(items).toContain('label: "Create a deck"');
-    expect(items).toContain('label: "Add cards"');
-    expect(items).toContain('label: "Study a deck"');
-    // Both are worth doing and neither is in the way of studying.
-    expect(items).not.toContain('label: "Set a goal"');
-    expect(items).not.toContain('label: "Earn a star"');
-  });
-
-  it("shows setup in the open only to a student with nothing to study", () => {
+  it("leaves getting-started to the walkthrough, which already tracks it", () => {
     /*
-     * It used to be on the page for everybody and merely folded. Once there is
-     * material to study it is a map somebody is already walking without, so it
-     * moves down with everything else Jami merely noticed.
+     * Home used to carry a setup checklist of its own. It duplicated the
+     * walkthrough -- which has missions, notices real work done out of order,
+     * and knows when it is finished -- so a new student met two trackers of the
+     * same four steps, and a returning one met a card that never completed
+     * because it counted things most people never do.
      */
-    expect(source).toContain("!firstNight.active && !hasStudyMaterial ? (");
-    expect(source).toContain(
-      "const hasStudyMaterial = cards.length > 0 || notebooks.length > 0"
-    );
+    expect(source).not.toContain("GettingStartedChecklist");
+    expect(source).not.toContain("gettingStartedItems");
+    // Onboarding proper is still on the page, and is now the only one.
+    expect(source).toContain("<FirstNightPanel");
+    expect(source).toContain("<TutorialResumeCard");
+
+    // And the plan no longer computes a checklist nothing reads.
+    const plan = read("lib/dashboard/today-plan.ts");
+    expect(plan).not.toContain("TodayChecklist");
+    expect(plan).not.toContain("buildChecklist");
   });
 
   it("does not put the streak on the page you arrive at before studying", () => {

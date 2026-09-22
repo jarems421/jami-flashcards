@@ -45,9 +45,6 @@ import MomentumStrip, { buildMomentumWeek } from "@/components/today/MomentumStr
 import MoreForToday from "@/components/today/MoreForToday";
 import PlanSummary from "@/components/today/PlanSummary";
 import StudyDoors, { type StudyDoor } from "@/components/today/StudyDoors";
-import GettingStartedChecklist, {
-  type ChecklistItem,
-} from "@/components/today/GettingStartedChecklist";
 import { useRevisionPlanToday } from "@/hooks/useRevisionPlanToday";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useStudyActions } from "@/hooks/useStudyActions";
@@ -432,43 +429,6 @@ export default function DashboardHome() {
     [todayPlan.nextAction, todayPlan.studyActions]
   );
 
-  /*
-   * Setup stops at the first review.
-   *
-   * Goals and stars are surfaced below on their own merits, once there is
-   * something to study; a checklist that never completes never goes away.
-   */
-  const gettingStartedItems = useMemo<ChecklistItem[]>(
-    () => [
-      {
-        label: "Create a folder",
-        detail: "Set up a study space.",
-        href: "/dashboard/folders",
-        done: todayPlan.checklist.createFolder,
-      },
-      {
-        label: "Create a deck",
-        detail: "Add a flashcard deck.",
-        href: "/dashboard/decks",
-        done: todayPlan.checklist.createDeck,
-      },
-      {
-        label: "Add cards",
-        detail: "Write front and back prompts.",
-        href: "/dashboard/cards",
-        done: todayPlan.checklist.addCards,
-      },
-      {
-        label: "Study a deck",
-        detail: "Complete one review.",
-        href: "/dashboard/study",
-        done: todayPlan.checklist.reviewCards,
-      },
-    ],
-    [todayPlan.checklist]
-  );
-
-  const hasStudyMaterial = cards.length > 0 || notebooks.length > 0;
   const isEmptyAccount = shouldInviteToTutorial({
     isLoading,
     sectionStates: {
@@ -492,8 +452,6 @@ export default function DashboardHome() {
       tutorial.invite();
     }
   }, [firstNightNeverRan, isEmptyAccount, tutorial]);
-  const walkthroughLeading =
-    tutorial.progress.status === "active" || tutorial.progress.status === "paused";
 
   const planSections = [
     "decks",
@@ -600,8 +558,7 @@ export default function DashboardHome() {
         todayPlan.weakTopics.length > 0
     ) +
     Number(sectionStates.goals !== "unavailable" && Boolean(todayPlan.goalSummary)) +
-    Number(sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0) +
-    Number(hasStudyMaterial && !walkthroughLeading && !firstNight.active);
+    Number(sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0);
 
   /*
    * The finished mission, worded. Held until the page is left rather than
@@ -783,15 +740,6 @@ export default function DashboardHome() {
         <TutorialResumeCard />
         <FirstNightPanel />
 
-        {/*
-          * Setup stays in the open only for a student who has nothing yet.
-          * Once there is material to study it moves below with everything else
-          * Jami merely noticed -- it is a map, and they are already walking.
-          */}
-        {!isLoading && !planUnavailable && !walkthroughLeading && !firstNight.active && !hasStudyMaterial ? (
-          <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} defaultOpen />
-        ) : null}
-
         {!isLoading && !planUnavailable ? (
           <MoreForToday count={secondaryCount}>
             {remainingActions.length > 0 ? (
@@ -819,13 +767,6 @@ export default function DashboardHome() {
                 value={remainingOptionalCount}
                 detail="Daily Review is clear, but these lighter passes are still available."
                 href={getCustomStudyHref({ mode: "daily" })}
-              />
-            ) : null}
-            {hasStudyMaterial && !walkthroughLeading && !firstNight.active ? (
-              <GettingStartedChecklist
-                items={gettingStartedItems}
-                isLoading={isLoading}
-                defaultOpen={false}
               />
             ) : null}
           </MoreForToday>

@@ -80,17 +80,6 @@ export type TodayGoalSummary = {
   href: string;
 };
 
-export type TodayChecklist = {
-  createFolder: boolean;
-  createDeck: boolean;
-  addCards: boolean;
-  reviewCards: boolean;
-  createNotebook: boolean;
-  reviewDrafts: boolean;
-  checkProgress: boolean;
-  setGoal: boolean;
-};
-
 export type TodayWorkspaceSummary = {
   folderCount: number;
   notebookCount: number;
@@ -158,7 +147,6 @@ export type TodayPlan = {
   drafts: TodayDraft[];
   goalSummary?: TodayGoalSummary;
   workspace: TodayWorkspaceSummary;
-  checklist: TodayChecklist;
   topicProgress: TopicProgressSummary[];
 };
 
@@ -502,19 +490,6 @@ function buildWorkspaceSummary(input: BuildTodayPlanInput): TodayWorkspaceSummar
   };
 }
 
-function buildChecklist(input: BuildTodayPlanInput): TodayChecklist {
-  return {
-    createFolder: (input.studyFolders ?? []).some((folder) => !folder.archived),
-    createDeck: input.decks.length > 0,
-    addCards: input.cards.length >= 5,
-    reviewCards: (input.reviewedToday ?? 0) > 0,
-    createNotebook: (input.notebooks ?? []).some((notebook) => !notebook.archived),
-    reviewDrafts: input.drafts.some((draft) => draft.contentStatus === "draft"),
-    checkProgress: input.progressVisited === true,
-    setGoal: (input.activeGoals ?? []).some((goal) => goal.status === "active"),
-  };
-}
-
 function buildNextAction(input: {
   decks: TodayDeckInput[];
   cards: Card[];
@@ -711,7 +686,6 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
   const studyActions = buildStudyActions(input);
   const goalSummary = buildGoalSummary(input, now);
   const workspace = buildWorkspaceSummary(input);
-  const checklist = buildChecklist(input);
   const nextAction = buildNextAction({
     decks: input.decks,
     cards: input.cards,
@@ -734,7 +708,6 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
     drafts,
     goalSummary,
     workspace,
-    checklist,
     topicProgress,
   };
 }
