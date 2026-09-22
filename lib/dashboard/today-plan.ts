@@ -114,6 +114,14 @@ export type TodayStudyAction = {
   scope: StudyAction["scope"];
   /** How many items the engine thinks this is worth, when a surface can honour it. */
   targetItems?: number;
+  /**
+   * What Jami can do about this, when the answer is to make something.
+   *
+   * Only the generating kinds travel this far: the others already have a
+   * destination, and a link is the whole of the action. Present, the card
+   * offers to write the material rather than sending the student somewhere.
+   */
+  generate?: { kind: "create_flashcards" | "create_practice"; conceptId: string };
 };
 
 export type TodayPlan = {
@@ -369,6 +377,27 @@ function describeStudyAction(action: StudyAction): Pick<TodayStudyAction, "title
   }
 }
 
+/**
+ * The action as something to make, when that is what it is.
+ *
+ * `fill_specification_gap` resolves to cards: a concept with nothing behind it
+ * needs something to study from before it needs testing on, and cards are the
+ * cheapest useful thing to build. The other intervention kinds lead somewhere
+ * that already exists, so they keep their link.
+ */
+function generating(action: StudyAction) {
+  const type = action.intervention?.type;
+  if (!type) return undefined;
+  const conceptId = action.target.kind === "topic" ? action.target.topicKey : "";
+  if (!conceptId.startsWith("spec:")) return undefined;
+  const id = conceptId.slice("spec:".length);
+  if (type === "create_flashcards" || type === "fill_specification_gap") {
+    return { kind: "create_flashcards" as const, conceptId: id };
+  }
+  if (type === "create_practice") return { kind: "create_practice" as const, conceptId: id };
+  return undefined;
+}
+
 function buildStudyActions(input: BuildTodayPlanInput): TodayStudyAction[] {
   const folderNames = new Map((input.studyActionFolders ?? []).map((folder) => [folder.id, folder.name]));
   return (input.studyActions ?? [])
@@ -385,6 +414,7 @@ function buildStudyActions(input: BuildTodayPlanInput): TodayStudyAction[] {
           ...(folderName ? { folderName } : {}),
           target: action.target,
           scope: action.scope,
+          ...(generating(action) ? { generate: generating(action)! } : {}),
           ...(action.spec ? { targetItems: action.spec.targetItems } : {}),
         },
       ];

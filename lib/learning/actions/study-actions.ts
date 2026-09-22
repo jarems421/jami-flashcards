@@ -16,7 +16,16 @@ import {
   type StudySessionSelection,
   type StudySessionSpec,
 } from "@/lib/learning/actions/session-spec";
-import type { LearnerProfile, LearningRecommendation } from "@/lib/learning/types";
+import {
+  selectIntervention,
+  type InterventionAvailability,
+  type InterventionChoice,
+} from "@/lib/learning/interventions/catalogue";
+import type {
+  LearnerProfile,
+  LearningRecommendation,
+  LearningTopicState,
+} from "@/lib/learning/types";
 
 /**
  * Recommendations turned into things a student can actually start.
@@ -57,6 +66,15 @@ export type StudyAction = LearningRecommendation & {
   /** What the engine wants the destination to do; absent when nothing can carry it out. */
   spec?: StudySessionSpec;
   /**
+   * What could actually be done about this need, given the material that
+   * exists. Absent for an error target, which belongs to no single concept,
+   * and for a decision the catalogue has no action for.
+   *
+   * The engine's decision is unchanged by this. It says what the student
+   * needs; the intervention says how that need can be met today.
+   */
+  intervention?: InterventionChoice;
+  /**
    * Why this action is being held back, when it is.
    *
    * Kept on the action rather than filtered out here, so a caller that wants
@@ -69,7 +87,31 @@ export type StudyAction = LearningRecommendation & {
 export type StudyActionContext = {
   /** Past Paper Practice is enabled and the folder has a course it can draw on. */
   questionPracticeAvailable: boolean;
+  /** Whether this deployment can write cards and questions for the student. */
+  canGenerate?: { flashcards: boolean; practice: boolean };
 };
+
+/**
+ * What can be done for one concept, from signals the profile already holds.
+ *
+ * Cheap by construction: cards, notebooks and sources come from exposure,
+ * which is already counted. The question banks are left undefined because
+ * asking them costs more than a whole profile build, and undefined means
+ * unknown rather than empty -- see `InterventionAvailability`.
+ */
+export function cheapAvailability(
+  state: LearningTopicState,
+  context: StudyActionContext
+): InterventionAvailability {
+  return {
+    hasFlashcards: state.exposure.cards > 0,
+    flashcardCount: state.exposure.cards,
+    hasMaterial: state.exposure.notebooks + state.exposure.sources > 0,
+    canCreateFlashcards: context.canGenerate?.flashcards ?? false,
+    canCreatePractice: context.canGenerate?.practice ?? false,
+    ...(context.questionPracticeAvailable ? {} : { hasPastPaper: false }),
+  };
+}
 
 function topicIdOf(topicKey: string) {
   const separator = topicKey.indexOf(":");
@@ -200,6 +242,22 @@ export function buildStudyActions(
           }
         : destination;
     const cooldown = actionCooldown(history?.get(id), recommendation.evidence, now);
+
+    /*
+     * What could be done about this, as opposed to what the engine decided.
+     *
+     * Only for a concept: an error spans topics and has no single body of
+     * material to ask about. Built from cheap signals alone, so Today pays
+     * nothing for it.
+     */
+    const target = recommendation.target;
+    const topicState =
+      target.kind === "topic"
+        ? profile.topics.find((topic) => topic.topicKey === target.topicKey)
+        : undefined;
+    const intervention = topicState
+      ? selectIntervention(topicState, cheapAvailability(topicState, context))
+      : undefined;
     return {
       ...recommendation,
       id,
@@ -207,6 +265,7 @@ export function buildStudyActions(
       explanationCode: `${recommendation.reason}.${recommendation.action}`,
       ...(directed ? { destination: directed } : {}),
       ...(spec ? { spec } : {}),
+      ...(intervention ? { intervention } : {}),
       ...(cooldown ? { cooldown } : {}),
     };
   });

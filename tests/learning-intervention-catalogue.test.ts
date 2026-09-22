@@ -264,3 +264,56 @@ describe("the helpers the rules rest on", () => {
     );
   });
 });
+
+/**
+ * Not having looked is not the same as having found nothing.
+ *
+ * Today cannot afford the bank lookups -- the corpus scan costs more than a
+ * whole profile build -- so it passes what it knows and leaves the rest
+ * undefined. The rules have to tell that apart from a bank that answered and
+ * was empty, because only the second can justify telling a student their
+ * specification is uncovered.
+ */
+describe("unknown availability", () => {
+  const unchecked: InterventionAvailability = {
+    hasFlashcards: false,
+    hasMaterial: false,
+    canCreateFlashcards: true,
+    canCreatePractice: true,
+    // hasPractice and hasPastPaper deliberately absent: nobody asked.
+  };
+
+  it("does not claim a specification gap when the banks were never asked", () => {
+    const choice = selectIntervention(
+      state({ action: "diagnose", reason: "not_yet_assessed" }),
+      unchecked
+    );
+    expect(choice?.because).not.toBe("no_material_for_specification_concept");
+  });
+
+  it("does claim one when every bank answered and all were empty", () => {
+    const choice = selectIntervention(
+      state({ action: "diagnose", reason: "not_yet_assessed" }),
+      { ...unchecked, hasPractice: false, hasPastPaper: false }
+    );
+    expect(choice?.because).toBe("no_material_for_specification_concept");
+  });
+
+  it("still offers real questions when nobody has checked the corpus", () => {
+    // Otherwise Today would never suggest past papers, because it cannot
+    // afford to find out whether they exist.
+    const choice = selectIntervention(
+      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards"])),
+      { ...unchecked, hasFlashcards: true }
+    );
+    expect(choice?.type).toBe("past_paper");
+  });
+
+  it("stops offering them once the corpus is known to hold nothing", () => {
+    const choice = selectIntervention(
+      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards"])),
+      { ...unchecked, hasFlashcards: true, hasPastPaper: false }
+    );
+    expect(choice?.type).not.toBe("past_paper");
+  });
+});

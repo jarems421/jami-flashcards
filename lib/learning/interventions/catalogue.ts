@@ -55,10 +55,19 @@ export type InterventionAvailability = {
    * guessing.
    */
   flashcardCount?: number;
-  /** Generated practice questions exist for it. */
-  hasPractice: boolean;
-  /** The licensed corpus can serve real questions for it. */
-  hasPastPaper: boolean;
+  /**
+   * Generated practice questions exist for it, or undefined for not looked.
+   *
+   * The banks are expensive to ask -- the corpus scan costs more than a whole
+   * profile build -- so most callers have not. Undefined therefore means
+   * "unknown", and unknown is not the same as none: an action is still worth
+   * offering when nobody has checked, because the surface it leads to will
+   * say so if there is nothing there. What unknown may never do is justify
+   * telling a student their specification is uncovered.
+   */
+  hasPractice?: boolean;
+  /** The licensed corpus can serve real questions for it, or undefined for not looked. */
+  hasPastPaper?: boolean;
   /** Notebooks or sources are linked to it. */
   hasMaterial: boolean;
   /** This deployment can generate cards for the student. */
@@ -99,6 +108,16 @@ export type InterventionReason =
   | "recall_strong_application_weak"
   /** Studied, never tested. */
   | "material_never_tested"
+  /**
+   * On the course, and nothing recorded against it either way.
+   *
+   * Distinct from both neighbours on purpose. It is not
+   * `material_never_tested`, which describes material that exists and has not
+   * been used -- here there may be none. And it is not
+   * `no_material_for_specification_concept`, which is a claim that the banks
+   * were asked and hold nothing; this is what is said when nobody asked.
+   */
+  | "declared_but_unevidenced"
   /** Due, and they know it. */
   | "due_for_retrieval"
   /** Recently gained, worth locking in. */
@@ -131,13 +150,21 @@ export function needsMoreFlashcards(availability: InterventionAvailability) {
   return !availability.hasFlashcards;
 }
 
-/** Whether a concept has enough of its own material to study from at all. */
+/**
+ * Whether a concept has enough of its own material to study from at all.
+ *
+ * Unknown counts as workable, deliberately. This gates the claim that a
+ * specification concept has nothing behind it, and that claim needs every
+ * bank to have actually answered: a corpus nobody asked about is not a corpus
+ * that is empty, and an outage must not reach a student as a hole in their
+ * syllabus.
+ */
 export function hasWorkableMaterial(availability: InterventionAvailability) {
   return (
     availability.hasFlashcards ||
-    availability.hasPractice ||
-    availability.hasPastPaper ||
-    availability.hasMaterial
+    availability.hasMaterial ||
+    availability.hasPractice !== false ||
+    availability.hasPastPaper !== false
   );
 }
 
@@ -168,7 +195,8 @@ function firstAvailable(
       case "fill_specification_gap":
         return availability.canCreatePractice || availability.canCreateFlashcards;
       case "past_paper":
-        return availability.hasPastPaper;
+        // Unknown is offerable; only a bank known to be empty rules it out.
+        return availability.hasPastPaper !== false;
       case "retrieve":
         return availability.hasFlashcards;
       case "review_material":
@@ -240,7 +268,16 @@ export function selectIntervention(
           "past_paper",
         ]);
       }
-      return choose("material_never_tested", [
+      /*
+       * Declared on the course, nothing answered, and the banks unasked.
+       *
+       * Worth being careful about the words: this is not a weakness -- the
+       * engine reached `diagnose` precisely because it has no evidence either
+       * way -- and it is not a coverage gap, because establishing one needs
+       * the banks to have answered. It is simply a part of the course with
+       * nothing recorded against it.
+       */
+      return choose("declared_but_unevidenced", [
         "create_practice",
         "past_paper",
         "review_material",
