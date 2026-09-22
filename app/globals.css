@@ -3371,6 +3371,49 @@ html.panels-solid body.constellation-background-enabled .app-nav {
   }
 }
 
+/*
+ * The completion moment, and the recommendation that follows it.
+ *
+ * Two entrances, one after the other, because the order is the message: the
+ * student reads what they finished, and then the next thing resolves under it.
+ * Both are short. A student who has just done five exam questions wants to see
+ * what is next, not wait for a page to congratulate them.
+ *
+ * No keyframes are guarded here: the global reduced-motion rule at the end of
+ * this file already collapses every animation in the app to nothing, so these
+ * settle instantly for anyone who asked for that.
+ */
+@keyframes mission-complete-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes mission-body-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes mission-done-mark-in {
+  0% { transform: scale(0.72); }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+.mission-complete {
+  animation: mission-complete-in var(--duration-normal) var(--ease-standard) both;
+}
+
+.mission-done-mark {
+  animation: mission-done-mark-in var(--duration-slow) var(--ease-spring) both;
+  animation-delay: 90ms;
+}
+
+.mission-complete + * + .mission-body,
+.mission-complete ~ .mission-body {
+  animation: mission-body-in var(--duration-slow) var(--ease-standard) both;
+  animation-delay: 160ms;
+}
+
 @keyframes app-rise-in {
   from {
     opacity: 0;

@@ -98,6 +98,10 @@ describe("Today with study actions", () => {
       // Carried through so the card can record what the student did with it.
       target: { kind: "error", category: "missing_units", label: "Missing or incorrect units" },
       scope: { folderId: "folder-1" },
+      // And so a surface can account for the recommendation without asking the
+      // engine a second question. No intervention here: an error spans topics,
+      // so the catalogue has no single body of material to offer anything for.
+      evidence: { count: 3, uniqueItems: 3, sources: ["past-paper"] },
     });
     expect(plan.studyActions[1]?.description).toContain("not enough evidence yet");
     expect(plan.studyActions[2]?.description).toBe("6 cards due now.");

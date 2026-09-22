@@ -221,6 +221,10 @@ const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
     "Jami has arranged as many skies as it can today. You can still move stars yourself.",
   sourceFlashcardDrafts: "AI budget reached for source drafts today.",
   sourcePracticeDrafts: "AI budget reached for source drafts today.",
+  // Says what is still possible, because the recommendation itself has not
+  // gone away -- only Jami's offer to write the material for it.
+  interventionMaterial:
+    "Jami has written as much study material as it can today. You can still make cards and questions yourself.",
 };
 
 export function createAiBudgetLimitResponse(

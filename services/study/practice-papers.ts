@@ -16,7 +16,9 @@ import {
   type PracticePaperTimingMode,
   mapPracticePaperAttemptData,
   type PracticePaperAttempt,
+  type PracticePaperQuestion,
 } from "@/lib/practice/practice-papers";
+import type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import {
   updateNotebook,
@@ -194,6 +196,106 @@ export async function createUploadedPracticePaper(input: {
     updateNotebook(input.userId, input.notebook.id, {
       type: "practice_paper",
       sourceIds: input.sourceIds,
+      pastPaperId: input.notebook.id,
+    }),
+  ]);
+  invalidateDashboardData(input.userId);
+  return mapPracticePaperData(input.notebook.id, payload);
+}
+
+/**
+ * Questions Jami wrote for one concept, stored as an ordinary practice paper.
+ *
+ * Deliberately not a new kind of object. A question generated from a
+ * recommendation is sat, marked and turned into evidence by exactly the same
+ * code as any other practice question -- there is no second marking path and
+ * no second kind of paper -- which is also what lets the work come back to the
+ * Learning Engine without a special case.
+ *
+ * Untimed and tutor-enabled, because this is targeted revision on one concept
+ * rather than a mock: a clock on five questions about completing the square
+ * would be theatre.
+ */
+export async function createInterventionPracticePaper(input: {
+  userId: string;
+  notebook: Notebook;
+  conceptLabel: string;
+  questions: PracticePaperQuestion[];
+  markScheme: PracticePaperMarkSchemeItem[];
+  /** The recommendation that asked for it. Travels onto the stored paper. */
+  interventionId: string;
+}) {
+  const payload = buildPracticePaperPayload({
+    notebookId: input.notebook.id,
+    folderId: input.notebook.folderId,
+    title: input.notebook.title,
+    origin: "generated",
+    status: "ready",
+    sourceIds: [],
+    sourceLabels: [],
+    request: `Targeted practice on ${input.conceptLabel}`,
+    coverage: input.conceptLabel,
+    length: "full",
+    focus: "weak_areas",
+    durationMinutes: 0,
+    timingMode: "untimed",
+    timingState: "not_started",
+    deadlineAt: undefined,
+    pausedAt: undefined,
+    totalPausedMs: 0,
+    overtimeStartedAt: undefined,
+    deadlineSnapshotAt: undefined,
+    deadlineVersion: 0,
+    tutorEnabled: true,
+    tutorUsed: false,
+    timerEnabled: false,
+    instructions: [],
+    /*
+     * What this paper honestly is, rather than an inferred exam profile.
+     *
+     * Confidence is low on purpose: these questions were written for one
+     * concept on a published specification, which is not the same as knowing
+     * the format of the paper the student will actually sit.
+     */
+    assessmentProfile: {
+      studyLevel: "",
+      qualificationOrModule: "",
+      awardingBodyOrInstitution: "",
+      specificationOrCourse: "",
+      tierOrComponent: "",
+      formatSummary: `Targeted practice on ${input.conceptLabel}`,
+      confidence: "low",
+    },
+    questions: input.questions,
+    choiceGroups: [],
+    totalMarks: input.questions.reduce((sum, question) => sum + question.marks, 0),
+    markScheme: {
+      kind: "generated",
+      label: "Jami-written marking guide",
+      notice:
+        "Jami wrote these questions and their marking guide. Check anything that looks wrong before you rely on a mark.",
+      items: input.markScheme,
+    },
+    preparedAt: Date.now(),
+    gradeGuidance: {
+      kind: "none",
+      label: "No grade guidance",
+      notice: "Grade boundaries do not apply to a few questions on one concept.",
+      boundaries: [],
+    },
+    examinerInsights: [],
+    attemptCount: 0,
+    createdByInterventionId: input.interventionId,
+  });
+
+  await Promise.all([
+    withTimeout(
+      setDoc(practicePaperRef(input.userId, input.notebook.id), payload),
+      WRITE_MS,
+      "Save generated practice paper"
+    ),
+    updateNotebook(input.userId, input.notebook.id, {
+      type: "practice_paper",
       pastPaperId: input.notebook.id,
     }),
   ]);

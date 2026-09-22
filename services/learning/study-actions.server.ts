@@ -112,6 +112,21 @@ export async function loadStudyActions(input: {
       {
         questionPracticeAvailable:
           featureFlags.enablePastPaperPractice && Boolean(result.folder.examCourse),
+        /*
+         * Whether this deployment may have Jami write study material.
+         *
+         * Cards and questions are one capability wearing two hats -- AI
+         * writing material the student then reads and confirms -- and
+         * `enableFlashcardAi` is the flag that already governs it. Practice is
+         * deliberately *not* gated on `enablePastPaperPractice`: that governs
+         * the licensed exam corpus, which is material Jami serves rather than
+         * writes, and conflating the two would switch generation off wherever
+         * a folder simply has no exam course.
+         */
+        canGenerate: {
+          flashcards: featureFlags.enableFlashcardAi,
+          practice: featureFlags.enableFlashcardAi,
+        },
       },
       historyResult.history,
       now

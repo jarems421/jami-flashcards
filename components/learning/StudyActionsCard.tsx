@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, SectionHeader } from "@/components/ui";
 import type { TodayStudyAction } from "@/lib/dashboard/today-plan";
 import { getStudyDayKey } from "@/lib/study/day";
+import { noteMissionStarted } from "@/lib/learning/mission-handoff";
 import { noteStudyActionEvent } from "@/services/learning/study-action-events";
 
 /**
@@ -33,9 +34,21 @@ import { noteStudyActionEvent } from "@/services/learning/study-action-events";
 export default function StudyActionsCard({
   actions,
   uid,
+  onGenerate,
+  generatingId = null,
 }: {
   actions: TodayStudyAction[];
   uid: string;
+  /**
+   * Offered for an action whose answer is for Jami to write the material.
+   *
+   * Absent, those actions keep their link and behave like any other: the
+   * surface they lead to is still the right place to be. The button is an
+   * extra route, never the only one.
+   */
+  onGenerate?: (action: TodayStudyAction) => void;
+  /** The action currently being written, so it cannot be asked for twice. */
+  generatingId?: string | null;
 }) {
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
   const shownRef = useRef<Set<string>>(new Set());
@@ -44,6 +57,27 @@ export default function StudyActionsCard({
     () => actions.filter((action) => !dismissed.has(action.id)),
     [actions, dismissed]
   );
+
+  /*
+   * Opening a recommendation, recorded twice for two different readers.
+   *
+   * The event is evidence the engine reads, and rests the advice until newer
+   * evidence arrives. The handoff is a note to Today, so that finishing this
+   * work is acknowledged when the student comes back.
+   *
+   * Both, or the loop is only half closed for anything started from this list:
+   * the session would offer a way back to a page that had no idea where the
+   * student had been.
+   */
+  const start = (action: TodayStudyAction) => {
+    noteStudyActionEvent(uid, action, "started", getStudyDayKey());
+    noteMissionStarted({
+      actionId: action.id,
+      headline: action.title,
+      conceptLabel: action.target.label,
+      ...(action.targetItems !== undefined ? { targetItems: action.targetItems } : {}),
+    });
+  };
 
   useEffect(() => {
     if (!uid) return;
@@ -74,7 +108,7 @@ export default function StudyActionsCard({
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
               <Link
                 href={action.href}
-                onClick={() => noteStudyActionEvent(uid, action, "started", getStudyDayKey())}
+                onClick={() => start(action)}
                 className="min-w-0"
               >
                 <div className="break-words text-sm font-semibold text-text-primary">
@@ -90,9 +124,23 @@ export default function StudyActionsCard({
                 </div>
               </Link>
               <div className="flex items-center gap-2 justify-self-start sm:justify-self-end">
+                {action.generate && onGenerate ? (
+                  <button
+                    type="button"
+                    disabled={generatingId !== null}
+                    onClick={() => onGenerate(action)}
+                    className="app-selected rounded-full px-3 py-1 text-xs font-semibold transition duration-fast disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+                  >
+                    {generatingId === action.id
+                      ? "Writing…"
+                      : action.generate.kind === "create_flashcards"
+                        ? "Make cards"
+                        : "Create practice"}
+                  </button>
+                ) : null}
                 <Link
                   href={action.href}
-                  onClick={() => noteStudyActionEvent(uid, action, "started", getStudyDayKey())}
+                  onClick={() => start(action)}
                   className="app-chip rounded-full px-3 py-1 text-xs font-semibold"
                 >
                   {action.label}

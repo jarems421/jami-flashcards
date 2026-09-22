@@ -13,6 +13,7 @@ export type AiBudgetAction =
   | "videoCardImport"
   | "sourceFlashcardDrafts"
   | "sourcePracticeDrafts"
+  | "interventionMaterial"
   | "studyAssetGeneration"
   | "studyAnswerCheck";
 
@@ -219,6 +220,26 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
   sourcePracticeDrafts: {
     dailyRequestLimit: 10,
     burstRequestLimit: 2,
+    burstWindowMs: 60_000,
+    burstScope: "sourceDrafts",
+    tokenCap: 12_000,
+    inputTokenCap: null,
+  },
+  /*
+   * Material written in answer to a recommendation, from Today.
+   *
+   * Its own action rather than a share of `sourceFlashcardDrafts`: this is
+   * pressed on the home page, several times over a revision session, and a
+   * student who used it up would find the button on their most-visited surface
+   * quietly stops working. The daily limit is generous for that and still far
+   * below what a loop could spend, because nothing here retries.
+   *
+   * Input is a concept label and at most forty existing fronts, all
+   * length-capped, so it is bounded by construction.
+   */
+  interventionMaterial: {
+    dailyRequestLimit: 20,
+    burstRequestLimit: 3,
     burstWindowMs: 60_000,
     burstScope: "sourceDrafts",
     tokenCap: 12_000,

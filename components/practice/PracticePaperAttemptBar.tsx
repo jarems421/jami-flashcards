@@ -12,6 +12,10 @@ import {
 import PracticePaperDetailsDialog from "@/components/practice/PracticePaperDetailsDialog";
 import PracticePaperResultsDialog from "@/components/practice/PracticePaperResultsDialog";
 import { useFeedback } from "@/hooks/useFeedback";
+import { practiceMissionCompletion } from "@/lib/learning/interventions/practice-completion";
+import { noteMissionFinished } from "@/lib/learning/mission-handoff";
+import { getStudyDayKey } from "@/lib/study/day";
+import { noteStudyActionOutcomeById } from "@/services/learning/study-action-events";
 import { PRACTICE_PAPER_MARKING_STAGE_LABELS } from "@/lib/practice/practice-paper-marking-jobs";
 import type { PracticePaper, PracticePaperMarkingJob, PracticePaperStatus } from "@/lib/practice/practice-papers";
 import {
@@ -30,6 +34,33 @@ import {
   startPracticePaperAttempt,
   submitPracticePaperAttempt,
 } from "@/services/study/practice-papers";
+
+/**
+ * A paper Jami wrote has just been marked: tell the loop it was done.
+ *
+ * Two records, for two readers, both fire-and-forget. The event is what stops
+ * the engine recommending work the student has already carried out; the note
+ * is what lets Today acknowledge it when they go back. Neither may delay or
+ * fail the marking report the student is waiting for, and losing either costs
+ * only itself.
+ *
+ * Nothing happens for a paper the student made themselves, or for a sitting
+ * that produced no countable answer -- see `practiceMissionCompletion`.
+ */
+function noteFinishedMission(userId: string, paper: PracticePaper) {
+  const finished = practiceMissionCompletion(paper);
+  if (!finished) return;
+  noteMissionFinished(
+    {
+      actionId: finished.interventionId,
+      headline: `Practise ${finished.conceptLabel}`,
+      conceptLabel: finished.conceptLabel,
+      targetItems: finished.targetItems,
+    },
+    finished.answered
+  );
+  noteStudyActionOutcomeById(userId, finished.interventionId, "completed", getStudyDayKey());
+}
 
 function formatRemaining(milliseconds: number) {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
@@ -124,6 +155,7 @@ export default function PracticePaperAttemptBar({
           if (!active || !marked) return;
           replacePaper(marked);
           setReportOpen(true);
+          noteFinishedMission(userId, marked);
         }
       } catch (error) {
         if (active) showThrownError(error, "Could not refresh marking progress.");

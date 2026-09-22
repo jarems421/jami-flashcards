@@ -8,7 +8,7 @@ import {
   practiceGenerationPrompt,
   readPracticeDrafts,
 } from "@/lib/learning/interventions/practice-request";
-import { practiceToStore } from "@/services/learning/practice-intervention.server";
+import { practiceToStore } from "@/lib/learning/interventions/practice-store";
 import { servableExamSpecificationConcepts } from "@/lib/practice/exam-specification-concepts";
 
 /**

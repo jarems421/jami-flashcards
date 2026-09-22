@@ -1,4 +1,5 @@
 import { getCustomStudyHref } from "@/lib/app/routes";
+import { DAILY_REVIEW_MISSION_ID } from "@/lib/learning/mission-handoff";
 import type { StudyAction } from "@/lib/learning/actions/study-actions";
 import type { LearningRecommendationReason } from "@/lib/learning/types";
 import { buildTopicProgress, type TopicProgressSummary } from "@/lib/material/progress";
@@ -35,6 +36,14 @@ export type TodayNextAction = {
   priority: number;
   secondaryHref?: string;
   secondaryLabel?: string;
+  /**
+   * The study action this came from, when the engine's advice is what leads.
+   *
+   * Carried so a surface can find the rest of it -- the evidence, the
+   * intervention, whether Jami can write the material -- without matching on
+   * wording, and so the same recommendation is not then listed again below.
+   */
+  actionId?: string;
 };
 
 export type TodayDueCardsSummary = {
@@ -112,6 +121,22 @@ export type TodayStudyAction = {
    */
   target: StudyAction["target"];
   scope: StudyAction["scope"];
+  /**
+   * What was counted, and where it came from.
+   *
+   * Carried so a surface can account for the recommendation without asking the
+   * engine a second question. The engine's own shape, not a flattened copy:
+   * "Why this?" and the ranking must be reading the same numbers.
+   */
+  evidence: StudyAction["evidence"];
+  /**
+   * What can be done about this, given the material that exists.
+   *
+   * Absent whenever the catalogue had no action to offer -- for an error
+   * target, and for a decision no available intervention fits. A surface with
+   * no intervention still has the engine's own wording to fall back on.
+   */
+  intervention?: StudyAction["intervention"];
   /** How many items the engine thinks this is worth, when a surface can honour it. */
   targetItems?: number;
   /**
@@ -414,6 +439,8 @@ function buildStudyActions(input: BuildTodayPlanInput): TodayStudyAction[] {
           ...(folderName ? { folderName } : {}),
           target: action.target,
           scope: action.scope,
+          evidence: action.evidence,
+          ...(action.intervention ? { intervention: action.intervention } : {}),
           ...(generating(action) ? { generate: generating(action)! } : {}),
           ...(action.spec ? { targetItems: action.spec.targetItems } : {}),
         },
@@ -518,7 +545,13 @@ function buildNextAction(input: {
       type: "review_due_cards",
       title: `Review ${pluralize(input.dueCards.count, "due flashcard")}${deckText}${input.dueCards.primaryDeckName ? "" : "."}`,
       description: "Due cards are time-sensitive. Review them, then return to notebook work.",
-      href: getCustomStudyHref({ mode: "daily" }),
+      /*
+       * Carries the day-review marker so Today can tell, when the student
+       * comes back, that they went and did the thing it asked for. It is not
+       * a recommendation id and cannot be read as one -- see
+       * `DAILY_REVIEW_MISSION_ID`.
+       */
+      href: getCustomStudyHref({ mode: "daily", fromActionId: DAILY_REVIEW_MISSION_ID }),
       label: "Start review",
       priority: 2,
       secondaryHref: "/dashboard/folders",
@@ -546,6 +579,7 @@ function buildNextAction(input: {
       href: leadingStudyAction.href,
       label: leadingStudyAction.label,
       priority: 3,
+      actionId: leadingStudyAction.id,
     };
   }
 
