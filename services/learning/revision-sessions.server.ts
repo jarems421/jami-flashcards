@@ -25,8 +25,8 @@ const log = createLogger({ route: "learning.revision_sessions" });
 
 /** A session left longer than this is not the same sitting. The mission handoff uses the same window. */
 export const REVISION_RESUME_WINDOW_MS = 4 * 60 * 60 * 1000;
-/** How long one model call may hold a session before another request may try. */
-const WORK_LEASE_MS = 70_000;
+/** How long one model call may hold a session before another request may try. Longer than the prepare route may run. */
+const WORK_LEASE_MS = 100_000;
 /** Enough finished sessions for a term's worth of evidence, bounded like every other profile read. */
 const EVIDENCE_LIMIT = 60;
 const OPEN_STATUSES = ["preparing", "active"] as const;

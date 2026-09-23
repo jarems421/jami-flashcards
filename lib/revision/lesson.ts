@@ -1,3 +1,4 @@
+import { repairModelLatex } from "@/lib/ai/model-json";
 import { LEARNING_ERROR_CATEGORIES, type LearningErrorCategory } from "@/lib/learning/types";
 import {
   REVISION_MISTAKES,
@@ -35,10 +36,11 @@ export const REVISION_TEXT_LIMITS = {
 const GOAL_COUNT = 3;
 const MAX_EXAMPLE_STEPS = 6;
 const MAX_MARK_POINTS = 4;
+const MAX_SOLUTION_LINES = 6;
 
 function readText(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
-  const text = value.replace(/\r\n?/g, "\n").trim();
+  const text = repairModelLatex(value.replace(/\r\n?/g, "\n").trim());
   if (!text || text.length > max) return null;
   return text;
 }
@@ -52,6 +54,22 @@ function readTextList(value: unknown, max: number, limit: number): string[] | nu
   return items.length > 0 ? items : null;
 }
 
+/**
+ * A worked solution, asked for as a list of lines and kept as one text.
+ *
+ * A worked solution is naturally a few steps, and asked for it as one string
+ * the model kept writing those steps as separate strings with no list around
+ * them -- `"solution":"Half of 6 is 3.","So $(x+3)^2$."` -- which is not JSON,
+ * so the whole lesson was thrown away. It is asked for as a list now, the way
+ * the example's steps are, and a single string is still read, as lessons
+ * already written have one.
+ */
+function readSolution(value: unknown): string | null {
+  if (typeof value === "string") return readText(value, REVISION_TEXT_LIMITS.solution);
+  const lines = readTextList(value, REVISION_TEXT_LIMITS.solution, MAX_SOLUTION_LINES);
+  return lines ? readText(lines.join("\n"), REVISION_TEXT_LIMITS.solution) : null;
+}
+
 export function readRevisionTask(value: unknown): RevisionTask | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
@@ -59,9 +77,28 @@ export function readRevisionTask(value: unknown): RevisionTask | null {
   const hint = readText(record.hint, REVISION_TEXT_LIMITS.hint);
   const answer = readText(record.answer, REVISION_TEXT_LIMITS.answer);
   const markScheme = readTextList(record.markScheme, REVISION_TEXT_LIMITS.markPoint, MAX_MARK_POINTS);
-  const solution = readText(record.solution, REVISION_TEXT_LIMITS.solution);
+  const solution = readSolution(record.solution);
   if (!prompt || !hint || !answer || !markScheme || !solution) return null;
   return { prompt, hint, answer, markScheme, solution };
+}
+
+/**
+ * The explanation and its worked example, from either shape.
+ *
+ * The model is asked for `"explanation":"…","example":{…}` side by side. It was
+ * first asked to nest the example inside the explanation, and on nearly every
+ * lesson it closed the example and not the explanation -- `]}` where `]}}`
+ * belonged -- so the four questions landed inside the explanation and the
+ * reply was one brace short of JSON. The nested shape is still read: it is how
+ * a lesson is stored.
+ */
+function explanationParts(record: Record<string, unknown>): { body: unknown; example: unknown } {
+  const explanation = record.explanation;
+  if (explanation && typeof explanation === "object") {
+    const nested = explanation as Record<string, unknown>;
+    return { body: nested.body, example: nested.example };
+  }
+  return { body: explanation, example: record.example };
 }
 
 /** The lesson, or null if any part of it is missing, empty or too long. */
@@ -70,15 +107,10 @@ export function readRevisionLesson(value: unknown): RevisionLesson | null {
   const record = value as Record<string, unknown>;
   const goals = readTextList(record.goals, REVISION_TEXT_LIMITS.goal, GOAL_COUNT);
   const orientation = readText(record.orientation, REVISION_TEXT_LIMITS.orientation);
-  const explanation =
-    record.explanation && typeof record.explanation === "object"
-      ? (record.explanation as Record<string, unknown>)
-      : null;
-  const body = readText(explanation?.body, REVISION_TEXT_LIMITS.explanation);
+  const { body: rawBody, example: rawExample } = explanationParts(record);
+  const body = readText(rawBody, REVISION_TEXT_LIMITS.explanation);
   const example =
-    explanation?.example && typeof explanation.example === "object"
-      ? (explanation.example as Record<string, unknown>)
-      : null;
+    rawExample && typeof rawExample === "object" ? (rawExample as Record<string, unknown>) : null;
   const problem = readText(example?.problem, REVISION_TEXT_LIMITS.exampleProblem);
   const steps = readTextList(example?.steps, REVISION_TEXT_LIMITS.exampleStep, MAX_EXAMPLE_STEPS);
   const guided = readRevisionTask(record.guided);
@@ -109,6 +141,70 @@ export function readRevisionLesson(value: unknown): RevisionLesson | null {
     apply,
     retrieve,
   };
+}
+
+/**
+ * Why a lesson was refused, as field names and nothing the model wrote.
+ *
+ * For the logs and the evaluation script: "retrieve.hint missing" says what to
+ * fix in the prompt or the limits, without putting teaching content in a log.
+ */
+export function explainRevisionLessonRejection(value: unknown): string[] {
+  if (!value || typeof value !== "object") return ["not an object"];
+  const record = value as Record<string, unknown>;
+  const problems = rejectionCollector();
+  problems.list("goals", record.goals, REVISION_TEXT_LIMITS.goal, GOAL_COUNT);
+  problems.text("orientation", record.orientation, REVISION_TEXT_LIMITS.orientation);
+  const parts = explanationParts(record);
+  problems.text("explanation", parts.body, REVISION_TEXT_LIMITS.explanation);
+  const example = (parts.example ?? {}) as Record<string, unknown>;
+  problems.text("example.problem", example.problem, REVISION_TEXT_LIMITS.exampleProblem);
+  problems.list("example.steps", example.steps, REVISION_TEXT_LIMITS.exampleStep);
+  for (const key of ["guided", "independent", "apply", "retrieve"] as const) {
+    problems.task(key, record[key]);
+  }
+  return problems.found;
+}
+
+/** Why a second explanation was refused, in the same terms. */
+export function explainRevisionRetryRejection(value: unknown): string[] {
+  if (!value || typeof value !== "object") return ["not an object"];
+  const record = value as Record<string, unknown>;
+  const problems = rejectionCollector();
+  problems.text("explanation", record.explanation, REVISION_TEXT_LIMITS.explanation);
+  problems.task("task", record.task);
+  return problems.found;
+}
+
+function rejectionCollector() {
+  const found: string[] = [];
+  const text = (path: string, raw: unknown, max: number) => {
+    if (typeof raw !== "string") found.push(`${path} ${raw === undefined ? "missing" : `is ${typeof raw}`}`);
+    else if (!raw.trim()) found.push(`${path} empty`);
+    else if (raw.trim().length > max) found.push(`${path} too long (${raw.trim().length}/${max})`);
+  };
+  const list = (path: string, raw: unknown, max: number, minimum = 1) => {
+    if (!Array.isArray(raw)) {
+      found.push(`${path} ${raw === undefined ? "missing" : `is ${typeof raw}, not a list`}`);
+      return;
+    }
+    const usable = raw.filter((item) => typeof item === "string" && item.trim() && item.trim().length <= max);
+    if (usable.length < minimum) found.push(`${path} has ${usable.length} usable of ${raw.length}`);
+  };
+  const task = (path: string, raw: unknown) => {
+    if (!raw || typeof raw !== "object") {
+      found.push(`${path} ${raw === undefined ? "missing" : "is not an object"}`);
+      return;
+    }
+    const record = raw as Record<string, unknown>;
+    text(`${path}.prompt`, record.prompt, REVISION_TEXT_LIMITS.prompt);
+    text(`${path}.hint`, record.hint, REVISION_TEXT_LIMITS.hint);
+    text(`${path}.answer`, record.answer, REVISION_TEXT_LIMITS.answer);
+    list(`${path}.markScheme`, record.markScheme, REVISION_TEXT_LIMITS.markPoint);
+    if (Array.isArray(record.solution)) list(`${path}.solution`, record.solution, REVISION_TEXT_LIMITS.solution);
+    else text(`${path}.solution`, record.solution, REVISION_TEXT_LIMITS.solution);
+  };
+  return { found, text, list, task };
 }
 
 /** The second go at the guided step: a different way in, and a new question. */

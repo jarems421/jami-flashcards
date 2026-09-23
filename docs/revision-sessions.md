@@ -121,7 +121,7 @@ quoted inside per-request boundary markers, as everywhere else.
 
 | Step | Model job | Output (validated server-side) |
 | --- | --- | --- |
-| Prepare (once) | Write the whole lesson for one concept: three goals, a short explanation with one worked example, a guided task with hint and expected answer, an independent task, an application task in an unfamiliar form, and a retrieval prompt. | One JSON object; every field length-capped; rejected and retried once if malformed. |
+| Prepare (once) | Write the whole lesson for one concept: three goals, a short explanation with one worked example, a guided task with hint and expected answer, an independent task, an application task in an unfamiliar form, and a retrieval prompt. | One JSON object; every field length-capped; rejected and retried once if malformed. Kept shallow on purpose — the example sits beside the explanation, and worked solutions are lists of lines — because the worker miscounts closing brackets on deeper nesting. Measure with `npm run eval:revision-lesson`. |
 | CHECK | Mark one answer against that step's expected answer. | `verdict` (correct / partial / incorrect), `score` 0–1, one sentence of feedback, `errorCategory` from the fixed list or null. |
 | RETRY | Explain the same idea a different way, and give one new guided task. | Same shape as the guided task. |
 
