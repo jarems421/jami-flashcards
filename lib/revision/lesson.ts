@@ -1,3 +1,4 @@
+import { repairModelLatex } from "@/lib/ai/model-json";
 import { LEARNING_ERROR_CATEGORIES, type LearningErrorCategory } from "@/lib/learning/types";
 import {
   REVISION_MISTAKES,
@@ -39,7 +40,7 @@ const MAX_SOLUTION_LINES = 6;
 
 function readText(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
-  const text = value.replace(/\r\n?/g, "\n").trim();
+  const text = repairModelLatex(value.replace(/\r\n?/g, "\n").trim());
   if (!text || text.length > max) return null;
   return text;
 }

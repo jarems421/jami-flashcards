@@ -168,3 +168,77 @@ export function closeUnbalancedJson(raw: string): string {
   const closed = body + open.reverse().join("");
   return closed === raw.trimEnd() ? raw : closed;
 }
+
+/**
+ * LaTeX commands a model wrote with their first letter missing, put back.
+ *
+ * Every command here starts with a letter that is also a JSON escape -- t, f,
+ * b, r, n -- and now and then the worker writes `\imes` for `\times`, as if
+ * that letter had been spent on the escape. KaTeX shows the result as red
+ * error text in the middle of a lesson.
+ *
+ * Only truncations that are not themselves commands are listed, so nothing a
+ * model meant is ever rewritten: `\beta` losing its b is `\eta`, a real letter,
+ * and is left alone. The test renders both sides of every entry to keep it so.
+ */
+export const ESCAPE_EATEN_LATEX: Readonly<Record<string, string>> = {
+  imes: "times",
+  ext: "text",
+  extbf: "textbf",
+  extit: "textit",
+  extrm: "textrm",
+  heta: "theta",
+  herefore: "therefore",
+  riangle: "triangle",
+  ilde: "tilde",
+  an: "tan",
+  au: "tau",
+  rac: "frac",
+  orall: "forall",
+  ightarrow: "rightarrow",
+  ightleftharpoons: "rightleftharpoons",
+  ho: "rho",
+  inom: "binom",
+  oxed: "boxed",
+  abla: "nabla",
+  otin: "notin",
+  eq: "neq",
+};
+
+const ESCAPE_EATEN_PATTERN = new RegExp(
+  String.raw`\\(${Object.keys(ESCAPE_EATEN_LATEX)
+    .sort((a, b) => b.length - a.length)
+    .join("|")})(?![a-zA-Z])`,
+  "g"
+);
+
+export function restoreEscapeEatenLatex(text: string): string {
+  if (!text.includes("\\")) return text;
+  return text.replace(ESCAPE_EATEN_PATTERN, (_match, name: string) => `\\${ESCAPE_EATEN_LATEX[name]}`);
+}
+
+/**
+ * A maths-only symbol written inside `\text{}`, moved out of it.
+ *
+ * Units are where it happens: `$12\text{ \Omega}$`, `$3\text{ \mu m}$`. `\text`
+ * switches KaTeX to text mode, where Greek letters do not exist, so the whole
+ * expression renders as red error text. Written as `$12\,\Omega$` it is what
+ * the model meant. Letters beside the symbol stay as text: `k\Omega` becomes
+ * `\text{k}\Omega`.
+ */
+const TEXT_WRAPPED_SYMBOL =
+  /\\text\{\s*([A-Za-z]*)\s*\\(Omega|omega|mu|pi|theta|lambda|alpha|beta|gamma|delta|Delta|sigma|rho|circ)\s*([A-Za-z]*)\s*\}/g;
+
+export function unwrapTextModeSymbols(text: string): string {
+  if (!text.includes("\\text")) return text;
+  return text.replace(
+    TEXT_WRAPPED_SYMBOL,
+    (_match, before: string, symbol: string, after: string) =>
+      `\\,${before ? `\\text{${before}}` : ""}\\${symbol}${after ? `\\text{${after}}` : ""}`
+  );
+}
+
+/** Both LaTeX repairs, for text a model wrote for a student to read. */
+export function repairModelLatex(text: string): string {
+  return unwrapTextModeSymbols(restoreEscapeEatenLatex(text));
+}

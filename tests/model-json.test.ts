@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { closeUnbalancedJson, repairModelJsonBackslashes } from "@/lib/ai/model-json";
+import katex from "katex";
+
+import {
+  closeUnbalancedJson,
+  ESCAPE_EATEN_LATEX,
+  repairModelJsonBackslashes,
+  repairModelLatex,
+  restoreEscapeEatenLatex,
+} from "@/lib/ai/model-json";
 import { extractStreamingAnswer } from "@/lib/ai/streaming-answer";
 import { parseJamiAssistantModelAnswer } from "@/lib/ai/jami-assistant";
 
@@ -100,6 +108,51 @@ describe("closeUnbalancedJson", () => {
     expect(closeUnbalancedJson('{"a":1}\n')).toBe('{"a":1}\n');
     expect(closeUnbalancedJson('{"a":"half]}')).toBe('{"a":"half]}');
     expect(closeUnbalancedJson('{"a":[1},"b":2}')).toBe('{"a":[1},"b":2}');
+  });
+});
+
+describe("restoreEscapeEatenLatex", () => {
+  const renders = (latex: string) => {
+    try {
+      katex.renderToString(latex, { throwOnError: true });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  it("puts back the letter the worker dropped", () => {
+    // Seen in a moles lesson: "mass $=$ moles $\imes M_r$".
+    expect(restoreEscapeEatenLatex(String.raw`mass $=$ moles $\imes M_r$`)).toBe(String.raw`mass $=$ moles $\times M_r$`);
+    expect(restoreEscapeEatenLatex(String.raw`$\rac{1}{2}$ and $\ext{m}$`)).toBe(String.raw`$\frac{1}{2}$ and $\text{m}$`);
+  });
+
+  it("repairs only what is broken: every entry is a real command, and its truncation is not", () => {
+    for (const [eaten, command] of Object.entries(ESCAPE_EATEN_LATEX)) {
+      // Two arguments, so \frac and \binom have what they need.
+      expect(renders(`\\${command}{x}{y}`), command).toBe(true);
+      expect(renders(`\\${eaten}{x}{y}`), eaten).toBe(false);
+    }
+  });
+
+  it("leaves real commands and longer names alone", () => {
+    const text = String.raw`$\eta + \beta \times \text{s} \tanh x \neq \anything$`;
+    expect(restoreEscapeEatenLatex(text)).toBe(text);
+  });
+
+  it("moves a Greek unit out of \\text, where KaTeX cannot draw it", () => {
+    // Seen seven times in one Ohm's law lesson.
+    const cases: [string, string][] = [
+      [String.raw`R = 12\text{ \Omega}`, String.raw`R = 12\,\Omega`],
+      [String.raw`2\text{ k\Omega}`, String.raw`2\,\text{k}\Omega`],
+      [String.raw`3\text{ \mu m}`, String.raw`3\,\mu\text{m}`],
+    ];
+    for (const [written, meant] of cases) {
+      expect(renders(written)).toBe(false);
+      expect(repairModelLatex(written)).toBe(meant);
+      expect(renders(meant)).toBe(true);
+    }
+    expect(repairModelLatex(String.raw`5\,\text{m s}^{-1}`)).toBe(String.raw`5\,\text{m s}^{-1}`);
   });
 });
 

@@ -12,6 +12,8 @@
  * Run `npm run check:ai-release` first: a dead failover makes every failure
  * here look like the prompt's fault.
  */
+import katex from "katex";
+
 import { getAiTokenCap } from "@/lib/ai/budgets";
 import {
   closeUnbalancedJson,
@@ -25,9 +27,11 @@ import {
   readRevisionLesson,
   readRevisionRetry,
 } from "@/lib/revision/lesson";
+import type { RevisionLesson } from "@/lib/revision/types";
 import {
   buildRevisionLessonInstruction,
   buildRevisionRetryInstruction,
+  TEACHING_REASONING_EFFORT,
   type RevisionConceptContext,
 } from "@/services/ai/revision-session.server";
 
@@ -87,6 +91,7 @@ async function draw<T>(input: {
     role: "worker",
     routeReason: "routine",
     timeoutMs: input.timeoutMs,
+    reasoningEffort: TEACHING_REASONING_EFFORT,
     generationConfig: {
       temperature: input.temperature,
       maxOutputTokens: getAiTokenCap("revisionLesson"),
@@ -108,6 +113,45 @@ async function draw<T>(input: {
   };
 }
 
+/**
+ * What a usable lesson can still get wrong that a reader would see at once.
+ *
+ * Each of these was found by reading real lessons, September 2026: maths KaTeX
+ * cannot draw (`\imes`, `\text{ \Omega}`), a hint that contains its answer,
+ * claims about exams nobody can check, and markdown shown as asterisks. None
+ * judges whether the teaching is right -- that still needs reading.
+ */
+function flagLesson(lesson: RevisionLesson): string[] {
+  const flags: string[] = [];
+  const tasks = { guided: lesson.guided, independent: lesson.independent, apply: lesson.apply, retrieve: lesson.retrieve };
+  const texts = [
+    ...lesson.goals,
+    lesson.orientation,
+    lesson.explanation.body,
+    lesson.explanation.example.problem,
+    ...lesson.explanation.example.steps,
+    ...Object.values(tasks).flatMap((task) => [task.prompt, task.hint, task.answer, ...task.markScheme, task.solution]),
+  ];
+  for (const text of texts) {
+    for (const [, latex] of text.matchAll(/\$([^$]+)\$/g)) {
+      try {
+        katex.renderToString(latex, { throwOnError: true });
+      } catch {
+        flags.push(`maths that will not render: $${latex}$`);
+      }
+    }
+    if (/\*[^*\s][^*]*\*/.test(text)) flags.push(`markdown emphasis: ${text.slice(0, 60)}`);
+  }
+  const bare = (text: string) => text.toLowerCase().replace(/[$\s.]/g, "");
+  for (const [key, task] of Object.entries(tasks)) {
+    if (bare(task.answer).length >= 2 && bare(task.hint).includes(bare(task.answer))) {
+      flags.push(`${key} hint contains its answer`);
+    }
+  }
+  if (/\b(exam|examiner|paper|marks)\b/i.test(lesson.orientation)) flags.push(`orientation talks about exams`);
+  return flags;
+}
+
 function report(label: string, result: Draw<unknown>, raw: boolean) {
   console.log(`${label}: ${result.value ? "USABLE" : "REFUSED"} in ${result.seconds}s, ${result.chars} chars`);
   for (const problem of result.problems) console.log(`  - ${problem}`);
@@ -119,11 +163,10 @@ export default async function main(args: string[] = []) {
   const course = readArg(args, "--course");
   const concepts = concept ? [{ conceptLabel: concept, ...(course ? { course } : {}) }] : DEFAULT_CONCEPTS;
   const raw = args.includes("--raw");
-  const tally = { lessons: 0, lessonsUsable: 0, retries: 0, retriesUsable: 0 };
+  const tally = { lessons: 0, lessonsUsable: 0, flagged: 0, retries: 0, retriesUsable: 0 };
 
   for (const context of concepts) {
-    console.log(`
-${context.conceptLabel}`);
+    console.log(`\n${context.conceptLabel}`);
     try {
       const lesson = await draw({
         instruction: buildRevisionLessonInstruction(context),
@@ -137,6 +180,9 @@ ${context.conceptLabel}`);
       if (lesson.value) tally.lessonsUsable += 1;
       report("  lesson", lesson, raw);
       if (!lesson.value) continue;
+      const flags = flagLesson(lesson.value);
+      tally.flagged += flags.length > 0 ? 1 : 0;
+      for (const flag of flags) console.log(`  ! ${flag}`);
 
       // The second explanation, as the guided step asks for it after a wrong answer.
       const retry = await draw({
@@ -155,7 +201,7 @@ ${context.conceptLabel}`);
     }
   }
   console.log(
-    `
-lessons ${tally.lessonsUsable} of ${tally.lessons} usable, retries ${tally.retriesUsable} of ${tally.retries}`
+    `\nlessons ${tally.lessonsUsable} of ${tally.lessons} usable (${tally.flagged} flagged), ` +
+      `retries ${tally.retriesUsable} of ${tally.retries}`
   );
 }
