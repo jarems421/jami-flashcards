@@ -56,6 +56,9 @@ export type LearningTuning = {
   evidenceSourceWeight: Record<LearningEvidenceKind, number>;
 };
 
+/** Work a model marked rather than a scheme: notebook pages and Revision Session answers. */
+const MODEL_MARKED_EVIDENCE_WEIGHT = 0.35;
+
 /**
  * Today's hand-set values, and why each was chosen.
  *
@@ -135,11 +138,17 @@ export const DEFAULT_LEARNING_TUNING: LearningTuning = {
    * a flat third regardless of how much work was marked, so a twenty-mark page
    * and a two-mark aside counted alike. It now scales with the marks like every
    * other marked source, and carries its own low multiplier instead.
+   *
+   * `revision` is notebook's number, not a second one. Revision Session answers
+   * are marked by a model against a question the session set, which is the
+   * same trust as marked notebook working, and nothing has been measured that
+   * would justify tuning them apart.
    */
   evidenceSourceWeight: {
     "past-paper": 1,
     practice: 0.6,
     flashcards: 1,
-    notebook: 0.35,
+    notebook: MODEL_MARKED_EVIDENCE_WEIGHT,
+    revision: MODEL_MARKED_EVIDENCE_WEIGHT,
   },
 };

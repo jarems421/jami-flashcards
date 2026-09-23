@@ -28,11 +28,24 @@ const NOTEBOOK_LEARNING_ACTIONS = [
 ] as const;
 
 export function getNotebookAssistantQuickActions(input: { hasWork: boolean }): NotebookPromptAction[];
-export function getNotebookAssistantQuickActions(input: { hasWork: boolean; onPastPaperPractice: (() => void) | undefined }): NotebookQuickAction[];
-export function getNotebookAssistantQuickActions(input: { hasWork: boolean; onPastPaperPractice?: () => void }): NotebookQuickAction[] {
+export function getNotebookAssistantQuickActions(input: {
+  hasWork: boolean;
+  onPastPaperPractice: (() => void) | undefined;
+  onRevisionSession?: (() => void) | undefined;
+}): NotebookQuickAction[];
+export function getNotebookAssistantQuickActions(input: {
+  hasWork: boolean;
+  onPastPaperPractice?: () => void;
+  onRevisionSession?: () => void;
+}): NotebookQuickAction[] {
   const actions: NotebookQuickAction[] = input.hasWork
     ? [MARK_MY_WORK_ACTION, ...NOTEBOOK_LEARNING_ACTIONS]
     : [...NOTEBOOK_LEARNING_ACTIONS];
   if (featureFlags.enablePastPaperPractice && input.onPastPaperPractice) actions.push({ label: "Past Paper Practice", run: input.onPastPaperPractice });
+  // Being taught it properly, rather than asking about it: a full-screen session
+  // that comes back here when it is done.
+  if (featureFlags.enableRevisionSessions && input.onRevisionSession) {
+    actions.push({ label: "Revision session", run: input.onRevisionSession });
+  }
   return actions;
 }

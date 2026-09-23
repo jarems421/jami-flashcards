@@ -1168,6 +1168,15 @@ export function buildPracticePaperPayload(
     markedAt: input.markedAt ?? null,
     result: input.result ?? null,
     activeAttemptId: input.activeAttemptId?.trim().slice(0, 160) || null,
+    /*
+     * Optional, and Firestore refuses a field set to undefined outright. A paper
+     * generated without web research carries no receipt, and writing it as
+     * undefined threw away the finished paper at the last step.
+     */
+    researchReceipt: input.researchReceipt ?? null,
+    generationAudit: input.generationAudit ?? null,
+    gradeGuidance: input.gradeGuidance ?? null,
+    examinerInsights: input.examinerInsights ?? null,
     createdAt: now,
     updatedAt: now,
   };

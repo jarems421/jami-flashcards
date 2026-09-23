@@ -569,3 +569,119 @@ describe("a request too large to send", () => {
     expect(countAiInputTokens).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Essays are marked by level, and the model that settles a disputed essay is
+ * the one measured to mark essays where examiners do. On 36 GCSE English
+ * answers the supervisor placed essays 2.0 marks below the examiners and the
+ * worker 0.5 below; with the supervisor adjudicating, the final mark was 2.2
+ * low. Point-marked questions keep the supervisor, where +0.09 was measured.
+ */
+describe("marking by levels", () => {
+  const essay = mapPracticePaperData("essay-1", {
+    notebookId: "essay-1",
+    folderId: "folder-1",
+    title: "English paper",
+    status: "submitted",
+    assessmentProfile: { qualificationOrModule: "GCSE English Language" },
+    questions: [{ id: "q1", label: "Question 2", prompt: "How does the writer use language?", marks: 8 }],
+    markScheme: {
+      kind: "generated",
+      items: [{
+        questionId: "q1",
+        marking: "banded",
+        answer: "Analysis of language",
+        acceptableAlternatives: [],
+        commonMistakes: [],
+        bands: [
+          { label: "Level 1", minMarks: 1, maxMarks: 2, descriptor: "Simple comment" },
+          { label: "Level 2", minMarks: 3, maxMarks: 4, descriptor: "Some comment" },
+          { label: "Level 3", minMarks: 5, maxMarks: 6, descriptor: "Clear explanation" },
+          { label: "Level 4", minMarks: 7, maxMarks: 8, descriptor: "Perceptive analysis" },
+        ],
+      }],
+    },
+  });
+  const pointsPaper = mapPracticePaperData("maths-1", {
+    notebookId: "maths-1",
+    folderId: "folder-1",
+    title: "Maths paper",
+    status: "submitted",
+    assessmentProfile: { qualificationOrModule: "GCSE Mathematics" },
+    questions: [{ id: "q1", label: "Question 1", prompt: "Solve 2x = 6.", marks: 2 }],
+    markScheme: {
+      kind: "generated",
+      items: [{
+        questionId: "q1",
+        marking: "additive",
+        answer: "x = 3",
+        acceptableAlternatives: [],
+        commonMistakes: [],
+        points: [
+          { id: "m1", marks: 1, code: "M", text: "Divides by 2", dep: [], ft: false, essentialTerms: [], allow: [], reject: [] },
+          { id: "a1", marks: 1, code: "A", text: "x = 3", dep: ["m1"], ft: false, essentialTerms: [], allow: [], reject: [] },
+        ],
+      }],
+    },
+  });
+  const levelReport = (label: string, max: number, marks: number) => JSON.stringify({
+    summary: "Evidence-based report.",
+    strengths: [],
+    priorities: ["Develop the analysis"],
+    questionResults: [{
+      questionId: "q1",
+      label,
+      awardedMarks: marks,
+      maxMarks: max,
+      feedback: "Specific feedback.",
+      criterionResults: [{ criterion: "Level placement", awarded: true, awardedMarks: marks, evidence: "Quoted line" }],
+      evidence: ["Quoted line"],
+      strengths: [],
+      improvements: [],
+      nextStep: "Develop the analysis.",
+      confidence: "high",
+      attempted: true,
+    }],
+  });
+  const markDisputed = async (target: typeof essay, label: string, max: number) => {
+    generateAiText.mockReset();
+    generateAiText.mockImplementation(async ({ role, request }: { role: string; request: { contents: unknown } }) => {
+      const adjudicating = JSON.stringify(request.contents).includes("Resolve this one disputed question");
+      if (adjudicating) return levelReport(label, max, 1);
+      return levelReport(label, max, role === "supervisor" ? max : 1);
+    });
+    await markSingleQuestionAdaptively({
+      paper: target,
+      answerParts: [{ text: "--- BEGIN UNTRUSTED REFERENCE: ANSWER q1 ---\nThe writer uses a metaphor.\n--- END UNTRUSTED REFERENCE: ANSWER q1 ---" }],
+      deadlineAt: Date.now() + 60_000,
+      maxOutputTokens: 2_000,
+      forceVerification: true,
+    });
+    const calls = generateAiText.mock.calls.map((entry) => entry[0]);
+    return {
+      adjudicator: calls.find((call) => JSON.stringify(call.request.contents).includes("Resolve this one disputed question")),
+      prompt: JSON.stringify(calls[0].request.contents),
+    };
+  };
+
+  it("settles a disputed essay with the worker", async () => {
+    const { adjudicator } = await markDisputed(essay, "Question 2", 8);
+    expect(adjudicator?.role).toBe("worker");
+  });
+
+  it("keeps the supervisor for a disputed point-marked question", async () => {
+    const { adjudicator } = await markDisputed(pointsPaper, "Question 1", 2);
+    expect(adjudicator?.role).toBe("supervisor");
+  });
+
+  it("tells the marker how levels are marked only where the guide uses them", async () => {
+    expect((await markDisputed(essay, "Question 2", 8)).prompt).toContain("best fit");
+    expect((await markDisputed(pointsPaper, "Question 1", 2)).prompt).not.toContain("best fit");
+  });
+
+  it("does not mark English Language as a foreign language", async () => {
+    const { prompt } = await markDisputed(essay, "Question 2", 8);
+    expect(prompt).toContain("For essays");
+    expect(prompt).not.toContain("For languages");
+  });
+});

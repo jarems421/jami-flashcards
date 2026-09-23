@@ -51,6 +51,8 @@ export const CONSTELLATION_BACKGROUND_EXCLUDED_PATHS = [
   "/dashboard/constellation",
   "/dashboard/notebooks/",
   "/dashboard/practice/questions/",
+  // A Revision Session covers the screen; the sky would only animate unseen behind it.
+  "/dashboard/revision/",
 ];
 
 /**

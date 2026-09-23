@@ -14,21 +14,29 @@ import {
 } from "@/components/ui";
 import Button from "@/components/ui/Button";
 
+/**
+ * What Jami does that a student cannot already get from one app.
+ *
+ * Each step is something the product does today, worded so it stays true for
+ * every student who reads it: marks are shown against the board's own scheme,
+ * never promised to match an examiner's, and the last step names only what the
+ * Learning Engine can say without a Topic being linked to its specification.
+ */
 const WORKFLOW_STEPS = [
   {
     number: "01",
-    label: "Work naturally",
-    detail: "Notebooks, papers, decks, and sources in one subject folder.",
+    label: "Practise the real thing",
+    detail: "Past-paper questions for your course, typed or handwritten, marked point by point against the official scheme.",
   },
   {
     number: "02",
-    label: "Ask when needed",
-    detail: "Bring Jami to the material you deliberately choose.",
+    label: "Keep what you learn",
+    detail: "Turn mistakes and notes into flashcards you approve, then review them before you forget.",
   },
   {
     number: "03",
-    label: "Remember what matters",
-    detail: "Review the useful parts again when memory needs them.",
+    label: "Know what is next",
+    detail: "Jami spots what is slipping and what you have not tested yet, and says why it matters.",
   },
 ];
 
@@ -182,7 +190,7 @@ export default function Home() {
               Jami
             </div>
             <div className="text-2xs font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Notebook-first study
+              GCSE and A-level revision
             </div>
           </div>
         </div>
@@ -206,13 +214,13 @@ export default function Home() {
           */}
         <div className="mt-10 grid items-start gap-8 lg:mt-14 lg:grid-cols-[minmax(0,1fr)_22.5rem] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:gap-y-10">
           <section className="lg:col-start-1 lg:row-start-1">
-            <h1 className="max-w-2xl text-4xl font-semibold leading-[1.05] tracking-[-0.035em] text-text-primary sm:text-5xl lg:text-6xl">
-              One place to do the work, and remember what matters.
+            <h1 className="max-w-2xl text-balance text-4xl font-semibold leading-[1.05] tracking-[-0.035em] text-text-primary sm:text-5xl lg:text-6xl">
+              Practise like the exam. Revise what it shows you.
             </h1>
             <p className="mt-6 max-w-xl text-base leading-7 text-text-secondary sm:text-lg sm:leading-8">
-              Keep notebooks, papers, sources, and flashcards in one study
-              space. Work the way you already work, ask Jami when you are stuck,
-              then review what turned out to be worth keeping.
+              Answer real past-paper questions and see which marks you lost, and
+              why. Jami connects those answers with your notebooks and
+              flashcards, so you always know what to revise next.
             </p>
           </section>
 
@@ -291,6 +299,15 @@ export default function Home() {
                 </p>
               </div>
             ))}
+            {/*
+              * Everything except past papers works for any subject, which is
+              * most of what a university student needs; said once, after the
+              * steps, so it widens the audience without diluting the headline.
+              */}
+            <p className="text-xs leading-5 text-text-muted sm:col-span-3">
+              Studying something else, or at university? Folders, notebooks,
+              flashcards and Tutor work with your own notes in any subject.
+            </p>
           </section>
         </div>
       </div>

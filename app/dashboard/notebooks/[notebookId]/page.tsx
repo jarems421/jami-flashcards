@@ -60,6 +60,7 @@ import {
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
 import { useNotebookViewportController } from "@/hooks/useNotebookViewportController";
+import { getRevisionStartHref } from "@/lib/app/routes";
 import { usePracticePaperStatus } from "@/hooks/usePracticePaperStatus";
 import { usePracticePaperRetake } from "@/hooks/usePracticePaperRetake";
 import {
@@ -384,8 +385,34 @@ export default function NotebookEditorPage() {
       ),
     [inkHasContent, selectedPage, textBlocks]
   );
+  /*
+   * A Revision Session from here opens the folder's list rather than a
+   * session: a student asking about their notes has not decided to be taught
+   * something yet, and may not mean this notebook's Topic when they do. The
+   * session comes back to this notebook when it is done.
+   */
   const notebookAssistantQuickActions = useMemo(
-    () => getNotebookAssistantQuickActions({ hasWork: notebookPageHasWork, onPastPaperPractice: notebook?.folderId && notebook.id ? () => router.push(`/dashboard/practice/questions/new?folderId=${encodeURIComponent(notebook.folderId)}&notebookId=${encodeURIComponent(notebook.id)}`) : undefined }),
+    () =>
+      getNotebookAssistantQuickActions({
+        hasWork: notebookPageHasWork,
+        onPastPaperPractice:
+          notebook?.folderId && notebook.id
+            ? () =>
+                router.push(
+                  `/dashboard/practice/questions/new?folderId=${encodeURIComponent(notebook.folderId)}&notebookId=${encodeURIComponent(notebook.id)}`
+                )
+            : undefined,
+        onRevisionSession:
+          notebook?.folderId && notebook.id
+            ? () =>
+                router.push(
+                  getRevisionStartHref({
+                    folderId: notebook.folderId,
+                    returnHref: `/dashboard/notebooks/${encodeURIComponent(notebook.id)}`,
+                  })
+                )
+            : undefined,
+      }),
     [notebook?.folderId, notebook?.id, notebookPageHasWork, router]
   );
 

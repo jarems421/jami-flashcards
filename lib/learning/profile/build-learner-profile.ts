@@ -24,6 +24,10 @@ import {
   type NotebookMarkedWorking,
 } from "@/lib/learning/profile/notebook-signals";
 import {
+  revisionObservations,
+  type RevisionSessionEvidence,
+} from "@/lib/learning/profile/revision-signals";
+import {
   applyTopicRelations,
   resolveTopicRelations,
   type TopicRelationInput,
@@ -52,7 +56,7 @@ import { countUniqueItems } from "@/lib/learning/scoring/item-weights";
 import { tuningWithLearnerPrior } from "@/lib/learning/scoring/learner-prior";
 import { masteryScore, weightedAccuracy } from "@/lib/learning/scoring/mastery-score";
 import { DEFAULT_LEARNING_TUNING, type LearningTuning } from "@/lib/learning/scoring/tuning";
-import { measureTrend } from "@/lib/learning/scoring/trend-score";
+import { measureTrend, measureTrendWithinKinds } from "@/lib/learning/scoring/trend-score";
 import {
   LEARNER_PROFILE_ALGORITHM_VERSION,
   type ConceptProvenance,
@@ -60,6 +64,8 @@ import {
   type LearnerEvidenceSource,
   type LearnerProfile,
   type LearnerProfileScope,
+  type LearningClaimEstimate,
+  type LearningClaims,
   type LearningConcept,
   type LearningDemonstration,
   type LearningEvidenceKind,
@@ -104,6 +110,11 @@ export type LearnerEvidence = {
    */
   notebookMarkings?: readonly NotebookMarkedWorking[];
   /**
+   * Finished Revision Sessions on concepts in scope. Model-marked like notebook
+   * working and weighted the same; see `revision-signals.ts`.
+   */
+  revisionSessions?: readonly RevisionSessionEvidence[];
+  /**
    * Plain display names by key, for concepts with no hierarchy. A key with no
    * label or concept -- deleted, merged away, or from a catalogue that is not
    * servable -- is left out of the profile rather than shown as "Unknown".
@@ -142,6 +153,7 @@ const EVIDENCE_ORDER: readonly LearningEvidenceKind[] = [
   "practice",
   "past-paper",
   "notebook",
+  "revision",
 ];
 
 const PROVENANCE_FOR_SOURCE: Readonly<Record<LearningTopicSource, ConceptProvenance>> = {
@@ -231,6 +243,7 @@ export function collectLearnerObservations(
       ...pastPaperObservations(evidence.pastPaperAttempts),
       ...practicePaperObservations(evidence.practicePaperAttempts),
       ...notebookObservations(evidence.notebookMarkings ?? []),
+      ...revisionObservations(evidence.revisionSessions ?? []),
     ],
     now
   );
@@ -266,6 +279,40 @@ function dueCardsByTopic(
   return due;
 }
 
+/** What each kind of evidence claims. Notebook working claims neither; see `LearningSignal.claims`. */
+const RECALL_EVIDENCE: ReadonlySet<LearningEvidenceKind> = new Set(["flashcards"]);
+const APPLICATION_EVIDENCE: ReadonlySet<LearningEvidenceKind> = new Set(["past-paper", "practice"]);
+
+function claimEstimate(
+  observations: readonly LearningObservation[],
+  kinds: ReadonlySet<LearningEvidenceKind>,
+  now: number,
+  tuning: LearningTuning,
+  scoped: LearningTuning
+): LearningClaimEstimate | undefined {
+  const own = observations.filter((observation) => kinds.has(observation.kind));
+  if (own.length === 0) return undefined;
+  return {
+    // Unpooled, like `evidenceMastery`: the split exists to find a gap the
+    // student's average would hide.
+    evidenceMastery: masteryScore(own, now, tuning),
+    confidence: evidenceConfidence(own, now, scoped),
+    attempts: own.reduce((total, observation) => total + observation.count, 0),
+  };
+}
+
+function claimsFor(
+  observations: readonly LearningObservation[],
+  now: number,
+  tuning: LearningTuning,
+  scoped: LearningTuning
+): LearningClaims | undefined {
+  const recall = claimEstimate(observations, RECALL_EVIDENCE, now, tuning, scoped);
+  const application = claimEstimate(observations, APPLICATION_EVIDENCE, now, tuning, scoped);
+  if (!recall && !application) return undefined;
+  return { ...(recall ? { recall } : {}), ...(application ? { application } : {}) };
+}
+
 export function buildLearningSignals(
   observations: readonly LearningObservation[],
   registry: ConceptRegistry,
@@ -283,8 +330,9 @@ export function buildLearningSignals(
   for (const [topicKey, topicObservations] of byTopic) {
     const concept = registry.concepts.get(topicKey);
     if (!concept) continue;
-    const trend = measureTrend(topicObservations, scoped);
+    const trend = measureTrendWithinKinds(topicObservations, scoped);
     const kinds = new Set(topicObservations.map((observation) => observation.kind));
+    const claims = claimsFor(topicObservations, now, tuning, scoped);
     signals.push({
       topicKey,
       topic: concept.label,
@@ -308,6 +356,7 @@ export function buildLearningSignals(
         0
       ),
       evidence: EVIDENCE_ORDER.filter((kind) => kinds.has(kind)),
+      ...(claims ? { claims } : {}),
     });
   }
   return signals.sort((left, right) => left.topicKey.localeCompare(right.topicKey));

@@ -297,6 +297,63 @@ describe("Firestore security rules", () => {
     await assertSucceeds(deleteDoc(marking));
   });
 
+  it("keeps a Revision Session, and the answers it holds, on the server", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const session = doc(aliceDb, "users", ALICE, "revisionSessions", "session-1");
+    const record = {
+      schemaVersion: 1,
+      policy: "teach",
+      status: "active",
+      target: { topicKey: "topic:quadratics", source: "student-topic", conceptLabel: "Quadratics" },
+      actionId: "folder:f1|low_mastery|topic:topic:quadratics",
+      why: [],
+      lesson: { guided: { answer: "(x + 4)^2 - 13" } },
+      steps: [{ kind: "orient", attempts: 0, hintUsed: false, skipped: false, selfGraded: false }],
+      position: 0,
+      createdAt: 1_789_000_000_000,
+      updatedAt: 1_789_000_000_000,
+    };
+
+    // Writable by nobody but the server: its outcomes are evidence.
+    await assertFails(setDoc(session, record));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", ALICE, "revisionSessions", "session-1"), record);
+    });
+    // Not readable from a client either, even by its owner: it holds the
+    // answers to the questions the student is about to be asked.
+    await assertFails(getDoc(session));
+    await assertFails(updateDoc(session, { position: 1 }));
+    await assertSucceeds(deleteDoc(session));
+  });
+
+  it("lets a student keep a shelf of sessions to do later, and nothing more", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const item = (id: string) => doc(aliceDb, "users", ALICE, "revisionShelf", id);
+    const valid = {
+      schemaVersion: 1,
+      kind: "practice",
+      status: "made",
+      topicKey: "spec:completing-the-square",
+      conceptLabel: "Completing the square",
+      folderId: "maths",
+      conceptId: "completing-the-square",
+      href: "/dashboard/practice/paper-1",
+      createdAt: 1_789_000_000_000,
+    };
+
+    await assertSucceeds(setDoc(item("ok"), valid));
+    await assertSucceeds(getDoc(item("ok")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "revisionShelf", "ok")));
+    // A link out of the app, a kind nobody defined, or question text: refused.
+    await assertFails(setDoc(item("bad-1"), { ...valid, href: "https://evil.example" }));
+    await assertFails(setDoc(item("bad-2"), { ...valid, kind: "question-bank" }));
+    await assertFails(setDoc(item("bad-3"), { ...valid, question: "Solve x^2 + 6x + 5 = 0" }));
+    // Done items are removed, never edited.
+    await assertFails(updateDoc(item("ok"), { status: "later" }));
+    await assertSucceeds(deleteDoc(item("ok")));
+  });
+
   it("keeps a Topic's specification relation inside the owner's own subtree", async () => {
     const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
     const bobDb = testEnv.authenticatedContext(BOB).firestore();

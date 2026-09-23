@@ -125,7 +125,26 @@ export function canonicalizeGeneratedMarkSchemeItems(value: unknown[]) {
     : candidate;
   return value.map((candidate) => {
     if (!candidate || typeof candidate !== "object") return candidate;
-    const item = candidate as Record<string, unknown>;
+    const given = candidate as Record<string, unknown>;
+    /*
+     * A scheme nested inside its own answer.
+     *
+     * Probed on an A-level essay, one reply in three came back as
+     * "answer": {"marking": "banded", "bands": [...]} with nothing at the top
+     * level. The scheme was sound; only its place was wrong, and every essay
+     * batch that did it was thrown away as unreadable and the paper with it.
+     */
+    const nestedAnswer = given.marking === undefined && given.answer && typeof given.answer === "object" && !Array.isArray(given.answer)
+      ? given.answer as Record<string, unknown>
+      : null;
+    const item: Record<string, unknown> = nestedAnswer &&
+      ["marking", "bands", "levels", "points", "traits"].some((key) => key in nestedAnswer)
+      ? {
+          ...nestedAnswer,
+          ...given,
+          answer: typeof nestedAnswer.answer === "string" ? nestedAnswer.answer : nestedAnswer.indicativeContent ?? "",
+        }
+      : given;
     const nestedMarking = item.marking && typeof item.marking === "object" && !Array.isArray(item.marking)
       ? item.marking as Record<string, unknown>
       : null;

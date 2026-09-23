@@ -27,11 +27,21 @@ import {
   captureExamWorking,
   compactExamWorkingPages,
   EXAM_WORKING_ZOOM_STEPS,
-  examWorkingFitWidth,
   examWorkingHasInk,
-  examWorkingTouchIsPalm,
   type ExamScratchpadHandle,
 } from "@/lib/practice/exam-working";
+import {
+  useNotebookViewportController,
+  type NotebookViewportFrameSize,
+} from "@/hooks/useNotebookViewportController";
+import {
+  clampNotebookViewportOrigin,
+  clampNotebookViewportZoom,
+  getNotebookViewportInset,
+  getNotebookViewportLayout,
+  isNotebookViewportZoomedIn,
+  type NotebookViewportPoint,
+} from "@/lib/workspace/notebook-viewport";
 import {
   examSheetContinuationRoom,
   examSheetOpeningContinuations,
@@ -64,6 +74,7 @@ import {
   getPenWidthFromPercent,
   shouldCreateNotebookPageOnRelease,
   shouldPointerSwipePages,
+  shouldSuppressTouchAfterStylus,
   NOTEBOOK_PAGE_SWIPE_VELOCITY_WINDOW_MS,
   type NotebookSwipeSample,
 } from "@/lib/workspace/notebook-inking";
@@ -107,10 +118,36 @@ import {
 const SAVE_IDLE_MS = 1_500;
 /** A finger has to travel this far before it scrolls, so a resting hand does not. */
 const PAN_START_DISTANCE = 8;
-/** Matches the full-screen sheet's `p-4`. */
-const EXPANDED_SHEET_PADDING = 16;
+/**
+ * How long after the Pencil lifts that a touch is still taken for the hand
+ * that was holding it. The notebook's own figure.
+ */
+const STYLUS_TOUCH_COOLDOWN_MS = 180;
+/** How far one notch of a mouse wheel, or a trackpad pinch, zooms. */
+const WHEEL_ZOOM_SENSITIVITY = 0.0025;
+const NO_PAN: NotebookViewportPoint = { x: 0, y: 0 };
+/** Held stable, so passing it never re-renders the ink editor. */
+const ignorePointer = () => undefined;
 
-const zoomAt = (index: number) => EXAM_WORKING_ZOOM_STEPS[index] ?? 1;
+/**
+ * How tall the frame has to be for the page to fill its width, inline.
+ *
+ * Inline the sheet flows with the practice page: its width is the column's and
+ * its height follows from the paper. The notebook's viewport maths works from
+ * a frame, so the frame is sized to the page rather than the other way round,
+ * with the notebook's own margin either side of it.
+ *
+ * The margin depends on whether the frame is wider than it is tall, which
+ * depends on the margin, so it is settled in two steps: once from the width
+ * alone, and once more from the height that gives.
+ */
+function inlineFrameHeight(width: number, pageWidth: number, pageHeight: number) {
+  if (width <= 0 || pageWidth <= 0 || pageHeight <= 0) return 0;
+  const fitted = (inset: number) =>
+    (width - inset * 2) * (pageHeight / pageWidth) + inset * 2;
+  const provisional = fitted(getNotebookViewportInset(width, 0));
+  return Math.ceil(fitted(getNotebookViewportInset(width, provisional)));
+}
 
 /*
  * Memoised, with every callback below held stable, the way the notebook holds
@@ -244,10 +281,14 @@ function ExamScratchpad({
 }) {
   const editorRef = useRef<NotebookInkEditorHandle | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  /** The page itself: what a pinch scales and a pan moves. */
   const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  /** The window the page is seen through, and what every finger lands on. */
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(true);
   const inkInteractionActiveRef = useRef(false);
+  /** Until when a touch is still taken for the hand that held the Pencil. */
+  const stylusCooldownUntilRef = useRef(0);
   const releaseTouchLockRef = useRef<(() => void) | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uiSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -267,10 +308,12 @@ function ExamScratchpad({
   const pageIndexRef = useRef(0);
   const loadedRef = useRef(false);
   const gestureRef = useRef<FingerGesture | null>(null);
-  /** The element a page turn slides: the sheet and the shadow under it. */
+  /** The element a page turn slides: the track the page sits on. */
   const pageShellRef = useRef<HTMLDivElement | null>(null);
   const addSheetHintRef = useRef<HTMLDivElement | null>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** What a settling page turn does when it lands, so a new one can land it early. */
+  const settleActRef = useRef<(() => void) | null>(null);
   /**
    * What the sheet is, read at the moment a finger lifts rather than at the
    * moment it landed. The gesture handlers are held stable so the ink editor
@@ -281,7 +324,9 @@ function ExamScratchpad({
     pageCount: 1,
     canAddPage: false,
     disabled: false,
+    expanded: false,
     zoom: 1,
+    pageWidth: 1,
     goToPage: (index: number) => {
       void index;
     },
@@ -291,7 +336,10 @@ function ExamScratchpad({
     pageCount: number;
     canAddPage: boolean;
     disabled: boolean;
+    expanded: boolean;
     zoom: number;
+    /** The page as drawn on screen, in px. */
+    pageWidth: number;
     goToPage: (index: number) => void;
     addPage: () => void;
   });
@@ -306,21 +354,22 @@ function ExamScratchpad({
   const [reloadKey, setReloadKey] = useState(0);
   const [confirm, setConfirm] = useState<ConfirmRequest>(null);
   const [expanded, setExpanded] = useState(false);
-  const [zoomIndex, setZoomIndex] = useState(0);
-  const [fitWidth, setFitWidth] = useState(0);
   /**
-   * The full-screen frame, and where the page has been scrolled inside it.
+   * The page as the notebook holds one: a frame, a zoom and where the page
+   * sits inside the frame.
    *
-   * Only read while writing full screen, and only used to decide how much of
-   * the page is worth painting. See `notebook-ink-window.ts`: js-draw clears
-   * and repaints its whole backing store on every frame of a stroke, so a page
-   * zoomed to 3x costs nine times the work per frame and shows nine times less
-   * of it. The pages are the paper's own size now, which makes that worse: an
-   * A4 page zoomed in far enough to write comfortably on a dense printed part
-   * is a large canvas being thrown away nine tenths of the time.
+   * This was a scrolling box whose page was made wider to zoom, which is why
+   * it could only be zoomed full screen, only with buttons, and not pinched at
+   * all. The notebook's viewport is what a student has already learned to
+   * pinch, pan and turn, so the sheet now uses it -- inline and full screen
+   * alike.
    */
-  const [frame, setFrame] = useState({ width: 0, height: 0 });
-  const [scroll, setScroll] = useState({ left: 0, top: 0 });
+  const [frameSize, setFrameSize] = useState<NotebookViewportFrameSize>({
+    width: 0,
+    height: 0,
+  });
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<NotebookViewportPoint>(NO_PAN);
   /**
    * Blank sheets after the printed ones.
    *
@@ -586,7 +635,7 @@ function ExamScratchpad({
     hint.style.opacity = bounded <= 0 ? "0" : String(0.3 + bounded * 0.7);
     hint.style.transform = `translateY(-50%) scale(${0.72 + bounded * 0.28})`;
     const ring = hint.querySelector("[data-pull-ring]");
-    if (ring instanceof SVGCircleElement) {
+    if (ring instanceof SVGElement) {
       ring.style.strokeDashoffset = String(2 * Math.PI * 16 * (1 - bounded));
     }
   }, []);
@@ -624,6 +673,7 @@ function ExamScratchpad({
       });
       const finish = () => {
         settleTimer.current = null;
+        settleActRef.current = null;
         writeSheetOffset(0);
         input.act?.();
       };
@@ -631,11 +681,29 @@ function ExamScratchpad({
         finish();
         return;
       }
+      settleActRef.current = finish;
       writeSheetOffset(input.targetOffset, duration);
       settleTimer.current = setTimeout(finish, duration);
     },
     [writeSheetOffset]
   );
+
+  /*
+   * Lands a page turn that is still settling, now.
+   *
+   * A finger that comes down again before the last turn has finished animating
+   * is turning the next page. That used to clear the timer and drop the turn
+   * with it, so a quick pair of flicks moved one page instead of two.
+   */
+  const landSettlingTurn = useCallback(() => {
+    const land = settleActRef.current;
+    if (!land) return;
+    if (settleTimer.current) {
+      clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+    }
+    land();
+  }, []);
 
   const cancelGesture = useCallback(() => {
     gestureRef.current = null;
@@ -687,6 +755,11 @@ function ExamScratchpad({
   const handleInteractionChange = useCallback(
     (active: boolean) => {
       inkInteractionActiveRef.current = active;
+      // While a stroke is live the cooldown never expires: the hand holding
+      // the Pencil is on the page, and it is not asking to turn it.
+      stylusCooldownUntilRef.current = active
+        ? Number.POSITIVE_INFINITY
+        : Date.now() + STYLUS_TOUCH_COOLDOWN_MS;
       if (active) {
         // Nothing waits to run in the middle of a stroke.
         if (saveTimer.current) {
@@ -711,39 +784,58 @@ function ExamScratchpad({
   );
 
   /*
-   * A finger drag on the sheet scrolls, as it does anywhere else on the page.
+   * One finger on the sheet, once the viewport has passed on it.
    *
-   * The sheet refuses native panning so the Pencil can write, and fingers were
-   * ignored on it -- so a page taller than the screen could only be moved by
-   * finding a margin. Contacts the size of a hand are left alone, a drag has to
-   * travel before it moves anything, and the moment the pen comes down any
-   * drag in progress stops.
+   * Sideways on a fitted page turns it, or pulls another sheet in past the
+   * last one. Up and down on a fitted page, inline, scrolls the practice page
+   * the way a finger does anywhere else on it: the sheet refuses native panning
+   * so the Pencil can write, and a page taller than the screen could otherwise
+   * only be moved by finding a margin. A zoomed page belongs to the viewport --
+   * one finger moves it, two pinch it -- and those never reach here.
+   *
+   * There used to be a size check here that dropped any contact wider than
+   * 40px as a resting palm. iPadOS reports a fingertip at around that size, so
+   * turning and scrolling failed for most fingers most of the time. The
+   * notebook never measured contacts: it ignores touch while the Pencil is down
+   * and for a moment after it lifts, which is when a palm is actually on the
+   * glass, and the viewport now does the same here before this is reached.
    */
-  const handleTouchDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!shouldPointerSwipePages(event.pointerType)) return;
-    if (inkInteractionActiveRef.current || gestureRef.current) return;
-    if (examWorkingTouchIsPalm(event)) return;
-    gestureRef.current = {
-      pointerId: event.pointerId,
-      originX: event.clientX,
-      originY: event.clientY,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      intent: "undecided",
-      target: scrollableAncestor(event.currentTarget),
-      samples: [{ x: event.clientX, time: event.timeStamp }],
-      offset: 0,
-      creating: false,
-    };
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Without capture the drag still works while the finger stays on the sheet.
-    }
-  }, []);
+  const beginSwipe = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (!shouldPointerSwipePages(event.pointerType)) return;
+      if (inkInteractionActiveRef.current || gestureRef.current) return;
+      landSettlingTurn();
+      const frame = frameRef.current;
+      gestureRef.current = {
+        pointerId: event.pointerId,
+        originX: event.clientX,
+        originY: event.clientY,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        intent: "undecided",
+        // Full screen there is nothing behind the sheet a drag should move.
+        target: sheetRef.current.expanded ? null : scrollableAncestor(frame),
+        samples: [{ x: event.clientX, time: event.timeStamp }],
+        offset: 0,
+        creating: false,
+      };
+      // The new-sheet ring waits level with the finger, rather than halfway
+      // down a frame that can be taller than the screen.
+      const hint = addSheetHintRef.current;
+      if (hint && frame) {
+        const rect = frame.getBoundingClientRect();
+        const top = Math.min(
+          Math.max(event.clientY - rect.top, 48),
+          Math.max(48, rect.height - 48)
+        );
+        hint.style.top = `${top}px`;
+      }
+    },
+    [landSettlingTurn]
+  );
 
-  const handleTouchMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+  const moveSwipe = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
       const gesture = gestureRef.current;
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       // The pen wins every argument: a drag under a stroke is a resting hand.
@@ -760,8 +852,6 @@ function ExamScratchpad({
         if (Math.hypot(dx, dy) < PAN_START_DISTANCE) return;
         const intent = getNotebookPageDragIntent({
           axis: Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical",
-          // Zoomed in, most of the sheet is off screen and a drag can only
-          // sensibly move it, so no page turn is offered until it is fitted.
           zoom: sheetRef.current.zoom,
         });
         gesture.intent = intent === "page" ? "swipe" : "pan";
@@ -778,14 +868,16 @@ function ExamScratchpad({
       if (gesture.intent === "pan") return;
 
       const sheet = sheetRef.current;
-      const pageWidth = surfaceRef.current?.clientWidth ?? 1;
       const pullingPastTheEnd =
         dx < 0 &&
         sheet.pageIndex >= sheet.pageCount - 1 &&
         sheet.canAddPage &&
         !sheet.disabled;
       if (pullingPastTheEnd) {
-        const pull = getNotebookCreatePagePull({ totalDx: dx, pageWidth });
+        const pull = getNotebookCreatePagePull({
+          totalDx: dx,
+          pageWidth: sheet.pageWidth,
+        });
         gesture.creating = true;
         gesture.offset = pull.resistedOffset;
         writeCreatePull(pull.progress);
@@ -806,8 +898,8 @@ function ExamScratchpad({
     [cancelGesture, writeCreatePull, writeSheetOffset]
   );
 
-  const handleTouchEnd = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+  const endSwipe = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
       const gesture = gestureRef.current;
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       gestureRef.current = null;
@@ -815,7 +907,7 @@ function ExamScratchpad({
       if (gesture.intent !== "swipe") return;
 
       const sheet = sheetRef.current;
-      const pageWidth = surfaceRef.current?.clientWidth ?? 1;
+      const pageWidth = sheet.pageWidth;
       const totalDx = gesture.lastX - gesture.originX;
       const velocityX = getNotebookSwipeVelocity(
         gesture.samples,
@@ -860,8 +952,8 @@ function ExamScratchpad({
     [settleSheet, writeCreatePull]
   );
 
-  const handleTouchCancel = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+  const cancelSwipe = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
       if (gestureRef.current?.pointerId !== event.pointerId) return;
       cancelGesture();
     },
@@ -899,6 +991,8 @@ function ExamScratchpad({
       if (event.key === "Escape") {
         event.stopPropagation();
         setExpanded(false);
+        setZoom(1);
+        setPan(NO_PAN);
         return;
       }
       const target = event.target as HTMLElement | null;
@@ -948,84 +1042,253 @@ function ExamScratchpad({
   const currentPageWidth = currentPage.width;
   const currentPageHeight = currentPage.height;
 
-  useEffect(() => {
-    if (!expanded) return;
-    const container = scrollRef.current;
-    if (!container || typeof ResizeObserver === "undefined") return;
-    // The observer reports the starting size too, so this is the only measurement.
-    const observer = new ResizeObserver(() => {
-      setFrame({ width: container.clientWidth, height: container.clientHeight });
-      setFitWidth(
-        examWorkingFitWidth({
-          containerWidth: container.clientWidth,
-          containerHeight: container.clientHeight,
-          pageWidth: currentPageWidth,
-          pageHeight: currentPageHeight,
-          padding: EXPANDED_SHEET_PADDING,
-        })
+  /*
+   * The frame the page is seen through.
+   *
+   * Full screen it is whatever the screen leaves under the tools. Inline it is
+   * as wide as the column and as tall as the page needs to fill that width, so
+   * the sheet still flows with the practice page -- see `inlineFrameHeight`.
+   * It is the same element in both modes, so switching restyles it rather
+   * than remounting the editor inside.
+   */
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const measure = () => {
+      const width = frame.clientWidth;
+      const height = frame.clientHeight;
+      setFrameSize((previous) =>
+        Math.abs(previous.width - width) < 0.5 &&
+        Math.abs(previous.height - height) < 0.5
+          ? previous
+          : { width, height }
       );
-    });
-    observer.observe(container);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
     return () => observer.disconnect();
-    // Re-fitted when the page changes shape: a question's first page is a crop
-    // that can be a third of a sheet tall, and the one after it a whole one.
-  }, [currentPageHeight, currentPageWidth, expanded]);
+  }, []);
+
+  const inlineHeight = inlineFrameHeight(
+    frameSize.width,
+    currentPageWidth,
+    currentPageHeight
+  );
 
   /*
-   * Where the page has been scrolled to, read at most once a frame.
+   * The notebook's own viewport: its fit, its pinch anchored under the
+   * fingers, one finger moving a zoomed page, and its palm rule -- touch is
+   * ignored while the Pencil is down and for a moment after it lifts. What it
+   * does not take for itself, it hands back as a swipe.
+   */
+  const {
+    layout,
+    pagePanLiveRef,
+    handleTouchPointerDown,
+    handleTouchPointerMove,
+    handleTouchPointerEnd,
+  } = useNotebookViewportController({
+    frameSize,
+    pageZoom: zoom,
+    pagePan: pan,
+    pageWidth: currentPageWidth,
+    pageHeight: currentPageHeight,
+    setPageZoom: setZoom,
+    setPagePan: setPan,
+    pageSurfaceRef: surfaceRef,
+    pageFrameRef: frameRef,
+    isNavigationLocked: () => false,
+    isStylusSuppressingTouch: () =>
+      shouldSuppressTouchAfterStylus({
+        stylusActive: inkInteractionActiveRef.current,
+        cooldownUntil: stylusCooldownUntilRef.current,
+        now: Date.now(),
+      }),
+    onPinchTakeover: cancelGesture,
+    onClearSwipeCandidate: () => {
+      gestureRef.current = null;
+    },
+    onSwipeEnd: (event, options) => {
+      if (options.cancelled) cancelSwipe(event);
+      else endSwipe(event);
+    },
+  });
+  /** The layout as last rendered, for handlers held stable across renders. */
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+
+  // Where the page settled, for the next pinch or pan to start from.
+  useEffect(() => {
+    pagePanLiveRef.current = layout.pageOrigin;
+  }, [layout.pageOrigin, pagePanLiveRef]);
+
+  const fitPage = useCallback(() => {
+    setZoom(1);
+    setPan(NO_PAN);
+  }, []);
+
+  /*
+   * Zooms about a point in the frame, keeping whatever is under it still.
    *
-   * Nothing is measured while a stroke is being drawn: the sheet blocks
-   * scrolling for the length of one, so there is nothing to follow, and a
-   * layout read on the pointer path is the one thing worth keeping off it.
+   * The buttons zoom about the middle of the frame, and a mouse wheel or a
+   * trackpad pinch about the pointer. A pinch on glass never comes here: the
+   * viewport anchors that itself.
+   */
+  const zoomAbout = useCallback(
+    (nextZoom: number, focus?: NotebookViewportPoint) => {
+      const current = layoutRef.current;
+      const bounded = clampNotebookViewportZoom(nextZoom);
+      if (Math.abs(bounded - current.zoom) < 0.001) return;
+      if (!isNotebookViewportZoomedIn(bounded)) {
+        fitPage();
+        return;
+      }
+      const point = focus ?? {
+        x: current.frameSize.width / 2,
+        y: current.frameSize.height / 2,
+      };
+      const across =
+        (point.x - current.pageOrigin.x) / Math.max(1, current.pageSize.width);
+      const down =
+        (point.y - current.pageOrigin.y) / Math.max(1, current.pageSize.height);
+      const next = getNotebookViewportLayout({
+        frameWidth: current.frameSize.width,
+        frameHeight: current.frameSize.height,
+        pageWidth: current.logicalPageSize.width,
+        pageHeight: current.logicalPageSize.height,
+        zoom: bounded,
+        pan: {
+          x: point.x - across * current.fitSize.width * bounded,
+          y: point.y - down * current.fitSize.height * bounded,
+        },
+      });
+      setZoom(bounded);
+      setPan(next.pageOrigin);
+    },
+    [fitPage]
+  );
+
+  /*
+   * A mouse wheel and a trackpad, on a desktop.
+   *
+   * A zoomed page used to be a scrolling box, so a wheel moved it for free. It
+   * is positioned now, the way the notebook positions one, so the wheel is
+   * read here: it pans a zoomed page, and with Ctrl -- which is also how a
+   * trackpad pinch arrives -- it zooms about the pointer. A fitted page leaves
+   * a plain wheel alone, so the practice page scrolls past it as it always did.
    */
   useEffect(() => {
-    const container = scrollRef.current;
-    if (!expanded || !container || zoomIndex === 0) {
-      setScroll((current) => (current.left === 0 && current.top === 0 ? current : { left: 0, top: 0 }));
-      return;
-    }
-    let frame = 0;
-    const read = () => {
-      frame = 0;
+    const frame = frameRef.current;
+    if (!frame) return;
+    let pendingPan: NotebookViewportPoint | null = null;
+    let animationFrame = 0;
+    const onWheel = (event: WheelEvent) => {
       if (inkInteractionActiveRef.current) return;
-      setScroll((current) =>
-        current.left === container.scrollLeft && current.top === container.scrollTop
-          ? current
-          : { left: container.scrollLeft, top: container.scrollTop }
-      );
-    };
-    const onScroll = () => {
-      if (frame) return;
-      frame = window.requestAnimationFrame(read);
-    };
-    read();
-    container.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      container.removeEventListener("scroll", onScroll);
-    };
-  }, [expanded, pageIndex, zoomIndex]);
-
-  /** Zooms about the middle of what is on screen, so the writing stays in view. */
-  const changeZoom = (nextIndex: number) => {
-    const bounded = Math.min(EXAM_WORKING_ZOOM_STEPS.length - 1, Math.max(0, nextIndex));
-    if (bounded === zoomIndex) return;
-    const container = scrollRef.current;
-    if (container) {
-      const ratio = zoomAt(bounded) / zoomAt(zoomIndex);
-      const centreX = container.scrollLeft + container.clientWidth / 2;
-      const centreY = container.scrollTop + container.clientHeight / 2;
-      window.requestAnimationFrame(() => {
-        container.scrollLeft = centreX * ratio - container.clientWidth / 2;
-        container.scrollTop = centreY * ratio - container.clientHeight / 2;
+      const current = layoutRef.current;
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        const rect = frame.getBoundingClientRect();
+        zoomAbout(
+          current.zoom * Math.exp(-event.deltaY * WHEEL_ZOOM_SENSITIVITY),
+          { x: event.clientX - rect.left, y: event.clientY - rect.top }
+        );
+        return;
+      }
+      if (!isNotebookViewportZoomedIn(current.zoom)) return;
+      event.preventDefault();
+      const unit =
+        event.deltaMode === 1
+          ? 16
+          : event.deltaMode === 2
+            ? current.frameSize.height
+            : 1;
+      const from = pendingPan ?? current.pageOrigin;
+      pendingPan = clampNotebookViewportOrigin({
+        origin: {
+          x: from.x - event.deltaX * unit,
+          y: from.y - event.deltaY * unit,
+        },
+        bounds: current.panBounds,
       });
-    }
-    setZoomIndex(bounded);
-  };
+      if (animationFrame) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = 0;
+        const next = pendingPan;
+        pendingPan = null;
+        if (next) setPan(next);
+      });
+    };
+    frame.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      frame.removeEventListener("wheel", onWheel);
+    };
+  }, [zoomAbout]);
 
-  /** Opens a page, keeping what is on the one being left. */
+  // A pinch that starts on the sheet is the sheet's, never Safari's page zoom.
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    return installNotebookViewportZoomBlock(frame);
+  }, []);
+
+  /*
+   * Every finger lands on the frame rather than the ink.
+   *
+   * The ink editor passes touches straight through -- fingers never draw -- so
+   * they bubble up to here. The viewport answers first, and only what it
+   * declines becomes a page turn or a scroll. The margin round the page is part
+   * of the frame, so a turn can start there too.
+   */
+  const handleFramePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== "touch") return;
+      if (handleTouchPointerDown(event)) return;
+      beginSwipe(event);
+    },
+    [beginSwipe, handleTouchPointerDown]
+  );
+
+  const handleFramePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== "touch") return;
+      if (handleTouchPointerMove(event)) return;
+      moveSwipe(event);
+    },
+    [handleTouchPointerMove, moveSwipe]
+  );
+
+  const handleFramePointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== "touch") return;
+      handleTouchPointerEnd(event);
+    },
+    [handleTouchPointerEnd]
+  );
+
+  const handleFramePointerCancel = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType !== "touch") return;
+      handleTouchPointerEnd(event, { cancelled: true });
+    },
+    [handleTouchPointerEnd]
+  );
+
+  /*
+   * Opens a page, keeping what is on the one being left.
+   *
+   * A zoomed sheet stays zoomed, the way a notebook does, and opens the next
+   * page at its top: the pages are different shapes, so wherever the last one
+   * was being read means nothing on the next.
+   */
   const showPage = useCallback(
-    (pages: string[], nextIndex: number) => {
+    (
+      pages: string[],
+      nextIndex: number,
+      nextPage: { width: number; height: number }
+    ) => {
       setPages(pages);
       pageIndexRef.current = nextIndex;
       latestHistoryRef.current = { undo: 0, redo: 0 };
@@ -1034,6 +1297,22 @@ function ExamScratchpad({
       setPageMount((value) => value + 1);
       setHistory({ undo: 0, redo: 0 });
       setOpenMenu(null);
+      const current = layoutRef.current;
+      if (isNotebookViewportZoomedIn(current.zoom)) {
+        const opened = getNotebookViewportLayout({
+          frameWidth: current.frameSize.width,
+          frameHeight: current.frameSize.height,
+          pageWidth: nextPage.width,
+          pageHeight: nextPage.height,
+          zoom: current.zoom,
+        });
+        setPan(
+          clampNotebookViewportOrigin({
+            origin: { x: opened.pageOrigin.x, y: opened.inset },
+            bounds: opened.panBounds,
+          })
+        );
+      }
     },
     [setPages]
   );
@@ -1046,7 +1325,7 @@ function ExamScratchpad({
 
   const goToPage = (nextIndex: number) => {
     if (nextIndex < 0 || nextIndex >= pageCount || nextIndex === pageIndexRef.current) return;
-    showPage(collectPages(), nextIndex);
+    showPage(collectPages(), nextIndex, sheetPages[nextIndex] ?? BLANK_PAGE);
     markChanged();
   };
 
@@ -1065,17 +1344,21 @@ function ExamScratchpad({
     while (pages.length < pageCount) pages.push("");
     pages.push("");
     setContinuationCount((value) => value + 1);
-    showPage(pages, pages.length - 1);
+    // Every added sheet is a blank continuation page, and they are all A4.
+    showPage(pages, pages.length - 1, BLANK_PAGE);
     markChanged();
   };
 
   /** Printed pages belong to the paper; only the sheet's own can be removed. */
   const deletePage = () => {
-    const page = sheetPages[pageIndexRef.current];
+    const leaving = pageIndexRef.current;
+    const page = sheetPages[leaving];
     if (disabled || pageCount <= 1 || page?.kind !== "continuation") return;
-    const pages = collectPages().filter((_page, index) => index !== pageIndexRef.current);
+    const pages = collectPages().filter((_page, index) => index !== leaving);
+    const remaining = sheetPages.filter((_page, index) => index !== leaving);
+    const opening = Math.min(leaving, pages.length - 1);
     setContinuationCount((value) => Math.max(0, value - 1));
-    showPage(pages, Math.min(pageIndexRef.current, pages.length - 1));
+    showPage(pages, opening, remaining[opening] ?? BLANK_PAGE);
     markChanged();
   };
 
@@ -1090,7 +1373,9 @@ function ExamScratchpad({
     pageCount,
     canAddPage,
     disabled,
-    zoom: zoomAt(zoomIndex),
+    expanded,
+    zoom: layout.zoom,
+    pageWidth: Math.max(1, layout.pageSize.width),
     goToPage,
     addPage,
   };
@@ -1115,42 +1400,47 @@ function ExamScratchpad({
     [eraserSize, highlighterThicknessPercent, penThicknessPercent]
   );
 
+  const zoomed = isNotebookViewportZoomedIn(layout.zoom);
+
   /**
    * The slice of the page the ink canvas is asked to paint.
    *
    * Null unless the page is zoomed past its fitted size, which is the only
-   * time the sheet is larger than the frame showing it -- so an inline sheet
-   * and a fitted full-screen one are painted exactly as they were before this.
+   * time the sheet is larger than the frame showing it -- so a fitted sheet is
+   * painted exactly as it always was. See `notebook-ink-window.ts`: js-draw
+   * clears and repaints its whole backing store on every frame of a stroke, so
+   * a page zoomed to 3x costs nine times the work per frame and shows a ninth
+   * of it.
    */
-  const sheetWidthPx = expanded && fitWidth > 0 ? Math.round(fitWidth * zoomAt(zoomIndex)) : 0;
-  const inkWindow = useMemo(() => {
-    if (sheetWidthPx <= 0 || frame.width <= 0 || currentPageWidth <= 0) return null;
-    return getNotebookInkRenderWindow({
-      sheetWidth: sheetWidthPx,
-      sheetHeight: Math.round((sheetWidthPx * currentPageHeight) / currentPageWidth),
-      // The page is scrolled rather than transformed, so its origin inside the
-      // frame is the negated scroll offset.
-      pageX: -scroll.left,
-      pageY: -scroll.top,
-      frameWidth: frame.width,
-      frameHeight: frame.height,
-    });
-  }, [
-    currentPageHeight,
-    currentPageWidth,
-    frame.height,
-    frame.width,
-    scroll.left,
-    scroll.top,
-    sheetWidthPx,
-  ]);
+  const inkWindow = useMemo(
+    () =>
+      zoomed
+        ? getNotebookInkRenderWindow({
+            sheetWidth: layout.pageSize.width,
+            sheetHeight: layout.pageSize.height,
+            pageX: layout.pageOrigin.x,
+            pageY: layout.pageOrigin.y,
+            frameWidth: layout.frameSize.width,
+            frameHeight: layout.frameSize.height,
+          })
+        : null,
+    [layout, zoomed]
+  );
 
   const openedPageHasInk = useMemo(
     () => examWorkingHasInk(pageSvgs?.[pageIndex] ?? ""),
     [pageIndex, pageSvgs]
   );
   const currentPageHasInk = history.undo > 0 || openedPageHasInk;
-  const zoom = zoomAt(zoomIndex);
+  const zoomInStep = EXAM_WORKING_ZOOM_STEPS.find((step) => step > layout.zoom + 0.01);
+  const zoomOutStep = [...EXAM_WORKING_ZOOM_STEPS]
+    .reverse()
+    .find((step) => step < layout.zoom - 0.01);
+  const toggleFullScreen = () => {
+    setExpanded((value) => !value);
+    // Each mode opens fitted: a zoom chosen for one frame means little in the other.
+    fitPage();
+  };
 
   return (
     <div
@@ -1299,7 +1589,12 @@ function ExamScratchpad({
             onClick={() => (currentPageHasInk ? setConfirm("delete-page") : deletePage())}
           />
           <span aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-[var(--color-border)]" />
-          {expanded ? (
+          {/*
+            * Always there full screen. Inline, only once the page has been
+            * pinched: the way back to the fitted page has to be in reach, but
+            * a column of controls nobody has asked for does not.
+            */}
+          {expanded || zoomed ? (
             <div
               role="group"
               aria-label="Zoom"
@@ -1308,25 +1603,25 @@ function ExamScratchpad({
               <ToolbarIconButton
                 label="Zoom out"
                 icon="minus"
-                disabled={zoomIndex === 0}
-                onClick={() => changeZoom(zoomIndex - 1)}
+                disabled={zoomOutStep === undefined}
+                onClick={() => zoomAbout(zoomOutStep ?? 1)}
               />
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
-                aria-label="Fit the page to the screen"
-                title="Fit the page to the screen"
+                aria-label="Fit the page"
+                title="Fit the page"
                 className="min-w-[3.5rem] tabular-nums"
-                onClick={() => changeZoom(0)}
+                onClick={fitPage}
               >
-                {zoomIndex === 0 ? "Fit" : `${Math.round(zoom * 100)}%`}
+                {zoomed ? `${Math.round(layout.zoom * 100)}%` : "Fit"}
               </Button>
               <ToolbarIconButton
                 label="Zoom in"
                 icon="plus"
-                disabled={zoomIndex === EXAM_WORKING_ZOOM_STEPS.length - 1}
-                onClick={() => changeZoom(zoomIndex + 1)}
+                disabled={zoomInStep === undefined}
+                onClick={() => zoomAbout(zoomInStep ?? layout.zoom)}
               />
             </div>
           ) : null}
@@ -1334,7 +1629,7 @@ function ExamScratchpad({
             label={expanded ? "Close full screen" : "Write full screen"}
             icon={expanded ? "close" : "expand"}
             active={expanded}
-            onClick={() => setExpanded((value) => !value)}
+            onClick={toggleFullScreen}
           />
         </div>
 
@@ -1413,29 +1708,37 @@ function ExamScratchpad({
       ) : null}
 
       {/*
-        * Always these three elements, whether or not the sheet is full screen,
-        * so switching mode restyles them rather than rebuilding the editor.
+        * The frame, the track and the page: always these three elements,
+        * whether or not the sheet is full screen, so switching mode restyles
+        * them rather than rebuilding the editor.
+        *
+        * The notebook's shape, deliberately. The frame is the window the page
+        * is seen through, and takes every finger; the track is what a page
+        * turn slides; the page sits on the track where the viewport puts it,
+        * at the size its zoom makes it.
         */}
       <div
-        ref={scrollRef}
+        ref={frameRef}
+        data-notebook-page-frame
         className={
           expanded
-            ? "min-h-0 flex-1 overflow-auto overscroll-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
-            : embedded
-              ? "bg-[var(--color-glass-subtle)] p-2 sm:p-3"
-              : undefined
+            ? "relative mb-[env(safe-area-inset-bottom)] min-h-0 flex-1 overflow-hidden"
+            : "relative overflow-hidden bg-[var(--color-glass-subtle)]"
         }
+        style={
+          expanded
+            ? undefined
+            : inlineHeight > 0
+              ? { height: inlineHeight }
+              : { aspectRatio: `${currentPageWidth} / ${currentPageHeight}` }
+        }
+        onPointerDown={handleFramePointerDown}
+        onPointerMove={handleFramePointerMove}
+        onPointerUp={handleFramePointerUp}
+        onPointerCancel={handleFramePointerCancel}
+        onLostPointerCapture={handleFramePointerCancel}
       >
-        <div
-          ref={pageShellRef}
-          className={expanded ? "mx-auto shadow-shell" : undefined}
-          style={{
-            ...(expanded && fitWidth > 0 ? { width: Math.round(fitWidth * zoom) } : null),
-            // Promoted for the length of the gesture only; the transform is
-            // written straight to this element while a finger is on the sheet.
-            willChange: "transform",
-          }}
-        >
+        <div ref={pageShellRef} className="notebook-page-track absolute inset-0">
           {/*
             * `notebook-page-surface` is the notebook sheet's own ground rules: no
             * text selection, callout or drag, no overscroll, no native pan. Paint
@@ -1449,13 +1752,23 @@ function ExamScratchpad({
             * own margin rule and the question number printed beside it. The clip
             * stays, since the ink canvas has to be held inside the page, but it
             * no longer cuts anything but a right angle.
+            *
+            * Rendered from the first commit, before the frame has been measured:
+            * the Pencil guard is installed on this element once, at mount.
             */}
           <div
             ref={surfaceRef}
-            className="notebook-page-surface relative w-full overflow-hidden bg-white shadow-e1 ring-1 ring-black/[0.07] [contain:layout_paint]"
-            style={{ aspectRatio: `${currentPageWidth} / ${currentPageHeight}` }}
+            className={`notebook-page-surface absolute left-0 top-0 overflow-hidden bg-white shadow-e1 ring-1 ring-black/[0.07] [contain:layout_paint] ${
+              expanded ? "shadow-shell" : ""
+            }`}
+            style={{
+              width: layout.pageSize.width,
+              height: layout.pageSize.height,
+              transform: `translate3d(${layout.pageOrigin.x}px, ${layout.pageOrigin.y}px, 0)`,
+              transformOrigin: "0 0",
+            }}
           >
-            {loadFailed ? (
+            {layout.pageSize.width <= 0 ? null : loadFailed ? (
               <div className="absolute inset-0 grid place-items-center gap-3 p-6 text-center">
                 <p className="text-sm text-text-secondary">
                   Your saved working could not be opened. It has not been lost — nothing will be written
@@ -1508,10 +1821,11 @@ function ExamScratchpad({
                   onChange={handleInkChange}
                   onHistoryChange={handleHistoryChange}
                   onInteractionChange={handleInteractionChange}
-                  onPointerCancel={handleTouchCancel}
-                  onPointerDown={handleTouchDown}
-                  onPointerMove={handleTouchMove}
-                  onPointerUp={handleTouchEnd}
+                  // Fingers are the frame's, and reach it by bubbling.
+                  onPointerCancel={ignorePointer}
+                  onPointerDown={ignorePointer}
+                  onPointerMove={ignorePointer}
+                  onPointerUp={ignorePointer}
                 />
               </>
             ) : (
@@ -1521,82 +1835,60 @@ function ExamScratchpad({
             )}
           </div>
         </div>
+
+        {/*
+          * The page being asked for, while it is being asked for.
+          *
+          * It appears only under the finger's own pull: a student who is writing
+          * is never shown a control for running out of paper -- which is also
+          * why the "Run out of room?" bar that sat under the last page has gone.
+          * Written to directly during the gesture, so nothing here re-renders
+          * the sheet. Opaque rather than blurred, since it sits over the ink.
+          */}
+        {!disabled && canAddPage ? (
+          <div
+            ref={addSheetHintRef}
+            aria-hidden="true"
+            className="notebook-floating-control pointer-events-none absolute right-3 top-1/2 z-20 flex flex-col items-center gap-1 rounded-2xl border border-[var(--color-border)] px-3 py-2.5 shadow-e2"
+            style={{ opacity: 0, transform: "translateY(-50%) scale(0.72)" }}
+          >
+            <span className="relative grid h-9 w-9 place-items-center">
+              <svg viewBox="0 0 40 40" className="absolute inset-0 h-full w-full -rotate-90">
+                <circle
+                  cx="20"
+                  cy="20"
+                  r="16"
+                  fill="none"
+                  strokeWidth="3"
+                  className="stroke-[var(--color-border)]"
+                />
+                <circle
+                  data-pull-ring
+                  cx="20"
+                  cy="20"
+                  r="16"
+                  fill="none"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  className="stroke-[var(--color-accent)]"
+                  strokeDasharray={2 * Math.PI * 16}
+                  style={{ strokeDashoffset: 2 * Math.PI * 16 }}
+                />
+              </svg>
+              <svg viewBox="0 0 24 24" className="h-4 w-4 text-text-secondary" aria-hidden="true">
+                <path
+                  d="M12 5v14M5 12h14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </span>
+            <span className="text-2xs font-semibold text-text-secondary">New sheet</span>
+          </div>
+        ) : null}
       </div>
-
-      {/*
-        * The page being asked for, while it is being asked for.
-        *
-        * It appears only under the finger's own pull: a student who is writing
-        * is never shown a control for running out of paper. Written to
-        * directly during the gesture, so nothing here re-renders the sheet.
-        */}
-      {!disabled && canAddPage ? (
-        <div
-          ref={addSheetHintRef}
-          aria-hidden="true"
-          className="pointer-events-none absolute right-3 top-1/2 z-20 flex flex-col items-center gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]/95 px-3 py-2.5 shadow-e2 backdrop-blur-sm"
-          style={{ opacity: 0, transform: "translateY(-50%) scale(0.72)" }}
-        >
-          <span className="relative grid h-9 w-9 place-items-center">
-            <svg viewBox="0 0 40 40" className="absolute inset-0 h-full w-full -rotate-90">
-              <circle
-                cx="20"
-                cy="20"
-                r="16"
-                fill="none"
-                strokeWidth="3"
-                className="stroke-[var(--color-border)]"
-              />
-              <circle
-                data-pull-ring
-                cx="20"
-                cy="20"
-                r="16"
-                fill="none"
-                strokeWidth="3"
-                strokeLinecap="round"
-                className="stroke-[var(--color-accent)]"
-                strokeDasharray={2 * Math.PI * 16}
-                style={{ strokeDashoffset: 2 * Math.PI * 16 }}
-              />
-            </svg>
-            <svg viewBox="0 0 24 24" className="h-4 w-4 text-text-secondary" aria-hidden="true">
-              <path
-                d="M12 5v14M5 12h14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </span>
-          <span className="text-2xs font-semibold text-text-secondary">New sheet</span>
-        </div>
-      ) : null}
-
-      {/*
-        * More room, offered where a student runs out of it.
-        *
-        * The control in the toolbar is for someone who already knows the sheet
-        * grows. This is for someone writing at the foot of the last page, who
-        * needs to be told rather than asked -- so it appears only there, and
-        * says what it gives rather than asking them to ration what is left.
-        * Nothing here counts down the space remaining: a student who thinks
-        * they are running out writes a worse answer than one who is not
-        * thinking about it at all.
-        */}
-      {!disabled && canAddPage && pageIndex === pageCount - 1 ? (
-        <div
-          className={`flex shrink-0 items-center justify-center gap-3 border-t border-[var(--color-border)] px-4 py-3 ${
-            expanded ? "pb-[max(0.75rem,env(safe-area-inset-bottom))]" : ""
-          }`}
-        >
-          <p className="text-xs text-text-muted">Run out of room?</p>
-          <Button type="button" size="sm" variant="secondary" onClick={addPage}>
-            Add another sheet
-          </Button>
-        </div>
-      ) : null}
 
       <ConfirmDialog
         open={confirm !== null}

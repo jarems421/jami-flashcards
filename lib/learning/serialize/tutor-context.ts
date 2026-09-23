@@ -12,6 +12,7 @@ const EVIDENCE_NAMES: Record<LearningEvidenceKind, string> = {
   practice: "practice papers",
   "past-paper": "past papers",
   notebook: "marked notebook working",
+  revision: "revision session answers",
 };
 
 /** How much of the profile Tutor is shown. The profile itself keeps more. */

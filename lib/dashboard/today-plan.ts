@@ -1,6 +1,6 @@
 import { getCustomStudyHref } from "@/lib/app/routes";
 import { DAILY_REVIEW_MISSION_ID } from "@/lib/learning/mission-handoff";
-import type { StudyAction } from "@/lib/learning/actions/study-actions";
+import type { StudyAction, StudyActionDestinationKind } from "@/lib/learning/actions/study-actions";
 import type { LearningRecommendationReason } from "@/lib/learning/types";
 import { buildTopicProgress, type TopicProgressSummary } from "@/lib/material/progress";
 import type { MasteryEvent } from "@/lib/material/mastery";
@@ -80,17 +80,6 @@ export type TodayGoalSummary = {
   href: string;
 };
 
-export type TodayChecklist = {
-  createFolder: boolean;
-  createDeck: boolean;
-  addCards: boolean;
-  reviewCards: boolean;
-  createNotebook: boolean;
-  reviewDrafts: boolean;
-  checkProgress: boolean;
-  setGoal: boolean;
-};
-
 export type TodayWorkspaceSummary = {
   folderCount: number;
   notebookCount: number;
@@ -112,6 +101,8 @@ export type TodayStudyAction = {
   description: string;
   label: string;
   href: string;
+  /** What the link opens, so the copy can say so -- a Revision Session reads differently from a page. */
+  destinationKind?: StudyActionDestinationKind;
   folderName?: string;
   /**
    * What this action is about and which scope decided it, carried through so
@@ -158,7 +149,6 @@ export type TodayPlan = {
   drafts: TodayDraft[];
   goalSummary?: TodayGoalSummary;
   workspace: TodayWorkspaceSummary;
-  checklist: TodayChecklist;
   topicProgress: TopicProgressSummary[];
 };
 
@@ -358,12 +348,31 @@ function describeStudyAction(action: StudyAction): Pick<TodayStudyAction, "title
         label: action.action === "retrieve" ? "Refresh" : "Practise",
       };
     case "low_mastery":
+      /*
+       * A practice decision on a weak concept means the engine found recall
+       * holding up and application failing. "Consistently difficult" would be
+       * false: the cards on it are going well.
+       */
+      if (action.action === "practice") {
+        return {
+          title: `Put ${name} into practice`,
+          description: "Recall looks fine, but exam-style answers on this keep losing marks.",
+          label: "Practise",
+        };
+      }
       return {
         title: `Work on ${name}`,
         description: `Consistently difficult across ${pluralize(action.evidence.count, "answer")}.`,
         label: action.destination?.kind === "topic" || action.destination?.kind === "deck" ? "Open" : "Study",
       };
     case "low_confidence":
+      if (action.action === "practice") {
+        return {
+          title: `Check ${name} in exam questions`,
+          description: "Recall looks fine, but your first exam-style answers on this went wrong.",
+          label: "Practise",
+        };
+      }
       return {
         title: `Check ${name}`,
         description: "It might need attention, but there is not enough evidence yet. A few questions will tell.",
@@ -436,13 +445,17 @@ function buildStudyActions(input: BuildTodayPlanInput): TodayStudyAction[] {
           action: action.action,
           ...describeStudyAction(action),
           href: action.destination.href,
+          destinationKind: action.destination.kind,
           ...(folderName ? { folderName } : {}),
           target: action.target,
           scope: action.scope,
           evidence: action.evidence,
           ...(action.intervention ? { intervention: action.intervention } : {}),
           ...(generating(action) ? { generate: generating(action)! } : {}),
-          ...(action.spec ? { targetItems: action.spec.targetItems } : {}),
+          // A session is not a number of items: finishing it is the whole of it.
+          ...(action.spec && action.destination.kind !== "revision-session"
+            ? { targetItems: action.spec.targetItems }
+            : {}),
         },
       ];
     })
@@ -499,19 +512,6 @@ function buildWorkspaceSummary(input: BuildTodayPlanInput): TodayWorkspaceSummar
           href: getNotebookHref(recentNotebook.id),
         }
       : undefined,
-  };
-}
-
-function buildChecklist(input: BuildTodayPlanInput): TodayChecklist {
-  return {
-    createFolder: (input.studyFolders ?? []).some((folder) => !folder.archived),
-    createDeck: input.decks.length > 0,
-    addCards: input.cards.length >= 5,
-    reviewCards: (input.reviewedToday ?? 0) > 0,
-    createNotebook: (input.notebooks ?? []).some((notebook) => !notebook.archived),
-    reviewDrafts: input.drafts.some((draft) => draft.contentStatus === "draft"),
-    checkProgress: input.progressVisited === true,
-    setGoal: (input.activeGoals ?? []).some((goal) => goal.status === "active"),
   };
 }
 
@@ -711,7 +711,6 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
   const studyActions = buildStudyActions(input);
   const goalSummary = buildGoalSummary(input, now);
   const workspace = buildWorkspaceSummary(input);
-  const checklist = buildChecklist(input);
   const nextAction = buildNextAction({
     decks: input.decks,
     cards: input.cards,
@@ -734,7 +733,6 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
     drafts,
     goalSummary,
     workspace,
-    checklist,
     topicProgress,
   };
 }

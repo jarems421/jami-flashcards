@@ -94,6 +94,7 @@ describe("Today with study actions", () => {
       description: "This has cost marks 3 times in recent marked answers. A few questions on getting it right will help.",
       label: "Practise",
       href: "/dashboard/practice/questions/new?folderId=folder-1",
+      destinationKind: "question-practice",
       folderName: "Maths",
       // Carried through so the card can record what the student did with it.
       target: { kind: "error", category: "missing_units", label: "Missing or incorrect units" },

@@ -154,7 +154,10 @@ describe("the filter with lag correction", () => {
       time: index * (1000 / 240),
     }));
 
-    const corrected = new NotebookInkSmoother(samples[0]);
+    const corrected = new NotebookInkSmoother(samples[0], {
+      ...NOTEBOOK_INK_SMOOTHING,
+      prediction: NOTEBOOK_INK_PREDICTION,
+    });
     const plain = new NotebookInkSmoother(samples[0], {
       ...NOTEBOOK_INK_SMOOTHING,
       prediction: null,
@@ -178,7 +181,10 @@ describe("the filter with lag correction", () => {
      * lead behind the ink already on screen -- a backwards tick, which is the
      * "ink jumps at the lift" defect wearing the other sign.
      */
-    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    const smoother = new NotebookInkSmoother(
+      { x: 0, y: 0, time: 0 },
+      { ...NOTEBOOK_INK_SMOOTHING, prediction: NOTEBOOK_INK_PREDICTION }
+    );
     let last = { x: 0, y: 0 };
     for (let index = 1; index < 40; index += 1) {
       last = smoother.next({ x: index * 12, y: 0, time: index * (1000 / 240) });
@@ -187,8 +193,7 @@ describe("the filter with lag correction", () => {
   });
 
   it("is switched off by one field", () => {
-    // The rollback. If this ever feels wrong on a device, `prediction: null`
-    // in NOTEBOOK_INK_SMOOTHING restores the previous ink exactly.
+    // Which is how it ships: `prediction: null` in NOTEBOOK_INK_SMOOTHING.
     const samples = Array.from({ length: 40 }, (_, index) => ({
       x: index * 20,
       y: 0,
@@ -205,5 +210,6 @@ describe("the filter with lag correction", () => {
     // With no correction the emitted point is the filter's own, so the lift
     // still lands exactly where it always did.
     expect(plain.current()).toEqual(last);
+    expect(NOTEBOOK_INK_SMOOTHING.prediction).toBeNull();
   });
 });

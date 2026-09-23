@@ -2,7 +2,7 @@
  * What the notebook's ink pipeline costs, printed as a table.
  *
  *   node scripts/run-ts.mjs scripts/eval/ink-latency.ts [--rate 240] [--noise 0.5]
- *     [--beta 0.08] [--min-cutoff 9] [--compare] [--uncorrected]
+ *     [--beta 0.08] [--min-cutoff 9] [--compare] [--corrected]
  *
  * Reads nothing and writes nothing. It replays synthetic strokes through the
  * real smoothing filter, so it needs no device, no account and no network.
@@ -20,6 +20,7 @@ import {
   measureInkPipeline,
   type InkLatencyMetrics,
 } from "@/lib/workspace/notebook-ink-latency";
+import { NOTEBOOK_INK_PREDICTION } from "@/lib/workspace/notebook-ink-prediction";
 import {
   NOTEBOOK_INK_SMOOTHING,
   type NotebookInkSmoothingOptions,
@@ -63,13 +64,13 @@ export default function main(args: readonly string[] = process.argv.slice(2)) {
   );
   table(measureInkPipeline(strokes), "tuned (what ships today)");
 
-  if (args.includes("--uncorrected")) {
+  if (args.includes("--corrected")) {
     table(
       measureInkPipeline(strokes, {
         ...NOTEBOOK_INK_SMOOTHING,
-        prediction: null,
+        prediction: NOTEBOOK_INK_PREDICTION,
       }),
-      "lag correction off (the filter on its own)"
+      "lag correction on (switched off in the notebook -- it roughens the line)"
     );
   }
 

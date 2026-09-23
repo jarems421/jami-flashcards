@@ -75,6 +75,8 @@ describe("AI budget configuration", () => {
         "videoCardImport",
         "studyAssetGeneration",
         "studyAnswerCheck",
+        "revisionLesson",
+        "revisionMarking",
       ].sort()
     );
   });

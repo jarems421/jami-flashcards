@@ -4,8 +4,13 @@ import { join, resolve } from "node:path";
 import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
 import { humanBenchmark } from "@/lib/evaluation/agreement";
 import { scoreMark, summariseOutcomes, type MarkOutcome } from "@/lib/evaluation/scoring";
-import { createEvaluationMarker } from "@/services/ai/evaluation-marker.server";
+import {
+  createEvaluationMarker,
+  type EvaluationPipeline,
+} from "@/services/ai/evaluation-marker.server";
+import type { MarkingVariant } from "@/services/ai/practice-paper-marking.server";
 import { loadScannedPages } from "@/services/ai/scanned-page-loader.server";
+import { EXAM_AI_JOB_DEADLINE_MS } from "@/lib/practice/exam-questions";
 
 /**
  * Does Jami award the right marks for the right reasons?
@@ -109,12 +114,60 @@ export default async function main(args: string[]) {
    * a far higher one than a single exam question.
    */
   const maxImages = Number(flag("pages") ?? 3);
+  /**
+   * Which marking path to measure.
+   *
+   * Whole-paper marking was the only one this ran, and it is not the one a
+   * student meets: Past Paper Practice marks one question at a time, through
+   * `markSingleQuestionAdaptively`, with its own verification and adjudication.
+   * A figure from the other path says nothing certain about this one.
+   */
+  const pipelineFlag = flag("pipeline");
+  if (pipelineFlag && pipelineFlag !== "wholePaper" && pipelineFlag !== "pastPaperPractice") {
+    throw new Error(`Unknown --pipeline=${pipelineFlag}; use wholePaper or pastPaperPractice.`);
+  }
+  const pipeline: EvaluationPipeline = pipelineFlag === "pastPaperPractice" ? "pastPaperPractice" : "wholePaper";
+  /*
+   * The student's own deadline, unless a run asks for another.
+   *
+   * Seven minutes suits whole-paper marking here and is half of what Past
+   * Paper Practice gives a marking in production: both blind markers, then an
+   * adjudicator, each with its own budget. Holding this path to the shorter
+   * ceiling threw away markings a student would have received -- a quarter of
+   * one run on a day the supervisor's first endpoint was failing over -- and
+   * attrition that production does not have is exactly what the paired
+   * comparison cannot survive.
+   */
+  const timeoutMs =
+    deadlineMs > 0 ? deadlineMs : pipeline === "pastPaperPractice" ? EXAM_AI_JOB_DEADLINE_MS : 0;
 
   const all: MarkingCorpusRecord[] = [];
   for (const file of readdirSync(CORPUS).filter((name) => name.endsWith(".json"))) {
     all.push(...JSON.parse(readFileSync(join(CORPUS, file), "utf8")).records);
   }
-  let withCriteria = all.filter((record) => (record.criteria?.length ?? 0) > 0);
+  /**
+   * Essays too, which have no individual marks to agree on.
+   *
+   * A banded answer is judged as a whole against level descriptors, so there
+   * is nothing for the criterion comparison to line up and every one of them
+   * was filtered out: the only marking this harness had ever measured was
+   * maths. Banded records are measured on the total and, where two examiners
+   * marked the same answer, against how far apart those two were.
+   *
+   * It needs a source, because the essay corpora include tens of thousands of
+   * answers from outside the exams Jami marks.
+   */
+  const banded = args.includes("--banded");
+  const onlySubject = flag("subject");
+  /** One marking regime, so an essay change is not paid for on the short answers beside it. */
+  const onlyRegime = flag("regime");
+  if (banded && !flag("source")) throw new Error("--banded needs --source, to choose which essays to mark.");
+  let withCriteria = all.filter(
+    (record) =>
+      (banded || (record.criteria?.length ?? 0) > 0) &&
+      (onlySubject === undefined || record.subject === onlySubject) &&
+      (onlyRegime === undefined || record.regime === onlyRegime)
+  );
   /**
    * Every record a run holds, over the files it is spread across.
    *
@@ -148,7 +201,30 @@ Recovering ${withCriteria.length} records ${missingFrom} did not mark.
 Matching the ${withCriteria.length} records ${matching} marked.
 `);
   }
-  const chosen = limit > 0 ? withCriteria.slice(0, limit) : withCriteria;
+  /**
+   * The same number of answers from every question, spread across each one.
+   *
+   * A corpus is stored question by question, so the first N records are the
+   * first question's answers and a limit alone measures one question. Taking
+   * evenly spaced answers from each keeps every tariff and every part of the
+   * mark range in the sample.
+   */
+  const perQuestion = Number(flag("per-question") ?? 0);
+  const spread = (records: MarkingCorpusRecord[]) => {
+    if (perQuestion <= 0) return records;
+    const byQuestion = new Map<string, MarkingCorpusRecord[]>();
+    for (const record of records) {
+      const key = `${record.sourceId}:${record.questionId}`;
+      byQuestion.set(key, [...(byQuestion.get(key) ?? []), record]);
+    }
+    return [...byQuestion.values()].flatMap((group) => {
+      if (group.length <= perQuestion) return group;
+      const step = group.length / perQuestion;
+      return Array.from({ length: perQuestion }, (_, index) => group[Math.floor(index * step)]);
+    });
+  };
+  const sampled = spread(withCriteria);
+  const chosen = limit > 0 ? sampled.slice(0, limit) : sampled;
 
   const criteria = chosen.reduce((total, record) => total + (record.criteria?.length ?? 0), 0);
   const described = chosen.reduce(
@@ -213,20 +289,56 @@ Matching the ${withCriteria.length} records ${matching} marked.
      * refuse every record, which is what it did: 12 of 12 unreadable, no calls
      * made. Correct behaviour, wrong question.
      */
-    if (!record.sourceId.startsWith("qualifications-scotland")) return undefined;
-    const number = record.id.split(":c")[1];
+    // The Chemistry open questions share pages the same way; the History essays have a file each.
+    const sharesPages =
+      record.sourceId.startsWith("qualifications-scotland") ||
+      (record.sourceId === "sqa-extended-response" && record.subject === "chemistry");
+    if (!sharesPages) return undefined;
+    const number = /:c(\d+)$/.exec(record.id)?.[1];
     return number ? `Candidate ${number}` : undefined;
   };
 
+  /**
+   * Every page an answer is on, not only the first.
+   *
+   * An answer that runs past its labelled page carries on with no label, and
+   * a label lookup on that page finds nothing and fails closed. So the first
+   * reference is read below its candidate's label and the rest are read whole:
+   * a Chemistry candidate's dipole diagrams, which the examiner's award rests
+   * on, sit alone on the page after their writing.
+   */
+  const loadAnswerPages = async (record: MarkingCorpusRecord) => {
+    if (record.answer.kind !== "image") return [];
+    const [first, ...rest] = record.answer.paths;
+    const parts = await loadScannedPages(first ?? "", { downscaleBy, maxImages, belowLabel: candidateLabel(record) });
+    for (const reference of rest) {
+      const room = maxImages - parts.filter((part) => "inlineData" in part).length;
+      if (room <= 0) break;
+      parts.push(...(await loadScannedPages(reference, { downscaleBy, maxImages: room })));
+    }
+    return parts;
+  };
+
+  /**
+   * A marking change switched off, to measure it on the same answers:
+   * `--variant=no-levels,no-practice,supervisor-adjudicator`.
+   */
+  const variantFlags = new Set((flag("variant") ?? "").split(",").filter(Boolean));
+  const variant: MarkingVariant | undefined = variantFlags.size
+    ? {
+        ...(variantFlags.has("no-levels") ? { levelsGuidance: false } : {}),
+        ...(variantFlags.has("no-practice") ? { examinerPractice: false } : {}),
+        ...(variantFlags.has("supervisor-adjudicator") ? { levelsAdjudicator: "supervisor" as const } : {}),
+      }
+    : undefined;
+  if (variant) process.stdout.write(`\nVariant: ${JSON.stringify(variant)}\n`);
+
   const { mark, stats } = createEvaluationMarker({
     maxRecords: chosen.length + 8,
-    ...(deadlineMs > 0 ? { timeoutMs: deadlineMs } : {}),
-    loadAnswerImages: (record) =>
-      loadScannedPages(record.answer.kind === "image" ? record.answer.paths[0] : "", {
-        downscaleBy,
-        maxImages,
-        belowLabel: candidateLabel(record),
-      }),
+    ...(variant ? { variant } : {}),
+    pipeline,
+    ...(timeoutMs > 0 ? { timeoutMs } : {}),
+    loadAnswerImages: loadAnswerPages,
     onMarkerReport: (report) => appendFileSync(markerJournal, `${JSON.stringify(report)}
 `),
     onProgress: ({ done, record, awarded, error }) =>
@@ -271,7 +383,7 @@ Matching the ${withCriteria.length} records ${matching} marked.
 
   process.stdout.write(
     `\n${"=".repeat(72)}\nCRITERION BENCHMARK\n${"=".repeat(72)}\n` +
-      `concurrency ${concurrency}, deadline ${(deadlineMs || 420_000) / 1000}s, downscale ${downscaleBy}, pages ${maxImages}
+      `pipeline ${pipeline}, concurrency ${concurrency}, deadline ${(timeoutMs || 420_000) / 1000}s, downscale ${downscaleBy}, pages ${maxImages}
 ` +
       `marked ${outcomes.length} of ${chosen.length} in ${minutes} min` +
       ` (${stats.failed} failed, ${stats.unsupported} unreadable,` +
@@ -283,14 +395,18 @@ Matching the ${withCriteria.length} records ${matching} marked.
    * is unreadable. 53% exact agreement read as catastrophic for a week until
    * the corpus was asked what two humans manage on the same work.
    */
-  const humans = humanBenchmark(all, { subject: "maths" });
-  const matched = humanBenchmark(all, { subject: "maths", minMaxMarks: 3, maxMaxMarks: 5 });
+  const benchmarkSubject = onlySubject ?? (banded ? chosen[0]?.subject : undefined) ?? "maths";
+  const benchmarkSource = banded ? all.filter((record) => record.sourceId === onlySource) : all;
+  const humans = humanBenchmark(benchmarkSource, { subject: benchmarkSubject });
+  const matched = banded
+    ? null
+    : humanBenchmark(all, { subject: benchmarkSubject, minMaxMarks: 3, maxMaxMarks: 5 });
   if (humans) {
     process.stdout.write(
       `TWO HUMANS ON THE SAME ANSWER — the bar, which is not 100%\n` +
         `  exact agreement       ${percent(humans.exact)}` +
         ` over ${humans.count} double-marked answers at ${number(humans.meanMaxMarks, 1)} marks\n` +
-        `  at a matching tariff  ${percent(matched?.exact)}\n` +
+        (matched ? `  at a matching tariff  ${percent(matched.exact)}\n` : "") +
         `  mean gap              ${number(humans.meanGap)}\n` +
         `  direction             ${humans.bias >= 0 ? "+" : ""}${number(humans.bias, 3)}` +
         `  (near zero means noisy about each other, not skewed)\n\n`
@@ -301,7 +417,18 @@ Matching the ${withCriteria.length} records ${matching} marked.
   process.stdout.write(`  exact agreement       ${percent(summary.exact)}\n`);
   process.stdout.write(`  within one mark       ${percent(summary.withinOne)}\n`);
   process.stdout.write(`  mean absolute error   ${number(summary.meanAbsoluteError)}\n`);
-  process.stdout.write(`  bias                  ${number(summary.bias)}\n\n`);
+  process.stdout.write(`  bias                  ${number(summary.bias)}\n`);
+  process.stdout.write(`  error as share of tariff ${percent(summary.normalisedError)}\n\n`);
+  if (summary.doubleMarked > 0) {
+    // Against two examiners, the fair question is whether Jami lands where they do, not on one of them.
+    process.stdout.write(
+      `AGAINST TWO EXAMINERS (${summary.doubleMarked} double-marked)\n` +
+        `  examiners' own gap     ${number(summary.humanDisagreement)}\n` +
+        `  Jami's gap to them     ${number(summary.candidateDisagreement)}\n` +
+        `  between the two marks  ${percent(summary.insideHumanInterval)}\n` +
+        `  within their variation ${percent(summary.withinHumanVariation)}\n\n`
+    );
+  }
 
   process.stdout.write(`THE INDIVIDUAL MARKS — what this benchmark exists for\n`);
   process.stdout.write(`  criteria compared     ${totalCriteria} of ${criteria} published\n`);
@@ -358,6 +485,7 @@ Matching the ${withCriteria.length} records ${matching} marked.
     JSON.stringify(
       {
         markedAt: new Date().toISOString(),
+        pipeline,
         records: chosen.length,
         publishedCriteria: criteria,
         markerStats: stats,

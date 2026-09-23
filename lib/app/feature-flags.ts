@@ -9,6 +9,7 @@ export type FeatureFlagKey =
   | "enableFlashcardReviewEvents"
   | "enableStudyActions"
   | "enableRevisionPlans"
+  | "enableRevisionSessions"
   | "enableConceptRelations";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
@@ -55,6 +56,13 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    */
   enableRevisionPlans: true,
   /*
+   * Revision Sessions: Jami teaching what the engine says needs teaching. See
+   * `docs/revision-sessions.md`. On for this deployment, whose owner is its only
+   * user; off, Today's teach recommendations go back to opening the Topic page,
+   * and the engine stops reading session evidence.
+   */
+  enableRevisionSessions: true,
+  /*
    * Off, deliberately, and the only flag here that starts that way.
    *
    * Joining a student's own Topics to the specification changes numbers a
@@ -85,6 +93,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableFlashcardReviewEvents: process.env.NEXT_PUBLIC_ENABLE_FLASHCARD_REVIEW_EVENTS,
   enableStudyActions: process.env.NEXT_PUBLIC_ENABLE_STUDY_ACTIONS,
   enableRevisionPlans: process.env.NEXT_PUBLIC_ENABLE_REVISION_PLANS,
+  enableRevisionSessions: process.env.NEXT_PUBLIC_ENABLE_REVISION_SESSIONS,
   enableConceptRelations: process.env.NEXT_PUBLIC_ENABLE_CONCEPT_RELATIONS,
 };
 
@@ -111,5 +120,6 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableFlashcardReviewEvents: isFeatureEnabled("enableFlashcardReviewEvents"),
   enableStudyActions: isFeatureEnabled("enableStudyActions"),
   enableRevisionPlans: isFeatureEnabled("enableRevisionPlans"),
+  enableRevisionSessions: isFeatureEnabled("enableRevisionSessions"),
   enableConceptRelations: isFeatureEnabled("enableConceptRelations"),
 };

@@ -21,6 +21,7 @@ import {
   type RevisionPlanDraft,
   type RevisionPlanEntry,
 } from "@/lib/planning/types";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 /**
  * Where a student's revision plans live.
@@ -137,6 +138,7 @@ export async function saveRevisionPlan(
     },
     { merge: true }
   );
+  reportTutorialAction("plan-week");
   return { ...safe, id: planId, schemaVersion: REVISION_PLAN_SCHEMA_VERSION, createdAt: now, updatedAt: now };
 }
 

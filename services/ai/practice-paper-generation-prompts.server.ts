@@ -1,5 +1,6 @@
 import type { parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
 import { ASSET_ROUTING_INSTRUCTION } from "@/lib/practice/asset-routing";
+import { EXAM_CHART_INSTRUCTION } from "@/lib/practice/exam-chart";
 import {
   getPracticePaperQuestionLimit,
   getPracticePaperTargetMarks,
@@ -90,7 +91,7 @@ Use sources by authority, not equally:
 If the qualification/module, component, tier, or exam format is genuinely ambiguous and the ambiguity would materially change the paper, return status "needs_clarification" and ask exactly one concise question. Do not ask for information already supported by the sources or study-level default.
 
 Otherwise return status "ready". Generate original questions matching the inferred format; never copy a past-paper question. Add supporting material only when the assessment style calls for it: concise data tables, graph data, text-described diagrams, formula sheets, original source extracts, or genuinely necessary raster stimuli. ${rasterInstruction}
-${svgInstruction} ${ASSET_ROUTING_INSTRUCTION} Keep every asset self-contained and accessible. Keep wording concise and candidate-facing. Return an empty markScheme.items array because a separate pass builds the hidden marking guide after the paper is fixed.
+${svgInstruction} ${EXAM_CHART_INSTRUCTION} ${ASSET_ROUTING_INSTRUCTION} Keep every asset self-contained and accessible. Keep wording concise and candidate-facing. Return an empty markScheme.items array because a separate pass builds the hidden marking guide after the paper is fixed.
 
 Return JSON only in this shape:
 {
@@ -109,7 +110,7 @@ Return JSON only in this shape:
   "instructions":["..."],
   "companionDocuments":[{"id":"source-booklet","role":"formula_sheet" | "source_booklet" | "data_sheet" | "insert" | "reference","title":"...","instructions":"...","pages":[{"id":"page-1","title":"...","content":"original candidate-visible content","altText":"..."}]}],
   "durationMinutes":60,
-  "questions":[{"id":"q1","label":"Question 1","section":"A","prompt":"...","marks":5,"assets":[{"id":"a1","type":${assetTypes},"title":"...","content":"plain text, a Markdown table, comma-separated numeric x,y rows for a graph, a concise labelled diagram, or a precise raster-generation brief","altText":"accessible description"}]}],
+  "questions":[{"id":"q1","label":"Question 1","section":"A","prompt":"...","marks":5,"assets":[{"id":"a1","type":${assetTypes},"title":"...","content":"plain text, a Markdown table, the JSON chart for a graph, SVG or a concise labelled description for a diagram, or a precise raster-generation brief","altText":"accessible description"}]}],
   "choiceGroups":[{"id":"section-b-choice","label":"Answer two questions from Section B","requiredCount":2,"questionIds":["q5","q6","q7"],"selectionRule":"highest_scoring" | "first_answered"}],
   "markScheme":{
     "kind":"generated",
@@ -123,6 +124,8 @@ Return JSON only in this shape:
 }
 
 Where the authoritative format profile lists sections, set every question's section to the identifier the profile gives that section -- the bare id before the bracketed title, so "A", not "Section A" and not the title --, emit each section's questions together in order, and make each section's marks sum exactly to the figure the profile gives that section. The paper's total is then the sum of those sections and must equal the profile's total exactly. Where the format has no sections, omit the field.
+
+Put a question's marks only in its marks field, never in the prompt text: the paper prints them in the board's own style. Number the questions as the board prints them, because the paper is typeset in that board's own layout: AQA gives every question two digits and numbers its parts after a point (01.1, 01.2, 02.1); Pearson Edexcel, OCR, WJEC, Eduqas and Cambridge use 1(a), 1(b)(i); SQA uses 1(a), or 2 for a question with no parts; anything else uses Question 1. A question with parts is one entry per part, emitted together and in order, every part carrying the same question number and its own marks, with the context the parts share written once at the start of the first part's prompt.
 
 sourceRefs must include only sources that materially informed the assessment profile, format, questions, marking guide, examiner insights, or grade guidance. For GCSE and A level, use the latest truly comparable official boundary as the main boundaries and add a historical median only from the same board, specification, tier/component and paper type across named years. Never mix incomparable papers. For university work, use the supplied rubric or otherwise give an estimated UK classification from percentage; do not invent institutional boundaries. Grade boundaries are official only when an authoritative source explicitly supplies them; otherwise label them estimated or return no boundaries. If status is needs_clarification, the paper fields may be empty arrays/strings, but all keys must still be present.`;
 }

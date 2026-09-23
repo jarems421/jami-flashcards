@@ -13,7 +13,9 @@ import { markArithmeticIssues, practicePaperFormatContext } from "@/lib/practice
 import { buildStudyFolderPayload } from "@/lib/workspace/study-folders";
 import { buildNotebookPagePayload, buildNotebookPayload } from "@/lib/workspace/notebooks";
 import {
+  PAPER_GENERATION_BENCHMARK_BLOCKERS,
   PAPER_GENERATION_BENCHMARK_DEFINITIONS,
+  PAPER_GENERATION_BENCHMARK_SCORE_KEYS,
   PAPER_GENERATION_BENCHMARK_VERSION,
   buildPaperGenerationBenchmarkCaseId,
   expectedPaperGenerationBenchmarkCases,
@@ -31,6 +33,7 @@ import {
   getActiveExamFormatProfileVersion,
   getExamFormatProfileVersion,
 } from "@/services/ai/exam-format-library.server";
+import { isAiPaperReviewer } from "@/lib/practice/paper-review";
 import { runPracticePaperGenerationForBenchmark } from "@/services/ai/practice-paper-generation.server";
 import { createPaperRasterAssets } from "@/services/ai/practice-paper-workflow.server";
 import { practicePaperSecretRef } from "@/services/ai/practice-paper-secrets.server";
@@ -40,15 +43,8 @@ const benchmarkLog = createLogger({ route: "paper_benchmark" });
 
 const PILOT_FOLDER_ID = "paper-quality-pilots";
 
-const HARD_BLOCKERS: PaperGenerationBenchmarkBlocker[] = [
-  "unanswerable_question", "incorrect_scheme", "invalid_total", "answer_leak",
-  "missing_insert", "broken_visual", "confirmed_copying", "privacy_failure",
-  "ownership_failure",
-];
-const SCORE_KEYS: Array<keyof PaperGenerationBenchmarkReviewScores> = [
-  "authenticity", "levelFit", "schemeCorrectness", "specificationCoverage",
-  "timing", "visualQuality", "accessibility", "originality",
-];
+const HARD_BLOCKERS = PAPER_GENERATION_BENCHMARK_BLOCKERS;
+const SCORE_KEYS = PAPER_GENERATION_BENCHMARK_SCORE_KEYS;
 
 function enabled() {
   return process.env.PAPER_GENERATION_BENCHMARK_ENABLED === "true";
@@ -651,7 +647,15 @@ export async function reviewPaperGenerationBenchmarkCase(input: {
   scores: unknown;
   blockers: unknown;
   comments?: string;
-}) {
+  /**
+   * Leave a person's review in place and return it instead.
+   *
+   * For the AI reviewer, which can take a minute over a paper a person may
+   * review in the meantime. Checked inside the transaction, so the person's
+   * verdict survives however the two calls interleave.
+   */
+  keepPersonReview?: boolean;
+}): Promise<PaperGenerationBenchmarkReview> {
   const scores = normalizeScores(input.scores);
   if (!scores) throw new Error("Complete every review score from 1 to 5.");
   const blockers = Array.isArray(input.blockers)
@@ -668,7 +672,7 @@ export async function reviewPaperGenerationBenchmarkCase(input: {
     reviewedAt: now,
   };
   const db = getAdminDb();
-  await db.runTransaction(async (transaction) => {
+  return db.runTransaction(async (transaction) => {
     const [runSnapshot, caseSnapshot] = await Promise.all([
       transaction.get(runRef(input.runId)),
       transaction.get(caseRef(input.runId, input.caseId)),
@@ -677,6 +681,7 @@ export async function reviewPaperGenerationBenchmarkCase(input: {
       throw new Error("That benchmark case is not ready for review.");
     }
     const previous = caseSnapshot.data()?.review as PaperGenerationBenchmarkReview | undefined;
+    if (input.keepPersonReview && previous && !isAiPaperReviewer(previous.reviewerUid)) return previous;
     const run = safeRun(input.runId, runSnapshot.data() ?? {});
     transaction.create(caseRef(input.runId, input.caseId).collection("reviewAudits").doc(), review);
     transaction.update(caseRef(input.runId, input.caseId), { review, updatedAt: now });
@@ -685,8 +690,8 @@ export async function reviewPaperGenerationBenchmarkCase(input: {
       passedCases: run.passedCases - (previous?.usable ? 1 : 0) + (review.usable ? 1 : 0),
       updatedAt: now,
     });
+    return review;
   });
-  return review;
 }
 
 export async function cancelPaperGenerationBenchmarkRun(runId: string) {

@@ -15,7 +15,9 @@ export type AiBudgetAction =
   | "sourcePracticeDrafts"
   | "interventionMaterial"
   | "studyAssetGeneration"
-  | "studyAnswerCheck";
+  | "studyAnswerCheck"
+  | "revisionLesson"
+  | "revisionMarking";
 
 type AiBudgetConfig = {
   dailyRequestLimit: number;
@@ -27,7 +29,10 @@ type AiBudgetConfig = {
     | "sourceDrafts"
     // Its own scope so preparing a deck cannot use up the allowance the
     // tutor needs to answer a question mid-session.
-    | "studyModes";
+    | "studyModes"
+    // A Revision Session marks every answer, so it gets its own window rather
+    // than spending the tutor's while a student works through one.
+    | "revisionSessions";
   tokenCap: number;
   /**
    * Ceiling on what one request may cost to *send*, or null where the input is
@@ -272,6 +277,35 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstScope: "studyModes",
     tokenCap: 600,
     inputTokenCap: 4_000,
+  },
+  /*
+   * Writing a Revision Session: the lesson at the start, and a second
+   * explanation if the guided question goes wrong. At most two a session, so
+   * twenty-four is a dozen sessions a day -- far more than anyone studies, and
+   * still a ceiling on a loop. Input is a concept label, a course line and at
+   * most one earlier task, so it is bounded by construction. The cap is
+   * generous because the worker model reasons before it writes, and a lesson
+   * is the longest thing it writes for a student.
+   */
+  revisionLesson: {
+    dailyRequestLimit: 24,
+    burstRequestLimit: 4,
+    burstWindowMs: 60_000,
+    burstScope: "revisionSessions",
+    tokenCap: 12_000,
+    inputTokenCap: null,
+  },
+  /*
+   * Marking one answer in a Revision Session. Up to five a session, and an
+   * exact match against the expected answer is marked locally without one.
+   */
+  revisionMarking: {
+    dailyRequestLimit: 120,
+    burstRequestLimit: 12,
+    burstWindowMs: 60_000,
+    burstScope: "revisionSessions",
+    tokenCap: 2_000,
+    inputTokenCap: 6_000,
   },
 };
 

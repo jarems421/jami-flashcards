@@ -3,7 +3,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import SmoothingSlider from "@/components/workspace/NotebookSmoothingSlider";
+import SmoothingSlider, { RAIL_TREMOR } from "@/components/workspace/NotebookSmoothingSlider";
 import { NOTEBOOK_PEN_SMOOTHING_DEFAULT } from "@/lib/workspace/notebook-pen-feel";
 
 let container: HTMLDivElement;
@@ -89,17 +89,26 @@ describe("the pen smoothing control", () => {
       expect(path.startsWith("M0 7")).toBe(true);
       expect(path.trimEnd().endsWith("100 7")).toBe(true);
 
-      // Every peak reaches the same height, sharp ones and rounded ones alike:
-      // a wave that tapers off looks like a rail that stops partway.
-      const peaks = [...path.matchAll(/[LQ](\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g)]
-        .map((match) => Number(match[2]))
-        .filter((y) => y !== 7);
-      expect(peaks.length).toBeGreaterThanOrEqual(8);
-      // Sharp peaks sit at the height itself; rounded ones put their control
-      // twice as far out to reach it.
-      for (const y of peaks) expect([3, 11, -1, 15]).toContain(y);
-      expect(peaks).toContain(3);
-      expect(peaks).toContain(-1);
+      // Shaky on the left, clean on the right: the line at either end of the
+      // control. Rounded peaks put their control twice as far out to reach
+      // the height, so they sit at -1 or 15.
+      const clean = [...path.matchAll(/Q(\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g)];
+      expect(clean).toHaveLength(4);
+      for (const match of clean) {
+        expect(Number(match[1])).toBeGreaterThan(50);
+        expect([-1, 15]).toContain(Number(match[2]));
+      }
+      const shaky = [...path.matchAll(/L(\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g)]
+        .map((match) => ({ x: Number(match[1]), y: Number(match[2]) }))
+        .filter((sample) => sample.y !== 7);
+      expect(shaky.length).toBeGreaterThan(clean.length * 2);
+      for (const sample of shaky) {
+        expect(sample.x).toBeLessThanOrEqual(50);
+        expect(Math.abs(sample.y - 7)).toBeLessThanOrEqual(4 + RAIL_TREMOR + 1e-9);
+      }
+      // Every shaky arch still reaches the wave's own height: a wave that
+      // tapers off looks like a rail that stops partway.
+      expect(Math.max(...shaky.map((sample) => Math.abs(sample.y - 7)))).toBeGreaterThan(4);
     }
   });
 

@@ -143,6 +143,34 @@ describe("reading a scheme item", () => {
     if (item?.marking !== "banded") throw new Error("wrong regime");
     expect(item.bands.map((band) => band.label)).toEqual(["Level 1", "Level 2", "Level 3"]);
   });
+
+  /**
+   * A benchmark paper was refused by its own audit for levels labelled one
+   * off: the 0-mark band had been called Level 1, and every level above it
+   * one too high.
+   */
+  it("numbers levels from where they sit, with the zero band as Level 0", () => {
+    const unlabelled = parse({
+      marking: "banded",
+      bands: [
+        { minMarks: 0, maxMarks: 0, descriptor: "Nothing creditworthy" },
+        { minMarks: 1, maxMarks: 2, descriptor: "Limited" },
+        { minMarks: 3, maxMarks: 3, descriptor: "Sound" },
+      ],
+    });
+    const drifted = parse({
+      marking: "banded",
+      bands: [
+        { label: "Level 1", minMarks: 0, maxMarks: 0, descriptor: "Nothing creditworthy" },
+        { label: "Level 2", minMarks: 1, maxMarks: 2, descriptor: "Limited" },
+        { label: "Band C", minMarks: 3, maxMarks: 3, descriptor: "Sound" },
+      ],
+    });
+    if (unlabelled?.marking !== "banded" || drifted?.marking !== "banded") throw new Error("wrong regime");
+    expect(unlabelled.bands.map((band) => band.label)).toEqual(["Level 0", "Level 1", "Level 2"]);
+    // A scheme's own name for a band is its to keep.
+    expect(drifted.bands.map((band) => band.label)).toEqual(["Level 0", "Level 1", "Band C"]);
+  });
 });
 
 describe("additive marking", () => {

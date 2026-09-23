@@ -34,8 +34,8 @@ import { PLAN_MINUTES_PER_ITEM } from "@/lib/planning/types";
 const HEADLINE: Record<InterventionReason, (label: string) => string> = {
   recall_strong_application_weak: (label) => `Make ${label} exam-ready`,
   weak_without_flashcards: (label) => `Build something to revise ${label} from`,
-  weak_with_flashcards: (label) => `Get ${label} solid`,
-  weak_without_application: (label) => `Put ${label} into practice`,
+  suspected_gap: (label) => `Check ${label}`,
+  slipping: (label) => `Get ${label} back on track`,
   material_never_tested: (label) => `Test yourself on ${label}`,
   declared_but_unevidenced: (label) => `Find out where you stand on ${label}`,
   no_material_for_specification_concept: (label) => `${label} is not covered yet`,
@@ -48,15 +48,15 @@ const HEADLINE: Record<InterventionReason, (label: string) => string> = {
 const SUMMARY: Record<InterventionReason, string> = {
   recall_strong_application_weak: "Your recall is strong, but application is weaker.",
   weak_without_flashcards:
-    "This is proving difficult, and there is not much here to revise from.",
-  weak_with_flashcards: "Recent answers on this have not held up.",
-  weak_without_application: "You have been tested on remembering this, not on using it.",
+    "This is proving difficult, and there are not enough cards on it to revise from.",
+  suspected_gap: "A few answers on this have gone wrong, but not enough yet to be sure.",
+  slipping: "Your recent answers on this are not as good as your earlier ones.",
   material_never_tested: "You have material on this and have not been tested on it yet.",
   declared_but_unevidenced:
     "It is part of your course and nothing has been recorded against it yet.",
   no_material_for_specification_concept:
     "Your course asks for this and there is nothing here to work from yet.",
-  due_for_retrieval: "You know this one. It is just due a look before it fades.",
+  due_for_retrieval: "Cards on this are due. A quick look now stops them fading.",
   recent_gain: "This has been going well lately. A short session will keep it.",
   evidenced_knowledge_gap: "Enough answers have gone wrong that it is worth going back over.",
 };
@@ -83,7 +83,7 @@ const ACTION_LABEL: Record<InterventionType, string> = {
  */
 const CHOICE: Record<InterventionType, string> = {
   create_flashcards:
-    "So Jami is offering to write a few cards first, rather than testing you on something you have nothing to revise from.",
+    "So Jami is offering to write a few cards to revise from first, rather than testing you straight away.",
   create_practice:
     "So Jami is offering to write exam-style questions, rather than more cards to remember.",
   fill_specification_gap:
@@ -100,6 +100,7 @@ const SOURCE_PHRASE: Record<LearningEvidenceKind, string> = {
   practice: "practice questions",
   "past-paper": "exam questions",
   notebook: "your notes",
+  revision: "revision sessions",
 };
 
 function listPhrase(parts: readonly string[]) {
@@ -142,6 +143,22 @@ export type MissionCopy = {
 };
 
 /**
+ * The noticing sentence for one choice.
+ *
+ * Recall read from the student's own broader Topic is named as that Topic.
+ * "Your recall is strong" about completing the square would claim they had
+ * drilled completing the square; what they drilled was Quadratics, and the
+ * sentence says so. The name is the student's own, rendered as text.
+ */
+function summaryFor(choice: InterventionChoice) {
+  const topic = choice.recallFrom?.label.trim();
+  if (choice.because === "recall_strong_application_weak" && topic) {
+    return `Your cards on ${lowerFirst(topic)} are going well, but exam-style answers on this are not.`;
+  }
+  return SUMMARY[choice.because];
+}
+
+/**
  * One recommendation, worded for a student.
  *
  * Takes the intervention rather than the engine's reason, because the
@@ -156,11 +173,12 @@ export function missionCopy(input: {
 }): MissionCopy {
   const label = lowerFirst(input.conceptLabel.trim()) || "this";
   const { because, type } = input.choice;
+  const summary = summaryFor(input.choice);
   return {
     headline: HEADLINE[because](label),
-    summary: SUMMARY[because],
+    summary,
     actionLabel: ACTION_LABEL[type],
-    explanation: [evidenceSentence(input.evidence), SUMMARY[because], CHOICE[type]],
+    explanation: [evidenceSentence(input.evidence), summary, CHOICE[type]],
   };
 }
 

@@ -225,6 +225,11 @@ const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
   // gone away -- only Jami's offer to write the material for it.
   interventionMaterial:
     "Jami has written as much study material as it can today. You can still make cards and questions yourself.",
+  revisionLesson:
+    "Jami has done a lot of teaching today. Try another session tomorrow.",
+  // Marking running out mid-session costs a self-grade tap, not the session.
+  revisionMarking:
+    "Jami has checked as many answers as it can today. You can still mark your own.",
 };
 
 export function createAiBudgetLimitResponse(

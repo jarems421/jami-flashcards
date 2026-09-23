@@ -36,7 +36,8 @@ function weakState(): LearningTopicState {
     exposure: { notebooks: 1, sources: 0, cards: 0 },
     demonstration: "weak",
     memory: [],
-    decision: { action: "practice", reason: "low_mastery" },
+    // What the engine decides for a confident weakness with no strong recall behind it.
+    decision: { action: "teach", reason: "low_mastery" },
     signal: {
       topicKey: "spec:completing-the-square",
       topic: "Completing the square",
@@ -49,7 +50,7 @@ function weakState(): LearningTopicState {
       uniqueItems: 12,
       dueCards: 0,
       lastSeenAt: Date.now(),
-      // Application evidence present, so the recall/application rule does not fire.
+      // No recall evidence, so this is not an application gap.
       evidence: ["past-paper", "practice"],
     },
   } as LearningTopicState;
@@ -71,9 +72,9 @@ describe("only when cards would add something", () => {
     const stocked = { ...BASE, hasFlashcards: true, flashcardCount: 30 };
     expect(needsMoreFlashcards(stocked)).toBe(false);
     const choice = selectIntervention(weakState(), stocked);
-    // Weak with cards means work through the cards, not write more.
+    // Weak with cards means work through what exists, not write more.
     expect(choice?.type).not.toBe("create_flashcards");
-    expect(choice?.because).toBe("weak_with_flashcards");
+    expect(choice?.because).toBe("evidenced_knowledge_gap");
   });
 
   it("stops offering exactly at the threshold", () => {

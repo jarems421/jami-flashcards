@@ -118,7 +118,8 @@ describe("notebook ink smoothing", () => {
 
   it("draws the ink at the pen once lag correction is on", () => {
     /*
-     * The same fast stroke through the pipeline the notebook actually uses.
+     * The same fast stroke with lag correction on, which the notebook no
+     * longer ships but which is kept measurable.
      *
      * The test above asserts the filter sits *behind* the pen, which was the
      * whole truth before correction existed. It is not any more: correction
@@ -128,7 +129,10 @@ describe("notebook ink smoothing", () => {
      * at `maxLeadPx`, so overshoot is bounded by construction rather than by
      * tuning.
      */
-    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    const smoother = new NotebookInkSmoother(
+      { x: 0, y: 0, time: 0 },
+      { ...NOTEBOOK_INK_SMOOTHING, prediction: NOTEBOOK_INK_PREDICTION }
+    );
     const perSampleStep = (1500 * SAMPLE_INTERVAL_MS) / 1000;
     const samples = makeSamples(
       Array.from({ length: 60 }, (_, index) => ({

@@ -37,6 +37,7 @@ import { mapCardData } from "@/lib/study/cards";
 import { mapNotebookData } from "@/lib/workspace/notebooks";
 import { mapStudyFolderData, type StudyFolder } from "@/lib/workspace/study-folders";
 import { loadNotebookMarkings } from "@/services/learning/notebook-markings.server";
+import { loadRevisionEvidence } from "@/services/learning/revision-sessions.server";
 import { getAdminDb } from "@/services/firebase/admin";
 
 type AdminDb = ReturnType<typeof getAdminDb>;
@@ -739,30 +740,50 @@ export async function loadLearnerEvidence(
       folderId ? loadFolderExposure(db, uid, folderId, notes) : Promise.resolve([]),
     ]);
   const pagedCards = cardLists.flat();
-  const cards = [
-    ...pagedCards,
-    ...(await loadReviewedCards(db, uid, deckIds, pagedCards, flashcardReviewEvents, notes)),
-  ];
   const declaredTopicIds = folder?.topicIds ?? [];
-  const studentTopics = await loadStudentTopicConcepts(
-    db,
-    uid,
-    { declaredTopicIds, cards, exposureItems },
-    notes
-  );
+  /*
+   * Two chains that share nothing, run side by side. The cards a student has
+   * reviewed have to be read before their topics can be, but notebook marking
+   * and revision sessions need only what is already loaded, and waiting for the
+   * card chain added a round trip per folder to Today for no reason.
+   */
+  const [{ cards, studentTopics }, [notebookMarkings, revisionSessions]] = await Promise.all([
+    (async () => {
+      const cards = [
+        ...pagedCards,
+        ...(await loadReviewedCards(db, uid, deckIds, pagedCards, flashcardReviewEvents, notes)),
+      ];
+      const studentTopics = await loadStudentTopicConcepts(
+        db,
+        uid,
+        { declaredTopicIds, cards, exposureItems },
+        notes
+      );
+      return { cards, studentTopics };
+    })(),
+    Promise.all([
+      /*
+       * Marked notebook working, narrowed to the notebooks already in scope for
+       * exposure -- the same pages the folder contains, now read for what Tutor
+       * made of them rather than only that they exist.
+       */
+      loadNotebookMarkings({
+        uid,
+        notebookIds: exposureItems
+          .filter((item) => item.kind === "notebook")
+          .map((item) => item.id),
+      }),
+      // Finished Revision Sessions opened from this scope's own recommendations.
+      featureFlags.enableRevisionSessions
+        ? loadRevisionEvidence({
+            uid,
+            ...(folderId ? { folderId } : deckId ? { deckId } : {}),
+          })
+        : Promise.resolve([]),
+    ]),
+  ]);
   const specification = folder ? folderSpecification(folder) : undefined;
   const specificationConcepts = folder ? folderSpecificationConcepts(folder) : [];
-  /*
-   * Marked notebook working, narrowed to the notebooks already in scope for
-   * exposure -- the same pages the folder contains, now read for what Tutor
-   * made of them rather than only that they exist.
-   */
-  const notebookMarkings = await loadNotebookMarkings({
-    uid,
-    notebookIds: exposureItems
-      .filter((item) => item.kind === "notebook")
-      .map((item) => item.id),
-  });
 
   const evidence: LearnerEvidence = {
     cards,
@@ -770,6 +791,7 @@ export async function loadLearnerEvidence(
     pastPaperAttempts: pastPaper.attempts,
     practicePaperAttempts,
     notebookMarkings,
+    revisionSessions,
     topicLabels: {
       ...Object.fromEntries(
         decks.map((deck) => [`deck:${deck.id}`, { label: deck.name, source: "deck" as const }])

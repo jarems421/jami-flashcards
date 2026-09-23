@@ -27,6 +27,7 @@ import {
   updatePaperBenchmarkRun,
   type PaperBenchmarkReadiness,
 } from "@/services/ai/paper-quality";
+import { isAiPaperReviewer } from "@/lib/practice/paper-review";
 
 const SCORE_FIELDS: Array<{ key: keyof PaperGenerationBenchmarkReviewScores; label: string }> = [
   { key: "authenticity", label: "Exam authenticity" },
@@ -511,7 +512,7 @@ export default function PaperQualityWorkspace() {
                 onClick={() => void openCase(item)}
               >
                 <span className="block truncate text-sm font-semibold text-text-primary">{item.definitionId}</span>
-                <span className="mt-1 block text-xs text-text-muted">{item.kind.replaceAll("_", " ")} · run {item.repetition} · {item.review ? "reviewed" : item.status}</span>
+                <span className="mt-1 block text-xs text-text-muted">{item.kind.replaceAll("_", " ")} · run {item.repetition} · {item.review ? (isAiPaperReviewer(item.review.reviewerUid) ? "AI reviewed" : "reviewed") : item.status}</span>
               </button>
             ))}
           </div>

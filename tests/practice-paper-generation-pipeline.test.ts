@@ -72,6 +72,8 @@ const mocks = vi.hoisted(() => {
       schemeIssues: [] as Issue[][],
       routingIssues: [] as Issue[],
       sectionWrong: [] as { section: string; actual: number; expected: number }[],
+      /** Answers for successive section checks, before falling back to `sectionWrong`. */
+      sectionWrongQueue: [] as { section: string; actual: number; expected: number }[][],
       incomplete: false,
       chunks: [] as Record<string, unknown>[],
       inputTokenCap: null as number | null,
@@ -221,7 +223,10 @@ vi.mock("@/lib/practice/asset-routing", async (importOriginal) => ({
 
 vi.mock("@/lib/practice/exam-formats", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/practice/exam-formats")>()),
-  sectionMarkIssues: () => ({ wrong: mocks.state.sectionWrong, built: new Set(["A"]) }),
+  sectionMarkIssues: () => ({
+    wrong: mocks.state.sectionWrongQueue.length ? mocks.state.sectionWrongQueue.shift()! : mocks.state.sectionWrong,
+    built: new Set(["A"]),
+  }),
 }));
 
 vi.mock("@/lib/practice/practice-papers", async (importOriginal) => ({
@@ -438,6 +443,7 @@ beforeEach(() => {
   state.schemeIssues = [];
   state.routingIssues = [];
   state.sectionWrong = [];
+  state.sectionWrongQueue = [];
   state.incomplete = false;
   state.chunks = [{ sourceId: "source-1", text: "Specification extract", pageStart: 2, pageEnd: 3, heading: "Scope" }];
   state.inputTokenCap = null;
@@ -683,7 +689,21 @@ describe("practice paper generation", () => {
       "Your previous paper was worth 11 marks across 3 questions (4 + 3 + 4), and this component is worth exactly 12."
     );
     expect(mocks.events.written.slice(0, 2)).toEqual(["paper_design", "paper_design_total_retry"]);
-    expect(logged("paper_design.total_corrected")[0]?.fields).toEqual({ from: 11, to: 12 });
+    expect(logged("paper_design.total_corrected")[0]?.fields).toEqual({ from: 11, to: 12, sectionsCorrected: 0 });
+  });
+
+  /**
+   * A WJEC Chemistry draft built Section B at 52 marks against 70 and failed
+   * with no second chance, because only a wrong total bought a retry.
+   */
+  it("gives a paper right overall but wrong in a section one repair, section by section", async () => {
+    mocks.state.sectionWrongQueue = [[{ section: "B", actual: 5, expected: 6 }], [], []];
+    mocks.state.replies.design = [mocks.paperText([4, 4, 4]), mocks.paperText([4, 4, 4])];
+    expect((await generate({ expectedTotalMarks: 12, expectedSections: [{ id: "A", marks: 6 }, { id: "B", marks: 6 }] })).status).toBe(200);
+    expect(mocks.events.captured.slice(0, 2)).toEqual(["paper_design", "paper_design_total_retry"]);
+    expect(callsOf("design")[1]?.system).toContain("Section B came to 5 marks and must be 6 (1 short).");
+    expect(callsOf("design")[1]?.system).toContain("Repair it rather than starting again");
+    expect(logged("paper_design.total_corrected")[0]?.fields).toEqual({ from: 12, to: 12, sectionsCorrected: 1 });
   });
 
   it("refuses a paper still worth the wrong total and forgets both designs", async () => {
@@ -767,6 +787,8 @@ describe("practice paper generation", () => {
         exactQuestionIdMatches: 1,
         stringMarkingFields: 0,
         acceptedMarkingFields: 0,
+        // Keys and value kinds only, never the scheme's content.
+        itemShapes: ["questionId:string"],
       },
     ]);
   });
