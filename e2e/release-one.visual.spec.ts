@@ -21,10 +21,10 @@ test("Release 1 landing stays clear at desktop and phone sizes", async ({ page }
   await page.goto("/");
   await expect(
     page.getByRole("heading", {
-      name: "One place to do the work, and remember what matters.",
+      name: "Practise like the exam. Revise what it shows you.",
     })
   ).toBeVisible();
-  await expect(page.getByText("Work naturally", { exact: true })).toBeVisible();
+  await expect(page.getByText("Practise the real thing", { exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page, 1440);
   await page.screenshot({ path: "test-results/release-one-landing-desktop.png", fullPage: true });
 
@@ -40,7 +40,7 @@ test("Release 1 landing stays clear at desktop and phone sizes", async ({ page }
     .getByRole("button", { name: "Continue with Google" })
     .boundingBox();
   const steps = await page
-    .getByText("Work naturally", { exact: true })
+    .getByText("Practise the real thing", { exact: true })
     .boundingBox();
   expect(headline && signIn && steps).toBeTruthy();
   expect(signIn!.y).toBeGreaterThan(headline!.y);
@@ -58,7 +58,7 @@ test("Release 1 navigation and study workspace stay usable across sizes", async 
   await expect(page.getByRole("heading", { name: "Today", level: 1 })).toBeVisible();
   const desktopNav = page.locator("nav[data-nav='sidebar']");
   await expect(desktopNav).toBeVisible();
-  await expect(desktopNav.getByText("Learning loop", { exact: true }).last()).toBeVisible();
+  await expect(desktopNav.getByText("Study", { exact: true }).last()).toBeVisible();
   await expect(desktopNav.getByText("Workspace", { exact: true })).toBeVisible();
   await expect(page.getByText("Getting today ready.")).toBeHidden({ timeout: 45_000 });
   await expectNoHorizontalOverflow(page, 1440);

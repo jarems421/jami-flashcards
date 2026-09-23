@@ -252,6 +252,18 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
       "The first criterion-level records in the corpus that are not photographs of handwriting, which is why this was parsed before eleven larger sources. Every other criterion source is handwritten, so two explanations of Jami's generosity could not be told apart by measurement -- it may misread the work, or read it correctly and misjudge it -- and five failed experiments were left without a clean interpretation. These assignments are typed coursework, still scanned, and a vision model reads print essentially perfectly; if Jami marks them as generously as handwriting then reading was never the problem. Ingested: 16 candidates across four series (2015, 2023, 2024, 2025), each scored on five sections -- knowledge and understanding, analysing and synthesising, source evaluation, structure, reaching a decision -- with the examiner's narrative attributing marks to specific sentences of the candidate's own writing. Section tariffs are not published, so each is the highest any candidate reached; they sum to exactly 30, which is the assignment's published total, so the inference checks out. A candidate whose sections do not reach the examiner's own stated total is skipped rather than recorded short. Measure-only.",
   },
   {
+    id: "sqa-extended-response",
+    title: "Qualifications Scotland — Higher History essays and Higher Chemistry open questions",
+    level: "alevel",
+    subjects: ["history", "chemistry"],
+    regimes: ["additive", "banded"],
+    licence: { id: "board exemplar", redistributable: false, verified: false },
+    handwritten: true,
+    commentary: true,
+    notes:
+      "The two gates marking had not been measured on: handwritten extended writing, and a science answer marked by level rather than by point. Two Higher History essays from the 2022 paper (22 marks, on the published grid: context 3, knowledge 6, analysis 6, evaluation 4, conclusion 3) and eleven Higher Chemistry open-ended answers from 2022 Paper 2 (3 marks, limited / reasonable / good understanding), every one handwritten and marked by an examiner whose commentary gives the award. The four 2019 essays are left out: they are out of 20 on a grid the folder does not contain, and guessing its split would put an invented scheme under a real mark. History Paper 2 and Biology are left out too: several candidates share unlabelled pages, and a mark attached to the wrong script is worse than none. Built by scripts/eval/build-sqa-extended-corpus.ts. Measure-only.",
+  },
+  {
     id: "sqa-higher-psychology",
     title: "Qualifications Scotland — Higher Psychology assignment",
     level: "alevel",

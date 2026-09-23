@@ -1,6 +1,8 @@
 import "server-only";
 
 import { featureFlags } from "@/lib/app/feature-flags";
+import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
+import { revisionSessionsEnabled } from "@/services/learning/revision-session-context.server";
 import {
   buildStudyActions,
   mergeStudyActions,
@@ -127,6 +129,8 @@ export async function loadStudyActions(input: {
           flashcards: featureFlags.enableFlashcardAi,
           practice: featureFlags.enableFlashcardAi,
         },
+        // Teaching a concept directly, in a Revision Session.
+        canRunRevisionSession: revisionSessionsEnabled() && isAnyAiProviderConfigured(),
       },
       historyResult.history,
       now

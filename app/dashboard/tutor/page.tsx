@@ -38,6 +38,7 @@ import type { Source } from "@/lib/material/sources";
 import { getPendingGeneratedContentDrafts } from "@/services/study/generated-content";
 import { getActiveSources } from "@/services/study/sources";
 import TutorPlanCard from "@/components/planning/TutorPlanCard";
+import RevisionTutorShelf from "@/components/revision/RevisionTutorShelf";
 import type { PlanNotice } from "@/lib/ai/assistant-plan";
 import type { RevisionPlan } from "@/lib/planning/types";
 import { loadActiveRevisionPlan } from "@/services/planning/revision-plans";
@@ -268,6 +269,8 @@ export default function TutorPage() {
       {featureFlags.enableRevisionPlans ? (
         <TutorPlanCard plan={activePlan} notices={planNotices} loading={loading} />
       ) : null}
+
+      {featureFlags.enableRevisionSessions ? <RevisionTutorShelf /> : null}
 
       {/*
         * Your material, first, because picking something is what you came to

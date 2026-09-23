@@ -6,7 +6,6 @@ import {
   inferPaperQuestionKind,
   normalizePracticePaperPdfLayout,
   paperSubjectGroup,
-  parseGraphPoints,
   parseMarkdownTableRows,
   questionIdsForPdfPage,
 } from "@/lib/practice/paper-pdf-layout";
@@ -122,7 +121,13 @@ describe("asset content parsing", () => {
     ]);
   });
 
-  it("reads graph points and ignores rows that are not numbers", () => {
-    expect(parseGraphPoints("x,y\n0,1\n1, 3\nnot a point")).toEqual([{ x: 0, y: 1 }, { x: 1, y: 3 }]);
+});
+
+describe("space for a long essay", () => {
+  it("stops growing at about four pages, however many marks the essay carries", async () => {
+    const { answerSpacePoints, EXTENDED_ANSWER_MAX } = await import("@/lib/practice/paper-pdf-layout");
+    const essay = (marks: number) => ({ prompt: "Write an article for your school magazine.", marks });
+    expect(answerSpacePoints(essay(12), "writing")).toBe(67 * 12);
+    expect(answerSpacePoints(essay(87), "writing")).toBe(EXTENDED_ANSWER_MAX);
   });
 });

@@ -3,10 +3,8 @@
 import FormDisclosure from "@/components/ui/FormDisclosure";
 import NotebookPenSettingSlider from "@/components/workspace/NotebookPenSettingSlider";
 import {
-  getNotebookCornerSharpness,
   getNotebookCornerSharpnessLabel,
   getNotebookPressureLabel,
-  getNotebookSteadinessLabel,
   getNotebookStraightenLabel,
   getNotebookTrackingLabel,
   hasNotebookPenAdvancedChanges,
@@ -25,17 +23,16 @@ const STRAIGHTEN_SHORT: Record<NotebookStraightenOnHold, string> = {
 /**
  * The pen settings behind Smoothing.
  *
- * Smoothing is one number standing in for several, and that is the right thing
- * for almost everybody: it moves all of them somewhere sensible together. What
- * it cannot do is separate them, and the complaints it gets are about exactly
- * that -- a hand that wants its wobble filtered hard does not necessarily want
- * its corners rounded off too, and turning one down turns the other down with
- * it.
+ * Smoothing on the front of the panel is how much wobble is taken out of the
+ * line. Everything else about how the pen shapes a stroke is here, folded away
+ * until it is wanted -- corners first, because it is the one most reached for.
  *
- * So the constants Smoothing covers are also settable on their own, folded away
- * until they are wanted. Every control here reproduces the previous behaviour at
- * the middle of its travel, so opening this section and closing it again cannot
- * change how the pen writes.
+ * Corner sharpness used to follow Smoothing until it was unlinked, and read as
+ * a greyed-out slider that did nothing beside a Smoothing slider that was
+ * really moving the corners. It is its own setting now, always live.
+ *
+ * Every control here reproduces the previous behaviour at its default, so
+ * opening this section and closing it again cannot change how the pen writes.
  */
 export default function NotebookPenAdvancedSettings({
   settings,
@@ -44,8 +41,7 @@ export default function NotebookPenAdvancedSettings({
   settings: NotebookPenSettings;
   onChange: (next: NotebookPenSettings) => void;
 }) {
-  const cornerSharpness = getNotebookCornerSharpness(settings);
-  const followingSmoothing = settings.cornerSharpnessPercent === null;
+  const cornerSharpness = settings.cornerSharpnessPercent;
   const changed = hasNotebookPenAdvancedChanges(settings);
   const set = (patch: Partial<NotebookPenSettings>) =>
     onChange({ ...settings, ...patch });
@@ -57,47 +53,14 @@ export default function NotebookPenAdvancedSettings({
       className="mt-1"
     >
       <div className="space-y-3.5">
-        <div>
-          <NotebookPenSettingSlider
-            label="Corner sharpness"
-            name={getNotebookCornerSharpnessLabel(cornerSharpness).name}
-            description={
-              getNotebookCornerSharpnessLabel(cornerSharpness).description
-            }
-            percent={cornerSharpness}
-            disabled={followingSmoothing}
-            onChange={(value) => set({ cornerSharpnessPercent: value })}
-          />
-          {/* Corners are the half of Smoothing that decides whether writing
-              reads as flowing or as a run of short straight runs, so this is
-              the control most likely to be reached for -- and the link back to
-              Smoothing has to be lettable-go of without the pen changing under
-              the reader, which is why it starts where Smoothing had it. */}
-          <button
-            type="button"
-            onClick={() =>
-              set({
-                cornerSharpnessPercent: followingSmoothing
-                  ? cornerSharpness
-                  : null,
-              })
-            }
-            className="mt-0.5 min-h-[1.75rem] px-0.5 text-2xs font-semibold text-[var(--color-selected-text)] transition hover:underline"
-          >
-            {followingSmoothing
-              ? "Set separately from Smoothing"
-              : "Follow Smoothing again"}
-          </button>
-        </div>
-
         <NotebookPenSettingSlider
-          label="Line steadiness"
-          name={getNotebookSteadinessLabel(settings.steadinessPercent).name}
+          label="Corner sharpness"
+          name={getNotebookCornerSharpnessLabel(cornerSharpness).name}
           description={
-            getNotebookSteadinessLabel(settings.steadinessPercent).description
+            getNotebookCornerSharpnessLabel(cornerSharpness).description
           }
-          percent={settings.steadinessPercent}
-          onChange={(value) => set({ steadinessPercent: value })}
+          percent={cornerSharpness}
+          onChange={(value) => set({ cornerSharpnessPercent: value })}
         />
 
         <NotebookPenSettingSlider

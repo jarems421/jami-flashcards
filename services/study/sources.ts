@@ -27,6 +27,7 @@ import {
   type Source,
   type SourceType,
 } from "@/lib/material/sources";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;
@@ -193,6 +194,7 @@ export async function createSource(
   );
   invalidateDashboardData(userId);
   void requestSourceIndex(docRef.id).catch(() => undefined);
+  reportTutorialAction("add-source");
 
   return docRef.id;
 }

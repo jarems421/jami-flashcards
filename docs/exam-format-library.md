@@ -11,6 +11,29 @@ speaking, practical, coursework, international and Scottish qualifications are
 outside this release. University papers continue to use module evidence rather
 than this library.
 
+## What a generated paper looks like
+
+A generated paper is typeset in its board's house style
+(`lib/practice/paper-house-style.ts`): AQA's boxed question numbers and
+"Do not write outside the box" column, Pearson's hatched margins and
+"(Total for Question 1 = 6 marks)", OCR's marks at the end of the answer line,
+SQA's marks column, the WJEC and CCEA examiner column, each board's cover with
+candidate boxes. Every cover still says it is a Jami practice paper; no board's
+logo, paper codes or copyright line is reproduced.
+
+The designer writes questions in the kinds the board sets for that course
+(`lib/practice/question-conventions.ts`, printed into the format context), and
+the same conventions go to the scheme writer and the marker.
+
+Graphs are stated as data, never drawn by the model: a graph asset is a JSON
+chart (`lib/practice/exam-chart.ts`) that code draws as graph paper with
+numbered scales, titled axes with units, plotted crosses, computed best-fit
+lines, histograms at frequency density, blank grids for "plot" questions and
+economics diagrams on unnumbered axes. The booklet and the app draw it with
+the same code. A chart that contradicts itself -- a point off its axes, a step
+that does not divide the scale, an equilibrium marked off every line -- is
+refused before generation finishes.
+
 ## Profile lifecycle
 
 - A weekly cron refreshes two board/qualification catalogue slices each day, so
@@ -53,9 +76,22 @@ each component, giving 108 production-realistic cases. Each case uses the
 production generation, auditing and validated visual path but lives outside
 student collections and allowances.
 
-Every paper must receive a human review. Unanswerable questions, incorrect mark
-schemes, invalid totals, answer leakage, missing inserts, broken visuals,
-confirmed copying, privacy failures and ownership failures are hard blockers.
+Every paper must receive a review, from a person in the workspace or from the
+AI reviewer:
+
+```text
+GEMINI_DOCUMENT_MODEL=gemini-3.8-flash node --env-file-if-exists=.env.local \
+  scripts/run-ts.mjs scripts/eval/paper-auto-review.ts --run=<runId> --confirm
+```
+
+The AI reviewer is Gemini, a different family from the models that write the
+papers. It scores the same rubric, signs its reviews `ai:<model>`, and never
+replaces a person's review; a person's review replaces it. Totals, missing
+schemes, schemes about another question and failed figures are checked by code
+before the model is asked, and any blocker from either makes a paper unusable.
+Unanswerable questions, incorrect mark schemes, invalid totals, answer leakage,
+missing inserts, broken visuals, confirmed copying, privacy failures and
+ownership failures are hard blockers.
 Owner approval writes an immutable content-free schema-v2 report and baseline
 artifact. It does not edit the repository automatically: activating that
 baseline as a deployment gate is a separate reviewed repository change.

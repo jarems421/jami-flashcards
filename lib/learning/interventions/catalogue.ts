@@ -1,4 +1,4 @@
-import type { LearningAction, LearningTopicState } from "@/lib/learning/types";
+import type { LearningAction, LearningTopicSource, LearningTopicState } from "@/lib/learning/types";
 
 /**
  * The things Jami can actually do about a learning need.
@@ -74,6 +74,14 @@ export type InterventionAvailability = {
   canCreateFlashcards: boolean;
   /** This deployment can generate practice questions. */
   canCreatePractice: boolean;
+  /**
+   * This deployment can teach it directly, in a Revision Session.
+   *
+   * Absent means no. When it is on, `teach` can be carried out for any
+   * concept -- a session needs no page and no material of its own -- and it is
+   * the first answer to a decision to teach. See docs/revision-sessions.md.
+   */
+  canRunRevisionSession?: boolean;
 };
 
 export type InterventionChoice = {
@@ -93,19 +101,34 @@ export type InterventionChoice = {
    * reasonable, and a student who cannot face one may take the other.
    */
   alternatives: InterventionType[];
+  /**
+   * For `recall_strong_application_weak`, the student's own Topic whose cards
+   * the recall reading came from, when that is not the concept itself -- so
+   * the sentence can name what they actually drilled.
+   */
+  recallFrom?: { topicKey: string; label: string };
 };
 
+/**
+ * Why an action is offered, as something the student can be told.
+ *
+ * Each one is a claim about the student or their material, and each is only
+ * chosen when the engine's decision and the evidence make that claim true.
+ * `tests/learning-student-journeys.test.ts` holds every reachable decision to
+ * it: a sentence that is true for most students who see it is still a lie to
+ * the rest.
+ */
 export type InterventionReason =
   /** The specification asks for it and there is almost nothing to work with. */
   | "no_material_for_specification_concept"
-  /** Weak, and too little to retrieve from. */
+  /** A well-evidenced weakness, and too little to revise from. */
   | "weak_without_flashcards"
-  /** Weak, and cards exist to work through. */
-  | "weak_with_flashcards"
-  /** Weak, and what is missing is application work. */
-  | "weak_without_application"
   /** Recall is holding up and application is not. */
   | "recall_strong_application_weak"
+  /** Some answers have gone wrong, too few to call it a weakness. */
+  | "suspected_gap"
+  /** Answers are getting worse than they were. */
+  | "slipping"
   /** Studied, never tested. */
   | "material_never_tested"
   /**
@@ -118,7 +141,7 @@ export type InterventionReason =
    * were asked and hold nothing; this is what is said when nobody asked.
    */
   | "declared_but_unevidenced"
-  /** Due, and they know it. */
+  /** Cards on it are due. */
   | "due_for_retrieval"
   /** Recently gained, worth locking in. */
   | "recent_gain"
@@ -169,43 +192,45 @@ export function hasWorkableMaterial(availability: InterventionAvailability) {
 }
 
 /**
- * Whether application evidence is the thing that is missing.
+ * Where each action can actually be carried out, by what kind of concept it is.
  *
- * The distinction the concept hierarchy was built to preserve: a student can
- * recall a method reliably and still lose marks using it under exam
- * conditions, and those need different work. Read from the sources behind the
- * signal rather than from mastery, because it is about *what kind* of evidence
- * exists, not how good it is.
+ * The surfaces are not interchangeable. A specification concept has no page
+ * and no card queue of its own: it is worked on through Past Paper Practice,
+ * narrowed to it, or through material Jami writes for it, and the writing
+ * route only accepts specification concepts. A student's Topic or a deck is
+ * the reverse: it has a page and a queue, and neither the corpus nor the
+ * writer can be pointed at it. Offering an action on the wrong kind of
+ * concept is a button that says one thing and opens another.
  */
-export function lacksApplicationEvidence(state: LearningTopicState) {
-  const sources = state.signal?.evidence ?? [];
-  if (sources.length === 0) return false;
-  return !sources.includes("past-paper") && !sources.includes("practice");
-}
-
-function firstAvailable(
-  candidates: readonly InterventionType[],
+function canCarryOut(
+  type: InterventionType,
+  source: LearningTopicSource,
   availability: InterventionAvailability
-): InterventionType[] {
-  return candidates.filter((type) => {
-    switch (type) {
-      case "create_flashcards":
-        return availability.canCreateFlashcards;
-      case "create_practice":
-      case "fill_specification_gap":
-        return availability.canCreatePractice || availability.canCreateFlashcards;
-      case "past_paper":
-        // Unknown is offerable; only a bank known to be empty rules it out.
-        return availability.hasPastPaper !== false;
-      case "retrieve":
-        return availability.hasFlashcards;
-      case "review_material":
-        return availability.hasMaterial || availability.hasFlashcards;
-      case "teach":
-      case "reinforce":
-        return true;
-    }
-  });
+) {
+  const specification = source === "specification";
+  switch (type) {
+    case "create_flashcards":
+      // Writing cards is only offered where cards are what is missing.
+      return specification && needsMoreFlashcards(availability);
+    case "fill_specification_gap":
+      // Resolves to cards: a concept with nothing behind it needs something to study from first.
+      return specification && availability.canCreateFlashcards;
+    case "create_practice":
+      return specification && availability.canCreatePractice;
+    case "past_paper":
+      // Unknown is offerable; only a bank known to be empty rules it out.
+      return specification && availability.hasPastPaper !== false;
+    case "retrieve":
+      return !specification && availability.hasFlashcards;
+    case "review_material":
+      return !specification && (availability.hasMaterial || availability.hasFlashcards);
+    case "teach":
+      // A Revision Session can teach any concept; without one, only a Topic
+      // or deck has a page to open.
+      return availability.canRunRevisionSession === true || !specification;
+    case "reinforce":
+      return !specification;
+  }
 }
 
 /**
@@ -232,7 +257,7 @@ export function selectIntervention(
     because: InterventionReason,
     candidates: readonly InterventionType[]
   ): InterventionChoice | undefined => {
-    const usable = firstAvailable(candidates, availability);
+    const usable = candidates.filter((type) => canCarryOut(type, state.source, availability));
     const [type, ...alternatives] = usable;
     return type ? { type, because, alternatives } : undefined;
   };
@@ -244,11 +269,13 @@ export function selectIntervention(
    * from, which is a different statement from "you are weak at this" -- and
    * the engine will have said `diagnose/not_yet_assessed` precisely because it
    * has no evidence either way. Offering to build the material is the honest
-   * action; testing them on nothing is not.
+   * action; testing them on nothing is not. Anything already answered on it
+   * came from somewhere, so recorded work rules the claim out.
    */
   if (
     state.source === "specification" &&
     state.declared &&
+    !state.signal &&
     !hasWorkableMaterial(availability)
   ) {
     return choose("no_material_for_specification_concept", [
@@ -260,13 +287,25 @@ export function selectIntervention(
 
   switch (decision.action) {
     case "diagnose": {
-      // Seen but never tested is a different thing from never seen at all.
+      /*
+       * Seen but never tested is a different thing from never seen at all.
+       *
+       * Only actions that test. Reopening the notes is what the student has
+       * already done; a check that cannot ask them anything is not offered at
+       * all rather than offered as reading.
+       */
       if (decision.reason === "untested_exposure") {
-        return choose("material_never_tested", [
-          "review_material",
-          "create_practice",
-          "past_paper",
-        ]);
+        return choose("material_never_tested", ["retrieve", "past_paper", "create_practice"]);
+      }
+      /*
+       * Answered, but too little to call.
+       *
+       * Never worded as "nothing recorded": the engine reaches this with
+       * answers in hand, and a student told their work does not exist has been
+       * misled about the one thing they can check.
+       */
+      if (decision.reason === "low_confidence") {
+        return choose("suspected_gap", ["past_paper", "create_practice", "retrieve"]);
       }
       /*
        * Declared on the course, nothing answered, and the banks unasked.
@@ -280,41 +319,71 @@ export function selectIntervention(
       return choose("declared_but_unevidenced", [
         "create_practice",
         "past_paper",
-        "review_material",
         "create_flashcards",
       ]);
     }
 
-    case "teach":
-      return choose("evidenced_knowledge_gap", [
-        "teach",
-        "create_flashcards",
-        "review_material",
-      ]);
-
-    case "practice": {
-      if (lacksApplicationEvidence(state)) {
-        // They can recall it. What is untested is using it.
-        return choose("recall_strong_application_weak", [
+    case "teach": {
+      /*
+       * Taught directly, when a Revision Session can do it. Cards first was
+       * the answer while nothing could teach: a student with little to revise
+       * from needed something to revise from. A session is the teaching, so
+       * it comes first whatever material exists.
+       */
+      if (availability.canRunRevisionSession) {
+        const session = choose("evidenced_knowledge_gap", [
+          "teach",
+          "review_material",
+          "retrieve",
           "past_paper",
           "create_practice",
         ]);
+        if (session) return session;
       }
-      if (needsMoreFlashcards(availability)) {
-        return choose("weak_without_flashcards", ["create_flashcards", "create_practice"]);
+      // Cards first when there are too few to revise from; otherwise work through it.
+      return (
+        (needsMoreFlashcards(availability)
+          ? choose("weak_without_flashcards", ["create_flashcards", "create_practice"])
+          : undefined) ??
+        choose("evidenced_knowledge_gap", [
+          "teach",
+          "review_material",
+          "retrieve",
+          "past_paper",
+          "create_practice",
+        ])
+      );
+    }
+
+    case "practice": {
+      if (state.applicationGap) {
+        // They can recall it. What is failing is using it.
+        const choice = choose("recall_strong_application_weak", ["past_paper", "create_practice"]);
+        if (!choice) return undefined;
+        return state.applicationGap.recallFrom === state.topicKey
+          ? choice
+          : {
+              ...choice,
+              recallFrom: {
+                topicKey: state.applicationGap.recallFrom,
+                label: state.applicationGap.recallLabel,
+              },
+            };
       }
-      if (!availability.hasPractice && !availability.hasPastPaper) {
-        return choose("weak_without_application", ["create_practice", "past_paper"]);
-      }
-      return choose("weak_with_flashcards", ["create_practice", "past_paper", "retrieve"]);
+      // The only other route here: marked work that was strong and is slipping.
+      return choose("slipping", ["past_paper", "create_practice", "review_material"]);
     }
 
     case "retrieve":
+      return decision.reason === "knowledge_decay"
+        ? choose("slipping", ["retrieve", "review_material", "create_practice"])
+        : choose("due_for_retrieval", ["retrieve", "review_material"]);
+
     case "review":
-      return choose("due_for_retrieval", ["retrieve", "create_flashcards", "review_material"]);
+      return choose("slipping", ["retrieve", "past_paper", "create_practice", "review_material"]);
 
     case "reinforce":
-      return choose("recent_gain", ["retrieve", "create_practice", "past_paper"]);
+      return choose("recent_gain", ["retrieve", "past_paper", "create_practice"]);
 
     default:
       return undefined;

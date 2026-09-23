@@ -11,6 +11,7 @@ import {
 } from "@/lib/ai/provider-router";
 import { failoverProvidersFor, type AiGenerationRole } from "@/lib/ai/provider-policy";
 import { schemeCriteria } from "@/lib/practice/mark-schemes";
+import { describeQuestionConvention, questionConventionFor } from "@/lib/practice/question-conventions";
 import {
   markerTimeoutMs,
   PracticePaperMarkingFailedError,
@@ -140,12 +141,30 @@ export type PracticePaperMarkingInput = {
    * anything measured, and the first sign of it would be the bill.
    */
   inputTokenCap?: number | null;
+  /**
+   * A marking change switched off, so its effect can be measured.
+   *
+   * Evaluation only; production never sets it, and an unset variant is the
+   * shipped marker. Each change was measured on one source, and the next source
+   * pointed the other way, so a change has to be removable on the same answers
+   * to be judged at all.
+   */
+  variant?: MarkingVariant;
   /** Server-only checkpoints used by durable workflows after a redeploy/retry. */
   cachedStageResults?: Partial<Record<PracticePaperMarkerStage, PracticePaperMarkerStageResult>>;
   onStageResult?: (
     stage: PracticePaperMarkerStage,
     result: PracticePaperMarkerStageResult
   ) => Promise<void>;
+};
+
+export type MarkingVariant = {
+  /** The levels-of-response guidance for banded and weighted-trait questions. */
+  levelsGuidance?: boolean;
+  /** The board's examiner practice for each kind of question. */
+  examinerPractice?: boolean;
+  /** Which model settles a disputed levels-marked question. */
+  levelsAdjudicator?: AiGenerationRole;
 };
 
 export {
@@ -294,20 +313,107 @@ function subjectAdapter(paper: PracticePaper) {
       "Where the guide states the value a mark is for, the candidate's own value must match it, or follow correctly from their own earlier error."
     );
   }
-  if (/essay|history|law|econom|politic|literature|sociology|psychology/.test(profile)) {
+  // English before languages: "GCSE English Language" is not a foreign language, and was marked as one.
+  if (/essay|english|history|law|econom|politic|literature|sociology|psychology|geograph|religio|philosoph|classical/.test(profile)) {
     return "For essays, separate knowledge, analysis, evidence, evaluation and judgement. Do not reward length by itself.";
   }
-  if (/language|spanish|french|german|italian|latin/.test(profile)) {
+  if (/spanish|french|german|italian|latin|mandarin|chinese|japanese|arabic|urdu|polish|modern (foreign )?languages?/.test(profile)) {
     return "For languages, separate communication, accuracy, range and task fulfilment, and accept valid equivalent phrasing.";
   }
   return "Apply the supplied rubric at criterion level and award partial credit only when evidence in the student's work supports it.";
 }
 
-function markingPrompt(paper: PracticePaper) {
+/**
+ * How a levels-of-response question is marked, in the awarding bodies' terms.
+ *
+ * Everything else in the marking request was written for point-by-point
+ * schemes -- withhold a criterion when its condition is absent, award partial
+ * credit only on evidence -- and nothing said how to mark an essay. Read as
+ * instructions for a level, those make a marker climb from zero and demand
+ * evidence for every phrase of a descriptor, and that is what the first essay
+ * measurement found: on 36 GCSE English answers each marked by two examiners,
+ * Jami was harsh on every question, by 2.1 marks on average, and landed
+ * between the two examiners' marks on 28% of answers. The examiners' own gap
+ * was 1.3 marks. Jami's gap to them was 2.3.
+ *
+ * The wording is the boards' own guidance to their examiners: AQA's two steps
+ * (find the level by best fit, then the mark within it, looking at the overall
+ * quality and not picking holes), and the rule every board prints that
+ * indicative content is neither exhaustive nor required for the top level.
+ */
+const LEVELS_OF_RESPONSE = `Where the guide marks a question by levels (bands) or by weighted assessment objectives, mark it the way examiners are trained to, in two steps.
+
+Step 1, the level. Read the whole answer first. Then find the level whose descriptor best fits the answer as a whole, using the levels as a ladder from the bottom: an answer that meets a level's descriptor moves up to the next, and stops at the highest level it matches. Look at the overall quality of the answer, and do not pick holes in small parts of it where the student did less well than in the rest. An answer does not have to meet every phrase of a descriptor to be placed in that level; where it shows features of different levels, place it by best fit.
+
+Step 2, the mark within the level. Where the answer securely meets the level and shows some features of the one above, award at or near the top of its range; where it only just reaches the level, at the bottom; otherwise in the middle. A predominantly level 3 answer with some level 4 material is a high level 3 mark.
+
+Indicative content is a guide, not a checklist. It is not exhaustive: credit any valid point, interpretation or approach it does not list. Students do not have to cover it to reach the highest level, and a level is never lowered for content the answer left out when what it does contain meets the descriptor.
+
+Judge the answer against what a strong student at this level writes in an exam, never against a model or perfect answer. The top level is for a strong answer, not a flawless one; do not hold it back. Mark positively: what the answer achieves decides its level, and what it omits does not subtract from it. Spelling and grammar lower a mark only where the guide assesses them.
+
+For such a question, return one criterionResult for the level awarded, carrying the whole mark as awardedMarks, with the level's name as criterion and schemeValue and what the answer does that places it there as candidateValue; and at most two further criterionResults with awardedMarks 0 naming what kept it out of the level above, so the student knows what to do next. An answer that contains nothing relevant to the question gets no marks.`;
+
+function marksByLevels(paper: PracticePaper) {
+  return paper.markScheme.items.some((item) => item.marking === "banded" || item.marking === "weightedTraits");
+}
+
+/**
+ * Who settles a disputed essay: the model that marks essays where examiners do.
+ *
+ * Measured on 36 GCSE English answers, each marked blind by both models and by
+ * two examiners: the supervisor placed essays 2.0 marks below the examiners'
+ * mean, and the worker 0.5 below, inside the 1.3 marks the two examiners are
+ * apart from each other. The adjudicator was the supervisor, and it settled 27
+ * of the 36 disputes on the harsh side -- 2.2 marks low, worse than either
+ * blind mark. An adjudicator that shares one marker's bias is not neutral
+ * between them.
+ *
+ * Point-marked questions keep the supervisor, which is where its calibration
+ * was measured: +0.09 marks on real Higher Maths scripts.
+ */
+function levelsAdjudicatorRole(
+  paper: PracticePaper,
+  disputedQuestionIds?: readonly string[],
+  variant?: MarkingVariant
+): AiGenerationRole {
+  const disputed = disputedQuestionIds
+    ? paper.markScheme.items.filter((item) => disputedQuestionIds.includes(item.questionId))
+    : paper.markScheme.items;
+  // One call settles every dispute on a paper, so a maths dispute among them keeps the supervisor.
+  const allByLevels = disputed.length > 0 && disputed.every((item) => item.marking === "banded" || item.marking === "weightedTraits");
+  return allByLevels ? variant?.levelsAdjudicator ?? "worker" : "supervisor";
+}
+
+/**
+ * How this board's examiners mark these kinds of question.
+ *
+ * The scheme says what earns marks on one question; examiners bring practice
+ * the scheme leaves unsaid -- a 9-marker's top level needs a supported
+ * judgement, feature-spotting caps a language answer. See
+ * `lib/practice/question-conventions.ts`. Questions sharing a convention are
+ * listed under it once, so a long paper is not told the same thing twenty times.
+ */
+function examinerPractice(paper: PracticePaper) {
+  const grouped = new Map<string, { labels: string[]; text: string }>();
+  for (const question of paper.questions) {
+    const convention = questionConventionFor({ profile: paper.assessmentProfile, title: paper.title, question });
+    if (!convention) continue;
+    const entry = grouped.get(convention.id) ?? { labels: [], text: describeQuestionConvention(convention) };
+    entry.labels.push(`${question.label} (${question.id})`);
+    grouped.set(convention.id, entry);
+  }
+  if (grouped.size === 0) return "";
+  const blocks = [...grouped.values()].map((entry) => `For ${entry.labels.join(", ")}:\n${entry.text}`);
+  return `\nEXAMINER PRACTICE\nHow examiners of this board mark these kinds of question. Apply it alongside the fixed guide; where the two differ, the guide decides. Where an answer makes one of the listed mistakes, say so in nextStep.\n\n${blocks.join("\n\n")}\n`;
+}
+
+function markingPrompt(paper: PracticePaper, variant?: MarkingVariant) {
+  const levels = marksByLevels(paper) && variant?.levelsGuidance !== false;
+  const practice = variant?.examinerPractice === false ? "" : examinerPractice(paper);
   return `Mark every submitted answer against the fixed guide. The guide is immutable and an uploaded official rubric is authoritative.
 
 ${subjectAdapter(paper)}
-
+${levels ? `\n${LEVELS_OF_RESPONSE}\n` : ""}${practice}
 Return JSON only:
 {
   "awardedMarks":42,
@@ -398,7 +504,7 @@ export function buildMarkerRequest(input: PracticePaperMarkingInput & {
         ...(input.role === "third-view" && input.thirdViewParts?.length
           ? input.thirdViewParts
           : input.answerParts),
-        { text: `--- MARKING REQUEST ---\n${markingPrompt(input.paper)}${input.extraPrompt ? `\n\n${input.extraPrompt}` : ""}` },
+        { text: `--- MARKING REQUEST ---\n${markingPrompt(input.paper, input.variant)}${input.extraPrompt ? `\n\n${input.extraPrompt}` : ""}` },
       ],
     }],
   };
@@ -832,7 +938,7 @@ export async function markSingleQuestionAdaptively(
         ...input,
         callTimeoutMs,
         role: "adjudicator",
-        modelRole: "supervisor",
+        modelRole: levelsAdjudicatorRole(input.paper, undefined, input.variant),
         extraPrompt: `Resolve this one disputed question from two independent reports. Neither report has priority.\nReport A: ${JSON.stringify(primary.result.questionResults)}\nReport B: ${JSON.stringify(verifier.result.questionResults)}`,
         }));
       } catch (error) {
@@ -983,7 +1089,7 @@ export async function markPracticePaperWithAudit(input: PracticePaperMarkingInpu
     const adjudication = await checkpointedMarkerCall(input, "adjudication", () => callMarker({
       ...input,
       role: "adjudicator",
-      modelRole: "supervisor",
+      modelRole: levelsAdjudicatorRole(input.paper, disputedQuestionIds, input.variant),
       extraPrompt: `Resolve only these disputed questions: ${disputedQuestionIds.join(", ")}.
 Two independent markers of equal standing produced these reports. Neither has priority; judge each disputed question on the fixed guide and the student's own work.
 Report A: ${JSON.stringify(disputedFrom(firstReport))}

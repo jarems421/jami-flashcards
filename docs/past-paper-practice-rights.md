@@ -50,8 +50,12 @@ approved it.
 
 Two known limitations of the current extractor to check during a spot-check:
 
-- a question's asset is a render of the **whole** PDF page, so it can show
-  neighbouring questions the student was not asked;
+- a question's image is cropped to its own region, found from the paper's
+  text layer (`lib/practice/exam-page-regions.ts`); check the crop starts at
+  the question's label and ends before the next one. The mark-scheme image is
+  still the **whole** scheme page, so it is served only after marking and only
+  once no other question from the same paper is still unanswered in the
+  session (`schemePageRevealsUnanswered`);
 - source PDFs are capped at 8 MB each, because both documents are attached
   inline to two separate vision calls.
 

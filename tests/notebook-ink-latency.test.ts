@@ -6,10 +6,13 @@ import {
   measureInkStroke,
   replayInkStroke,
 } from "@/lib/workspace/notebook-ink-latency";
+import { NOTEBOOK_INK_PREDICTION } from "@/lib/workspace/notebook-ink-prediction";
 import { NOTEBOOK_INK_SMOOTHING } from "@/lib/workspace/notebook-ink-smoothing";
 
-/** The filter with lag correction switched off, for before-and-after. */
+/** The filter with lag correction switched off, which is what ships. */
 const UNCORRECTED = { ...NOTEBOOK_INK_SMOOTHING, prediction: null };
+/** The filter with lag correction on, kept measurable for before-and-after. */
+const CORRECTED = { ...NOTEBOOK_INK_SMOOTHING, prediction: NOTEBOOK_INK_PREDICTION };
 
 const shapeNamed = (name: string) => {
   const shape = INK_STROKE_SHAPES.find((candidate) => candidate.name === name);
@@ -93,10 +96,16 @@ describe("ink latency harness", () => {
     }
   });
 
-  it("holds what ships today to its measured baseline", () => {
-    // The same four strokes with lag correction on, which is what the notebook
-    // draws with. Recorded so the next change to either file has something to
-    // move away from deliberately rather than by accident.
+  it("ships the filter on its own", () => {
+    // Lag correction is off in the notebook; see NOTEBOOK_INK_SMOOTHING.
+    expect(measureInkPipeline({ sampleRateHz: 240 })).toEqual(
+      measureInkPipeline({ sampleRateHz: 240 }, UNCORRECTED)
+    );
+  });
+
+  it("holds lag correction to its measured baseline", () => {
+    // The same four strokes with lag correction on. Recorded so that anyone
+    // measuring it again has the numbers it was switched off at.
     const baseline: Record<string, { lag: number; trail: number; jitter: number }> = {
       writing: { lag: 0.74, trail: 0.777, jitter: 0.327 },
       "fast flick": { lag: 0.484, trail: 0.323, jitter: 0.378 },
@@ -104,7 +113,7 @@ describe("ink latency harness", () => {
       "slow curve": { lag: 0.296, trail: 0.402, jitter: 0.299 },
     };
 
-    for (const measured of measureInkPipeline({ sampleRateHz: 240 })) {
+    for (const measured of measureInkPipeline({ sampleRateHz: 240 }, CORRECTED)) {
       const expected = baseline[measured.stroke];
       expect(expected, `no baseline for ${measured.stroke}`).toBeDefined();
       expect(measured.meanLagPx).toBeCloseTo(expected.lag, 1);
@@ -118,7 +127,7 @@ describe("ink latency harness", () => {
     // made the slow curve worse, which is the shape of change that feels like
     // an improvement to whoever tested the stroke they were thinking about.
     for (const rate of [120, 240]) {
-      const corrected = measureInkPipeline({ sampleRateHz: rate });
+      const corrected = measureInkPipeline({ sampleRateHz: rate }, CORRECTED);
       const plain = measureInkPipeline({ sampleRateHz: rate }, UNCORRECTED);
 
       for (const [index, measured] of corrected.entries()) {
@@ -139,7 +148,7 @@ describe("ink latency harness", () => {
     // included -- and half a pixel is where a line starts to read as grainy.
     // That ceiling is the price cap on the whole feature.
     for (const rate of [120, 240]) {
-      for (const measured of measureInkPipeline({ sampleRateHz: rate })) {
+      for (const measured of measureInkPipeline({ sampleRateHz: rate }, CORRECTED)) {
         expect(
           measured.survivingJitterPx,
           `${measured.stroke} jitter at ${rate}Hz`
@@ -174,7 +183,7 @@ describe("ink latency harness", () => {
 
     for (const shape of INK_STROKE_SHAPES) {
       const stroke = buildInkStroke(shape, { sampleRateHz: 240 });
-      const corrected = replayInkStroke(stroke.sampled);
+      const corrected = replayInkStroke(stroke.sampled, CORRECTED);
       const plain = replayInkStroke(stroke.sampled, UNCORRECTED);
 
       for (const [index, point] of corrected.entries()) {
@@ -190,6 +199,31 @@ describe("ink latency harness", () => {
         ).toBeLessThanOrEqual(plainGap + lurchCeilingPx);
       }
     }
+  });
+
+  it("costs more steadiness than its lag is worth, which is why it is off", () => {
+    /*
+     * Correction wins lag everywhere, and in writing it wins about 0.15px of
+     * it -- nothing a hand can see. What it spends is steadiness: the lead
+     * swings with every wobble in the velocity estimate and is written into
+     * the stroke, so the line comes out rougher on every measured shape. If
+     * correction is ever reconsidered, this is the trade it has to beat.
+     */
+    for (const rate of [120, 240]) {
+      const corrected = measureInkPipeline({ sampleRateHz: rate }, CORRECTED);
+      const plain = measureInkPipeline({ sampleRateHz: rate }, UNCORRECTED);
+      for (const [index, measured] of corrected.entries()) {
+        expect(
+          measured.survivingJitterPx,
+          `${measured.stroke} jitter at ${rate}Hz`
+        ).toBeGreaterThan(plain[index].survivingJitterPx);
+      }
+    }
+    const writing = (options: typeof UNCORRECTED | typeof CORRECTED) =>
+      measureInkPipeline({ sampleRateHz: 240 }, options).find(
+        (entry) => entry.stroke === "writing"
+      )!;
+    expect(writing(UNCORRECTED).meanLagPx - writing(CORRECTED).meanLagPx).toBeLessThan(0.25);
   });
 
   it("keeps ordinary writing under the grainy threshold", () => {

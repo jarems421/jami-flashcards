@@ -227,19 +227,40 @@ export async function designPracticePaper(
    * The mark-scheme batches already recover this way, by being handed the
    * specific fault rather than the original instruction again.
    */
-  if (expectedTotalMarks && draft.totalMarks !== expectedTotalMarks) {
+  /*
+   * And its sections' arithmetic, section by section, because a paper can be
+   * right overall and wrong in every section, and "rebuild it" was taken as
+   * "start again": the retry wrote a new paper with new mistakes. A WJEC
+   * Chemistry draft built Section B at 52 marks against 70 and had no second
+   * chance at all, since only a wrong total bought a retry. It is now told what
+   * each section came to, asked to repair rather than rebuild, and kept only
+   * if every sum is right.
+   */
+  const wrongSections = expectedSections?.length
+    ? sectionMarkIssues(draft.questions, expectedSections, draft.choiceGroups).wrong
+    : [];
+  const totalWrong = Boolean(expectedTotalMarks) && draft.totalMarks !== expectedTotalMarks;
+  if (totalWrong || wrongSections.length > 0) {
     const built = draft.questions.map((question) => question.marks).join(" + ");
+    const sectionLines = wrongSections
+      .map((entry) =>
+        `Section ${entry.section} came to ${entry.actual} marks and must be ${entry.expected} (${entry.actual < entry.expected ? `${entry.expected - entry.actual} short` : `${entry.actual - entry.expected} over`}).`
+      )
+      .join(" ");
     paperPass = await runPass({
       name: "paper_design_total_retry",
       taskClass: "important",
       role: "supervisor",
       systemInstruction:
         `${systemInstruction}\nYour previous paper was worth ${draft.totalMarks} marks across ` +
-        `${draft.questions.length} questions (${built}), and this component is worth exactly ` +
-        `${expectedTotalMarks}. Rebuild it to total ${expectedTotalMarks} exactly. A question has no ` +
-        "section field: set it to the bare identifier the profile gives that section, emit each " +
-        "section's questions together in order, and make each section's marks sum to the figure the " +
-        "profile gives it. Do not add sections beyond those the profile lists.",
+        `${draft.questions.length} questions (${built})` +
+        (expectedTotalMarks ? `, and this component is worth exactly ${expectedTotalMarks}.` : ".") +
+        (sectionLines ? ` ${sectionLines}` : "") +
+        " Repair it rather than starting again: keep the questions that already fit, and change only what makes a sum wrong -- " +
+        "add questions or raise tariffs in a section that is short, remove or lower them in one that is over. " +
+        "Every question's section field is the bare identifier the profile gives its section; emit each section's questions " +
+        "together in order. Do not add sections beyond those the profile lists. Before returning, add up each section's marks " +
+        "and the paper's total and check each equals its figure.",
       contents,
       temperature: 0.1,
       maxOutputTokens: 20_000,
@@ -249,10 +270,20 @@ export async function designPracticePaper(
       allowedSourceRefs: sourceRefs,
       length: parsedRequest.length,
     });
-    if (retried && retried.status === "ready" && retried.totalMarks === expectedTotalMarks) {
+    const retriedSectionsRight =
+      !expectedSections?.length ||
+      (retried?.status === "ready" &&
+        sectionMarkIssues(retried.questions, expectedSections, retried.choiceGroups).wrong.length === 0);
+    if (
+      retried &&
+      retried.status === "ready" &&
+      (!expectedTotalMarks || retried.totalMarks === expectedTotalMarks) &&
+      retriedSectionsRight
+    ) {
       log.info("paper_design.total_corrected", {
         from: draft.totalMarks,
         to: retried.totalMarks,
+        sectionsCorrected: wrongSections.length,
       });
       draft = retried;
     }
@@ -266,7 +297,7 @@ export async function designPracticePaper(
    * of questions has been misled about the paper they will sit.
    */
   if (expectedSections && expectedSections.length > 0) {
-    const { wrong, built } = sectionMarkIssues(draft.questions, expectedSections);
+    const { wrong, built } = sectionMarkIssues(draft.questions, expectedSections, draft.choiceGroups);
     if (wrong.length > 0) {
       // The sections it did build, so a naming mismatch is distinguishable
       // from a marks mismatch in the log rather than by rerunning.

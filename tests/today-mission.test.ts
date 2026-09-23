@@ -205,13 +205,30 @@ describe("what the explanation is allowed to claim", () => {
     });
     const weak = missionCopy({
       conceptLabel: "Vectors",
-      choice: { type: "create_practice", because: "weak_with_flashcards", alternatives: [] },
+      choice: { type: "create_practice", because: "evidenced_knowledge_gap", alternatives: [] },
       evidence: { count: 9, sources: ["flashcards"] },
     });
 
     expect(unevidenced.summary).not.toBe(weak.summary);
     expect(unevidenced.summary.toLowerCase()).not.toContain("difficult");
     expect(unevidenced.explanation[0]).toBe("Nothing has been recorded against this yet.");
+  });
+
+  it("names the Topic a student drilled rather than claiming they drilled this concept", () => {
+    const copy = missionCopy({
+      conceptLabel: "Completing the square",
+      choice: {
+        type: "past_paper",
+        because: "recall_strong_application_weak",
+        alternatives: [],
+        recallFrom: { topicKey: "topic:quadratics", label: "Quadratics" },
+      },
+      evidence: { count: 3, sources: ["past-paper"] },
+    });
+    expect(copy.summary).toBe(
+      "Your cards on quadratics are going well, but exam-style answers on this are not."
+    );
+    expect(copy.explanation[1]).toBe(copy.summary);
   });
 
   it("offers no estimate when the engine did not size the work", () => {

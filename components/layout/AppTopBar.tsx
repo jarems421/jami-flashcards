@@ -47,8 +47,7 @@ export default function AppTopBar({
             <BrandMark size="lg" />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2 text-2xs font-semibold uppercase tracking-[0.2em] text-text-muted">
-                <span className="hidden sm:inline">Jami learning loop</span>
-                <span className="sm:hidden">Jami</span>
+                Jami
               </div>
               <h1 className="mt-1 truncate text-base font-semibold leading-tight text-text-primary sm:text-xl">
                 {title}

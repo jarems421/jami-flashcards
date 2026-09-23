@@ -66,6 +66,20 @@ const PLAIN_EXPLANATION: Partial<Record<TodayNextActionType, string[]>> = {
 const DEFAULT_EYEBROW = "Your next move";
 
 /**
+ * A teach recommendation, offered as a Revision Session.
+ *
+ * Its own wording rather than the intervention's, because what the student is
+ * being offered is different: not "open your material" but a sitting with
+ * Jami. The reasons behind "Why this?" are still the engine's own.
+ */
+const REVISION_SESSION_MISSION = {
+  eyebrow: "Revision session",
+  summary: "Let's get this properly understood.",
+  actionLabel: "Start session",
+  minutes: "About 15 min",
+} as const;
+
+/**
  * The mission, from the plan's own next action and the engine's list.
  *
  * The action is found by id rather than by matching wording: the ladder
@@ -84,6 +98,26 @@ export function buildTodayMission(input: {
     nextAction.secondaryHref && nextAction.secondaryLabel
       ? { label: nextAction.secondaryLabel, href: nextAction.secondaryHref }
       : undefined;
+
+  if (action?.intervention && action.destinationKind === "revision-session") {
+    const copy = missionCopy({
+      conceptLabel: action.target.label,
+      choice: action.intervention,
+      evidence: action.evidence,
+    });
+    return {
+      eyebrow: REVISION_SESSION_MISSION.eyebrow,
+      headline: action.target.label,
+      summary: REVISION_SESSION_MISSION.summary,
+      actionLabel: REVISION_SESSION_MISSION.actionLabel,
+      href: nextAction.href,
+      explanation: copy.explanation,
+      effort: { minutes: REVISION_SESSION_MISSION.minutes },
+      ...(action.folderName ? { folderName: action.folderName } : {}),
+      action,
+      ...(secondary ? { secondary } : {}),
+    };
+  }
 
   if (action?.intervention) {
     const copy = missionCopy({

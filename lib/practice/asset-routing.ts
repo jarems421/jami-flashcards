@@ -1,4 +1,5 @@
 import { drawnFigureIssues } from "@/lib/practice/drawn-figure";
+import { examChartIssues, parseExamChart } from "@/lib/practice/exam-chart";
 import { looksLikeSvg, sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 
 /**
@@ -21,9 +22,9 @@ import { looksLikeSvg, sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 /** What the designer is told, and what these checks then hold it to. */
 export const ASSET_ROUTING_INSTRUCTION =
   "Only include an asset when a candidate cannot answer without it. Decide its kind by what the " +
-  "candidate must do with it. If they must read a value off it -- a measured figure, a graph, a " +
-  "scattergram, a labelled diagram, a circuit, apparatus, a net, a transformation -- use a diagram " +
-  "or graph asset drawn as SVG, because those numbers have to be exact. If they must recognise " +
+  "candidate must do with it. If they must read a value off it, it has to be exact: a graph, " +
+  "scattergram, bar chart or histogram is a graph asset stated as a JSON chart, and a labelled " +
+  "diagram, circuit, apparatus, net or transformation is a diagram asset drawn as SVG. If they must recognise " +
   "something real that cannot be drawn from coordinates -- a micrograph, a photograph of rock " +
   "strata, a landscape, a work of art, a historical source image -- use an image asset and " +
   "describe it in content for the generator. Never use an image asset for a figure carrying " +
@@ -101,6 +102,21 @@ export function assetRoutingIssues(
           "(" + (PHOTOGRAPHIC.exec(describes)?.[0] ?? "a real subject") + "). " +
           "SVG cannot stand in for it: use an image asset, or remove it."
       );
+    }
+
+    /*
+     * A graph is stated, then drawn by code. One that cannot be read, or whose
+     * own numbers contradict it -- a point off its axes, a step that does not
+     * divide the scale, a blank grid with no scale to plot on -- is refused
+     * here, before a candidate is asked to read a value off it.
+     */
+    if (kind === "graph") {
+      const chart = parseExamChart(asset.content ?? "");
+      if (!chart) {
+        fail("asset_chart_unreadable", `${asset.id ?? "a graph"} is not a chart Jami can draw: give its axes and data as the JSON chart.`);
+      } else {
+        for (const issue of examChartIssues(chart)) fail(issue.code, `${asset.id ?? "a graph"}: ${issue.detail}`);
+      }
     }
 
     if (kind === "diagram" && looksLikeSvg(asset.content ?? "")) {

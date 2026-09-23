@@ -330,7 +330,7 @@ export function applyNotebookStrokeShape(
   const applied = [
     tool,
     settings.smoothingPercent,
-    settings.cornerSharpnessPercent ?? "follow",
+    settings.cornerSharpnessPercent,
     settings.pressurePercent,
     settings.straightenOnHold,
   ].join(":");
@@ -455,7 +455,6 @@ export function areNotebookPenSettingsEqual(
   return (
     left.smoothingPercent === right.smoothingPercent &&
     left.cornerSharpnessPercent === right.cornerSharpnessPercent &&
-    left.steadinessPercent === right.steadinessPercent &&
     left.trackingPercent === right.trackingPercent &&
     left.pressurePercent === right.pressurePercent &&
     left.straightenOnHold === right.straightenOnHold

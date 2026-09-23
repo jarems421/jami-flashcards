@@ -67,6 +67,7 @@ import {
 import { TutorialResumeCard, useTutorial } from "@/components/onboarding/TutorialProvider";
 import { shouldInviteToTutorial } from "@/lib/onboarding/tutorial";
 import FirstNightPanel from "@/components/onboarding/FirstNightPanel";
+import SecondNightPanel from "@/components/onboarding/SecondNightPanel";
 import { useFirstNight } from "@/components/onboarding/FirstNightProvider";
 
 /**
@@ -633,6 +634,14 @@ export default function DashboardHome() {
           </p>
         </header>
 
+        {/*
+          First night leads the page while it runs. A new student's Today has
+          little else to say yet, and the panel sat below the mission and the
+          doors -- a full scroll down on a phone, under the one thing they were
+          meant to do next.
+        */}
+        <FirstNightPanel />
+
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-5">
           {isLoading ? (
             <Skeleton className="h-[21rem] rounded-2xl" />
@@ -738,7 +747,7 @@ export default function DashboardHome() {
         ) : null}
 
         <TutorialResumeCard />
-        <FirstNightPanel />
+        <SecondNightPanel />
 
         {!isLoading && !planUnavailable ? (
           <MoreForToday count={secondaryCount}>

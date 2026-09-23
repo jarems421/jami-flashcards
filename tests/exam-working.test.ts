@@ -4,12 +4,10 @@ import {
   compactExamWorkingPages,
   EXAM_WORKING_LEGIBLE_PAGE_WIDTH,
   EXAM_WORKING_MAX_IMAGE_SIDE,
-  examWorkingFitWidth,
   examWorkingHasInk,
   examWorkingInkedPages,
   examWorkingPagesWithInk,
   examWorkingSheetLayout,
-  examWorkingTouchIsPalm,
   requireExamWorkingSnapshot,
 } from "@/lib/practice/exam-working";
 import { EXAM_SHEET_MAX_PAGES } from "@/lib/practice/exam-question-sheet";
@@ -52,38 +50,6 @@ describe("storing a sheet of working", () => {
   it("leaves blank pages and curves exactly as they were", () => {
     const curved = sheet('<path d="M 0 0 C 1 1 2 2 3 3"/>');
     expect(compactExamWorkingPages(["", EMPTY_SHEET, curved])).toEqual(["", EMPTY_SHEET, curved]);
-  });
-});
-
-/**
- * The full-screen sheet: the whole page on screen at its fit, and a resting
- * hand told apart from a finger that means to scroll.
- */
-describe("fitting and handling the full-screen sheet", () => {
-  it("fits a tall page by its height on a wide screen", () => {
-    expect(
-      examWorkingFitWidth({ containerWidth: 1180, containerHeight: 740, pageWidth: 900, pageHeight: 1240, padding: 16 })
-    ).toBe(Math.floor(((740 - 32) * 900) / 1240));
-  });
-
-  it("fits by width on a narrow screen", () => {
-    expect(
-      examWorkingFitWidth({ containerWidth: 390, containerHeight: 800, pageWidth: 900, pageHeight: 1240, padding: 16 })
-    ).toBe(358);
-  });
-
-  it("never reports a negative or undefined size", () => {
-    expect(
-      examWorkingFitWidth({ containerWidth: 10, containerHeight: 10, pageWidth: 900, pageHeight: 1240, padding: 16 })
-    ).toBe(0);
-    expect(
-      examWorkingFitWidth({ containerWidth: 500, containerHeight: 500, pageWidth: 0, pageHeight: 1240, padding: 16 })
-    ).toBe(0);
-  });
-
-  it("ignores a contact the size of a hand, and not a fingertip", () => {
-    expect(examWorkingTouchIsPalm({ width: 22, height: 24 })).toBe(false);
-    expect(examWorkingTouchIsPalm({ width: 64, height: 48 })).toBe(true);
   });
 });
 

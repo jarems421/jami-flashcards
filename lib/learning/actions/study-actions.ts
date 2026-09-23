@@ -3,6 +3,7 @@ import {
   getDeckHref,
   getFolderHref,
   getQuestionPracticeSetupHref,
+  getRevisionSessionStartHref,
   getTopicHref,
 } from "@/lib/app/routes";
 import { recommendationTargetKey } from "@/lib/learning/recommendations/recommend-focus";
@@ -42,7 +43,8 @@ export type StudyActionDestinationKind =
   | "question-practice"
   | "practice-papers"
   | "topic"
-  | "deck";
+  | "deck"
+  | "revision-session";
 
 export type StudyActionDestination = {
   kind: StudyActionDestinationKind;
@@ -89,6 +91,8 @@ export type StudyActionContext = {
   questionPracticeAvailable: boolean;
   /** Whether this deployment can write cards and questions for the student. */
   canGenerate?: { flashcards: boolean; practice: boolean };
+  /** Whether this deployment can teach a concept in a Revision Session. */
+  canRunRevisionSession?: boolean;
 };
 
 /**
@@ -109,6 +113,7 @@ export function cheapAvailability(
     hasMaterial: state.exposure.notebooks + state.exposure.sources > 0,
     canCreateFlashcards: context.canGenerate?.flashcards ?? false,
     canCreatePractice: context.canGenerate?.practice ?? false,
+    ...(context.canRunRevisionSession ? { canRunRevisionSession: true } : {}),
     ...(context.questionPracticeAvailable ? {} : { hasPastPaper: false }),
   };
 }
@@ -165,6 +170,18 @@ export function resolveStudyActionDestination(
     };
   }
 
+  /*
+   * Practice on a Topic or deck means using it, and cards would be the wrong
+   * work: the decision is only reached when recall is not what is failing.
+   * The folder's practice is where that happens; without a folder there is
+   * nowhere honest to send it.
+   */
+  if (action === "practice") {
+    return folderId
+      ? { kind: "practice-papers", href: getFolderHref(folderId, "practice"), selection: {} }
+      : undefined;
+  }
+
   const hasCards =
     (state?.exposure.cards ?? 0) > 0 || recommendation.evidence.sources.includes("flashcards");
 
@@ -197,6 +214,82 @@ export function resolveStudyActionDestination(
     : { kind: "topic", href: getTopicHref(id), selection: { topicIds: [id] } };
 }
 
+/**
+ * Where the chosen intervention is carried out.
+ *
+ * The button's words come from the intervention, so its link must too. Taking
+ * the link from the engine's action instead is how a mission could read "a
+ * short review of cards you already have" and open a page of exam questions.
+ * `selectIntervention` only offers what `canCarryOut` allows for the kind of
+ * concept, so every case here has a page to go to when the scope has one.
+ */
+export function resolveInterventionDestination(
+  intervention: InterventionChoice,
+  target: LearningRecommendation["target"],
+  profile: Pick<LearnerProfile, "scope" | "topics">,
+  context: StudyActionContext
+): StudyActionDestination | undefined {
+  if (target.kind !== "topic") return undefined;
+  const id = topicIdOf(target.topicKey);
+  if (!id) return undefined;
+  const folderId = profile.scope.folderId;
+  const selection: StudySessionSelection =
+    target.source === "deck" ? { deckIds: [id] } : { topicIds: [id] };
+
+  switch (intervention.type) {
+    case "past_paper":
+    case "create_practice":
+    case "create_flashcards":
+    case "fill_specification_gap": {
+      if (target.source !== "specification" || !folderId) return undefined;
+      /*
+       * Real questions narrowed to the concept, when the folder's course has
+       * them. Material Jami writes is made where the student already is and
+       * brings its own link once it is agreed to; this is where the concept
+       * is practised, for the surfaces that need an address to show.
+       */
+      if (context.questionPracticeAvailable) {
+        // A concept sits beneath a topic, so its practice narrows to the concept rather than the whole topic.
+        const state = profile.topics.find((topic) => topic.topicKey === target.topicKey);
+        const narrowing = state?.parentKey ? { conceptIds: [id] } : { topicIds: [id] };
+        return {
+          kind: "question-practice",
+          href: getQuestionPracticeSetupHref({ folderId, ...narrowing }),
+          selection: narrowing,
+        };
+      }
+      return intervention.type === "past_paper"
+        ? undefined
+        : { kind: "practice-papers", href: getFolderHref(folderId, "practice"), selection: {} };
+    }
+    case "retrieve":
+      return {
+        kind: "flashcards",
+        href: getCustomStudyHref({
+          mode: "custom",
+          ...(selection.deckIds ? { deckIds: selection.deckIds } : {}),
+          ...(selection.topicIds ? { topicIds: selection.topicIds } : {}),
+        }),
+        selection,
+      };
+    case "teach":
+      // Taught in a session when one can run; its link is finished below,
+      // once the action has an id to carry.
+      if (context.canRunRevisionSession) {
+        return { kind: "revision-session", href: getRevisionSessionStartHref(), selection };
+      }
+      if (target.source === "specification") return undefined;
+      return target.source === "deck"
+        ? { kind: "deck", href: getDeckHref(id), selection }
+        : { kind: "topic", href: getTopicHref(id), selection };
+    case "review_material":
+    case "reinforce":
+      return target.source === "deck"
+        ? { kind: "deck", href: getDeckHref(id), selection }
+        : { kind: "topic", href: getTopicHref(id), selection };
+  }
+}
+
 export function buildStudyActions(
   profile: LearnerProfile,
   context: StudyActionContext,
@@ -217,7 +310,25 @@ export function buildStudyActions(
   const scopeKey = scope.folderId ? `folder:${scope.folderId}` : scope.deckId ? `deck:${scope.deckId}` : "none";
   return profile.recommendedFocus.map((recommendation) => {
     const id = `${scopeKey}|${recommendation.reason}|${recommendationTargetKey(recommendation.target)}`;
-    const destination = resolveStudyActionDestination(recommendation, profile, context);
+    /*
+     * What could be done about this, as opposed to what the engine decided.
+     *
+     * Only for a concept: an error spans topics and has no single body of
+     * material to ask about. Built from cheap signals alone, so Today pays
+     * nothing for it. Chosen before the destination, because the destination
+     * is wherever this is carried out.
+     */
+    const target = recommendation.target;
+    const topicState =
+      target.kind === "topic"
+        ? profile.topics.find((topic) => topic.topicKey === target.topicKey)
+        : undefined;
+    const intervention = topicState
+      ? selectIntervention(topicState, cheapAvailability(topicState, context))
+      : undefined;
+    const destination = intervention
+      ? resolveInterventionDestination(intervention, target, profile, context)
+      : resolveStudyActionDestination(recommendation, profile, context);
     const spec = destination
       ? buildStudySessionSpec(recommendation, destination.selection)
       : undefined;
@@ -229,35 +340,22 @@ export function buildStudyActions(
      * because the spec is derived from the selection the resolver returns.
      */
     const directed =
-      destination && spec && destination.kind === "flashcards"
-        ? {
-            ...destination,
-            href: getCustomStudyHref({
-              mode: "custom",
-              ...(destination.selection.deckIds ? { deckIds: destination.selection.deckIds } : {}),
-              ...(destination.selection.topicIds ? { topicIds: destination.selection.topicIds } : {}),
-              focus: { emphasis: spec.emphasis, targetItems: spec.targetItems },
-              fromActionId: id,
-            }),
-          }
-        : destination;
+      destination?.kind === "revision-session"
+        ? // A session is made on the server from the action's id, so its link carries it.
+          { ...destination, href: getRevisionSessionStartHref(id) }
+        : destination && spec && destination.kind === "flashcards"
+          ? {
+              ...destination,
+              href: getCustomStudyHref({
+                mode: "custom",
+                ...(destination.selection.deckIds ? { deckIds: destination.selection.deckIds } : {}),
+                ...(destination.selection.topicIds ? { topicIds: destination.selection.topicIds } : {}),
+                focus: { emphasis: spec.emphasis, targetItems: spec.targetItems },
+                fromActionId: id,
+              }),
+            }
+          : destination;
     const cooldown = actionCooldown(history?.get(id), recommendation.evidence, now);
-
-    /*
-     * What could be done about this, as opposed to what the engine decided.
-     *
-     * Only for a concept: an error spans topics and has no single body of
-     * material to ask about. Built from cheap signals alone, so Today pays
-     * nothing for it.
-     */
-    const target = recommendation.target;
-    const topicState =
-      target.kind === "topic"
-        ? profile.topics.find((topic) => topic.topicKey === target.topicKey)
-        : undefined;
-    const intervention = topicState
-      ? selectIntervention(topicState, cheapAvailability(topicState, context))
-      : undefined;
     return {
       ...recommendation,
       id,

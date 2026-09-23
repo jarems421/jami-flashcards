@@ -108,17 +108,24 @@ describe("a bank with questions is not a coverage gap", () => {
 });
 
 describe("availability changes the action, not the diagnosis", () => {
+  // Recall holding up and application not: what the engine decides, and why.
   const recallOnly = state({
+    demonstration: "developing",
     decision: { action: "practice", reason: "low_mastery" },
+    applicationGap: { recallFrom: `spec:${CONCEPT}`, recallLabel: "Completing the square" },
     signal: {
-      mastery: 0.4,
-      evidenceMastery: 0.4,
+      mastery: 0.6,
+      evidenceMastery: 0.6,
       confidence: 0.8,
-      attempts: 10,
-      uniqueItems: 10,
+      attempts: 16,
+      uniqueItems: 16,
       dueCards: 0,
       lastSeenAt: Date.now(),
-      evidence: ["flashcards"],
+      evidence: ["flashcards", "past-paper"],
+      claims: {
+        recall: { evidenceMastery: 0.9, confidence: 0.7, attempts: 10 },
+        application: { evidenceMastery: 0.3, confidence: 0.65, attempts: 6 },
+      },
     },
   } as Partial<LearningTopicState>);
 

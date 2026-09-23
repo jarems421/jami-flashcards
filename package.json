@@ -36,7 +36,7 @@
     "check": "npm run typecheck && npm run lint && npm run check:sizes && npm run check:paper-benchmark && npm run check:marking-benchmark && npm test",
     "verify:all": "npm run check && npm run build && npm run test:rules && npm run test:e2e",
     "emulators:free": "node scripts/free-emulator-ports.mjs",
-    "test:rules": "npm run emulators:free && firebase emulators:exec --only firestore,storage \"vitest run --config vitest.rules.config.ts\"",
+    "test:rules": "npm run emulators:free && firebase emulators:exec --only firestore,storage \"vitest run --config vitest.rules.config.mts\"",
     "test:e2e": "npm run emulators:free && firebase emulators:exec --project demo-jami-browser --only auth,firestore,storage \"playwright test\"",
     "emulators:rules": "firebase emulators:start --only firestore,storage",
     "firebase:login": "firebase login",
@@ -46,7 +46,8 @@
     "report:ai-spend": "node --env-file-if-exists=.env.local scripts/ai-spend-report.mjs",
     "audit:legacy-shapes": "node --env-file-if-exists=.env.local scripts/audit-legacy-shapes.mjs",
     "report:analytics": "node --env-file-if-exists=.env.local scripts/analytics-report.mjs",
-    "postinstall": "node scripts/copy-sql-wasm.mjs"
+    "postinstall": "node scripts/copy-sql-wasm.mjs",
+    "check:marking-live": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/marking-live-signal.ts"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",

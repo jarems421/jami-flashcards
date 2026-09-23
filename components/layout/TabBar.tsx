@@ -145,8 +145,8 @@ const tabs: Tab[] = [
 const navGroups: { id: TabGroup; label: string; helper: string }[] = [
   {
     id: "loop",
-    label: "Learning loop",
-    helper: "Today, memory, your work, and Jami",
+    label: "Study",
+    helper: "Today, review, practice and Tutor",
   },
   {
     id: "support",
@@ -398,9 +398,6 @@ export default function TabBar({
             <div className="hidden min-w-0 lg:block">
               <div className="text-base font-semibold text-text-primary">
                 Jami
-              </div>
-              <div className="mt-0.5 truncate text-xs text-text-muted">
-                Learning loop
               </div>
             </div>
           </div>

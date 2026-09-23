@@ -1,5 +1,4 @@
 import {
-  NOTEBOOK_INK_PREDICTION,
   NotebookInkPredictor,
   type InkPredictionOptions,
 } from "@/lib/workspace/notebook-ink-prediction";
@@ -98,11 +97,24 @@ export type NotebookInkSmoothingOptions = {
  *
  * Lower `minCutoff` if writing feels dragged; lower `beta` if fast strokes look
  * noisy -- but raise it back if they start reaching past the pen again.
+ *
+ * Lag correction is off, and was switched off on evidence. It was shipped
+ * measured on lag alone, where it wins -- but in ordinary writing it wins
+ * 0.15px, which no eye resolves, and the lead it adds is written into the
+ * stroke rather than only drawn ahead of it. So where the pen slows or wobbles
+ * the lead shrinks or swings, and the line steps back along itself. Replayed
+ * through cursive at 240Hz with half a pixel of sensor noise, correction made
+ * the drawn path half as rough again (21.9 degrees of heading change per step
+ * against 14.5) and quadrupled the steps that run backwards (8 against 2), and
+ * surviving jitter rose by a quarter on every harness stroke. That is the grain
+ * people reported. See `notebook-ink-prediction.ts` for the stage itself, which
+ * is kept for the harness and for anyone who wants to measure it again.
  */
 export const NOTEBOOK_INK_SMOOTHING: NotebookInkSmoothingOptions = {
   minCutoff: 9,
   beta: 0.08,
   derivativeCutoff: 16,
+  prediction: null,
 };
 
 // Duplicate or out-of-order timestamps (common for coalesced pointer samples)
@@ -152,10 +164,12 @@ export class NotebookInkSmoother {
     this.emittedX = seed.x;
     this.emittedY = seed.y;
     this.lastTime = seed.time;
-    this.predictor =
-      options.prediction === null
-        ? null
-        : new NotebookInkPredictor(options.prediction ?? NOTEBOOK_INK_PREDICTION);
+    // Only an explicit set of prediction options turns correction on. Leaving
+    // the field out used to mean the defaults, which quietly put the lead back
+    // for any caller that spread its own options without it.
+    this.predictor = options.prediction
+      ? new NotebookInkPredictor(options.prediction)
+      : null;
   }
 
   /**

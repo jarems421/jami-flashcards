@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   hasWorkableMaterial,
-  lacksApplicationEvidence,
   selectIntervention,
   type InterventionAvailability,
 } from "@/lib/learning/interventions/catalogue";
@@ -69,6 +68,43 @@ function withEvidence(sources: LearningEvidenceKind[]): Partial<LearningTopicSta
   } as Partial<LearningTopicState>;
 }
 
+/**
+ * The state the engine actually produces when recall holds up and application
+ * does not: a practice decision, the gap it rests on, and the split behind it.
+ * Recall comes from the concept itself unless a covering Topic is named.
+ */
+function applicationGap(
+  recallFrom: { topicKey: string; label: string } = {
+    topicKey: "spec:completing-the-square",
+    label: "Completing the square",
+  }
+): LearningTopicState {
+  return state({ action: "practice", reason: "low_mastery" }, {
+    applicationGap: { recallFrom: recallFrom.topicKey, recallLabel: recallFrom.label },
+    signal: {
+      mastery: 0.5,
+      evidenceMastery: 0.5,
+      confidence: 0.8,
+      attempts: 20,
+      uniqueItems: 14,
+      dueCards: 0,
+      lastSeenAt: Date.now(),
+      evidence: ["flashcards", "past-paper"],
+      claims: {
+        recall: { evidenceMastery: 0.92, confidence: 0.7, attempts: 14 },
+        application: { evidenceMastery: 0.3, confidence: 0.65, attempts: 6 },
+      },
+    },
+  } as Partial<LearningTopicState>);
+}
+
+const STUDENT_TOPIC: Partial<LearningTopicState> = {
+  topicKey: "topic:quadratics",
+  label: "Quadratics",
+  source: "student-topic",
+  provenance: "student_defined",
+};
+
 describe("leaving the engine's decision alone", () => {
   it("offers nothing when the engine says leave it alone", () => {
     expect(
@@ -115,10 +151,10 @@ describe("coverage is not a claim about the student", () => {
 });
 
 describe("weakness, and what is actually missing", () => {
-  it("offers to make cards when there is nothing to retrieve from", () => {
+  it("offers to make cards when there are too few to revise from", () => {
     const choice = selectIntervention(
-      state({ action: "practice", reason: "low_mastery" }, {
-        ...withEvidence(["practice"]),
+      state({ action: "teach", reason: "low_mastery" }, {
+        ...withEvidence(["past-paper"]),
         exposure: { notebooks: 1, sources: 0, cards: 0 },
       }),
       { ...NOTHING, hasMaterial: true, hasPractice: true }
@@ -129,42 +165,61 @@ describe("weakness, and what is actually missing", () => {
 
   it("names the gap as application whether or not a corpus exists", () => {
     // The reason is about the student; the action is about what is available.
-    const withCorpus = selectIntervention(
-      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards"])),
-      EVERYTHING
-    );
-    const withoutCorpus = selectIntervention(
-      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards"])),
-      { ...EVERYTHING, hasPastPaper: false }
-    );
+    const withCorpus = selectIntervention(applicationGap(), EVERYTHING);
+    const withoutCorpus = selectIntervention(applicationGap(), { ...EVERYTHING, hasPastPaper: false });
     expect(withCorpus?.because).toBe("recall_strong_application_weak");
     expect(withoutCorpus?.because).toBe("recall_strong_application_weak");
     expect(withCorpus?.type).toBe("past_paper");
     expect(withoutCorpus?.type).toBe("create_practice");
   });
 
-  it("sends strong recall with weak application to real questions", () => {
-    const choice = selectIntervention(
-      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards"])),
+  it("names the Topic the recall came from when it is not the concept itself", () => {
+    const own = selectIntervention(applicationGap(), EVERYTHING);
+    const covering = selectIntervention(
+      applicationGap({ topicKey: "topic:quadratics", label: "Quadratics" }),
       EVERYTHING
     );
-    expect(choice?.type).toBe("past_paper");
-    expect(choice?.because).toBe("recall_strong_application_weak");
+    expect(own?.recallFrom).toBeUndefined();
+    expect(covering?.recallFrom).toEqual({ topicKey: "topic:quadratics", label: "Quadratics" });
   });
 
-  it("practises normally when both kinds of evidence already exist", () => {
+  it("works through a confident weakness that has cards, rather than writing more", () => {
     const choice = selectIntervention(
-      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards", "past-paper"])),
+      state({ action: "teach", reason: "low_mastery" }, withEvidence(["flashcards", "past-paper"])),
+      { ...EVERYTHING, flashcardCount: 30 }
+    );
+    expect(choice?.because).toBe("evidenced_knowledge_gap");
+    expect(choice?.type).not.toBe("create_flashcards");
+  });
+
+  it("never tells a student nothing is recorded about a concept they have answered", () => {
+    const choice = selectIntervention(
+      state({ action: "diagnose", reason: "low_confidence" }, withEvidence(["past-paper"])),
       EVERYTHING
     );
-    expect(choice?.because).toBe("weak_with_flashcards");
+    expect(choice?.because).toBe("suspected_gap");
+    expect(choice?.type).toBe("past_paper");
+  });
+
+  it("calls a decline slipping, not something the student knows", () => {
+    for (const decision of [
+      { action: "review", reason: "declining_mastery" },
+      { action: "retrieve", reason: "knowledge_decay" },
+      { action: "practice", reason: "knowledge_decay" },
+    ] as const) {
+      const choice = selectIntervention(
+        state(decision, { ...STUDENT_TOPIC, ...withEvidence(["flashcards"]) }),
+        { ...EVERYTHING, hasMaterial: true }
+      );
+      expect(choice?.because).toBe("slipping");
+    }
   });
 });
 
 describe("the rest of the decisions", () => {
-  it("teaches a well-evidenced gap", () => {
+  it("teaches a well-evidenced gap on a Topic from its own page", () => {
     const choice = selectIntervention(
-      state({ action: "teach", reason: "low_mastery" }, withEvidence(["past-paper"])),
+      state({ action: "teach", reason: "low_mastery" }, { ...STUDENT_TOPIC, ...withEvidence(["flashcards"]) }),
       EVERYTHING
     );
     expect(choice?.type).toBe("teach");
@@ -173,22 +228,43 @@ describe("the rest of the decisions", () => {
 
   it("retrieves what is due", () => {
     const choice = selectIntervention(
-      state({ action: "retrieve", reason: "due_for_retrieval" }, withEvidence(["flashcards"])),
+      state({ action: "retrieve", reason: "due_for_retrieval" }, { ...STUDENT_TOPIC, ...withEvidence(["flashcards"]) }),
       EVERYTHING
     );
     expect(choice?.type).toBe("retrieve");
     expect(choice?.because).toBe("due_for_retrieval");
   });
 
-  it("sends material seen but never tested to be tested", () => {
-    const choice = selectIntervention(
+  it("sends material seen but never tested to something that tests it", () => {
+    const topic = selectIntervention(
+      state({ action: "diagnose", reason: "untested_exposure" }, {
+        ...STUDENT_TOPIC,
+        exposure: { notebooks: 2, sources: 1, cards: 4 },
+      }),
+      { ...NOTHING, hasMaterial: true, hasFlashcards: true }
+    );
+    expect(topic?.type).toBe("retrieve");
+    expect(topic?.because).toBe("material_never_tested");
+
+    const concept = selectIntervention(
       state({ action: "diagnose", reason: "untested_exposure" }, {
         exposure: { notebooks: 2, sources: 1, cards: 0 },
       }),
       { ...NOTHING, hasMaterial: true }
     );
-    expect(choice?.type).toBe("review_material");
-    expect(choice?.because).toBe("material_never_tested");
+    expect(concept?.type).toBe("create_practice");
+  });
+
+  it("does not offer reading as a test", () => {
+    // Notes and no cards on a Topic: nothing here can ask the student anything.
+    const choice = selectIntervention(
+      state({ action: "diagnose", reason: "untested_exposure" }, {
+        ...STUDENT_TOPIC,
+        exposure: { notebooks: 2, sources: 0, cards: 0 },
+      }),
+      { ...NOTHING, hasMaterial: true }
+    );
+    expect(choice).toBeUndefined();
   });
 
   it("consolidates a recent gain", () => {
@@ -202,42 +278,48 @@ describe("the rest of the decisions", () => {
 
 describe("never offering what cannot be done", () => {
   it("offers nothing when no action is available at all", () => {
-    const choice = selectIntervention(
-      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards", "past-paper"])),
-      {
-        hasFlashcards: false,
-        hasPractice: false,
-        hasPastPaper: false,
-        hasMaterial: false,
-        canCreateFlashcards: false,
-        canCreatePractice: false,
-      }
-    );
+    const choice = selectIntervention(applicationGap(), {
+      hasFlashcards: false,
+      hasPractice: false,
+      hasPastPaper: false,
+      hasMaterial: false,
+      canCreateFlashcards: false,
+      canCreatePractice: false,
+    });
     expect(choice).toBeUndefined();
   });
 
   it("falls through to something that can be done", () => {
     // No corpus for this course, so real questions are not an option.
-    const choice = selectIntervention(
-      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards"])),
-      { ...EVERYTHING, hasPastPaper: false }
-    );
+    const choice = selectIntervention(applicationGap(), { ...EVERYTHING, hasPastPaper: false });
     expect(choice?.type).toBe("create_practice");
   });
 
   it("does not offer retrieval with no cards to retrieve", () => {
     const choice = selectIntervention(
-      state({ action: "retrieve", reason: "due_for_retrieval" }, withEvidence(["flashcards"])),
+      state({ action: "retrieve", reason: "due_for_retrieval" }, { ...STUDENT_TOPIC, ...withEvidence(["flashcards"]) }),
       { ...EVERYTHING, hasFlashcards: false }
     );
     expect(choice?.type).not.toBe("retrieve");
   });
 
-  it("keeps the alternatives that were also possible", () => {
-    const choice = selectIntervention(
-      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards"])),
+  it("offers each action only on a kind of concept that has somewhere to do it", () => {
+    // A specification concept has no card queue or page of its own...
+    const concept = selectIntervention(
+      state({ action: "retrieve", reason: "due_for_retrieval" }, withEvidence(["flashcards"])),
       EVERYTHING
     );
+    expect(concept).toBeUndefined();
+    // ...and a student's Topic cannot be sent to the corpus or the writer.
+    const topic = selectIntervention(
+      state({ action: "diagnose", reason: "low_confidence" }, { ...STUDENT_TOPIC, ...withEvidence(["practice"]) }),
+      { ...EVERYTHING, hasFlashcards: false }
+    );
+    expect(topic).toBeUndefined();
+  });
+
+  it("keeps the alternatives that were also possible", () => {
+    const choice = selectIntervention(applicationGap(), EVERYTHING);
     expect(choice?.alternatives).toContain("create_practice");
     expect(choice?.alternatives).not.toContain(choice?.type);
   });
@@ -249,21 +331,22 @@ describe("the helpers the rules rest on", () => {
     expect(hasWorkableMaterial({ ...NOTHING, hasMaterial: true })).toBe(true);
   });
 
-  it("reads application from the kind of evidence, not its quality", () => {
-    expect(lacksApplicationEvidence(state(undefined, withEvidence(["flashcards"])))).toBe(true);
-    expect(lacksApplicationEvidence(state(undefined, withEvidence(["past-paper"])))).toBe(false);
-    expect(lacksApplicationEvidence(state(undefined, withEvidence(["practice"])))).toBe(false);
-    // No evidence at all is not the same as evidence of the wrong kind.
-    expect(lacksApplicationEvidence(state(undefined))).toBe(false);
+  it("does not call a concept with recorded answers uncovered", () => {
+    const choice = selectIntervention(
+      state({ action: "diagnose", reason: "low_confidence" }, withEvidence(["past-paper"])),
+      NOTHING
+    );
+    expect(choice?.because).not.toBe("no_material_for_specification_concept");
   });
 
   it("is deterministic", () => {
-    const subject = state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards"]));
+    const subject = applicationGap();
     expect(selectIntervention(subject, EVERYTHING)).toEqual(
       selectIntervention(subject, EVERYTHING)
     );
   });
 });
+
 
 /**
  * Not having looked is not the same as having found nothing.
@@ -302,18 +385,16 @@ describe("unknown availability", () => {
   it("still offers real questions when nobody has checked the corpus", () => {
     // Otherwise Today would never suggest past papers, because it cannot
     // afford to find out whether they exist.
-    const choice = selectIntervention(
-      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards"])),
-      { ...unchecked, hasFlashcards: true }
-    );
+    const choice = selectIntervention(applicationGap(), { ...unchecked, hasFlashcards: true });
     expect(choice?.type).toBe("past_paper");
   });
 
   it("stops offering them once the corpus is known to hold nothing", () => {
-    const choice = selectIntervention(
-      state({ action: "practice", reason: "low_mastery" }, withEvidence(["flashcards"])),
-      { ...unchecked, hasFlashcards: true, hasPastPaper: false }
-    );
+    const choice = selectIntervention(applicationGap(), {
+      ...unchecked,
+      hasFlashcards: true,
+      hasPastPaper: false,
+    });
     expect(choice?.type).not.toBe("past_paper");
   });
 });

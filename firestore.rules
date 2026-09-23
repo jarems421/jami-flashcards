@@ -289,6 +289,48 @@ service cloud.firestore {
       }
 
       /*
+       * The Tutor shelf: things a student saved from a Revision Session to do
+       * later, and things Jami made for them from one. A to-do list, written
+       * by its owner: a kind, a concept, a folder and a link into the app --
+       * never a question, an answer or anything the student typed. Not
+       * editable, because nothing about an item changes; done ones are removed.
+       */
+      match /revisionShelf/{itemId} {
+        allow read: if isSelf(userId);
+        allow create: if isSelf(userId) && !isDemoAccount() && isRevisionShelfItem(request.resource.data);
+        allow update: if false;
+        allow delete: if isSelf(userId);
+
+        function isRevisionShelfItem(data) {
+          return data.keys().hasOnly(['schemaVersion', 'kind', 'status', 'topicKey', 'conceptLabel', 'folderId', 'conceptId', 'href', 'createdAt']) &&
+            data.keys().hasAll(['schemaVersion', 'kind', 'status', 'topicKey', 'conceptLabel', 'folderId', 'createdAt']) &&
+            data.schemaVersion == 1 &&
+            data.kind in ['flashcards', 'review-cards', 'practice', 'exam-questions', 'session'] &&
+            data.status in ['later', 'made'] &&
+            data.topicKey is string && data.topicKey.size() > 0 && data.topicKey.size() <= 400 &&
+            data.conceptLabel is string && data.conceptLabel.size() > 0 && data.conceptLabel.size() <= 200 &&
+            data.folderId is string && data.folderId.size() > 0 && data.folderId.size() <= 200 &&
+            data.createdAt is number &&
+            (!('conceptId' in data) || (data.conceptId is string && data.conceptId.size() <= 200)) &&
+            (!('href' in data) || (data.href is string && data.href.size() <= 600 && data.href.matches('^/dashboard/.*')));
+        }
+      }
+
+      /*
+       * A Revision Session: Jami teaching one concept. Server-only.
+       * While it runs it holds the answers to its own questions, so it is not
+       * readable from a client either -- the session screen reads it through
+       * its API routes, which show a step's answer only once the step is over.
+       * When it ends its step outcomes are evidence about what the student
+       * knows, which no client may write. Nothing the student typed is ever in
+       * it. See docs/revision-sessions.md.
+       */
+      match /revisionSessions/{sessionId} {
+        allow read, create, update: if false;
+        allow delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      /*
        * What became of the engine's advice: shown, started, completed or
        * dismissed. Ids and an outcome only -- no wording, no topic labels, no
        * reason a student typed. Create-only like the review events beside it,

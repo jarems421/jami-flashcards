@@ -35,7 +35,6 @@ import {
   splitExamAnswerParts,
 } from "@/lib/practice/exam-answer-parts";
 import { examMarkingFailureIsRetryable, examMarkingFailureMessage } from "@/lib/practice/exam-marking-failure";
-import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import ExamQuestionAssets from "@/components/practice/ExamQuestionAssets";
@@ -43,6 +42,7 @@ import { examQuestionShowsPrintedPage } from "@/lib/practice/exam-question-displ
 import { examSheetPrintedPages } from "@/lib/practice/exam-question-sheet";
 import ExamScratchpad, { type ExamScratchpadHandle } from "@/components/practice/ExamScratchpad";
 import ExamQuestionMarkReport from "@/components/practice/ExamQuestionMarkReport";
+import ExamSessionQuestionBar from "@/components/practice/ExamSessionQuestionBar";
 import { requireExamWorkingSnapshot } from "@/lib/practice/exam-working";
 import {
   examQuestionPartLabel,
@@ -104,33 +104,6 @@ function provenanceLine(question: SessionQuestion) {
   return [boardLabel, `${series} ${year}`, paperReference, `Q${questionNumber}`]
     .filter(Boolean)
     .join(" · ");
-}
-
-/**
- * The colour a question's pill takes in the strip along the top.
- *
- * A marked question takes the colour of its mark -- the latest attempt's, so a
- * retry that earned full marks turns green. Every marked pill used to be green,
- * so a question scored zero looked exactly like one answered perfectly.
- */
-function pillTone(attempts: PublicExamAttempt[]) {
-  const marked = [...attempts]
-    .filter((item) => item.status === "marked" && item.result)
-    .sort((left, right) => right.attemptNumber - left.attemptNumber)[0];
-  if (marked?.result) {
-    const { awardedMarks, maxMarks } = marked.result;
-    if (maxMarks > 0 && awardedMarks >= maxMarks) return "bg-success/20 text-[var(--color-success-mark)]";
-    if (awardedMarks > 0) return "bg-warning/20 text-[var(--color-warning-mark)]";
-    return "bg-error/15 text-[var(--color-error-mark)]";
-  }
-  if (attempts.some((item) => item.status === "marking_failed")) return "bg-error/15 text-error";
-  if (attempts.some((item) => item.status === "marking")) {
-    return "animate-pulse bg-warm-accent/20 text-warm-accent";
-  }
-  if (attempts.some((item) => item.status === "draft" && Boolean(item.answerText))) {
-    return "bg-[var(--color-glass-strong)] text-text-primary";
-  }
-  return "bg-[var(--color-glass-subtle)] text-text-secondary hover:text-text-primary";
 }
 
 export default function ExamSessionWorkspace({ sessionId }: { sessionId: string }) {
@@ -692,80 +665,17 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
           </Card>
         ) : null}
 
-        <nav
-          aria-label="Questions"
-          /*
-           * Solid rather than frosted. A backdrop blur has to be recomputed
-           * whenever what is beneath it changes, and while a student scrolls
-           * and writes that is a page of fresh ink every frame.
-           */
-          className="sticky top-[4.5rem] z-30 flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--app-background)] py-2 pl-3 pr-2 shadow-shell"
-        >
-          <p className="hidden shrink-0 text-sm font-semibold text-text-primary sm:block">
-            Question {runIndex + 1}
-            <span className="font-normal text-text-muted"> of {runs.length}</span>
-            {run && run.count > 1 ? (
-              <span className="font-normal text-text-muted">
-                {" · part "}
-                {partIndex + 1} of {run.count}
-              </span>
-            ) : null}
-          </p>
-          {/*
-            * One group of dots per question, not one per part.
-            *
-            * A flat row of fourteen numbered circles said the session was
-            * fourteen questions long as plainly as the counter did. Grouped,
-            * the row reads the way the paper does: two questions, each with
-            * its parts under its own number, and the gap between groups is
-            * where one question ends.
-            */}
-          <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto py-0.5 sm:justify-center">
-            {runs.map((item, itemRunIndex) => (
-              <div key={item.key} className="flex shrink-0 items-center gap-1">
-                <span className="shrink-0 pr-0.5 text-xs font-semibold tabular-nums text-text-muted">
-                  {item.number || itemRunIndex + 1}
-                </span>
-                {questions.slice(item.from, item.from + item.count).map((part, offset) => {
-                  const partIndexInSession = item.from + offset;
-                  const itemAttempts = attempts.filter((attempt) => attempt.questionId === part.id);
-                  const suffix = examQuestionPartLabel(part.provenance?.questionNumber ?? "");
-                  const current = partIndexInSession === index;
-                  return (
-                    <button
-                      key={part.id}
-                      type="button"
-                      aria-current={current ? "step" : undefined}
-                      aria-label={
-                        item.count > 1
-                          ? `Question ${itemRunIndex + 1} of ${runs.length}, part ${offset + 1} of ${item.count}`
-                          : `Question ${itemRunIndex + 1} of ${runs.length}`
-                      }
-                      onClick={() => goTo(partIndexInSession)}
-                      className={`grid h-8 shrink-0 place-items-center rounded-full px-2 text-xs font-semibold tabular-nums transition duration-fast ${
-                        item.count > 1 ? "min-w-8" : "w-8"
-                      } ${
-                        current
-                          ? "bg-accent text-[var(--color-text-inverse)] shadow-accent"
-                          : pillTone(itemAttempts)
-                      }`}
-                    >
-                      {item.count > 1 ? suffix.replace(/[().]/g, "") || offset + 1 : "•"}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-          <span className="shrink-0 text-xs font-medium tabular-nums text-text-muted">
-            {markedCount}/{runs.length} marked
-          </span>
-          {session.status === "active" ? (
-            <Button size="sm" variant="secondary" disabled={finishing} onClick={() => void finish()}>
-              {finishing ? "Finishing…" : "Finish"}
-            </Button>
-          ) : null}
-        </nav>
+        <ExamSessionQuestionBar
+          runs={runs}
+          parts={questions}
+          attempts={attempts}
+          index={index}
+          markedCount={markedCount}
+          canFinish={session.status === "active"}
+          finishing={finishing}
+          onGoTo={goTo}
+          onFinish={() => void finish()}
+        />
 
         {/*
           * Two columns only while there is a second thing to put in one.

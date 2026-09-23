@@ -3,7 +3,9 @@ import {
   allFirstNightLit,
   createFirstNightState,
   FIRST_NIGHT_ACTIONS,
+  FIRST_NIGHT_DISCOVERIES,
   FIRST_NIGHT_TARGETS,
+  FIRST_NIGHT_TOUR_LENGTH,
   firstNightDiscoveries,
   getFirstNightDiscovery,
   isOnDiscoveryRoute,
@@ -12,8 +14,12 @@ import {
   pendingNavLabels,
   planFirstNightGuide,
   planFirstNightSetup,
+  nextFirstNightDiscovery,
   readFirstNightQuery,
   readFirstNightState,
+  SECOND_NIGHT_ACTIONS,
+  SECOND_NIGHT_STARS,
+  secondNightOpen,
   type FirstNightState,
 } from "@/lib/onboarding/first-night";
 import type { ExamCourseSelection } from "@/lib/practice/exam-questions";
@@ -55,8 +61,14 @@ describe("starting and remembering it", () => {
       intent: "exam",
       examReady: true,
       rewardState: "not-earned",
+      bonus: [],
+      bonusHidden: false,
       updatedAt: 0,
     });
+    // Records from before the second night, and junk in its fields, read as none of it.
+    expect(
+      readFirstNightState({ version: 1, stage: "finished", bonus: ["plan", "moon", "plan"], bonusHidden: "yes" })
+    ).toMatchObject({ bonus: ["plan"], bonusHidden: false });
     expect(readFirstNightState({ version: 1, stage: "tour" })?.examReady).toBe(false);
     expect(readFirstNightState({ version: 2, stage: "tour" })).toBeNull();
     expect(readFirstNightState("tour")).toBeNull();
@@ -116,8 +128,9 @@ describe("setting up the subjects", () => {
 
 describe("which stars there are", () => {
   it("asks for the exam star only when a course with questions was set up", () => {
-    expect(firstNightDiscoveries({ examReady: false }).map((discovery) => discovery.id)).toEqual(["notebook", "tutor", "cards", "learn", "goal"]);
-    expect(firstNightDiscoveries({ examReady: true }).map((discovery) => discovery.id)).toContain("exam");
+    expect(firstNightDiscoveries({ examReady: false }).map((discovery) => discovery.id)).toEqual(["cards", "learn", "notebook", "tutor", "goal"]);
+    // First when there is one: it is what a new student should see Jami do.
+    expect(firstNightDiscoveries({ examReady: true }).map((discovery) => discovery.id)[0]).toBe("exam");
     expect(allFirstNightLit(exploring({ lit: ["notebook", "tutor", "cards", "learn", "goal"] }))).toBe(true);
     expect(allFirstNightLit(exploring({ examReady: true, lit: ["notebook", "tutor", "cards", "learn", "goal"] }))).toBe(false);
   });
@@ -144,7 +157,7 @@ describe("which stars there are", () => {
 
   it("marks the sidebar entries that still lead to a star, then Stars at the end", () => {
     expect(pendingNavLabels(exploring({ lit: ["notebook", "tutor"] }))).toEqual(["Flashcards", "Learn", "Goals"]);
-    expect(pendingNavLabels(exploring({ examReady: true, lit: ["notebook", "tutor"] }))).toEqual(["Flashcards", "Learn", "Practice", "Goals"]);
+    expect(pendingNavLabels(exploring({ examReady: true, lit: ["notebook", "tutor"] }))).toEqual(["Practice", "Flashcards", "Learn", "Goals"]);
     expect(pendingNavLabels(exploring({ stage: "sky" }))).toEqual(["Stars"]);
     expect(pendingNavLabels(exploring({ stage: "finished" }))).toEqual([]);
   });
@@ -154,10 +167,19 @@ describe("which note shows", () => {
   const run = (state: FirstNightState, pathname: string, ...present: string[]) =>
     planFirstNightGuide({ state, pathname, isPhone: false, pointing: null, present: presentOnly(...present) });
 
-  it("tours the sidebar on a computer and the bar on a phone", () => {
-    const tour = exploring({ stage: "tour", tourStep: 1 });
-    expect(planFirstNightGuide({ state: tour, pathname: "/dashboard", isPhone: false, pointing: null, present: () => false })?.target).toBe(T.loopGroup);
-    expect(planFirstNightGuide({ state: tour, pathname: "/dashboard", isPhone: true, pointing: null, present: () => false })?.target).toBe(navTarget("Practice"));
+  it("says where the map is once, then points at the stars and goes", () => {
+    const plan = (state: FirstNightState, isPhone = false) =>
+      planFirstNightGuide({ state, pathname: "/dashboard", isPhone, pointing: null, present: () => false });
+    expect(FIRST_NIGHT_TOUR_LENGTH).toBe(2);
+
+    const map = plan(exploring({ stage: "tour", tourStep: 0 }));
+    expect(map).toMatchObject({ target: T.navShell, eyebrow: "Jami · 1 of 2", done: "next-tour" });
+    expect(plan(exploring({ stage: "tour", tourStep: 0 }), true)?.text).toContain("Swipe");
+
+    const stars = plan(exploring({ stage: "tour", tourStep: 1, examReady: true }));
+    expect(stars).toMatchObject({ target: T.panel, done: "finish-tour", doneLabel: "Let's go" });
+    expect(stars?.text).toContain("real exam question");
+    expect(plan(exploring({ stage: "tour", tourStep: 1 }))?.text).toContain("first flashcard");
   });
 
   it("points at the sidebar entry until the student gets there", () => {
@@ -233,5 +255,49 @@ describe("which note shows", () => {
     expect(run(sky, "/dashboard")).toMatchObject({ target: navTarget("Stars"), done: "finish" });
     expect(run(sky, "/dashboard/constellation")).toMatchObject({ target: null, done: "finish", doneLabel: "Finish" });
     expect(run(exploring({ stage: "finished" }), "/dashboard/constellation")).toBeNull();
+  });
+});
+
+describe("the next star", () => {
+  it("offers the first unlit star, or the one asked for from Today", () => {
+    expect(nextFirstNightDiscovery(exploring({ examReady: true }))?.id).toBe("exam");
+    expect(nextFirstNightDiscovery(exploring({ examReady: false }))?.id).toBe("cards");
+    expect(nextFirstNightDiscovery(exploring({ examReady: true, lit: ["exam"] }))?.id).toBe("cards");
+    expect(nextFirstNightDiscovery(exploring({ examReady: true, intent: "goal" }))?.id).toBe("goal");
+    // A lit star asked for is not offered again.
+    expect(nextFirstNightDiscovery(exploring({ lit: ["goal"], intent: "goal" }))?.id).toBe("cards");
+    expect(
+      nextFirstNightDiscovery(exploring({ examReady: true, lit: FIRST_NIGHT_DISCOVERIES.map((discovery) => discovery.id) }))
+    ).toBeNull();
+  });
+
+  it("says how long each one takes, what it is, and what it gave", () => {
+    for (const discovery of FIRST_NIGHT_DISCOVERIES) {
+      expect(discovery.minutes, discovery.id).toBeGreaterThan(0);
+      expect(discovery.promise.length, discovery.id).toBeGreaterThan(10);
+      expect(discovery.unlocked.length, discovery.id).toBeGreaterThan(10);
+      // "Take me there" lands on a page where that star's note can take over.
+      expect(isOnDiscoveryRoute(discovery.href, discovery), discovery.id).toBe(true);
+    }
+  });
+});
+
+describe("the second night", () => {
+  it("is offered only once the first night is over, until it is done or put away", () => {
+    expect(secondNightOpen(exploring())).toBe(false);
+    expect(secondNightOpen(exploring({ stage: "finished" }))).toBe(true);
+    expect(secondNightOpen(exploring({ stage: "finished", bonusHidden: true }))).toBe(false);
+    expect(
+      secondNightOpen(exploring({ stage: "finished", bonus: SECOND_NIGHT_STARS.map((star) => star.id) }))
+    ).toBe(false);
+    expect(secondNightOpen(null)).toBe(false);
+  });
+
+  it("lights each star from something the app actually did", () => {
+    expect(SECOND_NIGHT_ACTIONS).toEqual({ "add-source": "source", "plan-week": "plan", "view-progress": "progress" });
+    // Never the same actions as the first night, so one thing cannot light two stars.
+    for (const action of Object.keys(SECOND_NIGHT_ACTIONS)) {
+      expect(FIRST_NIGHT_ACTIONS).not.toHaveProperty(action);
+    }
   });
 });

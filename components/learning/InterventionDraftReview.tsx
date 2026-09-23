@@ -29,7 +29,7 @@ import type { PracticeQuestionDraft } from "@/lib/learning/interventions/practic
 export type InterventionDraftReviewProps = {
   draft: InterventionDraft | null;
   /** Called with whatever survived editing. Writing is the caller's job. */
-  onConfirm: (draft: InterventionDraft) => Promise<void> | void;
+  onConfirm: (draft: InterventionDraft) => Promise<unknown> | void;
   onCancel: () => void;
   /** Shown while the caller is writing, so nothing can be confirmed twice. */
   saving?: boolean;

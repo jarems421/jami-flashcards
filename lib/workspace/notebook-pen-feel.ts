@@ -1,11 +1,20 @@
 /**
  * How much the pen tidies up what the hand did.
  *
- * The two settings here are what decide whether writing reads as flowing or as
- * a chain of short straight runs, and there is no single right answer to either:
- * a fast joined-up hand wants the line carried through, and a careful printed
- * one wants every deliberate point kept. So it is a setting rather than a
- * constant.
+ * Two separate questions, and two separate settings:
+ *
+ * - Smoothing is how much wobble is taken out of the line: the tremor filter
+ *   on the input, and the light easing of the curve drawn through it.
+ * - Corner sharpness is whether a turn is drawn as a point or carried through
+ *   as a curve.
+ *
+ * They used to be one slider, which moved both at once. That is why turning
+ * Smoothing down to keep a line faithful also turned every curve in it into a
+ * run of corners, and why nothing could round the corners off without also
+ * dragging the line away from the pen. There is no single right answer to
+ * either -- a fast joined-up hand wants its turns carried through, and a
+ * careful printed one wants every deliberate point kept -- so each is a
+ * setting rather than a constant.
  */
 
 import {
@@ -132,6 +141,17 @@ export function clampNotebookPenSmoothing(value: number) {
   return Math.round(Math.max(0, Math.min(100, value)));
 }
 
+/**
+ * The measured shaping curve, from a line drawn exactly as taken (0) to one
+ * carried through all but its unmistakable points (100).
+ *
+ * This is what the one Smoothing slider used to drive whole, corners and
+ * easing together. It is still the curve both halves are read from -- it was
+ * measured against real handwriting at three sizes, and a second mapping would
+ * throw that away -- but nothing drives it whole any more: Corner sharpness
+ * reads the corner half of it backwards, and Smoothing reads the easing half.
+ * See `getNotebookPenFeelFromSettings`.
+ */
 export function getNotebookPenFeel(smoothingPercent: number): NotebookPenFeel {
   const towards = clampNotebookPenSmoothing(smoothingPercent) / 100;
   const between = (from: number, to: number) => from + (to - from) * towards;
@@ -187,6 +207,10 @@ export type NotebookPenSmoothingLabel = {
  * Named for how much smoothing is being applied, because that is what the
  * control is called. Naming the resulting line instead put the word and the
  * label in different terms, which is a thing to work out rather than read.
+ *
+ * Every description is about wobble and none of them about corners: those have
+ * their own control now, and a label promising points or curves here would be
+ * describing a slider that no longer does that.
  */
 export function getNotebookPenSmoothingLabel(
   smoothingPercent: number
@@ -195,24 +219,24 @@ export function getNotebookPenSmoothingLabel(
   if (percent < 25) {
     return {
       name: "None",
-      description: "Nothing is smoothed; every turn you make is drawn as a point",
+      description: "Your line exactly as the pen reports it, tremor and all",
     };
   }
   if (percent < 50) {
     return {
       name: "Light",
-      description: "Keeps fine detail, eases the worst of the wobble",
+      description: "Takes out fine tremor; ink stays right under the nib",
     };
   }
   if (percent < 75) {
     return {
       name: "Medium",
-      description: "Carries curves through, keeps deliberate points",
+      description: "Steadies the line without holding the ink back",
     };
   }
   return {
     name: "Strong",
-    description: "Rounds the line out; only sharp turns stay points",
+    description: "Irons out shaky lines; slow strokes may trail slightly",
   };
 }
 
@@ -248,16 +272,10 @@ export function saveNotebookPenSmoothingPreference(percent: number) {
 /* ------------------------------------------------------------------------ *
  * Advanced settings
  *
- * The Smoothing slider above is one number standing in for several, chosen so
- * that the single control moves all of them somewhere sensible together. That
- * is the right default and the wrong ceiling: the reason a hand finds the ink
- * angular is not always the reason the next hand does, and moving one slider
- * moves the lot.
- *
- * So the constants each of these covers are also settable on their own, behind
- * a disclosure. Every one of them is defined so that the middle of its travel
- * reproduces exactly what the pen did before this existed -- these widen the
- * range, they do not move the default.
+ * The constants behind the pen, each settable on its own behind a disclosure.
+ * Every one of them is defined so that its default reproduces exactly what the
+ * pen did before it existed -- these widen the range, they do not move the
+ * default.
  * ------------------------------------------------------------------------ */
 
 /**
@@ -273,19 +291,22 @@ export type NotebookStraightenOnHold =
   (typeof NOTEBOOK_STRAIGHTEN_MODES)[number];
 
 export type NotebookPenSettings = {
-  /** The one control on the front of the panel. */
+  /**
+   * How much wobble is taken out of the line: the tremor filter on the input,
+   * and the light easing of the curve drawn through it. Nothing to do with
+   * corners -- see `cornerSharpnessPercent`.
+   */
   smoothingPercent: number;
   /**
-   * How readily a turn is kept as a point, or null to follow Smoothing.
+   * How readily a turn is kept as a point rather than carried through as a
+   * curve.
    *
-   * This is the half of Smoothing that answers the angular-writing complaint,
-   * and it is the half people want separately: a hand that wants its wobble
-   * filtered hard does not necessarily want its corners rounded off too, and
-   * the single slider cannot give them one without the other.
+   * Its own setting, always. It used to follow Smoothing until it was unlinked
+   * from it, which is how it read: a greyed-out control beside a Smoothing
+   * slider that was really moving the corners. A hand that wants its wobble
+   * filtered hard does not necessarily want its corners rounded off too.
    */
-  cornerSharpnessPercent: number | null;
-  /** How hard hand tremor is filtered out of the input, before any shaping. */
-  steadinessPercent: number;
+  cornerSharpnessPercent: number;
   /** How tightly the ink follows the nib, against how much noise survives. */
   trackingPercent: number;
   /** How much pen pressure is allowed to vary the width of the line. */
@@ -293,10 +314,16 @@ export type NotebookPenSettings = {
   straightenOnHold: NotebookStraightenOnHold;
 };
 
+/**
+ * Where the corners sat while Smoothing drove them: its default read
+ * backwards, so the default pen draws exactly the corners it always drew.
+ */
+export const NOTEBOOK_CORNER_SHARPNESS_DEFAULT =
+  100 - NOTEBOOK_PEN_SMOOTHING_DEFAULT;
+
 export const NOTEBOOK_PEN_SETTINGS_DEFAULT: NotebookPenSettings = {
   smoothingPercent: NOTEBOOK_PEN_SMOOTHING_DEFAULT,
-  cornerSharpnessPercent: null,
-  steadinessPercent: 50,
+  cornerSharpnessPercent: NOTEBOOK_CORNER_SHARPNESS_DEFAULT,
   trackingPercent: 50,
   pressurePercent: 50,
   straightenOnHold: "guided",
@@ -305,22 +332,25 @@ export const NOTEBOOK_PEN_SETTINGS_DEFAULT: NotebookPenSettings = {
 export const NOTEBOOK_PEN_SETTINGS_STORAGE_KEY = "jami:notebook-pen-settings";
 
 /**
- * A percentage read onto a value whose middle is already spoken for.
+ * A percentage read onto a value whose default is already spoken for.
  *
- * Each advanced control has to pass through the measured constant at 50, or
- * opening the panel would change how the pen writes -- so none of them is a
- * plain interpolation between two ends. Two straight runs meeting at the
- * default is the honest shape for that: no hidden curve, and the number in the
- * middle is exactly the one the comments above it were measured against.
+ * Each control has to pass through the measured constant at its default, or
+ * the pen would change under anyone who never touched it -- so none of them is
+ * a plain interpolation between two ends. Two straight runs meeting at the
+ * default is the honest shape for that: no hidden curve, and the number there
+ * is exactly the one the comments above it were measured against.
  */
-function throughTheMiddle(
+function throughTheDefault(
   percent: number,
-  at: { zero: number; fifty: number; hundred: number }
+  at: { zero: number; atDefault: number; hundred: number },
+  defaultPercent = 50
 ) {
-  const towards = Math.max(0, Math.min(100, percent)) / 100;
-  return towards <= 0.5
-    ? at.zero + (at.fifty - at.zero) * (towards / 0.5)
-    : at.fifty + (at.hundred - at.fifty) * ((towards - 0.5) / 0.5);
+  const towards = Math.max(0, Math.min(100, percent));
+  return towards <= defaultPercent
+    ? at.zero + (at.atDefault - at.zero) * (towards / defaultPercent)
+    : at.atDefault +
+        (at.hundred - at.atDefault) *
+          ((towards - defaultPercent) / (100 - defaultPercent));
 }
 
 export function isNotebookStraightenOnHold(
@@ -332,27 +362,39 @@ export function isNotebookStraightenOnHold(
   );
 }
 
-/** Every field forced back into range, whatever storage or a caller handed over. */
+/**
+ * Every field forced back into range, whatever storage or a caller handed over.
+ *
+ * Takes the stored shape as well as the current one: a store written before
+ * corners were separated says `null` there, meaning "follow Smoothing".
+ */
 export function clampNotebookPenSettings(
-  settings: Partial<NotebookPenSettings> | null | undefined
+  settings:
+    | (Partial<Omit<NotebookPenSettings, "cornerSharpnessPercent">> & {
+        cornerSharpnessPercent?: number | null;
+      })
+    | null
+    | undefined
 ): NotebookPenSettings {
   const percent = (value: unknown, fallback: number) =>
     typeof value === "number" && Number.isFinite(value)
       ? Math.round(Math.max(0, Math.min(100, value)))
       : fallback;
+  const smoothingPercent = clampNotebookPenSmoothing(
+    settings?.smoothingPercent ?? NOTEBOOK_PEN_SMOOTHING_DEFAULT
+  );
 
   return {
-    smoothingPercent: clampNotebookPenSmoothing(
-      settings?.smoothingPercent ?? NOTEBOOK_PEN_SMOOTHING_DEFAULT
+    smoothingPercent,
+    /*
+     * Missing, or the null that used to mean "follow Smoothing", becomes the
+     * number Smoothing was giving it. Anyone who never unlinked the two keeps
+     * exactly the corners they had; they are simply theirs to move now.
+     */
+    cornerSharpnessPercent: percent(
+      settings?.cornerSharpnessPercent,
+      100 - smoothingPercent
     ),
-    // Null is a real value here -- "follow Smoothing" -- so it is kept rather
-    // than filled in with the default it happens to resolve to today.
-    cornerSharpnessPercent:
-      settings?.cornerSharpnessPercent === null ||
-      settings?.cornerSharpnessPercent === undefined
-        ? null
-        : percent(settings.cornerSharpnessPercent, 50),
-    steadinessPercent: percent(settings?.steadinessPercent, 50),
     trackingPercent: percent(settings?.trackingPercent, 50),
     pressurePercent: percent(settings?.pressurePercent, 50),
     straightenOnHold: isNotebookStraightenOnHold(settings?.straightenOnHold)
@@ -364,8 +406,7 @@ export function clampNotebookPenSettings(
 /** Whether anything under the disclosure has been moved off its default. */
 export function hasNotebookPenAdvancedChanges(settings: NotebookPenSettings) {
   return (
-    settings.cornerSharpnessPercent !== null ||
-    settings.steadinessPercent !== 50 ||
+    settings.cornerSharpnessPercent !== NOTEBOOK_CORNER_SHARPNESS_DEFAULT ||
     settings.trackingPercent !== 50 ||
     settings.pressurePercent !== 50 ||
     settings.straightenOnHold !== NOTEBOOK_PEN_SETTINGS_DEFAULT.straightenOnHold
@@ -383,27 +424,12 @@ export function resetNotebookPenAdvancedSettings(
 }
 
 /**
- * Where the corner control sits when it is following Smoothing.
- *
- * Sharpness runs the other way from smoothing -- more smoothing is fewer
- * corners -- so following it is reading the same slider backwards. Having the
- * control show that rather than sitting blank means letting go of the link
- * never moves the pen: wherever the slider was, that is what it keeps doing.
- */
-export function getNotebookCornerSharpness(settings: NotebookPenSettings) {
-  return (
-    settings.cornerSharpnessPercent ??
-    100 - clampNotebookPenSmoothing(settings.smoothingPercent)
-  );
-}
-
-/**
  * The full shaping feel, advanced settings included.
  *
- * Corner sharpness borrows the Smoothing curve read backwards rather than
- * inventing a second mapping: that curve was measured against real handwriting
- * at three sizes, and the corner threshold is the part of it those measurements
- * were mostly about. Easing still comes from Smoothing itself, because easing
+ * Corner sharpness borrows the measured shaping curve read backwards rather
+ * than inventing a second mapping: that curve was measured against real
+ * handwriting at three sizes, and the corner threshold is the part of it those
+ * measurements were mostly about. Easing comes from Smoothing, because easing
  * is what smoothing means once corners have been taken out of it.
  */
 export function getNotebookPenFeelFromSettings(
@@ -411,7 +437,7 @@ export function getNotebookPenFeelFromSettings(
 ): NotebookPenFeel {
   const safe = clampNotebookPenSettings(settings);
   const fromSmoothing = getNotebookPenFeel(safe.smoothingPercent);
-  const fromCorners = getNotebookPenFeel(100 - getNotebookCornerSharpness(safe));
+  const fromCorners = getNotebookPenFeel(100 - safe.cornerSharpnessPercent);
 
   return {
     cornerDegrees: fromCorners.cornerDegrees,
@@ -430,14 +456,14 @@ export function getNotebookPenFeelFromSettings(
      * as it was: at 50 the response is 1 and the floor is where it has always
      * been, so neither half is doing anything yet.
      */
-    minimumWidthFraction: throughTheMiddle(safe.pressurePercent, {
+    minimumWidthFraction: throughTheDefault(safe.pressurePercent, {
       zero: NOTEBOOK_MINIMUM_WIDTH_FRACTION_DEFAULT,
-      fifty: NOTEBOOK_MINIMUM_WIDTH_FRACTION_DEFAULT,
+      atDefault: NOTEBOOK_MINIMUM_WIDTH_FRACTION_DEFAULT,
       hundred: 0.12,
     }),
-    pressureResponse: throughTheMiddle(safe.pressurePercent, {
+    pressureResponse: throughTheDefault(safe.pressurePercent, {
       zero: 0,
-      fifty: 1,
+      atDefault: 1,
       hundred: 1.6,
     }),
     snapToGuides: safe.straightenOnHold === "guided",
@@ -466,25 +492,32 @@ export function getNotebookInkSmoothingOptions(
   return {
     ...NOTEBOOK_INK_SMOOTHING,
     /*
-     * Steadier means a lower cutoff, so this runs backwards. The floor is 4 Hz
-     * rather than the 2 that was tried and rejected: at 2 the ink was reported
-     * as magnetic, dragged towards where it had just been, and a setting nobody
-     * should choose is not a wider range.
+     * Smoothing is, first of all, how hard hand tremor is filtered: that is
+     * the wobble a hand sees and means by the word. It was a separate "Line
+     * steadiness" control while Smoothing was busy with corners; once it was
+     * not, the two were the same question asked twice.
+     *
+     * More smoothing is a lower cutoff, so this runs backwards, and it passes
+     * through the measured constant at Smoothing's own default, so the pen is
+     * unchanged for anyone who has not moved it. The floor is 4 Hz rather than
+     * the 2 that was tried and rejected: at 2 the ink was reported as magnetic,
+     * dragged towards where it had just been, and a setting nobody should
+     * choose is not a wider range.
      */
-    minCutoff: throughTheMiddle(safe.steadinessPercent, {
-      zero: 20,
-      fifty: NOTEBOOK_INK_SMOOTHING.minCutoff,
-      hundred: 4,
-    }),
+    minCutoff: throughTheDefault(
+      safe.smoothingPercent,
+      { zero: 20, atDefault: NOTEBOOK_INK_SMOOTHING.minCutoff, hundred: 4 },
+      NOTEBOOK_PEN_SMOOTHING_DEFAULT
+    ),
     /*
      * The measured trade: 0.04 leaves 0.39px of wobble and a 2.87px trail,
      * 0.25 leaves 0.67px and 0.59px. The default sits at 0.08 because half the
      * surviving wobble is where a line starts to read as grainy -- which is a
      * reason to default under it, not a reason nobody may cross it.
      */
-    beta: throughTheMiddle(safe.trackingPercent, {
+    beta: throughTheDefault(safe.trackingPercent, {
       zero: 0.03,
-      fifty: NOTEBOOK_INK_SMOOTHING.beta,
+      atDefault: NOTEBOOK_INK_SMOOTHING.beta,
       hundred: 0.25,
     }),
   };
@@ -520,24 +553,6 @@ export function getNotebookCornerSharpnessLabel(
   return {
     name: "Sharp",
     description: "Almost every turn is drawn as a corner",
-  };
-}
-
-export function getNotebookSteadinessLabel(
-  percent: number
-): NotebookPenAdvancedLabel {
-  if (percent < 34) {
-    return { name: "Raw", description: "Hand tremor is left in the line" };
-  }
-  if (percent < 67) {
-    return {
-      name: "Balanced",
-      description: "Filters tremor without holding the ink back",
-    };
-  }
-  return {
-    name: "Very steady",
-    description: "Removes fine shake; slow strokes may feel slightly dragged",
   };
 }
 
@@ -611,15 +626,15 @@ export function readNotebookPenSettings(): NotebookPenSettings {
     const stored = window.localStorage.getItem(
       NOTEBOOK_PEN_SETTINGS_STORAGE_KEY
     );
-    if (stored === null) {
-      return { ...NOTEBOOK_PEN_SETTINGS_DEFAULT, smoothingPercent };
-    }
+    // With nothing else stored, corners were following Smoothing, so they
+    // start from where Smoothing had them.
+    if (stored === null) return clampNotebookPenSettings({ smoothingPercent });
     const parsed: unknown = JSON.parse(stored);
     if (typeof parsed !== "object" || parsed === null) {
-      return { ...NOTEBOOK_PEN_SETTINGS_DEFAULT, smoothingPercent };
+      return clampNotebookPenSettings({ smoothingPercent });
     }
     return clampNotebookPenSettings({
-      ...(parsed as Partial<NotebookPenSettings>),
+      ...(parsed as Parameters<typeof clampNotebookPenSettings>[0]),
       smoothingPercent,
     });
   } catch {

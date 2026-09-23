@@ -120,6 +120,19 @@ export type PaperGenerationBenchmarkReport = {
 };
 
 export const PAPER_GENERATION_BENCHMARK_VERSION = "2026-08-21.uk-written.v2";
+
+/** Faults that make a paper unusable, whoever finds them. */
+export const PAPER_GENERATION_BENCHMARK_BLOCKERS: readonly PaperGenerationBenchmarkBlocker[] = [
+  "unanswerable_question", "incorrect_scheme", "invalid_total", "answer_leak",
+  "missing_insert", "broken_visual", "confirmed_copying", "privacy_failure",
+  "ownership_failure",
+];
+
+/** What every review scores, 1 to 5. */
+export const PAPER_GENERATION_BENCHMARK_SCORE_KEYS: readonly (keyof PaperGenerationBenchmarkReviewScores)[] = [
+  "authenticity", "levelFit", "schemeCorrectness", "specificationCoverage",
+  "timing", "visualQuality", "accessibility", "originality",
+];
 export const PAPER_GENERATION_BENCHMARK_REPETITIONS = 3;
 export const PAPER_GENERATION_BENCHMARK_CASE_KINDS: PaperGenerationBenchmarkCaseKind[] = [
   "official_format",

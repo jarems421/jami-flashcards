@@ -1,3 +1,5 @@
+import { questionConventionsForCourse } from "@/lib/practice/question-conventions";
+
 export type ExamBoardId =
   | "aqa"
   | "pearson_edexcel"
@@ -677,7 +679,9 @@ export function selectExamFormatVersion(
  * loudly and before any mark-scheme work is paid for.
  */
 export const sectionKey = (value: string) =>
-  value.trim().toLowerCase().replace(/^section\s+/, "").replace(/[.:)\]]+$/, "").trim();
+  // "section-a" too: two pilot papers built exactly to the profile were refunded
+  // because their "A" and "B" did not match the profile's ids "section-a" and "section-b".
+  value.trim().toLowerCase().replace(/^section[\s_-]+/, "").replace(/[.:)\]]+$/, "").trim();
 
 export type ExpectedSection = { id: string; title?: string; marks: number };
 
@@ -696,19 +700,38 @@ export type ExpectedSection = { id: string; title?: string; marks: number };
  * called its sections costs exactly as much as accepting a wrong one.
  */
 export function sectionMarkIssues(
-  questions: readonly { section?: string; marks: number }[],
-  sections: readonly ExpectedSection[]
+  questions: readonly { id?: string; section?: string; marks: number }[],
+  sections: readonly ExpectedSection[],
+  /**
+   * A section that offers a choice is worth what a student answers, not the
+   * sum of every option: two 40-mark options of which one is answered is a
+   * 40-mark section, counted the way the paper's own total counts it.
+   */
+  choiceGroups: readonly { questionIds: readonly string[]; requiredCount: number }[] = []
 ) {
   const byName = new Map<string, string>();
   for (const section of sections) {
     byName.set(sectionKey(section.id), section.id);
     if (section.title) byName.set(sectionKey(section.title), section.id);
   }
+  const keyOf = (section: string) => byName.get(sectionKey(section)) ?? section;
+  const grouped = new Set(choiceGroups.flatMap((group) => group.questionIds));
   const built = new Map<string, number>();
+  const add = (key: string, marks: number) => built.set(key, (built.get(key) ?? 0) + marks);
   for (const question of questions) {
-    if (!question.section) continue;
-    const key = byName.get(sectionKey(question.section)) ?? question.section;
-    built.set(key, (built.get(key) ?? 0) + question.marks);
+    if (!question.section || (question.id && grouped.has(question.id))) continue;
+    add(keyOf(question.section), question.marks);
+  }
+  for (const group of choiceGroups) {
+    const options = new Map<string, number[]>();
+    for (const question of questions) {
+      if (!question.section || !question.id || !group.questionIds.includes(question.id)) continue;
+      const key = keyOf(question.section);
+      options.set(key, [...(options.get(key) ?? []), question.marks]);
+    }
+    for (const [key, marks] of options) {
+      add(key, marks.sort((left, right) => right - left).slice(0, group.requiredCount).reduce((sum, mark) => sum + mark, 0));
+    }
   }
   const wrong = sections
     .filter((section) => (built.get(section.id) ?? 0) !== section.marks)
@@ -718,6 +741,23 @@ export function sectionMarkIssues(
       actual: built.get(section.id) ?? 0,
     }));
   return { wrong, built };
+}
+
+/**
+ * The kinds of question this board sets for this course, so a generated paper
+ * asks them in the form a candidate will meet: a 9-marker that invites a
+ * judgement, a "describe two features" worth 2 + 2. See `question-conventions.ts`.
+ */
+function courseQuestionTypes(profile: ExamFormatProfileVersion) {
+  const kinds = questionConventionsForCourse({
+    board: profile.boardLabel,
+    course: `${profile.qualificationLabel} ${profile.subject}`,
+    level: profile.qualificationLabel,
+  });
+  if (!kinds.length) return "";
+  return `Question types this board sets for this course -- write questions in these forms where the tariff pattern calls for them:\n${kinds
+    .map((kind) => `- ${kind.title}: ${kind.answerShape}`)
+    .join("\n")}`;
 }
 
 export function practicePaperFormatContext(profile: ExamFormatProfileVersion) {
@@ -740,6 +780,7 @@ export function practicePaperFormatContext(profile: ExamFormatProfileVersion) {
     profile.choiceRules.length ? `Choice rules: ${profile.choiceRules.join("; ")}.` : "",
     profile.requiredMaterials.length ? `Required candidate materials: ${profile.requiredMaterials.map((material) => material.title).join("; ")}.` : "",
     profile.assessmentObjectives.length ? `Assessment objectives: ${profile.assessmentObjectives.join("; ")}.` : "",
+    courseQuestionTypes(profile),
     "This profile controls structure. Student-selected sources control taught content. Do not change the duration, total marks, sections, or choice rules.",
   ].filter(Boolean).join("\n");
 }

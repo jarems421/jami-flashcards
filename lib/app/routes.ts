@@ -81,6 +81,54 @@ export function getTopicHref(topicId: string) {
   return `/dashboard/topics/${encodeURIComponent(topicId)}`;
 }
 
+/**
+ * Where a Revision Session sends the student when it is over: back to the page
+ * they started it from, when that is one of this app's own pages other than a
+ * session, and to Today otherwise. Anything else in a link is ignored rather
+ * than followed.
+ */
+export function readRevisionReturnHref(value: unknown) {
+  return typeof value === "string" &&
+    value.startsWith("/dashboard") &&
+    !value.startsWith("//") &&
+    !value.startsWith("/dashboard/revision")
+    ? value
+    : undefined;
+}
+
+/** A Revision Session that exists. */
+export function getRevisionSessionHref(sessionId: string, returnHref?: string) {
+  const base = `/dashboard/revision/${encodeURIComponent(sessionId)}`;
+  const back = readRevisionReturnHref(returnHref);
+  return back ? `${base}?return=${encodeURIComponent(back)}` : base;
+}
+
+/**
+ * Where a teach recommendation opens. The session itself is made there, on the
+ * server, from the recommendation's id -- never from anything else in the link.
+ */
+export function getRevisionSessionStartHref(actionId?: string) {
+  return actionId
+    ? `/dashboard/revision/new?action=${encodeURIComponent(actionId)}`
+    : "/dashboard/revision/new";
+}
+
+/**
+ * Choosing what to revise: a folder's concepts, or -- with a concept -- straight
+ * into a session on it. Every entry point outside Today lands here.
+ */
+export function getRevisionStartHref(
+  input: { folderId?: string; topicKey?: string; returnHref?: string } = {}
+) {
+  const searchParams = new URLSearchParams();
+  if (input.folderId) searchParams.set("folder", input.folderId);
+  if (input.folderId && input.topicKey) searchParams.set("topic", input.topicKey);
+  const back = readRevisionReturnHref(input.returnHref);
+  if (back) searchParams.set("return", back);
+  const query = searchParams.toString();
+  return query ? `/dashboard/revision/start?${query}` : "/dashboard/revision/start";
+}
+
 /** Past Paper Practice setup for a folder, optionally narrowed to specification topics. */
 export function getQuestionPracticeSetupHref(input: {
   folderId: string;

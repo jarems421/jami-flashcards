@@ -54,7 +54,9 @@ export function useInterventionMaterial(input: {
   const [folderId, setFolderId] = useState("");
 
   const start = useCallback(
-    async (action: TodayStudyAction) => {
+    // Anything with an id, a folder and something to write: Today's actions,
+    // and a finished Revision Session's next steps.
+    async (action: Pick<TodayStudyAction, "id" | "scope" | "generate">) => {
       if (!action.generate || !action.scope.folderId) return;
       setFolderId(action.scope.folderId);
       setState((current) => ({ ...current, generatingId: action.id, error: null, confirmed: null }));
@@ -83,9 +85,10 @@ export function useInterventionMaterial(input: {
     setState((current) => ({ ...current, draft: null, saving: false }));
   }, []);
 
+  /** Keeps the draft. Resolves with what was kept, or null if it could not be. */
   const confirm = useCallback(
-    async (draft: InterventionDraft) => {
-      if (!folderId) return;
+    async (draft: InterventionDraft): Promise<ConfirmedMaterial | null> => {
+      if (!folderId) return null;
       setState((current) => ({ ...current, saving: true, error: null }));
       try {
         const written = await confirmInterventionDraft({
@@ -118,6 +121,7 @@ export function useInterventionMaterial(input: {
           error: null,
           confirmed: { ...written, conceptLabel: draft.conceptLabel },
         });
+        return written;
       } catch (error) {
         // The review screen stays open, holding the material the student asked
         // for: better than a page that moves on as though something was saved.
@@ -127,6 +131,7 @@ export function useInterventionMaterial(input: {
           error:
             error instanceof Error ? error.message : "Could not save this material.",
         }));
+        return null;
       }
     },
     [decks, folderId, folderName, uid]
