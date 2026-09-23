@@ -2,10 +2,16 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { getAiTokenCap } from "@/lib/ai/budgets";
-import { repairModelJsonBackslashes, unwrapModelJsonObject } from "@/lib/ai/model-json";
+import {
+  closeUnbalancedJson,
+  repairModelJsonBackslashes,
+  unwrapModelJsonObject,
+} from "@/lib/ai/model-json";
 import { generateAiText } from "@/lib/ai/provider-router";
 import { LEARNING_ERROR_CATEGORIES } from "@/lib/learning/types";
 import {
+  explainRevisionLessonRejection,
+  explainRevisionRetryRejection,
   readRevisionLesson,
   readRevisionMarking,
   readRevisionRetry,
@@ -33,7 +39,14 @@ import { createLogger } from "@/lib/observability/logger";
 
 const log = createLogger({ service: "ai.revision-session" });
 
-const LESSON_TIMEOUT_MS = 45_000;
+/**
+ * Two full attempts. A lesson takes this worker twenty-five to forty seconds to
+ * write (measured September 2026), so at forty-five seconds the second attempt
+ * never had room to finish and a refused first draft was the end of it.
+ */
+const LESSON_TIMEOUT_MS = 80_000;
+/** A lesson started with less time than this left cannot be finished. */
+const LESSON_ATTEMPT_MIN_MS = 25_000;
 const MARKING_TIMEOUT_MS = 15_000;
 const RETRY_TIMEOUT_MS = 30_000;
 /** A student's answer is short. Past this it is not an answer to one small question. */
@@ -66,7 +79,7 @@ function parseObject(text: string): Record<string, unknown> | null {
   if (!trimmed) return null;
   for (const candidate of [unwrapModelJsonObject(trimmed), trimmed]) {
     try {
-      const parsed: unknown = JSON.parse(repairModelJsonBackslashes(candidate));
+      const parsed: unknown = JSON.parse(closeUnbalancedJson(repairModelJsonBackslashes(candidate)));
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         return parsed as Record<string, unknown>;
       }
@@ -77,7 +90,7 @@ function parseObject(text: string): Record<string, unknown> | null {
   return null;
 }
 
-const TASK_SHAPE = `{"prompt":"…","hint":"…","answer":"…","markScheme":["…"],"solution":"…"}`;
+const TASK_SHAPE = `{"prompt":"…","hint":"…","answer":"…","markScheme":["…"],"solution":["…"]}`;
 
 export function buildRevisionLessonInstruction(context: RevisionConceptContext) {
   const boundary = randomUUID();
@@ -91,10 +104,9 @@ ${VOICE}
 Write the whole session at once. It will be shown one piece at a time:
 1. "goals": exactly three short lines (under 12 words each) saying what the student will be able to do by the end, in plain words.
 2. "orientation": one or two sentences on why this idea matters or where it turns up. No greeting.
-3. "explanation": the idea itself, taught briefly.
-   - "body": at most 110 words. One idea, explained clearly, the way a good tutor would say it out loud. No headings, no lists.
-   - "example": one worked example. "problem" is the example; "steps" are two to five short lines that work through it, each saying what is done and why.
-4. Four questions for the student to answer, each harder than the last and all on this same concept:
+3. "explanation": the idea itself, taught briefly. At most 110 words. One idea, explained clearly, the way a good tutor would say it out loud. No headings, no lists.
+4. "example": one worked example. "problem" is the example; "steps" are two to five short lines that work through it, each saying what is done and why.
+5. Four questions for the student to answer, each harder than the last and all on this same concept:
    - "guided": very close to the worked example — the same method with different numbers or a close variant. The student has just read the example.
    - "independent": the same kind of question again, without the example's support, a little less familiar.
    - "apply": the concept used in an unfamiliar form or context — rearranged, embedded in a slightly larger problem, or asked the other way round. Still answerable in a few lines.
@@ -104,12 +116,12 @@ Write the whole session at once. It will be shown one piece at a time:
    - "hint": one nudge towards the first step. Never the answer.
    - "answer": the answer in its shortest correct form.
    - "markScheme": one to three points a correct answer must show.
-   - "solution": the answer worked through in two to five short lines.
+   - "solution": the answer worked through, as a list of two to five short lines.
 
 Pitch everything at the student's level. Stay on this one concept: no tangents, no history, no neighbouring topics. Do not refer to the student's past work — you know nothing about it.
 
 Answer with one JSON object and nothing else — no code fence, no sentence before or after:
-{"goals":["…","…","…"],"orientation":"…","explanation":{"body":"…","example":{"problem":"…","steps":["…"]}},"guided":${TASK_SHAPE},"independent":${TASK_SHAPE},"apply":${TASK_SHAPE},"retrieve":${TASK_SHAPE}}`;
+{"goals":["…","…","…"],"orientation":"…","explanation":"…","example":{"problem":"…","steps":["…"]},"guided":${TASK_SHAPE},"independent":${TASK_SHAPE},"apply":${TASK_SHAPE},"retrieve":${TASK_SHAPE}}`;
 }
 
 /**
@@ -126,7 +138,7 @@ export async function prepareRevisionLesson(
   const deadline = startedAt + LESSON_TIMEOUT_MS;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const remaining = deadline - Date.now();
-    if (remaining < 5_000) break;
+    if (remaining < LESSON_ATTEMPT_MIN_MS) break;
     const text = await generateAiText({
       role: "worker",
       routeReason: "routine",
@@ -141,12 +153,18 @@ export async function prepareRevisionLesson(
         contents: [{ role: "user", parts: [{ text: "Write the session." }] }],
       },
     });
-    const lesson = readRevisionLesson(parseObject(text));
+    const parsed = parseObject(text);
+    const lesson = readRevisionLesson(parsed);
     if (lesson) {
       log.info("lesson.ready", { attempt, latencyMs: Date.now() - startedAt });
       return lesson;
     }
-    log.warn("lesson.unreadable", { attempt, latencyMs: Date.now() - startedAt });
+    log.warn("lesson.unreadable", {
+      attempt,
+      latencyMs: Date.now() - startedAt,
+      // Field names only, never what the model wrote.
+      problems: parsed ? explainRevisionLessonRejection(parsed).slice(0, 8) : ["not JSON"],
+    });
   }
   throw new Error("The lesson could not be prepared.");
 }
@@ -264,7 +282,7 @@ ${VOICE}
 
 Explain the same idea a different way — a different angle, a simpler first step, or a different kind of example. Do not repeat the first explanation and do not move on to any other topic. Then set one new question of the same difficulty as the one they found hard.
 - "explanation": at most 90 words. It may include one short worked line.
-- "task": ${TASK_SHAPE}, with the same rules: a self-contained typed-answer question, a hint that nudges without giving the answer, the shortest correct answer, one to three mark-scheme points, and a two-to-five line worked solution.
+- "task": ${TASK_SHAPE}, with the same rules: a self-contained typed-answer question, a hint that nudges without giving the answer, the shortest correct answer, one to three mark-scheme points, and a worked solution as a list of two to five short lines.
 
 Answer with one JSON object and nothing else:
 {"explanation":"…","task":${TASK_SHAPE}}`;
@@ -291,8 +309,14 @@ export async function writeRevisionRetry(input: {
         contents: [{ role: "user", parts: [{ text: "Explain it another way." }] }],
       },
     });
-    const retry = readRevisionRetry(parseObject(text));
-    log.info("retry.done", { latencyMs: Date.now() - startedAt, readable: Boolean(retry) });
+    const parsed = parseObject(text);
+    const retry = readRevisionRetry(parsed);
+    log.info("retry.done", {
+      latencyMs: Date.now() - startedAt,
+      readable: Boolean(retry),
+      // Field names only, never what the model wrote.
+      ...(retry ? {} : { problems: parsed ? explainRevisionRetryRejection(parsed) : ["not JSON"] }),
+    });
     return retry;
   } catch (error) {
     log.warn("retry.failed", { latencyMs: Date.now() - startedAt, error });

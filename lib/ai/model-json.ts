@@ -129,3 +129,42 @@ export function unwrapModelJsonObject(text: string) {
   const end = trimmed.lastIndexOf("}");
   return start >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed;
 }
+
+/**
+ * Rewrites the closing brackets at the end of a model reply to match what is open.
+ *
+ * Asked for a long nested object, a model gets the last few closers wrong more
+ * often than anything else in it: one short -- `]}` where `]}}` belonged -- or
+ * the right number of the wrong kind -- `}}}` where `]}}` belonged. A reply
+ * that is otherwise complete then fails to parse over a character or two.
+ * After the last value, a run of closers can mean only one thing: close
+ * whatever is open. So that run is replaced with exactly that.
+ *
+ * Nothing before the run is touched. A reply that ends inside a string was cut
+ * off, not miscounted, and one whose closers do not match before the run has
+ * gone wrong in the middle; both are returned unchanged. A brace dropped in the
+ * middle and made up for at the end parses into the wrong shape, which the
+ * caller's own validation refuses -- the same outcome as not repairing it.
+ */
+export function closeUnbalancedJson(raw: string): string {
+  const trailing = /[\s\]}]*$/.exec(raw)?.[0] ?? "";
+  const body = raw.slice(0, raw.length - trailing.length);
+  const open: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (const char of body) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{") open.push("}");
+    else if (char === "[") open.push("]");
+    else if ((char === "}" || char === "]") && open.pop() !== char) return raw;
+  }
+  if (inString || open.length === 0) return raw;
+  const closed = body + open.reverse().join("");
+  return closed === raw.trimEnd() ? raw : closed;
+}

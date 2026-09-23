@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
+import { closeUnbalancedJson, repairModelJsonBackslashes } from "@/lib/ai/model-json";
 import { extractStreamingAnswer } from "@/lib/ai/streaming-answer";
 import { parseJamiAssistantModelAnswer } from "@/lib/ai/jami-assistant";
 
@@ -75,6 +75,31 @@ describe("repairModelJsonBackslashes", () => {
   it("leaves text with no backslashes untouched", () => {
     const raw = '{"a":"plain answer"}';
     expect(repairModelJsonBackslashes(raw)).toBe(raw);
+  });
+});
+
+describe("closeUnbalancedJson", () => {
+  it("closes what a reply left open at its end", () => {
+    expect(JSON.parse(closeUnbalancedJson('{"a":{"b":["x"]}'))).toEqual({ a: { b: ["x"] } });
+  });
+
+  it("puts right the last closers when they are the wrong kind or order", () => {
+    // Both seen from the lesson writer: a list closed as an object, and the pair swapped.
+    expect(JSON.parse(closeUnbalancedJson('{"a":{"b":["x"}}}'))).toEqual({ a: { b: ["x"] } });
+    expect(JSON.parse(closeUnbalancedJson('{"a":{"b":["x"}]}'))).toEqual({ a: { b: ["x"] } });
+  });
+
+  it("ignores brackets inside strings, and escaped quotes", () => {
+    const raw = String.raw`{"a":"a } and a \" and a {","b":[1`;
+    expect(JSON.parse(closeUnbalancedJson(raw))).toEqual({ a: 'a } and a " and a {', b: [1] });
+    const latex = String.raw`{"a":"$\\frac{1}{2}$"}`;
+    expect(closeUnbalancedJson(latex)).toBe(latex);
+  });
+
+  it("leaves complete JSON, a reply cut off inside a string, and a mistake in the middle alone", () => {
+    expect(closeUnbalancedJson('{"a":1}\n')).toBe('{"a":1}\n');
+    expect(closeUnbalancedJson('{"a":"half]}')).toBe('{"a":"half]}');
+    expect(closeUnbalancedJson('{"a":[1},"b":2}')).toBe('{"a":[1},"b":2}');
   });
 });
 

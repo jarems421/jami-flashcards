@@ -15,7 +15,7 @@ import { withTimeout } from "@/services/firebase/firestore";
 /** Starting re-derives the student's recommendations, which reads their folders. */
 const START_MS = 30_000;
 /** The lesson is the longest thing the model writes for a student. */
-const PREPARE_MS = 70_000;
+const PREPARE_MS = 95_000;
 /** A second explanation or a mark, with room for the provider's own retry. */
 const STEP_MS = 50_000;
 const READ_MS = 15_000;

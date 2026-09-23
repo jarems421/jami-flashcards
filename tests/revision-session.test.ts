@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { revisionObservations } from "@/lib/learning/profile/revision-signals";
-import { matchesExpectedAnswer, readRevisionLesson, readRevisionMarking } from "@/lib/revision/lesson";
+import { closeUnbalancedJson } from "@/lib/ai/model-json";
+import {
+  explainRevisionLessonRejection,
+  matchesExpectedAnswer,
+  readRevisionLesson,
+  readRevisionMarking,
+} from "@/lib/revision/lesson";
 import { decodeRevisionSession, serializeRevisionSession } from "@/lib/revision/record";
 import {
   advanceRevisionSession,
@@ -122,6 +128,36 @@ describe("what the model writes, read without trusting it", () => {
     void apply;
     expect(readRevisionLesson(missing)).toBeNull();
     expect(readRevisionLesson({ ...lesson, explanation: { ...lesson.explanation, body: "x".repeat(5_000) } })).toBeNull();
+  });
+
+  it("reads the shape the model is asked for: the example beside the explanation, solutions as lines", () => {
+    const asTheModelWritesIt = {
+      ...lesson,
+      explanation: lesson.explanation.body,
+      example: lesson.explanation.example,
+      guided: { ...lesson.guided, solution: ["Half of 8 is 4.", "So $(x+4)^2 - 13$."] },
+    };
+    expect(readRevisionLesson(asTheModelWritesIt)).toEqual({
+      ...lesson,
+      guided: { ...lesson.guided, solution: "Half of 8 is 4.\nSo $(x+4)^2 - 13$." },
+    });
+  });
+
+  it("recovers a lesson the model left one brace short of JSON", () => {
+    const written = JSON.stringify({ ...lesson, explanation: lesson.explanation.body, example: lesson.explanation.example });
+    expect(() => JSON.parse(written.slice(0, -1))).toThrow();
+    expect(readRevisionLesson(JSON.parse(closeUnbalancedJson(written.slice(0, -1))))).toEqual(lesson);
+  });
+
+  it("names the fields a refused lesson failed on, and nothing the model wrote", () => {
+    const problems = explainRevisionLessonRejection({
+      ...lesson,
+      goals: ["Only one"],
+      retrieve: { ...lesson.retrieve, hint: "" },
+      apply: undefined,
+    });
+    expect(problems).toEqual(["goals has 1 usable of 1", "apply missing", "retrieve.hint empty"]);
+    expect(explainRevisionLessonRejection(lesson)).toEqual([]);
   });
 
   it("holds a mark inside its verdict's band and drops invented error categories", () => {
