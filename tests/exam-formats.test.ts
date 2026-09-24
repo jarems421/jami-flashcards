@@ -312,6 +312,23 @@ describe("the sections as the designer reads them", () => {
     expect(practicePaperFormatContext(withTariffs)).toContain("A 3+1+4+16");
   });
 
+  it("shows the designer the researched kinds this component's tariffs use, not every paper's", () => {
+    const researched = [4, 8, 16].map((mark) => ({
+      id: `k${mark}`, name: `Kind worth ${mark}`, tariffs: [mark], commandWords: [], cues: [], marking: "levels" as const,
+      answerShape: "An answer.", examinerRules: ["A rule."], pitfalls: [], sources: [],
+    }));
+    const withTariffs = {
+      ...(profile as Record<string, unknown>),
+      tariffProgression: ["Observed June 2022 tariffs: A 8+8+16."],
+    } as never;
+    const context = practicePaperFormatContext(withTariffs, researched);
+    expect(context).toContain("Kind worth 8");
+    expect(context).toContain("Kind worth 16");
+    expect(context).not.toContain("Kind worth 4");
+    // With no pattern to go on, every kind is shown.
+    expect(practicePaperFormatContext(profile as never, researched)).toContain("Kind worth 4");
+  });
+
   it("names the command words the component uses", () => {
     const withWords = {
       ...(profile as Record<string, unknown>),

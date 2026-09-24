@@ -7,10 +7,23 @@ import {
   type PlanActivityCard,
   type PlanActivityDeck,
 } from "@/lib/planning/plan-activity";
-import { buildPlanWeek, PLAN_WEEK_LENGTH, type PlanWeek } from "@/lib/planning/plan-week";
+import { buildPlanWeek, PLAN_WEEK_LENGTH, resolvePlanWeekDays, type PlanWeek } from "@/lib/planning/plan-week";
 import { planWeekStartDayKey } from "@/lib/planning/plan-schedule";
-import { resolvePlanDay } from "@/lib/planning/resolve-plan-day";
-import { planScopeKey, type PlanSlot, type RevisionPlan, type RevisionPlanEntry } from "@/lib/planning/types";
+import {
+  nextPlanSuggestion,
+  ownPlanTask,
+  pinnedFromAction,
+  type PlanSuggestionResult,
+} from "@/lib/planning/plan-tasks";
+import { planSlotTickKey, resolvePlanDay } from "@/lib/planning/resolve-plan-day";
+import {
+  planScopeKey,
+  type PlanDay,
+  type PlanDaySession,
+  type PlanSlot,
+  type RevisionPlan,
+  type RevisionPlanEntry,
+} from "@/lib/planning/types";
 import {
   loadActiveRevisionPlan,
   loadRevisionPlanEntries,
@@ -38,7 +51,12 @@ export type RevisionPlanTodayState = {
   week: PlanWeek | null;
   scopeNames: Map<string, string>;
   loading: boolean;
-  toggleSlot: (slot: PlanSlot) => void;
+  /** Every day of the week, today resolved against the engine and the rest by their shape. */
+  days: PlanDay[];
+  toggleSlot: (slot: PlanSlot, dayKey?: string) => void;
+  addOwnTask: (dayKey: string, sessionId: string, label: string) => boolean;
+  addJamiTask: (session: PlanDaySession) => PlanSuggestionResult;
+  removeTask: (dayKey: string, actionId: string) => void;
   refresh: () => Promise<void>;
 };
 
@@ -163,35 +181,116 @@ export function useRevisionPlanToday(input: {
     return names;
   }, [input.decks, input.folders]);
 
-  const toggleSlot = useCallback(
-    (slot: PlanSlot) => {
-      if (!plan || savingRef.current) return;
-      // Only a manual tick is the student's to change; one Jami recorded is
-      // reporting work that happened and untick would not undo it.
-      if (slot.completedBy === "activity" || slot.state === "skipped") return;
-
-      const current = entry?.completedSlotIds ?? [];
-      const next = current.includes(slot.id)
-        ? current.filter((id) => id !== slot.id)
-        : [...current, slot.id];
-      const updated: RevisionPlanEntry = { ...(entry ?? { dayKey }), dayKey, completedSlotIds: next };
+  /*
+   * One day's entry, changed and saved.
+   *
+   * Optimistic, and put back on failure: a tick or a task that silently did
+   * not save would have the student planning around something the plan does
+   * not know about. Says whether it wrote: while one save is in flight the
+   * next is refused, and a task the student typed must not look added when
+   * it was not.
+   */
+  const writeEntry = useCallback(
+    (targetDayKey: string, change: (entry: RevisionPlanEntry) => RevisionPlanEntry): boolean => {
+      if (!plan || savingRef.current) return false;
+      const stored = entries.find((candidate) => candidate.dayKey === targetDayKey);
+      const updated = { ...change(stored ?? { dayKey: targetDayKey }), dayKey: targetDayKey };
       const previous = entries;
       setEntries((current) => [
-        ...current.filter((stored) => stored.dayKey !== dayKey),
+        ...current.filter((candidate) => candidate.dayKey !== targetDayKey),
         updated,
       ]);
       savingRef.current = true;
       void saveRevisionPlanEntry(uid, plan.id, updated)
         .catch(() => {
-          // Put it back rather than leaving a tick that did not save.
           setEntries(previous);
         })
         .finally(() => {
           savingRef.current = false;
         });
+      return true;
     },
-    [dayKey, entries, entry, plan, uid]
+    [entries, plan, uid]
   );
 
-  return { plan, day, week, scopeNames, loading, toggleSlot, refresh: load };
+  const toggleSlot = useCallback(
+    (slot: PlanSlot, slotDayKey: string = dayKey) => {
+      // Only a manual tick is the student's to change; one Jami recorded is
+      // reporting work that happened and untick would not undo it.
+      if (slot.completedBy === "activity" || slot.state === "skipped") return;
+      const key = planSlotTickKey(slot);
+      writeEntry(slotDayKey, (entry) => {
+        const current = entry.completedSlotIds ?? [];
+        return {
+          ...entry,
+          completedSlotIds: current.includes(key)
+            ? current.filter((id) => id !== key)
+            : [...current, key],
+        };
+      });
+    },
+    [dayKey, writeEntry]
+  );
+
+  /** A task the student wrote, added to the end of one sitting. */
+  const addOwnTask = useCallback(
+    (taskDayKey: string, sessionId: string, label: string) => {
+      const item = ownPlanTask(label, sessionId);
+      if (!item) return false;
+      return writeEntry(taskDayKey, (entry) => ({ ...entry, pinned: [...(entry.pinned ?? []), item] }));
+    },
+    [writeEntry]
+  );
+
+  /**
+   * Another of Jami's suggestions for a sitting, kept there.
+   *
+   * Only today has suggestions to give: the engine answers for the evidence
+   * as it is now, and a suggestion made for Saturday would be stale by then.
+   */
+  const addJamiTask = useCallback(
+    (session: PlanDaySession): PlanSuggestionResult => {
+      const action = day ? nextPlanSuggestion(day, session.scopeKey, actionsByScope) : null;
+      if (!action) return "nothing";
+      const item = pinnedFromAction(action, session.id);
+      return writeEntry(dayKey, (entry) => ({ ...entry, pinned: [...(entry.pinned ?? []), item] }))
+        ? "added"
+        : "busy";
+    },
+    [actionsByScope, day, dayKey, writeEntry]
+  );
+
+  /** Something the student put in a day, taken back out, with its tick. */
+  const removeTask = useCallback(
+    (taskDayKey: string, actionId: string) => {
+      writeEntry(taskDayKey, (entry) => ({
+        ...entry,
+        pinned: (entry.pinned ?? []).filter((item) => item.actionId !== actionId),
+        completedSlotIds: (entry.completedSlotIds ?? []).filter((id) => id !== `pin:${actionId}`),
+      }));
+    },
+    [writeEntry]
+  );
+
+  const days = useMemo(
+    () =>
+      plan && week
+        ? resolvePlanWeekDays({ plan, week, entries, actionsByScope, activityByScope })
+        : [],
+    [actionsByScope, activityByScope, entries, plan, week]
+  );
+
+  return {
+    plan,
+    day,
+    week,
+    days,
+    scopeNames,
+    loading,
+    toggleSlot,
+    addOwnTask,
+    addJamiTask,
+    removeTask,
+    refresh: load,
+  };
 }

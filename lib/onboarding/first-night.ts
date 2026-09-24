@@ -158,18 +158,18 @@ export const SECOND_NIGHT_STARS: readonly SecondNightStar[] = [
   {
     id: "source",
     title: "Give Jami something to read",
-    navLabel: "Tutor",
+    navLabel: "Jami",
     href: "/dashboard/library",
     minutes: 1,
     promise: "Add notes, a PDF or a link. Jami can then answer from your own material.",
-    unlocked: "Jami can read it now. Ask about it from Tutor or any notebook in that folder.",
+    unlocked: "Jami can read it now. Ask about it from Jami or any notebook in that folder.",
     x: 18,
     y: 58,
   },
   {
     id: "plan",
     title: "Plan your week with Jami",
-    navLabel: "Tutor",
+    navLabel: "Jami",
     href: "/dashboard/tutor/plan",
     minutes: 2,
     promise: "Say when you can study, and Jami fills each day with what matters most.",
@@ -609,7 +609,7 @@ export function planFirstNightGuide({ state, pathname, isPhone, pointing, presen
         : note("notebook-type", null, "This is your notebook. Tap the page and type anything, like today's topic. It saves by itself, and your star lights when it does.");
     }
     if (next === "tutor" && present(T.askTutor)) {
-      return note("tutor-ask", T.askTutor, "Now ask Jami about it. Tap Jami Tutor and ask a question about this page, like \"test me on this\".");
+      return note("tutor-ask", T.askTutor, "Now ask Jami about it. Tap Ask Jami and ask a question about this page, like \"test me on this\".");
     }
     return null;
   }
@@ -621,7 +621,7 @@ export function planFirstNightGuide({ state, pathname, isPhone, pointing, presen
       return note(
         `${next}-open-notebook`,
         T.firstNotebook,
-        next === "tutor" ? "Open your notebook. Jami Tutor is at the top of it." : "Open your notebook to start writing."
+        next === "tutor" ? "Open your notebook. Ask Jami is at the top of it." : "Open your notebook to start writing."
       );
     }
     if (present(T.createNotebook)) {
@@ -707,7 +707,7 @@ export function planFirstNightGuide({ state, pathname, isPhone, pointing, presen
   }
 
   if (pathname.startsWith("/dashboard/tutor") && needs("tutor")) {
-    return note("tutor-page", null, "Tutor reads only what you hand it. The quickest way to try it is from your notebook: open it and tap Jami Tutor at the top.");
+    return note("tutor-page", null, "Jami reads only what you hand it. The quickest way to try it is from your notebook: open it and tap Ask Jami at the top.");
   }
 
   return null;

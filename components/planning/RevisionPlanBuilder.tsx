@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Button, DateField, Input, OptionSwitch, Select } from "@/components/ui";
+import PlanExamsEditor from "@/components/planning/PlanExamsEditor";
 import PlanWeightDots from "@/components/planning/PlanWeightDots";
 import {
   normalizeRevisionPlanDraft,
@@ -16,6 +17,7 @@ import {
   planScopeKey,
   type PlanWeekday,
   type RevisionPlanDraft,
+  type RevisionPlanExam,
   type RevisionPlanScope,
   type RevisionPlanSession,
 } from "@/lib/planning/types";
@@ -228,6 +230,7 @@ export default function RevisionPlanBuilder({
   const [sessions, setSessions] = useState<RevisionPlanSession[]>(start.sessions);
   const [startDayKey, setStartDayKey] = useState(start.startDayKey);
   const [endDayKey, setEndDayKey] = useState(start.endDayKey);
+  const [exams, setExams] = useState<RevisionPlanExam[]>(start.exams ?? []);
   const [mode, setMode] = useState<BuilderMode>(
     needsTimetableMode(start.sessions) ? "timetable" : "simple"
   );
@@ -261,8 +264,10 @@ export default function RevisionPlanBuilder({
       scopes,
       sessions,
       emphasis: start.emphasis,
+      // A row still being typed is not an exam yet; the plan keeps only ones with a name.
+      ...(exams.some((exam) => exam.label.trim()) ? { exams: exams.filter((exam) => exam.label.trim()) } : {}),
     }),
-    [endDayKey, initial?.origin, scopes, sessions, start.emphasis, startDayKey, title]
+    [endDayKey, exams, initial?.origin, scopes, sessions, start.emphasis, startDayKey, title]
   );
 
   const { problems } = normalizeRevisionPlanDraft(draft);
@@ -581,6 +586,16 @@ export default function RevisionPlanBuilder({
             />
           </div>
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <SectionLabel title="Exams to count down to" />
+        <PlanExamsEditor
+          exams={exams}
+          subjects={scopeOptions}
+          defaultDayKey={endDayKey}
+          onChange={setExams}
+        />
       </section>
 
       {problems.length > 0 ? (

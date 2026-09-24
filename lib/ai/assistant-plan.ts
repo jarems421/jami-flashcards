@@ -8,6 +8,7 @@ import {
   type PlanWeekday,
   type RevisionPlanDraft,
   type RevisionPlanEmphasis,
+  type RevisionPlanExam,
 } from "@/lib/planning/types";
 import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 
@@ -189,6 +190,25 @@ export function parseAssistantPlanSpec(
     }
   }
 
+  // Only the exams the student named: a countdown to a date Jami guessed would be worse than none.
+  const exams: RevisionPlanExam[] = [];
+  for (const raw of Array.isArray(spec.exams) ? spec.exams : []) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const entry = raw as Record<string, unknown>;
+    const dayKey = readDayKey(entry.date);
+    const label = typeof entry.label === "string" ? entry.label : typeof entry.name === "string" ? entry.name : "";
+    if (!dayKey || !label.trim()) continue;
+    const subject = typeof entry.ref === "string" ? byRef.get(entry.ref.trim().toUpperCase()) : undefined;
+    exams.push({
+      id: `e${exams.length}`,
+      label,
+      dayKey,
+      ...(subject
+        ? { scopeKey: planScopeKey(subject.folderId ? { folderId: subject.folderId } : { deckId: subject.deckId as string }) }
+        : {}),
+    });
+  }
+
   const today = getStudyDayKey(now);
   const startDayKey = readDayKey(spec.start) ?? today;
   const endDayKey = readDayKey(spec.end) ?? shiftStudyDayKey(startDayKey, 27);
@@ -203,6 +223,7 @@ export function parseAssistantPlanSpec(
       scopes,
       sessions: readSessions(spec, byRef),
       emphasis,
+      exams,
     },
     now
   );
@@ -225,7 +246,7 @@ export function parseAssistantPlanSpec(
  * rewriting it away.
  */
 export function describeAssistantPlanDraft(
-  draft: Pick<RevisionPlanDraft, "title" | "scopes" | "sessions" | "startDayKey" | "endDayKey">,
+  draft: Pick<RevisionPlanDraft, "title" | "scopes" | "sessions" | "startDayKey" | "endDayKey" | "exams">,
   subjects: readonly PlanSubjectOption[]
 ): string | null {
   if (draft.scopes.length === 0 && draft.sessions.length === 0) return null;
@@ -263,6 +284,16 @@ export function describeAssistantPlanDraft(
   }
 
   lines.push(`- Runs ${draft.startDayKey} to ${draft.endDayKey}`);
+  if (draft.exams && draft.exams.length > 0) {
+    lines.push(
+      `- Exams: ${draft.exams
+        .map((exam) => {
+          const ref = exam.scopeKey ? refByScopeKey.get(exam.scopeKey) : undefined;
+          return `${JSON.stringify(exam.label)} ${exam.dayKey}${ref ? ` (${ref})` : ""}`;
+        })
+        .join("; ")}`
+    );
+  }
   return lines.join("\n");
 }
 

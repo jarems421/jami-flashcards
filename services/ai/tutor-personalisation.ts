@@ -1,11 +1,8 @@
 import { auth } from "@/services/firebase/client";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import type {
-  TutorCheckUnderstanding,
-  TutorExplanationDepth,
-  TutorFeedbackDirectness,
-  TutorHelpApproach,
   TutorPreferences,
+  TutorStyleChoices,
 } from "@/lib/ai/tutor-personalisation";
 import type { StudyLevel } from "@/lib/profile/study-level";
 
@@ -14,16 +11,19 @@ export type TutorFolderSummary = {
   name: string;
   subject: string | null;
   studyLevel: StudyLevel | null;
-  hasInstructions: boolean;
+  /** The folder's verified exam course, as a readable label. */
+  course: string | null;
+  noteCount: number;
   instructionsUpdatedAt: number;
 };
 
-export type TutorFolderInstructions = {
+export type TutorFolderNotes = {
   id: string;
   name: string;
   subject: string | null;
   studyLevel: StudyLevel | null;
-  instructions: string;
+  course: string | null;
+  notes: string[];
   instructionsUpdatedAt: number;
 };
 
@@ -32,12 +32,12 @@ export type TutorPersonalisation = {
   accountStudyLevel: StudyLevel | null;
   accountStudySubjects: string[];
   folders: TutorFolderSummary[];
-  folder: TutorFolderInstructions | null;
+  folder: TutorFolderNotes | null;
 };
 
 async function headers(json = false) {
   const user = auth.currentUser;
-  if (!user) throw new Error("Sign in again to change Tutor settings.");
+  if (!user) throw new Error("Sign in again to change Jami settings.");
   return {
     Authorization: `Bearer ${await user.getIdToken()}`,
     ...(json ? { "Content-Type": "application/json" } : {}),
@@ -73,20 +73,15 @@ export async function loadTutorPersonalisation(input: {
   });
   if (!response.ok) {
     throw new Error(
-      await failureMessage(response, "Jami could not load your Tutor settings.")
+      await failureMessage(response, "Jami could not load your Jami settings.")
     );
   }
   return (await response.json()) as TutorPersonalisation;
 }
 
-export async function saveTutorPreferences(input: {
-  helpApproach?: TutorHelpApproach;
-  explanationDepth?: TutorExplanationDepth;
-  feedbackDirectness?: TutorFeedbackDirectness;
-  checkUnderstanding?: TutorCheckUnderstanding;
-  customGuidance?: string;
-  folderGuideCompleted?: boolean;
-}) {
+export async function saveTutorPreferences(
+  input: Partial<TutorStyleChoices> & { notes?: readonly string[] }
+) {
   const response = await fetch("/api/ai/assistant/personalisation", {
     method: "PATCH",
     headers: await headers(true),
@@ -139,22 +134,22 @@ export async function saveTutorStudyProfile(input: {
   };
 }
 
-export async function saveFolderTutorInstructions(input: {
+export async function saveFolderTutorNotes(input: {
   folderId: string;
-  instructions: string;
+  notes: readonly string[];
 }) {
   const response = await fetch("/api/ai/assistant/personalisation", {
     method: "PATCH",
     headers: await headers(true),
-    body: JSON.stringify({ target: "folder-instructions", ...input }),
+    body: JSON.stringify({ target: "folder-notes", ...input }),
   });
   if (!response.ok) {
     throw new Error(
-      await failureMessage(response, "Jami could not save these instructions.")
+      await failureMessage(response, "Jami could not save these notes.")
     );
   }
   const result = (await response.json()) as {
-    folder: { id: string; instructions: string; instructionsUpdatedAt: number };
+    folder: { id: string; notes: string[]; instructionsUpdatedAt: number };
   };
   return result.folder;
 }

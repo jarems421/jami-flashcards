@@ -38,7 +38,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
         <select
           id={selectId}
           ref={ref}
-          className={`app-field w-full appearance-none rounded-2xl py-[1rem] pl-5 pr-11 text-sm outline-none transition duration-fast ${className}`}
+          className={`app-field app-field-text w-full appearance-none rounded-2xl py-[1rem] pl-5 pr-11 outline-none transition duration-fast ${className}`}
           {...props}
         >
           {children}

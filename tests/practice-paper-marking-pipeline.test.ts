@@ -684,4 +684,72 @@ describe("marking by levels", () => {
     expect(prompt).toContain("For essays");
     expect(prompt).not.toContain("For languages");
   });
+
+  /**
+   * Adjudication is the slow step in marking an essay, and replayed from the
+   * markers' logged decisions, essays whose markers were within a mark lost
+   * nothing by taking the worker's report instead.
+   */
+  const markEssayAt = async (supervisorMarks: number, workerMarks: number, variant?: { settleCloseLevelsDisputes: boolean }) => {
+    generateAiText.mockReset();
+    generateAiText.mockImplementation(async ({ role, request }: { role: string; request: { contents: unknown } }) => {
+      if (JSON.stringify(request.contents).includes("Resolve this one disputed question")) return levelReport("Question 2", 8, 5);
+      return levelReport("Question 2", 8, role === "supervisor" ? supervisorMarks : workerMarks);
+    });
+    const marked = await markSingleQuestionAdaptively({
+      paper: essay,
+      answerParts: [{ text: "--- BEGIN UNTRUSTED REFERENCE: ANSWER q1 ---\nThe writer uses a metaphor.\n--- END UNTRUSTED REFERENCE: ANSWER q1 ---" }],
+      deadlineAt: Date.now() + 60_000,
+      maxOutputTokens: 2_000,
+      forceVerification: true,
+      ...(variant ? { variant } : {}),
+    });
+    const adjudications = generateAiText.mock.calls.filter((entry) =>
+      JSON.stringify(entry[0].request.contents).includes("Resolve this one disputed question")
+    ).length;
+    return { marked, adjudications };
+  };
+
+  it("settles an essay whose markers are a mark apart without an adjudicator, on the worker's report", async () => {
+    const { marked, adjudications } = await markEssayAt(5, 4);
+    expect(adjudications).toBe(0);
+    expect(marked.result.questionResults[0]?.awardedMarks).toBe(4);
+    expect(marked.audit).toMatchObject({ primaryScore: 5, verifierScore: 4, adjudicated: false });
+  });
+
+  it("still adjudicates an essay whose markers are further apart", async () => {
+    const { marked, adjudications } = await markEssayAt(6, 4);
+    expect(adjudications).toBe(1);
+    expect(marked.audit.adjudicated).toBe(true);
+  });
+
+  it("tells the marker the board's own researched rule in place of practice written from memory", async () => {
+    generateAiText.mockReset();
+    generateAiText.mockImplementation(async () => levelReport("Question 2", 8, 5));
+    await markSingleQuestionAdaptively({
+      paper: essay,
+      answerParts: [{ text: "--- BEGIN UNTRUSTED REFERENCE: ANSWER q1 ---\nThe writer uses a metaphor.\n--- END UNTRUSTED REFERENCE: ANSWER q1 ---" }],
+      deadlineAt: Date.now() + 60_000,
+      maxOutputTokens: 2_000,
+      examinerPracticeRules: [{
+        id: "language-analysis",
+        name: "Researched language analysis (8 marks)",
+        tariffs: [8],
+        commandWords: ["language"],
+        cues: [],
+        marking: "levels",
+        answerShape: "Analyses how the writer's word choices shape the reader's response.",
+        examinerRules: ["Four levels, decided by how perceptively effects are analysed."],
+        pitfalls: [],
+        sources: [{ title: "AQA 8700 mark scheme" }],
+      }],
+    });
+    const prompt = JSON.stringify(generateAiText.mock.calls[0][0].request.contents);
+    expect(prompt).toContain("Researched language analysis (8 marks)");
+  });
+
+  it("adjudicates every essay dispute when an evaluation switches the rule off", async () => {
+    const { adjudications } = await markEssayAt(5, 4, { settleCloseLevelsDisputes: false });
+    expect(adjudications).toBe(1);
+  });
 });

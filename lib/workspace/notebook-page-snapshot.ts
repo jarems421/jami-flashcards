@@ -18,15 +18,17 @@ import {
   getNotebookPaperPalette,
   getNotebookRuleColor,
 } from "@/lib/workspace/notebook-paper-palette";
+import {
+  NOTEBOOK_TEXT_FONT_SIZE,
+  NOTEBOOK_TEXT_LINE_HEIGHT,
+  NOTEBOOK_TEXT_PADDING,
+} from "@/lib/workspace/notebook-text-metrics";
 
 export const NOTEBOOK_PAGE_SNAPSHOT_SCALE = 2;
 export const NOTEBOOK_PAGE_SNAPSHOT_FALLBACK_SCALE = 1.6;
 export const NOTEBOOK_PAGE_SNAPSHOT_MAX_ENCODED_BYTES = 2_500_000;
 
 const NOTEBOOK_PAGE_SNAPSHOT_WEBP_QUALITY = 0.92;
-const NOTEBOOK_TEXT_FONT_SIZE = 22;
-const NOTEBOOK_TEXT_LINE_HEIGHT = 32;
-const NOTEBOOK_TEXT_PADDING = 12;
 
 export type NotebookPageSnapshotBackground =
   | {
@@ -347,15 +349,25 @@ function drawTextBlocks(
 
   for (const block of textBlocks) {
     if (block.width <= 0 || block.height <= 0) continue;
-    context.save();
-    makeRoundedRectPath(
-      context,
-      block.x,
-      block.y,
-      block.width,
-      block.height,
-      7
+    const lines = wrapNotebookSnapshotText(
+      block.text,
+      block.width - NOTEBOOK_TEXT_PADDING * 2,
+      (value) => context.measureText(value).width
     );
+    /*
+     * As tall as its text, never shorter than it was drawn: on the page a box
+     * grows to show everything typed in it, so the image Tutor reads must not
+     * quietly stop at the stored height. Only the foot of the page cuts it off.
+     */
+    const height = Math.min(
+      NOTEBOOK_PAGE_COORDINATE_HEIGHT - block.y,
+      Math.max(
+        block.height,
+        lines.length * NOTEBOOK_TEXT_LINE_HEIGHT + NOTEBOOK_TEXT_PADDING * 2
+      )
+    );
+    context.save();
+    makeRoundedRectPath(context, block.x, block.y, block.width, height, 7);
     context.clip();
 
     if (block.outlineVisible) {
@@ -369,29 +381,23 @@ function drawTextBlocks(
         block.x + 0.5,
         block.y + 0.5,
         Math.max(0, block.width - 1),
-        Math.max(0, block.height - 1),
+        Math.max(0, height - 1),
         7
       );
       context.stroke();
     }
 
     context.fillStyle = getNotebookPaperPalette(pageColor).ink;
-    const lines = wrapNotebookSnapshotText(
-      block.text,
-      block.width - NOTEBOOK_TEXT_PADDING * 2,
-      (value) => context.measureText(value).width
-    );
-    const maximumLines = Math.max(
-      0,
-      Math.floor(
-        (block.height - NOTEBOOK_TEXT_PADDING * 2) / NOTEBOOK_TEXT_LINE_HEIGHT
-      )
-    );
-    lines.slice(0, maximumLines).forEach((line, index) => {
+    // Each line sits in the middle of its leading, as it does on the page.
+    const halfLeading = (NOTEBOOK_TEXT_LINE_HEIGHT - NOTEBOOK_TEXT_FONT_SIZE) / 2;
+    lines.forEach((line, index) => {
       context.fillText(
         line,
         block.x + NOTEBOOK_TEXT_PADDING,
-        block.y + NOTEBOOK_TEXT_PADDING + index * NOTEBOOK_TEXT_LINE_HEIGHT
+        block.y +
+          NOTEBOOK_TEXT_PADDING +
+          halfLeading +
+          index * NOTEBOOK_TEXT_LINE_HEIGHT
       );
     });
     context.restore();

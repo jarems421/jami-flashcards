@@ -1134,8 +1134,15 @@ export function buildPracticePaperPayload(
   input: Omit<PracticePaper, "id" | "createdAt" | "updatedAt"> & { now?: number }
 ) {
   const now = input.now ?? Date.now();
-  const paper = { ...input };
-  delete paper.now;
+  /*
+   * Fields left undefined are left out. The browser's Firestore refuses a
+   * document holding one, and an uploaded paper starts with its timer fields
+   * -- `deadlineAt`, `pausedAt` and the rest -- deliberately unset, so every
+   * upload failed here after its notebook had already been made.
+   */
+  const paper = Object.fromEntries(
+    Object.entries(input).filter(([key, value]) => key !== "now" && value !== undefined)
+  ) as Omit<typeof input, "now">;
   return {
     ...paper,
     sourceIds: normalizeStringArray(

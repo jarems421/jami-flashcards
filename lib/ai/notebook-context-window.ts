@@ -60,6 +60,31 @@ export function selectNotebookContextWindow<Page extends NotebookContextPage>(
   };
 }
 
+/**
+ * The pages Tutor is shown as pictures, beside the current one.
+ *
+ * The typed-text window above covers three pages either side, but most of a
+ * student's working is handwritten, and a handwritten page contributes nothing
+ * to it. The page before and the page after are the ones a question most often
+ * spans, so those two are drawn and shown; the rest stay text.
+ */
+export const NOTEBOOK_PICTURED_NEIGHBOUR_RADIUS = 1;
+
+export function selectNotebookPicturedNeighbours<Page extends NotebookContextPage>(
+  pages: readonly Page[],
+  currentPageId: string,
+  radius: number = NOTEBOOK_PICTURED_NEIGHBOUR_RADIUS
+): Array<{ page: Page; position: "before" | "after" }> {
+  const { nearby } = selectNotebookContextWindow(pages, currentPageId, radius);
+  const currentIndex = nearby.findIndex((page) => page.id === currentPageId);
+  if (currentIndex === -1) return [];
+  return nearby.flatMap((page, index) =>
+    index === currentIndex
+      ? []
+      : [{ page, position: index < currentIndex ? ("before" as const) : ("after" as const) }]
+  );
+}
+
 /** How much of a page's text to include, given which band it fell into. */
 export function getNotebookContextPageTextLimit(isNearby: boolean) {
   return isNearby

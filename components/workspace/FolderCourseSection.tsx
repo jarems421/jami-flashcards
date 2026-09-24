@@ -45,8 +45,8 @@ export default function FolderCourseSection({
     >
       <p className="-mt-1 mb-4 max-w-xl text-xs leading-5 text-text-muted">
         {practice
-          ? "Sets how Tutor explains things here, and which past-paper questions Practice uses."
-          : "Sets how Tutor explains things inside this folder."}
+          ? "Sets how Jami explains things here, and which past-paper questions Practice uses."
+          : "Sets how Jami explains things inside this folder."}
       </p>
       <div className="grid gap-4">
         <StudyLevelSelect

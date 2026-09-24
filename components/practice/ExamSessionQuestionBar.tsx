@@ -67,7 +67,13 @@ function partState(attempts: readonly PublicExamAttempt[]): PartState {
   };
 }
 
-const CURRENT_TONE = "bg-accent text-[var(--color-text-inverse)] shadow-accent";
+/*
+ * The glow is painted inside the chip. An outer shadow spilled past it, and
+ * the strip, which scrolls sideways and so clips vertically, cut it off in a
+ * flat line along the bottom.
+ */
+const CURRENT_TONE =
+  "bg-accent bg-[radial-gradient(closest-side,transparent_55%,rgb(255_255_255/0.32))] text-[var(--color-text-inverse)]";
 
 /**
  * The strip along the top of a practice session: where you are, how to move,

@@ -141,6 +141,22 @@ export type RevisionPlanSession = {
  * `note` is kept so the student can read back what they told Jami. It is never
  * sent to the profile and never used to score anything.
  */
+/**
+ * An exam the plan is counting down to.
+ *
+ * A plan already has an end date, but a student revising for four papers over
+ * a week of mocks is counting down to each of them, and the one that comes
+ * first is the one that shapes this week. `dayKey` is a study day, like every
+ * date in a plan; `scopeKey` ties the exam to one of the plan's subjects where
+ * the student said which.
+ */
+export type RevisionPlanExam = {
+  id: string;
+  label: string;
+  dayKey: string;
+  scopeKey?: string;
+};
+
 export type RevisionPlanEmphasis = {
   scopeKey: string;
   wants: "diagnose" | "practice";
@@ -159,6 +175,8 @@ export type RevisionPlan = {
   scopes: RevisionPlanScope[];
   sessions: RevisionPlanSession[];
   emphasis: RevisionPlanEmphasis[];
+  /** Exams the plan counts down to. Absent on plans made before there was anywhere to say. */
+  exams?: RevisionPlanExam[];
   createdAt: number;
   updatedAt: number;
 };
@@ -180,7 +198,23 @@ export type PinnedPlanItem = {
   actionId: string;
   label: string;
   href?: string;
+  /**
+   * The sitting it belongs to, when the student added it to one. Absent means
+   * the day's first free place, which is where every earlier pin went.
+   */
+  sessionId?: string;
 };
+
+/**
+ * A task the student wrote themselves -- "redo question 3 from Monday's
+ * paper" -- rather than one of Jami's suggestions they kept. It has no
+ * destination; ticking it is the student's word that it is done.
+ */
+export const OWN_TASK_PREFIX = "own:";
+
+export function isOwnPlanTask(item: Pick<PinnedPlanItem, "actionId">) {
+  return item.actionId.startsWith(OWN_TASK_PREFIX);
+}
 
 /**
  * What the student changed about one day. Days they left alone store nothing.

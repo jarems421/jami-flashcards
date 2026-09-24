@@ -3,11 +3,17 @@
 import Link from "next/link";
 import { useState } from "react";
 import TutorActiveContextSummary from "@/components/ai/TutorActiveContextSummary";
-import TutorFolderInstructionsForm from "@/components/ai/TutorFolderInstructionsForm";
-import TutorPreferencesForm from "@/components/ai/TutorPreferencesForm";
+import { TutorSaveIndicator } from "@/components/ai/TutorBrief";
+import TutorFolderNotes from "@/components/ai/TutorFolderNotes";
+import TutorNotesList from "@/components/ai/TutorNotesList";
 import TutorStudyProfileForm from "@/components/ai/TutorStudyProfileForm";
+import TutorStyleChoices from "@/components/ai/TutorStyleChoices";
 import { Button, FeedbackBanner, Skeleton } from "@/components/ui";
 import { useTutorPersonalisation } from "@/hooks/useTutorPersonalisation";
+import {
+  GENERAL_NOTE_SUGGESTIONS,
+  MAX_TUTOR_GENERAL_NOTES,
+} from "@/lib/ai/tutor-personalisation";
 
 type TutorSettingsPanelProps = {
   /**
@@ -62,24 +68,23 @@ export default function TutorSettingsPanel({
     data,
     preferences,
     activeFolder,
-    activeCount,
+    changedStyleCount,
     loading,
     loadFailed,
     loadingFolder,
-    saving,
+    savingProfile,
+    saveStatus,
     selectedFolderId,
     setSelectedFolderId,
-    instructionsDraft,
-    setInstructionsDraft,
     studyLevel,
     studySubjects,
     feedback,
     clearFeedback,
     reload,
-    savePreferences,
-    saveInstructions,
+    saveStyle,
+    saveGeneralNotes,
+    saveFolderNotes,
     saveStudyProfile,
-    skipGuide,
   } = useTutorPersonalisation(activeFolderIds);
 
   return (
@@ -107,7 +112,7 @@ export default function TutorSettingsPanel({
             activeFolder={activeFolder}
             accountStudyLevel={studyLevel}
             accountStudySubjects={studySubjects}
-            activeCount={activeCount}
+            changedStyleCount={changedStyleCount}
           />
         </div>
       )}
@@ -174,31 +179,45 @@ export default function TutorSettingsPanel({
             studySubjects={studySubjects}
             folderLevel={activeFolder?.studyLevel ?? null}
             folderName={activeFolder?.name ?? null}
-            saving={saving}
+            saving={savingProfile}
             onSave={saveStudyProfile}
           />
         ) : view === "style" ? (
-          <TutorPreferencesForm
-            key={preferences.updatedAt}
-            preferences={preferences}
-            saving={saving}
-            onSave={savePreferences}
-          />
+          <div className="flex flex-col gap-4">
+            <TutorStyleChoices value={preferences} onChange={saveStyle} />
+            <TutorSaveIndicator status={saveStatus} />
+          </div>
         ) : (
-          <TutorFolderInstructionsForm
-            key={selectedFolderId}
-            folders={data?.folders ?? []}
-            selectedFolderId={selectedFolderId}
-            folder={data?.folder ?? null}
-            draft={instructionsDraft}
-            onDraftChange={setInstructionsDraft}
-            loadingFolder={loadingFolder}
-            guideCompleted={preferences.folderGuideCompleted}
-            saving={saving}
-            onSelectFolder={setSelectedFolderId}
-            onSave={saveInstructions}
-            onSkipGuide={skipGuide}
-          />
+          <div className="flex flex-col gap-6">
+            <section className="flex flex-col gap-3">
+              <h3 className="text-sm font-semibold tracking-tight text-text-primary">
+                Every subject
+              </h3>
+              <TutorNotesList
+                label="Notes for every subject"
+                notes={preferences.notes}
+                max={MAX_TUTOR_GENERAL_NOTES}
+                suggestions={GENERAL_NOTE_SUGGESTIONS}
+                placeholder="Name the rule before you use it"
+                emptyText="Nothing yet. Anything you add here applies everywhere."
+                onChange={saveGeneralNotes}
+              />
+            </section>
+            <section className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-5">
+              <h3 className="text-sm font-semibold tracking-tight text-text-primary">
+                One subject
+              </h3>
+              <TutorFolderNotes
+                folders={data?.folders ?? []}
+                selectedFolderId={selectedFolderId}
+                folder={data?.folder ?? null}
+                loadingFolder={loadingFolder}
+                onSelectFolder={setSelectedFolderId}
+                onChange={saveFolderNotes}
+              />
+            </section>
+            <TutorSaveIndicator status={saveStatus} />
+          </div>
         )}
 
         <p className="mt-5 border-t border-[var(--color-border)] pt-3 text-2xs text-text-muted">

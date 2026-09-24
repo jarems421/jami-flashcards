@@ -198,11 +198,11 @@ export default function RevisionNextSteps({
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     {state === "made" ? (
                       <p className="text-sm font-medium text-[var(--color-success-mark)]">
-                        Kept. It&apos;s in Tutor under Made for you.
+                        Kept. It&apos;s in Jami under Made for you.
                       </p>
                     ) : state === "saved" ? (
                       <p className="text-sm font-medium text-text-secondary">
-                        Saved for later. It&apos;s waiting in Tutor.
+                        Saved for later. It&apos;s waiting in Jami.
                       </p>
                     ) : (
                       <>

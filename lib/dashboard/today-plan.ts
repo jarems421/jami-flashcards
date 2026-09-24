@@ -326,7 +326,7 @@ function buildWeakTopics(input: BuildTodayPlanInput, now: number) {
  * yet" for a check, "unknown rather than weak" for an untested topic. Topic
  * names are the student's own, rendered as text.
  */
-function describeStudyAction(action: StudyAction): Pick<TodayStudyAction, "title" | "description" | "label"> {
+export function describeStudyAction(action: StudyAction): Pick<TodayStudyAction, "title" | "description" | "label"> {
   const name = action.target.label;
   switch (action.reason) {
     case "persistent_error":

@@ -88,7 +88,7 @@ test("Release 1 navigation and study workspace stay usable across sizes", async 
    */
   const mobileNav = page.locator("nav[data-nav='bar']");
   await expect(mobileNav).toBeVisible();
-  for (const label of ["Today", "Learn", "Practice", "Tutor", "Cards"]) {
+  for (const label of ["Today", "Learn", "Practice", "Jami", "Cards"]) {
     await expect(mobileNav.getByText(label, { exact: true })).toBeVisible();
   }
   await expectNoHorizontalOverflow(page, 390);

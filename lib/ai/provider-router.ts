@@ -71,8 +71,14 @@ export type AiRouterOptions = {
    *
    * A student can raise this for themselves in settings; it never lowers what
    * the role already requires. Left unset, the role's own level applies.
+   *
+   * `none` switches thinking off. It is the only setting between off and the
+   * model's full habit that the supervisor's endpoints honour: measured on
+   * every Qwen endpoint the role approves, `low`, `minimal` and a 400-token
+   * budget each still thought for 1,250 to 2,100 tokens on a one-line equation,
+   * where `none` answered in 113.
    */
-  reasoningEffort?: AiReasoningEffort;
+  reasoningEffort?: AiReasoningEffort | "none";
   /**
    * Send this call to a specific approved endpoint instead of the role's usual
    * one. Rejected unless the role actually lists it as a failover, so this

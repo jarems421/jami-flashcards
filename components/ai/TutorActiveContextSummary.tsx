@@ -16,7 +16,7 @@ import {
 export function describeFolderScope(input: {
   activeFolderIds?: readonly string[];
   activeFolderName?: string;
-  hasInstructions: boolean;
+  noteCount: number;
 }) {
   // A surface that does not know which folders its material is in is not the
   // same as one that knows the answer is none, and saying "none apply" when the
@@ -26,7 +26,9 @@ export function describeFolderScope(input: {
   if (input.activeFolderIds.length > 1) return "Several folders — off";
   if (input.activeFolderIds.length === 0) return "No folder — off";
   const name = input.activeFolderName ?? "this folder";
-  return input.hasInstructions ? `${name} — on` : `${name} — none yet`;
+  return input.noteCount > 0
+    ? `${name} — ${input.noteCount} note${input.noteCount === 1 ? "" : "s"}`
+    : `${name} — none yet`;
 }
 
 function Chip({
@@ -61,13 +63,13 @@ export default function TutorActiveContextSummary({
   activeFolder,
   accountStudyLevel,
   accountStudySubjects = [],
-  activeCount,
+  changedStyleCount,
 }: {
   activeFolderIds?: readonly string[];
   activeFolder: TutorFolderSummary | null;
   accountStudyLevel: StudyLevel | null;
   accountStudySubjects?: readonly string[];
-  activeCount: number;
+  changedStyleCount: number;
 }) {
   const level = activeFolder?.studyLevel ?? accountStudyLevel;
   const subjectCount = accountStudySubjects.length;
@@ -92,17 +94,17 @@ export default function TutorActiveContextSummary({
       />
       <Chip
         label="Notes"
-        active={activeFolder?.hasInstructions === true}
+        active={(activeFolder?.noteCount ?? 0) > 0}
         value={describeFolderScope({
           ...(activeFolderIds ? { activeFolderIds } : {}),
           ...(activeFolder?.name ? { activeFolderName: activeFolder.name } : {}),
-          hasInstructions: activeFolder?.hasInstructions === true,
+          noteCount: activeFolder?.noteCount ?? 0,
         })}
       />
       <Chip
         label="Style"
-        active={activeCount > 0}
-        value={activeCount === 0 ? "Default" : `${activeCount} changed`}
+        active={changedStyleCount > 0}
+        value={changedStyleCount === 0 ? "Default" : `${changedStyleCount} changed`}
       />
     </div>
   );

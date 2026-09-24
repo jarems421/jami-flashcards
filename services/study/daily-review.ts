@@ -13,6 +13,10 @@ import { commitStudyEffect } from "@/services/study/commit-effect";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
+  migrationKnownSettled,
+  rememberMigrationSettled,
+} from "@/lib/app/settled-migrations";
+import {
   buildDailyReviewQueues,
   buildDailyReviewStateData,
   DAILY_REVIEW_STATE_DOC_ID,
@@ -133,6 +137,8 @@ export async function resetStudyActivityHistory(userId: string) {
 }
 
 export async function ensureStudyStateSetup(userId: string) {
+  // Checked on every Today load, before any of its reads could start.
+  if (migrationKnownSettled(userId, "studyActivity", STUDY_ACTIVITY_SCHEMA_VERSION)) return;
   try {
     const metaRef = getStudyStateDoc(userId, STUDY_STATE_META_DOC_ID);
     const metaSnapshot = await withTimeout(
@@ -148,6 +154,7 @@ export async function ensureStudyStateSetup(userId: string) {
       : 0;
 
     if (currentVersion >= STUDY_ACTIVITY_SCHEMA_VERSION) {
+      rememberMigrationSettled(userId, "studyActivity", STUDY_ACTIVITY_SCHEMA_VERSION);
       return;
     }
 
@@ -164,6 +171,7 @@ export async function ensureStudyStateSetup(userId: string) {
       SAVE_MS,
       "Save study state meta"
     );
+    rememberMigrationSettled(userId, "studyActivity", STUDY_ACTIVITY_SCHEMA_VERSION);
   } catch (error) {
     console.warn("Study state setup failed; continuing without migration.", error);
   }

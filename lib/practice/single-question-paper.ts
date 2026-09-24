@@ -98,7 +98,7 @@ export function buildSingleQuestionAnswerParts(input: {
       input.workingImage
         ? [
             "The student's handwritten working follows, as one image holding every page they wrote on.",
-            "They answered on the question paper itself, so each page is captioned with where it came from: \"written on printed page 2 of 3\" is working in the space the board printed for that part, and \"extra answer sheet 1\" is an answer that ran past it. Pages read left to right, then down.",
+            "Each page is captioned with where it came from: \"written on printed page 2 of 3\" is working in the space the board printed for that part, \"extra answer sheet 1\" is an answer that ran past the printed space, and \"answer sheet 1\" is a blank sheet for a question that has no printed page, holding the whole answer. Pages read left to right, then down.",
             "Only the handwriting is the student's. The printed page is shown to you separately and is not reproduced underneath their ink.",
             "Transcribe relevant lines before awarding method marks; never invent unreadable work.",
           ].join(" ")

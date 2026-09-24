@@ -202,6 +202,84 @@ describe("NotebookTextBlockLayer", () => {
     expect(handlers.onSelect).toHaveBeenCalledWith("block-1");
   });
 
+  it("sets the text in page units, identically read and typed", () => {
+    render({ selectedTextBlockId: "block-1" });
+    const reading = blockEl()!.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Select text box"]'
+    )!;
+    const readingStyle = {
+      fontSize: reading.style.fontSize,
+      lineHeight: reading.style.lineHeight,
+      padding: reading.style.padding,
+    };
+    render({ selectedTextBlockId: "block-1", editingTextBlockId: "block-1" });
+    const typing = editor()!;
+
+    // Scaling with the page is the point: nothing here is a fixed pixel size.
+    expect(readingStyle.fontSize).toMatch(/cqw$/);
+    // And tapping in to type must not move a single word.
+    expect({
+      fontSize: typing.style.fontSize,
+      lineHeight: typing.style.lineHeight,
+      padding: typing.style.padding,
+    }).toEqual(readingStyle);
+  });
+
+  it("measures against a layer as wide as the page", () => {
+    render();
+    const layer = container.querySelector<HTMLElement>(
+      "[data-notebook-text-layer]"
+    )!;
+    expect(layer.style.getPropertyValue("container-type")).toBe("inline-size");
+  });
+
+  it("grows the box when typing runs past its foot", () => {
+    const onFitHeight = vi.fn();
+    const heights = vi
+      .spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get")
+      .mockReturnValue(79);
+    const visible = vi
+      .spyOn(HTMLTextAreaElement.prototype, "clientHeight", "get")
+      .mockReturnValue(46);
+    const width = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(450);
+
+    act(() => {
+      root.render(
+        <NotebookTextBlockLayer
+          textBlocks={[block()]}
+          pageColor="white"
+          editingEnabled
+          selectedTextBlockId="block-1"
+          editingTextBlockId="block-1"
+          activeTextGestureId={null}
+          openTextBlockOptionsId={null}
+          {...handlers}
+          onFitHeight={onFitHeight}
+        />
+      );
+    });
+
+    // Measured on a page drawn at half size: (79 + 2px border) x 2 units.
+    expect(onFitHeight).toHaveBeenCalledWith("block-1", 162);
+    heights.mockRestore();
+    visible.mockRestore();
+    width.mockRestore();
+  });
+
+  it("puts the options outside the box, under it near the top of the page", () => {
+    const options = () =>
+      container.querySelector<HTMLElement>("[data-text-block-options-root]")!;
+    render({ selectedTextBlockId: "block-1" });
+    expect(options().className).toContain("bottom-full");
+    render({
+      textBlocks: [block({ y: 20 })],
+      selectedTextBlockId: "block-1",
+    });
+    expect(options().className).toContain("top-full");
+  });
+
   it("drops the idle outline when the block asks to hide it", () => {
     render({ textBlocks: [block({ outlineVisible: false })] });
     expect(blockEl()!.className).toContain("border-transparent");

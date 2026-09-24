@@ -12,8 +12,8 @@ async function signIn(page: Page) {
 const surfaces = [
   { route: "/dashboard/decks", nav: "Flashcard views", active: "Decks", other: "All cards" },
   { route: "/dashboard/cards", nav: "Flashcard views", active: "All cards", other: "Decks" },
-  { route: "/dashboard/tutor", nav: "Tutor views", active: "Ask Jami", other: "Sources" },
-  { route: "/dashboard/library", nav: "Tutor views", active: "Sources", other: "Ask Jami" },
+  { route: "/dashboard/tutor", nav: "Jami views", active: "Ask Jami", other: "Sources" },
+  { route: "/dashboard/library", nav: "Jami views", active: "Sources", other: "Ask Jami" },
 ] as const;
 
 const widths = [
@@ -82,10 +82,10 @@ test("a source deep link still lands on the right panel", async ({ page }) => {
   await signIn(page);
   await page.goto("/dashboard/library?source=e2e-source&panel=tutor");
   await expect(
-    page.getByRole("navigation", { name: "Tutor views" })
+    page.getByRole("navigation", { name: "Jami views" })
   ).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: "Tutor views" }).getByRole("link", {
+    page.getByRole("navigation", { name: "Jami views" }).getByRole("link", {
       name: "Sources",
     })
   ).toHaveAttribute("aria-current", "page");

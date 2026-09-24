@@ -387,9 +387,9 @@ export default function PracticePaperAttemptBar({
         headline: `Attempt ${paper.attemptCount}`,
         detail:
           paper.timingState === "paused"
-            ? "Writing and Tutor are locked while paused"
+            ? "Writing and Jami are locked while paused"
             : paper.tutorEnabled
-              ? "Tutor assisted"
+              ? "Jami assisted"
               : "Exam conditions",
       };
     }
@@ -594,7 +594,7 @@ export default function PracticePaperAttemptBar({
         {feedback ? <div className="mt-2.5"><FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={clear} /></div> : null}
       </div>
 
-      <ConfirmDialog open={confirmSubmit} title="Submit this paper for marking?" description="Your current page will be saved first. Jami Tutor stays unavailable until marking finishes." confirmLabel="Submit and mark" busy={busy === "mark"} onConfirm={() => void submitAndMark()} onClose={() => setConfirmSubmit(false)} />
+      <ConfirmDialog open={confirmSubmit} title="Submit this paper for marking?" description="Your current page will be saved first. Jami stays unavailable until marking finishes." confirmLabel="Submit and mark" busy={busy === "mark"} onConfirm={() => void submitAndMark()} onClose={() => setConfirmSubmit(false)} />
       <ConfirmDialog open={confirmRetake} title="Start a new attempt?" description="Your previous result remains in attempt history. The notebook answer pages will be cleared for the new attempt." confirmLabel="Clear pages and retake" busy={busy === "retake"} onConfirm={() => void retake()} onClose={() => setConfirmRetake(false)} />
       <Dialog
         open={paper.timingState === "awaiting_overtime"}

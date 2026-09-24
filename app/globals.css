@@ -944,7 +944,9 @@
   /* Fields over the page -- a dialog's, the Tutor's -- are ordinary text fields. */
   body.jami-notebook-editor-active input,
   body.jami-notebook-editor-active textarea,
-  body.jami-notebook-editor-active [contenteditable="true"] {
+  body.jami-notebook-editor-active [contenteditable="true"],
+  /* Text off the page that is there to be copied: the Tutor's answers. */
+  body.jami-notebook-editor-active [data-notebook-selectable-text="true"] {
     -webkit-touch-callout: default !important;
     -webkit-user-select: text !important;
     user-select: text !important;
@@ -1354,6 +1356,29 @@
   .app-field::placeholder {
     color: var(--color-field-placeholder);
     opacity: 1;
+  }
+
+  /*
+   * The type a field is written in.
+   *
+   * 14px, except where Safari on an iPhone or iPad would zoom the whole page
+   * into any field set smaller than 16px the moment it is focused -- and leave
+   * it zoomed after the keyboard goes, so every answer began with the layout
+   * lurching and ended with a pinch to put it back. `-webkit-touch-callout`
+   * exists only in iOS and iPadOS WebKit, so nothing else changes size.
+   *
+   * A component rule, so a field asked for larger type -- an answer set at
+   * text-lg -- still gets it.
+   */
+  .app-field-text {
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  @supports (-webkit-touch-callout: none) {
+    .app-field-text {
+      font-size: 1rem;
+    }
   }
 
   .app-field:hover {
@@ -3343,7 +3368,13 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 .fn-bloom{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 16px);z-index:80;transform:translateX(-50%);width:min(430px,calc(100vw - 24px));display:flex;gap:1rem;align-items:flex-start;padding:1rem 1.1rem 1rem 1rem;border-radius:22px;color:#f4f0ff;background:radial-gradient(1px 1px at 88% 18%,rgba(255,255,255,.6),transparent 70%),radial-gradient(1px 1px at 72% 80%,rgba(255,255,255,.4),transparent 70%),radial-gradient(130% 100% at 0% 0%,rgba(142,112,255,.4),transparent 60%),linear-gradient(180deg,rgba(34,23,72,.97),rgba(12,8,30,.98));border:1px solid rgba(226,220,255,.18);box-shadow:0 26px 70px -22px rgba(0,0,0,.85),0 0 60px -12px rgba(142,112,255,.6);animation:fn-bloom-in .9s cubic-bezier(.22,1,.36,1) both}
 .fn-bloom-mark{position:relative;width:52px;height:52px;flex-shrink:0;display:grid;place-items:center}
 .fn-bloom-core{position:relative;z-index:1;display:grid;color:#fff;filter:drop-shadow(0 0 10px rgba(214,200,255,1));animation:fn-bloom-star 1.2s cubic-bezier(.22,1,.36,1) both}
-.fn-bloom-rays{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,transparent 0deg,rgba(214,200,255,.55) 8deg,transparent 18deg,transparent 45deg,rgba(214,200,255,.4) 53deg,transparent 63deg,transparent 90deg,rgba(214,200,255,.55) 98deg,transparent 108deg,transparent 135deg,rgba(214,200,255,.4) 143deg,transparent 153deg,transparent 180deg,rgba(214,200,255,.55) 188deg,transparent 198deg,transparent 225deg,rgba(214,200,255,.4) 233deg,transparent 243deg,transparent 270deg,rgba(214,200,255,.55) 278deg,transparent 288deg,transparent 315deg,rgba(214,200,255,.4) 323deg,transparent 333deg);-webkit-mask:radial-gradient(circle,transparent 30%,#000 32%,#000 60%,transparent 72%);mask:radial-gradient(circle,transparent 30%,#000 32%,#000 60%,transparent 72%);animation:fn-bloom-rays 1.4s cubic-bezier(.22,1,.36,1) both,fn-spin 40s linear 1.4s infinite}
+.fn-bloom-mark::before{content:"";position:absolute;inset:6px;border-radius:50%;background:radial-gradient(circle,rgba(214,200,255,.34) 0%,rgba(190,170,255,.12) 38%,rgba(190,170,255,0) 70%);animation:fn-bloom-halo 1.4s cubic-bezier(.22,1,.36,1) both}
+.fn-bloom-orbit{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.fn-bloom-orbit path{fill:none;stroke-width:.9;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;animation:fn-draw 1.3s .25s cubic-bezier(.45,0,.2,1) forwards}
+.fn-bloom-orbit-back{z-index:0;opacity:.4}
+.fn-bloom-orbit-front{z-index:2}
+.fn-bloom-orbit-front path{animation-delay:.55s}
+.fn-bloom-spark{fill:#fff;filter:drop-shadow(0 0 2px rgba(214,200,255,.95))}
 .fn-bloom-body{min-width:0;flex:1}
 .fn-bloom-title{margin-top:.3rem;font-size:1.06rem;font-weight:600;line-height:1.3}
 .fn-bloom-text{margin-top:.3rem;font-size:.9rem;line-height:1.5;color:rgba(236,230,255,.78)}
@@ -3355,7 +3386,7 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 @keyframes fn-beckon{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(1.6)}}
 @keyframes fn-bloom-in{0%{opacity:0;transform:translate(-50%,-14px) scale(.96)}100%{opacity:1;transform:translate(-50%,0) scale(1)}}
 @keyframes fn-bloom-star{0%{opacity:0;transform:scale(.2) rotate(-90deg)}60%{opacity:1;transform:scale(1.25) rotate(8deg)}100%{transform:scale(1) rotate(0)}}
-@keyframes fn-bloom-rays{0%{opacity:0;transform:scale(.3)}50%{opacity:1}100%{opacity:.75;transform:scale(1)}}
+@keyframes fn-bloom-halo{0%{opacity:0;transform:scale(.4)}100%{opacity:1;transform:scale(1)}}
 @keyframes fn-veil-twinkle{0%,100%{opacity:.1}50%{opacity:.7}}
 @keyframes fn-thread-flow{to{stroke-dashoffset:-16}}
 @keyframes fn-light-orbit{to{--fn-angle:360deg}}
@@ -3376,22 +3407,49 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 
 @media (prefers-reduced-motion: reduce){
   .fn-root *,.fn-root *::after,.fn-note,.fn-note-body,.fn-note-sigil,.fn-light,.fn-light::before,.fn-veil-star,.fn-thread,.fn-toast,.fn-nav-star,.fn-unlit,.fn-ring,.fn-leave,.fn-bloom,.fn-bloom *,.fn-next,.fn-next::after,.fn-next *,.fn-sky-dust,.fn-unlit-next::after,.fn-second-lit{animation-duration:1ms!important;animation-iteration-count:1!important;animation-delay:0s!important;transition-duration:1ms!important}
+  .fn-bloom-spark{display:none}
+  .fn-bloom-mark::before{animation:none}
 }
 
 /*
  * Shooting stars.
  *
- * Each streak spends most of its cycle invisible and falls for the last few
- * per cent of it, bright head first, fading as it goes. How many a sky gets is
- * decided in lib/constellation/shooting-stars.ts; this only draws one.
+ * Each streak spends most of its cycle invisible and falls for the last tenth
+ * of it: it strikes already moving, its tapered tail stretches out behind a
+ * glowing head, then the tail burns back into the head and the head flares
+ * once before it goes out. Fireballs are longer, thicker and flare harder.
+ * How many a sky gets, where they fall and what colour they burn is decided in
+ * lib/constellation/shooting-stars.ts; this only draws one.
  */
 .shooting-stars{position:absolute;inset:0;overflow:hidden;pointer-events:none}
-.shooting-star{position:absolute;height:1.5px;border-radius:999px;background:linear-gradient(90deg,#fff 0%,rgba(236,232,255,.55) 22%,rgba(236,232,255,0) 100%);box-shadow:0 0 6px rgba(220,214,255,.55);opacity:0;transform-origin:left center;animation-name:shooting-star;animation-timing-function:cubic-bezier(.3,0,.7,1);animation-iteration-count:infinite;animation-fill-mode:both}
+.shooting-star{--shooting-tint:222,212,255;--shooting-glow:176,150,255;--shooting-tail:2px;--shooting-head:3px;--shooting-flare:1.5;--shooting-bloom:2px;position:absolute;height:0;opacity:0;transform-origin:left center;filter:drop-shadow(0 0 var(--shooting-bloom) rgba(var(--shooting-glow),.85));animation-name:shooting-star;animation-iteration-count:infinite;animation-fill-mode:both;will-change:transform,opacity}
+.shooting-star--ice{--shooting-tint:204,232,255;--shooting-glow:130,196,255}
+.shooting-star--green{--shooting-tint:196,255,228;--shooting-glow:84,226,170}
+.shooting-star--gold{--shooting-tint:255,228,186;--shooting-glow:255,178,96}
+.shooting-star--fireball{--shooting-tail:3.5px;--shooting-head:4.5px;--shooting-flare:2.6;--shooting-bloom:5px}
+.shooting-star-tail,.shooting-star-head{position:absolute;left:0;top:0;animation-iteration-count:infinite;animation-fill-mode:both}
+.shooting-star-tail{width:100%;height:var(--shooting-tail);margin-top:calc(var(--shooting-tail) / -2);clip-path:polygon(0 0,100% 50%,0 100%);background:linear-gradient(90deg,#fff 0%,rgba(var(--shooting-tint),.9) 10%,rgba(var(--shooting-tint),.4) 42%,rgba(var(--shooting-glow),0) 100%);transform-origin:left center;animation-name:shooting-star-tail}
+.shooting-star-head{width:var(--shooting-head);height:var(--shooting-head);border-radius:50%;background:#fff;box-shadow:0 0 3px 1px #fff,0 0 8px 2px rgba(var(--shooting-tint),.9),0 0 20px 5px rgba(var(--shooting-glow),.4);animation-name:shooting-star-head}
 .night-backdrop-fixed{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;background:#05020d}
 @keyframes shooting-star{
-  0%,91%{opacity:0;transform:rotate(calc(-1 * var(--shooting-angle,24deg))) translateX(0)}
-  93%{opacity:1}
-  100%{opacity:0;transform:rotate(calc(-1 * var(--shooting-angle,24deg))) translateX(-280px)}
+  0%,90%{opacity:0;transform:rotate(calc(-1 * var(--shooting-angle,24deg))) translateX(0);animation-timing-function:cubic-bezier(.22,.55,.45,1)}
+  90.5%{opacity:1}
+  97%{opacity:1}
+  100%{opacity:0;transform:rotate(calc(-1 * var(--shooting-angle,24deg))) translateX(var(--shooting-travel,-280px))}
+}
+@keyframes shooting-star-tail{
+  0%,90%{opacity:0;transform:scaleX(.04)}
+  91%{opacity:1}
+  94.5%{transform:scaleX(1)}
+  97.5%{opacity:.9;transform:scaleX(.75)}
+  100%{opacity:0;transform:scaleX(.15)}
+}
+@keyframes shooting-star-head{
+  0%,90%{opacity:0;transform:translate(-50%,-50%) scale(.3)}
+  91%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  96%{transform:translate(-50%,-50%) scale(.9)}
+  98.2%{opacity:1;transform:translate(-50%,-50%) scale(var(--shooting-flare))}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(.2)}
 }
 @media (prefers-reduced-motion: reduce){
   .shooting-star{display:none}

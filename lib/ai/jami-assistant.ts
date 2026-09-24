@@ -1,5 +1,6 @@
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import type { JamiAssistantThread } from "@/lib/ai/jami-assistant-history";
+import type { JamiAssistantSuggestedCard } from "@/lib/ai/tutor-card-suggestions";
 
 import { normalizeAssistantId as normalizeId } from "@/lib/ai/jami-assistant-normalize";
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
@@ -103,6 +104,8 @@ export type JamiAssistantResponse = {
   followUps?: JamiAssistantFollowUp[];
   sourceFailures?: JamiAssistantSourceFailure[];
   citations?: JamiAssistantCitation[];
+  /** Flashcards offered in reply to a request for them; saved only if the student chooses. */
+  suggestedCards?: JamiAssistantSuggestedCard[];
   canIllustrate?: boolean;
   savedThread?: JamiAssistantThread;
 };
@@ -135,6 +138,12 @@ export type ParsedJamiAssistantModelAnswer = {
    * normal case -- most Tutor turns are not marking.
    */
   marking?: unknown;
+  /**
+   * Flashcards the model offered, passed through unread. Checked by
+   * `readTutorCardSuggestions`, which drops anything unusable, and only on a
+   * turn that invited them.
+   */
+  cards?: unknown;
 };
 
 export type TutorRoutingPreflight = {
@@ -151,6 +160,7 @@ type ModelAnswerPayload = {
   usedWebResearch?: unknown;
   graphs?: unknown;
   marking?: unknown;
+  cards?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -573,7 +583,7 @@ export function getJamiAssistantResponseGuidance(input: {
       : checksNotebookWork
         ? "For checking work: give the verdict first, identify at most three concrete issues, then give one next step. Omit any empty section."
         : input.context.surface === "sources"
-          ? "Start from what the selected sources say, then build on them with wider knowledge where it helps the student understand. Be explicit when you go beyond the sources."
+          ? "The student is asking about the sources they selected. Answer from what those sources collectively cover, explained in your own words, then build on them with wider knowledge where it helps the student understand. Be explicit when you go beyond them."
           : "";
 
   const modeInstruction =
@@ -882,6 +892,9 @@ export function parseJamiAssistantModelAnswer(
     sourceRefs,
     ...(payload.marking !== undefined && payload.marking !== null
       ? { marking: payload.marking }
+      : {}),
+    ...(payload.cards !== undefined && payload.cards !== null
+      ? { cards: payload.cards }
       : {}),
     usedCurrentContext: payload.usedCurrentContext,
     usedGeneralKnowledge: payload.usedGeneralKnowledge,

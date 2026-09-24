@@ -21,6 +21,7 @@ import styles from "./SourceWorkspace.module.css";
 
 export type SourceActionIconName =
   | "arrow-left"
+  | "check"
   | "close"
   | "filter"
   | "more"
@@ -107,6 +108,7 @@ export function SourceActionIcon({
 
   const paths: Record<Exclude<SourceActionIconName, "sparkles">, ReactNode> = {
     "arrow-left": <path d="m15 18-6-6 6-6" />,
+    check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
     close: (
       <>
         <path d="m7 7 10 10" />

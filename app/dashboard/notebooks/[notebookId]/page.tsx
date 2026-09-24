@@ -95,6 +95,7 @@ import {
   clearNotebookNativeSelection,
   installNotebookStylusTouchListeners,
   installNotebookViewportZoomBlock,
+  isNotebookSelectableTextTarget,
   isNotebookTextEditingTarget,
   NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
   safelyReleasePointerCapture,
@@ -156,6 +157,10 @@ import {
   readNotebookPenSettings,
   saveNotebookPenSettings,
 } from "@/lib/workspace/notebook-pen-feel";
+import {
+  readNotebookToolPreferences,
+  saveNotebookToolPreferences,
+} from "@/lib/workspace/notebook-tool-preferences";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
 import { getNotebookAssistantQuickActions } from "@/lib/workspace/notebook-assistant";
 import { recordPracticePaperTutorUse } from "@/services/study/practice-papers";
@@ -586,6 +591,10 @@ export default function NotebookEditorPage() {
 
   const handleAssistantOpenChange = useCallback((open: boolean) => {
     if (open) {
+      // Here rather than on the toolbar button: the floating Tutor reopens from its own pill too.
+      if (!assistantOpen && practicePaperStatus === "in_progress" && user?.uid && notebook) {
+        void recordPracticePaperTutorUse(user.uid, notebook.id).catch(() => undefined);
+      }
       setPagesDrawerOpen(false);
       setPenMenuOpen(false);
       setHighlighterMenuOpen(false);
@@ -593,6 +602,10 @@ export default function NotebookEditorPage() {
     }
     setAssistantOpen(open);
   }, [
+    assistantOpen,
+    notebook,
+    practicePaperStatus,
+    user?.uid,
     setAssistantOpen,
     setEraserMenuOpen,
     setHighlighterMenuOpen,
@@ -993,7 +1006,25 @@ export default function NotebookEditorPage() {
   useEffect(() => {
     setScribbleToErase(readNotebookScribbleErasePreference());
     setPenSettings(readNotebookPenSettings());
-  }, [setPenSettings, setScribbleToErase]);
+    // The pen as it was put down. Declared before the paper check below, so a
+    // remembered white pen opening onto white paper is still turned dark.
+    const tools = readNotebookToolPreferences();
+    setPenColor(tools.penColor);
+    setPenThicknessPercent(tools.penThicknessPercent);
+    setHighlighterColor(tools.highlighterColor);
+    setHighlighterThicknessPercent(tools.highlighterThicknessPercent);
+    setEraserMode(tools.eraserMode);
+    setEraserWidth(tools.eraserSize);
+  }, [
+    setEraserMode,
+    setEraserWidth,
+    setHighlighterColor,
+    setHighlighterThicknessPercent,
+    setPenColor,
+    setPenSettings,
+    setPenThicknessPercent,
+    setScribbleToErase,
+  ]);
 
   useEffect(() => {
     if (!selectedPage) {
@@ -1119,6 +1150,8 @@ export default function NotebookEditorPage() {
     };
     const clearSelectionIfOutsideTextEditor = () => {
       if (isNotebookTextEditingTarget(document.activeElement)) return;
+      // A selection being made in the Tutor's answers, to copy them.
+      if (isNotebookSelectableTextTarget(document.getSelection()?.anchorNode ?? null)) return;
       clearNotebookNativeSelection(document);
     };
 
@@ -2323,6 +2356,12 @@ export default function NotebookEditorPage() {
         }
         return;
       }
+      // Windows' own redo, which the practice sheet already answered to.
+      if ((event.ctrlKey || event.metaKey) && key === "y") {
+        event.preventDefault();
+        handleRedo();
+        return;
+      }
 
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (key === "t") {
@@ -2431,14 +2470,15 @@ export default function NotebookEditorPage() {
   ]);
 
 
+  /** Resolves true once the image is on the page; failures are shown here. */
   const handleAddImage = useCallback(
-    (file: File) => {
+    (file: File): Promise<boolean> => {
       const pageId = pageState.read().selectedPage?.id;
-      if (!user?.uid || !notebookId || !pageId) return;
+      if (!user?.uid || !notebookId || !pageId) return Promise.resolve(false);
       const userId = user.uid;
       closeDrawingToolMenus();
       setAddingImage(true);
-      void queueImageWrite(async () => {
+      return queueImageWrite(async () => {
         const result = await addUploadedImageToNotebookPage({
           userId,
           notebookId,
@@ -2452,10 +2492,12 @@ export default function NotebookEditorPage() {
           switchNotebookTool("select");
           setSelectedImageId(result.imageRef.id);
         }
+        return true;
       })
-        .catch((error: unknown) =>
-          showThrownError(error, "That image could not be added. Try again.")
-        )
+        .catch((error: unknown) => {
+          showThrownError(error, "That image could not be added. Try again.");
+          return false;
+        })
         .finally(() => setAddingImage(false));
     },
     [
@@ -2682,6 +2724,16 @@ export default function NotebookEditorPage() {
     [updateTextBlock]
   );
 
+  // A box growing to hold its text is part of the typing that caused it, so
+  // it goes through the same update as the typing does and never becomes an
+  // undo step of its own.
+  const handleTextBlockFitHeight = useCallback(
+    (blockId: string, height: number) => {
+      updateTextBlock(blockId, { height });
+    },
+    [updateTextBlock]
+  );
+
   const handleRequestDeletePage = useCallback((page: NotebookPage) => {
     setConfirmDialog({ kind: "delete-page", page });
   }, [setConfirmDialog]);
@@ -2854,15 +2906,10 @@ export default function NotebookEditorPage() {
             />
             {!practicePaperTutorLocked ? (
               <ToolbarIconButton
-                label="Jami Tutor" icon="ai"
+                label="Ask Jami" icon="ai"
                 tutorialTarget="ask-tutor"
                 active={assistantOpen}
-                onClick={() => {
-                  if (!assistantOpen && practicePaperStatus === "in_progress" && user?.uid && notebook) {
-                    void recordPracticePaperTutorUse(user.uid, notebook.id).catch(() => undefined);
-                  }
-                  handleAssistantOpenChange(!assistantOpen);
-                }}
+                onClick={() => handleAssistantOpenChange(!assistantOpen)}
               />
             ) : null}
           </div>
@@ -2887,10 +2934,13 @@ export default function NotebookEditorPage() {
             thicknessPercent: penThicknessPercent,
             onColorChange: (color) => {
               setPenColor(color);
+              saveNotebookToolPreferences({ penColor: color });
               switchNotebookTool("pen");
             },
             onThicknessChange: (value) => {
-              setPenThicknessPercent(clampNotebookThicknessPercent(value));
+              const thickness = clampNotebookThicknessPercent(value);
+              setPenThicknessPercent(thickness);
+              saveNotebookToolPreferences({ penThicknessPercent: thickness });
               switchNotebookTool("pen");
             },
             settings: penSettings,
@@ -2911,12 +2961,15 @@ export default function NotebookEditorPage() {
             thicknessPercent: highlighterThicknessPercent,
             onColorChange: (color) => {
               setHighlighterColor(color);
+              saveNotebookToolPreferences({ highlighterColor: color });
               switchNotebookTool("highlighter");
             },
             onThicknessChange: (value) => {
-              setHighlighterThicknessPercent(
-                clampNotebookThicknessPercent(value)
-              );
+              const thickness = clampNotebookThicknessPercent(value);
+              setHighlighterThicknessPercent(thickness);
+              saveNotebookToolPreferences({
+                highlighterThicknessPercent: thickness,
+              });
               switchNotebookTool("highlighter");
             },
           }}
@@ -2925,10 +2978,12 @@ export default function NotebookEditorPage() {
             size: eraserWidth,
             onModeChange: (mode) => {
               setEraserMode(mode);
+              saveNotebookToolPreferences({ eraserMode: mode });
               switchNotebookTool("eraser");
             },
             onSizeChange: (size) => {
               setEraserWidth(size);
+              saveNotebookToolPreferences({ eraserSize: size });
               switchNotebookTool("eraser");
             },
             canClearPage: inkHasContent,
@@ -2970,6 +3025,7 @@ export default function NotebookEditorPage() {
             userId={user.uid}
             open={assistantOpen}
             onOpenChange={handleAssistantOpenChange}
+            layout="floating"
             // Keep one conversation across page turns; the current page is
             // still resolved fresh for every message.
             resetKey={`notebook:${notebook.id}`}
@@ -2982,6 +3038,7 @@ export default function NotebookEditorPage() {
             onBeforeIllustrationInsert={() => saveCurrentPage({ flush: true })}
             onIllustrationInserted={handleIllustrationInserted}
             onGraphInsert={handleTutorGraphInsert}
+            onDrawingInsert={handleAddImage}
           />
         ) : null}
         <NotebookGraphEditorDialog
@@ -3184,6 +3241,7 @@ export default function NotebookEditorPage() {
                     onResize={resizeTextBlock}
                     onStopResize={stopTextBlockResize}
                     onChangeText={handleTextBlockTextChange}
+                    onFitHeight={handleTextBlockFitHeight}
                     onStopEditing={stopEditingTextBlock}
                   />
                 </>

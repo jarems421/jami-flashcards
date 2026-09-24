@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     messageSnapshot.data()?.illustrations
   ).find((item) => item.id === assetId && item.storagePath === storagePath);
   if (!messageSnapshot.exists || messageSnapshot.data()?.role !== "assistant" || !illustration) {
-    return assistantAssetError("That Tutor visual could not be found.", 404, "illustration_not_found");
+    return assistantAssetError("That visual from Jami could not be found.", 404, "illustration_not_found");
   }
   if (
     !notebookSnapshot.exists ||

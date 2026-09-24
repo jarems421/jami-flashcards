@@ -85,7 +85,7 @@ describe("the tutor owns the sidebar entry sources used to have", () => {
 
     expect(entries).toContain("/dashboard/tutor");
     expect(entries).not.toContain("/dashboard/library");
-    expect(tabBar).toContain('label: "Tutor"');
+    expect(tabBar).toContain('label: "Jami"');
   });
 
   it("stays lit wherever the tutor's own surfaces are", () => {
@@ -110,7 +110,7 @@ describe("the tutor owns the sidebar entry sources used to have", () => {
       expect(page).toContain("views={TUTOR_VIEWS}");
       expect(page).toContain("TUTOR_TITLE");
     }
-    expect(TUTOR_TITLE).toBe("Tutor");
+    expect(TUTOR_TITLE).toBe("Jami");
   });
 });
 

@@ -85,6 +85,7 @@ import {
 } from "@/lib/workspace/notebook-interaction-lock";
 import { getNotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 import { getNotebookStrokePaintColor } from "@/lib/workspace/notebook-page-content";
+import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
 import {
   clampNotebookPenSettings,
   readNotebookPenSettings,
@@ -94,6 +95,10 @@ import {
   readNotebookScribbleErasePreference,
   saveNotebookScribbleErasePreference,
 } from "@/lib/workspace/notebook-toolbar";
+import {
+  readNotebookToolPreferences,
+  saveNotebookToolPreferences,
+} from "@/lib/workspace/notebook-tool-preferences";
 import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
 import {
   ExamScratchpadTooLargeError,
@@ -123,6 +128,19 @@ const PAN_START_DISTANCE = 8;
  * that was holding it. The notebook's own figure.
  */
 const STYLUS_TOUCH_COOLDOWN_MS = 180;
+/**
+ * How a scroll flung with a finger on the sheet carries on after it lifts.
+ *
+ * Inline, the sheet refuses native panning so the Pencil can write, and moves
+ * the practice page itself instead. It used to stop dead the moment the finger
+ * lifted, which is the part of scrolling a hand notices most: everywhere else
+ * on the page a flick keeps going. Per-frame decay at 60fps, and the speed in
+ * px/ms below which it stops.
+ */
+const SCROLL_FLING_DECAY = 0.95;
+const SCROLL_FLING_MIN_SPEED = 0.02;
+/** A fling is only read from the last stretch of the drag; older movement says nothing. */
+const SCROLL_FLING_WINDOW_MS = 100;
 /** How far one notch of a mouse wheel, or a trackpad pinch, zooms. */
 const WHEEL_ZOOM_SENSITIVITY = 0.0025;
 const NO_PAN: NotebookViewportPoint = { x: 0, y: 0 };
@@ -207,6 +225,11 @@ type FingerGesture = {
   target: Element | null;
   /** Recent x positions, for the flick check on release. */
   samples: NotebookSwipeSample[];
+  /**
+   * Recent y positions, for the fling a scroll carries on with. Held in the
+   * swipe sample's `x`, since the velocity maths does not care which axis.
+   */
+  verticalSamples: NotebookSwipeSample[];
   /** How far the sheet has been dragged, in px. */
   offset: number;
   /** The pull past the last page that asks for another sheet. */
@@ -312,6 +335,15 @@ function ExamScratchpad({
   const pageShellRef = useRef<HTMLDivElement | null>(null);
   const addSheetHintRef = useRef<HTMLDivElement | null>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The scroll still carrying on after a flick, if there is one. */
+  const flingFrame = useRef(0);
+  /**
+   * Fingers that are down on the frame, by pointer id.
+   *
+   * Only so a capture lost after the finger has already been let go is not
+   * read as a second release of it -- see `handleFrameLostPointerCapture`.
+   */
+  const frameTouchesRef = useRef<Set<number>>(new Set());
   /** What a settling page turn does when it lands, so a new one can land it early. */
   const settleActRef = useRef<(() => void) | null>(null);
   /**
@@ -384,8 +416,15 @@ function ExamScratchpad({
   const [tool, setTool] = useState<WorkingTool>("pen");
   const [openMenu, setOpenMenu] = useState<NotebookToolMenu>(null);
   const [history, setHistory] = useState({ undo: 0, redo: 0 });
-  const [penColor, setPenColor] = useState<NotebookStrokeColor>("black");
-  const [penThicknessPercent, setPenThicknessPercent] = useState(50);
+  /*
+   * The pen as it was last put down, in the notebook or on another sheet.
+   * Read once, like the settings below: it is one pen wherever it is picked up.
+   */
+  const [initialTools] = useState(readNotebookToolPreferences);
+  const [penColor, setPenColor] = useState<NotebookStrokeColor>(initialTools.penColor);
+  const [penThicknessPercent, setPenThicknessPercent] = useState(
+    initialTools.penThicknessPercent
+  );
   // Read once, lazily: the saved preferences are this sheet's starting values,
   // and nothing on the first paint depends on them.
   const [penSettings, setPenSettings] = useState(readNotebookPenSettings);
@@ -397,10 +436,14 @@ function ExamScratchpad({
   const [paperOpen, setPaperOpen] = useState(false);
   const paperRef = useRef(paper);
   paperRef.current = paper;
-  const [highlighterColor, setHighlighterColor] = useState<NotebookStrokeColor>("yellow");
-  const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(50);
-  const [eraserMode, setEraserMode] = useState<NotebookEraserMode>("precision");
-  const [eraserSize, setEraserSize] = useState<NotebookEraserSize>("medium");
+  const [highlighterColor, setHighlighterColor] = useState<NotebookStrokeColor>(
+    initialTools.highlighterColor
+  );
+  const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(
+    initialTools.highlighterThicknessPercent
+  );
+  const [eraserMode, setEraserMode] = useState<NotebookEraserMode>(initialTools.eraserMode);
+  const [eraserSize, setEraserSize] = useState<NotebookEraserSize>(initialTools.eraserSize);
 
   const sheetPages = useMemo(
     () => examSheetPages({ printedPages: [...printedPages], continuationCount }),
@@ -567,6 +610,10 @@ function ExamScratchpad({
         clearTimeout(settleTimer.current);
         settleTimer.current = null;
       }
+      if (flingFrame.current) {
+        window.cancelAnimationFrame(flingFrame.current);
+        flingFrame.current = 0;
+      }
       releaseTouchLockRef.current?.();
       releaseTouchLockRef.current = null;
       flushOnLeaveRef.current();
@@ -705,6 +752,33 @@ function ExamScratchpad({
     land();
   }, []);
 
+  const stopFling = useCallback(() => {
+    if (!flingFrame.current) return;
+    window.cancelAnimationFrame(flingFrame.current);
+    flingFrame.current = 0;
+  }, []);
+
+  /** Carries a released scroll on, slowing, until it stops or a finger lands. */
+  const fling = useCallback(
+    (target: Element, velocityY: number) => {
+      stopFling();
+      let speed = velocityY;
+      let last = performance.now();
+      const step = (now: number) => {
+        const elapsed = Math.min(64, Math.max(0, now - last));
+        last = now;
+        target.scrollBy({ top: -speed * elapsed });
+        speed *= Math.pow(SCROLL_FLING_DECAY, elapsed / 16.67);
+        flingFrame.current =
+          Math.abs(speed) < SCROLL_FLING_MIN_SPEED ? 0 : window.requestAnimationFrame(step);
+      };
+      if (Math.abs(speed) >= SCROLL_FLING_MIN_SPEED) {
+        flingFrame.current = window.requestAnimationFrame(step);
+      }
+    },
+    [stopFling]
+  );
+
   const cancelGesture = useCallback(() => {
     gestureRef.current = null;
     writeCreatePull(0);
@@ -771,6 +845,7 @@ function ExamScratchpad({
           uiSyncTimer.current = null;
         }
         cancelGesture();
+        stopFling();
         releaseTouchLockRef.current ??= lockTouchScrolling();
         return;
       }
@@ -780,7 +855,7 @@ function ExamScratchpad({
       if (dirtyRef.current) scheduleSave();
       scheduleUiSync();
     },
-    [cancelGesture, scheduleSave, scheduleUiSync]
+    [cancelGesture, scheduleSave, scheduleUiSync, stopFling]
   );
 
   /*
@@ -805,6 +880,7 @@ function ExamScratchpad({
       if (!shouldPointerSwipePages(event.pointerType)) return;
       if (inkInteractionActiveRef.current || gestureRef.current) return;
       landSettlingTurn();
+      stopFling();
       const frame = frameRef.current;
       gestureRef.current = {
         pointerId: event.pointerId,
@@ -816,6 +892,7 @@ function ExamScratchpad({
         // Full screen there is nothing behind the sheet a drag should move.
         target: sheetRef.current.expanded ? null : scrollableAncestor(frame),
         samples: [{ x: event.clientX, time: event.timeStamp }],
+        verticalSamples: [{ x: event.clientY, time: event.timeStamp }],
         offset: 0,
         creating: false,
       };
@@ -831,7 +908,7 @@ function ExamScratchpad({
         hint.style.top = `${top}px`;
       }
     },
-    [landSettlingTurn]
+    [landSettlingTurn, stopFling]
   );
 
   const moveSwipe = useCallback(
@@ -847,6 +924,8 @@ function ExamScratchpad({
       const dy = event.clientY - gesture.originY;
       gesture.samples.push({ x: event.clientX, time: event.timeStamp });
       if (gesture.samples.length > SWIPE_SAMPLE_LIMIT) gesture.samples.shift();
+      gesture.verticalSamples.push({ x: event.clientY, time: event.timeStamp });
+      if (gesture.verticalSamples.length > SWIPE_SAMPLE_LIMIT) gesture.verticalSamples.shift();
 
       if (gesture.intent === "undecided") {
         if (Math.hypot(dx, dy) < PAN_START_DISTANCE) return;
@@ -904,6 +983,15 @@ function ExamScratchpad({
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       gestureRef.current = null;
       writeCreatePull(0);
+      if (gesture.intent === "pan") {
+        if (gesture.target) {
+          fling(
+            gesture.target,
+            getNotebookSwipeVelocity(gesture.verticalSamples, SCROLL_FLING_WINDOW_MS)
+          );
+        }
+        return;
+      }
       if (gesture.intent !== "swipe") return;
 
       const sheet = sheetRef.current;
@@ -949,7 +1037,7 @@ function ExamScratchpad({
           : undefined,
       });
     },
-    [settleSheet, writeCreatePull]
+    [fling, settleSheet, writeCreatePull]
   );
 
   const cancelSwipe = useCallback(
@@ -1041,6 +1129,23 @@ function ExamScratchpad({
   const currentPage = sheetPages[pageIndex] ?? sheetPages[0] ?? BLANK_PAGE;
   const currentPageWidth = currentPage.width;
   const currentPageHeight = currentPage.height;
+  const currentPageIsDark =
+    currentPage.kind !== "printed" && getNotebookPaperPalette(paper.pageColor).isDark;
+
+  /*
+   * Keep the nib visible on the paper under it, as the notebook does.
+   *
+   * The pen is remembered from wherever it was last used, and a white pen from
+   * a black notebook page would otherwise write nothing on the board's white
+   * print. Only when the paper changes: a colour picked on this page stands.
+   */
+  useEffect(() => {
+    setPenColor((current) => {
+      if (currentPageIsDark && current === "black") return "white";
+      if (!currentPageIsDark && current === "white") return "black";
+      return current;
+    });
+  }, [currentPageIsDark]);
 
   /*
    * The frame the page is seen through.
@@ -1071,10 +1176,45 @@ function ExamScratchpad({
     return () => observer.disconnect();
   }, []);
 
+  /*
+   * Inline, the frame is as tall as the tallest page, whichever is open.
+   *
+   * It used to take the height of the open page, and a question's pages are
+   * rarely one shape: a full printed page, then the three-line stub where the
+   * question ran over. Turning from one to the other shrank the sheet by most
+   * of a screen under the finger that turned it, so the next pinch or swipe
+   * landed on the practice page around it -- and that zoomed the whole web
+   * page instead of the sheet. A shorter page now sits in the middle of the
+   * same frame, the way the notebook shows pages of different shapes, and the
+   * frame round it still takes every finger.
+   */
+  const tallestPage = useMemo(
+    () =>
+      sheetPages.reduce(
+        (tallest, page) =>
+          page.height / page.width > tallest.height / tallest.width ? page : tallest,
+        sheetPages[0] ?? BLANK_PAGE
+      ),
+    [sheetPages]
+  );
   const inlineHeight = inlineFrameHeight(
     frameSize.width,
-    currentPageWidth,
-    currentPageHeight
+    tallestPage.width,
+    tallestPage.height
+  );
+  /**
+   * The frame the viewport lays the page out in.
+   *
+   * Inline its height is known from its width the moment the page changes, so
+   * it is handed over then rather than waiting a frame for the observer to
+   * measure it -- a frame in which the page was fitted to the old height.
+   */
+  const viewportFrameSize = useMemo<NotebookViewportFrameSize>(
+    () =>
+      expanded || inlineHeight <= 0
+        ? frameSize
+        : { width: frameSize.width, height: inlineHeight },
+    [expanded, frameSize, inlineHeight]
   );
 
   /*
@@ -1090,7 +1230,7 @@ function ExamScratchpad({
     handleTouchPointerMove,
     handleTouchPointerEnd,
   } = useNotebookViewportController({
-    frameSize,
+    frameSize: viewportFrameSize,
     pageZoom: zoom,
     pagePan: pan,
     pageWidth: currentPageWidth,
@@ -1227,11 +1367,17 @@ function ExamScratchpad({
     };
   }, [zoomAbout]);
 
-  // A pinch that starts on the sheet is the sheet's, never Safari's page zoom.
+  /*
+   * A pinch that starts on the sheet is the sheet's, never Safari's page zoom.
+   *
+   * The whole sheet, tools included, rather than only the frame: a pinch
+   * begun with one finger on the tools or the edge of the paper zoomed the
+   * web page, and the next gesture then landed on a page magnified around it.
+   */
   useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-    return installNotebookViewportZoomBlock(frame);
+    const root = rootRef.current;
+    if (!root) return;
+    return installNotebookViewportZoomBlock(root);
   }, []);
 
   /*
@@ -1245,10 +1391,12 @@ function ExamScratchpad({
   const handleFramePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.pointerType !== "touch") return;
+      stopFling();
+      frameTouchesRef.current.add(event.pointerId);
       if (handleTouchPointerDown(event)) return;
       beginSwipe(event);
     },
-    [beginSwipe, handleTouchPointerDown]
+    [beginSwipe, handleTouchPointerDown, stopFling]
   );
 
   const handleFramePointerMove = useCallback(
@@ -1263,6 +1411,7 @@ function ExamScratchpad({
   const handleFramePointerUp = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.pointerType !== "touch") return;
+      frameTouchesRef.current.delete(event.pointerId);
       handleTouchPointerEnd(event);
     },
     [handleTouchPointerEnd]
@@ -1271,9 +1420,27 @@ function ExamScratchpad({
   const handleFramePointerCancel = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.pointerType !== "touch") return;
+      frameTouchesRef.current.delete(event.pointerId);
       handleTouchPointerEnd(event, { cancelled: true });
     },
     [handleTouchPointerEnd]
+  );
+
+  /*
+   * The frame losing a finger it still holds, and nothing else.
+   *
+   * `lostpointercapture` bubbles. The frame takes every finger from whatever
+   * it landed on, and the element that gave it up reports the loss -- which
+   * reached here and ended the gesture the frame had just begun. And letting a
+   * finger go releases the capture, which reported the same release twice.
+   */
+  const handleFrameLostPointerCapture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) return;
+      if (!frameTouchesRef.current.has(event.pointerId)) return;
+      handleFramePointerCancel(event);
+    },
+    [handleFramePointerCancel]
   );
 
   /*
@@ -1401,6 +1568,23 @@ function ExamScratchpad({
   );
 
   const zoomed = isNotebookViewportZoomedIn(layout.zoom);
+
+  /**
+   * The sheet's corner, and how far its paper reaches past the page to round
+   * it. Scaled with the page on screen, within a range that reads as paper
+   * rather than as a card at any size.
+   *
+   * The reach is what keeps the print whole: a square corner sits inside a
+   * rounded one of radius r only if it is set in by r(1 - 1/sqrt 2), a little
+   * under a third of the radius.
+   */
+  const pageRadius = Math.max(6, Math.min(14, layout.pageSize.width * 0.016));
+  const pageBleed = Math.ceil(pageRadius * 0.3);
+  /** A printed page is white paper; a student's own sheet is the paper they chose. */
+  const pagePaperColor =
+    currentPage.kind === "printed"
+      ? "#ffffff"
+      : getNotebookPaperPalette(paper.pageColor).paper;
 
   /**
    * The slice of the page the ink canvas is asked to paint.
@@ -1639,8 +1823,14 @@ function ExamScratchpad({
           pen={{
             color: penColor,
             thicknessPercent: penThicknessPercent,
-            onColorChange: setPenColor,
-            onThicknessChange: setPenThicknessPercent,
+            onColorChange: (color) => {
+              setPenColor(color);
+              saveNotebookToolPreferences({ penColor: color });
+            },
+            onThicknessChange: (value) => {
+              setPenThicknessPercent(value);
+              saveNotebookToolPreferences({ penThicknessPercent: value });
+            },
             settings: penSettings,
             onSettingsChange: (value) => {
               const next = clampNotebookPenSettings(value);
@@ -1656,14 +1846,26 @@ function ExamScratchpad({
           highlighter={{
             color: highlighterColor,
             thicknessPercent: highlighterThicknessPercent,
-            onColorChange: setHighlighterColor,
-            onThicknessChange: setHighlighterThicknessPercent,
+            onColorChange: (color) => {
+              setHighlighterColor(color);
+              saveNotebookToolPreferences({ highlighterColor: color });
+            },
+            onThicknessChange: (value) => {
+              setHighlighterThicknessPercent(value);
+              saveNotebookToolPreferences({ highlighterThicknessPercent: value });
+            },
           }}
           eraser={{
             mode: eraserMode,
             size: eraserSize,
-            onModeChange: setEraserMode,
-            onSizeChange: setEraserSize,
+            onModeChange: (mode) => {
+              setEraserMode(mode);
+              saveNotebookToolPreferences({ eraserMode: mode });
+            },
+            onSizeChange: (size) => {
+              setEraserSize(size);
+              saveNotebookToolPreferences({ eraserSize: size });
+            },
             canClearPage: !disabled && currentPageHasInk,
             onClearPage: () => {
               setOpenMenu(null);
@@ -1730,13 +1932,13 @@ function ExamScratchpad({
             ? undefined
             : inlineHeight > 0
               ? { height: inlineHeight }
-              : { aspectRatio: `${currentPageWidth} / ${currentPageHeight}` }
+              : { aspectRatio: `${tallestPage.width} / ${tallestPage.height}` }
         }
         onPointerDown={handleFramePointerDown}
         onPointerMove={handleFramePointerMove}
         onPointerUp={handleFramePointerUp}
         onPointerCancel={handleFramePointerCancel}
-        onLostPointerCapture={handleFramePointerCancel}
+        onLostPointerCapture={handleFrameLostPointerCapture}
       >
         <div ref={pageShellRef} className="notebook-page-track absolute inset-0">
           {/*
@@ -1745,22 +1947,21 @@ function ExamScratchpad({
             * containment keeps every ink frame's repaint inside the page instead
             * of invalidating the scrolling page around it.
             *
-            * Square corners, because the paper has square corners. This was
-            * rounded along the top and clipped to the radius, which on a white
-            * page over a pale workspace read as the sheet being smudged or torn
-            * away at its corners -- and on a printed page it cut off the board's
-            * own margin rule and the question number printed beside it. The clip
-            * stays, since the ink canvas has to be held inside the page, but it
-            * no longer cuts anything but a right angle.
+            * Rounded like a sheet of paper, without rounding anything printed
+            * on it. Clipping the page itself to a radius once cut off the
+            * board's margin rule and the question number printed in the corner
+            * of the crop. So the page keeps its square clip -- the ink canvas
+            * has to be held inside it -- and the rounded sheet is a card of
+            * the same paper behind it, a few pixels larger all round: just
+            * enough that the square corner of the print falls inside the curve
+            * rather than outside it. Nothing moves, and nothing is cut.
             *
             * Rendered from the first commit, before the frame has been measured:
             * the Pencil guard is installed on this element once, at mount.
             */}
           <div
             ref={surfaceRef}
-            className={`notebook-page-surface absolute left-0 top-0 overflow-hidden bg-white shadow-e1 ring-1 ring-black/[0.07] [contain:layout_paint] ${
-              expanded ? "shadow-shell" : ""
-            }`}
+            className="notebook-page-surface absolute left-0 top-0"
             style={{
               width: layout.pageSize.width,
               height: layout.pageSize.height,
@@ -1768,71 +1969,89 @@ function ExamScratchpad({
               transformOrigin: "0 0",
             }}
           >
-            {layout.pageSize.width <= 0 ? null : loadFailed ? (
-              <div className="absolute inset-0 grid place-items-center gap-3 p-6 text-center">
-                <p className="text-sm text-text-secondary">
-                  Your saved working could not be opened. It has not been lost — nothing will be written
-                  over it until it loads.
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    setLoadFailed(false);
-                    setReloadKey((value) => value + 1);
-                  }}
-                >
-                  Try again
-                </Button>
-              </div>
-            ) : pageSvgs !== null ? (
-              <>
-                {/*
-                  * The paper under the ink. Drawn inside the same clipped,
-                  * paint-contained box, so a stroke repaints the page and
-                  * nothing above it, and the print never moves relative to
-                  * what is written on it.
-                  */}
-                <ExamSheetPageBackground
-                  key={`bg:${attemptId}:${pageIndex}`}
-                  page={currentPage}
-                  assetPath={assetPath}
-                  questionLabel={questionLabel}
-                  paper={paper}
-                />
-                <WorkingInkEditor
-                  key={`${attemptId}:${pageMount}`}
-                  ref={editorRef}
-                  activeTool={tool}
-                  eraserMode={eraserMode}
-                  eraserThickness={widths.eraser}
-                  highlighterColor={highlighterColor}
-                  highlighterThickness={widths.highlighter}
-                  initialSvg={pageSvgs[pageIndex] ?? ""}
-                  inkWindow={inkWindow}
-                  pageHeight={currentPageHeight}
-                  pageId={`${attemptId}:${pageIndex}`}
-                  pageWidth={currentPageWidth}
-                  penColor={penColor}
-                  penSettings={penSettings}
-                  penThickness={widths.pen}
-                  readOnly={disabled}
-                  scribbleToErase={scribbleToErase}
-                  onChange={handleInkChange}
-                  onHistoryChange={handleHistoryChange}
-                  onInteractionChange={handleInteractionChange}
-                  // Fingers are the frame's, and reach it by bubbling.
-                  onPointerCancel={ignorePointer}
-                  onPointerDown={ignorePointer}
-                  onPointerMove={ignorePointer}
-                  onPointerUp={ignorePointer}
-                />
-              </>
-            ) : (
-              <div className="absolute inset-0 grid place-items-center text-sm text-text-muted">
-                Opening your working…
-              </div>
-            )}
+            {layout.pageSize.width > 0 ? (
+              <div
+                aria-hidden="true"
+                className={`pointer-events-none absolute ring-1 ring-black/[0.07] ${
+                  expanded ? "shadow-shell" : "shadow-e1"
+                }`}
+                style={{
+                  inset: -pageBleed,
+                  borderRadius: pageRadius,
+                  backgroundColor: pagePaperColor,
+                }}
+              />
+            ) : null}
+            <div
+              className="absolute inset-0 overflow-hidden [contain:layout_paint]"
+              style={{ backgroundColor: pagePaperColor }}
+            >
+              {layout.pageSize.width <= 0 ? null : loadFailed ? (
+                <div className="absolute inset-0 grid place-items-center gap-3 p-6 text-center">
+                  <p className="text-sm text-text-secondary">
+                    Your saved working could not be opened. It has not been lost — nothing will be written
+                    over it until it loads.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setLoadFailed(false);
+                      setReloadKey((value) => value + 1);
+                    }}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              ) : pageSvgs !== null ? (
+                <>
+                  {/*
+                    * The paper under the ink. Drawn inside the same clipped,
+                    * paint-contained box, so a stroke repaints the page and
+                    * nothing above it, and the print never moves relative to
+                    * what is written on it.
+                    */}
+                  <ExamSheetPageBackground
+                    key={`bg:${attemptId}:${pageIndex}`}
+                    page={currentPage}
+                    assetPath={assetPath}
+                    questionLabel={questionLabel}
+                    paper={paper}
+                  />
+                  <WorkingInkEditor
+                    key={`${attemptId}:${pageMount}`}
+                    ref={editorRef}
+                    activeTool={tool}
+                    eraserMode={eraserMode}
+                    eraserThickness={widths.eraser}
+                    highlighterColor={highlighterColor}
+                    highlighterThickness={widths.highlighter}
+                    initialSvg={pageSvgs[pageIndex] ?? ""}
+                    inkWindow={inkWindow}
+                    pageHeight={currentPageHeight}
+                    pageId={`${attemptId}:${pageIndex}`}
+                    pageWidth={currentPageWidth}
+                    penColor={penColor}
+                    penSettings={penSettings}
+                    penThickness={widths.pen}
+                    readOnly={disabled}
+                    scribbleToErase={scribbleToErase}
+                    onChange={handleInkChange}
+                    onHistoryChange={handleHistoryChange}
+                    onInteractionChange={handleInteractionChange}
+                    // Fingers are the frame's, and reach it by bubbling.
+                    onPointerCancel={ignorePointer}
+                    onPointerDown={ignorePointer}
+                    onPointerMove={ignorePointer}
+                    onPointerUp={ignorePointer}
+                  />
+                </>
+              ) : (
+                <div className="absolute inset-0 grid place-items-center text-sm text-text-muted">
+                  Opening your working…
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

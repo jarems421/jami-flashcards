@@ -13,6 +13,7 @@ import {
   type PlanWeekday,
   type RevisionPlanDraft,
   type RevisionPlanEmphasis,
+  type RevisionPlanExam,
   type RevisionPlanScope,
   type RevisionPlanSession,
 } from "@/lib/planning/types";
@@ -195,6 +196,53 @@ function normalizeEmphasis(
   return emphasis;
 }
 
+export const MAX_PLAN_EXAMS = 12;
+export const MAX_PLAN_EXAM_LABEL_LENGTH = 60;
+
+/**
+ * The exams a plan counts down to, in date order.
+ *
+ * Kept even when they fall outside the plan's own dates: a plan that stops a
+ * week before the exam is a real choice, and the countdown should still know
+ * when the exam is. A subject the plan does not cover is dropped from the exam
+ * rather than dropping the exam.
+ */
+/**
+ * An exam id no exam in the list has.
+ *
+ * Numbered from the count, a new id repeated a saved one whenever an earlier
+ * exam had been removed -- and the id is the form row's key as well as the
+ * exam's identity, so the two rows then edited each other.
+ */
+export function unusedPlanExamId(exams: readonly Pick<RevisionPlanExam, "id">[]) {
+  const taken = new Set(exams.map((exam) => exam.id));
+  let number = exams.length + 1;
+  while (taken.has(`exam-${number}`)) number += 1;
+  return `exam-${number}`;
+}
+
+function normalizeExams(input: unknown, scopes: readonly RevisionPlanScope[]): RevisionPlanExam[] {
+  if (!Array.isArray(input)) return [];
+  const allowed = new Set(scopes.map(planScopeKey));
+  const exams: RevisionPlanExam[] = [];
+  for (const raw of input) {
+    if (exams.length >= MAX_PLAN_EXAMS) break;
+    if (typeof raw !== "object" || raw === null) continue;
+    const candidate = raw as Partial<RevisionPlanExam>;
+    const label = cleanText(candidate.label, MAX_PLAN_EXAM_LABEL_LENGTH);
+    if (!label || !isPlanDayKey(candidate.dayKey)) continue;
+    const scopeKey = cleanText(candidate.scopeKey, 160);
+    const id = cleanText(candidate.id, 60);
+    exams.push({
+      id: id && !exams.some((exam) => exam.id === id) ? id : unusedPlanExamId(exams),
+      label,
+      dayKey: candidate.dayKey,
+      ...(allowed.has(scopeKey) ? { scopeKey } : {}),
+    });
+  }
+  return exams.sort((left, right) => left.dayKey.localeCompare(right.dayKey));
+}
+
 /**
  * Anything at all, turned into a plan and told what is wrong with it.
  *
@@ -214,6 +262,7 @@ export function normalizeRevisionPlanDraft(
     ? input.endDayKey
     : shiftStudyDayKey(startDayKey, 27);
 
+  const exams = normalizeExams(input?.exams, scopes);
   const problems: PlanValidationProblem[] = [];
   if (scopes.length === 0) problems.push("no-scopes");
   if (sessions.length === 0) problems.push("no-sessions");
@@ -232,6 +281,7 @@ export function normalizeRevisionPlanDraft(
       scopes,
       sessions,
       emphasis: normalizeEmphasis(input?.emphasis, scopes),
+      ...(exams.length > 0 ? { exams } : {}),
     },
     problems,
     valid: problems.every((problem) => !BLOCKING_PROBLEMS.has(problem)),

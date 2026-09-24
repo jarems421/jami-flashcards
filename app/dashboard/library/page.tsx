@@ -9,6 +9,8 @@ import {
 } from "@/hooks/useDashboardData";
 import { useLibraryBrowser } from "@/hooks/useLibraryBrowser";
 import { useSourceManagement } from "@/hooks/useSourceManagement";
+import { useTutorSourceSelection } from "@/hooks/useTutorSourceSelection";
+import { getJamiAssistantContextKey } from "@/lib/ai/jami-assistant-history";
 import type { Source } from "@/lib/material/sources";
 import type { Topic } from "@/lib/material/topics";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
@@ -145,16 +147,32 @@ export default function LibraryPage() {
     onError: handleLibraryLoadError,
     onLoadStart: clearFeedback,
   });
-  const clearPanelForSelectionChange = useCallback(
-    () => setActivePanel(null),
-    []
-  );
+  /*
+   * The sources Tutor was opened on when it was asked about several at once.
+   * Null means the source being read, which is the ordinary case.
+   */
+  const [tutorSourceIds, setTutorSourceIds] = useState<string[] | null>(null);
+  const clearPanelForSelectionChange = useCallback(() => {
+    setActivePanel(null);
+    setTutorSourceIds(null);
+  }, []);
   const browser = useLibraryBrowser(
     sources,
     loading,
     clearPanelForSelectionChange
   );
   const selectedSource = browser.selectedSource;
+  const selection = useTutorSourceSelection(sources);
+  const tutorSources = useMemo(() => {
+    if (!tutorSourceIds) return selectedSource ? [selectedSource] : [];
+    const byId = new Map(sources.map((source) => [source.id, source]));
+    return tutorSourceIds.flatMap((id) => {
+      const source = byId.get(id);
+      return source ? [source] : [];
+    });
+  }, [selectedSource, sources, tutorSourceIds]);
+  const tutorSourceKey = tutorSources.map((source) => source.id).sort().join(",");
+  const askingSeveral = tutorSources.length > 1;
 
   /*
    * Selecting the source a Tutor link asked for.
@@ -271,6 +289,41 @@ export default function LibraryPage() {
     setActivePanel(panel);
   };
 
+  /*
+   * Opens Tutor on a set of sources, or on the one being read when `ids` is
+   * null.
+   *
+   * The drawer starts a fresh chat, and closes, whenever the sources it is
+   * about change. Opening it in the same update as the change would be undone
+   * by that reset, so a change of sources opens it from the effect below,
+   * which runs after the drawer's own.
+   */
+  const pendingTutorKeyRef = useRef<string | null>(null);
+  const openTutorOn = (ids: string[] | null) => {
+    clearFeedback();
+    const nextKey = [...(ids ?? (selectedSource ? [selectedSource.id] : []))]
+      .sort()
+      .join(",");
+    setTutorSourceIds(ids);
+    if (nextKey === tutorSourceKey) {
+      setActivePanel("tutor");
+    } else {
+      pendingTutorKeyRef.current = nextKey;
+    }
+  };
+
+  useEffect(() => {
+    if (pendingTutorKeyRef.current !== tutorSourceKey) return;
+    pendingTutorKeyRef.current = null;
+    void Promise.resolve().then(() => setActivePanel("tutor"));
+  }, [tutorSourceKey]);
+
+  const askTutorAboutSelection = () => {
+    if (selection.selectedIds.length === 0) return;
+    openTutorOn(selection.selectedIds);
+    selection.cancel();
+  };
+
   const openSelectedSource = () => {
     if (!selectedSource) return;
     const targetUrl =
@@ -286,7 +339,7 @@ export default function LibraryPage() {
       <AppPage
         title={TUTOR_TITLE}
         views={TUTOR_VIEWS}
-        viewsLabel="Tutor views"
+        viewsLabel="Jami views"
         backHref="/dashboard"
         backLabel="Today"
       >
@@ -303,7 +356,7 @@ export default function LibraryPage() {
       <AppPage
         title={TUTOR_TITLE}
         views={TUTOR_VIEWS}
-        viewsLabel="Tutor views"
+        viewsLabel="Jami views"
         backHref="/dashboard"
         backLabel="Today"
       >
@@ -335,7 +388,7 @@ export default function LibraryPage() {
     <AppPage
       title={TUTOR_TITLE}
       views={TUTOR_VIEWS}
-      viewsLabel="Tutor views"
+      viewsLabel="Jami views"
       backHref="/dashboard"
       backLabel="Today"
       width="study"
@@ -380,39 +433,81 @@ export default function LibraryPage() {
 
       <JamiAssistantDrawer
         userId={user.uid}
-        open={visiblePanel === "tutor"}
+        open={visiblePanel === "tutor" && tutorSources.length > 0}
         onOpenChange={(open) => {
           if (!open) setActivePanel(null);
         }}
-        resetKey={selectedSource?.id ?? "no-source"}
-        contextKey={`sources:${selectedSource?.id ?? ""}`}
-        contextLabel="Current source"
-        historyContextLabel={selectedSource?.title ?? "Source"}
+        resetKey={tutorSourceKey || "no-source"}
+        contextKey={getJamiAssistantContextKey({
+          surface: "sources",
+          sourceIds: tutorSources.map((source) => source.id),
+        })}
+        contextLabel={
+          askingSeveral ? `${tutorSources.length} selected sources` : "Current source"
+        }
+        historyContextLabel={
+          askingSeveral
+            ? `${tutorSources[0]?.title ?? "Sources"} and ${tutorSources.length - 1} more`
+            : tutorSources[0]?.title ?? "Source"
+        }
         getContext={() => ({
           surface: "sources",
-          sourceIds: selectedSource ? [selectedSource.id] : [],
+          sourceIds: tutorSources.map((source) => source.id),
         })}
-        // The folders this source sits in, so Tutor settings can say which
+        // The folders these sources sit in, so Tutor settings can say which
         // folder's instructions are in force rather than restating the rule.
-        settingsFolderIds={selectedSource?.folderIds ?? []}
-        quickActions={[
-          {
-            label: "Explain key ideas",
-            prompt: "Explain the key ideas in this source clearly.",
-          },
-          {
-            label: "Revision summary",
-            prompt: "Summarise this source for revision.",
-          },
-          {
-            label: "Quiz me",
-            prompt: "Quiz me on the most important ideas in this source.",
-          },
-          {
-            label: "Make study material",
-            run: () => openWorkspacePanel("drafts"),
-          },
-        ]}
+        settingsFolderIds={Array.from(
+          new Set(tutorSources.flatMap((source) => source.folderIds))
+        )}
+        quickActions={
+          askingSeveral
+            ? [
+                {
+                  label: "Connect the ideas",
+                  prompt:
+                    "How do the ideas in these sources fit together? Explain them as one picture.",
+                },
+                {
+                  label: "Compare them",
+                  prompt:
+                    "Where do these sources agree, where do they differ, and do they use different notation or methods?",
+                },
+                {
+                  label: "Revision summary",
+                  prompt: "Summarise what these sources cover together, for revision.",
+                },
+                {
+                  label: "Quiz me",
+                  prompt: "Quiz me on the most important ideas across these sources.",
+                },
+                {
+                  label: "Suggest flashcards",
+                  prompt: "Make flashcards on the key ideas across these sources.",
+                },
+              ]
+            : [
+                {
+                  label: "Explain key ideas",
+                  prompt: "Explain the key ideas in this source clearly.",
+                },
+                {
+                  label: "Revision summary",
+                  prompt: "Summarise this source for revision.",
+                },
+                {
+                  label: "Quiz me",
+                  prompt: "Quiz me on the most important ideas in this source.",
+                },
+                {
+                  label: "Suggest flashcards",
+                  prompt: "Make flashcards on the key ideas in this source.",
+                },
+                {
+                  label: "Make study material",
+                  run: () => openWorkspacePanel("drafts"),
+                },
+              ]
+        }
       />
 
       <SourceDetailsWorkflow
@@ -450,13 +545,17 @@ export default function LibraryPage() {
 
       <LibraryWorkspace
         browser={browser}
+        selection={selection}
         folders={folders}
         selectedSourceFileUrl={selectedSourceFileUrl}
         sourceDraftCount={sourceDraftCount}
         restoring={management.busyAction === "restore-source"}
         actions={{
           addSource: openSourceComposer,
-          askTutor: () => openWorkspacePanel("tutor"),
+          askTutor: () => {
+            if (selectedSource) openTutorOn(null);
+          },
+          askTutorAboutSelection,
           openDrafts: () => openWorkspacePanel("drafts"),
           openDetails: () => openWorkspacePanel("details"),
           openOriginal: openSelectedSource,

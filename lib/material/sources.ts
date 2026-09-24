@@ -2,6 +2,8 @@ import { normalizeOptionalString, normalizeStringArray } from "@/lib/material/co
 
 export type SourceType = "pasted_text" | "manual_note" | "link" | "file";
 export type SourceStatus = "active" | "archived";
+/** Where the source's search index stands. Written only by the server's indexer. */
+export type SourceIndexStatus = "processing" | "ready" | "empty" | "failed";
 
 export type Source = {
   id: string;
@@ -17,6 +19,8 @@ export type Source = {
   storagePath?: string;
   sizeBytes?: number;
   status: SourceStatus;
+  /** Absent on a source that has never been indexed. */
+  indexStatus?: SourceIndexStatus;
   createdBy: string;
   createdAt: number;
   updatedAt: number;
@@ -33,6 +37,10 @@ export function isSourceType(value: unknown): value is SourceType {
 
 export function isSourceStatus(value: unknown): value is SourceStatus {
   return value === "active" || value === "archived";
+}
+
+function isSourceIndexStatus(value: unknown): value is SourceIndexStatus {
+  return value === "processing" || value === "ready" || value === "empty" || value === "failed";
 }
 
 function normalizeUrl(value: unknown) {
@@ -66,6 +74,7 @@ export function mapSourceData(id: string, data: Record<string, unknown>): Source
         ? Math.max(0, Math.round(data.sizeBytes))
         : undefined,
     status: isSourceStatus(data.status) ? data.status : "active",
+    ...(isSourceIndexStatus(data.indexStatus) ? { indexStatus: data.indexStatus } : {}),
     createdBy: normalizeOptionalString(data.createdBy, 160) ?? "",
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,

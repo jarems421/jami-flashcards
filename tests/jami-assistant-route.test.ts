@@ -112,7 +112,7 @@ vi.mock("@/lib/ai/source-ingestion", () => ({
 }));
 
 vi.mock("@/services/ai/source-index.server", () => ({
-  retrieveSourceChunks: mocks.retrieveChunks,
+  retrieveTutorEvidence: mocks.retrieveChunks,
 }));
 
 vi.mock("@/lib/ai/provider-router", () => ({
@@ -500,6 +500,136 @@ describe("universal Jami assistant route", () => {
           reason: "Unreadable file",
         },
       ],
+    });
+  });
+
+  it("leaves out an indexed folder source that has nothing relevant, rather than reading it whole", async () => {
+    const resolved = (await mocks.resolveContext.getMockImplementation()?.({})) as {
+      sources: Array<Record<string, unknown>>;
+    };
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...resolved,
+      sources: [{ ...resolved.sources[0], indexStatus: "ready" }],
+    });
+    mocks.streamText.mockResolvedValueOnce(
+      JSON.stringify({
+        answer: "A general explanation.",
+        sourceRefs: [],
+        usedCurrentContext: true,
+        usedGeneralKnowledge: true,
+      })
+    );
+
+    const { terminal } = await readStream(await postAssistant(request(validBody())));
+
+    expect(terminal).toMatchObject({ type: "done", reply: "A general explanation." });
+    expect(terminal).not.toHaveProperty("sourceFailures");
+    expect(mocks.prepareSource).not.toHaveBeenCalled();
+  });
+
+  it("gives each chosen source its own search and sends passages, not whole documents", async () => {
+    const resolved = (await mocks.resolveContext.getMockImplementation()?.({})) as {
+      sources: Array<Record<string, unknown>>;
+    };
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...resolved,
+      pinnedSourceIds: ["source-1"],
+      sources: [{ ...resolved.sources[0], indexStatus: "ready" }],
+    });
+    mocks.retrieveChunks.mockResolvedValueOnce([
+      {
+        id: "source-1-0003",
+        sourceId: "source-1",
+        sourceTitle: "Biology notes",
+        chunkIndex: 3,
+        text: "Chlorophyll absorbs red and blue light.",
+        pageStart: 2,
+        pageEnd: 2,
+        distance: 0.2,
+      },
+    ]);
+
+    await readStream(await postAssistant(request(validBody())));
+
+    expect(mocks.retrieveChunks).toHaveBeenCalledWith(
+      expect.objectContaining({ pinnedSourceIds: ["source-1"], relatedSourceIds: [] })
+    );
+    expect(mocks.prepareSource).not.toHaveBeenCalled();
+    const generationRequest = mocks.streamText.mock.calls[0]?.[0] as {
+      request: { contents: Array<{ parts: Array<{ text?: string }> }>; systemInstruction: string };
+    };
+    const sent = generationRequest.request.contents
+      .at(-1)
+      ?.parts.map((part) => part.text ?? "")
+      .join("\n");
+    expect(sent).toContain("[p. 2]\nChlorophyll absorbs red and blue light.");
+    expect(generationRequest.request.systemInstruction).toContain("Teach the ideas; do not reproduce the passages.");
+  });
+
+  it("returns flashcard suggestions only when asked, each tied to the source it came from", async () => {
+    const withCards = JSON.stringify({
+      answer: "These cover how light energy is captured.",
+      sourceRefs: ["S1"],
+      usedCurrentContext: false,
+      usedGeneralKnowledge: true,
+      cards: [
+        { front: "What does chlorophyll do in a leaf?", back: "It absorbs light energy.", sourceRef: "S1" },
+      ],
+    });
+    mocks.streamText.mockResolvedValueOnce(withCards);
+
+    const { terminal } = await readStream(
+      await postAssistant(request(validBody({ message: "Make flashcards from this." })))
+    );
+
+    expect(terminal).toMatchObject({
+      type: "done",
+      suggestedCards: [
+        {
+          front: "What does chlorophyll do in a leaf?",
+          back: "It absorbs light energy.",
+          sourceId: "source-1",
+          sourceTitle: "Biology notes",
+          topicIds: [],
+        },
+      ],
+    });
+    expect(mocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generationConfig: expect.objectContaining({
+          responseSchema: expect.objectContaining({
+            properties: expect.objectContaining({ cards: expect.anything() }),
+          }),
+        }),
+      })
+    );
+    const savedAnswer = mocks.persisted.find(
+      (entry) => entry.kind === "create" && (entry.data as { role?: string }).role === "assistant"
+    );
+    expect(savedAnswer?.data).toMatchObject({
+      suggestedCards: [expect.objectContaining({ sourceId: "source-1" })],
+    });
+
+    // An ordinary question is never offered the field.
+    mocks.streamText.mockClear();
+    await readStream(await postAssistant(request(validBody())));
+    const ordinary = mocks.streamText.mock.calls[0]?.[0] as {
+      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+    };
+    expect(ordinary.generationConfig.responseSchema.properties).not.toHaveProperty("cards");
+  });
+
+  it("offers to make flashcards after an answer drawn from sources", async () => {
+    const { terminal } = await readStream(
+      await postAssistant(
+        request(validBody({ context: { surface: "sources", sourceIds: ["source-1"] } }))
+      )
+    );
+
+    expect(terminal).toMatchObject({
+      followUps: expect.arrayContaining([
+        { label: "Make flashcards", prompt: "Make flashcards from this." },
+      ]),
     });
   });
 

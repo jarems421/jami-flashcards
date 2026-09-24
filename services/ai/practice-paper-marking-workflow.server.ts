@@ -1,4 +1,5 @@
 import "server-only";
+import { loadQuestionTypeRules } from "@/services/practice/question-type-rules.server";
 
 import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { runWithAiSpendContext } from "@/lib/ai/spend-context";
@@ -218,6 +219,7 @@ async function runQueuedPracticePaperMarkingMetered(uid: string, jobId: string) 
       await loadSavedMarkerStages(pathsByPipeline[pipeline], stagePrefix),
     ] as const)
   )) as Record<MarkerPipeline, Partial<Record<PracticePaperMarkerStage, PracticePaperMarkerStageResult>>>;
+  const examinerPracticeRules = await loadQuestionTypeRules(paper.assessmentProfile, paper.title);
   const runOne = (
     pipeline: MarkerPipeline,
     targetPaper: PracticePaper,
@@ -227,6 +229,7 @@ async function runQueuedPracticePaperMarkingMetered(uid: string, jobId: string) 
   ) =>
     markPracticePaperWithAudit({
       paper: targetPaper,
+      examinerPracticeRules,
       answerParts: [...parts, ...transcription],
       thirdViewParts: parts,
       originalPaperParts,

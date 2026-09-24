@@ -7,6 +7,7 @@ import type {
   LibrarySourceTypeFilter,
 } from "@/lib/study/library-navigation";
 import type { LibraryBrowserController } from "@/hooks/useLibraryBrowser";
+import type { TutorSourceSelection } from "@/hooks/useTutorSourceSelection";
 import { Button, EmptyState, Input } from "@/components/ui";
 import SourcePreview from "./SourcePreview";
 import {
@@ -22,6 +23,8 @@ import styles from "@/app/dashboard/library/page.module.css";
 export type LibraryWorkspaceActions = {
   addSource: () => void;
   askTutor: () => void;
+  /** Opens Tutor on every source chosen in select mode. */
+  askTutorAboutSelection: () => void;
   openDrafts: () => void;
   openDetails: () => void;
   openOriginal: () => void;
@@ -33,6 +36,7 @@ export type LibraryWorkspaceActions = {
 
 type LibraryWorkspaceProps = {
   browser: LibraryBrowserController;
+  selection: TutorSourceSelection;
   folders: StudyFolder[];
   selectedSourceFileUrl?: string;
   sourceDraftCount: number;
@@ -47,6 +51,7 @@ type LibraryWorkspaceProps = {
  */
 export default function LibraryWorkspace({
   browser,
+  selection,
   folders,
   selectedSourceFileUrl,
   sourceDraftCount,
@@ -230,12 +235,29 @@ export default function LibraryWorkspace({
                 </div>
               </details>
             </div>
-            {browser.searchTerm || browser.activeFilterCount > 0 ? (
-              <p className="mt-2 px-1 text-xs text-text-muted" aria-live="polite">
-                {browser.filteredSources.length} result
-                {browser.filteredSources.length === 1 ? "" : "s"}
+            <div className="mt-2 flex min-h-8 items-center justify-between gap-2 px-1">
+              <p className="min-w-0 truncate text-xs text-text-muted" aria-live="polite">
+                {selection.selecting
+                  ? "Choose sources to ask Jami about together"
+                  : browser.searchTerm || browser.activeFilterCount > 0
+                    ? `${browser.filteredSources.length} result${
+                        browser.filteredSources.length === 1 ? "" : "s"
+                      }`
+                    : ""}
               </p>
-            ) : null}
+              <button
+                type="button"
+                aria-pressed={selection.selecting}
+                onClick={() =>
+                  selection.selecting
+                    ? selection.cancel()
+                    : selection.start(selectedSource?.id)
+                }
+                className="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold text-accent transition hover:bg-[var(--color-glass-subtle)]"
+              >
+                {selection.selecting ? "Cancel" : "Select several"}
+              </button>
+            </div>
           </div>
 
           <nav
@@ -262,7 +284,11 @@ export default function LibraryWorkspace({
               </div>
             ) : (
               browser.filteredSources.map((source) => {
-                const active = source.id === selectedSource?.id;
+                const chosen = selection.selectedIds.includes(source.id);
+                const active = selection.selecting
+                  ? chosen
+                  : source.id === selectedSource?.id;
+                const unavailable = selection.selecting && !chosen && selection.isFull;
                 const firstFolder = source.folderIds
                   .map(
                     (folderId) =>
@@ -273,13 +299,21 @@ export default function LibraryWorkspace({
                   <button
                     key={source.id}
                     type="button"
-                    aria-current={active ? "page" : undefined}
-                    onClick={() => browser.selectSource(source.id)}
+                    aria-current={!selection.selecting && active ? "page" : undefined}
+                    aria-pressed={selection.selecting ? chosen : undefined}
+                    aria-disabled={unavailable || undefined}
+                    onClick={() =>
+                      selection.selecting
+                        ? !unavailable && selection.toggle(source.id)
+                        : browser.selectSource(source.id)
+                    }
                     className={
                       "group relative flex min-h-[4.25rem] w-full items-center gap-2.5 border-b border-[var(--color-border)] px-4 py-2.5 text-left transition " +
                       (active
                         ? "bg-[var(--color-selected-bg)] text-text-primary"
-                        : "text-text-secondary hover:bg-[var(--color-glass-subtle)]")
+                        : unavailable
+                          ? "cursor-not-allowed text-text-muted opacity-60"
+                          : "text-text-secondary hover:bg-[var(--color-glass-subtle)]")
                     }
                   >
                     {active ? (
@@ -288,10 +322,24 @@ export default function LibraryWorkspace({
                         className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[var(--color-accent)]"
                       />
                     ) : null}
-                    <SourceTypeIcon
-                      type={source.type}
-                      className="h-4 w-4 shrink-0 text-text-muted"
-                    />
+                    {selection.selecting ? (
+                      <span
+                        aria-hidden="true"
+                        className={
+                          "grid h-5 w-5 shrink-0 place-items-center rounded-full border transition " +
+                          (chosen
+                            ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-text-inverse)]"
+                            : "border-[var(--color-border-strong)] text-transparent")
+                        }
+                      >
+                        <SourceActionIcon name="check" className="h-3.5 w-3.5" />
+                      </span>
+                    ) : (
+                      <SourceTypeIcon
+                        type={source.type}
+                        className="h-4 w-4 shrink-0 text-text-muted"
+                      />
+                    )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-text-primary">
                         {source.title}
@@ -306,6 +354,30 @@ export default function LibraryWorkspace({
               })
             )}
           </nav>
+          {selection.selecting ? (
+            <div className="flex shrink-0 items-center gap-3 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold tabular-nums text-text-primary">
+                  {selection.selectedIds.length} selected
+                </div>
+                <div className="truncate text-2xs text-text-muted">
+                  {selection.isFull
+                    ? `That's the most Jami reads at once.`
+                    : `Up to ${selection.max} sources`}
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="min-h-11 shrink-0"
+                disabled={selection.selectedIds.length === 0}
+                onClick={actions.askTutorAboutSelection}
+              >
+                <SourceActionIcon name="sparkles" className="mr-2 h-4 w-4" />
+                Ask Jami
+              </Button>
+            </div>
+          ) : null}
         </aside>
 
         <article

@@ -9,6 +9,8 @@ import { markSchemeIssues, sameFixedPaper } from "@/lib/ai/practice-paper-qualit
 import type { AiGenerationRole } from "@/lib/ai/provider-policy";
 import { normalizePracticePaperMarkScheme } from "@/lib/practice/practice-papers";
 import { describeQuestionConvention, questionConventionFor } from "@/lib/practice/question-conventions";
+import { matchQuestionTypeRule, ruleAsConvention, type QuestionTypeRule } from "@/lib/practice/question-types";
+import { loadQuestionTypeRules } from "@/services/practice/question-type-rules.server";
 import type { ReadyPracticePaper } from "@/services/ai/practice-paper-generation-design.server";
 import {
   parseJsonObject,
@@ -35,10 +37,15 @@ import {
  */
 function examinerPracticeFor(
   draft: Pick<ReadyPracticePaper, "assessmentProfile" | "title">,
-  questions: readonly { id: string; prompt: string; marks: number }[]
+  questions: readonly { id: string; prompt: string; marks: number }[],
+  researched: readonly QuestionTypeRule[]
 ) {
   const notes = questions.flatMap((question) => {
-    const convention = questionConventionFor({ profile: draft.assessmentProfile, title: draft.title, question });
+    // The board's own researched rule first, practice written from memory where none matches.
+    const rule = matchQuestionTypeRule(researched, question);
+    const convention = rule
+      ? ruleAsConvention(rule)
+      : questionConventionFor({ profile: draft.assessmentProfile, title: draft.title, question });
     return convention ? [`${question.id}: ${describeQuestionConvention(convention)}`] : [];
   });
   return notes.length
@@ -60,6 +67,7 @@ export async function buildPracticePaperMarkScheme(
 ): Promise<Response | ReadyPracticePaper> {
   const { runPass, refund, log, draft, evidenceContents, markSchemeRole } = input;
   const markSchemeInstruction = MARK_SCHEME_INSTRUCTION;
+  const researched = await loadQuestionTypeRules(draft.assessmentProfile, draft.title);
   const questionBatches = partitionMarkSchemeQuestions(draft.questions);
   const generatedItems: unknown[] = [];
   const batchShape = (value: unknown, questions: typeof draft.questions) => {
@@ -154,7 +162,7 @@ export async function buildPracticePaperMarkScheme(
           {
             role: "user" as const,
             parts: [{
-              text: `--- ASSESSMENT PROFILE ---\n${JSON.stringify(draft.assessmentProfile)}\n\n--- FIXED QUESTIONS ---\n${JSON.stringify(questions)}${examinerPracticeFor(draft, questions)}\n\nReturn only the matching mark-scheme items.`,
+              text: `--- ASSESSMENT PROFILE ---\n${JSON.stringify(draft.assessmentProfile)}\n\n--- FIXED QUESTIONS ---\n${JSON.stringify(questions)}${examinerPracticeFor(draft, questions, researched)}\n\nReturn only the matching mark-scheme items.`,
             }],
           },
         ],
