@@ -9,9 +9,14 @@ import {
   generateAiText,
   type AiResponseDiagnostics,
 } from "@/lib/ai/provider-router";
-import { failoverProvidersFor, type AiGenerationRole } from "@/lib/ai/provider-policy";
+import {
+  failoverProvidersFor,
+  type AiGenerationRole,
+  type AiReasoningEffort,
+} from "@/lib/ai/provider-policy";
 import { schemeCriteria } from "@/lib/practice/mark-schemes";
 import { describeQuestionConvention, questionConventionFor } from "@/lib/practice/question-conventions";
+import { matchQuestionTypeRule, ruleAsConvention, type QuestionTypeRule } from "@/lib/practice/question-types";
 import {
   markerTimeoutMs,
   PracticePaperMarkingFailedError,
@@ -150,6 +155,13 @@ export type PracticePaperMarkingInput = {
    * to be judged at all.
    */
   variant?: MarkingVariant;
+  /**
+   * How this board marks each kind of question in this subject, researched
+   * from its own mark schemes (`services/practice/question-type-rules.server.ts`).
+   * Preferred over the hand-written conventions wherever a question matches
+   * one; absent, the hand-written conventions stand alone.
+   */
+  examinerPracticeRules?: QuestionTypeRule[];
   /** Server-only checkpoints used by durable workflows after a redeploy/retry. */
   cachedStageResults?: Partial<Record<PracticePaperMarkerStage, PracticePaperMarkerStageResult>>;
   onStageResult?: (
@@ -163,9 +175,84 @@ export type MarkingVariant = {
   levelsGuidance?: boolean;
   /** The board's examiner practice for each kind of question. */
   examinerPractice?: boolean;
+  /** False to use only the hand-written conventions, never the researched rules. */
+  researchedRules?: boolean;
   /** Which model settles a disputed levels-marked question. */
   levelsAdjudicator?: AiGenerationRole;
+  /** False to adjudicate every disputed levels-marked question, however close the markers are. */
+  settleCloseLevelsDisputes?: boolean;
+  /** False to let the primary think on short point-marked questions too. */
+  quickShortQuestions?: boolean;
 };
+
+/**
+ * The largest point-marked question whose primary marks without thinking.
+ *
+ * A student waiting on a two-mark answer was waiting on the supervisor's
+ * thinking, not its report. Re-marking recent real attempts through the
+ * production path, the primary spent 22 to 54 seconds writing 4,900 to 10,000
+ * tokens on one- and two-mark questions, nearly all of it reasoning, while the
+ * verifier beside it -- the same answer against the same scheme -- reported in
+ * 8 to 12 seconds and 400 tokens. The marking cannot finish before the slower
+ * of the two, so every short answer took the supervisor's full minute, and in
+ * production the median one-or-two-mark question took 53 seconds.
+ *
+ * Off rather than reduced, because reduced does not happen: the supervisor's
+ * endpoints ignore `low`, `minimal` and a token budget alike, and think for as
+ * long as they would have anyway.
+ *
+ * Short and point-marked only. Each of those marks names one achievement the
+ * scheme states, and the two blind markers are still compared criterion by
+ * criterion, so a primary that missed something is caught by the verifier and
+ * the dispute settled by an adjudicator that does think. Longer and
+ * levels-marked questions keep their thinking: there the judgement is the work.
+ *
+ * Measured, thinly, on handwritten Higher Maths questions of up to four marks
+ * (`criterion-run --max-marks=4 --variant=slow-short` is the other arm): the
+ * account ran out of credit part way, leaving seven records both arms marked.
+ * On those the primary's own report matched the examiner on 6 of 7 without
+ * thinking and 5 of 7 with it, the final marks were identical on the five both
+ * finished, and across fourteen records the no-thinking arm's bias was -0.07
+ * marks. It marked twice as many records in the same time. Re-run both arms
+ * over all 28 before reading anything finer into it.
+ */
+const QUICK_MARKING_MAX_MARKS = 4;
+
+function primaryReasoningEffort(paper: PracticePaper, variant?: MarkingVariant) {
+  if (variant?.quickShortQuestions === false) return undefined;
+  const short = paper.questions.length === 1 && paper.totalMarks <= QUICK_MARKING_MAX_MARKS;
+  return short && !marksByLevels(paper) ? ("none" as const) : undefined;
+}
+
+/**
+ * A disputed essay whose two blind markers are within a mark of each other,
+ * settled by the worker's report instead of an adjudicator.
+ *
+ * Adjudication is the slow step in marking an essay -- a second sequential
+ * call of about 29 seconds after the two markers' 34, needed on 30 of 36
+ * GCSE English answers. Replayed from the markers' own logged decisions,
+ * taking the worker's report whenever the two were within one mark skipped 11
+ * of those 30 adjudications with no loss of accuracy (average error from the
+ * examiners 1.07 against 1.10), and 10 of the adjudications on handwritten
+ * Chemistry and History answers at about the same accuracy. The worker is the
+ * marker measured closer to examiners on levels-marked answers.
+ *
+ * Levels-marked questions only. On the 67 real maths scripts the same rule
+ * would have skipped 15 of 25 adjudications and got two answers wrong that
+ * adjudication got right: a mark of difference on a four-mark question is a
+ * real disagreement, and one on a twenty-mark essay is ordinary marking noise.
+ */
+function closeLevelsDispute(
+  paper: PracticePaper,
+  primary: PracticePaperResult,
+  verifier: PracticePaperResult,
+  variant?: MarkingVariant
+) {
+  if (variant?.settleCloseLevelsDisputes === false || !marksByLevels(paper)) return false;
+  const left = primary.questionResults[0]?.awardedMarks;
+  const right = verifier.questionResults[0]?.awardedMarks;
+  return typeof left === "number" && typeof right === "number" && Math.abs(left - right) <= 1;
+}
 
 export {
   PracticePaperMarkingFailedError,
@@ -393,10 +480,14 @@ function levelsAdjudicatorRole(
  * `lib/practice/question-conventions.ts`. Questions sharing a convention are
  * listed under it once, so a long paper is not told the same thing twenty times.
  */
-function examinerPractice(paper: PracticePaper) {
+function examinerPractice(paper: PracticePaper, researched: readonly QuestionTypeRule[] = []) {
   const grouped = new Map<string, { labels: string[]; text: string }>();
   for (const question of paper.questions) {
-    const convention = questionConventionFor({ profile: paper.assessmentProfile, title: paper.title, question });
+    // The board's own researched rule for this kind of question first; practice written from memory only where none matches.
+    const rule = matchQuestionTypeRule(researched, question);
+    const convention = rule
+      ? ruleAsConvention(rule)
+      : questionConventionFor({ profile: paper.assessmentProfile, title: paper.title, question });
     if (!convention) continue;
     const entry = grouped.get(convention.id) ?? { labels: [], text: describeQuestionConvention(convention) };
     entry.labels.push(`${question.label} (${question.id})`);
@@ -407,9 +498,9 @@ function examinerPractice(paper: PracticePaper) {
   return `\nEXAMINER PRACTICE\nHow examiners of this board mark these kinds of question. Apply it alongside the fixed guide; where the two differ, the guide decides. Where an answer makes one of the listed mistakes, say so in nextStep.\n\n${blocks.join("\n\n")}\n`;
 }
 
-function markingPrompt(paper: PracticePaper, variant?: MarkingVariant) {
+function markingPrompt(paper: PracticePaper, variant?: MarkingVariant, researched?: readonly QuestionTypeRule[]) {
   const levels = marksByLevels(paper) && variant?.levelsGuidance !== false;
-  const practice = variant?.examinerPractice === false ? "" : examinerPractice(paper);
+  const practice = variant?.examinerPractice === false ? "" : examinerPractice(paper, variant?.researchedRules === false ? [] : researched);
   return `Mark every submitted answer against the fixed guide. The guide is immutable and an uploaded official rubric is authoritative.
 
 ${subjectAdapter(paper)}
@@ -504,7 +595,7 @@ export function buildMarkerRequest(input: PracticePaperMarkingInput & {
         ...(input.role === "third-view" && input.thirdViewParts?.length
           ? input.thirdViewParts
           : input.answerParts),
-        { text: `--- MARKING REQUEST ---\n${markingPrompt(input.paper, input.variant)}${input.extraPrompt ? `\n\n${input.extraPrompt}` : ""}` },
+        { text: `--- MARKING REQUEST ---\n${markingPrompt(input.paper, input.variant, input.examinerPracticeRules)}${input.extraPrompt ? `\n\n${input.extraPrompt}` : ""}` },
       ],
     }],
   };
@@ -514,6 +605,8 @@ async function callMarker(input: PracticePaperMarkingInput & {
   role: "primary" | "verifier" | "adjudicator" | "third-view";
   modelRole: AiGenerationRole;
   extraPrompt?: string;
+  /** Left unset, the role's own effort applies. */
+  reasoningEffort?: AiReasoningEffort | "none";
 }) {
   const diagnostics: AiResponseDiagnostics[] = [];
   /*
@@ -535,10 +628,24 @@ async function callMarker(input: PracticePaperMarkingInput & {
       throw new PracticePaperMarkingInputTooLargeError(inputTokens, input.inputTokenCap);
     }
   }
-  const call = (providerOverride?: readonly string[]) => generateAiText({
+  /*
+   * A report that came back unreadable without thinking is asked again with it.
+   *
+   * Benchmarked on short handwritten maths, one primary marking without
+   * thinking returned a report the parser rejected on both of its attempts, for
+   * an answer the thinking primary read first time. A retry is already the
+   * slow path, so it takes the role's own effort rather than failing the same
+   * way twice and leaving the student with no mark at all.
+   */
+  const retryEffort = input.reasoningEffort === "none" ? undefined : input.reasoningEffort;
+  const call = (
+    providerOverride: readonly string[] | undefined,
+    reasoningEffort: AiReasoningEffort | "none" | undefined
+  ) => generateAiText({
     role: input.modelRole,
     ...(providerOverride?.length ? { providerOverride } : {}),
     taskClass: input.role === "verifier" ? "standard" : "important",
+    ...(reasoningEffort ? { reasoningEffort } : {}),
     timeoutMs: input.callTimeoutMs ?? (providerOverride?.length
       ? fallbackTimeoutMs(input.modelRole)
       : markerTimeoutMs(input.modelRole)),
@@ -618,7 +725,7 @@ async function callMarker(input: PracticePaperMarkingInput & {
     hasUntypedWorking: input.answerParts.some((part) => "inlineData" in part),
   };
 
-  let generated = await call();
+  let generated = await call(undefined, input.reasoningEffort);
   let result = parsePracticePaperMarkingModelAnswer(generated, input.paper, candidate);
   let failure = result ? null : diagnose(generated);
 
@@ -640,7 +747,7 @@ async function callMarker(input: PracticePaperMarkingInput & {
     });
     // A sticky empty response is the one failure a different endpoint fixes.
     const failover = isEmpty(failure?.kind) ? failoverProvidersFor(input.modelRole) : [];
-    generated = await call(failover);
+    generated = await call(failover, retryEffort);
     result = parsePracticePaperMarkingModelAnswer(generated, input.paper, candidate);
     failure = result ? null : diagnose(generated);
   }
@@ -831,6 +938,7 @@ export async function markSingleQuestionAdaptively(
    * completed are read back instead, so a resumed marking pays only for the
    * work still missing.
    */
+  const quickEffort = primaryReasoningEffort(input.paper, input.variant);
   const runPrimary = () => checkpointedMarkerCall(input, "primary", async () => {
     let neededParseRetry = false;
     const completed = await callMarker({
@@ -839,6 +947,7 @@ export async function markSingleQuestionAdaptively(
       onParseFailure: (failure) => { neededParseRetry = true; input.onParseFailure?.(failure); },
       role: "primary",
       modelRole: "supervisor",
+      ...(quickEffort ? { reasoningEffort: quickEffort } : {}),
     });
     return { ...completed, neededParseRetry };
   });
@@ -931,7 +1040,9 @@ export async function markSingleQuestionAdaptively(
   let adjudicated = false;
   if (verifier) {
     const disputed = comparePracticePaperMarkings(primary.result, verifier.result);
-    if (disputed.length > 0) {
+    if (disputed.length > 0 && closeLevelsDispute(input.paper, primary.result, verifier.result, input.variant)) {
+      result = verifier.result;
+    } else if (disputed.length > 0) {
       let adjudication;
       try {
         adjudication = await checkpointedMarkerCall(input, "adjudication", () => callMarker({

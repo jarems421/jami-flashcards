@@ -189,6 +189,24 @@ async function fetchDashboardSnapshot(
     ),
     settle(getRecentActiveNotebooks(userId, 1)),
   ]);
+  /*
+   * The review queue needs only cards and the session, so it is read beside
+   * the sources rather than after them: the two were a second and third round
+   * trip in a row on every visit to Today.
+   */
+  const reviewStateRequest =
+    cardsResult.ok || previous?.cards
+      ? sessionResult.ok
+        ? settle(
+            ensureDailyReviewState(
+              userId,
+              cardsResult.ok ? cardsResult.value : previous?.cards ?? [],
+              now,
+              { activeSession: "session" in sessionResult.value ? sessionResult.value.session : null }
+            )
+          )
+        : null
+      : null;
   const sourcesResult =
     !draftsResult.ok && previous
       ? ({ ok: false, error: draftsResult.error } as const)
@@ -271,14 +289,10 @@ async function fetchDashboardSnapshot(
         ? "stale"
         : "unavailable";
 
-  if (cards.state !== "unavailable" && sessionResult.ok) {
-    try {
-      const reviewState = await ensureDailyReviewState(userId, cards.value, now, {
-        activeSession:
-          sessionResult.ok && "session" in sessionResult.value
-            ? sessionResult.value.session
-            : null,
-      });
+  const reviewStateResult = reviewStateRequest ? await reviewStateRequest : null;
+  if (reviewStateResult) {
+    if (reviewStateResult.ok) {
+      const reviewState = reviewStateResult.value;
       const completedRequiredIds = new Set(reviewState.completedRequiredCardIds);
       const parkedRequiredIds = new Set(reviewState.parkedRequiredCardIds);
       const completedOptionalIds = new Set(reviewState.completedOptionalCardIds);
@@ -295,8 +309,8 @@ async function fetchDashboardSnapshot(
         (cardId) => cardsById.has(cardId) && !completedOptionalIds.has(cardId)
       ).length;
       dailyReviewState = cards.state === "ready" ? "ready" : "stale";
-    } catch (error) {
-      console.warn("Failed to refresh Today review queues.", error);
+    } else {
+      console.warn("Failed to refresh Today review queues.", reviewStateResult.error);
       dailyReviewState = previous ? "stale" : "unavailable";
     }
   }

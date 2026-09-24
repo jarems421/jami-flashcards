@@ -68,10 +68,46 @@ function markingSchema(): Schema {
   };
 }
 
+/**
+ * Flashcards Tutor offers, when the student asked for them.
+ *
+ * Each card names the one source it draws on most, from the same enum as
+ * `sourceRefs`, because a saved card is reviewed in that source's queue.
+ */
+function cardsSchema(allowedSourceRefs: string[]): Schema {
+  return {
+    type: Type.ARRAY,
+    description:
+      "Flashcards for the student to review, written in your own words. Never copy a sentence from a source onto a card.",
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        front: {
+          type: Type.STRING,
+          description: "A question or prompt that makes the student retrieve or apply one idea.",
+        },
+        back: {
+          type: Type.STRING,
+          description: "The shortest complete answer, in your own words.",
+        },
+        sourceRef: {
+          type: Type.STRING,
+          format: "enum",
+          enum: allowedSourceRefs,
+          description: "The source reference this card draws on most.",
+        },
+      },
+      required: ["front", "back", "sourceRef"],
+    },
+  };
+}
+
 export function buildAssistantResponseSchema(
   allowedSourceRefs: string[],
   /** Whether this turn may carry a marking at all. Off for every non-marking turn. */
-  markingInvited = false
+  markingInvited = false,
+  /** Whether this turn may carry flashcard suggestions. Needs at least one source. */
+  cardsInvited = false
 ) {
   const sourceRefItems: Schema =
     allowedSourceRefs.length > 0
@@ -89,6 +125,9 @@ export function buildAssistantResponseSchema(
     type: Type.OBJECT,
     properties: {
       ...(markingInvited ? { marking: markingSchema() } : {}),
+      ...(cardsInvited && allowedSourceRefs.length > 0
+        ? { cards: cardsSchema(allowedSourceRefs) }
+        : {}),
       answer: {
         type: Type.STRING,
         description:

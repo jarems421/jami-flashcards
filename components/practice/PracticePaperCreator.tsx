@@ -72,7 +72,7 @@ const TUTOR_OPTIONS: Array<{
   detail: string;
 }> = [
   { value: "off", label: "Exam conditions", detail: "Jami stays hidden during the sitting" },
-  { value: "on", label: "Tutor assisted", detail: "Normal Tutor help is available and the result is labelled assisted" },
+  { value: "on", label: "Jami assisted", detail: "Jami helps as normal and the result is labelled assisted" },
 ];
 
 function ChoiceCards<T extends string>({
@@ -424,10 +424,14 @@ export default function PracticePaperCreator() {
       showError("Choose a folder, name the paper, and add the paper file.");
       return;
     }
-    if (automaticSources && !automaticSourcesConfirmed) {
-      showError("Review and confirm the sources Jami proposes for this paper.");
-      return;
-    }
+    /*
+     * No waiting on the proposed sources here. An uploaded paper is already
+     * written, so sources are only extra context for marking it -- and the
+     * proposal is re-ranked from the title on every keystroke, so demanding a
+     * confirmation refused the upload of anyone who had not found that step,
+     * or who had confirmed and then touched the title. What the student
+     * confirmed or picked is attached; otherwise nothing is.
+     */
     setWorking(true);
     setProgress(null);
     clear();
@@ -831,7 +835,7 @@ export default function PracticePaperCreator() {
               onChange={setTimingMode}
             />
             <ChoiceCards
-              label="Tutor during the sitting"
+              label="Jami during the sitting"
               value={tutorChoice}
               options={TUTOR_OPTIONS}
               disabled={working}

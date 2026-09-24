@@ -66,7 +66,7 @@ describe("the phone navigation bar", () => {
       "Today",
       "Learn",
       "Practice",
-      "Tutor",
+      "Jami",
       "Cards",
       "Topics",
       "Goals",

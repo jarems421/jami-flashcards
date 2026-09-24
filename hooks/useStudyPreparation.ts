@@ -40,6 +40,17 @@ export type StudyPreparationProgress = {
  * extra two cost runway, not time.
  */
 const PREPARATION_HEAD_START = 5;
+/*
+ * Nothing is waited for in Smart Mix, and only the first card in a fixed mode.
+ *
+ * The head start used to be a visible wait for all five cards, up to twenty
+ * seconds, every time a session opened on new material. Smart Mix never needed
+ * it: a card reached before its assets is asked a way that needs none, so the
+ * head start now runs behind the first card instead of in front of it. A
+ * session pinned to one mode does need its first card -- there is nothing else
+ * to show -- so it waits for that card alone, and the next four arrive while
+ * the student answers it.
+ */
 /**
  * One card a request for the head start, all of them at once.
  *
@@ -188,9 +199,11 @@ export function useStudyPreparation(input: {
       queue: Card[]
     ): Promise<{
       assets: Record<string, StudyAsset>;
+      /** Not waited for: prepared first, one card a request, behind the session. */
+      headStart: Card[];
       remainder: Card[];
     }> => {
-      const empty = { assets: {}, remainder: [] as Card[] };
+      const empty = { assets: {}, headStart: [] as Card[], remainder: [] as Card[] };
       cancel();
       stoppedRef.current = false;
       const epoch = epochRef.current;
@@ -210,12 +223,14 @@ export function useStudyPreparation(input: {
       const missing = worthPreparing
         .filter((card) => !known[card.id] || known[card.id].repairRequested)
         .slice(0, MAX_PREPARED_CARDS_PER_SESSION);
-      if (missing.length === 0) return { assets: known, remainder: [] };
+      if (missing.length === 0) return { assets: known, headStart: [], remainder: [] };
 
       const headStart = missing.slice(0, PREPARATION_HEAD_START);
       const remainder = missing.slice(PREPARATION_HEAD_START);
+      if (modePolicy.kind === "smart") return { assets: known, headStart, remainder };
 
-      setPreparation({ prepared: 0, total: headStart.length });
+      const [first, ...rest] = headStart;
+      setPreparation({ prepared: 0, total: 1 });
 
       const stop = { value: false };
       jobsRef.current.add(stop);
@@ -235,16 +250,11 @@ export function useStudyPreparation(input: {
 
       try {
         await Promise.race([
-          runPreparationChunks(headStart, {
+          runPreparationChunks([first], {
             chunkSize: PREPARATION_HEAD_START_CHUNK_SIZE,
-            concurrency: PREPARATION_HEAD_START,
+            concurrency: 1,
             stop,
-            onChunkDone: (count) =>
-              setPreparation((prev) =>
-                prev
-                  ? { ...prev, prepared: Math.min(prev.total, prev.prepared + count) }
-                  : prev
-              ),
+            onChunkDone: () => setPreparation((prev) => (prev ? { ...prev, prepared: 1 } : prev)),
           }),
           expiry,
           skipped,
@@ -268,9 +278,9 @@ export function useStudyPreparation(input: {
         jobsRef.current.delete(stop);
       }
 
-      const refreshed = await loadStudyAssets(headStart);
+      const refreshed = await loadStudyAssets([first]);
       if (epoch !== epochRef.current) return empty;
-      return { assets: { ...known, ...refreshed }, remainder };
+      return { assets: { ...known, ...refreshed }, headStart: rest, remainder };
     },
     [modePolicy, studyModesEnabled, cancel]
   );
@@ -334,8 +344,9 @@ export function useStudyPreparation(input: {
    * student has not reached yet gets the better question, and one they reach
    * first is asked a way that needs no preparation.
    */
-  const prepareRemainingAssets = useCallback(async (remainder: Card[]) => {
-    if (remainder.length === 0 || stoppedRef.current) return;
+  const prepareRemainingAssets = useCallback(async (remainder: Card[], headStart: Card[] = []) => {
+    const pending = [...headStart, ...remainder];
+    if (pending.length === 0 || stoppedRef.current) return;
     const stop = { value: false };
     const epoch = epochRef.current;
     jobsRef.current.add(stop);
@@ -358,7 +369,7 @@ export function useStudyPreparation(input: {
       if (refreshing || stop.value || epoch !== epochRef.current) return;
       refreshing = true;
       try {
-        const landed = await loadStudyAssets(remainder);
+        const landed = await loadStudyAssets(pending);
         if (!stop.value && epoch === epochRef.current) onAssetsReady(landed);
       } catch {
         // The next chunk publishes again; a read that failed is not fatal.
@@ -368,6 +379,16 @@ export function useStudyPreparation(input: {
     };
 
     try {
+      // The cards nearest the student first, each on its own so each lands alone.
+      await runPreparationChunks(headStart, {
+        chunkSize: PREPARATION_HEAD_START_CHUNK_SIZE,
+        concurrency: PREPARATION_HEAD_START,
+        stop,
+        onChunkDone: () => {
+          void publish();
+        },
+      });
+      await publish();
       await runPreparationChunks(remainder, {
         chunkSize: PREPARATION_CHUNK_SIZE,
         concurrency: PREPARATION_CONCURRENCY,

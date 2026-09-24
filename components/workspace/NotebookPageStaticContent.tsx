@@ -16,6 +16,12 @@ import {
 import { legacyStrokesToJsDrawSvg } from "@/lib/workspace/notebook-ink-data";
 import { normalizeNotebookStrokes } from "@/lib/workspace/notebook-page-content";
 import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
+import {
+  NOTEBOOK_TEXT_LAYER_ATTRIBUTE,
+  NOTEBOOK_TEXT_LAYER_STYLE,
+  NOTEBOOK_TEXT_STYLE,
+  getNotebookTextBlockBodyHeight,
+} from "@/lib/workspace/notebook-text-metrics";
 
 // Full-size, non-interactive render of a page's saved content (style, background
 // file, ink SVG, text blocks). Used as the swipe preview so the real adjacent
@@ -63,33 +69,47 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
       />
       <NotebookImageLayer images={page.imageRefs} />
       <NotebookGraphLayer graphs={page.graphBlocks} />
-      {page.textBlocks.map((block) => (
-        <div
-          key={block.id}
-          aria-hidden="true"
-          className={`absolute overflow-hidden rounded-sm border bg-transparent ${
-            block.outlineVisible
-              ? isDarkPaper
-                ? "border-white/30"
-                : "border-slate-950/25"
-              : "border-transparent"
-          }`}
-          style={{
-            left: `${(block.x / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
-            top: `${(block.y / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
-            width: `${(block.width / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
-            height: `${(block.height / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
-          }}
-        >
+      {/*
+        The same layer, type and stacking as the live page, so a page being
+        swiped in shows its text exactly where it will land -- above the ink,
+        as it is once the page is open.
+      */}
+      <div
+        {...{ [NOTEBOOK_TEXT_LAYER_ATTRIBUTE]: "true" }}
+        className="pointer-events-none absolute inset-0 z-30"
+        style={NOTEBOOK_TEXT_LAYER_STYLE}
+      >
+        {page.textBlocks.map((block) => (
           <div
-            className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-sm p-2 pr-10 text-sm font-medium leading-6 ${
-              isDarkPaper ? "text-[#f8fafc]" : "text-slate-950"
+            key={block.id}
+            aria-hidden="true"
+            className={`absolute rounded-sm border bg-transparent ${
+              block.outlineVisible
+                ? isDarkPaper
+                  ? "border-white/30"
+                  : "border-slate-950/25"
+                : "border-transparent"
             }`}
+            style={{
+              left: `${(block.x / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
+              top: `${(block.y / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
+              width: `${(block.width / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
+            }}
           >
-            {block.text}
+            <div
+              className={`w-full whitespace-pre-wrap break-words rounded-sm font-medium ${
+                isDarkPaper ? "text-[#f8fafc]" : "text-slate-950"
+              }`}
+              style={{
+                ...NOTEBOOK_TEXT_STYLE,
+                minHeight: getNotebookTextBlockBodyHeight(block),
+              }}
+            >
+              {block.text}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </>
   );
 });

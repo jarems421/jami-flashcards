@@ -1,4 +1,5 @@
 import "server-only";
+import { loadQuestionTypeRules } from "@/services/practice/question-type-rules.server";
 import { failedMarkingExecution } from "@/lib/practice/marking-execution-audit";
 
 import { FieldValue } from "firebase-admin/firestore";
@@ -98,10 +99,7 @@ async function loadAttempt(uid: string, attemptId: string): Promise<AttemptRefs 
  * write its result over the new one, and its checkpoints would be handed to a
  * marking of work it never saw.
  */
-export async function examMarkingIsCancelled(uid: string, attemptId: string, token: string) {
-  const loaded = await loadAttempt(uid, attemptId);
-  if (!loaded) return true;
-  const { attempt, session } = loaded;
+function markingIsSuperseded({ attempt, session }: Pick<AttemptRefs, "attempt" | "session">, token: string) {
   return (
     attempt.status !== "marking" ||
     attempt.marking?.token !== token ||
@@ -218,7 +216,8 @@ export async function runExamQuestionMarking(uid: string, attemptId: string, tok
   const loaded = await loadAttempt(uid, attemptId);
   if (!loaded) return "cancelled" as const;
   const { attemptRef, sessionRef, attempt, session } = loaded;
-  if (await examMarkingIsCancelled(uid, attemptId, token)) return "cancelled" as const;
+  // Judged on the documents just read, rather than by reading both again.
+  if (markingIsSuperseded(loaded, token)) return "cancelled" as const;
 
   const question = session.questions.find((item) => item.id === attempt.questionId);
   if (!question) return "cancelled" as const;
@@ -255,17 +254,21 @@ export async function runExamQuestionMarking(uid: string, attemptId: string, tok
       awardingBody: question.provenance.boardLabel, specification: question.provenance.specificationTitle,
       component: question.provenance.componentTitle, markSchemeKind: question.origin === "jami_generated" ? "generated" : "official",
     });
-    const originalPaperParts = await examQuestionVisualParts(bankQuestion);
-    const bytes = attempt.workingSnapshotPath
-      ? (await getAdminStorageBucket().file(attempt.workingSnapshotPath).download())[0]
-      : undefined;
+    // Independent reads, so the student waits for the slowest rather than the sum.
+    const [originalPaperParts, bytes, examinerPracticeRules] = await Promise.all([
+      examQuestionVisualParts(bankQuestion),
+      attempt.workingSnapshotPath
+        ? getAdminStorageBucket().file(attempt.workingSnapshotPath).download().then(([data]) => data)
+        : Promise.resolve(undefined),
+      loadQuestionTypeRules(paper.assessmentProfile, paper.title),
+    ]);
     const answerParts = buildSingleQuestionAnswerParts({
       questionId: attempt.questionId, answerText: attempt.answerText,
       ...(bankQuestion.separateAwardMarks ? { separateAwardMarks: bankQuestion.separateAwardMarks } : {}),
       workingImage: bytes ? { inlineData: { mimeType: "image/png", data: bytes.toString("base64") } } : undefined,
     });
     const marked = await markSingleQuestionAdaptively({
-      paper, answerParts, originalPaperParts,
+      paper, answerParts, originalPaperParts, examinerPracticeRules,
       maxOutputTokens: getAiTokenCap("examQuestionMarking"),
       inputTokenCap: getAiInputTokenCap("examQuestionMarking"),
       deadlineAt,

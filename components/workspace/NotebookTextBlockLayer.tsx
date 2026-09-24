@@ -3,6 +3,7 @@
 import {
   memo,
   useEffect,
+  useLayoutEffect,
   useRef,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -17,6 +18,13 @@ import {
   type NotebookTextBlockResizeEdge,
 } from "@/lib/workspace/notebooks";
 import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
+import {
+  NOTEBOOK_TEXT_LAYER_ATTRIBUTE,
+  NOTEBOOK_TEXT_LAYER_STYLE,
+  NOTEBOOK_TEXT_STYLE,
+  getNotebookTextBlockBodyHeight,
+  getNotebookTextBlockFitHeight,
+} from "@/lib/workspace/notebook-text-metrics";
 
 const TEXT_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "text-slate-950 placeholder:text-slate-400",
@@ -87,27 +95,61 @@ type Props = {
   onResize: (event: ReactPointerEvent<HTMLElement>) => void;
   onStopResize: (event: ReactPointerEvent<HTMLElement>) => void;
   onChangeText: (blockId: string, text: string) => void;
+  /** The box needs to be this tall, in page units, to show all its text. */
+  onFitHeight?: (blockId: string, height: number) => void;
   onStopEditing: () => void;
 };
+
+/** Near enough the top that nothing fits above the box, in page units. */
+const OPTIONS_TRIGGER_CLEARANCE = 80;
 
 function NotebookTextEditor({
   block,
   pageColor,
   onSelect,
   onChangeText,
+  onFitHeight,
   onStopEditing,
 }: {
   block: NotebookTextBlock;
   pageColor: NotebookPageColor;
   onSelect: (blockId: string) => void;
   onChangeText: (blockId: string, text: string) => void;
+  onFitHeight?: (blockId: string, height: number) => void;
   onStopEditing: () => void;
 }) {
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    editorRef.current?.focus();
+    const editor = editorRef.current;
+    if (!editor) return;
+    // Focus without scrolling: the page is positioned by its own pan, and a
+    // browser scrolling the caret into view would shift it under the hand.
+    editor.focus({ preventScroll: true });
+    // Resume at the end of what is there, not at the start of it.
+    const end = editor.value.length;
+    editor.setSelectionRange(end, end);
   }, []);
+
+  /*
+   * The box grows to hold what is typed, rather than hiding it.
+   *
+   * Measured before paint, so a new line never flickers through a scrollbar
+   * on its way to a taller box. The stored height is what grows, so every
+   * device -- and the page image Tutor reads -- shows the whole of it too.
+   */
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || !onFitHeight) return;
+    const layer = editor.closest(`[${NOTEBOOK_TEXT_LAYER_ATTRIBUTE}]`);
+    const height = getNotebookTextBlockFitHeight({
+      block,
+      contentHeightPx: editor.scrollHeight,
+      visibleHeightPx: editor.clientHeight,
+      pageWidthPx: layer instanceof HTMLElement ? layer.clientWidth : 0,
+    });
+    if (height !== null) onFitHeight(block.id, height);
+  }, [block, onFitHeight]);
 
   return (
     <textarea
@@ -129,7 +171,8 @@ function NotebookTextEditor({
       onChange={(event) => onChangeText(block.id, event.target.value)}
       placeholder="Type here..."
       data-notebook-text-editor="true"
-      className={`notebook-text-editor h-full w-full resize-none rounded-sm bg-transparent p-2 pr-16 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
+      style={{ ...NOTEBOOK_TEXT_STYLE, height: getNotebookTextBlockBodyHeight(block) }}
+      className={`notebook-text-editor block w-full resize-none overflow-y-auto break-words rounded-sm bg-transparent font-medium outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
     />
   );
 }
@@ -161,13 +204,18 @@ function NotebookTextBlockLayer({
   onResize,
   onStopResize,
   onChangeText,
+  onFitHeight,
   onStopEditing,
 }: Props) {
   const onBlack = getNotebookPaperPalette(pageColor).isDark;
   const frameBorderClass = onBlack ? "border-white/55" : "border-slate-950/40";
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-30">
+    <div
+      {...{ [NOTEBOOK_TEXT_LAYER_ATTRIBUTE]: "true" }}
+      className="pointer-events-none absolute inset-0 z-30"
+      style={NOTEBOOK_TEXT_LAYER_STYLE}
+    >
       {textBlocks.map((block) => {
         const selected = selectedTextBlockId === block.id;
         const editing = editingTextBlockId === block.id;
@@ -200,11 +248,12 @@ function NotebookTextBlockLayer({
                   ? `cursor-grab touch-none select-none ${frameBorderClass} active:cursor-grabbing`
                   : `cursor-grab touch-none select-none ${idleBorderClass} active:cursor-grabbing`
             }`}
+            // No height: the text inside sets it, at least the stored height
+            // and more if what is typed needs more.
             style={{
               left: `${(block.x / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
               top: `${(block.y / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
               width: `${(block.width / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
-              height: `${(block.height / NOTEBOOK_PAGE_COORDINATE_HEIGHT) * 100}%`,
             }}
             onPointerDown={(event) => onPointerDown(block, event)}
             onPointerMove={(event) => onPointerMove(block, event)}
@@ -219,6 +268,7 @@ function NotebookTextBlockLayer({
                   outlineVisible={block.outlineVisible}
                   openAbove={optionsOpenAbove}
                   alignFromLeft={optionsAlignFromLeft}
+                  triggerBelow={block.y < OPTIONS_TRIGGER_CLEARANCE}
                   onOpenChange={(open) => onSetOptionsOpen(block.id, open)}
                   onToggleOutline={() => onToggleOutline(block.id)}
                   onDelete={() => onDelete(block.id)}
@@ -256,6 +306,7 @@ function NotebookTextBlockLayer({
                 pageColor={pageColor}
                 onSelect={onSelect}
                 onChangeText={onChangeText}
+                onFitHeight={onFitHeight}
                 onStopEditing={onStopEditing}
               />
             ) : (
@@ -270,11 +321,20 @@ function NotebookTextBlockLayer({
                   event.stopPropagation();
                   onSelect(block.id);
                 }}
-                className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-sm border-0 bg-transparent p-2 pr-10 text-left text-sm font-medium leading-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-selected-border)] ${
+                // Laid out exactly as the text area it turns into, so tapping
+                // in to type moves no words: same type, same padding, and
+                // top-aligned, where a button would otherwise centre its text.
+                style={{
+                  ...NOTEBOOK_TEXT_STYLE,
+                  minHeight: getNotebookTextBlockBodyHeight(block),
+                }}
+                className={`flex w-full items-start rounded-sm border-0 bg-transparent text-left font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-selected-border)] ${
                   onBlack ? "text-[#f8fafc]" : "text-slate-950"
                 } ${block.text.trim() ? "" : "opacity-60"}`}
               >
-                {displayText}
+                <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+                  {displayText}
+                </span>
               </button>
             )}
           </div>

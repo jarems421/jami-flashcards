@@ -22,8 +22,9 @@ import { normalizeReasoningEffort } from "@/lib/profile/reasoning-effort";
 import {
   buildTutorPersonalisationInstruction,
   normalizeTutorPreferences,
-  selectFolderTutorInstructions,
+  selectTutorFolderContext,
 } from "@/lib/ai/tutor-personalisation";
+import { readTutorFolderFacts } from "@/lib/ai/tutor-folder-facts";
 import { mapSourceData, type Source } from "@/lib/material/sources";
 import {
   getStudyLevelTutorLabel,
@@ -43,6 +44,12 @@ import { serializeLearnerProfileForTutor } from "@/lib/learning/serialize/tutor-
 import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
 import { createLogger } from "@/lib/observability/logger";
 import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
+import { loadNotebookNeighbourPageParts } from "@/services/ai/notebook-neighbour-pages.server";
+import {
+  buildTutorCourseContextFor,
+  findCourseDocumentSources,
+  loadTutorCourse,
+} from "@/services/ai/tutor-course-context.server";
 
 const MAX_SOURCE_METADATA_CANDIDATES = 200;
 const MAX_SOURCE_CANDIDATES_PER_RELATION =
@@ -97,16 +104,21 @@ async function loadTutorPreferences(input: {
     userSnapshot.exists ? userSnapshot.data()?.reasoningEffort : undefined
   );
   /*
-   * Folder instructions apply only when the material sits in exactly one
-   * folder, because two documents cannot be merged into one set of teaching
-   * instructions and picking between them would be a guess. A card in two
-   * folders therefore gets the general preferences and nothing else, and the
-   * settings drawer says so rather than the conversation asking about it.
+   * A folder's subject and notes apply only when the material sits in
+   * exactly one folder, because two folders' notes cannot be merged into one
+   * set of teaching instructions and picking between them would be a guess. A
+   * card in two folders therefore gets the general preferences and nothing
+   * else, and the settings drawer says so rather than the conversation asking.
    */
-  const selectedFolder = selectFolderTutorInstructions(
+  const folder = selectTutorFolderContext(
     folderSnapshots
       .filter((snapshot) => snapshot.exists)
-      .map((snapshot) => snapshot.data() ?? {})
+      .map((snapshot) =>
+        readTutorFolderFacts(
+          snapshot.id,
+          (snapshot.data() ?? {}) as Record<string, unknown>
+        )
+      )
   );
   const preferences = normalizeTutorPreferences(
     personalisationSnapshot.exists
@@ -115,10 +127,7 @@ async function loadTutorPreferences(input: {
   );
   const personalisationContext = buildTutorPersonalisationInstruction({
     preferences,
-    folderInstructions: selectedFolder.instructions,
-    ...(selectedFolder.folderName
-      ? { folderName: selectedFolder.folderName }
-      : {}),
+    ...(folder ? { folder } : {}),
     // Per request, like every other fenced block, so nothing a student saved
     // can close a marker it was not given.
     boundaryToken: randomUUID(),
@@ -308,7 +317,7 @@ ${distant
     );
   }
 
-  return `Notebook page map (loaded when the student asked; handwriting and page imagery are available only for the current page, so treat the other pages' typed text as an outline rather than their full contents):
+  return `Notebook page map (loaded when the student asked; handwriting and page imagery are available for the current page and, where pictured below, the page either side of it; treat any other page's typed text as an outline rather than its full contents):
 ${sections
     .join("\n\n")
     .slice(0, NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT)}`;
@@ -381,6 +390,16 @@ async function loadSourcesById(db: AdminDb, uid: string, sourceIds: string[]) {
     .map((snapshot) => mapSourceData(snapshot.id, snapshot.data() ?? {}));
 }
 
+/** Sources chosen or attached rather than found by relation; see `pinnedSourceIds`. */
+function getPinnedSourceIds(relations: SourceRelations, includeRelated: boolean) {
+  return Array.from(
+    new Set([
+      ...relations.currentSourceIds,
+      ...(includeRelated ? relations.directSourceIds : []),
+    ])
+  );
+}
+
 async function selectSources(input: {
   db: AdminDb;
   uid: string;
@@ -388,12 +407,7 @@ async function selectSources(input: {
   message: string;
   includeRelated: boolean;
 }) {
-  const requiredIds = Array.from(
-    new Set([
-      ...input.relations.currentSourceIds,
-      ...(input.includeRelated ? input.relations.directSourceIds : []),
-    ])
-  );
+  const requiredIds = getPinnedSourceIds(input.relations, input.includeRelated);
   const required = await loadSourcesById(input.db, input.uid, requiredIds);
 
   if (!input.includeRelated) {
@@ -634,11 +648,22 @@ async function resolveNotebookContext(input: {
       },
     });
   }
+  /*
+   * Started here, awaited alongside the sources: drawing two pages takes a
+   * moment, and nothing else waits on it.
+   */
+  const neighbourParts = loadNotebookNeighbourPageParts({
+    uid: input.uid,
+    notebookId: notebook.id,
+    pages: notebookPages,
+    currentPageId: page.id,
+  });
 
   return {
     currentId: page.id,
     currentLabel: "Current page",
     currentParts,
+    neighbourParts,
     relations: {
       currentSourceIds: [],
       directSourceIds: notebook.sourceIds,
@@ -754,7 +779,8 @@ export async function resolveJamiAssistantContext(input: {
         : input.context.surface === "practice"
           ? await resolvePracticeContext({ db, uid, context: input.context })
           : await resolveNotebookContext({ db, uid, context: input.context });
-  const [sources, preferences, learningContext] = await Promise.all([
+  const pinnedSourceIds = getPinnedSourceIds(resolved.relations, input.useRelatedSources);
+  const [sources, preferences, learningContext, course, neighbourParts] = await Promise.all([
     selectSources({
       db,
       uid,
@@ -774,16 +800,41 @@ export async function resolveJamiAssistantContext(input: {
         ? { deckId: resolved.deckId }
         : {}),
     }),
+    loadTutorCourse({ uid, folderIds: resolved.relations.folderIds }),
+    "neighbourParts" in resolved ? resolved.neighbourParts : Promise.resolve([]),
   ]);
+  // After the current page's own parts, so the page asked about is read first.
+  const currentParts = [...resolved.currentParts, ...neighbourParts];
+  /*
+   * Course documents are searched like sources the student chose, so a rubric
+   * is consulted on every question rather than only when its wording happens
+   * to match the question's.
+   */
+  const courseDocuments = findCourseDocumentSources(sources);
+  const courseContext = buildTutorCourseContextFor({
+    loaded: course,
+    courseDocuments,
+    currentText: resolved.currentParts
+      .flatMap((part) => ("text" in part ? [part.text] : []))
+      .join("\n"),
+  });
 
   return {
     currentId: resolved.currentId,
     currentLabel: resolved.currentLabel,
-    currentParts: resolved.currentParts,
+    currentParts,
     sources,
+    pinnedSourceIds: sources
+      .filter(
+        (source) =>
+          pinnedSourceIds.includes(source.id) ||
+          courseDocuments.some((document) => document.id === source.id)
+      )
+      .map((source) => source.id),
     studyLevelContext: preferences.studyLevelContext,
     personalisationContext: preferences.personalisationContext,
     ...(learningContext ? { learningContext } : {}),
+    ...(courseContext ? { courseContext } : {}),
     /**
      * The Topics this material is filed under.
      *

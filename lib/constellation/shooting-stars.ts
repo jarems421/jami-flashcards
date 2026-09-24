@@ -41,7 +41,31 @@ export type ShootingStarPath = {
   angle: number;
   /** Length in pixels. */
   length: number;
+  /** How far it travels while visible, in pixels. */
+  travel: number;
+  /** The colour it burns: mostly pale violet, now and then ice, green or gold. */
+  tint: ShootingStarTint;
+  /** A rare, brighter, longer streak that flares before it goes out. */
+  fireball: boolean;
 };
+
+export type ShootingStarTint = "violet" | "ice" | "green" | "gold";
+
+const TINTS: { tint: ShootingStarTint; weight: number }[] = [
+  { tint: "violet", weight: 0.5 },
+  { tint: "ice", weight: 0.3 },
+  { tint: "green", weight: 0.12 },
+  { tint: "gold", weight: 0.08 },
+];
+
+function pickTint(roll: number): ShootingStarTint {
+  let total = 0;
+  for (const { tint, weight } of TINTS) {
+    total += weight;
+    if (roll < total) return tint;
+  }
+  return "violet";
+}
 
 export type ShootingStarPlan = ShootingStarTiming & ShootingStarPath;
 
@@ -86,11 +110,20 @@ export function planShootingStarTimings(count: number, seed: string): ShootingSt
 /** Where a streak falls on a given pass: anywhere across the sky, and different each pass. */
 export function planShootingStarPath(seed: string, index: number, pass: number): ShootingStarPath {
   const random = seeded(hashOf(`${seed}:${index}:${pass}`));
+  const top = Math.round(random() * 70 * 10) / 10;
+  const left = Math.round((15 + random() * 85) * 10) / 10;
+  const angle = Math.round((14 + random() * 20) * 10) / 10;
+  const baseLength = 90 + random() * 90;
+  const fireball = random() < 0.14;
+  const length = Math.round(baseLength * (fireball ? 1.6 : 1));
   return {
-    top: Math.round(random() * 70 * 10) / 10,
-    left: Math.round((15 + random() * 85) * 10) / 10,
-    angle: Math.round((14 + random() * 20) * 10) / 10,
-    length: Math.round(90 + random() * 90),
+    top,
+    left,
+    angle,
+    length,
+    travel: Math.round(length * (1.7 + random() * 0.8)),
+    tint: pickTint(random()),
+    fireball,
   };
 }
 

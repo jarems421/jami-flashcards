@@ -92,3 +92,21 @@ export function resolveSelected<T extends { id: string }>(
 ): T | null {
   return items.find((item) => item.id === selectedId) ?? items[0] ?? null;
 }
+
+/**
+ * Adds a source to the set a student is gathering for Tutor, or takes it out.
+ *
+ * Adding past `max` is refused rather than dropping the oldest choice, because
+ * a selection that quietly loses a source it showed as chosen is worse than a
+ * full one that says so.
+ */
+export function toggleSourceSelection(
+  selectedIds: readonly string[],
+  sourceId: string,
+  max: number
+) {
+  if (selectedIds.includes(sourceId)) {
+    return selectedIds.filter((id) => id !== sourceId);
+  }
+  return selectedIds.length >= max ? [...selectedIds] : [...selectedIds, sourceId];
+}

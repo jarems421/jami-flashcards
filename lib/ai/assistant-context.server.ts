@@ -21,6 +21,13 @@ export type ResolvedJamiAssistantContext = {
   currentLabel: string;
   currentParts: AiContentPart[];
   sources: Source[];
+  /**
+   * The sources the student chose, or attached to what they are working on,
+   * as opposed to ones found through a shared folder or topic. Each is
+   * searched on its own, so a question across many chosen sources still
+   * hears from every one of them.
+   */
+  pinnedSourceIds?: string[];
   studyLevelContext?: string;
   /**
    * The student's saved teaching preferences and, where the material sits in
@@ -39,6 +46,15 @@ export type ResolvedJamiAssistantContext = {
    * Tutor answers exactly as before in every one of those cases.
    */
   learningContext?: string;
+  /**
+   * The course behind the folder: its verified specification, topic headings
+   * and examiners' question-type rules, and any of the student's sources that
+   * define the course themselves. See `lib/ai/tutor-course-context.ts`.
+   *
+   * Undefined when there is no single folder, no catalogued course and no
+   * course document, or when it could not be loaded in time.
+   */
+  courseContext?: string;
   /**
    * How hard this student has asked Jami to think, if they have said.
    *

@@ -34,6 +34,7 @@ export {
 } from "./NorthernStar";
 export { default as PageHero } from "./PageHero";
 export { default as Textarea } from "./Textarea";
+export { AUTO_GROW_TEXTAREA_STYLE, useAutoGrowTextarea } from "./useAutoGrowTextarea";
 export { default as ProgressBar } from "./ProgressBar";
 export { default as ElapsedTime } from "./ElapsedTime";
 export { default as ViewTabs } from "./ViewTabs";

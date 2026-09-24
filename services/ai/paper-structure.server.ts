@@ -69,6 +69,22 @@ async function pdfText(bytes: Uint8Array) {
   return { text: lines.join("\n"), pages: doc.numPages };
 }
 
+/**
+ * The text of an official PDF, or null when it cannot be fetched or read.
+ * Used by question-type research to read mark schemes and examiner reports.
+ */
+export async function readOfficialPdfText(url: string, timeoutMs = 45_000) {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) return null;
+    const type = response.headers.get("content-type") ?? "";
+    if (!/pdf/i.test(type) && !/\.pdf$/i.test(url)) return null;
+    return await pdfText(new Uint8Array(await response.arrayBuffer()));
+  } catch {
+    return null;
+  }
+}
+
 /** What one question paper says about its own shape. */
 export async function readQuestionPaper(url: string, timeoutMs = 45_000): Promise<PaperReading | null> {
   let bytes: Uint8Array;

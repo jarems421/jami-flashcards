@@ -48,4 +48,46 @@ describe("saving a generated paper", () => {
     expect(undefinedFields).toEqual([]);
     expect(payload.researchReceipt).toBeNull();
   });
+
+  /*
+   * An uploaded paper is saved from the browser with its timer fields unset,
+   * and every upload was refused on `deadlineAt` after its notebook existed.
+   */
+  it("writes no undefined field for an uploaded paper's unset timer", () => {
+    const paper = {
+      notebookId: "n1",
+      folderId: "f1",
+      title: "My mock",
+      origin: "uploaded",
+      status: "ready",
+      sourceIds: [],
+      sourceLabels: [],
+      request: "Uploaded practice paper",
+      coverage: "",
+      length: "full",
+      focus: "balanced",
+      durationMinutes: 0,
+      timingMode: "untimed",
+      timingState: "not_started",
+      deadlineAt: undefined,
+      pausedAt: undefined,
+      totalPausedMs: 0,
+      overtimeStartedAt: undefined,
+      deadlineSnapshotAt: undefined,
+      deadlineVersion: 0,
+      tutorEnabled: true,
+      tutorUsed: false,
+      timerEnabled: false,
+      instructions: [],
+      assessmentProfile: {},
+      questions: [],
+      choiceGroups: [],
+      totalMarks: 0,
+      markScheme: { kind: "estimated", label: "", notice: "", items: [] },
+    } as unknown as Omit<PracticePaper, "id" | "createdAt" | "updatedAt">;
+
+    const payload = buildPracticePaperPayload(paper) as Record<string, unknown>;
+    expect(Object.entries(payload).filter(([, value]) => value === undefined)).toEqual([]);
+    expect("deadlineAt" in payload).toBe(false);
+  });
 });

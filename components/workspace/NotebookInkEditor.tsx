@@ -68,6 +68,7 @@ import {
   installNotebookNativeInkGuards,
   keepNotebookStraightenedLineAimable,
   relaxNotebookStraightenHold,
+  getNotebookContactTool,
   getNotebookInkPointerOrigins,
   positionNotebookEraserCursor,
   type NotebookInkPointerOrigins,
@@ -228,6 +229,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     );
     const precisionEraserGestureRef =
       useRef<ActivePrecisionEraserGesture | null>(null);
+    /**
+     * The tool each pen contact is working with, by pointer id.
+     *
+     * Usually the selected tool. A pen turned over to its eraser end borrows
+     * the eraser for that one contact -- see `getNotebookContactTool`.
+     */
+    const contactToolsRef = useRef<Map<number, NotebookInkTool>>(new Map());
     /**
      * The live pen path, for recognising a scribble-out at release.
      *
@@ -772,6 +780,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     useEffect(() => {
       const cancelInteractions = () => {
         cancelEditorGesture();
+        contactToolsRef.current.clear();
         const pointerLifecycle = pointerLifecycleRef.current;
         const wasInteracting = pointerLifecycle?.isInteracting ?? false;
         pointerLifecycle?.reset();
@@ -850,6 +859,21 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       if (type === "pointerdown" || type === "pointermove") {
         nibAngleRef.current?.observe(event.nativeEvent);
       }
+      // Decided once, at contact, and kept for the whole of it: which end of
+      // the pen touched down does not change mid-stroke, whatever `buttons`
+      // reports on the way. Touch never draws, so it never takes a slot.
+      const contactTools = contactToolsRef.current;
+      if (type === "pointerdown" && event.pointerType !== "touch") {
+        contactTools.set(
+          event.pointerId,
+          getNotebookContactTool({
+            activeTool,
+            buttons: event.buttons,
+            pointerType: event.pointerType,
+          })
+        );
+      }
+      const tool = contactTools.get(event.pointerId) ?? activeTool;
       const existingPrecisionGesture = precisionEraserGestureRef.current;
       const continuesPrecisionGesture =
         shouldContinueNotebookPrecisionGesture({
@@ -864,7 +888,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         type === "pointerdown" &&
         existingPrecisionGesture &&
         event.pointerType !== "touch" &&
-        (activeTool === "text" || readOnly)
+        (tool === "text" || readOnly)
       ) {
         const strandedPointerId = existingPrecisionGesture.pointerId;
         cancelEditorGesture();
@@ -882,13 +906,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       }
       if (
         !continuesPrecisionGesture &&
-        (event.pointerType === "touch" || activeTool === "text" || readOnly)
+        (event.pointerType === "touch" || tool === "text" || readOnly)
       ) {
         return false;
       }
       event.preventDefault();
       const precisionEraserSelected =
-        activeTool === "eraser" && eraserMode === "precision";
+        tool === "eraser" && eraserMode === "precision";
       const precisionEraserActive = shouldUseNotebookPrecisionGesture({
         continuing: continuesPrecisionGesture,
         precisionEraserSelected,
@@ -899,7 +923,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       const host = hostRef.current;
       const inkRegion = getJsDrawPointerReferenceElement(host);
       let eraserOrigins: NotebookInkPointerOrigins | null = null;
-      if (activeTool === "eraser") {
+      if (tool === "eraser") {
         const activePrecisionGesture = precisionEraserGestureRef.current;
         if (type === "pointerdown") {
           // Refresh once at contact in case the page moved or the viewport
@@ -945,7 +969,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           // previous contact is genuinely stranded; cancelling every new
           // stroke creates a race with rapid Pencil re-contact on Safari.
           const pointerStyle: NotebookInkStyle = {
-            activeTool,
+            activeTool: tool,
             eraserMode,
             eraserThickness,
             highlighterColor,
@@ -954,13 +978,15 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             penSettings,
             penThickness,
           };
-          desiredStyleRef.current = pointerStyle;
+          // What the toolbar asks for, which is what comes back once a pen
+          // turned over to erase is turned the right way up again.
+          desiredStyleRef.current = { ...pointerStyle, activeTool };
           const pointerStart =
             pointerLifecycleRef.current?.begin(event.pointerId);
           if (pointerStart?.shouldCancelStaleGesture) {
             cancelEditorGesture();
             eraserOriginsRef.current = eraserOrigins;
-            if (eraserCursorRef.current && activeTool === "eraser") {
+            if (eraserCursorRef.current && tool === "eraser") {
               eraserCursorRef.current.style.opacity = "1";
             }
           }
@@ -973,7 +999,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             editor.toolController.getMatchingTools(jsDraw.PenTool)[0];
           if (primaryPen) {
             const pressureEnabled =
-              activeTool === "pen" &&
+              tool === "pen" &&
               shouldUseNotebookPenPressure({
                 maxTouchPoints: navigator.maxTouchPoints,
                 platform: navigator.platform,
@@ -993,7 +1019,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           applyNotebookNibThickness(editor, pointerStyle, jsDraw);
           // Reassert mutable eraser state at contact time. Precision routing no
           // longer trusts js-draw's mode, but Stroke mode still uses its tool.
-          if (activeTool === "eraser") {
+          if (tool === "eraser") {
             applyNotebookEraserMode(editor, eraserMode, jsDraw);
             editor.toolController
               .getMatchingTools(jsDraw.EraserTool)[0]
@@ -1008,14 +1034,14 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             event.nativeEvent
           );
         }
-        if (activeTool === "pen" || activeTool === "highlighter") {
+        if (tool === "pen" || tool === "highlighter") {
           // js-draw has just measured the page for this contact itself, so the
           // layout is clean and this read costs nothing.
           strokeRegionRectRef.current = inkRegion
             ? { pointerId: event.pointerId, rect: inkRegion.getBoundingClientRect() }
             : null;
         }
-        if (scribbleToErase && activeTool === "pen") {
+        if (scribbleToErase && tool === "pen") {
           // Raw client coordinates. Recognising a scribble does not need to
           // know where the page is, and asking would force a layout flush at
           // the start of every stroke.
@@ -1099,6 +1125,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           }
           inkSmoothersRef.current.delete(event.pointerId);
           lastForwardedPointerSampleRef.current.delete(event.pointerId);
+          contactTools.delete(event.pointerId);
           return true;
         }
       }
@@ -1177,7 +1204,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           }
         } else if (
           type === "pointermove" &&
-          (activeTool === "pen" || activeTool === "highlighter") &&
+          (tool === "pen" || tool === "highlighter") &&
           pointerJsDraw &&
           host &&
           /*
@@ -1231,7 +1258,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           editor.handleHTMLPointerEvent(type, event.nativeEvent);
           if (
             type === "pointerdown" &&
-            (activeTool === "pen" || activeTool === "highlighter")
+            (tool === "pen" || tool === "highlighter")
           ) {
             // Show contact immediately instead of waiting for the first move.
             penPreviewBatchRef.current?.paintNow();
@@ -1247,6 +1274,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       if (type === "pointerup" || type === "pointercancel") {
         inkSmoothersRef.current.delete(event.pointerId);
         lastForwardedPointerSampleRef.current.delete(event.pointerId);
+        contactTools.delete(event.pointerId);
+        // An eraser end borrowed the eraser for this contact only. Put the
+        // selected tool back as the contact finishes, rather than leaving
+        // js-draw holding the eraser until the next one begins.
+        if (tool !== activeTool) pendingStyleRef.current = true;
         if (strokeRegionRectRef.current?.pointerId === event.pointerId) {
           strokeRegionRectRef.current = null;
         }
@@ -1340,6 +1372,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               return;
             }
             cancelEditorGesture();
+            contactToolsRef.current.delete(pointerId);
             finishPointerInteraction({
               pointerId,
               timeStamp: event.timeStamp,

@@ -49,6 +49,38 @@ export function isNotebookTextEditingTarget(target: EventTarget | null) {
 }
 
 /**
+ * Text that is there to be read and copied, off the page: the Tutor's answers.
+ *
+ * The notebook cancels native selection everywhere that is not a text field, so
+ * a stray drag cannot highlight the toolbar or the page. That swept up the
+ * Tutor too, and an answer could not be copied into a text box on the very page
+ * it was about. Marking the region opts it back in to selecting and copying,
+ * without making it count as editing -- its letters still are not typing.
+ */
+export const NOTEBOOK_SELECTABLE_TEXT_SELECTOR = "[data-notebook-selectable-text='true']";
+
+/** A text node has no `closest`; the element holding it answers for it. */
+function toElementTarget(target: unknown) {
+  if (
+    target !== null &&
+    typeof target === "object" &&
+    (target as { nodeType?: unknown }).nodeType === 3
+  ) {
+    return (target as { parentElement?: unknown }).parentElement ?? null;
+  }
+  return target;
+}
+
+export function isNotebookSelectableTextTarget(target: unknown) {
+  const element = toElementTarget(target);
+  if (!hasClosest(element)) return false;
+  return (
+    Boolean(element.closest(NOTEBOOK_SELECTABLE_TEXT_SELECTOR)) &&
+    !element.closest(NOTEBOOK_PAGE_SURFACE_SELECTOR)
+  );
+}
+
+/**
  * Controls inside the page should retain native tap/click behavior for Apple
  * Pencil. Resize handles are deliberately excluded: they are continuous page
  * gestures and still need the iPad navigation guard.
@@ -214,7 +246,8 @@ export function installNotebookViewportZoomBlock(surface: EventTarget) {
 }
 
 export function shouldSuppressNotebookNativeEvent(target: EventTarget | null) {
-  return !isNotebookTextEditingTarget(target);
+  const element = toElementTarget(target) as EventTarget | null;
+  return !isNotebookTextEditingTarget(element) && !isNotebookSelectableTextTarget(element);
 }
 
 export function shouldSuppressNotebookNativeInkPointer(input: {

@@ -11,6 +11,7 @@ import {
 } from "@/lib/study/math-text";
 import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 import AssistantGraphFigure from "@/components/ai/AssistantGraphFigure";
+import { useAssistantGraphActions } from "@/components/ai/AssistantGraphActions";
 
 export type AiResponseRendererProps = {
   content: string;
@@ -78,9 +79,13 @@ function SafeLink({
  * rendered. What reaches the page is rebuilt by the sanitiser from an element
  * and attribute allowlist, and anything that does not survive is shown as the
  * code it was, which is ugly and honest.
+ *
+ * On a notebook it can be added to the page, as a picture of what is shown
+ * here: the sanitised figure, never the model's own markup.
  */
 function DrawnFigure({ source }: { source: string }) {
   const drawn = sanitizeSvgDiagram(source);
+  const actions = useAssistantGraphActions();
   if (!drawn.ok) {
     return (
       <pre className="overflow-x-auto rounded-lg bg-[var(--color-glass-subtle)] p-3 text-xs text-text-muted">
@@ -88,14 +93,33 @@ function DrawnFigure({ source }: { source: string }) {
       </pre>
     );
   }
-  return (
+  const figure = (
     <div
       role="img"
-      className="my-3 overflow-x-auto rounded-lg bg-[var(--color-surface-page)] p-3 [&>svg]:mx-auto [&>svg]:h-auto [&>svg]:max-w-full"
+      className="overflow-x-auto rounded-lg bg-[var(--color-surface-page)] p-3 [&>svg]:mx-auto [&>svg]:h-auto [&>svg]:max-w-full"
       // Rebuilt above from an allowlist: no script, foreignObject, href or
       // event handler survives it.
       dangerouslySetInnerHTML={{ __html: drawn.svg }}
     />
+  );
+  if (!actions?.canInsertDrawing) return <div className="my-3">{figure}</div>;
+
+  const inserted = actions.isInserted(source);
+  const inserting = actions.insertingKey === source;
+  return (
+    <figure className="my-3 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-e0">
+      {figure}
+      <figcaption className="flex justify-end p-2.5">
+        <button
+          type="button"
+          disabled={inserted || inserting}
+          className="rounded-full bg-accent px-3 py-1.5 text-2xs font-semibold text-accent-on transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted"
+          onClick={() => actions.insertDrawing(source, drawn.svg)}
+        >
+          {inserted ? "Added to page" : inserting ? "Adding..." : "Add to page"}
+        </button>
+      </figcaption>
+    </figure>
   );
 }
 

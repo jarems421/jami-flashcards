@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { JamiTutorIcon } from "@/components/ui";
 import {
   MicrophoneIcon,
@@ -96,6 +96,7 @@ export default function PlanWithJami({
   notices,
   draft,
   onProposal,
+  initialMessage,
 }: {
   notices: readonly PlanNotice[];
   /**
@@ -108,6 +109,12 @@ export default function PlanWithJami({
   draft?: RevisionPlanDraft | null;
   /** A plan Jami proposed. Nothing is saved; it lands in the preview to edit. */
   onProposal: (draft: RevisionPlanDraft) => void;
+  /**
+   * Something the student already said, sent as soon as the conversation opens:
+   * "change the plan with Jami" on an existing plan starts here, with the
+   * message they typed there.
+   */
+  initialMessage?: string;
 }) {
   const [turns, setTurns] = useState<PlanDraftTurn[]>([]);
   const [message, setMessage] = useState("");
@@ -152,6 +159,14 @@ export default function PlanWithJami({
     },
     [draft, onProposal, thinking, turns]
   );
+
+  // Once, not on every render that still carries the prop.
+  const sentInitial = useRef(false);
+  useEffect(() => {
+    if (!initialMessage || sentInitial.current) return;
+    sentInitial.current = true;
+    void send(initialMessage);
+  }, [initialMessage, send]);
 
   const submit = useCallback(() => {
     // Dictation is stopped first and its own reading used: a word the

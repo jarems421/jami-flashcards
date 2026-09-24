@@ -45,6 +45,20 @@ describe("where the streaks fall", () => {
     expect(passes.some((path) => path.left < 50) && passes.some((path) => path.left > 60)).toBe(true);
   });
 
+  it("burns mostly violet, sometimes another colour, and now and then as a fireball", () => {
+    const passes = Array.from({ length: 200 }, (_, pass) => planShootingStarPath("full-sky", 0, pass));
+    const violet = passes.filter((path) => path.tint === "violet").length;
+    expect(violet).toBeGreaterThan(passes.length * 0.35);
+    expect(new Set(passes.map((path) => path.tint))).toEqual(new Set(["violet", "ice", "green", "gold"]));
+    const fireballs = passes.filter((path) => path.fireball);
+    expect(fireballs.length).toBeGreaterThan(0);
+    expect(fireballs.length).toBeLessThan(passes.length * 0.3);
+    for (const path of passes) {
+      expect(path.travel).toBeGreaterThan(path.length);
+    }
+    expect(Math.max(...fireballs.map((path) => path.length))).toBeGreaterThan(180);
+  });
+
   it("sometimes drops streaks together, and keeps them together", () => {
     const timings = planShootingStarTimings(8, "full-sky");
     expect(new Set(timings.map((timing) => timing.duration)).size).toBe(1);

@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     return assistantAssetError("Invalid request body", 400, "invalid_request");
   }
   if (!parsed) {
-    return assistantAssetError("Choose a Tutor answer to show visually.", 400, "invalid_request");
+    return assistantAssetError("Choose one of Jami's answers to show visually.", 400, "invalid_request");
   }
   if (parsed.context.surface === "learn" && parsed.context.phase === "question") {
     return assistantAssetError(
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     typeof storedMessage.text !== "string" ||
     !storedMessage.text.trim()
   ) {
-    return assistantAssetError("That Tutor answer could not be found.", 404, "message_not_found");
+    return assistantAssetError("That answer from Jami could not be found.", 404, "message_not_found");
   }
 
   // Derive the prompt from immutable chat history, not browser-supplied answer
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
   // Answers saved before graphs stopped offering a picture are refused here too.
   if (typeof precedingUserMessage?.text === "string" && isTutorGraphRequest(precedingUserMessage.text)) {
     return assistantAssetError(
-      "Graphs are drawn as real graphs in Tutor's answer, not as pictures. Ask Tutor to draw the graph.",
+      "Graphs are drawn as real graphs in Jami's answer, not as pictures. Ask Jami to draw the graph.",
       400,
       "graph_not_illustrated"
     );
@@ -199,10 +199,10 @@ export async function POST(request: NextRequest) {
         latest.data()?.canIllustrate !== true ||
         latest.data()?.text !== storedMessage.text
       ) {
-        throw new Error("Tutor answer changed before the visual was saved.");
+        throw new Error("Jami's answer changed before the visual was saved.");
       }
       const existing = normalizeAssistantIllustrations(latest.data()?.illustrations);
-      if (existing.length >= 10) throw new Error("This Tutor answer already has enough visuals.");
+      if (existing.length >= 10) throw new Error("This answer from Jami already has enough visuals.");
       transaction.update(messageRef, {
         illustrations: [...existing, illustration],
       });

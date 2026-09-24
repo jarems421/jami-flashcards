@@ -306,7 +306,7 @@ export default function Home() {
               */}
             <p className="text-xs leading-5 text-text-muted sm:col-span-3">
               Studying something else, or at university? Folders, notebooks,
-              flashcards and Tutor work with your own notes in any subject.
+              flashcards and Jami work with your own notes in any subject.
             </p>
           </section>
         </div>

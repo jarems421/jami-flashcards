@@ -42,6 +42,9 @@ import {
 } from "@/services/ai/ai-privacy-notice";
 import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
 import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard";
+import TutorCardSuggestions from "@/components/ai/TutorCardSuggestions";
+import type { JamiAssistantSuggestedCard } from "@/lib/ai/tutor-card-suggestions";
+import { drawnFigureToPng } from "@/components/ai/drawn-figure-image";
 import TutorReasoningMenu from "@/components/ai/TutorReasoningMenu";
 import AssistantAnswerBody from "@/components/ai/AssistantAnswerBody";
 import {
@@ -69,6 +72,19 @@ import {
   StopDictationIcon,
 } from "@/components/ai/JamiAssistantIcons";
 import TutorSettingsPanel from "@/components/ai/TutorSettingsPanel";
+import {
+  FLOATING_TUTOR_HEADER_CLASS,
+  FLOATING_TUTOR_PANEL_CLASS,
+  FloatingTutorCardControls,
+  FloatingTutorGrabBar,
+  FloatingTutorPill,
+  FloatingTutorPinButton,
+  FloatingTutorPinnedAnswer,
+  FloatingTutorResizeFrame,
+  floatingRectStyle,
+  useFloatingTutorFrames,
+  type FloatingTutorStowed,
+} from "@/components/ai/JamiFloatingTutor";
 import { featureFlags } from "@/lib/app/feature-flags";
 
 /**
@@ -129,6 +145,11 @@ type JamiAssistantDrawerProps = {
    */
   onGraphInsert?: (graph: NotebookGraphDraft) => Promise<boolean>;
   /**
+   * Adds a drawn figure from an answer to the open notebook page, as an image.
+   * Resolves true once it is on the page; the notebook reports its own failures.
+   */
+  onDrawingInsert?: (file: File) => Promise<boolean>;
+  /**
    * The folders this conversation's material belongs to, when the surface
    * knows.
    *
@@ -137,6 +158,15 @@ type JamiAssistantDrawerProps = {
    * explains the rule rather than asserting an answer it does not have.
    */
   settingsFolderIds?: readonly string[];
+  /**
+   * How Jami sits over the work.
+   *
+   * `sidebar` is a full-height panel down the right. `floating` is a card the
+   * student moves and resizes over a surface they are writing on, which can
+   * also shrink to a pill or leave one answer pinned beside the page. Phones
+   * get the full-screen sheet either way: there is no room to float.
+   */
+  layout?: "sidebar" | "floating";
 };
 
 type DrawerMessage = {
@@ -146,6 +176,7 @@ type DrawerMessage = {
   used?: JamiAssistantUsedContext[];
   followUps?: JamiAssistantFollowUp[];
   citations?: JamiAssistantCitation[];
+  suggestedCards?: JamiAssistantSuggestedCard[];
   illustrations?: AssistantIllustration[];
   canIllustrate?: boolean;
 };
@@ -164,7 +195,9 @@ export default function JamiAssistantDrawer({
   onIllustrationInserted,
   onBeforeIllustrationInsert,
   onGraphInsert,
+  onDrawingInsert,
   settingsFolderIds,
+  layout = "sidebar",
 }: JamiAssistantDrawerProps) {
   const [messages, setMessages] = useState<DrawerMessage[]>([]);
   const [input, setInput] = useState("");
@@ -189,8 +222,20 @@ export default function JamiAssistantDrawer({
    * over it. Jami is meant to nudge you towards an answer you are looking at,
    * which does not work if opening it hides the card. Below this the page is
    * too narrow to show both, so it stays a modal sheet.
+   *
+   * A floating card is small enough to share a tablet in portrait too, so it
+   * stops being modal from there; only a phone still gets the sheet.
   */
   const [sidePanel, setSidePanel] = useState(false);
+  const floating = layout === "floating" && sidePanel;
+  // What a floating Jami leaves behind when it shrinks or pins an answer.
+  const [stowed, setStowed] = useState<FloatingTutorStowed>(null);
+  const [pinnedText, setPinnedText] = useState("");
+  const { card, pin } = useFloatingTutorFrames(floating, stowed);
+  const stow = (next: FloatingTutorStowed) => {
+    setStowed(next);
+    onOpenChange(false);
+  };
   /**
    * Settings, shown over the conversation rather than beside it.
    *
@@ -283,16 +328,24 @@ export default function JamiAssistantDrawer({
     setInsertedGraphKeys(new Set());
     setGeneratingIllustrationId(null);
     setInsertingIllustrationId(null);
+    setStowed(null);
     onOpenChange(false);
   }, [abandonActiveRequest, onOpenChange, resetKey]);
 
   useEffect(() => {
-    const query = window.matchMedia("(min-width: 1024px)");
+    const query = window.matchMedia(
+      layout === "floating" ? "(min-width: 640px)" : "(min-width: 1024px)"
+    );
     const sync = () => setSidePanel(query.matches);
     sync();
     query.addEventListener("change", sync);
     return () => query.removeEventListener("change", sync);
-  }, []);
+  }, [layout]);
+
+  // Opening the card, from anywhere, replaces whatever it left behind.
+  useEffect(() => {
+    if (open) setStowed(null);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -485,6 +538,26 @@ export default function JamiAssistantDrawer({
         })
         .finally(() => setInsertingGraphKey(null));
     },
+    canInsertDrawing:
+      Boolean(onDrawingInsert) && contextKey.startsWith("notebook:") && !viewingForeignThread,
+    insertDrawing: (key, svg) => {
+      if (!onDrawingInsert || insertingGraphKey) return;
+      setInsertingGraphKey(key);
+      setError(null);
+      void drawnFigureToPng(svg)
+        .then((file) => onDrawingInsert(file))
+        .then((added) => {
+          if (added) setInsertedGraphKeys((current) => new Set(current).add(key));
+        })
+        .catch((drawError: unknown) =>
+          setError(
+            drawError instanceof Error
+              ? drawError.message
+              : "That figure could not be added to this page."
+          )
+        )
+        .finally(() => setInsertingGraphKey(null));
+    },
   };
 
   const sendMessage = useCallback(
@@ -560,6 +633,7 @@ export default function JamiAssistantDrawer({
           used: response.used,
           followUps: response.followUps,
           citations: response.citations,
+          suggestedCards: response.suggestedCards,
           canIllustrate: response.canIllustrate,
         };
         // Settle on the validated reply, replacing the streamed placeholder
@@ -681,8 +755,9 @@ export default function JamiAssistantDrawer({
   };
 
   return (
+    <>
     <Dialog
-      open={open}
+      open={open && (!floating || card.rect !== null)}
       modal={!sidePanel}
       initialFocusRef={inputRef}
       className={`fixed inset-0 flex justify-end ${
@@ -693,7 +768,11 @@ export default function JamiAssistantDrawer({
       <DialogBackdrop className="absolute inset-0 bg-black/55 backdrop-blur-[1px]" />
       <DialogPanel
         data-notebook-text-editor="true"
-        className="pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-shell"
+        className={
+          floating
+            ? FLOATING_TUTOR_PANEL_CLASS
+            : "pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-shell"
+        }
         /*
           The panel colour is a few percent translucent, which reads as depth
           over the scrim but lets the card show through once the scrim is gone.
@@ -703,6 +782,7 @@ export default function JamiAssistantDrawer({
         style={
           sidePanel
             ? {
+                ...(floating && card.rect ? floatingRectStyle(card.rect) : null),
                 backgroundColor: "var(--color-surface-base)",
                 backgroundImage:
                   "linear-gradient(var(--color-surface-panel-strong), var(--color-surface-panel-strong))",
@@ -710,10 +790,14 @@ export default function JamiAssistantDrawer({
             : undefined
         }
       >
-        <header className="border-b border-[var(--color-border)] px-4 py-3.5 sm:px-5">
+        <header
+          className={floating ? FLOATING_TUTOR_HEADER_CLASS : "border-b border-[var(--color-border)] px-4 py-3.5 sm:px-5"}
+          {...(floating ? card.dragHandleProps : null)}
+        >
+          {floating ? <FloatingTutorGrabBar /> : null}
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent">
+              <div className={`${floating ? "hidden" : "flex"} h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent`}>
                 <JamiTutorIcon className="h-[1.35rem] w-[1.35rem]" />
               </div>
               <div className="min-w-0">
@@ -733,8 +817,8 @@ export default function JamiAssistantDrawer({
               {featureFlags.enableTutorPersonalisation ? (
                 <button
                   type="button"
-                  aria-label="Open Tutor settings"
-                  title="Tutor settings"
+                  aria-label="Open Jami settings"
+                  title="Jami settings"
                   className="inline-grid h-10 w-10 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
                   onClick={() => setSettingsOpen(true)}
                 >
@@ -763,6 +847,13 @@ export default function JamiAssistantDrawer({
               >
                 <NewChatIcon />
               </button>
+              {floating ? (
+                <FloatingTutorCardControls
+                  maximised={card.maximised}
+                  onToggleMaximised={card.toggleMaximised}
+                  onMinimise={() => stow("pill")}
+                />
+              ) : null}
               <button
                 type="button"
                 aria-label="Close Jami assistant"
@@ -836,7 +927,9 @@ export default function JamiAssistantDrawer({
               ) : null}
             </div>
           ) : (
-            <div className="space-y-4" aria-live="polite">
+            // Selectable even over a notebook, which otherwise cancels native
+            // selection, so an answer can be copied into a text box on the page.
+            <div className="space-y-4" aria-live="polite" data-notebook-selectable-text="true">
               {messages.map((message, index) => (
                 <div
                   key={`${message.role}-${index}`}
@@ -887,6 +980,14 @@ export default function JamiAssistantDrawer({
                             ? formatJamiAssistantUsedContext(message.used)
                             : "Used: General knowledge"}
                         </div>
+                        {floating && !(loading && index === messages.length - 1) ? (
+                          <FloatingTutorPinButton
+                            onPin={() => {
+                              setPinnedText(message.text);
+                              stow("pinned");
+                            }}
+                          />
+                        ) : null}
                         {message.citations?.length ? (
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 px-1" aria-label="Web sources">
                             {message.citations.map((citation) => (
@@ -901,6 +1002,12 @@ export default function JamiAssistantDrawer({
                               </a>
                             ))}
                           </div>
+                        ) : null}
+                        {message.suggestedCards?.length ? (
+                          <TutorCardSuggestions
+                            userId={userId}
+                            cards={message.suggestedCards}
+                          />
                         ) : null}
                         {message.canIllustrate &&
                         !message.illustrations?.length &&
@@ -973,7 +1080,8 @@ export default function JamiAssistantDrawer({
         </div>
 
         {showAiNotice && !historyOpen ? (
-          <div className="mx-5 mb-0 rounded-xl border border-accent/20 bg-accent/8 px-3.5 py-3 text-xs leading-5 text-text-secondary sm:mx-7">
+          // In a small floating card the notice scrolls rather than squeezing the conversation to nothing.
+          <div className={`mx-5 mb-0 rounded-xl border border-accent/20 bg-accent/8 px-3.5 py-3 text-xs leading-5 text-text-secondary sm:mx-7 ${floating ? "max-h-32 shrink-0 overflow-y-auto" : ""}`}>
             <div className="flex items-start justify-between gap-3">
               <p>
                 When you use Jami, relevant work may be processed through OpenRouter
@@ -1187,6 +1295,20 @@ export default function JamiAssistantDrawer({
           </div>
         ) : null}
       </DialogPanel>
+      {floating ? <FloatingTutorResizeFrame frame={card} label="Jami" /> : null}
     </Dialog>
+    {floating && !open && stowed === "pill" ? (
+      <FloatingTutorPill onOpen={() => onOpenChange(true)} />
+    ) : null}
+    {floating && !open && stowed === "pinned" ? (
+      <FloatingTutorPinnedAnswer
+        frame={pin}
+        onOpenChat={() => onOpenChange(true)}
+        onUnpin={() => setStowed("pill")}
+      >
+        <AssistantAnswerBody text={pinnedText} illustrations={[]} renderIllustration={() => null} />
+      </FloatingTutorPinnedAnswer>
+    ) : null}
+    </>
   );
 }

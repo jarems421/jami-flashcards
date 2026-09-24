@@ -152,6 +152,17 @@ describe("telling the marker which page is which", () => {
       })
     ).toBe("5 — extra answer sheet 1");
   });
+
+  it("does not call the whole answer an overflow when the question has no printed page", () => {
+    // A Jami-created question: the marker was told its only sheet was an answer that ran past a page it never saw.
+    expect(
+      examSheetPageCaption({
+        page: { kind: "continuation", number: 1 },
+        questionLabel: "Jami-created 1",
+        printedPageCount: 0,
+      })
+    ).toBe("Jami-created 1 — answer sheet 1");
+  });
 });
 
 /* --- what ingestion measures -------------------------------------------- */

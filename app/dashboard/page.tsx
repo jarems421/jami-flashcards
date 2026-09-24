@@ -43,7 +43,7 @@ import MissionCard from "@/components/today/MissionCard";
 import MaterialReady from "@/components/today/MaterialReady";
 import MomentumStrip, { buildMomentumWeek } from "@/components/today/MomentumStrip";
 import MoreForToday from "@/components/today/MoreForToday";
-import PlanSummary from "@/components/today/PlanSummary";
+import PlanHome from "@/components/today/PlanHome";
 import StudyDoors, { type StudyDoor } from "@/components/today/StudyDoors";
 import { useRevisionPlanToday } from "@/hooks/useRevisionPlanToday";
 import { featureFlags } from "@/lib/app/feature-flags";
@@ -583,6 +583,91 @@ export default function DashboardHome() {
   const missionBusy = material.generatingId !== null;
   const generatingMission = Boolean(mission.action && material.generatingId === mission.action.id);
 
+  // While the plan is still being read, Today waits rather than drawing the
+  // mission and then swapping it for the plan a moment later.
+  const planLoading = featureFlags.enableRevisionPlans && revisionPlan.loading;
+
+  /*
+   * The Learning Engine's next step. It leads Today unless a revision plan does,
+   * and then it leads only when the plan has nothing left for today.
+   */
+  const missionCard = (
+    <>
+    {isLoading || planLoading ? (
+      <Skeleton className="h-[21rem] rounded-2xl" />
+    ) : planUnavailable ? (
+      <MissionCard
+        tone="plain"
+        eyebrow="Today"
+        headline="Your study plan is temporarily unavailable."
+        summary="Refresh in a moment. Jami will not treat missing data as an empty study list."
+        /*
+         * The acknowledgement survives a failed read.
+         *
+         * They did the work; not being able to read their profile is
+         * Jami's problem, not a reason to act as though the session
+         * never happened. What is lost is only the recommendation that
+         * would have followed it.
+         */
+        {...(completionCopy ? { completion: completionCopy } : {})}
+        action={
+          <Button type="button" onClick={() => void handleRefresh()} size="lg">
+            Try again
+          </Button>
+        }
+      />
+    ) : (
+      <MissionCard
+        tone={mission.action ? "engine" : "plain"}
+        eyebrow={mission.eyebrow}
+        headline={mission.headline}
+        summary={mission.summary}
+        {...(completionCopy ? { completion: completionCopy } : {})}
+        bodyKey={mission.action?.id ?? mission.headline}
+        {...(mission.folderName ? { context: mission.folderName } : {})}
+        facts={
+          mission.effort
+            ? [mission.effort.items, mission.effort.minutes].filter(
+                (fact): fact is string => Boolean(fact)
+              )
+            : []
+        }
+        explanation={mission.explanation}
+        action={
+          mission.generate && mission.action ? (
+            <Button
+              type="button"
+              size="lg"
+              disabled={missionBusy}
+              onClick={() => handleGenerate(mission.action as TodayStudyAction)}
+            >
+              {generatingMission ? "Writing…" : mission.actionLabel}
+            </Button>
+          ) : (
+            <ButtonLink href={mission.href} size="lg" onClick={recordMissionStart}>
+              {mission.actionLabel}
+            </ButtonLink>
+          )
+        }
+        secondaryAction={
+          mission.secondary ? (
+            <ButtonLink href={mission.secondary.href} variant="secondary" size="lg">
+              {mission.secondary.label}
+            </ButtonLink>
+          ) : null
+        }
+      />
+    )}
+    </>
+  );
+
+  const planLed =
+    featureFlags.enableRevisionPlans &&
+    !isLoading &&
+    !planUnavailable &&
+    !planLoading &&
+    Boolean(revisionPlan.plan && revisionPlan.day);
+
   return (
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
@@ -642,109 +727,49 @@ export default function DashboardHome() {
         */}
         <FirstNightPanel />
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-5">
-          {isLoading ? (
-            <Skeleton className="h-[21rem] rounded-2xl" />
-          ) : planUnavailable ? (
-            <MissionCard
-              tone="plain"
-              eyebrow="Today"
-              headline="Your study plan is temporarily unavailable."
-              summary="Refresh in a moment. Jami will not treat missing data as an empty study list."
-              /*
-               * The acknowledgement survives a failed read.
-               *
-               * They did the work; not being able to read their profile is
-               * Jami's problem, not a reason to act as though the session
-               * never happened. What is lost is only the recommendation that
-               * would have followed it.
-               */
-              {...(completionCopy ? { completion: completionCopy } : {})}
-              action={
-                <Button type="button" onClick={() => void handleRefresh()} size="lg">
-                  Try again
-                </Button>
-              }
-            />
-          ) : (
-            <MissionCard
-              tone={mission.action ? "engine" : "plain"}
-              eyebrow={mission.eyebrow}
-              headline={mission.headline}
-              summary={mission.summary}
-              {...(completionCopy ? { completion: completionCopy } : {})}
-              bodyKey={mission.action?.id ?? mission.headline}
-              {...(mission.folderName ? { context: mission.folderName } : {})}
-              facts={
-                mission.effort
-                  ? [mission.effort.items, mission.effort.minutes].filter(
-                      (fact): fact is string => Boolean(fact)
-                    )
-                  : []
-              }
-              explanation={mission.explanation}
-              action={
-                mission.generate && mission.action ? (
-                  <Button
-                    type="button"
-                    size="lg"
-                    disabled={missionBusy}
-                    onClick={() => handleGenerate(mission.action as TodayStudyAction)}
-                  >
-                    {generatingMission ? "Writing…" : mission.actionLabel}
-                  </Button>
-                ) : (
-                  <ButtonLink href={mission.href} size="lg" onClick={recordMissionStart}>
-                    {mission.actionLabel}
-                  </ButtonLink>
-                )
-              }
-              secondaryAction={
-                mission.secondary ? (
-                  <ButtonLink href={mission.secondary.href} variant="secondary" size="lg">
-                    {mission.secondary.label}
-                  </ButtonLink>
-                ) : null
-              }
-            />
-          )}
+        {planLed ? (
+          <PlanHome
+            planToday={revisionPlan}
+            planHref={getRevisionPlanHref()}
+            doors={doors}
+            fallback={missionCard}
+          />
+        ) : (
+          <>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-5">
+            {missionCard}
 
-          <aside className="grid content-start gap-4">
-            {isLoading ? (
-              <Skeleton className="h-40 rounded-xl" />
-            ) : (
-              <MomentumStrip
-                week={momentumWeek}
-                unavailable={sectionStates.activity === "unavailable"}
-              />
-            )}
-            {!isLoading && revisionPlan.plan && revisionPlan.day ? (
-              <PlanSummary
-                day={revisionPlan.day}
-                planHref={getRevisionPlanHref()}
-                scopeName={(slot) => revisionPlan.scopeNames.get(slot.scopeKey)}
-              />
-            ) : null}
-          </aside>
-        </div>
+            <aside className="grid content-start gap-4">
+              {isLoading ? (
+                <Skeleton className="h-40 rounded-xl" />
+              ) : (
+                <MomentumStrip
+                  week={momentumWeek}
+                  unavailable={sectionStates.activity === "unavailable"}
+                />
+              )}
+            </aside>
+          </div>
 
-        {/*
-          * The doors do not wait on the student's data, and must not.
-          *
-          * They were gated on the same check as the mission at first, which
-          * meant a failed read took away both the recommendation *and* every
-          * way in -- leaving a student looking at an apology with nothing to
-          * press. Nothing here needs the profile: they are four places that
-          * exist whether or not Jami could read anything today.
-          */}
-        {!isLoading ? (
-          <section className="space-y-3">
-            <h2 className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-              Or study your way
-            </h2>
-            <StudyDoors doors={doors} />
-          </section>
-        ) : null}
+          {/*
+            * The doors do not wait on the student's data, and must not.
+            *
+            * They were gated on the same check as the mission at first, which
+            * meant a failed read took away both the recommendation *and* every
+            * way in -- leaving a student looking at an apology with nothing to
+            * press. Nothing here needs the profile: they are four places that
+            * exist whether or not Jami could read anything today.
+            */}
+          {!isLoading ? (
+            <section className="space-y-3">
+              <h2 className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                Or study your way
+              </h2>
+              <StudyDoors doors={doors} />
+            </section>
+          ) : null}
+          </>
+        )}
 
         <TutorialResumeCard />
         <SecondNightPanel />

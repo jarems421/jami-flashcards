@@ -1,4 +1,5 @@
 import { questionConventionsForCourse } from "@/lib/practice/question-conventions";
+import { ruleCoversMarks, type QuestionTypeRule } from "@/lib/practice/question-types";
 
 export type ExamBoardId =
   | "aqa"
@@ -748,7 +749,18 @@ export function sectionMarkIssues(
  * asks them in the form a candidate will meet: a 9-marker that invites a
  * judgement, a "describe two features" worth 2 + 2. See `question-conventions.ts`.
  */
-function courseQuestionTypes(profile: ExamFormatProfileVersion) {
+function courseQuestionTypes(profile: ExamFormatProfileVersion, researched: readonly QuestionTypeRule[] = []) {
+  // The board's own researched kinds where they exist, practice written from memory where they do not.
+  if (researched.length) {
+    // The course's kinds span every paper; this component's observed tariffs pick out its own.
+    const tariffs = new Set(
+      (profile.tariffProgression ?? []).flatMap((line) => (line.match(/\d+/g) ?? []).map(Number)).filter((mark) => mark > 0 && mark <= 60)
+    );
+    const component = researched.filter((rule) => [...tariffs].some((mark) => ruleCoversMarks(rule, mark)));
+    return `Question types this board sets for this course, read from its own mark schemes -- write questions in these forms where the tariff pattern calls for them:\n${(component.length ? component : researched)
+      .map((rule) => `- ${rule.name}${rule.extraMarks ? ` (${rule.extraMarks})` : ""}: ${rule.answerShape}`)
+      .join("\n")}`;
+  }
   const kinds = questionConventionsForCourse({
     board: profile.boardLabel,
     course: `${profile.qualificationLabel} ${profile.subject}`,
@@ -760,7 +772,7 @@ function courseQuestionTypes(profile: ExamFormatProfileVersion) {
     .join("\n")}`;
 }
 
-export function practicePaperFormatContext(profile: ExamFormatProfileVersion) {
+export function practicePaperFormatContext(profile: ExamFormatProfileVersion, researched: readonly QuestionTypeRule[] = []) {
   return [
     `Verified format profile: ${profile.profileId}@${profile.version}`,
     `${profile.boardLabel} ${profile.qualificationLabel} ${profile.subject}`,
@@ -780,7 +792,7 @@ export function practicePaperFormatContext(profile: ExamFormatProfileVersion) {
     profile.choiceRules.length ? `Choice rules: ${profile.choiceRules.join("; ")}.` : "",
     profile.requiredMaterials.length ? `Required candidate materials: ${profile.requiredMaterials.map((material) => material.title).join("; ")}.` : "",
     profile.assessmentObjectives.length ? `Assessment objectives: ${profile.assessmentObjectives.join("; ")}.` : "",
-    courseQuestionTypes(profile),
+    courseQuestionTypes(profile, researched),
     "This profile controls structure. Student-selected sources control taught content. Do not change the duration, total marks, sections, or choice rules.",
   ].filter(Boolean).join("\n");
 }

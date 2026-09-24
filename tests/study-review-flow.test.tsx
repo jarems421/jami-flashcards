@@ -669,18 +669,24 @@ describe("the answer-first modes", () => {
      * Nothing at session start, prepared by the time the queue is read again:
      * exactly the order a student hits on a deck nobody has studied. Two empty
      * reads because preparation makes both of them -- what is already cached,
-     * then what its own head start just wrote -- and the session's own read of
-     * the queue is the third.
+     * then the first card its wait prepared. After that a read finds card-1's
+     * options only when it asks for card-1: the background pass reads the
+     * cards behind it, and the session's own read of the queue is what lands
+     * them late.
      */
     vi.mocked(loadStudyAssets)
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({})
-      .mockResolvedValue({
-        "card-1": preparedAsset("card-1", [
-          distractor,
-          "Where lipids are packaged for export.",
-          "The site of photosynthesis in a plant.",
-        ]),
+      .mockImplementation(async (cards) => {
+        const assets: Awaited<ReturnType<typeof loadStudyAssets>> = {};
+        if (cards.some((card) => card.id === "card-1")) {
+          assets["card-1"] = preparedAsset("card-1", [
+            distractor,
+            "Where lipids are packaged for export.",
+            "The site of photosynthesis in a plant.",
+          ]);
+        }
+        return assets;
       });
 
     await selectMode("Multiple Choice");

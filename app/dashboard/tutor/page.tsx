@@ -135,7 +135,7 @@ export default function TutorPage() {
 
   const handleLoadError = useCallback(
     (error: unknown) => {
-      console.error("Failed to load the Tutor workspace.", error);
+      console.error("Failed to load the Jami workspace.", error);
       setLoadFailed(true);
       showError("Jami could not load your drafts just now. Try again shortly.");
     },
@@ -186,7 +186,7 @@ export default function TutorPage() {
     <AppPage
       title={TUTOR_TITLE}
       views={TUTOR_VIEWS}
-      viewsLabel="Tutor views"
+      viewsLabel="Jami views"
       backHref="/dashboard"
       backLabel="Today"
       width="xl"
@@ -239,7 +239,7 @@ export default function TutorPage() {
             </span>
             <div className="min-w-0">
               <p className="text-2xs font-semibold uppercase tracking-[0.2em] text-warm-accent">
-                Jami Tutor
+                Ask Jami
               </p>
               <p className="mt-1 text-sm leading-6 text-text-secondary">
                 Ask from your own material.

@@ -1,5 +1,6 @@
 import { getNotebookInkViewportScale } from "@/lib/workspace/notebook-viewport";
 import type { NotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
+import type { NotebookInkTool } from "@/lib/workspace/notebook-js-draw";
 
 type Comparable<Value> = {
   eq(other: Value): boolean;
@@ -171,6 +172,34 @@ export function shouldContinueNotebookPrecisionGesture(input: {
   return (
     input.type !== "pointerdown" && input.activePointerId === input.pointerId
   );
+}
+
+/**
+ * The `buttons` bit a pen sets while its eraser is in contact.
+ *
+ * From the Pointer Events spec, and what Windows reports for the eraser end
+ * of a Surface Pen or a Wacom stylus, and for the eraser button some pens
+ * carry on the barrel instead.
+ */
+export const NOTEBOOK_PEN_ERASER_BUTTONS = 32;
+
+/**
+ * The tool a new contact works with.
+ *
+ * The selected one, unless the pen has been turned over: its eraser end
+ * erases whatever is selected, as it does on paper and in every note app on
+ * the machines these pens come with. Turned back, the pen writes again with
+ * nothing to reselect -- the choice is made per contact, never saved.
+ */
+export function getNotebookContactTool(input: {
+  activeTool: NotebookInkTool;
+  buttons: number;
+  pointerType: string;
+}): NotebookInkTool {
+  return input.pointerType === "pen" &&
+    (input.buttons & NOTEBOOK_PEN_ERASER_BUTTONS) !== 0
+    ? "eraser"
+    : input.activeTool;
 }
 
 export function shouldUseNotebookPrecisionGesture(input: {

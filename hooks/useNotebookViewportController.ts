@@ -25,6 +25,10 @@ import {
   NOTEBOOK_PAN_GESTURE_SLOP,
   type NotebookViewportLayout,
 } from "@/lib/workspace/notebook-viewport";
+import {
+  safelyReleasePointerCapture,
+  safelySetPointerCapture,
+} from "@/lib/workspace/notebook-interaction-lock";
 
 export type NotebookViewportFrameSize = { width: number; height: number };
 
@@ -417,10 +421,22 @@ export function useNotebookViewportController({
         event.stopPropagation();
         return true;
       }
-      updateTouchPointer(event);
-      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.setPointerCapture(event.pointerId);
+      /*
+       * The primary touch is the first finger on glass with no other finger
+       * down, so anything still tracked at that moment is a finger whose
+       * release never arrived. Left in place it pairs with the new finger as a
+       * pinch, and a one-finger swipe zooms the page.
+       */
+      if (event.isPrimary && touchPointersRef.current.size > 0) {
+        if (pinchZoomRef.current) {
+          cancelPinchAnimationFrame();
+          resetPageSurfaceTransform();
+          pinchZoomRef.current = null;
+        }
+        touchPointersRef.current.clear();
       }
+      updateTouchPointer(event);
+      safelySetPointerCapture(event.currentTarget, event.pointerId);
       if (touchPointersRef.current.size >= 2) {
         startPinchZoom();
         event.preventDefault();
@@ -441,7 +457,12 @@ export function useNotebookViewportController({
         : null;
       return false;
     },
-    [startPinchZoom, updateTouchPointer]
+    [
+      cancelPinchAnimationFrame,
+      resetPageSurfaceTransform,
+      startPinchZoom,
+      updateTouchPointer,
+    ]
   );
 
   const handleTouchPointerMove = useCallback(
@@ -522,9 +543,7 @@ export function useNotebookViewportController({
       const wasPinching =
         Boolean(pinchZoomRef.current) || touchPointersRef.current.size >= 2;
       touchPointersRef.current.delete(event.pointerId);
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
+      safelyReleasePointerCapture(event.currentTarget, event.pointerId);
       if (wasPinching) {
         const pinch = pinchZoomRef.current;
         if (pinch) finalizePinchCommit(pinch);

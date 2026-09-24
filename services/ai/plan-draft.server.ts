@@ -120,6 +120,7 @@ Fill "plan" only when you have enough to propose a real shape and the student ha
 A plan is: {"title":"Chemistry mock","subjects":[{"ref":"S1","weight":2,"start":"diagnose"}],"days":[1,3,5],"minutes":45,"start":"${input.today}","end":"2026-11-14"}
 weight is 1, 2 or 3 and is relative. start is "diagnose" when it is worth finding out where they stand first, or "practice" when there is already evidence and they should keep working. minutes is one session length for the whole week. Use their own words for the title where you can.
 If the student told you actual times, or wants more than one sitting in a day, replace "days" and "minutes" with "sessions": [{"day":1,"minutes":45,"time":"16:30","ref":"S1"},{"day":1,"minutes":30}]. "time" is 24-hour "HH:MM" and "ref" pins that sitting to one subject; both are optional on every sitting. Only give a time when they gave you one — inventing a clock for somebody whose evening you know nothing about makes the plan wrong rather than specific. Use the simpler "days" and "minutes" form otherwise.
+If the student told you when their exams are, add "exams": [{"label":"Chemistry Paper 1","date":"2026-11-12","ref":"S1"}] so the plan can count down to each. Only exams they named, on the dates they gave; "ref" is optional. Never invent an exam or a date.
 When you send a plan, your reply should say in one line what you have assumed and invite them to change it. They will see the plan and can edit every part of it before anything is saved.
 
 FORMAT, AND THIS MATTERS

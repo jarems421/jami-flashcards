@@ -1,4 +1,5 @@
 import "server-only";
+import { loadQuestionTypeRules } from "@/services/practice/question-type-rules.server";
 import { failedMarkingExecution } from "@/lib/practice/marking-execution-audit";
 
 import { FieldValue } from "firebase-admin/firestore";
@@ -235,6 +236,7 @@ export async function runExamQuestionReview(uid: string, attemptId: string, toke
     };
     const review = await reviewSingleQuestionIndependently({
       paper, answerParts, originalResult,
+      examinerPracticeRules: await loadQuestionTypeRules(paper.assessmentProfile, paper.title),
       originalPaperParts: await examQuestionVisualParts(bankQuestion),
       maxOutputTokens: getAiTokenCap("examQuestionReview"),
       inputTokenCap: getAiInputTokenCap("examQuestionReview"),

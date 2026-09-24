@@ -1,10 +1,12 @@
 "use client";
 
+import { type ReactNode } from "react";
 import AppPage from "@/components/layout/AppPage";
-import TutorActiveContextSummary from "@/components/ai/TutorActiveContextSummary";
-import TutorFolderInstructionsForm from "@/components/ai/TutorFolderInstructionsForm";
-import TutorPreferencesForm from "@/components/ai/TutorPreferencesForm";
+import TutorBrief from "@/components/ai/TutorBrief";
+import TutorFolderNotes from "@/components/ai/TutorFolderNotes";
+import TutorNotesList from "@/components/ai/TutorNotesList";
 import TutorStudyProfileForm from "@/components/ai/TutorStudyProfileForm";
+import TutorStyleChoices from "@/components/ai/TutorStyleChoices";
 import {
   Button,
   Card,
@@ -14,45 +16,88 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { useTutorPersonalisation } from "@/hooks/useTutorPersonalisation";
+import {
+  GENERAL_NOTE_SUGGESTIONS,
+  MAX_TUTOR_GENERAL_NOTES,
+} from "@/lib/ai/tutor-personalisation";
+
+/** One part of the page: a numbered step, its question, and its controls. */
+function Step({
+  number,
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  number: number;
+  eyebrow: string;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card padding="lg">
+      <div className="flex gap-4">
+        <span
+          aria-hidden="true"
+          className="hidden h-8 w-8 shrink-0 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-xs font-semibold text-text-secondary sm:grid"
+        >
+          {number}
+        </span>
+        <div className="min-w-0 flex-1">
+          <SectionHeader eyebrow={eyebrow} title={title} description={description} />
+          <div className="mt-5">{children}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 /**
- * Personalising Jami, with room for the parts that need it.
+ * Personalising Jami, as one account of how you like to be taught.
  *
- * The same three things as the drawer, laid out as cards instead of tabs
- * because on a page there is no reason to hide one to show another. The copy is
- * the drawer's copy: a student who found the settings verbose in a 32rem panel
- * did not want the same paragraphs again at 64rem.
+ * Four steps from the broadest to the most specific -- who you are, how Jami
+ * teaches, what it should always keep in mind, what one subject needs -- with
+ * a running read-back beside them of what that adds up to. Everything but the
+ * study level saves as it changes, so the page has no Save buttons to find and
+ * nothing to lose by leaving.
+ *
+ * It used to be three stacked forms: a free-text "Anything else?" box bolted
+ * under the style choices, and a Markdown document per folder behind a
+ * one-time scripted chat. Both are now short lists of notes, which is easier to
+ * write and is what the tutor is actually handed.
  */
 export default function TutorPersonaliseWorkspace() {
   const {
     data,
     preferences,
-    activeCount,
     loading,
     loadFailed,
     loadingFolder,
-    saving,
+    savingProfile,
+    saveStatus,
     selectedFolderId,
     setSelectedFolderId,
-    instructionsDraft,
-    setInstructionsDraft,
     studyLevel,
     studySubjects,
     feedback,
     clearFeedback,
     reload,
-    savePreferences,
-    saveInstructions,
+    saveStyle,
+    saveGeneralNotes,
+    saveFolderNotes,
     saveStudyProfile,
-    skipGuide,
   } = useTutorPersonalisation();
+
+  const selectedFolder =
+    data?.folder && data.folder.id === selectedFolderId ? data.folder : null;
 
   return (
     <AppPage
       title="Personalise Jami"
       backHref="/dashboard/tutor"
-      backLabel="Tutor"
-      width="lg"
+      backLabel="Jami"
+      width="xl"
       contentClassName="space-y-4"
     >
       {feedback ? (
@@ -64,31 +109,19 @@ export default function TutorPersonaliseWorkspace() {
       ) : null}
 
       <PageHero
-        eyebrow="Your tutor"
+        eyebrow="Personalise"
         title="How Jami teaches you"
-        description="Your level, your style, your subject notes. All optional — leave anything and Jami decides."
-        aside={
-          loading ? null : (
-            // Width-capped rather than left to its intrinsic size: the hero's
-            // aside does not shrink, and three chips in a row would take 28rem
-            // out of the headline beside them on a desktop.
-            <div className="w-full lg:w-60">
-              <TutorActiveContextSummary
-                activeFolder={null}
-                accountStudyLevel={studyLevel}
-                accountStudySubjects={studySubjects}
-                activeCount={activeCount}
-              />
-            </div>
-          )
-        }
+        description="Tell Jami what you study, how you like to learn, and what each subject needs. All optional. Anything you leave, Jami decides for you."
       />
 
       {loading ? (
-        <>
-          <Skeleton className="h-48 w-full rounded-2xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
-        </>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="space-y-4">
+            <Skeleton className="h-48 w-full rounded-2xl" />
+            <Skeleton className="h-64 w-full rounded-2xl" />
+          </div>
+          <Skeleton className="h-72 w-full rounded-2xl" />
+        </div>
       ) : loadFailed ? (
         <Card padding="lg">
           <SectionHeader
@@ -102,66 +135,81 @@ export default function TutorPersonaliseWorkspace() {
           </div>
         </Card>
       ) : (
-        <>
-          <Card padding="lg">
-            <SectionHeader
-              eyebrow="Course"
-              title="What you are studying"
-              description="Sets the vocabulary and assumed knowledge Jami works from."
-            />
-            <div className="mt-5 max-w-xl">
-              <TutorStudyProfileForm
-                // Remounted whenever a save produces a new level or list, so the
-                // fields restart from it without an effect copying values.
-                key={`${studyLevel ?? "none"}:${studySubjects.join("|")}`}
-                studyLevel={studyLevel}
-                studySubjects={studySubjects}
-                saving={saving}
-                onSave={saveStudyProfile}
-              />
-            </div>
-          </Card>
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="min-w-0 space-y-4">
+            <Step
+              number={1}
+              eyebrow="You"
+              title="What you're studying"
+              description="Sets the vocabulary and assumed knowledge Jami starts from."
+            >
+              <div className="max-w-xl">
+                <TutorStudyProfileForm
+                  // Remounted whenever a save produces a new level or list, so
+                  // the fields restart from it without an effect copying values.
+                  key={`${studyLevel ?? "none"}:${studySubjects.join("|")}`}
+                  studyLevel={studyLevel}
+                  studySubjects={studySubjects}
+                  saving={savingProfile}
+                  onSave={saveStudyProfile}
+                />
+              </div>
+            </Step>
 
-          <Card padding="lg">
-            <SectionHeader
+            <Step
+              number={2}
               eyebrow="Style"
-              title="How Jami explains things"
-              description="Every one of these has a recommended setting. Change what you care about."
-            />
-            <div className="mt-5">
-              <TutorPreferencesForm
-                key={preferences.updatedAt}
-                preferences={preferences}
-                saving={saving}
-                onSave={savePreferences}
-              />
-            </div>
-          </Card>
+              title="How Jami teaches"
+              description="Each one starts on the recommended setting. Change only what you care about."
+            >
+              <TutorStyleChoices value={preferences} onChange={saveStyle} />
+            </Step>
 
-          <Card padding="lg">
-            <SectionHeader
-              eyebrow="Subject notes"
-              title="Notes for one folder"
-              description="Exam board, notation, marking style. Used only inside that folder."
-            />
-            <div className="mt-5">
-              <TutorFolderInstructionsForm
-                key={selectedFolderId}
+            <Step
+              number={3}
+              eyebrow="Every subject"
+              title="Things Jami should always do"
+              description="Short lines, one habit each. Jami follows them in every subject."
+            >
+              <TutorNotesList
+                label="Notes for every subject"
+                notes={preferences.notes}
+                max={MAX_TUTOR_GENERAL_NOTES}
+                suggestions={GENERAL_NOTE_SUGGESTIONS}
+                placeholder="Name the rule before you use it"
+                emptyText="Nothing yet. Add a habit you'd want from any tutor, or tap an idea below."
+                onChange={saveGeneralNotes}
+              />
+            </Step>
+
+            <Step
+              number={4}
+              eyebrow="One subject"
+              title="What each subject needs"
+              description="Exam wording, notation, how you like your work checked. Used only when you're working in that folder, and it wins over everything above."
+            >
+              <TutorFolderNotes
+                layout="split"
                 folders={data?.folders ?? []}
                 selectedFolderId={selectedFolderId}
                 folder={data?.folder ?? null}
-                draft={instructionsDraft}
-                onDraftChange={setInstructionsDraft}
                 loadingFolder={loadingFolder}
-                guideCompleted={preferences.folderGuideCompleted}
-                saving={saving}
                 onSelectFolder={setSelectedFolderId}
-                onSave={saveInstructions}
-                onSkipGuide={skipGuide}
+                onChange={saveFolderNotes}
               />
-            </div>
-          </Card>
-        </>
+            </Step>
+          </div>
+
+          <aside className="lg:sticky lg:top-4">
+            <TutorBrief
+              studyLevel={studyLevel}
+              studySubjects={studySubjects}
+              preferences={preferences}
+              folder={selectedFolder}
+              saveStatus={saveStatus}
+            />
+          </aside>
+        </div>
       )}
     </AppPage>
   );

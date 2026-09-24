@@ -8,13 +8,16 @@ import {
   planSlotCounts,
 } from "@/lib/planning/plan-schedule";
 import {
+  isOwnPlanTask,
   planScopeKey,
+  type PinnedPlanItem,
   type PlanDay,
   type PlanDaySession,
   type PlanSlot,
   type PlanSlotItem,
   type RevisionPlan,
   type RevisionPlanEntry,
+  type RevisionPlanSession,
 } from "@/lib/planning/types";
 
 /**
@@ -62,6 +65,92 @@ export function planSlotId(planId: string, dayKey: string, position: number) {
   return `${planId}:${dayKey}:${position}`;
 }
 
+/**
+ * How many pieces of work each sitting holds, given what was pinned to the day.
+ *
+ * A sitting holds at least what the student added to it: a task written into
+ * Thursday's Chemistry is not bumped into the English session because
+ * Chemistry's time was already spoken for.
+ */
+export function planDaySlotCounts(
+  sessions: readonly RevisionPlanSession[],
+  pinned: readonly PinnedPlanItem[]
+): number[] {
+  const counts = planSlotCounts(sessions, pinned.length);
+  return counts.map((count, index) =>
+    Math.max(count, pinned.filter((item) => item.sessionId === sessions[index]?.id).length)
+  );
+}
+
+/**
+ * Which pinned item sits in each position of the day, or nothing.
+ *
+ * Pins that name no sitting take the day's first places, as they always have.
+ * Pins added to a sitting take the end of it, in the order they were added,
+ * so the engine's work ahead of them keeps its positions -- and with them the
+ * ticks already stored against those positions.
+ *
+ * Except behind a place already ticked. That suggestion is work the student
+ * did, and a new task put on top of it hid it and left its tick counted against
+ * something no longer there; put before it, the task moved the engine's later
+ * work along and the tick landed on different work. So a task takes only the
+ * sitting's free places after its last tick, and a sitting with none left gets
+ * a new place for it -- added after the whole day, so nothing already in the
+ * day moves, and shown at the end of its own sitting.
+ */
+function placePinned(
+  sessions: readonly RevisionPlanSession[],
+  layout: readonly { sessionIndex: number }[],
+  pinned: readonly PinnedPlanItem[],
+  isTicked: (position: number) => boolean
+) {
+  const assigned: (PinnedPlanItem | undefined)[] = layout.map(() => undefined);
+  const appended: { sessionIndex: number; item: PinnedPlanItem }[] = [];
+  const bySession = new Map<number, PinnedPlanItem[]>();
+  const loose: PinnedPlanItem[] = [];
+  for (const item of pinned) {
+    const sessionIndex = item.sessionId ? sessions.findIndex((session) => session.id === item.sessionId) : -1;
+    if (sessionIndex < 0) loose.push(item);
+    else bySession.set(sessionIndex, [...(bySession.get(sessionIndex) ?? []), item]);
+  }
+  let cursor = 0;
+  for (const item of loose) {
+    while (cursor < assigned.length && assigned[cursor]) cursor += 1;
+    if (cursor >= assigned.length) break;
+    assigned[cursor] = item;
+  }
+  for (const [sessionIndex, items] of bySession) {
+    const positions = layout
+      .map((slot, index) => (slot.sessionIndex === sessionIndex ? index : -1))
+      .filter((index) => index >= 0);
+    const lastTicked = Math.max(-1, ...positions.filter(isTicked));
+    const free = positions.filter((index) => index > lastTicked && !assigned[index]);
+    const places = free.slice(Math.max(0, free.length - items.length));
+    // Never dropped: what does not fit gets a place of its own.
+    const unplaced = items.length - places.length;
+    items.forEach((item, index) => {
+      if (index < unplaced) appended.push({ sessionIndex, item });
+      else assigned[places[index - unplaced] as number] = item;
+    });
+  }
+  return { assigned, appended };
+}
+
+/**
+ * What a tick is stored against.
+ *
+ * A slot's position, for the engine's work: the engine may put different work
+ * in the same place as the day goes on, and a tick says that place was done.
+ * A pin added to a sitting is the student's own decision about one thing, so
+ * its tick follows that thing wherever it sits -- adding a second task must not
+ * move the first one's tick onto it.
+ */
+export function planSlotTickKey(slot: PlanSlot) {
+  return slot.item.kind === "pinned" && slot.item.pinned.sessionId
+    ? `pin:${slot.item.pinned.actionId}`
+    : slot.id;
+}
+
 export function resolvePlanDay(input: ResolvePlanDayInput): PlanDay {
   const { plan, dayKey, entry, actionsByScope } = input;
   const base: PlanDay = {
@@ -81,7 +170,7 @@ export function resolvePlanDay(input: ResolvePlanDayInput): PlanDay {
   if (sessions.length === 0) return base;
 
   const pinned = entry?.pinned ?? [];
-  const counts = planSlotCounts(sessions, pinned.length);
+  const counts = planDaySlotCounts(sessions, pinned);
 
   /*
    * Which subject each slot is for, decided before any work is chosen.
@@ -115,20 +204,36 @@ export function resolvePlanDay(input: ResolvePlanDayInput): PlanDay {
   });
 
   /*
-   * Pinned items take the front of the day.
+   * Pinned items take the front of their sitting, or of the day.
    *
    * They are a decision rather than a suggestion -- the student or Jami put
    * that thing on that date -- so they are not competing with the engine's
    * ranking for a place, and they are not dropped when the engine stops
-   * recommending them.
+   * recommending them. One added to a particular sitting goes there; the rest
+   * fill the day's first free places, which is where every pin went before a
+   * pin could name its sitting, so no earlier day's ticks move.
    */
+  const completed = new Set(entry?.completedSlotIds ?? []);
+  const { assigned, appended } = placePinned(sessions, layout, pinned, (position) =>
+    completed.has(planSlotId(plan.id, dayKey, position))
+  );
+  for (const extra of appended) {
+    const sitting = layout.filter((slot) => slot.sessionIndex === extra.sessionIndex).at(-1);
+    const session = sessions[extra.sessionIndex] as RevisionPlanSession;
+    layout.push({
+      sessionIndex: extra.sessionIndex,
+      scopeKey: sitting?.scopeKey ?? session.scopeKey ?? fallbackScopeKey,
+      minutes: sitting?.minutes ?? clampPlanMinutes(session.minutes),
+    });
+    assigned.push(extra.item);
+  }
   const slots: PlanSlot[] = [];
   const used = new Set<string>();
   // Where each scope has got to, so a day never proposes the same work twice.
   const taken = new Map<string, number>();
 
   layout.forEach((entryPlan, position) => {
-    const pinnedItem = pinned[position];
+    const pinnedItem = assigned[position];
     if (pinnedItem) {
       used.add(pinnedItem.actionId);
       slots.push({
@@ -233,12 +338,14 @@ export function applyPlanDayCompletion(
     const left = remaining.get(slot.scopeKey) ?? 0;
     // An open slot has no work to have been done, so recorded activity is not
     // spent on it -- it belongs to the next slot that actually asked for
-    // something.
-    if (left > 0 && slot.item.kind !== "open") {
+    // something. Nor is a task the student wrote: reviewing Chemistry cards is
+    // not "redo question 3 from Monday's paper", and only they can say it is done.
+    const ownTask = slot.item.kind === "pinned" && isOwnPlanTask(slot.item.pinned);
+    if (left > 0 && slot.item.kind !== "open" && !ownTask) {
       remaining.set(slot.scopeKey, left - 1);
       return { ...slot, state: "done" as const, completedBy: "activity" as const };
     }
-    if (manual.has(slot.id)) {
+    if (manual.has(planSlotTickKey(slot))) {
       return { ...slot, state: "done" as const, completedBy: "manual" as const };
     }
     return slot;

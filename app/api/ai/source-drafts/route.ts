@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     return Response.json(
       {
         error:
-          "This source is saved as a reference only. Paste the relevant text before using Tutor or generating drafts.",
+          "This source is saved as a reference only. Paste the relevant text before asking Jami or generating drafts.",
       },
       { status: 400 }
     );

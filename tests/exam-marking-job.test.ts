@@ -119,7 +119,6 @@ vi.mock("@/services/practice/exam-evidence.server", () => ({
 
 const {
   enqueueExamQuestionMarking,
-  examMarkingIsCancelled,
   failExamQuestionMarking,
   runExamQuestionMarking,
 } = await import("@/services/practice/exam-marking.server");
@@ -300,7 +299,6 @@ describe("a marking the student has moved past", () => {
 
   it("reports itself cancelled rather than marking a deleted answer", async () => {
     applyUpdate(attempt(), { answerDeletedAt: 5 });
-    expect(await examMarkingIsCancelled("student", "attempt-1", TOKEN)).toBe(true);
     expect(await runExamQuestionMarking("student", "attempt-1", TOKEN)).toBe("cancelled");
     expect(mocks.markSingleQuestionAdaptively).not.toHaveBeenCalled();
   });
@@ -308,7 +306,8 @@ describe("a marking the student has moved past", () => {
   it("stops for a session the student has already finished", async () => {
     const session = store.get("users/student/examSessions/session-1")!;
     session.status = "completed";
-    expect(await examMarkingIsCancelled("student", "attempt-1", TOKEN)).toBe(true);
+    expect(await runExamQuestionMarking("student", "attempt-1", TOKEN)).toBe("cancelled");
+    expect(mocks.markSingleQuestionAdaptively).not.toHaveBeenCalled();
   });
 });
 

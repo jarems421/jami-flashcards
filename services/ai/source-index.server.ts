@@ -218,6 +218,99 @@ function mapRetrieved(document: FirebaseFirestore.QueryDocumentSnapshot): Retrie
   };
 }
 
+function chunkId(sourceId: string, chunkIndex: number) {
+  return `${sourceId}-${String(chunkIndex).padStart(4, "0")}`;
+}
+
+function sourceChunkCollection(uid: string) {
+  return getAdminDb().collection("users").doc(uid).collection("sourceChunks");
+}
+
+async function nearestChunks(
+  collection: FirebaseFirestore.CollectionReference,
+  sourceIds: readonly string[],
+  queryVector: number[],
+  limit: number
+) {
+  const nearest = await collection
+    .where("sourceId", "in", [...sourceIds])
+    .findNearest({
+      vectorField: "embedding",
+      queryVector,
+      limit: Math.max(1, Math.min(MAX_RETRIEVED_CHUNKS, limit)),
+      distanceMeasure: "COSINE",
+      distanceResultField: "vectorDistance",
+    })
+    .get();
+  return nearest.docs.map(mapRetrieved).filter((chunk) => chunk.sourceId);
+}
+
+/**
+ * Passages for Tutor from a set of sources, searched two ways.
+ *
+ * Pinned sources -- the ones the student chose -- are each searched on their
+ * own, so every one of them contributes its closest passages however well the
+ * others match. Related sources, found through a shared folder or topic, are
+ * searched together and compete, so only the ones that actually bear on the
+ * question contribute anything.
+ *
+ * The passage straight after each source's closest one comes too: a passage
+ * often ends mid-argument, and the next one is where it concludes.
+ *
+ * Returns null when the index cannot be searched at all (embeddings not
+ * configured), which is different from searching and finding nothing.
+ */
+export async function retrieveTutorEvidence(input: {
+  uid: string;
+  pinnedSourceIds: readonly string[];
+  relatedSourceIds: readonly string[];
+  query: string;
+  pinnedLimit: number;
+  relatedLimit: number;
+}): Promise<RetrievedSourceChunk[] | null> {
+  const apiKey = getConfiguredGeminiEmbeddingApiKey(process.env);
+  if (!apiKey || !resolveAiProviderPolicy(process.env).geminiReady) return null;
+  const pinned = Array.from(new Set(input.pinnedSourceIds.filter(Boolean))).slice(0, 15);
+  const related = Array.from(
+    new Set(input.relatedSourceIds.filter((id) => id && !pinned.includes(id)))
+  ).slice(0, 30);
+  if ((pinned.length === 0 && related.length === 0) || !input.query.trim()) return [];
+
+  const queryVector = await createGeminiEmbedding({
+    apiKey,
+    parts: [{ text: buildEmbeddingQueryText(input.query) }],
+  });
+  const collection = sourceChunkCollection(input.uid);
+  const searches = await Promise.all([
+    ...pinned.map((sourceId) =>
+      nearestChunks(collection, [sourceId], queryVector, input.pinnedLimit)
+    ),
+    ...(related.length > 0 && input.relatedLimit > 0
+      ? [nearestChunks(collection, related, queryVector, input.relatedLimit)]
+      : []),
+  ]);
+  const primary = searches.flat();
+  const found = new Set(primary.map((chunk) => chunk.id));
+
+  const closestBySource = new Map<string, RetrievedSourceChunk>();
+  for (const chunk of primary) {
+    const current = closestBySource.get(chunk.sourceId);
+    if (!current || (chunk.distance ?? 1) < (current.distance ?? 1)) {
+      closestBySource.set(chunk.sourceId, chunk);
+    }
+  }
+  const followingIds = [...closestBySource.values()]
+    .map((chunk) => chunkId(chunk.sourceId, chunk.chunkIndex + 1))
+    .filter((id) => !found.has(id));
+  const following = await Promise.all(followingIds.map((id) => collection.doc(id).get()));
+  return [
+    ...primary,
+    ...following
+      .filter((snapshot): snapshot is FirebaseFirestore.QueryDocumentSnapshot => snapshot.exists)
+      .map(mapRetrieved),
+  ];
+}
+
 export async function retrieveSourceChunks(input: {
   uid: string;
   sourceIds: readonly string[];

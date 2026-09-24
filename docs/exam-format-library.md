@@ -25,6 +25,75 @@ The designer writes questions in the kinds the board sets for that course
 (`lib/practice/question-conventions.ts`, printed into the format context), and
 the same conventions go to the scheme writer and the marker.
 
+## How each kind of question is marked
+
+The hand-written conventions cover a few dozen kinds of question from memory.
+Researched rules cover every kind each board sets, subject by subject, read
+from the board's own documents (`lib/practice/question-types.ts`,
+`services/ai/question-type-research.server.ts`). They're filed in
+`examQuestionTypeRules` by board, qualification and subject, which clients can't
+read or write. The designer, the scheme writer and the marker all prefer a
+researched rule and fall back to the conventions. A question's rule is chosen
+by its tariff and then by the command words and cues it uses. Where several
+rules share a tariff and the question uses none of their words, no rule is
+guessed.
+
+Where the rules come from:
+
+- The Past Paper Practice corpus: real questions with official mark schemes
+  under permissions that allow AI use, sampled across every tariff and
+  command word.
+- The board's own website, one mark scheme per paper plus one examiner report,
+  newest public series first:
+  - AQA: addressed directly (`AQA-{spec}{paper}-MS-{series}.PDF`, `-CR` where
+    third-party material was removed, and `-SMS` specimens for specifications
+    with no public series yet, such as the 2024 languages).
+  - OCR: listed on the qualification's assessment page. Components that are
+    options of one paper are read once.
+  - Pearson: listed by the index its pages search. Only public
+    `/content/dam/pdf/` files are read. Centre-only `/content/dam/secure/` files
+    are never fetched.
+  - Anything else: found by search, kept only from the board's own hosts, and
+    only when it names the specification code, so an old specification's
+    schemes can't stand in for a new one's.
+
+A model writes the rules, and code decides what is kept:
+
+- A rule needs a tariff, an answer shape and an examiner rule.
+- A rule that copies twelve words of its source is reworded once, then dropped
+  if it still copies.
+- One kind described by two sources is merged, keeping both sets of sources.
+
+Every rule names its sources. Research is run by the owner with
+`scripts/eval/research-question-types.ts`. Its `--documents` option lists what
+each subject would read without calling a model, and `--report` prints what is
+saved.
+
+Coverage as of 23 September 2026 (112 subjects, 917 kinds of question):
+
+| Board and level | Subjects with rules |
+| --- | --- |
+| AQA GCSE | 28 of 28 |
+| OCR GCSE | 31 of 31 |
+| AQA A-level | 31 of 31 |
+| Pearson Edexcel GCSE | 22 of 25 |
+
+Known gaps:
+
+- **Pearson's 2024 languages.** French 1FR1, German 1GN1 and Spanish 1SP1
+  have no public mark schemes yet, so they use the hand-written conventions.
+  The corpus's French is the old 1FR0 specification and isn't used.
+- **AQA's 2024 languages** (8652, 8692, 8662) are read from specimen schemes,
+  because no real series is public yet.
+- **1-mark questions.** In the sciences, 1-mark questions often fit several
+  1-mark kinds without naming any of their words. For those no rule is chosen,
+  and the question is marked from its own scheme. In the corpus, researched
+  rules match between 76% (AQA Biology) and 100% of questions per subject,
+  and a matched rule marks the way the official scheme does (by levels or by
+  points) on all but 16 of about 2,400.
+- **Written papers only.** Speaking, non-exam assessment and practical
+  components aren't covered.
+
 Graphs are stated as data, never drawn by the model: a graph asset is a JSON
 chart (`lib/practice/exam-chart.ts`) that code draws as graph paper with
 numbered scales, titled axes with units, plotted crosses, computed best-fit

@@ -1,4 +1,5 @@
 import "server-only";
+import { loadQuestionTypeRules } from "@/services/practice/question-type-rules.server";
 
 import { getAiInputTokenCap, getAiTokenCap } from "@/lib/ai/budgets";
 import {
@@ -122,6 +123,7 @@ async function markPastPaperPracticeQuestion(
   const marked = await markSingleQuestionAdaptively({
     paper: adapted.paper,
     answerParts: adapted.answerParts,
+    examinerPracticeRules: await loadQuestionTypeRules(adapted.paper.assessmentProfile, adapted.paper.title),
     deadlineAt,
     maxOutputTokens: getAiTokenCap("examQuestionMarking"),
     inputTokenCap: getAiInputTokenCap("examQuestionMarking"),
@@ -506,6 +508,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
             return await markPracticePaperWithAudit({
               paper: adapted.adapted.paper,
               answerParts: adapted.adapted.answerParts,
+              examinerPracticeRules: await loadQuestionTypeRules(adapted.adapted.paper.assessmentProfile, adapted.adapted.paper.title),
               exemplarParts: exemplarsToParts(request.exemplars),
               deadlineAt,
               maxOutputTokens: getAiTokenCap("practicePaperMarking"),

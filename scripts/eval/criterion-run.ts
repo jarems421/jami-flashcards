@@ -161,12 +161,15 @@ export default async function main(args: string[]) {
   const onlySubject = flag("subject");
   /** One marking regime, so an essay change is not paid for on the short answers beside it. */
   const onlyRegime = flag("regime");
+  /** Short questions only, where the primary marks with light reasoning. */
+  const maxMarks = Number(flag("max-marks") ?? 0);
   if (banded && !flag("source")) throw new Error("--banded needs --source, to choose which essays to mark.");
   let withCriteria = all.filter(
     (record) =>
       (banded || (record.criteria?.length ?? 0) > 0) &&
       (onlySubject === undefined || record.subject === onlySubject) &&
-      (onlyRegime === undefined || record.regime === onlyRegime)
+      (onlyRegime === undefined || record.regime === onlyRegime) &&
+      (maxMarks <= 0 || record.maxMarks <= maxMarks)
   );
   /**
    * Every record a run holds, over the files it is spread across.
@@ -210,6 +213,14 @@ Matching the ${withCriteria.length} records ${matching} marked.
    * mark range in the sample.
    */
   const perQuestion = Number(flag("per-question") ?? 0);
+  /**
+   * Where in each step to start, so a second sample is a different sample.
+   *
+   * Every essay change was measured on the same 36 answers, the ones it was
+   * tuned on. `--offset=2` takes answers two along from each of those, which
+   * no run has ever seen: the test a finding has to pass before it counts.
+   */
+  const offset = Number(flag("offset") ?? 0);
   const spread = (records: MarkingCorpusRecord[]) => {
     if (perQuestion <= 0) return records;
     const byQuestion = new Map<string, MarkingCorpusRecord[]>();
@@ -220,7 +231,7 @@ Matching the ${withCriteria.length} records ${matching} marked.
     return [...byQuestion.values()].flatMap((group) => {
       if (group.length <= perQuestion) return group;
       const step = group.length / perQuestion;
-      return Array.from({ length: perQuestion }, (_, index) => group[Math.floor(index * step)]);
+      return Array.from({ length: perQuestion }, (_, index) => group[(Math.floor(index * step) + offset) % group.length]);
     });
   };
   const sampled = spread(withCriteria);
@@ -321,14 +332,17 @@ Matching the ${withCriteria.length} records ${matching} marked.
 
   /**
    * A marking change switched off, to measure it on the same answers:
-   * `--variant=no-levels,no-practice,supervisor-adjudicator`.
+   * `--variant=no-levels,no-practice,no-researched,supervisor-adjudicator,always-adjudicate,slow-short`.
    */
   const variantFlags = new Set((flag("variant") ?? "").split(",").filter(Boolean));
   const variant: MarkingVariant | undefined = variantFlags.size
     ? {
         ...(variantFlags.has("no-levels") ? { levelsGuidance: false } : {}),
         ...(variantFlags.has("no-practice") ? { examinerPractice: false } : {}),
+        ...(variantFlags.has("no-researched") ? { researchedRules: false } : {}),
         ...(variantFlags.has("supervisor-adjudicator") ? { levelsAdjudicator: "supervisor" as const } : {}),
+        ...(variantFlags.has("always-adjudicate") ? { settleCloseLevelsDisputes: false } : {}),
+        ...(variantFlags.has("slow-short") ? { quickShortQuestions: false } : {}),
       }
     : undefined;
   if (variant) process.stdout.write(`\nVariant: ${JSON.stringify(variant)}\n`);

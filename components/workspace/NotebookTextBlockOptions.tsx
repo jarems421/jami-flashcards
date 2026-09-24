@@ -10,6 +10,11 @@ export type NotebookTextBlockOptionsProps = {
   outlineVisible: boolean;
   openAbove: boolean;
   alignFromLeft: boolean;
+  /**
+   * Put the trigger under the box rather than over it, for a box too close to
+   * the top of the page for anything to sit above it.
+   */
+  triggerBelow?: boolean;
   onOpenChange: (open: boolean) => void;
   onToggleOutline: () => void;
   onDelete: () => void;
@@ -22,6 +27,7 @@ export default function NotebookTextBlockOptions({
   outlineVisible,
   openAbove,
   alignFromLeft,
+  triggerBelow = false,
   onOpenChange,
   onToggleOutline,
   onDelete,
@@ -31,9 +37,19 @@ export default function NotebookTextBlockOptions({
   const triggerId = getNotebookTextBlockOptionsElementId(blockId, "trigger");
 
   return (
+    /*
+     * Outside the box, on its top-right corner.
+     *
+     * It used to sit inside, over the text, which meant every line had to keep
+     * a wide margin clear for it -- a different margin while reading than
+     * while typing, so the words rewrapped the moment a box was tapped into.
+     * Out here the text owns the whole box.
+     */
     <div
       data-text-block-options-root
-      className="absolute right-1.5 top-1.5 z-30"
+      className={`absolute right-0 z-30 ${
+        triggerBelow ? "top-full mt-1.5" : "bottom-full mb-1.5"
+      }`}
     >
       <button
         id={triggerId}

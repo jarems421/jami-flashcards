@@ -321,7 +321,7 @@ export default function ProfilePage() {
                 </p>
                 <p className="mt-2 text-sm leading-6 text-text-secondary">
                   Jami will remove your decks, cards, folders, notebooks and
-                  pages, uploaded files, sources, Topics, Tutor history, AI
+                  pages, uploaded files, sources, Topics, Jami chat history, AI
                   usage records, goals, stars, study history, notification data,
                   profile, and Firebase sign-in.
                 </p>

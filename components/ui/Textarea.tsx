@@ -8,6 +8,10 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 import SymbolKeyboard from "@/components/ui/SymbolKeyboard";
+import {
+  AUTO_GROW_TEXTAREA_STYLE,
+  useAutoGrowTextarea,
+} from "@/components/ui/useAutoGrowTextarea";
 
 type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   label?: string;
@@ -20,6 +24,11 @@ type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
    * noticed on the fields that need it.
    */
   symbols?: boolean;
+  /**
+   * Grow with what is written, from `rows` up to a cap, instead of scrolling
+   * inside a fixed box. On unless a field has a reason to stay one size.
+   */
+  autoGrow?: boolean;
 };
 
 const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea({
@@ -29,6 +38,9 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textare
   id,
   rows = 6,
   symbols = false,
+  autoGrow = true,
+  style,
+  onInput,
   ...props
 }, ref) {
   const autoId = useId();
@@ -45,6 +57,11 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textare
     [ref]
   );
 
+  const fit = useAutoGrowTextarea(fieldRef, {
+    enabled: autoGrow,
+    value: props.value,
+  });
+
   return (
     <div className={containerClassName}>
       {label ? (
@@ -60,9 +77,15 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textare
           ref={attachRef}
           id={textareaId}
           rows={rows}
-          className={`app-field w-full rounded-xl px-5 py-4 text-sm outline-none transition duration-fast ${
+          className={`app-field app-field-text w-full rounded-xl px-5 py-4 outline-none transition duration-fast ${
             symbols ? "pb-12" : ""
           } ${className}`}
+          style={autoGrow ? { ...AUTO_GROW_TEXTAREA_STYLE, ...style, resize: "none" } : style}
+          onInput={(event) => {
+            // Uncontrolled fields have no value to watch.
+            fit();
+            onInput?.(event);
+          }}
           {...props}
         />
         {symbols ? (

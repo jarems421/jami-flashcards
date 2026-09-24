@@ -713,6 +713,14 @@ export default function StudyPage() {
                 : customPreviewCards;
         const seed = Math.floor(Math.random() * 0x7fffffff) || 1;
         sessionSeedRef.current = seed;
+        const wantsPreparation = studyModesEnabled && nextCards.length > 0;
+        // Started beside the history read rather than after it: neither needs the other.
+        const preparation = wantsPreparation
+          ? prepareSessionAssets(nextCards).catch((error: unknown) => {
+              console.warn("Study preparation failed; starting unprepared.", error);
+              return null;
+            })
+          : Promise.resolve(null);
         const history = await loadPresentationHistory(user.uid, nextCards);
         setVariantHistory(history.variants);
         setOutcomeHistory(history.outcomes);
@@ -721,21 +729,16 @@ export default function StudyPage() {
         setRestoredExercises([]);
         pinnedExerciseRef.current = null;
 
-        const wantsPreparation = studyModesEnabled;
-
         let assets = studyAssets;
+        let headStart: Card[] = [];
         let remainder: Card[] = [];
-        if (wantsPreparation && nextCards.length > 0) {
-          try {
-            const ready = await prepareSessionAssets(nextCards);
-            assets = { ...studyAssets, ...ready.assets };
-            remainder = ready.remainder;
-            setStudyAssets(assets);
-          } catch (error) {
-            console.warn("Study preparation failed; starting unprepared.", error);
-          } finally {
-            clearPreparation();
-          }
+        const ready = await preparation;
+        if (wantsPreparation) clearPreparation();
+        if (ready) {
+          assets = { ...studyAssets, ...ready.assets };
+          headStart = ready.headStart;
+          remainder = ready.remainder;
+          setStudyAssets(assets);
         }
 
         const asAsked = (card: Card) => askedCard(card, assets);
@@ -804,7 +807,7 @@ export default function StudyPage() {
           pushFocusedReviewRecents(selectedDeckIds, selectedTopicIds);
         }
 
-        void prepareRemainingAssets(remainder);
+        void prepareRemainingAssets(remainder, headStart);
       })();
     },
     [

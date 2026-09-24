@@ -299,7 +299,7 @@ export async function prepareSourceForTutor(
     };
   } else if (source.type === "file" && source.storagePath && source.fileType) {
     if (!isSourceFileMimeType(source.fileType)) {
-      throw new Error("This uploaded file type is not supported by Tutor.");
+      throw new Error("This uploaded file type is not supported by Jami.");
     }
     const buffer = await loadStoredFile(source.storagePath);
     if (buffer.byteLength <= 0 || buffer.byteLength >= MAX_SOURCE_FILE_SIZE) {

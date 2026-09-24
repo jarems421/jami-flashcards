@@ -160,7 +160,7 @@ ${relatedCards
 export async function POST(request: NextRequest) {
   if (!featureFlags.enableFlashcardAi) {
     return Response.json(
-      { error: "Flashcard AI is disabled. Use source or Tutor drafts instead." },
+      { error: "Flashcard AI is disabled. Use source drafts or ask Jami instead." },
       { status: 403 },
     );
   }

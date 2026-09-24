@@ -70,6 +70,19 @@ const mocks = vi.hoisted(() => {
   emptyCollection.where.mockReturnValue(emptyCollection);
   emptyCollection.limit.mockReturnValue(emptyCollection);
 
+  // Ink records by page id; empty unless a test draws on a page.
+  const inkRecords = new Map<string, string>();
+  const notebookPageInk = {
+    doc: (pageId: string) => ({
+      get: async () => {
+        const svg = inkRecords.get(pageId);
+        return svg
+          ? { exists: true, data: () => ({ inkData: { version: 2, format: "js-draw-svg", svg } }) }
+          : { exists: false, data: () => undefined };
+      },
+    }),
+  };
+
   const db = {
     collection: vi.fn((name: string) => {
       if (name !== "users") return emptyCollection;
@@ -84,6 +97,7 @@ const mocks = vi.hoisted(() => {
               return { doc: () => ({ get: async () => notebook }) };
             }
             if (collectionName === "notebookPages") return notebookPages;
+            if (collectionName === "notebookPageInk") return notebookPageInk;
             if (collectionName === "studyFolders") {
               return {
                 doc: () => ({
@@ -98,7 +112,7 @@ const mocks = vi.hoisted(() => {
     }),
   };
 
-  return { db, notebookPages };
+  return { db, notebookPages, inkRecords };
 });
 
 vi.mock("@/services/firebase/admin", () => ({
@@ -130,7 +144,32 @@ describe("notebook-wide Tutor awareness", () => {
     expect(text).toContain("Known values: u = 4 and a = 2.");
     expect(text).toContain("Page 2 (current)");
     expect(text).toContain("I used v = u + at.");
-    expect(text).toContain("page imagery are available only for the current page");
+    expect(text).toContain("page imagery are available for the current page and, where pictured below, the page either side of it");
     expect(mocks.notebookPages.limit).toHaveBeenCalledWith(60);
+    // Page 1 has nothing drawn on it, so its typed text says everything and no picture is sent.
+    expect(result.currentParts.some((part) => "inlineData" in part)).toBe(false);
+  });
+
+  it("shows the handwritten page before the current one as a picture", async () => {
+    mocks.inkRecords.set(
+      "page-1",
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="M10 10 L190 190" stroke="black" stroke-width="4" fill="none"/></svg>'
+    );
+    try {
+      const result = await resolveJamiAssistantContext({
+        uid: "user-1",
+        message: "Is this right?",
+        context: { surface: "notebook", notebookId: "notebook-1", pageId: "page-2" },
+        useRelatedSources: false,
+      });
+      const labelIndex = result.currentParts.findIndex(
+        (part) => "text" in part && part.text.startsWith("Page 1, the page before the current one")
+      );
+      expect(labelIndex).toBeGreaterThan(0);
+      const picture = result.currentParts[labelIndex + 1];
+      expect(picture && "inlineData" in picture ? picture.inlineData.mimeType : null).toBe("image/jpeg");
+    } finally {
+      mocks.inkRecords.clear();
+    }
   });
 });

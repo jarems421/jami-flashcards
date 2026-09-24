@@ -21,6 +21,23 @@ boards/specifications unavailable. A passing maths component does not approve
 science or English. Do not bypass a failed student-release check by clearing the
 deployment variable or invoking Next directly.
 
+**The deployment's model variables must match its provider lists.** Until 24
+September 2026, production still set `OPENROUTER_SUPERVISOR_MODEL` to MiniMax M3,
+the supervisor the code retired, while its supervisor providers had been updated
+for Qwen. Every marking that carried an image was refused by every approved
+endpoint with HTTP 404. The verifier's report arrived and the primary's never
+did, so every marking failed, for past-paper and Jami-created questions alike.
+Session creation, which is text only, kept working, and nothing failed locally,
+where `.env.local` names Qwen. The variable is sensitive, so `vercel env pull`
+shows it blank. The fix was to remove it, so the code's default applies, and
+redeploy. When a role's providers change, set or remove its model variable in
+the same change.
+
+A failed attempt now records why in its execution audit, as a content-free
+`cause`: `provider_http_404`, `abort_deadline`, `invalid_report`, or one of the
+job's own codes. It never records the error's text, which can carry the
+student's answer.
+
 ## English evaluation
 
 Weighted assessment-objective records retain separate traits only when the
@@ -151,6 +168,34 @@ earns most of its marks from omission. Paired on the 36 Medly English answers
 | exactly one examiner's mark | 39% | 47% |
 
 11 answers moved closer and 7 further: not significant, the right direction.
+
+**Close essay disputes are settled without an adjudicator.** Adjudication is
+the slow step in marking an essay: a second sequential call of about 29 seconds
+after the two markers' 34, needed on 30 of 36 English answers. A levels-marked
+question whose two blind markers are within one mark of each other now takes
+the worker's report. Measured live on the same 36 answers: 18 adjudications
+instead of 30, and no measurable accuracy cost -- paired, 5 answers moved
+closer to the examiners and 9 further, within run-to-run noise (the blind
+markers themselves were 0.1 to 0.2 harsher that run), and the answers settled
+without adjudication had the smaller error (0.89 against 1.69 for those still
+adjudicated). Maths keeps adjudicating every dispute: replayed on the 67 real
+scripts, the rule cost two correct marks, because a mark on a four-mark
+question is a real disagreement. `--variant=always-adjudicate` turns it off for
+a comparison run.
+
+Taking the worker's mark and never adjudicating an essay looked better on the
+36 answers every essay change was measured on -- in all five runs, including
+on bias-free error and rank agreement. It did not survive fresh answers.
+`--offset=2` drew 36 Medly answers no run had seen, and there the two tied:
+average error 1.06 against 1.11, bias-free error 10.0% against 10.1%, rank
+correlation 0.80 against 0.81, 8 answers closer and 7 further (sign test
+p = 1.0). The earlier advantage came from testing on the tuning sample and
+from the supervisor's harsher adjudications in the first two runs. Adjudication
+stays: it costs no accuracy and is the safety net for a misread answer.
+
+On those fresh answers the shipped marker held up: 1.11 marks from the
+examiners' mean against their own gap of 1.61, bias -0.64, between their two
+marks on 24 of 36.
 
 **Live signal**: `npm run check:marking-live` reports, from the attempts
 students have actually had marked, how often the blind markers disagreed and

@@ -11,7 +11,11 @@
 export async function markExamQuestionWorkflow(uid: string, attemptId: string, token: string) {
   "use workflow";
 
-  if (await markingIsCancelled(uid, attemptId, token)) return { status: "cancelled" as const };
+  /*
+   * No cancellation step first. The marking step checks the same thing on the
+   * documents it has to read anyway, and a step of its own cost the student a
+   * queue hop and four reads before any marker had started.
+   */
   try {
     return { status: await runMarking(uid, attemptId, token) };
   } catch {
@@ -24,12 +28,6 @@ export async function markExamQuestionWorkflow(uid: string, attemptId: string, t
     await failMarking(uid, attemptId, token);
     return { status: "failed" as const };
   }
-}
-
-async function markingIsCancelled(uid: string, attemptId: string, token: string) {
-  "use step";
-  const service = await import("@/services/practice/exam-marking.server");
-  return service.examMarkingIsCancelled(uid, attemptId, token);
 }
 
 async function runMarking(uid: string, attemptId: string, token: string) {

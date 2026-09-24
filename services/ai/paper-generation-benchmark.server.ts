@@ -1,4 +1,5 @@
 import "server-only";
+import { loadRulesForFormat } from "@/services/practice/question-type-rules.server";
 
 import { createLogger } from "@/lib/observability/logger";
 import { createHash, randomUUID } from "node:crypto";
@@ -309,7 +310,7 @@ async function executePaperGenerationBenchmarkCase(runId: string, caseId: string
       studyLevel: profile.qualificationLabel,
     },
     researchBrief: profile.sources.map((citation) => `${citation.title}: ${citation.url}`).join("\n"),
-    formatContext: practicePaperFormatContext(profile),
+    formatContext: practicePaperFormatContext(profile, await loadRulesForFormat(profile)),
     // The format reaches the designer as prose, so the total also goes through
     // as a number. A draft worth the wrong amount is then caught before the
     // mark scheme is paid for rather than by the whole-paper audit twenty

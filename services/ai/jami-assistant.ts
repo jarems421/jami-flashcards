@@ -10,6 +10,7 @@ import {
 } from "@/lib/ai/jami-assistant-normalize";
 import { auth } from "@/services/firebase/client";
 import { mapJamiAssistantThread } from "@/lib/ai/jami-assistant-history";
+import { normalizeSuggestedCards } from "@/lib/ai/tutor-card-suggestions";
 
 function getFriendlyAssistantError(
   status: number,
@@ -181,6 +182,7 @@ export async function sendJamiAssistantMessage(
   const sourceFailures = normalizeSourceFailures(data?.sourceFailures);
   const followUps = normalizeFollowUps(data?.followUps);
   const citations = normalizeAssistantCitations(data?.citations);
+  const suggestedCards = normalizeSuggestedCards(data?.suggestedCards);
   const savedThreadData =
     data?.savedThread &&
     typeof data.savedThread === "object" &&
@@ -196,6 +198,7 @@ export async function sendJamiAssistantMessage(
     ...(followUps.length > 0 ? { followUps } : {}),
     ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
     ...(citations.length > 0 ? { citations } : {}),
+    ...(suggestedCards.length > 0 ? { suggestedCards } : {}),
     ...(data?.canIllustrate === true ? { canIllustrate: true } : {}),
     ...(savedThread ? { savedThread } : {}),
   };

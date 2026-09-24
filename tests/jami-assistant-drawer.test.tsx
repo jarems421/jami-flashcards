@@ -226,3 +226,99 @@ describe("JamiAssistantDrawer", () => {
     expect(document.body.textContent).toContain("Because of the sign.");
   });
 });
+
+describe("JamiAssistantDrawer floating over a notebook", () => {
+  let onOpenChange: Mock<(open: boolean) => void>;
+
+  function renderFloating(open: boolean) {
+    act(() => {
+      root.render(
+        <JamiAssistantDrawer
+          userId="user-1"
+          open={open}
+          onOpenChange={onOpenChange}
+          resetKey="reset-1"
+          contextKey={CONTEXT_KEY}
+          contextLabel="Current notebook page"
+          historyContextLabel="this notebook"
+          getContext={getContext}
+          layout="floating"
+        />
+      );
+    });
+  }
+
+  function button(label: RegExp) {
+    return [...document.querySelectorAll("button")].find((b) =>
+      label.test(b.getAttribute("aria-label") ?? b.textContent ?? "")
+    );
+  }
+
+  beforeEach(() => {
+    // A tablet: wide enough to float rather than take the whole screen.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    localStorage.clear();
+    onOpenChange = vi.fn();
+  });
+
+  it("is a card over the page, not a modal that stops writing", () => {
+    renderFloating(true);
+    const panel = document.querySelector<HTMLElement>("[role='dialog']");
+    expect(panel?.getAttribute("aria-modal")).toBeNull();
+    expect(panel?.style.width).toBe("360px");
+    expect(document.querySelector("[data-dialog-backdrop]")).toBeNull();
+  });
+
+  it("shrinks to a pill that brings the card back", () => {
+    renderFloating(true);
+    act(() => button(/shrink jami/i)?.click());
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+
+    renderFloating(false);
+    const pill = button(/^open jami$/i);
+    expect(pill).toBeDefined();
+    act(() => pill?.click());
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("closing outright leaves nothing behind", () => {
+    renderFloating(true);
+    act(() => button(/close jami/i)?.click());
+    renderFloating(false);
+    expect(button(/^open jami$/i)).toBeUndefined();
+  });
+
+  it("keeps one answer beside the page", async () => {
+    sendJamiAssistantMessage.mockResolvedValue({
+      reply: "Swap the signs in the second bracket.",
+      followUps: [],
+      used: [],
+    });
+    renderFloating(true);
+    typeMessage("Is my factorising right?");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    act(() => button(/keep beside page/i)?.click());
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    renderFloating(false);
+
+    const pinned = document.querySelector("[aria-label='Pinned answer from Jami']");
+    expect(pinned?.textContent).toContain("Swap the signs in the second bracket.");
+    expect(pinned?.textContent).not.toContain("Is my factorising right?");
+
+    act(() => button(/unpin/i)?.click());
+    expect(document.querySelector("[aria-label='Pinned answer from Jami']")).toBeNull();
+    expect(button(/^open jami$/i)).toBeDefined();
+  });
+});
