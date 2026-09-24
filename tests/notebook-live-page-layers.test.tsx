@@ -130,9 +130,11 @@ describe("NotebookLivePageLayers", () => {
     expect(layerSpies.backgroundProps).toHaveLength(1);
     expect(layerSpies.backgroundProps[0]).toMatchObject({
       ...props.backgroundProps,
-      pageStyleClassName: "pointer-events-none absolute inset-0 z-0",
+      // Promoted to GPU layers, so wet ink never repaints ruled paper or a PDF.
+      pageStyleClassName:
+        "pointer-events-none absolute inset-0 z-0 [contain:paint] [transform:translateZ(0)] [will-change:transform]",
       fileLayerClassName:
-        "pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden",
+        "pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden [contain:paint] [transform:translateZ(0)] [will-change:transform]",
       inkSvg: props.persistedInkSvg,
       inkSizes: "48rem",
       inkClassName:

@@ -1318,7 +1318,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     return (
       <div
         data-notebook-live-ink-editor="true"
-        className="absolute inset-0 z-20"
+        // Its own layer, so wet ink redrawing every frame never invalidates
+        // the ruled paper or PDF beneath it -- see NotebookLivePageLayers.
+        className="absolute inset-0 z-20 [transform:translateZ(0)] [will-change:transform]"
       >
         <div
           ref={hostRef}
