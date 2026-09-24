@@ -24,6 +24,12 @@
 export type NotebookLiftOffOptions = {
   /** Below this share of the stroke's settled pressure, a sample may be the lift. */
   fraction: number;
+  /**
+   * And below this pressure outright. A lift falls to almost nothing; fast
+   * aggressive writing swings well under a third of its own average without
+   * the pen leaving, and holding those samples made the ink hitch mid-stroke.
+   */
+  ceiling: number;
   /** Samples of real pressure a stroke needs before anything is held. */
   settleSamples: number;
   /** The most samples held at once before they are drawn after all. */
@@ -36,14 +42,15 @@ export type NotebookLiftOffOptions = {
 
 /**
  * A lift at writing speed lasts a few milliseconds -- a sample or two at 240Hz.
- * Three samples or 30ms is room for that and no more, so the worst a genuine
- * light passage suffers is a delay shorter than two frames.
+ * Two samples or 16ms is room for that and no more, so the worst a genuine
+ * light passage suffers is a delay shorter than one frame at 60Hz.
  */
 export const NOTEBOOK_LIFT_OFF: NotebookLiftOffOptions = {
   fraction: 0.3,
+  ceiling: 0.08,
   settleSamples: 4,
-  maxHeldSamples: 3,
-  maxHeldMs: 30,
+  maxHeldSamples: 2,
+  maxHeldMs: 16,
   settleRate: 0.25,
 };
 
@@ -68,6 +75,7 @@ export class NotebookLiftOffGate<Sample> {
 
     const collapsed =
       this.seen >= this.options.settleSamples &&
+      pressure < this.options.ceiling &&
       pressure < this.settled * this.options.fraction;
     if (collapsed) {
       if (this.held.length === 0) this.heldSince = this.timeOf(sample);

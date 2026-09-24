@@ -25,7 +25,7 @@ describe("the end of a flick", () => {
     const drawn = writing(0, 8).flatMap((sample) => lift.next(sample));
     expect(drawn).toHaveLength(8);
     // Pressure collapses as the tip rises, then the pen is gone.
-    expect(lift.next({ id: 8, pressure: 0.08, time: 32 })).toEqual([]);
+    expect(lift.next({ id: 8, pressure: 0.06, time: 32 })).toEqual([]);
     expect(lift.next({ id: 9, pressure: 0.03, time: 36 })).toEqual([]);
     lift.lift();
   });
@@ -33,16 +33,24 @@ describe("the end of a flick", () => {
   it("loses nothing when the pressure only dipped", () => {
     const lift = gate();
     writing(0, 8).forEach((sample) => lift.next(sample));
-    expect(lift.next({ id: 8, pressure: 0.1, time: 32 })).toEqual([]);
+    expect(lift.next({ id: 8, pressure: 0.05, time: 32 })).toEqual([]);
     expect(lift.next({ id: 9, pressure: 0.45, time: 36 }).map((sample) => sample.id)).toEqual([8, 9]);
   });
 
-  it("draws light writing after a moment rather than holding it", () => {
+  it("never holds writing that is merely light", () => {
     const lift = gate();
     writing(0, 8).forEach((sample) => lift.next(sample));
-    const light = writing(8, 5, 0.1).flatMap((sample) => lift.next(sample));
-    // Held for at most a few samples, then everything held is drawn in order.
-    expect(light.map((sample) => sample.id)).toEqual([8, 9, 10, 11]);
+    // Fast, aggressive strokes swing far below their own average without lifting.
+    const light = writing(8, 5, 0.12).flatMap((sample) => lift.next(sample));
+    expect(light.map((sample) => sample.id)).toEqual([8, 9, 10, 11, 12]);
+  });
+
+  it("draws near-zero pressure after a moment rather than holding it", () => {
+    const lift = gate();
+    writing(0, 8).forEach((sample) => lift.next(sample));
+    const faint = writing(8, 4, 0.05).flatMap((sample) => lift.next(sample));
+    // Held for at most two samples, then everything held is drawn in order.
+    expect(faint.map((sample) => sample.id)).toEqual([8, 9, 10]);
   });
 
   it("leaves a pen without pressure, and a stroke's landing, alone", () => {

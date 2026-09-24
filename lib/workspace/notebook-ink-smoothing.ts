@@ -144,6 +144,8 @@ export class NotebookInkSmoother {
   private velocityX = 0;
   private velocityY = 0;
   private lastTime: number;
+  /** The pen's usual time between samples, in seconds -- 240Hz until measured. */
+  private typicalInterval = 1 / 240;
   private hasMoved = false;
   /**
    * Cancels this filter's own lag, or null if the ink is drawn where the
@@ -192,10 +194,25 @@ export class NotebookInkSmoother {
   }
 
   next(sample: NotebookInkSample): { x: number; y: number } {
+    const reported = (sample.time - this.lastTime) / 1000;
+    /*
+     * A sample reported at (almost) the same instant as the last is given the
+     * pen's usual interval instead of a millisecond.
+     *
+     * Batched pointer samples can share a timestamp. Treated as a millisecond
+     * apart, a normal step read as a burst of speed: the cutoff jumped, that
+     * one sample was barely smoothed while its neighbours were, and along a
+     * fast loop the uneven smoothing showed as lumps -- measured, shared
+     * timestamps raised a loop's wobble from 2.0x to 2.3x the true path's.
+     */
+    const plausible = reported >= this.typicalInterval * 0.35;
     const deltaSeconds = Math.max(
       MIN_DELTA_SECONDS,
-      (sample.time - this.lastTime) / 1000
+      plausible ? reported : this.typicalInterval
     );
+    if (plausible && reported < 0.05) {
+      this.typicalInterval += 0.2 * (reported - this.typicalInterval);
+    }
     this.lastTime = Math.max(this.lastTime, sample.time);
 
     // The first movement of a stroke has no history to be filtered against,
