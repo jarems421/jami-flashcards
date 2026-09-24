@@ -63,6 +63,10 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
         pageIndex={page.pdfPageIndex ?? 0}
         pdfLazy={false}
         pdfFadeIn={false}
+        // Seen only mid-swipe, and both neighbours are held alongside the page
+        // being written on: at full resolution a PDF notebook kept three 24 MB
+        // canvases under the ink, where a blank notebook keeps none.
+        pdfMaxPixelRatio={1.25}
         inkSvg={hasInk ? inkSvg : undefined}
         inkSizes="48rem"
         inkClassName="pointer-events-none absolute inset-0 z-[12] object-fill"
