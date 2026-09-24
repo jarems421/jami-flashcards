@@ -18,6 +18,7 @@ import {
   NotebookInkSmoother,
   type NotebookInkSmoothingOptions,
 } from "@/lib/workspace/notebook-ink-smoothing";
+import { NotebookLiftOffGate } from "@/lib/workspace/notebook-lift-off";
 import {
   clampNotebookPenSettings,
   getNotebookPenFeelFromSettings,
@@ -96,8 +97,39 @@ export function makePrecisePenInputMapper(
     { x: number; y: number }
   >();
 
+  /**
+   * Each contact's lift-off gate, which holds back the samples a pen sends as
+   * it leaves the glass -- see `notebook-lift-off.ts`. Samples it holds reach
+   * the smoother only when released, so a dropped tail never moves the filter
+   * and the lift still ends exactly on the last point drawn.
+   */
+  const liftOffGates = new Map<number, NotebookLiftOffGate<JsDrawInputEvent>>();
+  const pressureOf = (event: JsDrawInputEvent) =>
+    "current" in event ? event.current.pressure : null;
+  const timeOf = (event: JsDrawInputEvent) =>
+    "current" in event ? event.current.timeStamp : 0;
+
   class PrecisePenInputMapper extends jsDraw.InputMapper {
     onEvent(event: JsDrawInputEvent): boolean {
+      if (event.kind === jsDraw.InputEvtType.PointerMoveEvt) {
+        const gate = liftOffGates.get(event.current.id);
+        if (gate) {
+          const ready = gate.next(event);
+          // A held sample still belongs to this stroke.
+          let handled = ready.length === 0;
+          for (const each of ready) handled = this.mapPointerEvent(each) || handled;
+          return handled;
+        }
+      } else if (event.kind === jsDraw.InputEvtType.PointerDownEvt) {
+        liftOffGates.set(event.current.id, new NotebookLiftOffGate(pressureOf, timeOf));
+      } else if (event.kind === jsDraw.InputEvtType.PointerUpEvt) {
+        liftOffGates.get(event.current.id)?.lift();
+        liftOffGates.delete(event.current.id);
+      }
+      return this.mapPointerEvent(event);
+    }
+
+    private mapPointerEvent(event: JsDrawInputEvent): boolean {
       if (
         event.kind === jsDraw.InputEvtType.PointerDownEvt ||
         event.kind === jsDraw.InputEvtType.PointerMoveEvt ||

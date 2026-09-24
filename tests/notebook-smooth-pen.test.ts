@@ -130,6 +130,75 @@ describe("the smooth pen", () => {
     expect(sharpestTurn).toBeGreaterThan(60);
   });
 
+  /*
+   * A fast curve is sampled sparsely and unevenly, so between two samples the
+   * line can turn far enough to pass for a corner. Drawn as one, every peak of
+   * a quick joined-up word became a straight stub.
+   */
+  it("keeps a fast curve round, however unevenly it was sampled", () => {
+    let seed = 7;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const samples: StrokeDataPoint[] = [];
+    for (let index = 0; index <= 60; index += 1) {
+      // 120Hz with packet jitter, across a wave 18px high at about 1500px/s.
+      const time = Math.max(0, index * 8.33 + (random() - 0.5) * 7);
+      const t = time / 500;
+      samples.push({
+        ...point(100 + 400 * t, 300 + 18 * Math.sin(2 * Math.PI * 6 * t)),
+        time,
+      });
+    }
+    const path = buildStroke(samples).getParts()[0].path;
+    let sharpest = 0;
+    let previousEnd: Point2 | null = null;
+    let previousControl: Point2 | null = null;
+    for (const part of path.parts) {
+      if (part.kind !== jsDraw.PathCommandType.CubicBezierTo) continue;
+      if (previousEnd && previousControl) {
+        const incoming = previousEnd.minus(previousControl).normalized();
+        const outgoing = part.controlPoint1.minus(previousEnd).normalized();
+        const dot = Math.max(-1, Math.min(1, incoming.dot(outgoing)));
+        sharpest = Math.max(sharpest, (Math.acos(dot) * 180) / Math.PI);
+      }
+      previousEnd = part.endPoint;
+      previousControl = part.controlPoint2;
+    }
+    expect(sharpest).toBeLessThan(5);
+  });
+
+  it("still makes a corner the pen slowed into", () => {
+    // Each arm eases in and out, so the pen all but stops at the vertex.
+    const samples: StrokeDataPoint[] = [];
+    for (let index = 0; index <= 40; index += 1) {
+      const arm = index < 20 ? 0 : 1;
+      const u = (index - arm * 20) / 20;
+      const eased = u * u * (3 - 2 * u);
+      samples.push({
+        ...point(
+          arm === 0 ? 20 + 88 * eased : 108 + 88 * eased,
+          arm === 0 ? 200 - 88 * eased : 112 + 88 * eased
+        ),
+        time: index * 4,
+      });
+    }
+    const path = buildStroke(samples).getParts()[0].path;
+    let sharpest = 0;
+    let previousEnd: Point2 | null = null;
+    let previousControl: Point2 | null = null;
+    for (const part of path.parts) {
+      if (part.kind !== jsDraw.PathCommandType.CubicBezierTo) continue;
+      if (previousEnd && previousControl) {
+        const incoming = previousEnd.minus(previousControl).normalized();
+        const outgoing = part.controlPoint1.minus(previousEnd).normalized();
+        const dot = Math.max(-1, Math.min(1, incoming.dot(outgoing)));
+        sharpest = Math.max(sharpest, (Math.acos(dot) * 180) / Math.PI);
+      }
+      previousEnd = part.endPoint;
+      previousControl = part.controlPoint2;
+    }
+    expect(sharpest).toBeGreaterThan(60);
+  });
+
   it("reaches the far end of a stroke that doubles back on itself", () => {
     /*
      * Joined-up writing retraces constantly -- up the stem of an 'l' and back

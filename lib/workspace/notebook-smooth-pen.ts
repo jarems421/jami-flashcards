@@ -321,6 +321,27 @@ const TURN_ARM_MAXIMUM_REACH = 2;
  */
 const UNMISTAKABLE_CORNER_DEGREES = 100;
 
+/**
+ * How far the pen must have slowed at a point, against the fastest it moved on
+ * the stretches either side, before that point may be a corner.
+ *
+ * Every rule above reads the shape of the samples, and at speed the samples
+ * cannot describe a round turn: at 120Hz a pen sweeping the bottom of a fast
+ * 'u' is sampled 13px apart around a curve 6px across, so between two samples
+ * the line really does turn past a hundred degrees. Judged on shape alone,
+ * every such turn was drawn as a point, and a fast word came out as a chain of
+ * straight stubs.
+ *
+ * What the samples do still say is how fast the pen was going. A hand cannot
+ * change direction sharply at speed: the point of a 'v', the reversal at the
+ * top of an 'l', the cusp between letters are all made by slowing into them,
+ * where a round turn is swept through. Replayed with sampling jitter, a fast
+ * wave's peaks kept about half their flank speed; a deliberate corner drops to
+ * a small fraction of it. Samples without time leave this undecided, and the
+ * corner rule then stands as it was.
+ */
+const CORNER_SLOWDOWN = 0.35;
+
 export function createNotebookSmoothPenStrokeFactory(
   jsDraw: JsDrawModule,
   feel: NotebookPenFeel = getNotebookPenFeel(NOTEBOOK_PEN_SMOOTHING_DEFAULT)
@@ -530,6 +551,33 @@ export function createNotebookSmoothPenStrokeFactory(
      */
     let straightened: { from: Point2; to: Point2 } | null = null;
 
+    /*
+     * How fast the pen was moving, which is what a corner is made of.
+     *
+     * For each kept point: its speed at that point, and the fastest it went
+     * along the stretch arriving at it -- recorded from every sample, including
+     * the ones thinning throws away, so a long straight arm still reports how
+     * fast it was drawn. In px per millisecond, or null where the samples carry
+     * no usable time, which leaves the corner rule exactly as it was.
+     */
+    const speedsAt: (number | null)[] = [null];
+    const arrivalPeaks: (number | null)[] = [null];
+    /** The fastest step since the last kept point, up to the held sample. */
+    let segmentPeak: number | null = null;
+    /** The accepted sample before the held one, for the speed through it. */
+    let beforePending: { point: Point2; time: number } | null = null;
+    let pendingTime = startPoint.time;
+    let lastKeptTime = startPoint.time;
+    const speedBetween = (
+      from: { point: Point2; time: number },
+      to: { point: Point2; time: number }
+    ) => {
+      const elapsed = to.time - from.time;
+      return elapsed > 0 ? to.point.distanceTo(from.point) / elapsed : null;
+    };
+    const fastestOf = (left: number | null, right: number | null) =>
+      left === null ? right : right === null ? left : Math.max(left, right);
+
     /** Perpendicular distance from `point` to the line `from`-`to`. */
     const strayFromLine = (point: Point2, from: Point2, to: Point2) => {
       const along = to.minus(from);
@@ -593,6 +641,8 @@ export function createNotebookSmoothPenStrokeFactory(
      */
     const turnsAlong = (shape: Point2[]) => {
       const turns = new Array<number>(shape.length).fill(0);
+      /** Turn per unit of the run it was measured over -- see `cornersAlong`. */
+      const curvatures = new Array<number>(shape.length).fill(0);
       const last = shape.length - 1;
       for (let index = 1; index < last; index += 1) {
         const here = shape[index];
@@ -605,8 +655,10 @@ export function createNotebookSmoothPenStrokeFactory(
           Math.min(1, arriving.normalized().dot(leaving.normalized()))
         );
         turns[index] = Math.acos(straightness);
+        curvatures[index] =
+          turns[index] / ((arriving.magnitude() + leaving.magnitude()) / 2);
       }
-      return turns;
+      return { turns, curvatures };
     };
 
     /**
@@ -615,14 +667,38 @@ export function createNotebookSmoothPenStrokeFactory(
      * Sharp enough on its own settles it. Otherwise the turn has to stand out
      * from the ones either side of it, which is what tells a deliberate point
      * from a curve drawn tightly -- see `cornerDominance`.
+     *
+     * Standing out is judged on curvature, the turn per unit of line, not on
+     * the turn itself. A point's turn grows with how far apart its neighbours
+     * are, and a fast curve is sampled unevenly -- packets arrive bunched and
+     * then spaced -- so on a perfectly even curve one point would turn half as
+     * far again as the next, clear the dominance test, and be drawn as a
+     * corner: a sharp kink on a loop that had none. Replayed at 240Hz with
+     * sampling jitter, that put a 90-degree kink into small written 'o's, and
+     * 73-degree ones into a fast wave at 120Hz. Curvature is even along an even
+     * curve however it was sampled, and at a real corner it is still
+     * concentrated at the one point, with the straight arms either side near
+     * zero.
      */
     const cornersAlong = (shape: Point2[]) => {
-      const turns = turnsAlong(shape);
+      const { turns, curvatures } = turnsAlong(shape);
+      const peaks = pending ? [...arrivalPeaks, segmentPeak] : arrivalPeaks;
+      /** Whether the pen slowed into this point -- see `CORNER_SLOWDOWN`. */
+      const slowedAt = (index: number) => {
+        const speed = speedsAt[index] ?? null;
+        const around = fastestOf(peaks[index] ?? null, peaks[index + 1] ?? null);
+        if (speed === null || around === null || around <= 0) return true;
+        return speed <= around * CORNER_SLOWDOWN;
+      };
       return turns.map((turn, index) => {
+        if (turn > 0 && !slowedAt(index)) return false;
         if (turn >= unmistakableCorner) return true;
         if (turn < cornerRadians) return false;
-        const around = Math.max(turns[index - 1] ?? 0, turns[index + 1] ?? 0);
-        return turn >= around * cornerDominance;
+        const around = Math.max(
+          curvatures[index - 1] ?? 0,
+          curvatures[index + 1] ?? 0
+        );
+        return curvatures[index] >= around * cornerDominance;
       });
     };
 
@@ -1002,10 +1078,20 @@ export function createNotebookSmoothPenStrokeFactory(
         const sampleWidth = Math.max(newPoint.width, 0.1);
         widthTotal += sampleWidth;
         widthSamples += 1;
+        const incoming = { point: next, time: newPoint.time };
+        const step = speedBetween(
+          pending
+            ? { point: pending, time: pendingTime }
+            : { point: points[points.length - 1], time: lastKeptTime },
+          incoming
+        );
 
         if (pending === null) {
+          beforePending = { point: points[points.length - 1], time: lastKeptTime };
           pending = next;
           pendingWidth = sampleWidth;
+          pendingTime = newPoint.time;
+          segmentPeak = step;
           return;
         }
         // The held sample earns its place only if dropping it would change
@@ -1037,9 +1123,18 @@ export function createNotebookSmoothPenStrokeFactory(
         ) {
           points.push(pending);
           widths.push(pendingWidth);
+          // Its speed is taken across it, from the sample before to the one after.
+          speedsAt.push(beforePending ? speedBetween(beforePending, incoming) : null);
+          arrivalPeaks.push(segmentPeak);
+          lastKeptTime = pendingTime;
+          segmentPeak = step;
+        } else {
+          segmentPeak = fastestOf(segmentPeak, step);
         }
+        beforePending = { point: pending, time: pendingTime };
         pending = next;
         pendingWidth = sampleWidth;
+        pendingTime = newPoint.time;
       },
       preview(renderer) {
         renderer.drawPath(renderablePath());
