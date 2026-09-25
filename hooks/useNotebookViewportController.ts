@@ -465,6 +465,42 @@ export function useNotebookViewportController({
     ]
   );
 
+  /**
+   * The pen is writing, so every finger already on the glass is a palm.
+   *
+   * The stylus guard only ever judged touches as they landed. A hand resting
+   * on the page before a word began -- which happens every time the pen lifts
+   * between words for longer than the cooldown -- went on steering the sheet
+   * for as long as it moved: panning it, pinching it, or dragging it as a
+   * swipe, underneath the pen that was writing on it. Whatever it started
+   * settles where it is on screen, so nothing jumps, and it lets go.
+   */
+  const yieldTouchToStylus = useCallback(() => {
+    const pinch = pinchZoomRef.current;
+    const pan = panGestureRef.current;
+    pinchZoomRef.current = null;
+    panGestureRef.current = null;
+    touchPointersRef.current.clear();
+    onClearSwipeCandidateRef.current();
+    if (pinch) {
+      finalizePinchCommit(pinch);
+      return;
+    }
+    if (pan?.moving) {
+      cancelPinchAnimationFrame();
+      writeLivePanTransform();
+      const surface = pageSurfaceRef.current;
+      if (surface) surface.style.willChange = "";
+      setPagePan(pagePanLiveRef.current);
+    }
+  }, [
+    cancelPinchAnimationFrame,
+    finalizePinchCommit,
+    pageSurfaceRef,
+    setPagePan,
+    writeLivePanTransform,
+  ]);
+
   const handleTouchPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
       if (
@@ -472,6 +508,12 @@ export function useNotebookViewportController({
         !touchPointersRef.current.has(event.pointerId)
       ) {
         return false;
+      }
+      if (isStylusSuppressingTouchRef.current()) {
+        yieldTouchToStylus();
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
       }
       updateTouchPointer(event);
       const pinch = pinchZoomRef.current;
@@ -531,6 +573,7 @@ export function useNotebookViewportController({
       queueLivePanTransform,
       queueLivePinchTransform,
       updateTouchPointer,
+      yieldTouchToStylus,
     ]
   );
 

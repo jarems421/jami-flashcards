@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import { useAppUpdate } from "@/hooks/useAppUpdate";
 import { ensureServiceWorkerRegistration } from "@/services/notifications";
 
 export default function PwaBootstrap() {
+  useAppUpdate();
+
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_FIREBASE_EMULATORS === "true") {
       return;

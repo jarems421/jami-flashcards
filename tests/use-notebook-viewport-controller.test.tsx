@@ -535,5 +535,76 @@ describe("useNotebookViewportController", () => {
       expect(handles.pan).not.toEqual(committed);
       expect(swipeEnd).not.toHaveBeenCalled();
     });
+
+    it("stops a resting palm's pan the moment the pen writes, where it stands", () => {
+      const origin = zoomIn();
+      act(() => {
+        handles.controller.handleTouchPointerDown(
+          pointerEvent({ pointerId: 1, clientX: 400, clientY: 500 })
+        );
+        handles.controller.handleTouchPointerMove(
+          pointerEvent({ pointerId: 1, clientX: 460, clientY: 500 })
+        );
+      });
+
+      stylusSuppressing = true;
+      let handled = false;
+      act(() => {
+        handled = handles.controller.handleTouchPointerMove(
+          pointerEvent({ pointerId: 1, clientX: 700, clientY: 500 })
+        );
+      });
+      expect(handled).toBe(true);
+      // Settled where the palm had taken it, not where it went next.
+      expect(handles.pan.x).toBeCloseTo(origin.x + 60, 5);
+      expect(surface.style.willChange).toBe("");
+
+      stylusSuppressing = false;
+      let followed = true;
+      act(() => {
+        followed = handles.controller.handleTouchPointerMove(
+          pointerEvent({ pointerId: 1, clientX: 900, clientY: 500 })
+        );
+      });
+      // After the pen lifts the same palm has let go of the sheet.
+      expect(followed).toBe(false);
+      expect(handles.pan.x).toBeCloseTo(origin.x + 60, 5);
+    });
+  });
+
+  it("settles a palm's pinch when the pen writes, and stops following it", () => {
+    act(() => {
+      handles.controller.handleTouchPointerDown(
+        pointerEvent({ pointerId: 1, clientX: 200, clientY: 200 })
+      );
+      handles.controller.handleTouchPointerDown(
+        pointerEvent({ pointerId: 2, clientX: 400, clientY: 400 })
+      );
+      handles.controller.handleTouchPointerMove(
+        pointerEvent({ pointerId: 2, clientX: 500, clientY: 500 })
+      );
+    });
+    expect(handles.controller.isPinchActive()).toBe(true);
+
+    stylusSuppressing = true;
+    let handled = false;
+    act(() => {
+      handled = handles.controller.handleTouchPointerMove(
+        pointerEvent({ pointerId: 2, clientX: 700, clientY: 700 })
+      );
+    });
+    expect(handled).toBe(true);
+    expect(handles.controller.isPinchActive()).toBe(false);
+    expect(clearSwipeCandidate).toHaveBeenCalled();
+    const settledZoom = handles.controller.layout.zoom;
+    const settledTransform = surface.style.transform;
+
+    act(() => {
+      handles.controller.handleTouchPointerMove(
+        pointerEvent({ pointerId: 2, clientX: 900, clientY: 900 })
+      );
+    });
+    expect(handles.controller.layout.zoom).toBe(settledZoom);
+    expect(surface.style.transform).toBe(settledTransform);
   });
 });

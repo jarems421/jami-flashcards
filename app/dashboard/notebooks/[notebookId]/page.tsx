@@ -146,6 +146,7 @@ import {
   buildNotebookPageSearch,
   prepareNotebookExit,
 } from "@/lib/workspace/notebook-navigation";
+import { setUnsavedWork } from "@/lib/app/app-build";
 import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
 import {
   isNotebookToolDoublePress,
@@ -200,6 +201,8 @@ type PageSwipeState = {
 };
 const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
+/** How recently the Pencil was writing for a touch to count as the palm holding it. */
+const RECENT_PENCIL_MS = 5_000;
 // Each edge keeps a generous 32px invisible hit area, but the visible
 // affordance is a slim grip bar sitting on the border, not a bubble.
 
@@ -1661,6 +1664,12 @@ export default function NotebookEditorPage() {
     };
   }, [pageState, persistCurrentPageDraftSync, saveCurrentPage]);
 
+  // An app update waits until this page has saved (lib/app/app-build.ts).
+  useEffect(() => {
+    setUnsavedWork("notebook", saveStatus !== "saved");
+    return () => setUnsavedWork("notebook", false);
+  }, [saveStatus]);
+
   const handleExitNotebook = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     const exitDecision = prepareNotebookExit({
       saveStatus: pageState.read().saveStatus,
@@ -2068,7 +2077,14 @@ export default function NotebookEditorPage() {
       pageSwipeRef.current?.completed ||
       // A finger on a zoomed sheet is reaching for the viewport, not drawing.
       isNotebookViewportZoomedIn(viewportLayout.zoom) ||
-      isPinchActive()
+      isPinchActive() ||
+      /*
+       * A hand that was just holding the Pencil is a palm, not somebody trying
+       * to write with a finger. Counted, every third palm lift while writing
+       * told a Pencil user to use their Pencil -- and re-rendered this whole
+       * page twice to show and hide the hint, in the middle of their words.
+       */
+      Date.now() < stylusCooldownUntilRef.current + RECENT_PENCIL_MS
     ) {
       return;
     }
@@ -2087,6 +2103,7 @@ export default function NotebookEditorPage() {
     fullNotebookEditingEnabled,
     isPinchActive,
     setTouchInkHintVisible,
+    stylusCooldownUntilRef,
     tool,
     viewportLayout.zoom,
   ]);

@@ -14,6 +14,7 @@ import {
   reauthenticateForAccountDeletion,
 } from "@/services/auth";
 import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
+import { appBuildLabel } from "@/lib/app/app-build";
 import {
   loadInAppUsername,
   MAX_USERNAME_LENGTH,
@@ -408,6 +409,10 @@ export default function ProfilePage() {
             ) : null}
           </div>
         </div>
+
+        <p className="mt-4 text-xs leading-5 text-text-muted">
+          Jami version {appBuildLabel()}
+        </p>
       </Card>
     </AppPage>
   );
