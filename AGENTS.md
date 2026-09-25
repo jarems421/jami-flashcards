@@ -31,7 +31,7 @@ During the current Phase 6 notebook-first Practice phase:
 - Preserve existing functionality, routes, Firebase logic, AI logic, data models, and tests.
 - Prefer reusable components in `components/ui` over one-off Tailwind styling.
 - Keep the app responsive across mobile, tablet, and desktop.
-- Use Browser Use / localhost visual checks when changing UI.
+- Use Browser Use / localhost visual checks after big UI refactors (see Fast UI Verification). Smaller UI changes do not need them.
 
 ## Learning Engine
 
@@ -50,11 +50,12 @@ Jami maintains a model of what each student knows and uses it to decide what the
 
 Optimise for fast UI iteration. Do not run the full Vitest suite after every small visual change.
 
+Several sessions often run on this machine at once, and a production build or browser walkthrough slows every one of them. Full browser walkthroughs (build, `next start`, an e2e spec) are only for big UI refactors: a surface redesign, a shared `components/ui` primitive, theme tokens, navigation or the layout shell. Do not start one for anything smaller.
+
 For each focused UI task:
 - Inspect the changed files and classify the change by risk.
 - During iteration, run `npm run typecheck` and `npm run lint`.
-- Manually verify the affected page at relevant desktop, tablet, and phone widths with Browser Use / localhost.
-- Run `npm run build` once the focused task is coherent, rather than after every intermediate edit.
+- After a big UI refactor only: verify the affected pages at relevant desktop, tablet, and phone widths with Browser Use / localhost, and run `npm run build` once the task is coherent.
 - Run only related tests where practical:
   - Explicit test files: `npx vitest run tests/<relevant-file>.test.ts`
   - Source-related tests: `npx vitest related <changed-source-files> --run`
@@ -62,12 +63,12 @@ For each focused UI task:
 
 Use this risk split:
 - Tiny CSS, spacing, colour, copy, button-variant, or local responsive changes:
-  - Run typecheck, lint, one build for the completed task, and a browser visual check.
+  - Run typecheck and lint. No build or browser walkthrough.
   - Do not run the full test suite unless the change exposes a regression or related tests fail.
 - Page-local JSX/layout changes with unchanged behavior:
-  - Run typecheck, lint, one build, related tests if they exist, and a browser check of that page.
+  - Run typecheck, lint, and related tests if they exist. No build or browser walkthrough; at most one quick look at that page if the change cannot be judged any other way.
 - Shared `components/ui` primitives, global theme tokens, navigation, or layout-shell changes:
-  - Run typecheck, lint, build, related tests, and browser-check 3-5 representative affected pages.
+  - These are big UI refactors: run typecheck, lint, build, related tests, and browser-check 3-5 representative affected pages.
   - Run the full suite before final handoff because these changes have broad reach.
 - Logic, state, forms, routing, auth, Firebase/data loading, notebook persistence, or interaction changes:
   - Run related tests immediately.
@@ -79,7 +80,7 @@ Run the complete `npm test` suite:
 - Whenever a shared component or behavioral path changed.
 - Whenever a related/changed test fails.
 
-Do not skip all verification merely because a change looks visual. Browser verification is required for UI work; if Browser Use is unavailable, state that clearly in the final response.
+Do not skip all verification merely because a change looks visual: typecheck, lint and related tests always run. Browser verification is required only for big UI refactors; when it was skipped, or Browser Use is unavailable, say so plainly in the final response.
 
 ## UI Polish Expectations
 
