@@ -21,7 +21,13 @@ import {
   MAX_TUTOR_GENERAL_NOTES,
 } from "@/lib/ai/tutor-personalisation";
 
-/** One part of the page: a numbered step, its question, and its controls. */
+/**
+ * One part of the page: a numbered step, its question, and its controls.
+ *
+ * The number sits in the heading rather than in a gutter of its own. The gutter
+ * indented every control on the page by three rem, which the notes -- already
+ * sharing their card with a folder list -- could not spare.
+ */
 function Step({
   number,
   eyebrow,
@@ -37,17 +43,19 @@ function Step({
 }) {
   return (
     <Card padding="lg">
-      <div className="flex gap-4">
+      <div className="flex items-start gap-3.5">
         <span
           aria-hidden="true"
-          className="hidden h-8 w-8 shrink-0 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-xs font-semibold text-text-secondary sm:grid"
+          className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-accent/30 bg-accent/10 text-xs font-semibold text-accent"
         >
           {number}
         </span>
         <div className="min-w-0 flex-1">
           <SectionHeader eyebrow={eyebrow} title={title} description={description} />
-          <div className="mt-5">{children}</div>
         </div>
+      </div>
+      <div className="mt-6 border-t border-[var(--color-border)] pt-6">
+        {children}
       </div>
     </Card>
   );
@@ -97,7 +105,7 @@ export default function TutorPersonaliseWorkspace() {
       title="Personalise Jami"
       backHref="/dashboard/tutor"
       backLabel="Jami"
-      width="xl"
+      width="2xl"
       contentClassName="space-y-4"
     >
       {feedback ? (
@@ -115,12 +123,14 @@ export default function TutorPersonaliseWorkspace() {
       />
 
       {loading ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="space-y-4">
-            <Skeleton className="h-48 w-full rounded-2xl" />
-            <Skeleton className="h-64 w-full rounded-2xl" />
+        <div className="tutor-personalise">
+          <div className="tutor-personalise-grid">
+            <div className="space-y-4">
+              <Skeleton className="h-48 w-full rounded-2xl" />
+              <Skeleton className="h-64 w-full rounded-2xl" />
+            </div>
+            <Skeleton className="h-72 w-full rounded-2xl" />
           </div>
-          <Skeleton className="h-72 w-full rounded-2xl" />
         </div>
       ) : loadFailed ? (
         <Card padding="lg">
@@ -135,80 +145,81 @@ export default function TutorPersonaliseWorkspace() {
           </div>
         </Card>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="min-w-0 space-y-4">
-            <Step
-              number={1}
-              eyebrow="You"
-              title="What you're studying"
-              description="Sets the vocabulary and assumed knowledge Jami starts from."
-            >
-              <div className="max-w-xl">
-                <TutorStudyProfileForm
-                  // Remounted whenever a save produces a new level or list, so
-                  // the fields restart from it without an effect copying values.
-                  key={`${studyLevel ?? "none"}:${studySubjects.join("|")}`}
-                  studyLevel={studyLevel}
-                  studySubjects={studySubjects}
-                  saving={savingProfile}
-                  onSave={saveStudyProfile}
+        <div className="tutor-personalise">
+          <div className="tutor-personalise-grid">
+            <div className="min-w-0 space-y-4">
+              <Step
+                number={1}
+                eyebrow="You"
+                title="What you're studying"
+                description="Sets the vocabulary and assumed knowledge Jami starts from."
+              >
+                <div className="max-w-xl">
+                  <TutorStudyProfileForm
+                    // Remounted whenever a save produces a new level or list, so
+                    // the fields restart from it without an effect copying values.
+                    key={`${studyLevel ?? "none"}:${studySubjects.join("|")}`}
+                    studyLevel={studyLevel}
+                    studySubjects={studySubjects}
+                    saving={savingProfile}
+                    onSave={saveStudyProfile}
+                  />
+                </div>
+              </Step>
+
+              <Step
+                number={2}
+                eyebrow="Style"
+                title="How Jami teaches"
+                description="Each one starts on the recommended setting. Change only what you care about."
+              >
+                <TutorStyleChoices value={preferences} onChange={saveStyle} />
+              </Step>
+
+              <Step
+                number={3}
+                eyebrow="Every subject"
+                title="Things Jami should always do"
+                description="Short lines, one habit each. Jami follows them in every subject."
+              >
+                <TutorNotesList
+                  label="Notes for every subject"
+                  notes={preferences.notes}
+                  max={MAX_TUTOR_GENERAL_NOTES}
+                  suggestions={GENERAL_NOTE_SUGGESTIONS}
+                  placeholder="Name the rule before you use it"
+                  emptyText="Nothing yet. Add a habit you'd want from any tutor, or tap an idea below."
+                  onChange={saveGeneralNotes}
                 />
-              </div>
-            </Step>
+              </Step>
 
-            <Step
-              number={2}
-              eyebrow="Style"
-              title="How Jami teaches"
-              description="Each one starts on the recommended setting. Change only what you care about."
-            >
-              <TutorStyleChoices value={preferences} onChange={saveStyle} />
-            </Step>
+              <Step
+                number={4}
+                eyebrow="One subject"
+                title="What each subject needs"
+                description="Exam wording, notation, how you like your work checked. Used only when you're working in that folder, and it wins over everything above."
+              >
+                <TutorFolderNotes
+                  folders={data?.folders ?? []}
+                  selectedFolderId={selectedFolderId}
+                  folder={data?.folder ?? null}
+                  loadingFolder={loadingFolder}
+                  onSelectFolder={setSelectedFolderId}
+                  onChange={saveFolderNotes}
+                />
+              </Step>
+            </div>
 
-            <Step
-              number={3}
-              eyebrow="Every subject"
-              title="Things Jami should always do"
-              description="Short lines, one habit each. Jami follows them in every subject."
-            >
-              <TutorNotesList
-                label="Notes for every subject"
-                notes={preferences.notes}
-                max={MAX_TUTOR_GENERAL_NOTES}
-                suggestions={GENERAL_NOTE_SUGGESTIONS}
-                placeholder="Name the rule before you use it"
-                emptyText="Nothing yet. Add a habit you'd want from any tutor, or tap an idea below."
-                onChange={saveGeneralNotes}
+            <aside className="tutor-personalise-aside min-w-0">
+              <TutorBrief
+                studyLevel={studyLevel}
+                studySubjects={studySubjects}
+                preferences={preferences}
+                folder={selectedFolder}
+                saveStatus={saveStatus}
               />
-            </Step>
-
-            <Step
-              number={4}
-              eyebrow="One subject"
-              title="What each subject needs"
-              description="Exam wording, notation, how you like your work checked. Used only when you're working in that folder, and it wins over everything above."
-            >
-              <TutorFolderNotes
-                layout="split"
-                folders={data?.folders ?? []}
-                selectedFolderId={selectedFolderId}
-                folder={data?.folder ?? null}
-                loadingFolder={loadingFolder}
-                onSelectFolder={setSelectedFolderId}
-                onChange={saveFolderNotes}
-              />
-            </Step>
+            </aside>
           </div>
-
-          <aside className="lg:sticky lg:top-4">
-            <TutorBrief
-              studyLevel={studyLevel}
-              studySubjects={studySubjects}
-              preferences={preferences}
-              folder={selectedFolder}
-              saveStatus={saveStatus}
-            />
-          </aside>
         </div>
       )}
     </AppPage>

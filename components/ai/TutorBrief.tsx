@@ -44,9 +44,14 @@ export function TutorSaveIndicator({ status }: { status: TutorSaveStatus }) {
   );
 }
 
+/**
+ * One fact, as a tile rather than a ruled line: the brief is a column beside
+ * the steps on a wide page and a band across it on a narrower one, and tiles
+ * line up in either where rules only work stacked.
+ */
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="border-t border-warm-border/60 pt-3 first:border-t-0 first:pt-0">
+    <div className="min-w-0 rounded-xl border border-warm-border px-3.5 py-3">
       <dt className="text-2xs font-semibold uppercase tracking-[0.14em] text-warm-accent">
         {label}
       </dt>
@@ -112,7 +117,7 @@ export default function TutorBrief({
         </div>
       </div>
 
-      <dl className="flex flex-col gap-3">
+      <dl className="grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-2.5">
         <Row label="Pitched at">
           {studyLevel ? getStudyLevelShortLabel(studyLevel) : "No level set"}
           {studySubjects.length > 0 ? ` · ${studySubjects.join(", ")}` : ""}
@@ -139,7 +144,7 @@ export default function TutorBrief({
         ) : null}
       </dl>
 
-      <p className="border-t border-warm-border/60 pt-3 text-2xs leading-5 text-text-muted">
+      <p className="text-2xs leading-5 text-text-muted">
         Ask for something different in a message and Jami does that instead.
       </p>
     </Card>

@@ -11,8 +11,8 @@ import { DEFAULT_TUTOR_PREFERENCES } from "@/lib/ai/tutor-personalisation";
  * something is wrong: a load that failed, a folder with nothing written for it,
  * an account with no folders at all.
  *
- * Plus the status strip, which is the first thing on the panel and now says all
- * three of those things in three chips rather than three sentences.
+ * Plus what each tab says it is set to, which is the first thing on the panel
+ * and says all three of those things without a sentence between them.
  */
 
 const serviceMocks = vi.hoisted(() => ({
@@ -64,11 +64,26 @@ function buttonWithText(text: string) {
   );
 }
 
-async function openTab(label: string) {
-  const tab = [...container.querySelectorAll('[role="tab"]')].find(
-    (entry) => entry.textContent?.trim() === label
+/** A tab by its name, which is its label alone: each tab also shows its value. */
+function tabNamed(label: string) {
+  return [...container.querySelectorAll('[role="tab"]')].find(
+    (entry) =>
+      document
+        .getElementById(entry.getAttribute("aria-labelledby") ?? "")
+        ?.textContent?.trim() === label
   ) as HTMLButtonElement;
+}
+
+async function openTab(label: string) {
+  const tab = tabNamed(label);
   await act(async () => tab.click());
+}
+
+/** What a tab tells assistive tech it is currently set to. */
+function tabDescription(label: string) {
+  return document
+    .getElementById(tabNamed(label).getAttribute("aria-describedby") ?? "")
+    ?.textContent?.trim();
 }
 
 beforeEach(() => {
@@ -104,7 +119,7 @@ describe("the Tutor settings panel", () => {
 
     // Not "no folder instructions apply", which would be a claim the panel has
     // no basis for.
-    expect(container.textContent).toContain("Set per folder");
+    expect(tabDescription("Notes")).toBe("Set per folder");
   });
 
   it("names the folder when the conversation resolves to exactly one", async () => {
@@ -116,7 +131,10 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel activeFolderIds={["folder-1"]} />);
 
-    expect(container.textContent).toContain("Biology — 2 notes");
+    expect(tabDescription("Notes")).toBe("Biology — 2 notes");
+    // The tile itself says it in two short lines, not one truncated chip.
+    expect(tabNamed("Notes").textContent).toContain("2 notes");
+    expect(tabNamed("Notes").textContent).toContain("Biology");
   });
 
   it("explains the multi-folder case instead of interrupting the chat", async () => {
@@ -126,7 +144,7 @@ describe("the Tutor settings panel", () => {
       <TutorSettingsPanel activeFolderIds={["folder-1", "folder-2"]} />
     );
 
-    expect(container.textContent).toContain("Several folders — off");
+    expect(tabDescription("Notes")).toBe("Several folders — off");
   });
 
   it("reports a failed load and offers a retry rather than an empty form", async () => {
@@ -147,7 +165,7 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel />);
 
-    expect(container.textContent).toContain("Default");
+    expect(tabDescription("Style")).toBe("Default");
   });
 
   it("counts the preferences that will actually reach the prompt", async () => {
@@ -164,7 +182,7 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel />);
 
-    expect(container.textContent).toContain("2 changed");
+    expect(tabDescription("Style")).toBe("2 changed");
   });
 
   it("saves a style choice the moment it is picked, with no Save button", async () => {
@@ -261,7 +279,8 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel activeFolderIds={["folder-1"]} />);
 
-    expect(container.textContent).toContain("University (folder)");
+    expect(tabDescription("Course")).toBe("University (folder)");
+    expect(tabNamed("Course").textContent).toContain("From Biology");
     expect(container.textContent).toContain("Biology overrides this with");
   });
 
@@ -270,6 +289,7 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel />);
 
+    expect(tabNamed("Course").getAttribute("aria-selected")).toBe("true");
     expect(container.textContent).toContain("Your subjects");
     expect(container.textContent).toContain("Biology");
     expect(container.textContent).toContain("Chemistry");

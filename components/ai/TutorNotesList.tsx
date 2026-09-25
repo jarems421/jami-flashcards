@@ -81,10 +81,13 @@ function NoteRow({
 
   return (
     <li className="group flex items-start gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] py-2 pl-3.5 pr-2 transition duration-fast hover:border-[var(--color-border-strong)]">
+      {/* As wide as an idea's plus, so a note and an idea start their text in line. */}
       <span
         aria-hidden="true"
-        className="mt-[0.7rem] h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
-      />
+        className="grid h-8 w-5 shrink-0 place-items-center"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+      </span>
       {editing ? (
         <Input
           aria-label="Edit note"
@@ -220,24 +223,31 @@ export default function TutorNotesList({
         </Button>
       </form>
 
+      {/*
+        One idea a row, in a single list, rather than pills wrapping around
+        each other: three sentences of different lengths never made a tidy
+        cloud, and a row keeps each one readable in a narrow card.
+      */}
       {ideas.length > 0 && !full ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-2xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-            Ideas
-          </span>
-          {ideas.map((idea) => (
-            <button
-              key={idea}
-              type="button"
-              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] py-1 pl-2 pr-3 text-left text-xs text-text-secondary transition duration-fast hover:border-accent/45 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-              onClick={() => add(idea)}
-            >
-              <span className="text-accent">
-                <PlusIcon />
-              </span>
-              <span className="min-w-0">{idea}</span>
-            </button>
-          ))}
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium text-text-muted">Ideas to start from</p>
+          <ul className="flex flex-col divide-y divide-[var(--color-border)] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)]">
+            {ideas.map((idea) => (
+              <li key={idea}>
+                <button
+                  type="button"
+                  aria-label={`Add note: ${idea}`}
+                  className="group flex w-full items-start gap-3 py-2.5 pl-3.5 pr-4 text-left text-sm leading-5 text-text-secondary transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/45"
+                  onClick={() => add(idea)}
+                >
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-accent/35 bg-accent/10 text-accent transition duration-fast group-hover:bg-accent/20">
+                    <PlusIcon />
+                  </span>
+                  <span className="min-w-0 flex-1">{idea}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
     </div>

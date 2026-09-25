@@ -1448,6 +1448,10 @@
    * nine rem a tile, more where the choices are written out in full. Below the
    * first step it is one tile a row, which reads fine; a squeezed row never
    * does.
+   *
+   * Four choices wait for thirteen rem a tile. Their labels are whole phrases
+   * ("Walk me through it"), and at nine rem the Tutor's card showed every one
+   * of them broken over two lines.
    */
   .option-switch {
     container: option-switch / inline-size;
@@ -1457,7 +1461,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  @container option-switch (min-width: 18rem) {
+  @container option-switch (min-width: 26rem) {
     .option-switch-grid:is([data-columns="4"], [data-columns="5"]) {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -1484,6 +1488,76 @@
   @container option-switch (min-width: 55rem) {
     .option-switch-grid[data-columns="5"] {
       grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+  }
+
+  /*
+   * Personalising Jami, laid out by the room the page is given.
+   *
+   * The read-back sits beside the four steps only once both fit; until then it
+   * follows them. Chosen by the screen, it went beside them at 1024px, where
+   * the app's own sidebar had already taken 18rem, and left the subject notes
+   * a column a few words wide.
+   */
+  .tutor-personalise {
+    container: tutor-personalise / inline-size;
+  }
+
+  .tutor-personalise-grid {
+    display: grid;
+    gap: 1rem;
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @container tutor-personalise (min-width: 62rem) {
+    .tutor-personalise-grid {
+      grid-template-columns: minmax(0, 1fr) 19rem;
+      gap: 1.25rem;
+    }
+
+    .tutor-personalise-aside {
+      position: sticky;
+      top: 1rem;
+    }
+  }
+
+  /*
+   * Subject notes, the same way: a folder list beside the notes once both fit,
+   * a dropdown above them until then. One component serves a 20rem Tutor card
+   * and a desktop page.
+   */
+  .tutor-folder-notes {
+    container: tutor-folder-notes / inline-size;
+  }
+
+  .tutor-folder-notes-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tutor-folder-notes-list,
+  .tutor-folder-notes-title {
+    display: none;
+  }
+
+  @container tutor-folder-notes (min-width: 38rem) {
+    .tutor-folder-notes-grid {
+      grid-template-columns: 12.5rem minmax(0, 1fr);
+      gap: 1.5rem;
+    }
+
+    .tutor-folder-notes-picker {
+      display: none;
+    }
+
+    .tutor-folder-notes-list {
+      display: flex;
+    }
+
+    .tutor-folder-notes-title {
+      display: block;
     }
   }
 

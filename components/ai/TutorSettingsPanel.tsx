@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import TutorActiveContextSummary from "@/components/ai/TutorActiveContextSummary";
+import { useState, type ReactNode } from "react";
 import { TutorSaveIndicator } from "@/components/ai/TutorBrief";
 import TutorFolderNotes from "@/components/ai/TutorFolderNotes";
 import TutorNotesList from "@/components/ai/TutorNotesList";
+import TutorSettingsTabs, {
+  type TutorSettingsView,
+} from "@/components/ai/TutorSettingsTabs";
 import TutorStudyProfileForm from "@/components/ai/TutorStudyProfileForm";
 import TutorStyleChoices from "@/components/ai/TutorStyleChoices";
 import { Button, FeedbackBanner, Skeleton } from "@/components/ui";
@@ -21,7 +23,7 @@ type TutorSettingsPanelProps = {
    *
    * Exactly one means that folder's notes apply. More than one means none do,
    * because two documents cannot be merged and choosing between them would be a
-   * guess. The chip strip says which of those is true rather than leaving the
+   * guess. The Notes tab says which of those is true rather than leaving the
    * student to work it out from a silent Tutor.
    */
   activeFolderIds?: readonly string[];
@@ -33,21 +35,33 @@ type TutorSettingsPanelProps = {
   backLabel?: string;
 };
 
-type SettingsView = "course" | "style" | "notes";
-
 /**
- * Three words, not three phrases.
+ * One part of a view: a heading, a line on what it is for, and its controls.
  *
- * The tab row is the widest fixed thing in a 32rem drawer, and "How Jami helps"
- * beside "Subject notes" spent that width on grammar. Each of these names one
- * question: what am I studying, how do you teach me, what does this subject
- * need.
+ * The notes view holds two lists that differ only in reach, and a bare heading
+ * over each left a student to work out from the placeholder which was which.
  */
-const VIEWS: { id: SettingsView; label: string }[] = [
-  { id: "course", label: "Course" },
-  { id: "style", label: "Style" },
-  { id: "notes", label: "Notes" },
-];
+function PanelSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-4">
+      <div>
+        <h3 className="text-sm font-semibold tracking-tight text-text-primary">
+          {title}
+        </h3>
+        <p className="mt-1 text-xs leading-5 text-text-muted">{description}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 /**
  * The same personalisation, beside a conversation.
@@ -63,7 +77,7 @@ export default function TutorSettingsPanel({
   onBack,
   backLabel = "Back to chat",
 }: TutorSettingsPanelProps) {
-  const [view, setView] = useState<SettingsView>("course");
+  const [view, setView] = useState<TutorSettingsView>("course");
   const {
     data,
     preferences,
@@ -88,8 +102,20 @@ export default function TutorSettingsPanel({
   } = useTutorPersonalisation(activeFolderIds);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-5 py-3.5">
+    <div
+      className="flex h-full flex-col"
+      /*
+        Opaque, because it covers a conversation. The panel colour is a few
+        percent translucent, which reads as depth over a page but let the chat
+        underneath -- its composer, its suggestions -- show through every view.
+      */
+      style={{
+        backgroundColor: "var(--color-surface-base)",
+        backgroundImage:
+          "linear-gradient(var(--color-surface-panel-strong), var(--color-surface-panel-strong))",
+      }}
+    >
+      <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-4">
         <h2 className="min-w-0 truncate text-base font-medium tracking-tight text-text-primary">
           Personalise Jami
         </h2>
@@ -101,58 +127,31 @@ export default function TutorSettingsPanel({
       </div>
 
       {/*
-        The status strip sits above the tabs rather than inside one, because
-        what Jami is currently using is true of all three views and repeating it
-        in each was the panel telling a student the same thing three times.
+        What Jami is using sits in the tabs themselves rather than a strip
+        above them: it is true of all three views, and the tabs are the one
+        thing on the panel that is always in sight.
       */}
-      {loading ? null : (
-        <div className="border-b border-[var(--color-border)] px-5 py-2.5">
-          <TutorActiveContextSummary
-            {...(activeFolderIds ? { activeFolderIds } : {})}
-            activeFolder={activeFolder}
-            accountStudyLevel={studyLevel}
-            accountStudySubjects={studySubjects}
-            changedStyleCount={changedStyleCount}
-          />
-        </div>
-      )}
-
-      <div
-        role="tablist"
-        aria-label="Personalise Jami"
-        className="flex gap-1 border-b border-[var(--color-border)] px-5"
-      >
-        {VIEWS.map((entry) => {
-          const selected = entry.id === view;
-          return (
-            <button
-              key={entry.id}
-              type="button"
-              role="tab"
-              id={`tutor-settings-tab-${entry.id}`}
-              aria-selected={selected}
-              aria-controls="tutor-settings-panel"
-              onClick={() => setView(entry.id)}
-              className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
-                selected
-                  ? "border-accent text-text-primary"
-                  : "border-transparent text-text-muted hover:text-text-secondary"
-              }`}
-            >
-              {entry.label}
-            </button>
-          );
-        })}
+      <div className="border-b border-[var(--color-border)] px-4 pb-4">
+        <TutorSettingsTabs
+          view={view}
+          onChange={setView}
+          loading={loading || loadFailed}
+          {...(activeFolderIds ? { activeFolderIds } : {})}
+          activeFolder={activeFolder}
+          accountStudyLevel={studyLevel}
+          accountStudySubjects={studySubjects}
+          changedStyleCount={changedStyleCount}
+        />
       </div>
 
       <div
         id="tutor-settings-panel"
         role="tabpanel"
         aria-labelledby={`tutor-settings-tab-${view}`}
-        className="flex-1 overflow-y-auto px-5 py-4"
+        className="flex-1 overflow-y-auto px-5 pb-5 pt-5"
       >
         {feedback ? (
-          <div className="mb-4">
+          <div className="mb-5">
             <FeedbackBanner
               type={feedback.type}
               message={feedback.message}
@@ -171,28 +170,33 @@ export default function TutorSettingsPanel({
             Try again
           </Button>
         ) : view === "course" ? (
-          <TutorStudyProfileForm
-            // Restarted from whatever a save or a reload produced, rather than
-            // by an effect copying values back into fields.
-            key={`${studyLevel ?? "none"}:${studySubjects.join("|")}`}
-            studyLevel={studyLevel}
-            studySubjects={studySubjects}
-            folderLevel={activeFolder?.studyLevel ?? null}
-            folderName={activeFolder?.name ?? null}
-            saving={savingProfile}
-            onSave={saveStudyProfile}
-          />
+          <PanelSection
+            title="What you're studying"
+            description="Sets the vocabulary and assumed knowledge Jami starts from."
+          >
+            <TutorStudyProfileForm
+              // Restarted from whatever a save or a reload produced, rather than
+              // by an effect copying values back into fields.
+              key={`${studyLevel ?? "none"}:${studySubjects.join("|")}`}
+              studyLevel={studyLevel}
+              studySubjects={studySubjects}
+              folderLevel={activeFolder?.studyLevel ?? null}
+              folderName={activeFolder?.name ?? null}
+              saving={savingProfile}
+              onSave={saveStudyProfile}
+            />
+          </PanelSection>
         ) : view === "style" ? (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
             <TutorStyleChoices value={preferences} onChange={saveStyle} />
             <TutorSaveIndicator status={saveStatus} />
           </div>
         ) : (
-          <div className="flex flex-col gap-6">
-            <section className="flex flex-col gap-3">
-              <h3 className="text-sm font-semibold tracking-tight text-text-primary">
-                Every subject
-              </h3>
+          <div className="flex flex-col gap-7">
+            <PanelSection
+              title="Every subject"
+              description="Short lines, one habit each. Jami follows them everywhere."
+            >
               <TutorNotesList
                 label="Notes for every subject"
                 notes={preferences.notes}
@@ -202,25 +206,27 @@ export default function TutorSettingsPanel({
                 emptyText="Nothing yet. Anything you add here applies everywhere."
                 onChange={saveGeneralNotes}
               />
-            </section>
-            <section className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-5">
-              <h3 className="text-sm font-semibold tracking-tight text-text-primary">
-                One subject
-              </h3>
-              <TutorFolderNotes
-                folders={data?.folders ?? []}
-                selectedFolderId={selectedFolderId}
-                folder={data?.folder ?? null}
-                loadingFolder={loadingFolder}
-                onSelectFolder={setSelectedFolderId}
-                onChange={saveFolderNotes}
-              />
-            </section>
+            </PanelSection>
+            <div className="border-t border-[var(--color-border)] pt-6">
+              <PanelSection
+                title="One subject"
+                description="Used only in that folder, and it wins over everything above."
+              >
+                <TutorFolderNotes
+                  folders={data?.folders ?? []}
+                  selectedFolderId={selectedFolderId}
+                  folder={data?.folder ?? null}
+                  loadingFolder={loadingFolder}
+                  onSelectFolder={setSelectedFolderId}
+                  onChange={saveFolderNotes}
+                />
+              </PanelSection>
+            </div>
             <TutorSaveIndicator status={saveStatus} />
           </div>
         )}
 
-        <p className="mt-5 border-t border-[var(--color-border)] pt-3 text-2xs text-text-muted">
+        <p className="mt-6 border-t border-[var(--color-border)] pt-3 text-2xs text-text-muted">
           <Link
             href="/dashboard/tutor/personalise"
             className="font-semibold text-accent underline-offset-4 hover:underline"
