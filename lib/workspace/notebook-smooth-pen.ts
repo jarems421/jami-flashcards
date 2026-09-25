@@ -339,6 +339,15 @@ const UNMISTAKABLE_CORNER_DEGREES = 100;
  * wave's peaks kept about half their flank speed; a deliberate corner drops to
  * a small fraction of it. Samples without time leave this undecided, and the
  * corner rule then stands as it was.
+ *
+ * Moderate turns only. A turn past `UNMISTAKABLE_CORNER_DEGREES` is kept as a
+ * corner however fast it was drawn: the shoulder of an 'r', the retrace up an
+ * 'n', the cusp where joined-up letters meet are all that sharp, and fast
+ * cursive does not slow into them enough to pass this -- so they were rounded,
+ * and the ink looked pulled inwards into a curve. Replayed as a fast 'rn',
+ * that put ink more than 1.5px off the path in 56 of 80 strokes at the
+ * faithful setting, against 22 with sharp turns exempt. The false kinks this
+ * was written for came from turns under that, up to about 90 degrees.
  */
 const CORNER_SLOWDOWN = 0.35;
 
@@ -691,8 +700,8 @@ export function createNotebookSmoothPenStrokeFactory(
         return speed <= around * CORNER_SLOWDOWN;
       };
       return turns.map((turn, index) => {
-        if (turn > 0 && !slowedAt(index)) return false;
         if (turn >= unmistakableCorner) return true;
+        if (turn > 0 && !slowedAt(index)) return false;
         if (turn < cornerRadians) return false;
         const around = Math.max(
           curvatures[index - 1] ?? 0,

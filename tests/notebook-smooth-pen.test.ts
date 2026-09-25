@@ -199,6 +199,40 @@ describe("the smooth pen", () => {
     expect(sharpest).toBeGreaterThan(60);
   });
 
+  it("keeps a sharp turn sharp even when it was written fast", () => {
+    // The shoulder of an 'r' in fast joined-up writing: a 120-degree turn with
+    // no slowing into it at all, sampled at a steady 240Hz.
+    const samples: StrokeDataPoint[] = [];
+    const arm = (from: [number, number], to: [number, number], steps: number, start: number) => {
+      for (let step = 1; step <= steps; step += 1) {
+        const u = step / steps;
+        samples.push({
+          ...point(from[0] + (to[0] - from[0]) * u, from[1] + (to[1] - from[1]) * u),
+          time: (start + step) * 4.17,
+        });
+      }
+    };
+    samples.push({ ...point(100, 200), time: 0 });
+    arm([100, 200], [160, 200], 12, 0);
+    arm([160, 200], [130, 252], 12, 12);
+    const path = buildStroke(samples).getParts()[0].path;
+    let sharpest = 0;
+    let previousEnd: Point2 | null = null;
+    let previousControl: Point2 | null = null;
+    for (const part of path.parts) {
+      if (part.kind !== jsDraw.PathCommandType.CubicBezierTo) continue;
+      if (previousEnd && previousControl) {
+        const incoming = previousEnd.minus(previousControl).normalized();
+        const outgoing = part.controlPoint1.minus(previousEnd).normalized();
+        const dot = Math.max(-1, Math.min(1, incoming.dot(outgoing)));
+        sharpest = Math.max(sharpest, (Math.acos(dot) * 180) / Math.PI);
+      }
+      previousEnd = part.endPoint;
+      previousControl = part.controlPoint2;
+    }
+    expect(sharpest).toBeGreaterThan(90);
+  });
+
   it("reaches the far end of a stroke that doubles back on itself", () => {
     /*
      * Joined-up writing retraces constantly -- up the stem of an 'l' and back
