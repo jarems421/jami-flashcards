@@ -11,6 +11,8 @@ import {
 import {
   clampFloatingRect,
   cornerFloatingRect,
+  floatingRectClearOf,
+  floatingRectsOverlap,
   maximisedFloatingRect,
   moveFloatingRect,
   parseStoredFloatingRect,
@@ -227,6 +229,26 @@ export function useFloatingPanel({
     },
   };
 
+  /**
+   * Moves the panel off another one it would cover, remembering where it went.
+   *
+   * Callable before the panel is on screen -- in the same tap that brings it
+   * up -- so it works from this device's saved place, or the corner default,
+   * against the live viewport. A full-size panel covers everything, so it
+   * comes back to its own size to be moved.
+   */
+  const moveClearOf = (other: FloatingRect) => {
+    const currentViewport = readViewport();
+    const own = placed
+      ? clampFloatingRect(placed, currentViewport, limits)
+      : cornerFloatingRect(preferredSize, currentViewport, limits);
+    if (!maximised && !floatingRectsOverlap(own, other)) return;
+    const clear = floatingRectClearOf(own, other, currentViewport, limits);
+    setPlaced(clear);
+    setMaximised(false);
+    writeStored(storageKey, { rect: clear, maximised: false });
+  };
+
   const getResizeHandleProps = (edges: FloatingResizeEdges) => ({
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => beginGesture(event, edges),
     onPointerMove: continueGesture,
@@ -240,6 +262,7 @@ export function useFloatingPanel({
     /** What the student is doing to the panel right now, for feedback while they do it. */
     activeGesture,
     toggleMaximised,
+    moveClearOf,
     dragHandleProps,
     getResizeHandleProps,
   };

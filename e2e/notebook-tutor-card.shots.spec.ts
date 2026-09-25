@@ -162,19 +162,33 @@ test("the Tutor floats over a notebook and goes where the student puts it", asyn
   await expect(card(page).getByText("swap the signs")).toBeVisible();
   await page.screenshot({ path: `${screenshotDirectory}/4-card-answer.png` });
 
+  // Pinning keeps the chat open for the next question, with the pin beside it.
   await page.getByRole("button", { name: "Keep beside page" }).click();
-  await expect(card(page)).toHaveCount(0);
+  await expect(card(page)).toBeVisible();
   const pinned = page.getByRole("complementary", { name: "Pinned answer from Jami" });
   await expect(pinned).toContainText("swap the signs");
+  await expect(pinned.getByRole("button", { name: "Open chat" })).toHaveCount(0);
   const pinBox = (await pinned.boundingBox())!;
-  await dragBy(page, pinBox.x + 60, pinBox.y + 8, -780, -300);
+  const cardBeside = await box(page);
+  const clearOfCard = (rect: { x: number; y: number; width: number; height: number }) =>
+    rect.x + rect.width <= cardBeside.x ||
+    cardBeside.x + cardBeside.width <= rect.x ||
+    rect.y + rect.height <= cardBeside.y ||
+    cardBeside.y + cardBeside.height <= rect.y;
+  console.log("pinned beside the card", pinBox, cardBeside);
+  expect(clearOfCard(pinBox)).toBe(true);
+  // Straight up, so it stays clear of the card and its buttons stay reachable.
+  await dragBy(page, pinBox.x + 60, pinBox.y + 8, 0, -300);
   const pinMoved = (await pinned.boundingBox())!;
   console.log("pinned note dragged to", pinMoved);
-  expect(pinMoved.x).toBeLessThan(pinBox.x - 600);
+  expect(pinMoved.y).toBeLessThan(pinBox.y - 250);
+  expect(clearOfCard(pinMoved)).toBe(true);
   await page.screenshot({ path: `${screenshotDirectory}/5-pinned-answer.png` });
 
   await page.getByRole("button", { name: "Unpin this answer" }).click();
   await expect(pinned).toHaveCount(0);
+  await expect(card(page)).toBeVisible();
+  await page.getByRole("button", { name: "Shrink Jami to a button" }).click();
   const pill = page.getByRole("button", { name: "Open Jami", exact: true });
   await expect(pill).toBeVisible();
   await page.screenshot({ path: `${screenshotDirectory}/6-pill.png` });

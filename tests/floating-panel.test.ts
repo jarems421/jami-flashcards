@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   clampFloatingRect,
   cornerFloatingRect,
+  floatingRectClearOf,
+  floatingRectsOverlap,
   maximisedFloatingRect,
   moveFloatingRect,
   parseStoredFloatingRect,
@@ -89,5 +91,37 @@ describe("floating panel geometry", () => {
     expect(parseStoredFloatingRect({ x: 1, y: 2, width: 0, height: 400 })).toBeNull();
     expect(parseStoredFloatingRect({ x: Number.NaN, y: 2, width: 300, height: 400 })).toBeNull();
     expect(parseStoredFloatingRect(null)).toBeNull();
+  });
+
+  it("pins a second panel beside the first rather than under it", () => {
+    const card = cornerFloatingRect({ width: 360, height: 560 }, VIEWPORT, LIMITS);
+    const pin = cornerFloatingRect({ width: 340, height: 340 }, VIEWPORT, LIMITS);
+    expect(floatingRectsOverlap(pin, card)).toBe(true);
+
+    const placed = floatingRectClearOf(pin, card, VIEWPORT, LIMITS);
+    expect(floatingRectsOverlap(placed, card)).toBe(false);
+    // To the card's left, level with its bottom, a margin apart, at its own size.
+    expect(placed).toEqual({ x: card.x - 12 - 340, y: card.y + card.height - 340, width: 340, height: 340 });
+  });
+
+  it("leaves a panel that is already clear exactly where it was", () => {
+    const card = cornerFloatingRect({ width: 360, height: 560 }, VIEWPORT, LIMITS);
+    const pin = { x: 40, y: 40, width: 340, height: 340 };
+    expect(floatingRectClearOf(pin, card, VIEWPORT, LIMITS)).toEqual(pin);
+  });
+
+  it("goes above when there is no room beside, and to the corner when there is none at all", () => {
+    const wide = { x: 12, y: 400, width: 1156, height: 408 };
+    const above = floatingRectClearOf({ x: 800, y: 460, width: 340, height: 340 }, wide, VIEWPORT, LIMITS);
+    expect(floatingRectsOverlap(above, wide)).toBe(false);
+    expect(above.y + above.height).toBe(400 - 12);
+
+    const full = maximisedFloatingRect(VIEWPORT, LIMITS);
+    expect(floatingRectClearOf({ x: 800, y: 460, width: 340, height: 340 }, full, VIEWPORT, LIMITS)).toEqual({
+      x: 12,
+      y: 12,
+      width: 340,
+      height: 340,
+    });
   });
 });

@@ -341,16 +341,24 @@ describe("JamiAssistantDrawer floating over a notebook", () => {
       sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
+    onOpenChange.mockClear();
     act(() => button(/keep beside page/i)?.click());
-    expect(onOpenChange).toHaveBeenLastCalledWith(false);
-    renderFloating(false);
+    // The chat stays open for the next question, with the answer beside it.
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(sendButton()).toBeDefined();
 
-    const pinned = document.querySelector("[aria-label='Pinned answer from Jami']");
-    expect(pinned?.textContent).toContain("Swap the signs in the second bracket.");
-    expect(pinned?.textContent).not.toContain("Is my factorising right?");
+    const pinned = () => document.querySelector("[aria-label='Pinned answer from Jami']");
+    expect(pinned()?.textContent).toContain("Swap the signs in the second bracket.");
+    expect(pinned()?.textContent).not.toContain("Is my factorising right?");
+    // Nothing to open while the chat is already open.
+    expect(pinned()?.textContent).not.toContain("Open chat");
+
+    // Put the chat away, and the pin stays with the way back to it.
+    renderFloating(false);
+    expect(pinned()?.textContent).toContain("Open chat");
 
     act(() => button(/unpin/i)?.click());
-    expect(document.querySelector("[aria-label='Pinned answer from Jami']")).toBeNull();
+    expect(pinned()).toBeNull();
     expect(button(/^open jami$/i)).toBeDefined();
   });
 });

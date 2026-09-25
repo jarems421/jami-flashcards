@@ -188,6 +188,51 @@ export function cornerFloatingRect(
   );
 }
 
+/** Whether two panels cover any of the same screen. Touching edges do not count. */
+export function floatingRectsOverlap(a: FloatingRect, b: FloatingRect) {
+  return (
+    a.x < b.x + b.width &&
+    b.x < a.x + a.width &&
+    a.y < b.y + b.height &&
+    b.y < a.y + a.height
+  );
+}
+
+/**
+ * The panel moved off another one it would cover, at its own size.
+ *
+ * Tried beside the other panel first -- to its left, then its right, level
+ * with its bottom -- because two panels side by side leave the page between
+ * them readable; then above it and below it, lined up on its right edge. A
+ * panel that is already clear stays where it is. If there is room nowhere,
+ * as on a phone or beside a full-size panel, it goes to the top-left corner,
+ * which is the furthest from where both panels start.
+ */
+export function floatingRectClearOf(
+  rect: FloatingRect,
+  other: FloatingRect,
+  viewport: FloatingViewport,
+  limits: FloatingLimits
+): FloatingRect {
+  const panel = clampFloatingRect(rect, viewport, limits);
+  if (!floatingRectsOverlap(panel, other)) return panel;
+  const gap = limits.margin;
+  const { width, height } = panel;
+  const level = other.y + other.height - height;
+  const aligned = other.x + other.width - width;
+  const candidates: FloatingRect[] = [
+    { x: other.x - gap - width, y: level, width, height },
+    { x: other.x + other.width + gap, y: level, width, height },
+    { x: aligned, y: other.y - gap - height, width, height },
+    { x: aligned, y: other.y + other.height + gap, width, height },
+  ];
+  for (const candidate of candidates) {
+    const placed = clampFloatingRect(candidate, viewport, limits);
+    if (!floatingRectsOverlap(placed, other)) return placed;
+  }
+  return clampFloatingRect({ x: limits.margin, y: limits.margin, width, height }, viewport, limits);
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }

@@ -82,7 +82,6 @@ import {
   floatingTutorPanelClass,
   isCompactFloatingCard,
   useFloatingTutorFrames,
-  type FloatingTutorStowed,
 } from "@/components/ai/JamiFloatingTutor";
 import { featureFlags } from "@/lib/app/feature-flags";
 
@@ -227,14 +226,28 @@ export default function JamiAssistantDrawer({
   */
   const [sidePanel, setSidePanel] = useState(false);
   const floating = layout === "floating" && sidePanel;
-  // What a floating Jami leaves behind when it shrinks or pins an answer.
-  const [stowed, setStowed] = useState<FloatingTutorStowed>(null);
+  // Shrunk to a pill rather than closed, so the pill stays to bring it back.
+  const [minimised, setMinimised] = useState(false);
+  /*
+   * The answer pinned beside the page, if any.
+   *
+   * Its own thing, not a state of the card. Pinning used to put the card away
+   * and leave only the answer, so asking the next question meant opening the
+   * chat on top of the answer it was about. The pin now stays whether the card
+   * is open, shrunk or closed, until it is unpinned.
+   */
   const [pinnedText, setPinnedText] = useState("");
-  const { card, pin } = useFloatingTutorFrames(floating, stowed);
+  const pinned = pinnedText !== "";
+  const { card, pin } = useFloatingTutorFrames(floating, pinned);
   const compact = floating && isCompactFloatingCard(card.rect);
-  const stow = (next: FloatingTutorStowed) => {
-    setStowed(next);
+  const minimise = () => {
+    setMinimised(true);
     onOpenChange(false);
+  };
+  const pinAnswer = (text: string) => {
+    setPinnedText(text);
+    // Pinned beside the card rather than under it.
+    if (card.rect) pin.moveClearOf(card.rect);
   };
   /**
    * Settings, shown over the conversation rather than beside it.
@@ -328,7 +341,8 @@ export default function JamiAssistantDrawer({
     setInsertedGraphKeys(new Set());
     setGeneratingIllustrationId(null);
     setInsertingIllustrationId(null);
-    setStowed(null);
+    setMinimised(false);
+    setPinnedText("");
     onOpenChange(false);
   }, [abandonActiveRequest, onOpenChange, resetKey]);
 
@@ -342,9 +356,9 @@ export default function JamiAssistantDrawer({
     return () => query.removeEventListener("change", sync);
   }, [layout]);
 
-  // Opening the card, from anywhere, replaces whatever it left behind.
+  // Opening the card, from anywhere, replaces the pill it left behind.
   useEffect(() => {
-    if (open) setStowed(null);
+    if (open) setMinimised(false);
   }, [open]);
 
   useEffect(() => {
@@ -807,7 +821,7 @@ export default function JamiAssistantDrawer({
               on: useRelatedSources,
               onToggle: () => setUseRelatedSources((current) => !current),
             }}
-            onMinimise={() => stow("pill")}
+            onMinimise={minimise}
             onClose={() => onOpenChange(false)}
           />
         ) : (
@@ -997,12 +1011,7 @@ export default function JamiAssistantDrawer({
                               : "Used: General knowledge"}
                           </div>
                           {floating && !(loading && index === messages.length - 1) ? (
-                            <FloatingTutorPinButton
-                              onPin={() => {
-                                setPinnedText(message.text);
-                                stow("pinned");
-                              }}
-                            />
+                            <FloatingTutorPinButton onPin={() => pinAnswer(message.text)} />
                           ) : null}
                         </div>
                         {message.citations?.length ? (
@@ -1326,14 +1335,19 @@ export default function JamiAssistantDrawer({
       </DialogPanel>
       {floating ? <FloatingTutorResizeFrame frame={card} /> : null}
     </Dialog>
-    {floating && !open && stowed === "pill" ? (
+    {/* A pinned answer already says where Jami is, and opens it; the pill would repeat it. */}
+    {floating && !open && minimised && !pinned ? (
       <FloatingTutorPill onOpen={() => onOpenChange(true)} />
     ) : null}
-    {floating && !open && stowed === "pinned" ? (
+    {floating && pinned ? (
       <FloatingTutorPinnedAnswer
         frame={pin}
-        onOpenChat={() => onOpenChange(true)}
-        onUnpin={() => setStowed("pill")}
+        onOpenChat={open ? undefined : () => onOpenChange(true)}
+        onUnpin={() => {
+          setPinnedText("");
+          // With the card put away, unpinning leaves the pill to bring it back.
+          if (!open) setMinimised(true);
+        }}
       >
         <AssistantAnswerBody text={pinnedText} illustrations={[]} renderIllustration={() => null} />
       </FloatingTutorPinnedAnswer>

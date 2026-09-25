@@ -13,12 +13,10 @@ import { CloseIcon } from "@/components/ai/JamiAssistantIcons";
  *
  * The drawer owns the conversation; this owns where it sits. The card can be
  * dragged anywhere and resized from any edge or corner, like an image, from
- * small enough to sit in a margin up to the whole window; shrunk to a pill; or
- * reduced to one pinned answer to copy from while writing.
+ * small enough to sit in a margin up to the whole window, or shrunk to a pill.
+ * One answer can be pinned beside the page to copy from while writing, with
+ * the card still open for the next question or put away.
  */
-
-/** Where a floating Jami went when it left the screen, if anywhere. */
-export type FloatingTutorStowed = "pill" | "pinned" | null;
 
 /*
  * The card starts about the width of the empty margin beside an A4 page fitted
@@ -33,7 +31,7 @@ const PIN_LIMITS = { minWidth: 200, minHeight: 110, margin: 12 };
 
 export type FloatingFrame = ReturnType<typeof useFloatingPanel>;
 
-export function useFloatingTutorFrames(floating: boolean, stowed: FloatingTutorStowed) {
+export function useFloatingTutorFrames(floating: boolean, pinned: boolean) {
   const card = useFloatingPanel({
     storageKey: "jami:tutor-card:v1",
     enabled: floating,
@@ -42,7 +40,7 @@ export function useFloatingTutorFrames(floating: boolean, stowed: FloatingTutorS
   });
   const pin = useFloatingPanel({
     storageKey: "jami:tutor-pin:v1",
-    enabled: floating && stowed === "pinned",
+    enabled: floating && pinned,
     preferredSize: PIN_SIZE,
     limits: PIN_LIMITS,
   });
@@ -89,10 +87,7 @@ export function FloatingTutorResizeFrame({ frame }: { frame: FloatingFrame }) {
   if (!frame.rect || frame.maximised) return null;
   return (
     <div className="pointer-events-none fixed" style={floatingRectStyle(frame.rect)}>
-      <FloatingResizeHandles
-        getHandleProps={frame.getResizeHandleProps}
-        active={frame.activeGesture === "resize"}
-      />
+      <FloatingResizeHandles getHandleProps={frame.getResizeHandleProps} />
     </div>
   );
 }
@@ -171,7 +166,8 @@ export function FloatingTutorPill({ onOpen }: { onOpen: () => void }) {
 
 /**
  * One answer kept on screen, small enough to sit in the page's margin while
- * the student copies from it. Moved and resized like the card.
+ * the student copies from it. Moved and resized like the card, and shown
+ * whether or not the card is open.
  */
 export function FloatingTutorPinnedAnswer({
   frame,
@@ -181,7 +177,8 @@ export function FloatingTutorPinnedAnswer({
 }: {
   frame: FloatingFrame;
   children: ReactNode;
-  onOpenChat: () => void;
+  /** Brings the chat back. Left out while the chat is already open. */
+  onOpenChat?: () => void;
   onUnpin: () => void;
 }) {
   if (!frame.rect) return null;
@@ -221,16 +218,18 @@ export function FloatingTutorPinnedAnswer({
         >
           {children}
         </div>
-        <button
-          type="button"
-          className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 border-t border-[var(--color-border)] text-xs font-semibold text-accent transition duration-fast hover:bg-[var(--color-glass-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/45"
-          onClick={onOpenChat}
-        >
-          Open chat
-          <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5">
-            <path d="M6 14 14 6M7.5 6H14v6.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+        {onOpenChat ? (
+          <button
+            type="button"
+            className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 border-t border-[var(--color-border)] text-xs font-semibold text-accent transition duration-fast hover:bg-[var(--color-glass-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/45"
+            onClick={onOpenChat}
+          >
+            Open chat
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5">
+              <path d="M6 14 14 6M7.5 6H14v6.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        ) : null}
       </aside>
       <FloatingTutorResizeFrame frame={frame} />
     </FloatingLayer>
