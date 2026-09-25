@@ -18,6 +18,10 @@ import {
   regionsForQuestion,
   type PdfPageText,
 } from "@/lib/practice/exam-page-regions";
+import {
+  buildSingleQuestionAnswerParts,
+  EXAM_WORKING_IMAGE_DESCRIPTION,
+} from "@/lib/practice/single-question-paper";
 import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
 
 function pageAsset(number: number, size: { width: number; height: number }) {
@@ -162,6 +166,20 @@ describe("telling the marker which page is which", () => {
         printedPageCount: 0,
       })
     ).toBe("Jami-created 1 — answer sheet 1");
+  });
+
+  /*
+   * An extra sheet is the same answer carried on, not a second attempt. The
+   * marker and the Tutor are told so in the same words, so they cannot read
+   * one image two ways.
+   */
+  it("says an extra sheet carries on the same answer, to the marker and the Tutor alike", () => {
+    expect(EXAM_WORKING_IMAGE_DESCRIPTION).toMatch(/"extra answer sheet 1" is .*carries on the same answer/);
+    const [first] = buildSingleQuestionAnswerParts({
+      questionId: "q1",
+      workingImage: { inlineData: { mimeType: "image/png", data: "iVBORw0KGgo=" } },
+    });
+    expect("text" in first ? first.text : "").toContain(EXAM_WORKING_IMAGE_DESCRIPTION);
   });
 });
 

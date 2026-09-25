@@ -120,7 +120,7 @@ async function transcribeEvidence(input: {
         role: "user",
         parts: [
           ...input.parts,
-          { text: "Return {\"answers\":[{\"questionId\":\"q1\",\"transcription\":\"...\",\"ambiguities\":[\"...\"]}]}. Preserve notation, crossings-out, units and diagrams. Do not infer invisible content." },
+          { text: "Return {\"answers\":[{\"questionId\":\"q1\",\"transcription\":\"...\",\"ambiguities\":[\"...\"]}]}. Preserve notation, crossings-out, units and diagrams. Do not infer invisible content. An answer often runs onto the next page with no question number, mid-line or part way down: transcribe it under the question it carries on, and name in ambiguities any work you cannot place." },
         ],
       }],
     },

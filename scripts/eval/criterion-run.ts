@@ -332,7 +332,7 @@ Matching the ${withCriteria.length} records ${matching} marked.
 
   /**
    * A marking change switched off, to measure it on the same answers:
-   * `--variant=no-levels,no-practice,no-researched,supervisor-adjudicator,always-adjudicate,slow-short`.
+   * `--variant=no-levels,no-practice,no-researched,supervisor-adjudicator,always-adjudicate,slow-short,no-across-pages`.
    */
   const variantFlags = new Set((flag("variant") ?? "").split(",").filter(Boolean));
   const variant: MarkingVariant | undefined = variantFlags.size
@@ -343,6 +343,7 @@ Matching the ${withCriteria.length} records ${matching} marked.
         ...(variantFlags.has("supervisor-adjudicator") ? { levelsAdjudicator: "supervisor" as const } : {}),
         ...(variantFlags.has("always-adjudicate") ? { settleCloseLevelsDisputes: false } : {}),
         ...(variantFlags.has("slow-short") ? { quickShortQuestions: false } : {}),
+        ...(variantFlags.has("no-across-pages") ? { workAcrossPages: false } : {}),
       }
     : undefined;
   if (variant) process.stdout.write(`\nVariant: ${JSON.stringify(variant)}\n`);

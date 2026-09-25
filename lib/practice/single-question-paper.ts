@@ -75,6 +75,19 @@ export function buildSingleQuestionPaper(input: SingleQuestionPaperInput): Pract
   };
 }
 
+/**
+ * What the working image is, said beside it wherever it is sent.
+ *
+ * The marker and the Tutor read the same image, and the Tutor used to be handed
+ * it with nothing said at all -- so it met a grid of captioned pages cold, and
+ * could not tell a sheet the answer ran onto from a separate attempt.
+ */
+export const EXAM_WORKING_IMAGE_DESCRIPTION = [
+  "The student's handwritten working is one image holding every page they wrote on.",
+  "Each page is captioned with where it came from: \"written on printed page 2 of 3\" is working in the space the board printed for that part, \"extra answer sheet 1\" is a blank sheet after the printed pages -- the rest of the room the board left, or room the student added -- and carries on the same answer, and \"answer sheet 1\" is a blank sheet for a question that has no printed page, holding the whole answer. Pages read left to right, then down.",
+  "Only the handwriting is the student's. The printed page is shown separately and is not reproduced underneath their ink.",
+].join(" ");
+
 export function buildSingleQuestionAnswerParts(input: {
   questionId: string;
   answerText?: string;
@@ -96,12 +109,7 @@ export function buildSingleQuestionAnswerParts(input: {
           ].join(" ")
         : "",
       input.workingImage
-        ? [
-            "The student's handwritten working follows, as one image holding every page they wrote on.",
-            "Each page is captioned with where it came from: \"written on printed page 2 of 3\" is working in the space the board printed for that part, \"extra answer sheet 1\" is an answer that ran past the printed space, and \"answer sheet 1\" is a blank sheet for a question that has no printed page, holding the whole answer. Pages read left to right, then down.",
-            "Only the handwriting is the student's. The printed page is shown to you separately and is not reproduced underneath their ink.",
-            "Transcribe relevant lines before awarding method marks; never invent unreadable work.",
-          ].join(" ")
+        ? `${EXAM_WORKING_IMAGE_DESCRIPTION} It follows. Transcribe relevant lines before awarding method marks; never invent unreadable work.`
         : "",
     ].filter(Boolean).join("\n"),
   }];

@@ -40,6 +40,7 @@ import {
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { examQuestionVisualParts, loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
+import { EXAM_WORKING_IMAGE_DESCRIPTION } from "@/lib/practice/single-question-paper";
 import { serializeLearnerProfileForTutor } from "@/lib/learning/serialize/tutor-context";
 import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
 import { createLogger } from "@/lib/observability/logger";
@@ -745,7 +746,12 @@ async function resolvePracticeContext(input: {
   }
   if (typeof attempt.workingSnapshotPath === "string") {
     const [bytes] = await getAdminStorageBucket().file(attempt.workingSnapshotPath).download();
-    if (bytes.length <= 3 * 1024 * 1024) currentParts.push({ inlineData: { mimeType: "image/png", data: bytes.toString("base64") } });
+    if (bytes.length <= 3 * 1024 * 1024) currentParts.push(
+      {
+        text: `${EXAM_WORKING_IMAGE_DESCRIPTION} Working often runs from one page onto the next with no label, mid-line or part way down a sheet; read the pages as one answer, joined in the order it was done, before saying anything about it.`,
+      },
+      { inlineData: { mimeType: "image/png", data: bytes.toString("base64") } }
+    );
   }
   return {
     currentId: attemptSnapshot.id,

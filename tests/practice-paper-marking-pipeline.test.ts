@@ -337,6 +337,65 @@ describe("what a quantitative paper's marker is told", () => {
 });
 
 /**
+ * A student who runs out of room carries on on another page and seldom says
+ * so. Only a marker shown handwriting is told how to put that back together,
+ * so a typed answer's request stays exactly what it was.
+ */
+describe("what a marker shown handwriting across pages is told", () => {
+  const image = { inlineData: { mimeType: "image/png", data: "iVBORw0KGgo=" } };
+  const requestText = (options: {
+    answerParts: Parameters<typeof buildMarkerRequest>[0]["answerParts"];
+    thirdViewParts?: Parameters<typeof buildMarkerRequest>[0]["thirdViewParts"];
+    role?: Parameters<typeof buildMarkerRequest>[0]["role"];
+    variant?: Parameters<typeof buildMarkerRequest>[0]["variant"];
+  }) =>
+    buildMarkerRequest({
+      paper,
+      answerParts: options.answerParts,
+      ...(options.thirdViewParts ? { thirdViewParts: options.thirdViewParts } : {}),
+      ...(options.variant ? { variant: options.variant } : {}),
+      deadlineAt: Date.now() + 60_000,
+      maxOutputTokens: 1_000,
+      role: options.role ?? "primary",
+    }).contents[0].parts
+      .map((part) => ("text" in part ? part.text : ""))
+      .join("\n");
+
+  it("tells it to read every page as one answer, however it is labelled", () => {
+    const text = requestText({ answerParts: [{ text: "working" }, image] });
+    expect(text).toContain("Read every page before marking anything");
+    expect(text).toMatch(/need not repeat the question or part number, say "continued", or begin at the top of the page/);
+    expect(text).toMatch(/not by which page it is on/);
+    expect(text).toMatch(/never withhold a mark because the work for it is on another page or is unlabelled/);
+  });
+
+  it("tells a continuation from a fresh start by the crossing-out rule", () => {
+    const text = requestText({ answerParts: [{ text: "working" }, image] });
+    expect(text).toContain("Carrying on is not starting again.");
+    expect(text).toMatch(/crossed out and redone elsewhere is not marked; work crossed out and never replaced still is/);
+  });
+
+  it("leaves a typed answer's request as it was", () => {
+    expect(requestText({ answerParts: [{ text: "typed answer" }] })).not.toContain("Read every page");
+  });
+
+  it("follows the parts the juror is actually sent", () => {
+    expect(
+      requestText({ role: "third-view", answerParts: [{ text: "working" }, image], thirdViewParts: [{ text: "typed" }] })
+    ).not.toContain("Read every page");
+    expect(
+      requestText({ role: "third-view", answerParts: [{ text: "typed" }], thirdViewParts: [{ text: "working" }, image] })
+    ).toContain("Read every page");
+  });
+
+  it("can be switched off to measure it", () => {
+    expect(
+      requestText({ answerParts: [{ text: "working" }, image], variant: { workAcrossPages: false } })
+    ).not.toContain("Read every page");
+  });
+});
+
+/**
  * Jami has marked half a mark generous through every configuration tried this
  * week -- with and without the question and scheme in front of it, and with
  * and without a prompt telling it to check the working. Neither more
