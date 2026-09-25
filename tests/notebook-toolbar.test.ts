@@ -6,8 +6,10 @@ import {
   getNotebookToolbarSettleDuration,
   getNearestNotebookToolbarDock,
   hasNotebookToolbarDragStarted,
+  isNotebookToolDoublePress,
   isNotebookToolbarDock,
   isNotebookToolbarSideDock,
+  NOTEBOOK_TOOL_DOUBLE_PRESS_MS,
   NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY,
   readNotebookToolbarDockPreference,
   saveNotebookToolbarDockPreference,
@@ -180,5 +182,33 @@ describe("notebook toolbar docking", () => {
 
     values.set(NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY, "center");
     expect(readNotebookToolbarDockPreference()).toBe("bottom");
+  });
+});
+
+describe("putting a tool down", () => {
+  const press = (tool: string, at: number) => ({ tool, at });
+
+  it("takes two quick presses of the same tool as a double press", () => {
+    expect(isNotebookToolDoublePress(press("pen", 1000), press("pen", 1250))).toBe(true);
+    expect(
+      isNotebookToolDoublePress(
+        press("pen", 1000),
+        press("pen", 1000 + NOTEBOOK_TOOL_DOUBLE_PRESS_MS)
+      )
+    ).toBe(true);
+  });
+
+  it("leaves a slow second press to open the tool's settings", () => {
+    expect(
+      isNotebookToolDoublePress(
+        press("pen", 1000),
+        press("pen", 1001 + NOTEBOOK_TOOL_DOUBLE_PRESS_MS)
+      )
+    ).toBe(false);
+  });
+
+  it("never pairs presses of two different tools", () => {
+    expect(isNotebookToolDoublePress(press("pen", 1000), press("eraser", 1100))).toBe(false);
+    expect(isNotebookToolDoublePress(null, press("pen", 1000))).toBe(false);
   });
 });

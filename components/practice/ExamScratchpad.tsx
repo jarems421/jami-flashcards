@@ -121,26 +121,18 @@ import {
  * it lifts, and the page is read with the editor's own non-blocking export.
  */
 const SAVE_IDLE_MS = 1_500;
-/** A finger has to travel this far before it scrolls, so a resting hand does not. */
+/**
+ * A finger has to travel this far before the sheet decides what it means.
+ *
+ * Kept short of the slop a browser waits out before starting a scroll of its
+ * own, so a sideways swipe is claimed before it can be taken for one.
+ */
 const PAN_START_DISTANCE = 8;
 /**
  * How long after the Pencil lifts that a touch is still taken for the hand
  * that was holding it. The notebook's own figure.
  */
 const STYLUS_TOUCH_COOLDOWN_MS = 180;
-/**
- * How a scroll flung with a finger on the sheet carries on after it lifts.
- *
- * Inline, the sheet refuses native panning so the Pencil can write, and moves
- * the practice page itself instead. It used to stop dead the moment the finger
- * lifted, which is the part of scrolling a hand notices most: everywhere else
- * on the page a flick keeps going. Per-frame decay at 60fps, and the speed in
- * px/ms below which it stops.
- */
-const SCROLL_FLING_DECAY = 0.95;
-const SCROLL_FLING_MIN_SPEED = 0.02;
-/** A fling is only read from the last stretch of the drag; older movement says nothing. */
-const SCROLL_FLING_WINDOW_MS = 100;
 /** How far one notch of a mouse wheel, or a trackpad pinch, zooms. */
 const WHEEL_ZOOM_SENSITIVITY = 0.0025;
 const NO_PAN: NotebookViewportPoint = { x: 0, y: 0 };
@@ -193,27 +185,16 @@ function lockTouchScrolling() {
   return () => document.removeEventListener("touchmove", block, options);
 }
 
-/** The element a finger drag on the sheet should move: the nearest scroller above it. */
-function scrollableAncestor(element: HTMLElement | null): Element | null {
-  for (let node = element?.parentElement ?? null; node; node = node.parentElement) {
-    const style = window.getComputedStyle(node);
-    const scrolls = /(auto|scroll)/.test(`${style.overflowX} ${style.overflowY}`);
-    if (scrolls && (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)) {
-      return node;
-    }
-  }
-  return document.scrollingElement;
-}
-
 /**
  * One finger on the sheet, before it has said what it means.
  *
  * A drag is either the page moving under the frame or the page turning, and
  * which it is cannot be known at the moment of contact. So the contact is
  * recorded, nothing happens until it has travelled, and the first travel
- * decides: sideways on a fitted sheet turns the page, anything else scrolls.
- * That is the notebook's rule, and the thresholds below are the notebook's own
- * numbers -- turning a page should not be a different gesture here.
+ * decides: sideways on a fitted sheet turns the page, anything else is a
+ * scroll. That is the notebook's rule, and the thresholds below are the
+ * notebook's own numbers -- turning a page should not be a different gesture
+ * here.
  */
 type FingerGesture = {
   pointerId: number;
@@ -222,14 +203,8 @@ type FingerGesture = {
   lastX: number;
   lastY: number;
   intent: "undecided" | "pan" | "swipe";
-  target: Element | null;
   /** Recent x positions, for the flick check on release. */
   samples: NotebookSwipeSample[];
-  /**
-   * Recent y positions, for the fling a scroll carries on with. Held in the
-   * swipe sample's `x`, since the velocity maths does not care which axis.
-   */
-  verticalSamples: NotebookSwipeSample[];
   /** How far the sheet has been dragged, in px. */
   offset: number;
   /** The pull past the last page that asks for another sheet. */
@@ -335,8 +310,6 @@ function ExamScratchpad({
   const pageShellRef = useRef<HTMLDivElement | null>(null);
   const addSheetHintRef = useRef<HTMLDivElement | null>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** The scroll still carrying on after a flick, if there is one. */
-  const flingFrame = useRef(0);
   /**
    * Fingers that are down on the frame, by pointer id.
    *
@@ -610,10 +583,6 @@ function ExamScratchpad({
         clearTimeout(settleTimer.current);
         settleTimer.current = null;
       }
-      if (flingFrame.current) {
-        window.cancelAnimationFrame(flingFrame.current);
-        flingFrame.current = 0;
-      }
       releaseTouchLockRef.current?.();
       releaseTouchLockRef.current = null;
       flushOnLeaveRef.current();
@@ -655,13 +624,20 @@ function ExamScratchpad({
    * and then needs a frame to settle before it delivers the next one. It
    * cancels the touch default only for Pencil contact or while ink is being
    * drawn, so taps on controls stay native.
+   *
+   * On the whole frame rather than the page, and for the moment after the
+   * Pencil lifts as well as while it writes. A fitted sheet lets a finger
+   * scroll the practice page natively (see `data-sheet-touch`), so this guard
+   * is now all that stops the Pencil in the margin, or the hand that was
+   * holding it, from scrolling the page instead.
    */
   useEffect(() => {
-    const surface = surfaceRef.current;
-    if (!surface) return;
+    const frame = frameRef.current;
+    if (!frame) return;
     return installNotebookStylusTouchListeners({
-      surface,
-      getInkInteractionActive: () => inkInteractionActiveRef.current,
+      surface: frame,
+      getInkInteractionActive: () =>
+        inkInteractionActiveRef.current || Date.now() < stylusCooldownUntilRef.current,
     });
   }, []);
 
@@ -752,33 +728,6 @@ function ExamScratchpad({
     land();
   }, []);
 
-  const stopFling = useCallback(() => {
-    if (!flingFrame.current) return;
-    window.cancelAnimationFrame(flingFrame.current);
-    flingFrame.current = 0;
-  }, []);
-
-  /** Carries a released scroll on, slowing, until it stops or a finger lands. */
-  const fling = useCallback(
-    (target: Element, velocityY: number) => {
-      stopFling();
-      let speed = velocityY;
-      let last = performance.now();
-      const step = (now: number) => {
-        const elapsed = Math.min(64, Math.max(0, now - last));
-        last = now;
-        target.scrollBy({ top: -speed * elapsed });
-        speed *= Math.pow(SCROLL_FLING_DECAY, elapsed / 16.67);
-        flingFrame.current =
-          Math.abs(speed) < SCROLL_FLING_MIN_SPEED ? 0 : window.requestAnimationFrame(step);
-      };
-      if (Math.abs(speed) >= SCROLL_FLING_MIN_SPEED) {
-        flingFrame.current = window.requestAnimationFrame(step);
-      }
-    },
-    [stopFling]
-  );
-
   const cancelGesture = useCallback(() => {
     gestureRef.current = null;
     writeCreatePull(0);
@@ -845,7 +794,6 @@ function ExamScratchpad({
           uiSyncTimer.current = null;
         }
         cancelGesture();
-        stopFling();
         releaseTouchLockRef.current ??= lockTouchScrolling();
         return;
       }
@@ -855,18 +803,24 @@ function ExamScratchpad({
       if (dirtyRef.current) scheduleSave();
       scheduleUiSync();
     },
-    [cancelGesture, scheduleSave, scheduleUiSync, stopFling]
+    [cancelGesture, scheduleSave, scheduleUiSync]
   );
 
   /*
    * One finger on the sheet, once the viewport has passed on it.
    *
    * Sideways on a fitted page turns it, or pulls another sheet in past the
-   * last one. Up and down on a fitted page, inline, scrolls the practice page
-   * the way a finger does anywhere else on it: the sheet refuses native panning
-   * so the Pencil can write, and a page taller than the screen could otherwise
-   * only be moved by finding a margin. A zoomed page belongs to the viewport --
-   * one finger moves it, two pinch it -- and those never reach here.
+   * last one. Up and down is a scroll, and a scroll is the browser's: inline,
+   * the practice page scrolls natively and takes the finger off the sheet with
+   * a `pointercancel`; full screen there is nothing behind the sheet to move.
+   * A zoomed page belongs to the viewport -- one finger moves it, two pinch it
+   * -- and those never reach here.
+   *
+   * The sheet used to scroll the practice page itself, a `scrollBy` for every
+   * move of the finger. On iPad that is a feedback loop: Safari reports a
+   * touch against the scroll position the screen is showing, which trails the
+   * one the page has just been given, so each scroll moved the finger it was
+   * measured from and the page shook up and down under a finger held still.
    *
    * There used to be a size check here that dropped any contact wider than
    * 40px as a resting palm. iPadOS reports a fingertip at around that size, so
@@ -880,7 +834,6 @@ function ExamScratchpad({
       if (!shouldPointerSwipePages(event.pointerType)) return;
       if (inkInteractionActiveRef.current || gestureRef.current) return;
       landSettlingTurn();
-      stopFling();
       const frame = frameRef.current;
       gestureRef.current = {
         pointerId: event.pointerId,
@@ -889,10 +842,7 @@ function ExamScratchpad({
         lastX: event.clientX,
         lastY: event.clientY,
         intent: "undecided",
-        // Full screen there is nothing behind the sheet a drag should move.
-        target: sheetRef.current.expanded ? null : scrollableAncestor(frame),
         samples: [{ x: event.clientX, time: event.timeStamp }],
-        verticalSamples: [{ x: event.clientY, time: event.timeStamp }],
         offset: 0,
         creating: false,
       };
@@ -908,7 +858,7 @@ function ExamScratchpad({
         hint.style.top = `${top}px`;
       }
     },
-    [landSettlingTurn, stopFling]
+    [landSettlingTurn]
   );
 
   const moveSwipe = useCallback(
@@ -924,8 +874,6 @@ function ExamScratchpad({
       const dy = event.clientY - gesture.originY;
       gesture.samples.push({ x: event.clientX, time: event.timeStamp });
       if (gesture.samples.length > SWIPE_SAMPLE_LIMIT) gesture.samples.shift();
-      gesture.verticalSamples.push({ x: event.clientY, time: event.timeStamp });
-      if (gesture.verticalSamples.length > SWIPE_SAMPLE_LIMIT) gesture.verticalSamples.shift();
 
       if (gesture.intent === "undecided") {
         if (Math.hypot(dx, dy) < PAN_START_DISTANCE) return;
@@ -936,14 +884,9 @@ function ExamScratchpad({
         gesture.intent = intent === "page" ? "swipe" : "pan";
       }
 
-      if (gesture.intent === "pan") {
-        gesture.target?.scrollBy({
-          left: gesture.lastX - event.clientX,
-          top: gesture.lastY - event.clientY,
-        });
-      }
       gesture.lastX = event.clientX;
       gesture.lastY = event.clientY;
+      // A scroll is the browser's; see `beginSwipe`.
       if (gesture.intent === "pan") return;
 
       const sheet = sheetRef.current;
@@ -983,15 +926,6 @@ function ExamScratchpad({
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       gestureRef.current = null;
       writeCreatePull(0);
-      if (gesture.intent === "pan") {
-        if (gesture.target) {
-          fling(
-            gesture.target,
-            getNotebookSwipeVelocity(gesture.verticalSamples, SCROLL_FLING_WINDOW_MS)
-          );
-        }
-        return;
-      }
       if (gesture.intent !== "swipe") return;
 
       const sheet = sheetRef.current;
@@ -1037,7 +971,7 @@ function ExamScratchpad({
           : undefined,
       });
     },
-    [fling, settleSheet, writeCreatePull]
+    [settleSheet, writeCreatePull]
   );
 
   const cancelSwipe = useCallback(
@@ -1381,6 +1315,39 @@ function ExamScratchpad({
   }, []);
 
   /*
+   * What a finger on a fitted sheet keeps from the browser.
+   *
+   * Inline and fitted, the frame is `touch-action: pan-y`, so a finger dragged
+   * up or down scrolls the practice page natively. Two gestures are still the
+   * sheet's, and are claimed before the browser can start a scroll of its own:
+   * a sideways drag once it has been read as a page turn, and any second
+   * finger, which is a pinch. `touch-action` is not trusted with either alone:
+   * iPadOS can begin a pan on a sideways drag and cancel the pointer, and a
+   * pinch drifting upwards is a two-finger scroll to a browser.
+   *
+   * Pointer events are dispatched before the touch events for the same
+   * movement, so a swipe's intent is decided by the time its `touchmove`
+   * arrives -- see `PAN_START_DISTANCE`.
+   */
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const claim = (event: TouchEvent) => {
+      if (!event.cancelable) return;
+      if (event.touches.length >= 2 || gestureRef.current?.intent === "swipe") {
+        event.preventDefault();
+      }
+    };
+    const options: AddEventListenerOptions = { passive: false };
+    frame.addEventListener("touchstart", claim, options);
+    frame.addEventListener("touchmove", claim, options);
+    return () => {
+      frame.removeEventListener("touchstart", claim, options);
+      frame.removeEventListener("touchmove", claim, options);
+    };
+  }, []);
+
+  /*
    * Every finger lands on the frame rather than the ink.
    *
    * The ink editor passes touches straight through -- fingers never draw -- so
@@ -1391,12 +1358,11 @@ function ExamScratchpad({
   const handleFramePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.pointerType !== "touch") return;
-      stopFling();
       frameTouchesRef.current.add(event.pointerId);
       if (handleTouchPointerDown(event)) return;
       beginSwipe(event);
     },
-    [beginSwipe, handleTouchPointerDown, stopFling]
+    [beginSwipe, handleTouchPointerDown]
   );
 
   const handleFramePointerMove = useCallback(
@@ -1625,6 +1591,43 @@ function ExamScratchpad({
     // Each mode opens fitted: a zoom chosen for one frame means little in the other.
     fitPage();
   };
+  /**
+   * Inline and fitted, a finger dragged up or down the sheet scrolls the
+   * practice page natively; see the claim listener above. Zoomed, or full
+   * screen, every finger is the sheet's.
+   */
+  const fingersScrollPage = !expanded && !zoomed;
+  const zoomControls = (
+    <div
+      role="group"
+      aria-label="Zoom"
+      className="flex shrink-0 items-center gap-0.5 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-0.5"
+    >
+      <ToolbarIconButton
+        label="Zoom out"
+        icon="minus"
+        disabled={zoomOutStep === undefined}
+        onClick={() => zoomAbout(zoomOutStep ?? 1)}
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        aria-label="Fit the page"
+        title="Fit the page"
+        className="min-w-[3.5rem] tabular-nums"
+        onClick={fitPage}
+      >
+        {zoomed ? `${Math.round(layout.zoom * 100)}%` : "Fit"}
+      </Button>
+      <ToolbarIconButton
+        label="Zoom in"
+        icon="plus"
+        disabled={zoomInStep === undefined}
+        onClick={() => zoomAbout(zoomInStep ?? layout.zoom)}
+      />
+    </div>
+  );
 
   return (
     <div
@@ -1773,42 +1776,7 @@ function ExamScratchpad({
             onClick={() => (currentPageHasInk ? setConfirm("delete-page") : deletePage())}
           />
           <span aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-[var(--color-border)]" />
-          {/*
-            * Always there full screen. Inline, only once the page has been
-            * pinched: the way back to the fitted page has to be in reach, but
-            * a column of controls nobody has asked for does not.
-            */}
-          {expanded || zoomed ? (
-            <div
-              role="group"
-              aria-label="Zoom"
-              className="flex shrink-0 items-center gap-0.5 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-0.5"
-            >
-              <ToolbarIconButton
-                label="Zoom out"
-                icon="minus"
-                disabled={zoomOutStep === undefined}
-                onClick={() => zoomAbout(zoomOutStep ?? 1)}
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                aria-label="Fit the page"
-                title="Fit the page"
-                className="min-w-[3.5rem] tabular-nums"
-                onClick={fitPage}
-              >
-                {zoomed ? `${Math.round(layout.zoom * 100)}%` : "Fit"}
-              </Button>
-              <ToolbarIconButton
-                label="Zoom in"
-                icon="plus"
-                disabled={zoomInStep === undefined}
-                onClick={() => zoomAbout(zoomInStep ?? layout.zoom)}
-              />
-            </div>
-          ) : null}
+          {expanded ? zoomControls : null}
           <ToolbarIconButton
             label={expanded ? "Close full screen" : "Write full screen"}
             icon={expanded ? "close" : "expand"}
@@ -1816,6 +1784,21 @@ function ExamScratchpad({
             onClick={toggleFullScreen}
           />
         </div>
+
+        {/*
+          * Always in the toolbar full screen. Inline, only once the page has
+          * been pinched -- the way back to the fitted page has to be in reach,
+          * but controls nobody has asked for do not -- and floated under the
+          * toolbar rather than added to it.
+          *
+          * It used to join the page pill. On an iPad held upright that made
+          * the toolbar too wide for one row, so the moment a pinch ended the
+          * toolbar wrapped, and the sheet under the fingers dropped by a row;
+          * pinching back out lifted it again.
+          */}
+        {!expanded && zoomed ? (
+          <div className={`${PILL_CLASS} absolute right-2 top-full mt-1`}>{zoomControls}</div>
+        ) : null}
 
         <NotebookToolSettingsPopover
           dock="top"
@@ -1922,6 +1905,7 @@ function ExamScratchpad({
       <div
         ref={frameRef}
         data-notebook-page-frame
+        data-sheet-touch={fingersScrollPage ? "scroll" : undefined}
         className={
           expanded
             ? "relative mb-[env(safe-area-inset-bottom)] min-h-0 flex-1 overflow-hidden"
@@ -1955,9 +1939,6 @@ function ExamScratchpad({
             * the same paper behind it, a few pixels larger all round: just
             * enough that the square corner of the print falls inside the curve
             * rather than outside it. Nothing moves, and nothing is cut.
-            *
-            * Rendered from the first commit, before the frame has been measured:
-            * the Pencil guard is installed on this element once, at mount.
             */}
           <div
             ref={surfaceRef}

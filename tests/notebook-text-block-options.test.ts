@@ -104,4 +104,38 @@ describe("notebook text-block outline options", () => {
       outlineVisible: false,
     });
   });
+
+  it("never makes a box shorter than the text in it", () => {
+    const block = { ...TEXT_BLOCK, outlineVisible: true };
+    // From the bottom, it stops at the text.
+    expect(
+      resizeNotebookTextBlockFromEdge({
+        block,
+        edge: "bottom",
+        deltaX: 0,
+        deltaY: -100,
+        minHeight: 90,
+      }).height
+    ).toBe(90);
+    // From the top, it stops too, instead of sliding the whole box down.
+    expect(
+      resizeNotebookTextBlockFromEdge({
+        block,
+        edge: "top",
+        deltaX: 0,
+        deltaY: 100,
+        minHeight: 90,
+      })
+    ).toMatchObject({ y: 122, height: 90 });
+    // Growing is unaffected.
+    expect(
+      resizeNotebookTextBlockFromEdge({
+        block,
+        edge: "bottom",
+        deltaX: 0,
+        deltaY: 40,
+        minHeight: 90,
+      }).height
+    ).toBe(160);
+  });
 });

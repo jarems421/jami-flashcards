@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import NotebookTextBlockOptions from "@/components/workspace/NotebookTextBlockOptions";
+import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
 import {
   MAX_NOTEBOOK_TEXT_BLOCK_TEXT,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/workspace/notebooks";
 import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
 import {
+  NOTEBOOK_TEXT_BODY_ATTRIBUTE,
   NOTEBOOK_TEXT_LAYER_ATTRIBUTE,
   NOTEBOOK_TEXT_LAYER_STYLE,
   NOTEBOOK_TEXT_STYLE,
@@ -94,6 +96,14 @@ type Props = {
   ) => void;
   onResize: (event: ReactPointerEvent<HTMLElement>) => void;
   onStopResize: (event: ReactPointerEvent<HTMLElement>) => void;
+  /**
+   * The move handle was pressed. A box being typed in has no body left to
+   * drag -- the text area has it all -- so this is how it is moved.
+   */
+  onStartMove?: (
+    block: NotebookTextBlock,
+    event: ReactPointerEvent<HTMLElement>
+  ) => void;
   onChangeText: (blockId: string, text: string) => void;
   /** The box needs to be this tall, in page units, to show all its text. */
   onFitHeight?: (blockId: string, height: number) => void;
@@ -203,6 +213,7 @@ function NotebookTextBlockLayer({
   onStartResize,
   onResize,
   onStopResize,
+  onStartMove,
   onChangeText,
   onFitHeight,
   onStopEditing,
@@ -235,6 +246,7 @@ function NotebookTextBlockLayer({
         const optionsOpenAbove =
           block.y + block.height / 2 > NOTEBOOK_PAGE_COORDINATE_HEIGHT / 2;
         const optionsAlignFromLeft = block.x + block.width < 420;
+        const chromeBelow = block.y < OPTIONS_TRIGGER_CLEARANCE;
 
         return (
           <div
@@ -268,7 +280,7 @@ function NotebookTextBlockLayer({
                   outlineVisible={block.outlineVisible}
                   openAbove={optionsOpenAbove}
                   alignFromLeft={optionsAlignFromLeft}
-                  triggerBelow={block.y < OPTIONS_TRIGGER_CLEARANCE}
+                  triggerBelow={chromeBelow}
                   onOpenChange={(open) => onSetOptionsOpen(block.id, open)}
                   onToggleOutline={() => onToggleOutline(block.id)}
                   onDelete={() => onDelete(block.id)}
@@ -298,6 +310,27 @@ function NotebookTextBlockLayer({
                   </button>
                 ))}
               </>
+            ) : null}
+
+            {/*
+              Kept through its own drag, unlike the rest of the chrome: it is
+              what the pointer is holding, and unmounting it would drop the
+              capture and strand the box mid-move.
+            */}
+            {selected && editingEnabled && onStartMove ? (
+              <button
+                type="button"
+                aria-label="Move text box"
+                title="Drag to move"
+                data-text-block-move-handle="true"
+                className={`absolute left-0 z-30 inline-grid h-7 w-7 cursor-move touch-none place-items-center rounded-sm border border-black/15 bg-black/60 text-[#f8fafc] shadow-sm backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc] [&_svg]:h-4 [&_svg]:w-4 ${
+                  chromeBelow ? "top-full mt-1.5" : "bottom-full mb-1.5"
+                }`}
+                onPointerDown={(event) => onStartMove(block, event)}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <NotebookIcon name="move" />
+              </button>
             ) : null}
 
             {editing && editingEnabled ? (
@@ -332,7 +365,10 @@ function NotebookTextBlockLayer({
                   onBlack ? "text-[#f8fafc]" : "text-slate-950"
                 } ${block.text.trim() ? "" : "opacity-60"}`}
               >
-                <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+                <span
+                  {...{ [NOTEBOOK_TEXT_BODY_ATTRIBUTE]: "true" }}
+                  className="min-w-0 flex-1 whitespace-pre-wrap break-words"
+                >
                   {displayText}
                 </span>
               </button>

@@ -1086,6 +1086,22 @@
     user-select: none;
   }
 
+  /*
+   * A fitted practice sheet, inline, lets a finger scroll the page it sits on.
+   *
+   * The sheet used to refuse every native pan and scroll the page itself from
+   * the finger's position, which on iPad fed back on itself and shook the page
+   * up and down. Up and down is the browser's again; the sheet keeps sideways
+   * swipes and pinches by cancelling their touches, and the Pencil by the
+   * notebook's stylus guard. Set by ExamScratchpad only while the sheet is
+   * fitted and not full screen.
+   */
+  [data-sheet-touch="scroll"],
+  [data-sheet-touch="scroll"] .notebook-page-surface,
+  [data-sheet-touch="scroll"] .notebook-ink-surface {
+    touch-action: pan-y;
+  }
+
   .notebook-thickness-slider {
     appearance: none;
     -webkit-appearance: none;
@@ -1422,6 +1438,52 @@
   @container plan-dates (min-width: 26rem) {
     .plan-dates-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  /*
+   * OptionSwitch's columns, by the width it is given rather than the screen's.
+   *
+   * Each step is where a tile still fits its label on a line or two: about
+   * nine rem a tile, more where the choices are written out in full. Below the
+   * first step it is one tile a row, which reads fine; a squeezed row never
+   * does.
+   */
+  .option-switch {
+    container: option-switch / inline-size;
+  }
+
+  .option-switch-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @container option-switch (min-width: 18rem) {
+    .option-switch-grid:is([data-columns="4"], [data-columns="5"]) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container option-switch (min-width: 28rem) {
+    .option-switch-grid[data-columns="2"] {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container option-switch (min-width: 33rem) {
+    .option-switch-grid:is([data-columns="3"], [data-columns="5"]) {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @container option-switch (min-width: 44rem) {
+    .option-switch-grid[data-columns="4"] {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  @container option-switch (min-width: 55rem) {
+    .option-switch-grid[data-columns="5"] {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
     }
   }
 
@@ -3154,9 +3216,27 @@ html.panels-solid body.constellation-background-enabled .app-nav {
     border-top: 1px solid var(--color-border);
   }
 
+  /*
+   * Tables and drawn figures scroll sideways inside their own frame rather
+   * than squeezing into a narrow Tutor card. The table's minimum width comes
+   * from its column count, set in AiResponseRenderer.
+   */
+  .ai-response .ai-response-table {
+    margin: 0.75rem 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    border-radius: var(--radius-md);
+  }
+
+  .ai-response .ai-response-table:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
   .ai-response table {
     width: 100%;
-    margin: 0.75rem 0;
+    margin: 0;
     border-collapse: collapse;
     font-size: 0.875rem;
   }
@@ -3171,6 +3251,24 @@ html.panels-solid body.constellation-background-enabled .app-nav {
   .ai-response th {
     background-color: var(--color-glass-subtle);
     font-weight: 600;
+  }
+
+  .ai-response .ai-drawn-figure {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Its own size, or the card's width, but never smaller than a figure can be read at. */
+  .ai-response .ai-drawn-figure > svg {
+    display: block;
+    height: auto;
+    margin-inline: auto;
+    max-width: max(100%, 20rem);
+  }
+
+  .ai-response .ai-drawn-figure > svg:not([width]) {
+    width: 100%;
+    min-width: 20rem;
   }
 
   /*

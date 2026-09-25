@@ -84,6 +84,30 @@ export function saveNotebookScribbleErasePreference(enabled: boolean) {
   }
 }
 
+/**
+ * How close together two presses of the same tool are to count as a double
+ * press, which puts the tool down.
+ *
+ * One press of the tool already in hand opens its settings, which left
+ * nothing on the toolbar that let go of a tool: only the text box button
+ * toggled, and the pen, highlighter and eraser opened and closed their
+ * settings for ever. A double press puts any of them down.
+ */
+export const NOTEBOOK_TOOL_DOUBLE_PRESS_MS = 400;
+
+export type NotebookToolPress = { tool: string; at: number };
+
+/** Whether this press, following the last one, completes a double press. */
+export function isNotebookToolDoublePress(
+  previous: NotebookToolPress | null,
+  next: NotebookToolPress,
+  windowMs = NOTEBOOK_TOOL_DOUBLE_PRESS_MS
+) {
+  if (!previous || previous.tool !== next.tool) return false;
+  const elapsed = next.at - previous.at;
+  return elapsed >= 0 && elapsed <= windowMs;
+}
+
 export function isNotebookToolbarSideDock(dock: NotebookToolbarDock) {
   return dock === "left" || dock === "right";
 }

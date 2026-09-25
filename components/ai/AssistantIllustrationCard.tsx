@@ -48,25 +48,33 @@ export default function AssistantIllustrationCard({
 
   return (
     <figure className="mt-3 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-e0">
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-[var(--color-glass-subtle)]">
-        {url ? (
-          <Image
-            src={url}
-            alt={illustration.altText}
-            fill
-            unoptimized
-            sizes="(min-width: 640px) 24rem, 84vw"
-            className="object-contain"
-          />
-        ) : loadFailed ? (
-          <div className="grid h-full place-items-center px-5 text-center text-xs leading-5 text-text-muted">
-            This visual could not be loaded. It may have been removed.
-          </div>
-        ) : (
-          <div className="grid h-full place-items-center" role="status" aria-label="Loading visual">
-            <span className="h-5 w-5 animate-spin rounded-full border-2 border-accent/45 border-r-transparent" />
-          </div>
-        )}
+      {/*
+        A visual keeps a width it can be read at, and scrolls sideways inside
+        its frame when the Tutor's card is shrunk narrower than that -- the
+        labels in a diagram are the point of it, and shrinking with the card
+        made them too small to read.
+      */}
+      <div className="overflow-x-auto overscroll-x-contain">
+        <div className="relative aspect-[4/3] w-full min-w-[20rem] overflow-hidden bg-[var(--color-glass-subtle)]">
+          {url ? (
+            <Image
+              src={url}
+              alt={illustration.altText}
+              fill
+              unoptimized
+              sizes="(min-width: 640px) 24rem, 84vw"
+              className="object-contain"
+            />
+          ) : loadFailed ? (
+            <div className="grid h-full place-items-center px-5 text-center text-xs leading-5 text-text-muted">
+              This visual could not be loaded. It may have been removed.
+            </div>
+          ) : (
+            <div className="grid h-full place-items-center" role="status" aria-label="Loading visual">
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-accent/45 border-r-transparent" />
+            </div>
+          )}
+        </div>
       </div>
       <figcaption className="space-y-3 p-3.5">
         <p className="text-xs leading-5 text-text-secondary">{illustration.caption}</p>

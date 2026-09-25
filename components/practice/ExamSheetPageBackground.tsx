@@ -21,6 +21,13 @@ import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette"
  * A continuation page is. The blank answer pages a paper leaves are counted at
  * ingestion and never rendered, so this draws its own paper -- the notebook's
  * own rulings and papers, so the two surfaces are made of the same stuff.
+ *
+ * Either way it is a GPU layer of its own, as the notebook's page backgrounds
+ * are (see NotebookLivePageLayers). A pinch scales the whole sheet and a pan
+ * slides it, and a page-sized picture or ruling painted into the sheet's own
+ * layer had to be painted again for the new size or the newly uncovered part.
+ * On a layer of its own, the printed page is handed to the compositor as an
+ * image and only ever sampled, and the ruling is rasterised once.
  */
 function ExamSheetPageBackground({
   page,
@@ -43,6 +50,7 @@ function ExamSheetPageBackground({
         path={assetPath(page.assetId)}
         width={page.width}
         height={page.height}
+        imageClassName="[transform:translateZ(0)] [will-change:transform]"
       />
     );
   }
@@ -55,7 +63,7 @@ function ExamSheetPageBackground({
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0"
+      className="pointer-events-none absolute inset-0 [contain:paint] [transform:translateZ(0)] [will-change:transform]"
       style={{
         backgroundColor: getNotebookPaperPalette(paper.pageColor).paper,
         ...getNotebookPageStyleBackground(paper.pageColor, paper.pageStyle),

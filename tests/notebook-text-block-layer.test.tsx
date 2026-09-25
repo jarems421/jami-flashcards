@@ -280,6 +280,44 @@ describe("NotebookTextBlockLayer", () => {
     expect(options().className).toContain("top-full");
   });
 
+  it("offers a move handle on a selected box, kept through its own drag", () => {
+    const onStartMove = vi.fn();
+    const renderWith = (over: { editing?: boolean; gesturing?: boolean }) =>
+      act(() => {
+        root.render(
+          <NotebookTextBlockLayer
+            textBlocks={[block()]}
+            pageColor="white"
+            editingEnabled
+            selectedTextBlockId="block-1"
+            editingTextBlockId={over.editing ? "block-1" : null}
+            activeTextGestureId={over.gesturing ? "block-1" : null}
+            openTextBlockOptionsId={null}
+            {...handlers}
+            onStartMove={onStartMove}
+          />
+        );
+      });
+    const handle = () =>
+      container.querySelector<HTMLElement>("[data-text-block-move-handle='true']");
+
+    // Being typed in is exactly when the body cannot be dragged.
+    renderWith({ editing: true });
+    expect(handle()).not.toBeNull();
+    act(() => {
+      handle()!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    });
+    expect(onStartMove).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "block-1" }),
+      expect.anything()
+    );
+
+    // Unmounting it mid-drag would drop the pointer it is holding.
+    renderWith({ gesturing: true });
+    expect(handle()).not.toBeNull();
+    expect(resizeHandles()).toHaveLength(0);
+  });
+
   it("drops the idle outline when the block asks to hide it", () => {
     render({ textBlocks: [block({ outlineVisible: false })] });
     expect(blockEl()!.className).toContain("border-transparent");

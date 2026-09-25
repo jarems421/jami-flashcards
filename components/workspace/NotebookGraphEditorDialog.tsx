@@ -523,7 +523,7 @@ function GraphEditor({ graph, onCancel, onSave }: Omit<Props, "open">) {
                 ) : null}
               </div>
             </div>
-            <p className="text-center text-xs text-text-muted">Drag to move around the graph.</p>
+            <p className="text-center text-xs text-text-muted">Drag to move around the graph. Pinch or scroll to zoom.</p>
           </div>
         </div>
 

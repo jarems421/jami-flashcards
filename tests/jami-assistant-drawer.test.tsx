@@ -278,6 +278,38 @@ describe("JamiAssistantDrawer floating over a notebook", () => {
     expect(document.querySelector("[data-dialog-backdrop]")).toBeNull();
   });
 
+  it("folds the chat's own actions into one menu on a small card", () => {
+    renderFloating(true);
+    // The window's controls stay out; history and a new chat do not crowd them.
+    expect(button(/make jami full size/i)).toBeDefined();
+    expect(button(/open jami chat history/i)).toBeUndefined();
+
+    const more = button(/more jami options/i);
+    act(() => more?.click());
+    expect(more?.getAttribute("aria-expanded")).toBe("true");
+    const items = [...document.querySelectorAll("[role='menu'] [role^='menuitem']")].map(
+      (item) => item.textContent
+    );
+    expect(items).toEqual(expect.arrayContaining(["New chat", "Chat history"]));
+
+    const history = [...document.querySelectorAll<HTMLElement>("[role='menuitem']")].find(
+      (item) => item.textContent === "Chat history"
+    );
+    act(() => history?.click());
+    expect(document.querySelector("[role='menu']")).toBeNull();
+    expect(document.body.textContent).toContain("Chat history");
+  });
+
+  it("lays the chat's actions out again once the card is wide", () => {
+    localStorage.setItem(
+      "jami:tutor-card:v1",
+      JSON.stringify({ rect: { x: 20, y: 20, width: 600, height: 600 }, maximised: false })
+    );
+    renderFloating(true);
+    expect(button(/more jami options/i)).toBeUndefined();
+    expect(button(/open jami chat history/i)).toBeDefined();
+  });
+
   it("shrinks to a pill that brings the card back", () => {
     renderFloating(true);
     act(() => button(/shrink jami/i)?.click());

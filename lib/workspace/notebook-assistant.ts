@@ -1,7 +1,4 @@
-import { featureFlags } from "@/lib/app/feature-flags";
-
 type NotebookPromptAction = { label: string; prompt: string };
-type NotebookQuickAction = NotebookPromptAction | { label: string; run: () => void };
 
 const MARK_MY_WORK_ACTION = {
   label: "Mark my work",
@@ -9,43 +6,38 @@ const MARK_MY_WORK_ACTION = {
     "Mark the work on this page. Give clear indicative feedback on what is correct, what needs fixing, and the most useful next step. Only give a formal mark when this page includes a defensible mark allocation or mark scheme; otherwise label it as feedback, not an official grade.",
 } as const;
 
-const NOTEBOOK_LEARNING_ACTIONS = [
-  {
-    label: "Give me a hint",
-    prompt:
-      "Give me one useful hint for the work on this page without revealing the full answer.",
-  },
-  {
-    label: "Explain this page",
-    prompt:
-      "Explain the ideas and working on this page clearly, including anything important I may have missed.",
-  },
-  {
-    label: "Quiz me",
-    prompt:
-      "Quiz me on the main idea from this page. Ask one question at a time and do not reveal the answer yet.",
-  },
-] as const;
+const HINT_ACTION = {
+  label: "Give me a hint",
+  prompt:
+    "Give me one useful hint for the work on this page without revealing the full answer.",
+} as const;
 
-export function getNotebookAssistantQuickActions(input: { hasWork: boolean }): NotebookPromptAction[];
+const EXPLAIN_ACTION = {
+  label: "Explain this page",
+  prompt:
+    "Explain the ideas and working on this page clearly, including anything important I may have missed.",
+} as const;
+
+const QUIZ_ACTION = {
+  label: "Quiz me",
+  prompt:
+    "Quiz me on the main idea from this page. Ask one question at a time and do not reveal the answer yet.",
+} as const;
+
+/**
+ * The three ways into a fresh notebook chat.
+ *
+ * Three, always: a wall of chips over an empty conversation reads as a menu to
+ * study rather than a nudge to start. Once the page has work on it, checking
+ * that work is the most useful thing Jami can do, so it takes the quiz's place.
+ * Past Paper Practice and Revision Sessions used to sit here too; they open
+ * somewhere else entirely rather than start a chat, and the folder page offers
+ * both.
+ */
 export function getNotebookAssistantQuickActions(input: {
   hasWork: boolean;
-  onPastPaperPractice: (() => void) | undefined;
-  onRevisionSession?: (() => void) | undefined;
-}): NotebookQuickAction[];
-export function getNotebookAssistantQuickActions(input: {
-  hasWork: boolean;
-  onPastPaperPractice?: () => void;
-  onRevisionSession?: () => void;
-}): NotebookQuickAction[] {
-  const actions: NotebookQuickAction[] = input.hasWork
-    ? [MARK_MY_WORK_ACTION, ...NOTEBOOK_LEARNING_ACTIONS]
-    : [...NOTEBOOK_LEARNING_ACTIONS];
-  if (featureFlags.enablePastPaperPractice && input.onPastPaperPractice) actions.push({ label: "Past Paper Practice", run: input.onPastPaperPractice });
-  // Being taught it properly, rather than asking about it: a full-screen session
-  // that comes back here when it is done.
-  if (featureFlags.enableRevisionSessions && input.onRevisionSession) {
-    actions.push({ label: "Revision session", run: input.onRevisionSession });
-  }
-  return actions;
+}): NotebookPromptAction[] {
+  return input.hasWork
+    ? [MARK_MY_WORK_ACTION, HINT_ACTION, EXPLAIN_ACTION]
+    : [HINT_ACTION, EXPLAIN_ACTION, QUIZ_ACTION];
 }

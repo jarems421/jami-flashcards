@@ -200,10 +200,29 @@ function pointer(
   });
 }
 
+/**
+ * A touch event, for what the browser would do natively with it. Sent after
+ * the pointer event for the same movement, which is the order browsers use.
+ */
+function touch(target: Element, type: string, touches: Array<{ touchType?: string }>) {
+  const event = new TouchEvent(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "touches", { value: touches });
+  act(() => {
+    target.dispatchEvent(event);
+  });
+  return event;
+}
+
 const inkSurface = () => {
   const surface = container.querySelector('[data-testid="ink-surface"]');
   if (!surface) throw new Error("The sheet should have mounted its ink surface.");
   return surface;
+};
+
+const frame = () => {
+  const element = container.querySelector("[data-notebook-page-frame]");
+  if (!element) throw new Error("The sheet should have mounted its frame.");
+  return element;
 };
 
 /** One finger dragged across the page and lifted. */
@@ -274,12 +293,15 @@ describe("the working sheet under a finger", () => {
     pointer(surface, "pointerup", { x: 650, y: 400, id: 2 });
     pointer(surface, "pointerup", { x: 150, y: 400, id: 1 });
 
-    // Zoomed inline, the way back to the fitted page appears.
+    // Zoomed inline, the way back to the fitted page appears -- over the
+    // sheet, not in the toolbar, which would wrap and drop the page a row.
     const fit = container.querySelector<HTMLButtonElement>('[aria-label="Fit the page"]');
     expect(fit).not.toBeNull();
     expect(fit?.textContent).toMatch(/%$/);
+    expect(container.querySelector('[aria-label="Pages"] [aria-label="Fit the page"]')).toBeNull();
 
-    // One finger now moves the page. It does not turn it.
+    // Every finger is the sheet's now. One moves the page; it does not turn it.
+    expect(frame().hasAttribute("data-sheet-touch")).toBe(false);
     swipe(700, 100);
     expect(pageCounter()).toBe("1 / 2");
 
@@ -287,7 +309,63 @@ describe("the working sheet under a finger", () => {
       fit?.click();
     });
     expect(container.querySelector('[aria-label="Fit the page"]')).toBeNull();
+    expect(frame().getAttribute("data-sheet-touch")).toBe("scroll");
     swipe(700, 100);
     expect(pageCounter()).toBe("2 / 2");
+  });
+
+  it("leaves a finger dragged up or down a fitted sheet to the browser", () => {
+    /*
+     * The sheet used to scroll the page itself from the finger's position,
+     * which on iPad shook the page up and down. Nothing here may scroll by
+     * script, and the drag's touches are left for the browser to scroll with.
+     */
+    expect(frame().getAttribute("data-sheet-touch")).toBe("scroll");
+    const scripted = vi.fn();
+    const original = Object.getOwnPropertyDescriptor(Element.prototype, "scrollBy");
+    Object.defineProperty(Element.prototype, "scrollBy", { configurable: true, value: scripted });
+    const windowScroll = vi.spyOn(window, "scrollBy").mockImplementation(() => undefined);
+    try {
+      const surface = inkSurface();
+      pointer(surface, "pointerdown", { x: 400, y: 300 });
+      expect(touch(surface, "touchstart", [{}]).defaultPrevented).toBe(false);
+      for (let step = 1; step <= 6; step += 1) {
+        pointer(surface, "pointermove", { x: 401, y: 300 + step * 15 });
+        expect(touch(surface, "touchmove", [{}]).defaultPrevented).toBe(false);
+      }
+      pointer(surface, "pointerup", { x: 401, y: 390 });
+    } finally {
+      if (original) Object.defineProperty(Element.prototype, "scrollBy", original);
+      else delete (Element.prototype as unknown as Record<string, unknown>).scrollBy;
+    }
+    expect(scripted).not.toHaveBeenCalled();
+    expect(windowScroll).not.toHaveBeenCalled();
+    expect(pageCounter()).toBe("1 / 1");
+  });
+
+  it("keeps a sideways swipe and a pinch from the browser's scroll", () => {
+    const surface = inkSurface();
+    pointer(surface, "pointerdown", { x: 700, y: 400 });
+    // Undecided, nothing is taken yet.
+    expect(touch(surface, "touchstart", [{}]).defaultPrevented).toBe(false);
+    pointer(surface, "pointermove", { x: 680, y: 402 });
+    expect(touch(surface, "touchmove", [{}]).defaultPrevented).toBe(true);
+    pointer(surface, "pointerup", { x: 680, y: 402 });
+
+    // A second finger is a pinch, never a two-finger scroll.
+    expect(touch(surface, "touchstart", [{}, {}]).defaultPrevented).toBe(true);
+    expect(touch(surface, "touchmove", [{}, {}]).defaultPrevented).toBe(true);
+  });
+
+  it("never lets the Pencil, or the hand just off it, scroll the page", () => {
+    // Beside the paper as well as on it: the margin scrolls natively now.
+    expect(touch(frame(), "touchstart", [{ touchType: "stylus" }]).defaultPrevented).toBe(true);
+
+    act(() => inkSpies.latest?.onInteractionChange(true));
+    act(() => inkSpies.latest?.onInteractionChange(false));
+    expect(touch(frame(), "touchstart", [{ touchType: "direct" }]).defaultPrevented).toBe(true);
+
+    now += 500;
+    expect(touch(frame(), "touchstart", [{ touchType: "direct" }]).defaultPrevented).toBe(false);
   });
 });

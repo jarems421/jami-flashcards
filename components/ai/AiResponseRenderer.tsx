@@ -1,6 +1,6 @@
 "use client";
 
-import type { AnchorHTMLAttributes, ReactNode } from "react";
+import type { AnchorHTMLAttributes, ComponentPropsWithoutRef, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -65,6 +65,46 @@ function SafeLink({
   );
 }
 
+/** The part of react-markdown's syntax tree a table needs: its rows and their cells. */
+type TableNode = { type?: string; tagName?: string; children?: TableNode[] };
+
+/** How many columns a table has, read from its first row. */
+function tableColumnCount(node: TableNode | undefined): number {
+  if (!node) return 0;
+  if (node.tagName === "tr") {
+    return (node.children ?? []).filter((child) => child.tagName === "th" || child.tagName === "td").length;
+  }
+  for (const child of node.children ?? []) {
+    const count = tableColumnCount(child);
+    if (count > 0) return count;
+  }
+  return 0;
+}
+
+/** Room a column needs before its words stop fitting a line or two. */
+const TABLE_COLUMN_MIN_REM = 7;
+
+/**
+ * A table the tutor wrote, in a frame that scrolls sideways.
+ *
+ * The Tutor's card can be shrunk to a strip beside a notebook, and a table
+ * squeezed to that width puts one word on each line of every cell. Each
+ * column keeps enough room to read instead, and the frame scrolls once they no
+ * longer fit. The room is set on the table, from its column count, because
+ * browsers disagree about a minimum width on the cells themselves.
+ */
+function ScrollingTable({ node, style, ...props }: ComponentPropsWithoutRef<"table"> & { node?: TableNode }) {
+  const columns = tableColumnCount(node);
+  return (
+    <div className="ai-response-table">
+      <table
+        {...props}
+        style={columns > 0 ? { ...style, minWidth: `${columns * TABLE_COLUMN_MIN_REM}rem` } : style}
+      />
+    </div>
+  );
+}
+
 /**
  * A figure the tutor drew.
  *
@@ -96,7 +136,8 @@ function DrawnFigure({ source }: { source: string }) {
   const figure = (
     <div
       role="img"
-      className="overflow-x-auto rounded-lg bg-[var(--color-surface-page)] p-3 [&>svg]:mx-auto [&>svg]:h-auto [&>svg]:max-w-full"
+      // Scrolls rather than shrinking past legible when the card is narrow; see `.ai-drawn-figure`.
+      className="ai-drawn-figure rounded-lg bg-[var(--color-surface-page)] p-3"
       // Rebuilt above from an allowlist: no script, foreignObject, href or
       // event handler survives it.
       dangerouslySetInnerHTML={{ __html: drawn.svg }}
@@ -148,6 +189,7 @@ export default function AiResponseRenderer({
         ]}
         components={{
           a: SafeLink,
+          table: ScrollingTable,
           /*
            * Intercepted at the pre, not the code inside it: a figure returned
            * from the code component would be nested in the pre markdown puts

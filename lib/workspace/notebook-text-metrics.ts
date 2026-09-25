@@ -71,6 +71,51 @@ export function getNotebookTextBlockBodyHeight(block: Pick<NotebookTextBlock, "h
   return `calc(${notebookPageUnits(block.height)} - ${TEXT_BLOCK_BORDER_PX}px)`;
 }
 
+/** Marks the element holding a box's text while it is being read. */
+export const NOTEBOOK_TEXT_BODY_ATTRIBUTE = "data-notebook-text-body";
+
+/**
+ * How tall the text in a box is, border included, in page units -- the
+ * shortest the box can be made without hiding any of it. Null if the page
+ * has not been laid out.
+ *
+ * Measured from the text alone, never from the box: a box taller than its
+ * text reports its own height, which would make every box its own minimum.
+ */
+export function measureNotebookTextBlockContentHeight(
+  box: HTMLElement
+): number | null {
+  const layer = box.closest(`[${NOTEBOOK_TEXT_LAYER_ATTRIBUTE}]`);
+  const pageWidthPx = layer instanceof HTMLElement ? layer.clientWidth : 0;
+  if (!(pageWidthPx > 0)) return null;
+
+  let contentPx: number;
+  const editor = box.querySelector<HTMLTextAreaElement>(
+    "[data-notebook-text-editor]"
+  );
+  if (editor) {
+    // Collapsed for the measurement and put straight back, before any paint.
+    const height = editor.style.height;
+    editor.style.height = "0px";
+    contentPx = editor.scrollHeight;
+    editor.style.height = height;
+  } else {
+    const body = box.querySelector<HTMLElement>(`[${NOTEBOOK_TEXT_BODY_ATTRIBUTE}]`);
+    const holder = body?.parentElement;
+    if (!body || !holder) return null;
+    const style = window.getComputedStyle(holder);
+    contentPx =
+      body.offsetHeight +
+      (Number.parseFloat(style.paddingTop) || 0) +
+      (Number.parseFloat(style.paddingBottom) || 0);
+  }
+
+  return (
+    ((contentPx + TEXT_BLOCK_BORDER_PX) / pageWidthPx) *
+    NOTEBOOK_PAGE_COORDINATE_WIDTH
+  );
+}
+
 /**
  * How tall a box needs to be to show everything typed in it, or null if it
  * already is.

@@ -459,6 +459,9 @@ export default function LibraryPage() {
         settingsFolderIds={Array.from(
           new Set(tutorSources.flatMap((source) => source.folderIds))
         )}
+        // Three ways in, like every Tutor: understand it, test yourself, keep it.
+        // A summary or a comparison is still one question away, and making study
+        // material has its own button in the source.
         quickActions={
           askingSeveral
             ? [
@@ -466,15 +469,6 @@ export default function LibraryPage() {
                   label: "Connect the ideas",
                   prompt:
                     "How do the ideas in these sources fit together? Explain them as one picture.",
-                },
-                {
-                  label: "Compare them",
-                  prompt:
-                    "Where do these sources agree, where do they differ, and do they use different notation or methods?",
-                },
-                {
-                  label: "Revision summary",
-                  prompt: "Summarise what these sources cover together, for revision.",
                 },
                 {
                   label: "Quiz me",
@@ -491,20 +485,12 @@ export default function LibraryPage() {
                   prompt: "Explain the key ideas in this source clearly.",
                 },
                 {
-                  label: "Revision summary",
-                  prompt: "Summarise this source for revision.",
-                },
-                {
                   label: "Quiz me",
                   prompt: "Quiz me on the most important ideas in this source.",
                 },
                 {
                   label: "Suggest flashcards",
                   prompt: "Make flashcards on the key ideas in this source.",
-                },
-                {
-                  label: "Make study material",
-                  run: () => openWorkspacePanel("drafts"),
                 },
               ]
         }

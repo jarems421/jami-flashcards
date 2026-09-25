@@ -16,8 +16,9 @@ const CONTROL_CLASS =
 /**
  * A graph the Tutor drew, plotted from its functions rather than pictured.
  *
- * It can be dragged and zoomed where it is, and on a notebook it can be added
- * to the page, where it stays an editable graph. A block that does not read as
+ * It can be dragged, pinched and zoomed where it is, and on a notebook it can
+ * be added to the page, where it stays an editable graph. One finger still
+ * scrolls the conversation past it; two pinch the graph. A block that does not read as
  * a graph is shown as the code it was, like a figure the sanitiser refuses.
  */
 export default function AssistantGraphFigure({ source }: { source: string }) {
@@ -53,7 +54,7 @@ export default function AssistantGraphFigure({ source }: { source: string }) {
       <div
         ref={surfaceRef}
         {...panZoom.bindings}
-        className="relative aspect-[5/4] w-full cursor-grab bg-white active:cursor-grabbing"
+        className="relative aspect-[5/4] w-full cursor-grab touch-pan-x touch-pan-y bg-white active:cursor-grabbing"
       >
         <NotebookGraphView graph={shown} width={WIDTH} height={HEIGHT} />
       </div>

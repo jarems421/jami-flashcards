@@ -24,6 +24,7 @@ export type NotebookIconName =
   | "image"
   | "expand"
   | "minus"
+  | "move"
   | "graph";
 
 // Hand-drawn on a consistent 24px grid with a uniform 1.8 stroke, rounded
@@ -162,6 +163,15 @@ export function NotebookIcon({ name }: { name: NotebookIconName }) {
         />
       ) : null}
       {name === "minus" ? <path {...common} d="M5.5 12h13" /> : null}
+      {name === "move" ? (
+        <>
+          <path {...common} d="M12 4.8v14.4M4.8 12h14.4" />
+          <path
+            {...common}
+            d="M9.8 7 12 4.8 14.2 7M9.8 17 12 19.2l2.2-2.2M7 9.8 4.8 12 7 14.2M17 9.8l2.2 2.2-2.2 2.2"
+          />
+        </>
+      ) : null}
       {name === "graph" ? (
         <>
           <path {...common} d="M4.8 4.8v14.4h14.4" />

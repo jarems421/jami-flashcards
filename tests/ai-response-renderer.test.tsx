@@ -112,6 +112,17 @@ describe("AiResponseRenderer", () => {
     expect(() => render("$\\frac{1}{2")).not.toThrow();
   });
 
+  it("puts a table in a frame that scrolls, with room for each column", () => {
+    const html = render(
+      ["| Organelle | Job | Found in |", "| --- | --- | --- |", "| Mitochondria | Respiration | Both |"].join("\n")
+    );
+    expect(html).toContain('class="ai-response-table"');
+    // Three columns at seven rem each: the frame scrolls rather than the cells squeezing.
+    expect(html).toContain("min-width:21rem");
+    expect(html).toContain("<th>Organelle</th>");
+    expect(html).not.toContain("[object Object]");
+  });
+
   it("does not crash on empty content", () => {
     expect(() => render("")).not.toThrow();
     const html = render("");

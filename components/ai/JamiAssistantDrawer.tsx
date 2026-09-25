@@ -72,16 +72,15 @@ import {
   StopDictationIcon,
 } from "@/components/ai/JamiAssistantIcons";
 import TutorSettingsPanel from "@/components/ai/TutorSettingsPanel";
+import FloatingTutorHeader from "@/components/ai/JamiFloatingTutorHeader";
 import {
-  FLOATING_TUTOR_HEADER_CLASS,
-  FLOATING_TUTOR_PANEL_CLASS,
-  FloatingTutorCardControls,
-  FloatingTutorGrabBar,
   FloatingTutorPill,
   FloatingTutorPinButton,
   FloatingTutorPinnedAnswer,
   FloatingTutorResizeFrame,
   floatingRectStyle,
+  floatingTutorPanelClass,
+  isCompactFloatingCard,
   useFloatingTutorFrames,
   type FloatingTutorStowed,
 } from "@/components/ai/JamiFloatingTutor";
@@ -232,6 +231,7 @@ export default function JamiAssistantDrawer({
   const [stowed, setStowed] = useState<FloatingTutorStowed>(null);
   const [pinnedText, setPinnedText] = useState("");
   const { card, pin } = useFloatingTutorFrames(floating, stowed);
+  const compact = floating && isCompactFloatingCard(card.rect);
   const stow = (next: FloatingTutorStowed) => {
     setStowed(next);
     onOpenChange(false);
@@ -770,7 +770,7 @@ export default function JamiAssistantDrawer({
         data-notebook-text-editor="true"
         className={
           floating
-            ? FLOATING_TUTOR_PANEL_CLASS
+            ? floatingTutorPanelClass(card)
             : "pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-shell"
         }
         /*
@@ -790,14 +790,31 @@ export default function JamiAssistantDrawer({
             : undefined
         }
       >
-        <header
-          className={floating ? FLOATING_TUTOR_HEADER_CLASS : "border-b border-[var(--color-border)] px-4 py-3.5 sm:px-5"}
-          {...(floating ? card.dragHandleProps : null)}
-        >
-          {floating ? <FloatingTutorGrabBar /> : null}
+        {floating ? (
+          <FloatingTutorHeader
+            frame={card}
+            subtitle={
+              historyOpen ? "Chat history" : viewingForeignThread ? "Saved chat · read only" : contextLabel
+            }
+            compact={compact}
+            historyOpen={historyOpen}
+            onToggleHistory={() => setHistoryOpen((current) => !current)}
+            onNewChat={startNewChat}
+            onOpenSettings={
+              featureFlags.enableTutorPersonalisation ? () => setSettingsOpen(true) : undefined
+            }
+            folderSources={{
+              on: useRelatedSources,
+              onToggle: () => setUseRelatedSources((current) => !current),
+            }}
+            onMinimise={() => stow("pill")}
+            onClose={() => onOpenChange(false)}
+          />
+        ) : (
+        <header className="border-b border-[var(--color-border)] px-4 py-3.5 sm:px-5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <div className={`${floating ? "hidden" : "flex"} h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent`}>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent">
                 <JamiTutorIcon className="h-[1.35rem] w-[1.35rem]" />
               </div>
               <div className="min-w-0">
@@ -847,13 +864,6 @@ export default function JamiAssistantDrawer({
               >
                 <NewChatIcon />
               </button>
-              {floating ? (
-                <FloatingTutorCardControls
-                  maximised={card.maximised}
-                  onToggleMaximised={card.toggleMaximised}
-                  onMinimise={() => stow("pill")}
-                />
-              ) : null}
               <button
                 type="button"
                 aria-label="Close Jami assistant"
@@ -866,8 +876,12 @@ export default function JamiAssistantDrawer({
             </div>
           </div>
         </header>
+        )}
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+        <div
+          ref={scrollRef}
+          className={`min-h-0 flex-1 overflow-y-auto ${compact ? "px-4 py-4" : "px-5 py-5 sm:px-7 sm:py-6"}`}
+        >
           {historyOpen ? (
             <JamiAssistantHistory
               threads={threads}
@@ -975,19 +989,22 @@ export default function JamiAssistantDrawer({
                     </div>
                     {message.role === "assistant" ? (
                       <>
-                        <div className="mt-1.5 px-1 text-2xs leading-relaxed text-text-muted">
-                          {message.used && message.used.length > 0
-                            ? formatJamiAssistantUsedContext(message.used)
-                            : "Used: General knowledge"}
+                        {/* The pin shares the sources line rather than taking a row of its own. */}
+                        <div className="mt-1.5 flex items-start gap-2 px-1">
+                          <div className="min-w-0 flex-1 text-2xs leading-relaxed text-text-muted">
+                            {message.used && message.used.length > 0
+                              ? formatJamiAssistantUsedContext(message.used)
+                              : "Used: General knowledge"}
+                          </div>
+                          {floating && !(loading && index === messages.length - 1) ? (
+                            <FloatingTutorPinButton
+                              onPin={() => {
+                                setPinnedText(message.text);
+                                stow("pinned");
+                              }}
+                            />
+                          ) : null}
                         </div>
-                        {floating && !(loading && index === messages.length - 1) ? (
-                          <FloatingTutorPinButton
-                            onPin={() => {
-                              setPinnedText(message.text);
-                              stow("pinned");
-                            }}
-                          />
-                        ) : null}
                         {message.citations?.length ? (
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 px-1" aria-label="Web sources">
                             {message.citations.map((citation) => (
@@ -1080,8 +1097,8 @@ export default function JamiAssistantDrawer({
         </div>
 
         {showAiNotice && !historyOpen ? (
-          // In a small floating card the notice scrolls rather than squeezing the conversation to nothing.
-          <div className={`mx-5 mb-0 rounded-xl border border-accent/20 bg-accent/8 px-3.5 py-3 text-xs leading-5 text-text-secondary sm:mx-7 ${floating ? "max-h-32 shrink-0 overflow-y-auto" : ""}`}>
+          // Floating, the notice scrolls and gives way first, so the composer always fits the card.
+          <div className={`mx-5 mb-0 rounded-xl border border-accent/20 bg-accent/8 px-3.5 py-3 text-xs leading-5 text-text-secondary sm:mx-7 ${floating ? "max-h-32 min-h-[4.5rem] overflow-y-auto" : ""}`}>
             <div className="flex items-start justify-between gap-3">
               <p>
                 When you use Jami, relevant work may be processed through OpenRouter
@@ -1106,7 +1123,13 @@ export default function JamiAssistantDrawer({
           </div>
         ) : null}
 
-        <footer className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <footer
+          className={`shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] ${
+            compact
+              ? "px-3 pb-3 pt-3"
+              : "px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+          }`}
+        >
           {historyOpen ? (
             <div className="text-center text-2xs text-text-muted">
               Saved chats keep their messages, not source files or notebook snapshots.
@@ -1164,11 +1187,11 @@ export default function JamiAssistantDrawer({
               ref={inputRef}
               id="jami-assistant-message"
               data-notebook-text-editor="true"
-              rows={2}
+              rows={compact ? 1 : 2}
               value={input}
               disabled={loading}
               placeholder="Ask Jami..."
-              className="min-h-[5.75rem] w-full resize-none bg-transparent pb-2 pl-4 pr-4 pt-3 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82]"
+              className={`${compact ? "min-h-[3rem]" : "min-h-[5.75rem]"} w-full resize-none bg-transparent pb-2 pl-4 pr-4 pt-3 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82]`}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleComposerKeyDown}
             />
@@ -1227,6 +1250,11 @@ export default function JamiAssistantDrawer({
             </p>
           ) : null}
 
+          {compact ? (
+            <p className="mt-1.5 px-1 text-2xs text-text-muted">
+              Jami can make mistakes. Check important answers.
+            </p>
+          ) : (
           <div className="mt-2 flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
             <details className="group min-w-0 flex-1 basis-[15rem] text-xs text-text-muted">
               <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-full px-1.5 font-medium transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 [&::-webkit-details-marker]:hidden">
@@ -1282,6 +1310,7 @@ export default function JamiAssistantDrawer({
               Jami can make mistakes. Check important answers.
             </div>
           </div>
+          )}
             </>
           )}
         </footer>
@@ -1295,7 +1324,7 @@ export default function JamiAssistantDrawer({
           </div>
         ) : null}
       </DialogPanel>
-      {floating ? <FloatingTutorResizeFrame frame={card} label="Jami" /> : null}
+      {floating ? <FloatingTutorResizeFrame frame={card} /> : null}
     </Dialog>
     {floating && !open && stowed === "pill" ? (
       <FloatingTutorPill onOpen={() => onOpenChange(true)} />

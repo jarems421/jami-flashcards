@@ -601,9 +601,19 @@ export function resizeNotebookTextBlockFromEdge(input: {
   edge: NotebookTextBlockResizeEdge;
   deltaX: number;
   deltaY: number;
+  /**
+   * The shortest the box may get: the height of the text in it. A box grows
+   * to hold its text, so shrinking it past that moves nothing -- and from the
+   * top edge it would slide the box down instead of shrinking it.
+   */
+  minHeight?: number;
 }): NotebookTextBlock {
   const roundedDeltaX = Math.round(input.deltaX);
   const roundedDeltaY = Math.round(input.deltaY);
+  const minHeight = Math.max(
+    MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT,
+    Math.ceil(input.minHeight ?? 0)
+  );
   const right = input.block.x + input.block.width;
   const bottom = input.block.y + input.block.height;
   const next: NotebookTextBlock = { ...input.block };
@@ -627,7 +637,7 @@ export function resizeNotebookTextBlockFromEdge(input: {
   if (input.edge === "top") {
     const y = Math.max(
       0,
-      Math.min(bottom - MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT, input.block.y + roundedDeltaY)
+      Math.min(bottom - minHeight, input.block.y + roundedDeltaY)
     );
     next.y = y;
     next.height = bottom - y;
@@ -635,7 +645,7 @@ export function resizeNotebookTextBlockFromEdge(input: {
 
   if (input.edge === "bottom") {
     next.height = Math.max(
-      MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT,
+      minHeight,
       Math.min(NOTEBOOK_PAGE_COORDINATE_HEIGHT - input.block.y, input.block.height + roundedDeltaY)
     );
   }

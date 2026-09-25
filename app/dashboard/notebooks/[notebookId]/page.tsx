@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -60,7 +60,6 @@ import {
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
 import { useNotebookViewportController } from "@/hooks/useNotebookViewportController";
-import { getRevisionStartHref } from "@/lib/app/routes";
 import { usePracticePaperStatus } from "@/hooks/usePracticePaperStatus";
 import { usePracticePaperRetake } from "@/hooks/usePracticePaperRetake";
 import {
@@ -149,8 +148,10 @@ import {
 } from "@/lib/workspace/notebook-navigation";
 import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
 import {
+  isNotebookToolDoublePress,
   readNotebookScribbleErasePreference,
   saveNotebookScribbleErasePreference,
+  type NotebookToolPress,
 } from "@/lib/workspace/notebook-toolbar";
 import {
   clampNotebookPenSettings,
@@ -204,7 +205,6 @@ const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
 
 export default function NotebookEditorPage() {
   const { user } = useUser();
-  const router = useRouter();
   const params = useParams<{ notebookId?: string | string[] }>();
   const notebookId = Array.isArray(params.notebookId)
     ? params.notebookId[0]
@@ -390,35 +390,9 @@ export default function NotebookEditorPage() {
       ),
     [inkHasContent, selectedPage, textBlocks]
   );
-  /*
-   * A Revision Session from here opens the folder's list rather than a
-   * session: a student asking about their notes has not decided to be taught
-   * something yet, and may not mean this notebook's Topic when they do. The
-   * session comes back to this notebook when it is done.
-   */
   const notebookAssistantQuickActions = useMemo(
-    () =>
-      getNotebookAssistantQuickActions({
-        hasWork: notebookPageHasWork,
-        onPastPaperPractice:
-          notebook?.folderId && notebook.id
-            ? () =>
-                router.push(
-                  `/dashboard/practice/questions/new?folderId=${encodeURIComponent(notebook.folderId)}&notebookId=${encodeURIComponent(notebook.id)}`
-                )
-            : undefined,
-        onRevisionSession:
-          notebook?.folderId && notebook.id
-            ? () =>
-                router.push(
-                  getRevisionStartHref({
-                    folderId: notebook.folderId,
-                    returnHref: `/dashboard/notebooks/${encodeURIComponent(notebook.id)}`,
-                  })
-                )
-            : undefined,
-      }),
-    [notebook?.folderId, notebook?.id, notebookPageHasWork, router]
+    () => getNotebookAssistantQuickActions({ hasWork: notebookPageHasWork }),
+    [notebookPageHasWork]
   );
 
   // Each time the page changes, the ink editor remounts and re-deserializes the
@@ -953,6 +927,7 @@ export default function NotebookEditorPage() {
     toggleTextBlockOutline,
     deleteTextBlock,
     handleTextBlockOptionsKeyDown,
+    startTextBlockDrag,
     startTextBlockResize,
     resizeTextBlock,
     stopTextBlockResize,
@@ -2164,6 +2139,11 @@ export default function NotebookEditorPage() {
     }
 
     event.preventDefault();
+    // The new box is selected and ready to type in. Stopped here, or the
+    // frame's tap-away below would let go of it in the same press -- which
+    // left every new box unselected, its caret gone, and whatever was typed
+    // next running the tool shortcuts instead.
+    event.stopPropagation();
     const point = getNotebookPointFromEvent(event);
     if (!point) return;
     createTextBlockAtPoint(point);
@@ -2430,7 +2410,24 @@ export default function NotebookEditorPage() {
     [setEraserMenuOpen, setHighlighterMenuOpen, setPenMenuOpen]
   );
 
-  /** Selecting an inactive tool switches to it; the active one toggles options. */
+  const lastToolPressRef = useRef<NotebookToolPress | null>(null);
+
+  /**
+   * Records a toolbar press, and says whether it completes a double press of
+   * the same tool. A double press is used up, so a third quick press starts a
+   * new pair rather than counting twice.
+   */
+  const takeToolDoublePress = useCallback((tool: NotebookToolPress["tool"]) => {
+    const press = { tool, at: performance.now() };
+    const double = isNotebookToolDoublePress(lastToolPressRef.current, press);
+    lastToolPressRef.current = double ? null : press;
+    return double;
+  }, []);
+
+  /**
+   * Selecting an inactive tool switches to it; the active one toggles options.
+   * A double press of any tool puts it down.
+   */
   const handleSelectDrawingTool = useCallback(
     (nextTool: "pen" | "highlighter" | "eraser") => {
       // Reaching for a tool is done with something else in mind, so whatever
@@ -2439,6 +2436,11 @@ export default function NotebookEditorPage() {
       // pressing the tool that is already on did not, and that is the press
       // where a selection is most obviously stale.
       clearPlacedSelection();
+      if (takeToolDoublePress(nextTool)) {
+        closeDrawingToolMenus();
+        switchNotebookTool("select");
+        return;
+      }
       if (pageState.read().tool !== nextTool) {
         switchNotebookTool(nextTool);
         closeDrawingToolMenus();
@@ -2453,6 +2455,7 @@ export default function NotebookEditorPage() {
       pageState,
       setToolMenuOpen,
       switchNotebookTool,
+      takeToolDoublePress,
     ]
   );
 
@@ -2461,12 +2464,19 @@ export default function NotebookEditorPage() {
     // selection by changing tool. Pressing the button has to say it.
     clearPlacedSelection();
     closeDrawingToolMenus();
+    // A double press puts it down, as it does every other tool, rather than
+    // picking it straight back up.
+    if (takeToolDoublePress("text")) {
+      switchNotebookTool("select");
+      return;
+    }
     switchNotebookTool(pageState.read().tool === "text" ? "select" : "text");
   }, [
     clearPlacedSelection,
     closeDrawingToolMenus,
     pageState,
     switchNotebookTool,
+    takeToolDoublePress,
   ]);
 
 
@@ -3238,6 +3248,7 @@ export default function NotebookEditorPage() {
                     onDelete={deleteTextBlock}
                     onOptionsKeyDown={handleTextBlockOptionsKeyDown}
                     onStartResize={startTextBlockResize}
+                    onStartMove={startTextBlockDrag}
                     onResize={resizeTextBlock}
                     onStopResize={stopTextBlockResize}
                     onChangeText={handleTextBlockTextChange}

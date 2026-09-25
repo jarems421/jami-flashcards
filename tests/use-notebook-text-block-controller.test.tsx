@@ -18,6 +18,13 @@ import {
   vi,
 } from "vitest";
 import NotebookTextBlockOptions from "@/components/workspace/NotebookTextBlockOptions";
+
+/** The text's own height as measured on screen; zero leaves the stored height in charge. */
+const measuredText = vi.hoisted(() => ({ height: 0 }));
+vi.mock("@/lib/workspace/notebook-text-metrics", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/workspace/notebook-text-metrics")>()),
+  measureNotebookTextBlockContentHeight: () => measuredText.height,
+}));
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { getNotebookTextBlockOptionsElementId } from "@/lib/workspace/notebook-page-content";
@@ -175,6 +182,7 @@ function ControllerHarness({
           return (
             <div
               key={block.id}
+              className="notebook-text-object"
               data-text-block-id={block.id}
               onPointerDown={(event) =>
                 controller.handleTextBlockPointerDown(block, event)
@@ -216,6 +224,15 @@ function ControllerHarness({
                   }
                 />
               ) : null}
+              <button
+                type="button"
+                data-move-handle="true"
+                onPointerDown={(event) =>
+                  controller.startTextBlockDrag(block, event)
+                }
+              >
+                Move
+              </button>
               <button
                 type="button"
                 data-resize-edge="right"
@@ -754,6 +771,33 @@ describe("useNotebookTextBlockController", () => {
     );
   });
 
+  it("widens a box without saving the height its wrapped text needed", () => {
+    // Narrowed until the text wrapped, the box shows taller than it is stored.
+    measuredText.height = 180;
+    const props = makeHarnessProps({ initialBlocks: [BASE_BLOCK] });
+    const harness = renderHarness(props);
+
+    dispatchPointer(harness.resizeHandle("right"), "pointerdown", {
+      clientX: 400,
+      clientY: 200,
+      pointerId: 9,
+    });
+    dispatchPointer(harness.page(), "pointermove", {
+      clientX: 445,
+      clientY: 200,
+      pointerId: 9,
+    });
+    dispatchPointer(harness.page(), "pointerup", {
+      clientX: 445,
+      clientY: 200,
+      pointerId: 9,
+    });
+    measuredText.height = 0;
+
+    // Wider, and the stored height untouched: it shrinks back as the text unwraps.
+    expect(harness.blocks()[0]).toMatchObject({ width: 390, height: BASE_BLOCK.height });
+  });
+
   it.each([
     { editingEnabled: false, navigationLocked: false },
     { editingEnabled: true, navigationLocked: true },
@@ -855,6 +899,45 @@ describe("useNotebookTextBlockController", () => {
       pointerId: 22,
     });
     expect(props.onHistoryCommit).toHaveBeenCalledOnce();
+  });
+
+  it("moves a box being typed in by its handle, then goes back to typing", () => {
+    const props = makeHarnessProps({ initialBlocks: [BASE_BLOCK] });
+    const harness = renderHarness(props);
+    act(() => harness.controller().selectTextBlock(BASE_BLOCK.id));
+    act(() => harness.controller().startEditingTextBlock(BASE_BLOCK.id));
+    const handle = harness
+      .block()
+      .querySelector<HTMLElement>("[data-move-handle='true']")!;
+
+    // A finger, which on the box itself would be handed to the page.
+    dispatchPointer(handle, "pointerdown", {
+      clientX: 100,
+      clientY: 100,
+      pointerId: 31,
+      pointerType: "touch",
+    });
+    dispatchPointer(handle, "pointermove", {
+      clientX: 145,
+      clientY: 162,
+      pointerId: 31,
+      pointerType: "touch",
+    });
+
+    expect(harness.blocks()[0]).toMatchObject({ x: 190, y: 244 });
+    expect(props.onTouchPointerDown).not.toHaveBeenCalled();
+
+    dispatchPointer(handle, "pointerup", {
+      clientX: 145,
+      clientY: 162,
+      pointerId: 31,
+      pointerType: "touch",
+    });
+
+    expect(harness.controller().activeTextGestureId).toBeNull();
+    expect(harness.controller().editingTextBlockId).toBe(BASE_BLOCK.id);
+    expect(props.onHistoryCommit).toHaveBeenCalledOnce();
+    expect(props.onTouchPointerEnd).not.toHaveBeenCalled();
   });
 
   it("exits another block's editor when touch selects a different block", () => {

@@ -140,6 +140,28 @@ export function maximisedFloatingRect(
 }
 
 /**
+ * A full-size panel dragged by its header, back at its own size.
+ *
+ * Like dragging a maximised window: it returns to the size it had, positioned
+ * so the point being held stays under the pointer rather than the panel
+ * jumping away from the hand that picked it up.
+ */
+export function restoreFloatingRectUnderPointer(
+  restored: FloatingRect,
+  full: FloatingRect,
+  pointer: { x: number; y: number },
+  viewport: FloatingViewport,
+  limits: FloatingLimits
+): FloatingRect {
+  const across = full.width > 0 ? (pointer.x - full.x) / full.width : 0.5;
+  return clampFloatingRect(
+    { ...restored, x: pointer.x - restored.width * across, y: full.y },
+    viewport,
+    limits
+  );
+}
+
+/**
  * A panel of the preferred size, tucked into the bottom-right corner.
  *
  * Bottom-right because that is where the page's margin is emptiest on a

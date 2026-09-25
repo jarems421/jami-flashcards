@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
@@ -14,6 +15,7 @@ import {
   moveFloatingRect,
   parseStoredFloatingRect,
   resizeFloatingRect,
+  restoreFloatingRectUnderPointer,
   type FloatingLimits,
   type FloatingRect,
   type FloatingResizeEdges,
@@ -46,11 +48,16 @@ type Gesture = {
   startRect: FloatingRect;
   lastRect: FloatingRect;
   resize: FloatingResizeEdges | null;
+  /** Set while a full-size panel is held but has not yet been dragged out of it. */
+  fromFull: FloatingRect | null;
 };
+
+/** How far a full-size panel must be dragged before it comes back to its own size. */
+const LEAVE_FULL_SIZE_DISTANCE = 8;
 
 /** Controls inside a drag handle keep their own tap; only bare handle drags. */
 const HANDLE_CONTROL_SELECTOR =
-  "button, a[href], input, textarea, select, summary, [role='button'], [role='menuitem']";
+  "button, a[href], input, textarea, select, summary, [role='button'], [role='menu'], [role^='menuitem']";
 
 function subscribeToResize(onChange: () => void) {
   window.addEventListener("resize", onChange);
@@ -114,6 +121,7 @@ export function useFloatingPanel({
   const [placed, setPlaced] = useState<FloatingRect | null>(stored?.rect ?? null);
   const [maximised, setMaximised] = useState(stored?.maximised ?? false);
   const gestureRef = useRef<Gesture | null>(null);
+  const [activeGesture, setActiveGesture] = useState<"move" | "resize" | null>(null);
 
   /*
    * Derived on every render rather than stored clamped, so a rotation or a
@@ -140,7 +148,7 @@ export function useFloatingPanel({
     event: ReactPointerEvent<HTMLElement>,
     resize: FloatingResizeEdges | null
   ) => {
-    if (!placedRect || maximised) return;
+    if (!placedRect || !rect || (maximised && resize)) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (
       !resize &&
@@ -160,16 +168,35 @@ export function useFloatingPanel({
       startRect: placedRect,
       lastRect: placedRect,
       resize,
+      fromFull: maximised ? rect : null,
     };
+    setActiveGesture(resize ? "resize" : "move");
   };
 
   const continueGesture = (event: ReactPointerEvent<HTMLElement>) => {
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     event.preventDefault();
+    const currentViewport = readViewport();
+    if (gesture.fromFull) {
+      /*
+       * A full-size panel stays put for a tap or the first half of a double
+       * click; only a real drag brings it back to its own size, under the hand.
+       */
+      const moved = Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY);
+      if (moved < LEAVE_FULL_SIZE_DISTANCE) return;
+      gesture.startRect = restoreFloatingRectUnderPointer(
+        gesture.startRect,
+        gesture.fromFull,
+        { x: gesture.startX, y: gesture.startY },
+        currentViewport,
+        limits
+      );
+      gesture.fromFull = null;
+      setMaximised(false);
+    }
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
-    const currentViewport = readViewport();
     const next = gesture.resize
       ? resizeFloatingRect(gesture.startRect, gesture.resize, dx, dy, currentViewport, limits)
       : moveFloatingRect(gesture.startRect, dx, dy, currentViewport, limits);
@@ -181,7 +208,10 @@ export function useFloatingPanel({
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     gestureRef.current = null;
+    setActiveGesture(null);
     safelyReleasePointerCapture(event.currentTarget, event.pointerId);
+    // Held at full size and let go without dragging: nothing changed.
+    if (gesture.fromFull) return;
     writeStored(storageKey, { rect: gesture.lastRect, maximised: false });
   };
 
@@ -190,6 +220,11 @@ export function useFloatingPanel({
     onPointerMove: continueGesture,
     onPointerUp: endGesture,
     onPointerCancel: endGesture,
+    // Like a window's title bar: a double click on bare header toggles full size.
+    onDoubleClick: (event: ReactMouseEvent<HTMLElement>) => {
+      if (event.target instanceof Element && event.target.closest(HANDLE_CONTROL_SELECTOR)) return;
+      toggleMaximised();
+    },
   };
 
   const getResizeHandleProps = (edges: FloatingResizeEdges) => ({
@@ -202,6 +237,8 @@ export function useFloatingPanel({
   return {
     rect,
     maximised,
+    /** What the student is doing to the panel right now, for feedback while they do it. */
+    activeGesture,
     toggleMaximised,
     dragHandleProps,
     getResizeHandleProps,

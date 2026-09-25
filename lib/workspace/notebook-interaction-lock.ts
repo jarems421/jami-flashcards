@@ -14,8 +14,9 @@ export const NOTEBOOK_STYLUS_ACTION_SELECTOR = [
   "[role='slider']",
   "[data-notebook-stylus-action='true']",
 ].join(", ");
+/** Controls that are dragged rather than tapped, so a Pencil on them is a gesture. */
 export const NOTEBOOK_STYLUS_GESTURE_CONTROL_SELECTOR =
-  "[data-text-resize-handle='true']";
+  "[data-text-resize-handle='true'], [data-text-block-move-handle='true']";
 
 type ClosestTarget = {
   closest: (selector: string) => unknown;

@@ -1,6 +1,9 @@
 "use client";
 
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import type { FloatingResizeEdges } from "@/lib/ui/floating-panel";
 
 type ResizeHandleProps = {
@@ -8,62 +11,107 @@ type ResizeHandleProps = {
   onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
   onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
   onPointerCancel: (event: ReactPointerEvent<HTMLElement>) => void;
+  onDoubleClick?: (event: ReactMouseEvent<HTMLElement>) => void;
 };
 
 type FloatingResizeHandlesProps = {
   getHandleProps: (edges: FloatingResizeEdges) => ResizeHandleProps;
-  label: string;
+  /** A resize is under way: every handle and the outline light up. */
+  active: boolean;
 };
 
 /*
- * Edges are wide invisible strips straddling the border, so a finger or a
- * Pencil finds them without aiming; corners carry a visible grip, because on a
- * tablet there is no hover cursor to say the panel can be resized at all.
+ * Handles for resizing a floating panel from anywhere on its edge, the way a
+ * window or an image is resized.
+ *
+ * The whole perimeter takes a drag. Each side is one strip running its full
+ * length, and the corners sit over the strips' ends, so there is nowhere along
+ * the edge that does nothing. The strips used to stop short of the corners and
+ * were 16px deep, a third of a fingertip, so on a tablet a finger reaching for
+ * a side mostly missed it and the corners felt like the only way to resize --
+ * and a corner is the hardest place to change just the width.
+ *
+ * Every hit area reaches 24px outside the panel, where there is nothing else
+ * to hit, and only a little way in, clear of the panel's own controls. The top
+ * strip reaches in least: just inside it is the header's grab bar, which moves
+ * the panel rather than resizing it.
+ *
+ * A tablet has no hover cursor to say resizing exists at all, so there the
+ * side grips show all the time, like the corner arcs. With a mouse they appear
+ * on hover and while resizing, so a resting panel is not ringed with marks.
+ * Grips and arcs all run on the same line, 1-4px outside the panel.
  */
-const EDGES: Array<{ name: string; edges: FloatingResizeEdges; className: string }> = [
-  { name: "top", edges: { top: true }, className: "inset-x-5 -top-1.5 h-3 cursor-ns-resize" },
-  { name: "bottom", edges: { bottom: true }, className: "inset-x-5 -bottom-1.5 h-3 cursor-ns-resize" },
-  { name: "left", edges: { left: true }, className: "inset-y-5 -left-1.5 w-3 cursor-ew-resize" },
-  { name: "right", edges: { right: true }, className: "inset-y-5 -right-1.5 w-3 cursor-ew-resize" },
+const EDGES: Array<{
+  name: string;
+  edges: FloatingResizeEdges;
+  className: string;
+  barClassName: string;
+}> = [
+  {
+    name: "top",
+    edges: { top: true },
+    className: "inset-x-0 -top-6 h-7 cursor-ns-resize",
+    barClassName: "left-1/2 top-5 h-[3px] w-10 -translate-x-1/2",
+  },
+  {
+    name: "bottom",
+    edges: { bottom: true },
+    className: "inset-x-0 -bottom-6 h-8 cursor-ns-resize",
+    barClassName: "bottom-5 left-1/2 h-[3px] w-10 -translate-x-1/2",
+  },
+  {
+    name: "left",
+    edges: { left: true },
+    className: "inset-y-0 -left-6 w-8 cursor-ew-resize",
+    barClassName: "left-5 top-1/2 h-10 w-[3px] -translate-y-1/2",
+  },
+  {
+    name: "right",
+    edges: { right: true },
+    className: "inset-y-0 -right-6 w-8 cursor-ew-resize",
+    barClassName: "right-5 top-1/2 h-10 w-[3px] -translate-y-1/2",
+  },
 ];
 
+// Each arc runs parallel to the panel's rounded corner, on the grips' line.
 const CORNERS: Array<{
   name: string;
   edges: FloatingResizeEdges;
   className: string;
-  gripClassName: string;
+  arcClassName: string;
 }> = [
   {
     name: "top left",
     edges: { top: true, left: true },
-    className: "-left-1.5 -top-1.5 cursor-nwse-resize",
-    gripClassName: "left-2 top-2 border-l-2 border-t-2 rounded-tl-lg",
+    className: "-left-6 -top-6 cursor-nwse-resize",
+    arcClassName: "left-5 top-5 rounded-tl-2xl border-l-[3px] border-t-[3px]",
   },
   {
     name: "top right",
     edges: { top: true, right: true },
-    className: "-right-1.5 -top-1.5 cursor-nesw-resize",
-    gripClassName: "right-2 top-2 border-r-2 border-t-2 rounded-tr-lg",
+    className: "-right-6 -top-6 cursor-nesw-resize",
+    arcClassName: "right-5 top-5 rounded-tr-2xl border-r-[3px] border-t-[3px]",
   },
   {
     name: "bottom left",
     edges: { bottom: true, left: true },
-    className: "-bottom-1.5 -left-1.5 cursor-nesw-resize",
-    gripClassName: "bottom-2 left-2 border-b-2 border-l-2 rounded-bl-lg",
+    className: "-bottom-6 -left-6 cursor-nesw-resize",
+    arcClassName: "bottom-5 left-5 rounded-bl-2xl border-b-[3px] border-l-[3px]",
   },
   {
     name: "bottom right",
     edges: { bottom: true, right: true },
-    className: "-bottom-1.5 -right-1.5 cursor-nwse-resize",
-    gripClassName: "bottom-2 right-2 border-b-2 border-r-2 rounded-br-lg",
+    className: "-bottom-6 -right-6 cursor-nwse-resize",
+    arcClassName: "bottom-5 right-5 rounded-br-2xl border-b-[3px] border-r-[3px]",
   },
 ];
 
-/** Handles on every edge and corner of a floating panel, for resizing it. */
+/** Resize handles along the whole perimeter of a floating panel. */
 export default function FloatingResizeHandles({
   getHandleProps,
-  label,
+  active,
 }: FloatingResizeHandlesProps) {
+  const lit = active ? "bg-accent opacity-100" : "";
   return (
     <>
       {EDGES.map((edge) => (
@@ -71,21 +119,27 @@ export default function FloatingResizeHandles({
           key={edge.name}
           aria-hidden="true"
           data-floating-resize-handle={edge.name}
-          className={`pointer-events-auto absolute z-20 touch-none ${edge.className}`}
+          className={`group pointer-events-auto absolute z-20 touch-none ${edge.className}`}
           {...getHandleProps(edge.edges)}
-        />
+        >
+          <span
+            className={`pointer-events-none absolute rounded-full bg-[var(--color-border-strong)] opacity-0 transition duration-fast group-hover:bg-accent group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${edge.barClassName} ${lit}`}
+          />
+        </div>
       ))}
+      {/* After the edges, so where a corner and a strip overlap the corner wins. */}
       {CORNERS.map((corner) => (
         <div
           key={corner.name}
           aria-hidden="true"
-          title={`Resize ${label}`}
           data-floating-resize-handle={corner.name}
-          className={`group pointer-events-auto absolute z-20 h-7 w-7 touch-none ${corner.className}`}
+          className={`group pointer-events-auto absolute z-20 h-9 w-9 touch-none ${corner.className}`}
           {...getHandleProps(corner.edges)}
         >
           <span
-            className={`pointer-events-none absolute h-2.5 w-2.5 border-[var(--color-border-strong)] transition duration-fast group-hover:border-accent group-active:border-accent ${corner.gripClassName}`}
+            className={`pointer-events-none absolute h-7 w-7 border-[var(--color-border-strong)] transition duration-fast group-hover:border-accent ${corner.arcClassName} ${
+              active ? "border-accent" : ""
+            }`}
           />
         </div>
       ))}

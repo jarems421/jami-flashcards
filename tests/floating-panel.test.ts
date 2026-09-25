@@ -6,6 +6,7 @@ import {
   moveFloatingRect,
   parseStoredFloatingRect,
   resizeFloatingRect,
+  restoreFloatingRectUnderPointer,
 } from "@/lib/ui/floating-panel";
 
 const VIEWPORT = { width: 1180, height: 820 };
@@ -63,6 +64,18 @@ describe("floating panel geometry", () => {
     expect(fitted.x + fitted.width).toBeLessThanOrEqual(820 - 12);
     expect(fitted.y + fitted.height).toBeLessThanOrEqual(1180 - 12);
     expect(fitted.width).toBe(796);
+  });
+
+  it("dragged out of full size, comes back to its own size under the hand", () => {
+    const own = { x: 800, y: 200, width: 360, height: 500 };
+    const full = maximisedFloatingRect(VIEWPORT, LIMITS);
+    // Held three quarters of the way across the full-size header.
+    const pointer = { x: full.x + full.width * 0.75, y: 30 };
+    const restored = restoreFloatingRectUnderPointer(own, full, pointer, VIEWPORT, LIMITS);
+    expect(restored.width).toBe(360);
+    expect(restored.height).toBe(500);
+    expect(restored.y).toBe(full.y);
+    expect(restored.x + restored.width * 0.75).toBeCloseTo(pointer.x);
   });
 
   it("only trusts a stored rectangle whose every field is a real size", () => {

@@ -13,4 +13,13 @@ describe("notebook Tutor actions", () => {
     expect(actions[0]?.prompt).toMatch(/indicative feedback/i);
     expect(actions[0]?.prompt).toMatch(/formal mark.*mark allocation|mark scheme/i);
   });
+
+  it("offers exactly three ways into a fresh chat", () => {
+    expect(
+      getNotebookAssistantQuickActions({ hasWork: false }).map((action) => action.label)
+    ).toEqual(["Give me a hint", "Explain this page", "Quiz me"]);
+    expect(
+      getNotebookAssistantQuickActions({ hasWork: true }).map((action) => action.label)
+    ).toEqual(["Mark my work", "Give me a hint", "Explain this page"]);
+  });
 });

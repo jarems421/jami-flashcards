@@ -29,6 +29,8 @@ describe("a figure the tutor drew", () => {
     expect(out).toContain('viewBox="0 0 200 120"');
     expect(out).toContain("<polygon");
     expect(out).toContain("Here is the triangle");
+    // In a frame that scrolls sideways once the card is too narrow to read it at.
+    expect(out).toContain("ai-drawn-figure");
   });
 
   /** The prose around it still renders as prose. */
