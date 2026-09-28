@@ -1342,6 +1342,142 @@
     }
   }
 
+  /*
+   * The signed-out pages: the landing page, sign-in, and the page an emailed
+   * link opens.
+   *
+   * These always sit on the night sky (`isNightSkyRoute`), whatever theme the
+   * student has chosen, so they are drawn for that palette alone. None of it
+   * uses `backdrop-filter`: the sky twinkles behind every panel, and a blur has
+   * to be recomputed each time anything behind it changes.
+   */
+  .signed-out-panel {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.012) 46%),
+      rgba(11, 8, 24, 0.86);
+    border: 1px solid var(--color-border-strong);
+    box-shadow: var(--elevation-3);
+    position: relative;
+  }
+
+  /* For a panel laid over another one, whose text must not show through. */
+  .signed-out-panel-opaque {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.02) 46%),
+      #0e0b1d;
+  }
+
+  /* A lit top edge, the way starlight would catch a pane of glass. */
+  .signed-out-panel::before {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    content: "";
+    height: 1px;
+    left: 12%;
+    pointer-events: none;
+    position: absolute;
+    right: 12%;
+    top: -1px;
+  }
+
+  /*
+   * Light pooled behind the content. Radial gradients rather than blurred
+   * shapes: they are already soft, and cost nothing to keep on screen.
+   */
+  .signed-out-glow {
+    inset: 0 0 auto;
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+  }
+
+  .signed-out-glow-hero {
+    background:
+      radial-gradient(40rem 30rem at 76% 22%, rgba(143, 125, 232, 0.26), transparent 70%),
+      radial-gradient(28rem 22rem at 10% 58%, rgba(125, 224, 204, 0.09), transparent 70%);
+    height: 64rem;
+  }
+
+  /* `closest-side`, so it has faded out before it reaches its own edges. */
+  .signed-out-glow-centred {
+    background: radial-gradient(closest-side, rgba(143, 125, 232, 0.2), transparent);
+    height: 100%;
+  }
+
+  /*
+   * The second half of the landing headline, in an italic serif with the
+   * app icon's lavender and teal running through it. Newsreader is one of the
+   * faces a student can choose, so it is already self-hosted.
+   */
+  .landing-accent {
+    /* The shorthand first: it would reset a clip declared before it. */
+    background: linear-gradient(100deg, #fff8ff 4%, #dccfff 46%, #b2eadd 96%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font-family: var(--font-newsreader), "Iowan Old Style", Georgia, serif;
+    font-size: 1.06em;
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.015em;
+    /* Room for the italic's overhang, which `background-clip` would crop. */
+    padding-right: 0.08em;
+  }
+
+  /* A few lines of exercise-book paper for the example answer. */
+  .landing-ruled {
+    background-image: repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent calc(1.625rem - 1px),
+      rgba(214, 193, 244, 0.16) calc(1.625rem - 1px),
+      rgba(214, 193, 244, 0.16) 1.625rem
+    );
+    font-family: var(--font-newsreader), "Iowan Old Style", Georgia, serif;
+    font-style: italic;
+    line-height: 1.625rem;
+  }
+
+  .landing-tilted {
+    transform: rotate(var(--landing-tilt, 0deg));
+  }
+
+  .landing-orbit {
+    border: 1px solid rgba(214, 193, 244, 0.1);
+    border-radius: 999px;
+    left: 50%;
+    pointer-events: none;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .landing-orbit::after {
+    background: #fff;
+    border-radius: 999px;
+    box-shadow: 0 0 10px 2px rgba(200, 185, 255, 0.8);
+    content: "";
+    height: 4px;
+    left: 50%;
+    position: absolute;
+    top: -2px;
+    width: 4px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .landing-tilted {
+      animation: landing-float 7s ease-in-out infinite;
+    }
+
+    .landing-tilted-late {
+      animation-delay: -3.5s;
+      animation-duration: 8.5s;
+    }
+
+    .landing-orbit-turning {
+      animation: landing-orbit 90s linear infinite;
+    }
+  }
+
   .app-panel {
     position: relative;
     overflow: hidden;
@@ -1636,6 +1772,20 @@
     opacity: 1;
   }
 
+  .plan-outline-current {
+    position: relative;
+  }
+
+  .plan-outline-current::after {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: 9999px;
+    border: 2px solid var(--color-accent);
+    opacity: 0;
+    pointer-events: none;
+  }
+
   @media (prefers-reduced-motion: no-preference) {
     .plan-aurora {
       animation: plan-aurora-drift 34s var(--ease-standard) infinite alternate;
@@ -1676,6 +1826,22 @@
     /* A proposal arriving: one soft sweep, then still. */
     .plan-sweep {
       animation: plan-sweep-in var(--duration-slow) var(--ease-standard) both;
+    }
+
+    /*
+     * One piece of a plan being put in place: an exam, a subject, a day.
+     *
+     * Runs when the element mounts, and the outline keys each piece by what it
+     * is, so only the piece that was just added moves -- the rest stay still,
+     * which is what lets a student see which answer did what.
+     */
+    .plan-build-in {
+      animation: plan-build-in var(--duration-slow) var(--ease-spring) both;
+    }
+
+    /* The section Jami is asking about: a ring that breathes out, then rests. */
+    .plan-outline-current::after {
+      animation: plan-outline-pulse 2.4s var(--ease-standard) infinite;
     }
   }
 
@@ -2167,6 +2333,27 @@
   48% {
     opacity: var(--login-brand-spark-opacity);
     transform: scale(1);
+  }
+}
+
+@keyframes landing-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(var(--landing-tilt, 0deg));
+  }
+
+  50% {
+    transform: translateY(-8px) rotate(var(--landing-tilt, 0deg));
+  }
+}
+
+@keyframes landing-orbit {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
   }
 }
 
@@ -3710,6 +3897,29 @@ html.panels-solid body.constellation-background-enabled .app-nav {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes plan-build-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes plan-outline-pulse {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.8);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
   }
 }
 

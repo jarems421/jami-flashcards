@@ -131,8 +131,14 @@ const literata = Literata({
   variable: "--font-literata",
 });
 
+/*
+ * The italic as well as the upright: the signed-out landing page sets half its
+ * headline in it, and without the real face the browser slants the upright
+ * one. It is fetched only where italic Newsreader is actually painted.
+ */
 const newsreader = Newsreader({
   subsets: ["latin"],
+  style: ["normal", "italic"],
   display: "swap",
   preload: false,
   variable: "--font-newsreader",
