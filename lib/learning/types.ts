@@ -225,13 +225,17 @@ export type LearningSignal = {
   evidence: LearningEvidenceKind[];
   /**
    * The same evidence split by what it claims: recall from flashcards,
-   * application from marked exam and practice answers.
+   * application from marked exam, practice and notebook answers.
    *
    * `mastery` above blends the two, which is right for "how well is this
    * known" and wrong for "what kind of work would help". A student can recall
    * a method every time and still lose marks using it, and only the split can
-   * see that. Notebook working belongs to neither: it is marked by a model
-   * rather than a scheme, and too weak to make either claim on its own.
+   * see that. Notebook working was once left out of both, as marked by a model
+   * rather than a scheme. It counts as application since 28 September 2026,
+   * by the owner's decision: without it a student's own Topic could never show
+   * the gap, because only specification concepts have exam answers. It keeps
+   * its lower weight, so it takes more marked pages than exam answers to make
+   * the claim.
    */
   claims?: LearningClaims;
 };

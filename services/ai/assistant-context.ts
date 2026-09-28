@@ -42,6 +42,18 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { examQuestionVisualParts, loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
 import { EXAM_WORKING_IMAGE_DESCRIPTION } from "@/lib/practice/single-question-paper";
 import { serializeLearnerProfileForTutor } from "@/lib/learning/serialize/tutor-context";
+import { buildStudyActions } from "@/lib/learning/actions/study-actions";
+import {
+  materialTopicKeys,
+  practiceActionForMaterial,
+} from "@/lib/learning/actions/practice-for-material";
+import { buildTutorPracticeOffer, type TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
+import { describeStudyAction } from "@/lib/dashboard/today-plan";
+import {
+  loadStudyFolderForActions,
+  studyActionContextFor,
+} from "@/services/learning/study-actions.server";
+import { loadStudyActionHistory } from "@/services/learning/study-action-history.server";
 import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
 import { createLogger } from "@/lib/observability/logger";
 import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
@@ -193,7 +205,9 @@ async function loadTutorLearningContext(input: {
   uid: string;
   folderIds: readonly string[];
   deckId?: string;
-}) {
+  /** Where the material in front of the student sits in the engine's concept space. */
+  materialKeys: readonly string[];
+}): Promise<{ learningContext: string; practiceOffer?: TutorPracticeOffer } | undefined> {
   if (!featureFlags.enableLearnerProfile) return undefined;
   const folderIds = Array.from(new Set(input.folderIds.filter(Boolean)));
   const scope =
@@ -209,16 +223,33 @@ async function loadTutorLearningContext(input: {
   const loading = loadLearnerProfile({ uid: input.uid, ...scope });
   // Still settles after a timeout; without this its failure would go unhandled.
   loading.catch(() => undefined);
+  /*
+   * What turning the profile into actions needs, read beside it rather than
+   * after it: the folder, for whether its course can be practised, and the
+   * student's history with this advice, so resting advice stays at rest. Both
+   * are small, and either failing costs the offer and nothing else.
+   */
+  const actionFolderId = "folderId" in scope ? scope.folderId : undefined;
+  const actionInputs =
+    actionFolderId && featureFlags.enableStudyActions && input.materialKeys.length > 0
+      ? Promise.all([
+          loadStudyFolderForActions(input.uid, actionFolderId),
+          loadStudyActionHistory({ uid: input.uid }),
+        ]).catch((error: unknown) => {
+          log.warn("practice_offer.unavailable", { error });
+          return null;
+        })
+      : Promise.resolve(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const profile = await Promise.race([
-      loading,
+    const settled = await Promise.race([
+      Promise.all([loading, actionInputs]),
       new Promise<"timeout">((resolve) => {
         timer = setTimeout(() => resolve("timeout"), LEARNER_PROFILE_BUDGET_MS);
       }),
     ]);
     const latencyMs = Date.now() - startedAt;
-    if (profile === "timeout") {
+    if (settled === "timeout") {
       log.warn("learner_profile.timed_out", {
         consumer: "tutor",
         scope: scopeKind,
@@ -226,6 +257,7 @@ async function loadTutorLearningContext(input: {
       });
       return undefined;
     }
+    const [profile, inputs] = settled;
     if (!profile) {
       log.info("learner_profile.completed", {
         consumer: "tutor",
@@ -235,16 +267,38 @@ async function loadTutorLearningContext(input: {
       });
       return undefined;
     }
+    const [folder, history] = inputs ?? [null, null];
+    const practiceAction = folder
+      ? practiceActionForMaterial(
+          buildStudyActions(profile, studyActionContextFor(folder), history?.history),
+          input.materialKeys
+        )
+      : undefined;
+    const practiceOffer = practiceAction
+      ? buildTutorPracticeOffer(practiceAction, describeStudyAction(practiceAction))
+      : undefined;
     const learningContext = serializeLearnerProfileForTutor(profile, {
       boundaryToken: randomUUID(),
+      ...(practiceAction && practiceOffer
+        ? {
+            practiceFocus: {
+              label: practiceAction.target.label,
+              reason: practiceAction.reason,
+              ...(practiceAction.intervention ? { because: practiceAction.intervention.because } : {}),
+            },
+          }
+        : {}),
     });
     log.info("learner_profile.completed", {
       consumer: "tutor",
       outcome: learningContext ? "included" : "insufficient_evidence",
       latencyMs,
+      practiceOffered: Boolean(learningContext && practiceOffer),
       ...learnerProfileTelemetry(profile),
     });
-    return learningContext;
+    if (!learningContext) return undefined;
+    // Offered only alongside the profile that tells the model it is there.
+    return { learningContext, ...(practiceOffer ? { practiceOffer } : {}) };
   } catch (error) {
     log.warn("learner_profile.failed", {
       consumer: "tutor",
@@ -631,10 +685,20 @@ async function resolveNotebookContext(input: {
     )
     .filter((candidate) => candidate.notebookId === notebook.id);
   const notebookPageMap = buildNotebookPageMap(notebookPages, page.id);
+  /*
+   * A practice question's answer, which the page keeps folded away. Tutor
+   * marks against it, and holds it back as a flashcard's withheld side is held
+   * back: the student opens it themselves, or asks for it.
+   */
+  const answerKey = questionPrompt && page.questionAnswer ? page.questionAnswer.slice(0, 6_000) : "";
   const currentParts: AiContentPart[] = [
     {
       text: `Notebook: ${notebook.title}\nPage: ${page.pageNumber}${
         questionPrompt ? `\nQuestion prompt: ${questionPrompt}` : ""
+      }${
+        answerKey
+          ? `\nAnswer key for this question (hidden on the page until the student opens it). Use it to mark and check their working. Do not reveal it unless they ask for the answer or ask to be marked:\n${answerKey}`
+          : ""
       }${typedText ? `\nTyped page content:\n${typedText}` : ""}${
         notebookPageMap ? `\n\n${notebookPageMap}` : ""
       }`,
@@ -757,6 +821,14 @@ async function resolvePracticeContext(input: {
     currentId: attemptSnapshot.id,
     currentLabel: "Marked practice answer",
     currentParts,
+    /*
+     * The specification topics and concepts the question is filed under, so
+     * the engine's advice about them can be found. Kept apart from `topicIds`,
+     * which are the student's own Topics and choose their sources.
+     */
+    specificationIds: [question.topicIds, question.conceptIds].flatMap((ids) =>
+      Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []
+    ),
     relations: {
       currentSourceIds: [],
       directSourceIds: [],
@@ -786,7 +858,16 @@ export async function resolveJamiAssistantContext(input: {
           ? await resolvePracticeContext({ db, uid, context: input.context })
           : await resolveNotebookContext({ db, uid, context: input.context });
   const pinnedSourceIds = getPinnedSourceIds(resolved.relations, input.useRelatedSources);
-  const [sources, preferences, learningContext, course, neighbourParts] = await Promise.all([
+  const deckId =
+    "deckId" in resolved && typeof resolved.deckId === "string" && resolved.deckId
+      ? resolved.deckId
+      : undefined;
+  const materialKeys = materialTopicKeys({
+    topicIds: resolved.relations.topicIds,
+    ...(deckId ? { deckId } : {}),
+    ...("specificationIds" in resolved ? { specificationIds: resolved.specificationIds } : {}),
+  });
+  const [sources, preferences, learning, course, neighbourParts] = await Promise.all([
     selectSources({
       db,
       uid,
@@ -802,9 +883,8 @@ export async function resolveJamiAssistantContext(input: {
     loadTutorLearningContext({
       uid,
       folderIds: resolved.relations.folderIds,
-      ...("deckId" in resolved && typeof resolved.deckId === "string" && resolved.deckId
-        ? { deckId: resolved.deckId }
-        : {}),
+      ...(deckId ? { deckId } : {}),
+      materialKeys,
     }),
     loadTutorCourse({ uid, folderIds: resolved.relations.folderIds }),
     "neighbourParts" in resolved ? resolved.neighbourParts : Promise.resolve([]),
@@ -839,7 +919,8 @@ export async function resolveJamiAssistantContext(input: {
       .map((source) => source.id),
     studyLevelContext: preferences.studyLevelContext,
     personalisationContext: preferences.personalisationContext,
-    ...(learningContext ? { learningContext } : {}),
+    ...(learning ? { learningContext: learning.learningContext } : {}),
+    ...(learning?.practiceOffer ? { practiceOffer: learning.practiceOffer } : {}),
     ...(courseContext ? { courseContext } : {}),
     /**
      * The Topics this material is filed under.

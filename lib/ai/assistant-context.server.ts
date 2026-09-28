@@ -3,6 +3,7 @@ import "server-only";
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
 import type { AiReasoningEffort } from "@/lib/ai/provider-policy";
+import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
 import type { Source } from "@/lib/material/sources";
 
 const MAX_RELATED_SOURCES = 15;
@@ -46,6 +47,12 @@ export type ResolvedJamiAssistantContext = {
    * Tutor answers exactly as before in every one of those cases.
    */
   learningContext?: string;
+  /**
+   * The engine's advice to practise the topic in front of the student, when
+   * that is its decision for it. Only ever present with `learningContext`,
+   * which tells the model the offer is there. See `practiceActionForMaterial`.
+   */
+  practiceOffer?: TutorPracticeOffer;
   /**
    * The course behind the folder: its verified specification, topic headings
    * and examiners' question-type rules, and any of the student's sources that

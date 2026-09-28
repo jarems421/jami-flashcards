@@ -1,6 +1,8 @@
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import type { JamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import type { JamiAssistantSuggestedCard } from "@/lib/ai/tutor-card-suggestions";
+import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
+import type { JamiAssistantSuggestedQuestion } from "@/lib/ai/tutor-question-suggestions";
 
 import { normalizeAssistantId as normalizeId } from "@/lib/ai/jami-assistant-normalize";
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
@@ -106,6 +108,14 @@ export type JamiAssistantResponse = {
   citations?: JamiAssistantCitation[];
   /** Flashcards offered in reply to a request for them; saved only if the student chooses. */
   suggestedCards?: JamiAssistantSuggestedCard[];
+  /** Practice questions offered in reply to a request for them; saved only if the student chooses. */
+  suggestedQuestions?: JamiAssistantSuggestedQuestion[];
+  /**
+   * The engine's practice advice for the topic in front of the student, when
+   * that is its decision. Live advice, so it is shown but never saved with
+   * the conversation: reopened next week, it may no longer be true.
+   */
+  practiceOffer?: TutorPracticeOffer;
   canIllustrate?: boolean;
   savedThread?: JamiAssistantThread;
 };
@@ -144,6 +154,8 @@ export type ParsedJamiAssistantModelAnswer = {
    * turn that invited them.
    */
   cards?: unknown;
+  /** Practice questions, likewise passed through for `readTutorQuestionSuggestions`. */
+  questions?: unknown;
 };
 
 export type TutorRoutingPreflight = {
@@ -161,6 +173,7 @@ type ModelAnswerPayload = {
   graphs?: unknown;
   marking?: unknown;
   cards?: unknown;
+  questions?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -895,6 +908,9 @@ export function parseJamiAssistantModelAnswer(
       : {}),
     ...(payload.cards !== undefined && payload.cards !== null
       ? { cards: payload.cards }
+      : {}),
+    ...(payload.questions !== undefined && payload.questions !== null
+      ? { questions: payload.questions }
       : {}),
     usedCurrentContext: payload.usedCurrentContext,
     usedGeneralKnowledge: payload.usedGeneralKnowledge,

@@ -137,6 +137,7 @@ export function toDrawerMessages(messages: JamiAssistantStoredMessage[]) {
     followUps: message.followUps,
     citations: message.citations,
     suggestedCards: message.suggestedCards,
+    suggestedQuestions: message.suggestedQuestions,
     illustrations: message.illustrations,
     canIllustrate: message.canIllustrate,
     id: message.id,

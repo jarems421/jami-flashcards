@@ -102,12 +102,64 @@ function cardsSchema(allowedSourceRefs: string[]): Schema {
   };
 }
 
+/**
+ * Practice questions Tutor offers, when the student asked for them.
+ *
+ * Every question carries its mark scheme as points, because a question with
+ * nothing to mark it against can never tell the student how they did.
+ */
+function questionsSchema(allowedSourceRefs: string[]): Schema {
+  return {
+    type: Type.ARRAY,
+    description:
+      "Practice questions written in your own words. Never copy a question or sentence from a source.",
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        prompt: {
+          type: Type.STRING,
+          description: "The question, as an exam would set it.",
+        },
+        marks: {
+          type: Type.INTEGER,
+          description: "Marks the question is worth. Must equal the sum of its points' marks.",
+        },
+        answer: {
+          type: Type.STRING,
+          description: "A full model answer.",
+        },
+        points: {
+          type: Type.ARRAY,
+          description: "The mark scheme: one point per mark, in the order marks are earned.",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              marks: { type: Type.INTEGER, description: "Marks this point earns." },
+              text: { type: Type.STRING, description: "What earns it." },
+            },
+            required: ["marks", "text"],
+          },
+        },
+        sourceRef: {
+          type: Type.STRING,
+          format: "enum",
+          enum: allowedSourceRefs,
+          description: "The source reference this question draws on most.",
+        },
+      },
+      required: ["prompt", "marks", "answer", "points", "sourceRef"],
+    },
+  };
+}
+
 export function buildAssistantResponseSchema(
   allowedSourceRefs: string[],
   /** Whether this turn may carry a marking at all. Off for every non-marking turn. */
   markingInvited = false,
   /** Whether this turn may carry flashcard suggestions. Needs at least one source. */
-  cardsInvited = false
+  cardsInvited = false,
+  /** Whether this turn may carry practice question suggestions. Needs at least one source. */
+  questionsInvited = false
 ) {
   const sourceRefItems: Schema =
     allowedSourceRefs.length > 0
@@ -127,6 +179,9 @@ export function buildAssistantResponseSchema(
       ...(markingInvited ? { marking: markingSchema() } : {}),
       ...(cardsInvited && allowedSourceRefs.length > 0
         ? { cards: cardsSchema(allowedSourceRefs) }
+        : {}),
+      ...(questionsInvited && allowedSourceRefs.length > 0
+        ? { questions: questionsSchema(allowedSourceRefs) }
         : {}),
       answer: {
         type: Type.STRING,

@@ -7,6 +7,7 @@ import {
   buildStudyActions,
   mergeStudyActions,
   type StudyAction,
+  type StudyActionContext,
 } from "@/lib/learning/actions/study-actions";
 import { mapStudyFolderData, type StudyFolder } from "@/lib/workspace/study-folders";
 import { getAdminDb } from "@/services/firebase/admin";
@@ -47,6 +48,49 @@ export type StudyActionsResult = {
   historyAvailable: boolean;
   generatedAt: number;
 };
+
+/**
+ * What this deployment can carry out for one folder.
+ *
+ * Shared by every surface that turns the engine's advice into actions, so
+ * Tutor offers exactly what Today would for the same folder: one answer to
+ * "can this be practised, written or taught here?", not one per surface.
+ */
+export function studyActionContextFor(folder: Pick<StudyFolder, "examCourse">): StudyActionContext {
+  return {
+    questionPracticeAvailable: featureFlags.enablePastPaperPractice && Boolean(folder.examCourse),
+    /*
+     * Whether this deployment may have Jami write study material.
+     *
+     * Cards and questions are one capability wearing two hats -- AI writing
+     * material the student then reads and confirms -- and `enableFlashcardAi`
+     * is the flag that already governs it. Practice is deliberately *not*
+     * gated on `enablePastPaperPractice`: that governs the licensed exam
+     * corpus, which is material Jami serves rather than writes, and conflating
+     * the two would switch generation off wherever a folder simply has no exam
+     * course.
+     */
+    canGenerate: {
+      flashcards: featureFlags.enableFlashcardAi,
+      practice: featureFlags.enableFlashcardAi,
+    },
+    // Teaching a concept directly, in a Revision Session.
+    canRunRevisionSession: revisionSessionsEnabled() && isAnyAiProviderConfigured(),
+  };
+}
+
+/** One folder, read the way the study actions read it; null when it is gone or archived. */
+export async function loadStudyFolderForActions(uid: string, folderId: string) {
+  const snapshot = await getAdminDb()
+    .collection("users")
+    .doc(uid)
+    .collection("studyFolders")
+    .doc(folderId)
+    .get();
+  if (!snapshot.exists) return null;
+  const folder = mapStudyFolderData(snapshot.id, snapshot.data() as Record<string, unknown>);
+  return folder.archived ? null : folder;
+}
 
 /**
  * The next study actions across a student's recent folders.
@@ -111,27 +155,7 @@ export async function loadStudyActions(input: {
     if (!result.profile) return [];
     return buildStudyActions(
       result.profile,
-      {
-        questionPracticeAvailable:
-          featureFlags.enablePastPaperPractice && Boolean(result.folder.examCourse),
-        /*
-         * Whether this deployment may have Jami write study material.
-         *
-         * Cards and questions are one capability wearing two hats -- AI
-         * writing material the student then reads and confirms -- and
-         * `enableFlashcardAi` is the flag that already governs it. Practice is
-         * deliberately *not* gated on `enablePastPaperPractice`: that governs
-         * the licensed exam corpus, which is material Jami serves rather than
-         * writes, and conflating the two would switch generation off wherever
-         * a folder simply has no exam course.
-         */
-        canGenerate: {
-          flashcards: featureFlags.enableFlashcardAi,
-          practice: featureFlags.enableFlashcardAi,
-        },
-        // Teaching a concept directly, in a Revision Session.
-        canRunRevisionSession: revisionSessionsEnabled() && isAnyAiProviderConfigured(),
-      },
+      studyActionContextFor(result.folder),
       historyResult.history,
       now
     );

@@ -386,7 +386,7 @@ export async function convertPracticeQuestionDraftToNotebookPage(
     title: pageData.title,
     pageType: pageData.pageType,
     questionPrompt: pageData.questionPrompt,
-    typedContent: pageData.typedContent ?? undefined,
+    questionAnswer: pageData.questionAnswer ?? undefined,
     linkedSourceId: pageData.linkedSourceId ?? undefined,
     pageColor: notebook.pageColor,
     status: pageData.status,

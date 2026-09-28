@@ -460,6 +460,7 @@ export async function createNotebookPage(
     pageStyle?: NotebookPageStyle;
     status?: NotebookPageStatus;
     questionPrompt?: string;
+    questionAnswer?: string;
     linkedQuestionId?: string;
     linkedSourceId?: string;
     linkedPastPaperId?: string;

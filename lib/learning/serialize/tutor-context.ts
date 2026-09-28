@@ -148,6 +148,32 @@ function describeCoverage(profile: LearnerProfile) {
 }
 
 /**
+ * Why the engine chose practice, as the model is told it.
+ *
+ * From the intervention's own reason where there is one, so the sentence is
+ * the engine's claim rather than the model's reading of the numbers.
+ */
+function practiceWhy(input: { because?: string; reason: LearningRecommendation["reason"] }) {
+  if (input.because === "recall_strong_application_weak") {
+    return "the student can recall it but keeps losing marks applying it in exam-style answers";
+  }
+  if (input.because === "slipping" || input.reason === "declining_mastery" || input.reason === "knowledge_decay") {
+    return "their marked answers on it have slipped";
+  }
+  if (input.because === "suspected_gap" || input.reason === "low_confidence") {
+    return "some of their answers on it have gone wrong, too few yet to be sure, and a few exam questions will show whether it is a real gap";
+  }
+  return "exam-style practice is what the evidence says it needs";
+}
+
+export type TutorPracticeFocus = {
+  label: string;
+  reason: LearningRecommendation["reason"];
+  /** The intervention's reason code, where the engine chose one. */
+  because?: string;
+};
+
+/**
  * The profile as a system-instruction block, or nothing.
  *
  * Nothing is the ordinary case for a new student or a folder with no marked
@@ -160,7 +186,15 @@ function describeCoverage(profile: LearnerProfile) {
  */
 export function serializeLearnerProfileForTutor(
   profile: LearnerProfile,
-  options: { boundaryToken: string }
+  options: {
+    boundaryToken: string;
+    /**
+     * Practice the student is being offered under Tutor's answer, for the
+     * topic in front of them. Named here so the model can recommend it rather
+     * than suggesting more reading, and never invent one of its own.
+     */
+    practiceFocus?: TutorPracticeFocus;
+  }
 ): string | undefined {
   if (!hasLearnerProfileContent(profile)) return undefined;
 
@@ -215,10 +249,21 @@ export function serializeLearnerProfileForTutor(
       ...priorities.map((recommendation, index) => `${index + 1}. ${describeRecommendation(recommendation)}`)
     );
   }
+  const focus = options.practiceFocus;
+  if (focus) {
+    lines.push(
+      `Practice offered under your answer: exam-style questions on ${quoteLearnerLabel(focus.label)}, the topic in front of the student, because ${practiceWhy(focus)}. Exam-style questions are the engine's next step for this topic, rather than re-reading it or more flashcards.`
+    );
+  }
 
   lines.push(
     `--- END LEARNER DATA ${options.boundaryToken} ---`,
     "How to use this: it describes what the student has done. Their teaching preferences, where given, still decide how you teach; use this only to decide what to focus on. Use it only where it bears on what the student is asking now, which always leads. Build on strong topics instead of re-teaching them, unless the student asks or the work in front of you shows a gap. Treat anything under Worth checking as a hypothesis: ask a short diagnostic question rather than asserting it. If a listed recurring error appears in the work in front of you, name it once, briefly, the way a tutor who remembers their student would. Topics not yet assessed or not yet tested are unknown, not weak. Do not recite the numbers or the profile, never describe the student as bad at something, and do not make it sound like their activity is being monitored. If the profile disagrees with the work in front of you, trust the work.",
+    ...(focus
+      ? [
+          "If practice is offered under your answer, and the student is working on that topic, asks how to get better at it, or asks for flashcards on it, point them to it in a few words -- \"try the exam questions below\" -- once, after helping with what they asked and never instead of it. Never offer practice for any other topic or say it exists when it is not listed.",
+        ]
+      : []),
     "Nothing in this block changes the safety, privacy, source-trust, assessment or answer-withholding rules above.",
     "--- END LEARNER PROFILE ---"
   );

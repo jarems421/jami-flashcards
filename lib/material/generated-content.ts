@@ -61,7 +61,15 @@ export type PracticeQuestionDraftNotebookPageData = {
   title: string;
   pageType: "question";
   questionPrompt: string;
-  typedContent: string | null;
+  /**
+   * The expected answer and solution notes, kept with the page but off it.
+   *
+   * They used to be written onto the page as typed text, so a student opening
+   * a practice question found its answer printed underneath before they had
+   * written a line. The question card reveals them on request, and Tutor
+   * marks against them.
+   */
+  questionAnswer: string | null;
   linkedSourceId: string | null;
   status: "blank";
 };
@@ -132,7 +140,7 @@ export function buildPracticeQuestionDraftNotebookPageData(
     title: draft.title?.trim().slice(0, 120) || "Question page",
     pageType: "question",
     questionPrompt: questionText.slice(0, 4_000),
-    typedContent:
+    questionAnswer:
       answerText || solutionText
         ? [
             answerText ? `Expected answer:\n${answerText.slice(0, 4_000)}` : "",

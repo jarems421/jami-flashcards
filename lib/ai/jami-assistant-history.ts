@@ -17,6 +17,10 @@ import {
   normalizeSuggestedCards,
   type JamiAssistantSuggestedCard,
 } from "@/lib/ai/tutor-card-suggestions";
+import {
+  normalizeSuggestedQuestions,
+  type JamiAssistantSuggestedQuestion,
+} from "@/lib/ai/tutor-question-suggestions";
 
 export const JAMI_ASSISTANT_MAX_SAVED_THREADS = 50;
 export const JAMI_ASSISTANT_MAX_THREAD_TITLE_LENGTH = 80;
@@ -66,6 +70,7 @@ export type JamiAssistantStoredMessage = {
   followUps?: JamiAssistantFollowUp[];
   citations?: JamiAssistantCitation[];
   suggestedCards?: JamiAssistantSuggestedCard[];
+  suggestedQuestions?: JamiAssistantSuggestedQuestion[];
   illustrations?: AssistantIllustration[];
   canIllustrate?: boolean;
   createdAt: number;
@@ -240,6 +245,7 @@ export function mapJamiAssistantStoredMessage(
   const followUps = normalizeFollowUps(data.followUps);
   const citations = normalizeAssistantCitations(data.citations);
   const suggestedCards = normalizeSuggestedCards(data.suggestedCards);
+  const suggestedQuestions = normalizeSuggestedQuestions(data.suggestedQuestions);
   const illustrations = normalizeAssistantIllustrations(data.illustrations);
   return {
     id,
@@ -250,6 +256,7 @@ export function mapJamiAssistantStoredMessage(
     ...(followUps.length > 0 ? { followUps } : {}),
     ...(citations.length > 0 ? { citations } : {}),
     ...(suggestedCards.length > 0 ? { suggestedCards } : {}),
+    ...(suggestedQuestions.length > 0 ? { suggestedQuestions } : {}),
     ...(illustrations.length > 0 ? { illustrations } : {}),
     ...(data.canIllustrate === true ? { canIllustrate: true } : {}),
     createdAt:

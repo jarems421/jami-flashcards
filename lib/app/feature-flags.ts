@@ -63,16 +63,19 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    */
   enableRevisionSessions: true,
   /*
-   * Off, deliberately, and the only flag here that starts that way.
+   * On, by the owner's decision on 28 September 2026.
    *
    * Joining a student's own Topics to the specification changes numbers a
    * student has already been shown: evidence that was split across two
    * unrelated concepts starts meeting, and a topic's mastery moves as a
-   * result. That is correct rather than a fault, but it is visible, and it
-   * should be looked at on real evidence before anyone sees it -- see
-   * `scripts/eval/concept-relation-diff.ts`.
+   * result. That is correct rather than a fault, but it is visible. It was held
+   * off for a before/after diff on real evidence, which no account could yet
+   * supply; it is on because without it the engine can never see that a
+   * student recalls a topic from their own cards and still loses marks on it
+   * in exam questions. `scripts/eval/concept-relation-diff.ts` still reads the
+   * difference for any folder. Only relations recorded on a Topic are used.
    */
-  enableConceptRelations: false,
+  enableConceptRelations: true,
 };
 
 /**

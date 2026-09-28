@@ -91,6 +91,12 @@ import {
   TUTOR_CARD_INSTRUCTION,
   type JamiAssistantSuggestedCard,
 } from "@/lib/ai/tutor-card-suggestions";
+import {
+  invitesTutorQuestionSuggestions,
+  readTutorQuestionSuggestions,
+  TUTOR_QUESTION_INSTRUCTION,
+  type JamiAssistantSuggestedQuestion,
+} from "@/lib/ai/tutor-question-suggestions";
 
 export const runtime = "nodejs";
 /**
@@ -590,10 +596,16 @@ export async function POST(request: NextRequest) {
     message: parsedRequest.message,
     readableSourceCount: readable.length,
   });
+  /** And practice questions, on the same terms. */
+  const questionsInvited = invitesTutorQuestionSuggestions({
+    message: parsedRequest.message,
+    readableSourceCount: readable.length,
+  });
   const responseSchema = buildAssistantResponseSchema(
     allowedSourceRefs,
     markingInvited,
-    cardsInvited
+    cardsInvited,
+    questionsInvited
   );
   const systemInstruction = `${TUTOR_VOICE_INSTRUCTION}
 ${resolved.studyLevelContext ? `${resolved.studyLevelContext}\n` : ""}${resolved.courseContext ? `${resolved.courseContext}\n` : ""}${resolved.personalisationContext ? `${resolved.personalisationContext}\n` : ""}Treat the student's latest explicit request as the strongest signal for the depth and kind of help they want.
@@ -620,6 +632,7 @@ sourceRefs must contain only references that materially informed the response. I
 
 ${markingInvited ? MARKING_INSTRUCTION : ""}
 ${cardsInvited ? TUTOR_CARD_INSTRUCTION : ""}
+${questionsInvited ? TUTOR_QUESTION_INSTRUCTION : ""}
 ${getJsonAnswerFormatPrompt("answer")}
 
 ${responseGuidance.instruction}`;
@@ -946,28 +959,54 @@ ${responseGuidance.instruction}`;
             : [];
         })
       : [];
+    const suggestedQuestions: JamiAssistantSuggestedQuestion[] = questionsInvited
+      ? readTutorQuestionSuggestions(parsedAnswer.questions, {
+          allowedSourceRefs,
+          evidenceBySourceRef,
+        }).flatMap((question) => {
+          const source = sourcesByRef.get(question.sourceRef);
+          return source
+            ? [
+                {
+                  prompt: question.prompt,
+                  marks: question.marks,
+                  answer: question.answer,
+                  points: question.points,
+                  sourceId: source.id,
+                  sourceTitle: source.title,
+                  topicIds: source.topicIds,
+                },
+              ]
+            : [];
+        })
+      : [];
     /*
-     * Offering cards, once an answer has actually drawn on a source. Tutor
-     * suggests rather than writes them unasked: the offer costs a tap, and a
-     * stack of cards after every answer would be noise. Not while revising a
-     * card, where the student is already studying one.
+     * Offering cards and questions, once an answer has actually drawn on a
+     * source. Tutor suggests rather than writes them unasked: the offer costs a
+     * tap, and a stack of material after every answer would be noise. Not
+     * while revising a card, where the student is already studying one.
      */
-    const followUps =
-      !cardsInvited &&
+    const offersMaterial =
       parsedAnswer.sourceRefs.length > 0 &&
       (parsedRequest.context.surface === "sources" ||
-        parsedRequest.context.surface === "notebook")
-        ? [
-            ...responseGuidance.followUps,
-            { label: "Make flashcards", prompt: "Make flashcards from this." },
-          ]
-        : responseGuidance.followUps;
+        parsedRequest.context.surface === "notebook");
+    const followUps = [
+      ...responseGuidance.followUps,
+      ...(offersMaterial && !cardsInvited
+        ? [{ label: "Make flashcards", prompt: "Make flashcards from this." }]
+        : []),
+      ...(offersMaterial && !questionsInvited
+        ? [{ label: "Practice questions", prompt: "Write practice questions on this." }]
+        : []),
+    ];
 
     return {
       reply,
       used,
       ...(followUps.length > 0 ? { followUps } : {}),
       ...(suggestedCards.length > 0 ? { suggestedCards } : {}),
+      ...(suggestedQuestions.length > 0 ? { suggestedQuestions } : {}),
+      ...(resolved.practiceOffer ? { practiceOffer: resolved.practiceOffer } : {}),
       ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
       ...(parsedAnswer.usedWebResearch && webResearch.ok
         ? { citations: webResearch.citations.slice(0, 8) }
@@ -1216,6 +1255,7 @@ ${responseGuidance.instruction}`;
           followUps: payload.followUps ?? [],
           citations: payload.citations ?? [],
           suggestedCards: payload.suggestedCards ?? [],
+          suggestedQuestions: payload.suggestedQuestions ?? [],
           illustrations: [],
           canIllustrate: payload.canIllustrate === true,
           createdAt: now + 1,
@@ -1318,6 +1358,8 @@ ${responseGuidance.instruction}`;
             [...evidenceBySourceRef.values()].flat()
           ),
           suggestedCardCount: payload.suggestedCards?.length ?? 0,
+          suggestedQuestionCount: payload.suggestedQuestions?.length ?? 0,
+          practiceOffered: Boolean(payload.practiceOffer),
           // Alongside the token counts, so what a big attachment actually costs
           // can be read off the logs rather than guessed at.
           combinedSourceBytes,

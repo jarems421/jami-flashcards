@@ -279,9 +279,13 @@ function dueCardsByTopic(
   return due;
 }
 
-/** What each kind of evidence claims. Notebook working claims neither; see `LearningSignal.claims`. */
+/** What each kind of evidence claims; see `LearningSignal.claims`. */
 const RECALL_EVIDENCE: ReadonlySet<LearningEvidenceKind> = new Set(["flashcards"]);
-const APPLICATION_EVIDENCE: ReadonlySet<LearningEvidenceKind> = new Set(["past-paper", "practice"]);
+const APPLICATION_EVIDENCE: ReadonlySet<LearningEvidenceKind> = new Set([
+  "past-paper",
+  "practice",
+  "notebook",
+]);
 
 function claimEstimate(
   observations: readonly LearningObservation[],

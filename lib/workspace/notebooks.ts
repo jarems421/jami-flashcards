@@ -164,6 +164,11 @@ export type NotebookPage = {
   pageStyle: NotebookPageStyle;
   status: NotebookPageStatus;
   questionPrompt?: string;
+  /**
+   * The answer to a practice question page, kept off the page itself: shown
+   * only when the student asks, and read by Tutor when it marks the working.
+   */
+  questionAnswer?: string;
   questionAssets?: PracticePaperQuestionAsset[];
   linkedQuestionId?: string;
   linkedSourceId?: string;
@@ -194,6 +199,8 @@ export const MAX_NOTEBOOK_TITLE_LENGTH = 140;
 export const MAX_NOTEBOOK_TOPIC_IDS = 30;
 export const MAX_NOTEBOOK_SOURCE_IDS = 30;
 export const MAX_NOTEBOOK_PAGE_TYPED_CONTENT = 30_000;
+/** An expected answer and its solution notes, as a practice draft holds them. */
+export const MAX_QUESTION_ANSWER_LENGTH = 12_500;
 export const MAX_NOTEBOOK_TEXT_BLOCKS = 80;
 export const MAX_NOTEBOOK_TEXT_BLOCK_TEXT = 4_000;
 export const MAX_NOTEBOOK_INK_SVG_LENGTH = 850_000;
@@ -939,6 +946,7 @@ export function mapNotebookPageData(
     pageStyle: isNotebookPageStyle(data.pageStyle) ? data.pageStyle : "plain",
     status: isNotebookPageStatus(data.status) ? data.status : "blank",
     questionPrompt: normalizeOptionalString(data.questionPrompt, 30_000),
+    questionAnswer: normalizeOptionalString(data.questionAnswer, MAX_QUESTION_ANSWER_LENGTH),
     questionAssets: normalizeQuestionAssets(data.questionAssets),
     linkedQuestionId: normalizeOptionalString(data.linkedQuestionId, 160),
     linkedSourceId: normalizeOptionalString(data.linkedSourceId, 160),
@@ -1023,6 +1031,7 @@ export function buildNotebookPagePayload(input: {
   pageStyle?: NotebookPageStyle;
   status?: NotebookPageStatus;
   questionPrompt?: string;
+  questionAnswer?: string;
   questionAssets?: PracticePaperQuestionAsset[];
   linkedQuestionId?: string;
   linkedSourceId?: string;
@@ -1109,6 +1118,8 @@ export function buildNotebookPagePayload(input: {
     pageStyle: input.pageStyle ?? "plain",
     status: input.status ?? "blank",
     questionPrompt: normalizeOptionalString(input.questionPrompt, 30_000) ?? null,
+    questionAnswer:
+      normalizeOptionalString(input.questionAnswer, MAX_QUESTION_ANSWER_LENGTH) ?? null,
     questionAssets: normalizeQuestionAssets(input.questionAssets),
     linkedQuestionId: normalizeOptionalString(input.linkedQuestionId, 160) ?? null,
     linkedSourceId: normalizeOptionalString(input.linkedSourceId, 160) ?? null,
