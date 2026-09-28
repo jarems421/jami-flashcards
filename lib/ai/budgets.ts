@@ -45,7 +45,12 @@ type AiBudgetConfig = {
   inputTokenCap: number | null;
 };
 
-export type AiBudgetLimitReason = "daily_limit" | "burst_limit";
+/**
+ * Why a request got no allowance. `email_unconfirmed` is not a limit being
+ * reached: an account made around Jami's sign-up, with an address nobody has
+ * proved, has no allowance at all.
+ */
+export type AiBudgetLimitReason = "daily_limit" | "burst_limit" | "email_unconfirmed";
 
 /**
  * A receipt for one charged request, so it can be given back.

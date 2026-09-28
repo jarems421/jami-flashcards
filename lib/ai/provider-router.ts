@@ -39,6 +39,10 @@ export type AiResponseDiagnostics = {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
   totalTokenCount?: number;
+  /** Gemini only: thinking, billed as output. */
+  thoughtsTokenCount?: number;
+  /** Gemini only: what a tool fetched, billed as input. */
+  toolUsePromptTokenCount?: number;
   estimatedCostUsd?: number;
   finishReason?: string;
 };
@@ -199,8 +203,8 @@ function recordUsage(info: AiResponseDiagnostics) {
   spend.record({
     provider: info.provider,
     model: info.modelName,
-    promptTokens: info.promptTokenCount,
-    completionTokens: info.candidatesTokenCount,
+    promptTokens: (info.promptTokenCount ?? 0) + (info.toolUsePromptTokenCount ?? 0),
+    completionTokens: (info.candidatesTokenCount ?? 0) + (info.thoughtsTokenCount ?? 0),
     ...(info.estimatedCostUsd === undefined
       ? {}
       : { reportedCostUsd: info.estimatedCostUsd }),
@@ -359,6 +363,8 @@ async function runBufferedAttempt(
         promptTokenCount: diagnostics.promptTokenCount,
         candidatesTokenCount: diagnostics.candidatesTokenCount,
         totalTokenCount: diagnostics.totalTokenCount,
+        thoughtsTokenCount: diagnostics.thoughtsTokenCount,
+        toolUsePromptTokenCount: diagnostics.toolUsePromptTokenCount,
         finishReason: diagnostics.finishReason,
       };
       recordUsage(info);
@@ -451,6 +457,8 @@ async function runStreamBufferedAttempt(
         promptTokenCount: diagnostics.promptTokenCount,
         candidatesTokenCount: diagnostics.candidatesTokenCount,
         totalTokenCount: diagnostics.totalTokenCount,
+        thoughtsTokenCount: diagnostics.thoughtsTokenCount,
+        toolUsePromptTokenCount: diagnostics.toolUsePromptTokenCount,
         finishReason: diagnostics.finishReason,
       };
       recordUsage(info);
@@ -604,6 +612,8 @@ export async function* streamAiText(
               promptTokenCount: diagnostics.promptTokenCount,
               candidatesTokenCount: diagnostics.candidatesTokenCount,
               totalTokenCount: diagnostics.totalTokenCount,
+              thoughtsTokenCount: diagnostics.thoughtsTokenCount,
+              toolUsePromptTokenCount: diagnostics.toolUsePromptTokenCount,
               finishReason: diagnostics.finishReason,
             };
             recordUsage(info);

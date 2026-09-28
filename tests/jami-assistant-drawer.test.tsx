@@ -225,6 +225,63 @@ describe("JamiAssistantDrawer", () => {
     });
     expect(document.body.textContent).toContain("Because of the sign.");
   });
+
+  it("sends what was asked elsewhere once, as soon as it opens", async () => {
+    sendJamiAssistantMessage.mockResolvedValue({ reply: "Enzymes speed reactions up.", followUps: [], used: [] });
+    const drawer = (
+      <JamiAssistantDrawer
+        userId="user-1"
+        open
+        onOpenChange={vi.fn()}
+        resetKey="reset-1"
+        contextKey={CONTEXT_KEY}
+        contextLabel="Enzymes notes"
+        historyContextLabel="Enzymes notes"
+        getContext={getContext}
+        initialMessage="What do enzymes do?"
+      />
+    );
+    await act(async () => {
+      root.render(drawer);
+    });
+    // A re-render with the same message must not ask it again.
+    await act(async () => {
+      root.render(drawer);
+    });
+
+    expect(sendJamiAssistantMessage).toHaveBeenCalledTimes(1);
+    expect(sendJamiAssistantMessage.mock.calls[0]?.[0]).toMatchObject({ message: "What do enzymes do?" });
+    expect(document.body.textContent).toContain("Enzymes speed reactions up.");
+  });
+
+  it("draws the surface's material controls, told whether the chat has begun", async () => {
+    sendJamiAssistantMessage.mockResolvedValue({ reply: "Sure.", followUps: [], used: [] });
+    const controls = vi.fn(({ conversationStarted }: { conversationStarted: boolean }) => (
+      <p data-controls>{conversationStarted ? "started" : "not started"}</p>
+    ));
+    act(() => {
+      root.render(
+        <JamiAssistantDrawer
+          userId="user-1"
+          open
+          onOpenChange={vi.fn()}
+          resetKey="reset-1"
+          contextKey={CONTEXT_KEY}
+          contextLabel="This page"
+          historyContextLabel="this page"
+          getContext={getContext}
+          contextControls={controls}
+        />
+      );
+    });
+    expect(document.querySelector("[data-controls]")?.textContent).toBe("not started");
+
+    typeMessage("Help");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(document.querySelector("[data-controls]")?.textContent).toBe("started");
+  });
 });
 
 describe("JamiAssistantDrawer floating over a notebook", () => {

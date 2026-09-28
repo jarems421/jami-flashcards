@@ -1,20 +1,39 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generateContent = vi.fn();
+const createInteraction = vi.fn();
 
 vi.mock("@google/genai", () => ({
   GoogleGenAI: class {
     models = { generateContent };
+    interactions = { create: createInteraction };
   },
 }));
 vi.mock("server-only", () => ({}));
 
-const { generateGeminiImage, generateGroundedResearch } = await import(
-  "@/lib/ai/gemini"
-);
+const {
+  generateGeminiImage,
+  generateGeminiVideoText,
+  generateGroundedResearch,
+  geminiBilledTokens,
+  groundedSearchCount,
+} = await import("@/lib/ai/gemini");
+const { runWithAiSpendContext } = await import("@/lib/ai/spend-context");
+type AiSpendSample = import("@/lib/ai/spend").AiSpendSample;
+
+/** Runs a call inside a spend context and returns what it metered. */
+async function metered<T>(run: () => Promise<T>) {
+  const samples: AiSpendSample[] = [];
+  const result = await runWithAiSpendContext(
+    { uid: "student", action: "assistant", record: (sample) => samples.push(sample) },
+    run
+  );
+  return { result, samples };
+}
 
 const trackedEnv = [
   "GEMINI_API_KEY",
+  "GEMINI_RESEARCH_MODEL",
   "GEMINI_ENABLED",
   "GEMINI_PRIVACY_APPROVED",
   "GEMINI_QUALITY_GATE_PASSED",
@@ -30,6 +49,7 @@ const originalEnv = Object.fromEntries(
 describe("Gemini specialists", () => {
   beforeEach(() => {
     generateContent.mockReset();
+    createInteraction.mockReset();
     for (const key of trackedEnv) {
       const value = originalEnv[key];
       if (value === undefined) delete process.env[key];
@@ -151,6 +171,176 @@ describe("Gemini specialists", () => {
         responseModalities: ["TEXT", "IMAGE"],
         imageConfig: { aspectRatio: "4:3", imageSize: "1K" },
       },
+    });
+  });
+
+  /*
+   * Research and images reach Gemini directly, not through the router, and
+   * were never metered: the spend report showed Gemini as almost free while it
+   * was most of the bill.
+   */
+  describe("metering", () => {
+    const groundedResponse = (webSearchQueries: string[]) => ({
+      text: "Verified course evidence.",
+      candidates: [{
+        groundingMetadata: {
+          webSearchQueries,
+          groundingChunks: [{ web: { title: "Spec", uri: "https://example.edu/spec" } }],
+        },
+      }],
+      usageMetadata: {
+        promptTokenCount: 120,
+        toolUsePromptTokenCount: 3_000,
+        candidatesTokenCount: 400,
+        thoughtsTokenCount: 250,
+      },
+    });
+
+    it("records a Gemini 3 research call with every search query it ran", async () => {
+      process.env.AI_WEB_RESEARCH_ENABLED = "true";
+      generateContent.mockResolvedValueOnce(groundedResponse(["aqa biology paper 1 format", "aqa 8461 marks"]));
+
+      const { samples } = await metered(() =>
+        generateGroundedResearch({ sanitizedQuery: "AQA GCSE biology paper format" })
+      );
+
+      expect(samples).toEqual([{
+        provider: "gemini",
+        model: "gemini-3.5-flash-lite",
+        promptTokens: 3_120,
+        completionTokens: 650,
+        audioPromptTokens: 0,
+        imageCompletionTokens: 0,
+        searches: 2,
+      }]);
+    });
+
+    it("records one search for a grounded Gemini 2.5 prompt, however many queries it ran", async () => {
+      process.env.AI_WEB_RESEARCH_ENABLED = "true";
+      process.env.GEMINI_RESEARCH_MODEL = "gemini-2.5-flash-lite";
+      generateContent.mockResolvedValueOnce(groundedResponse(["one", "two", "three"]));
+
+      const { samples } = await metered(() =>
+        generateGroundedResearch({ sanitizedQuery: "AQA GCSE biology paper format" })
+      );
+
+      expect(samples[0]).toMatchObject({ model: "gemini-2.5-flash-lite", searches: 1 });
+    });
+
+    it("records a research call that came back empty, because it was still billed", async () => {
+      process.env.AI_WEB_RESEARCH_ENABLED = "true";
+      generateContent.mockResolvedValueOnce({ text: "", candidates: [{}], usageMetadata: { promptTokenCount: 90 } });
+
+      const { result, samples } = await metered(() =>
+        generateGroundedResearch({ sanitizedQuery: "AQA GCSE biology paper format" })
+      );
+
+      expect(result).toEqual({ ok: false, reason: "unavailable" });
+      expect(samples).toHaveLength(1);
+      expect(samples[0]).not.toHaveProperty("searches");
+    });
+
+    it("records a generated image's tokens as image output", async () => {
+      process.env.AI_PAPER_IMAGES_ENABLED = "true";
+      generateContent.mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ inlineData: { data: "YWJj", mimeType: "image/png" } }] } }],
+        usageMetadata: {
+          promptTokenCount: 300,
+          candidatesTokenCount: 1_150,
+          candidatesTokensDetails: [
+            { modality: "TEXT", tokenCount: 30 },
+            { modality: "IMAGE", tokenCount: 1_120 },
+          ],
+        },
+      });
+
+      const { samples } = await metered(() =>
+        generateGeminiImage({ role: "paperImage", prompt: "A micrograph of onion cells" })
+      );
+
+      expect(samples).toEqual([{
+        provider: "gemini",
+        model: "gemini-3.1-flash-image",
+        promptTokens: 300,
+        completionTokens: 1_150,
+        audioPromptTokens: 0,
+        imageCompletionTokens: 1_120,
+      }]);
+    });
+
+    /*
+     * The Interactions API names its counts `total_*_tokens`. The meter read
+     * generateContent's names instead, so every video import was recorded as
+     * a call of zero tokens.
+     */
+    it("records a video read from the Interactions API's own counts, audio apart", async () => {
+      createInteraction.mockResolvedValueOnce({
+        output_text: "{\"cards\":[]}",
+        usage: {
+          total_input_tokens: 240_000,
+          total_output_tokens: 6_000,
+          total_thought_tokens: 1_000,
+          input_tokens_by_modality: [
+            { modality: "video", tokens: 120_000 },
+            { modality: "audio", tokens: 115_000 },
+            { modality: "text", tokens: 5_000 },
+          ],
+        },
+      });
+
+      const { samples } = await metered(() =>
+        generateGeminiVideoText({
+          uri: "https://www.youtube.com/watch?v=lesson",
+          mimeType: "video/mp4",
+          model: "gemini-2.5-flash-lite",
+          processing: { fps: 0.5 },
+          prompt: "Make cards",
+        })
+      );
+
+      expect(samples).toEqual([{
+        provider: "gemini",
+        model: "gemini-2.5-flash-lite",
+        promptTokens: 240_000,
+        completionTokens: 7_000,
+        audioPromptTokens: 115_000,
+      }]);
+    });
+
+    it("records an empty video read before refusing it, because it was billed", async () => {
+      createInteraction.mockResolvedValueOnce({ output_text: " ", usage: { total_input_tokens: 50_000 } });
+
+      const samples: AiSpendSample[] = [];
+      const run = runWithAiSpendContext(
+        { uid: "student", action: "videoCardImport", record: (sample) => samples.push(sample) },
+        () =>
+          generateGeminiVideoText({
+            uri: "https://www.youtube.com/watch?v=lesson",
+            mimeType: "video/mp4",
+            model: "gemini-2.5-flash-lite",
+            processing: { fps: 0.5 },
+            prompt: "Make cards",
+          })
+      );
+
+      await expect(run).rejects.toThrow("gemini_empty");
+      expect(samples).toHaveLength(1);
+      expect(samples[0]).toMatchObject({ promptTokens: 50_000 });
+    });
+
+    it("counts no search for an answer the model gave without searching", () => {
+      expect(groundedSearchCount("gemini-3.5-flash-lite", { candidates: [{}] })).toBe(0);
+      expect(groundedSearchCount("gemini-2.5-flash-lite", { candidates: [{}] })).toBe(0);
+    });
+
+    it("bills thinking as output and fetched pages as input", () => {
+      expect(geminiBilledTokens({
+        promptTokenCount: 10,
+        toolUsePromptTokenCount: 5,
+        candidatesTokenCount: 7,
+        thoughtsTokenCount: 3,
+      })).toMatchObject({ promptTokens: 15, completionTokens: 10 });
+      expect(geminiBilledTokens(undefined)).toEqual({});
     });
   });
 });

@@ -26,7 +26,11 @@ import {
 import { auditPracticePaper } from "@/services/ai/practice-paper-generation-audit.server";
 import { designPracticePaper } from "@/services/ai/practice-paper-generation-design.server";
 import { buildPracticePaperMarkScheme } from "@/services/ai/practice-paper-generation-mark-scheme.server";
-import { createGenerationPassRunner } from "@/services/ai/practice-paper-generation-passes.server";
+import {
+  createGenerationPassRunner,
+  generationCostCeilingUsd,
+  PracticePaperGenerationCostLimitError,
+} from "@/services/ai/practice-paper-generation-passes.server";
 import {
   PAPER_DESIGNER_SYSTEM_INSTRUCTION,
   generationPrompt,
@@ -279,6 +283,7 @@ export async function runPracticePaperGenerationRequest(
       signal: request.signal,
       log,
       diagnostics,
+      maxEstimatedCostUsd: generationCostCeilingUsd(),
     });
 
     await updateInternalJobStage(uid, auth.internalJobId, "designing");
@@ -375,6 +380,15 @@ export async function runPracticePaperGenerationRequest(
   } catch (error) {
     if (error instanceof PracticePaperJobCancelledError) {
       return failure("Practice paper creation was cancelled.", 409, "cancelled");
+    }
+    if (error instanceof PracticePaperGenerationCostLimitError) {
+      await refund("cost_limit");
+      log.error("request.cost_limit", { spentUsd: error.spentUsd, limitUsd: error.limitUsd });
+      return failure(
+        "Jami could not finish that paper just now. Try again in a moment.",
+        502,
+        "cost_limit"
+      );
     }
     await refund("provider_failed");
     log.error("request.failed", { error });

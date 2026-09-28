@@ -6,8 +6,11 @@ import {
   type Content,
   type GenerateContentConfig,
   type GenerateContentResponse,
+  type GenerateContentResponseUsageMetadata,
+  type ModalityTokenCount,
 } from "@google/genai";
 import type { AiContentPart } from "@/lib/ai/content-parts";
+import { createLogger } from "@/lib/observability/logger";
 import {
   buildAiCapabilityRegistry,
   resolveAiProviderPolicy,
@@ -40,7 +43,80 @@ export type GeminiResponseDiagnostics = {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
   totalTokenCount?: number;
+  /** Billed as output, but not part of `candidatesTokenCount`. */
+  thoughtsTokenCount?: number;
+  /** What a tool fetched, billed as input but not part of `promptTokenCount`. */
+  toolUsePromptTokenCount?: number;
 };
+
+/** `MediaModality` is a string enum; compared by value so tests can mock the SDK. */
+function modalityTokens(
+  details: readonly ModalityTokenCount[] | undefined,
+  modality: "AUDIO" | "IMAGE"
+) {
+  return (details ?? []).reduce(
+    (total, item) => (String(item.modality) === modality ? total + (item.tokenCount ?? 0) : total),
+    0
+  );
+}
+
+/**
+ * What a Gemini response is billed for, which is more than its headline counts.
+ *
+ * Thinking is billed as output but sits outside `candidatesTokenCount`, and
+ * whatever a tool fetched -- search results, a page read through URL context --
+ * is billed as input but sits outside `promptTokenCount`. Metering the two
+ * headline counts alone under-reports every thinking or grounded call.
+ */
+export function geminiBilledTokens(usage: GenerateContentResponseUsageMetadata | undefined) {
+  if (!usage) return {};
+  return {
+    promptTokens: (usage.promptTokenCount ?? 0) + (usage.toolUsePromptTokenCount ?? 0),
+    completionTokens: (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0),
+    audioPromptTokens:
+      modalityTokens(usage.promptTokensDetails, "AUDIO") +
+      modalityTokens(usage.toolUsePromptTokensDetails, "AUDIO"),
+    imageCompletionTokens: modalityTokens(usage.candidatesTokensDetails, "IMAGE"),
+  };
+}
+
+/**
+ * The web searches a grounded response is billed for.
+ *
+ * The two generations bill differently: Gemini 3 charges each search query the
+ * model chose to run, Gemini 2 charges the grounded prompt once however many
+ * queries it ran. A response the model answered without searching costs none.
+ */
+export function groundedSearchCount(
+  modelId: string,
+  response: Pick<GenerateContentResponse, "candidates">
+) {
+  const metadata = response.candidates?.[0]?.groundingMetadata;
+  const queries = metadata?.webSearchQueries?.length ?? 0;
+  if (/^gemini-2[.-]/.test(modelId)) {
+    return queries > 0 || (metadata?.groundingChunks?.length ?? 0) > 0 ? 1 : 0;
+  }
+  return queries;
+}
+
+/**
+ * Meters a call made outside the provider router.
+ *
+ * Research and image generation reach Gemini directly, so the router's meter
+ * never saw them -- and between them they were most of what Gemini cost.
+ */
+function meterGeminiCall(
+  modelId: string,
+  usage: GenerateContentResponseUsageMetadata | undefined,
+  searches = 0
+) {
+  getAiSpendContext()?.record({
+    provider: "gemini",
+    model: modelId,
+    ...geminiBilledTokens(usage),
+    ...(searches > 0 ? { searches } : {}),
+  });
+}
 
 type GeminiCallOptions = {
   apiKey: string;
@@ -138,6 +214,10 @@ function diagnostics(
           promptTokenCount: usage.promptTokenCount,
           candidatesTokenCount: usage.candidatesTokenCount,
           totalTokenCount: usage.totalTokenCount,
+          ...(usage.thoughtsTokenCount ? { thoughtsTokenCount: usage.thoughtsTokenCount } : {}),
+          ...(usage.toolUsePromptTokenCount
+            ? { toolUsePromptTokenCount: usage.toolUsePromptTokenCount }
+            : {}),
         }
       : {}),
   };
@@ -341,6 +421,11 @@ export async function generateGroundedResearch(input: {
         ],
       },
     });
+    meterGeminiCall(
+      capability.modelId,
+      response.usageMetadata,
+      groundedSearchCount(capability.modelId, response)
+    );
     const brief = response.text?.trim() ?? "";
     if (!brief) return { ok: false, reason: "unavailable" };
     return {
@@ -351,7 +436,18 @@ export async function generateGroundedResearch(input: {
       candidatesTokenCount: response.usageMetadata?.candidatesTokenCount,
       totalTokenCount: response.usageMetadata?.totalTokenCount,
     };
-  } catch {
+  } catch (error) {
+    /*
+     * Still returned as data, so the Tutor carries on without research. But
+     * it is logged: a project that reached its monthly spend cap answered 429
+     * to every research call, and nothing anywhere said so.
+     */
+    createLogger({ route: "ai.gemini.research" }).warn("research.failed", {
+      model: capability.modelId,
+      status: getErrorStatus(error) ?? undefined,
+      timedOut: attempt.signal.aborted,
+      errorMessage: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+    });
     return { ok: false, reason: "unavailable" };
   } finally {
     attempt.release();
@@ -412,6 +508,7 @@ export async function generateGeminiImage(input: {
         },
       },
     });
+    meterGeminiCall(capability.modelId, response.usageMetadata);
     const parts = response.candidates?.[0]?.content?.parts ?? [];
     const image = parts.find((part) => part.inlineData?.data)?.inlineData;
     if (!image?.data) throw new Error("Gemini returned no generated image.");
@@ -473,19 +570,27 @@ export async function generateGeminiVideoText(input: { uri: string; mimeType: st
     ],
     generation_config: { max_output_tokens: 16_000 },
   });
-  if (!response.output_text?.trim()) throw new Error("gemini_empty");
   /*
    * Video calls reach Gemini directly rather than through the provider router,
    * so they would otherwise be the one expensive path the meter never saw --
    * and a ninety-minute agentic read is the most expensive call the app makes.
+   *
+   * The Interactions API names its counts differently from generateContent.
+   * This read `prompt_token_count` and `candidates_token_count`, which it never
+   * sends, so every video import was recorded as a call of zero tokens. Metered
+   * before the empty check, because an empty reply is still billed.
    */
-  const usage = response.usage as { prompt_token_count?: number; candidates_token_count?: number } | undefined;
-  const spend = getAiSpendContext();
-  spend?.record({
+  const usage = response.usage;
+  getAiSpendContext()?.record({
     provider: "gemini",
     model: input.model,
-    promptTokens: usage?.prompt_token_count,
-    completionTokens: usage?.candidates_token_count,
+    promptTokens: (usage?.total_input_tokens ?? 0) + (usage?.total_tool_use_tokens ?? 0),
+    completionTokens: (usage?.total_output_tokens ?? 0) + (usage?.total_thought_tokens ?? 0),
+    audioPromptTokens: (usage?.input_tokens_by_modality ?? []).reduce(
+      (total, item) => (item.modality === "audio" ? total + (item.tokens ?? 0) : total),
+      0
+    ),
   });
+  if (!response.output_text?.trim()) throw new Error("gemini_empty");
   return { text: response.output_text, provider: "Google", usage: response.usage };
 }
