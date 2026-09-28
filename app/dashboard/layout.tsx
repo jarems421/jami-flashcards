@@ -6,7 +6,6 @@
 import "katex/dist/katex.min.css";
 import RouteAnalytics from "@/components/analytics/RouteAnalytics";
 import DashboardAccessGate from "@/components/layout/DashboardAccessGate";
-import EmailVerificationBanner from "@/components/layout/EmailVerificationBanner";
 import PhotoBackgroundSync from "@/components/layout/PhotoBackgroundSync";
 import PracticePaperReadyNotice from "@/components/practice/PracticePaperReadyNotice";
 
@@ -19,7 +18,6 @@ export default function DashboardLayout({
     <DashboardAccessGate>
       <RouteAnalytics />
       <PhotoBackgroundSync />
-      <EmailVerificationBanner />
       <PracticePaperReadyNotice />
       {children}
     </DashboardAccessGate>

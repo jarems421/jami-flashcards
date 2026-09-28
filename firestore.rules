@@ -119,6 +119,20 @@ service cloud.firestore {
     // its own daily limit or hide what it costs.
     match /aiBudgets/{budgetId} { allow read, write: if false; }
     match /aiSpend/{spendId} { allow read, write: if false; }
+    // Course-level research briefs shared between students on the same course.
+    // Written and read only by the server; a client that could write one could
+    // plant evidence every paper for that course would be designed from.
+    match /courseResearchCache/{entryId} { allow read, write: if false; }
+
+    // Emailed sign-up and confirmation codes (salted hashes, never the code)
+    // and the send limits kept beside them. Server routes only: a client that
+    // could read here could lift its own limits, or work at a stored hash.
+    match /emailCodes/{codeId} { allow read, write: if false; }
+    match /emailCodeSenders/{senderId} { allow read, write: if false; }
+
+    // Settings only the server reads or writes, such as when email
+    // confirmation started to count for AI.
+    match /serverSettings/{settingId} { allow read, write: if false; }
 
     // Daily usage counters. Written only by the analytics ingest route, which
     // decides what a valid event is; a client that could write here could

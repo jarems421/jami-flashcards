@@ -1,3 +1,5 @@
+import { PASSWORD_MINIMUM_LENGTH } from "@/lib/auth/password-strength";
+
 export function getAuthErrorCode(error: unknown) {
   if (
     typeof error === "object" &&
@@ -23,7 +25,7 @@ export function getFriendlyAuthError(code: string | undefined): string {
     case "auth/email-already-in-use":
       return "An account already uses that email. Try signing in instead.";
     case "auth/weak-password":
-      return "Use a password with at least 6 characters.";
+      return `Use a password with at least ${PASSWORD_MINIMUM_LENGTH} characters.`;
     case "auth/too-many-requests":
       return "Too many attempts. Wait a moment, then try again.";
     case "auth/network-request-failed":
