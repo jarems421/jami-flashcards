@@ -28,6 +28,8 @@ import { getSources } from "@/services/study/sources";
 import { getSourceFileDownloadUrl } from "@/services/study/source-files";
 import AppPage from "@/components/layout/AppPage";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
+import TutorSourcePicker from "@/components/ai/TutorSourcePicker";
+import { tutorSourceActions } from "@/lib/ai/tutor-source-actions";
 import LibraryWorkspace from "@/components/library/LibraryWorkspace";
 import SourceComposerDialog from "@/components/library/SourceComposerDialog";
 import SourceDetailsWorkflow from "@/components/library/SourceDetailsWorkflow";
@@ -459,41 +461,19 @@ export default function LibraryPage() {
         settingsFolderIds={Array.from(
           new Set(tutorSources.flatMap((source) => source.folderIds))
         )}
-        // Three ways in, like every Tutor: understand it, test yourself, keep it.
-        // A summary or a comparison is still one question away, and making study
-        // material has its own button in the source.
-        quickActions={
-          askingSeveral
-            ? [
-                {
-                  label: "Connect the ideas",
-                  prompt:
-                    "How do the ideas in these sources fit together? Explain them as one picture.",
-                },
-                {
-                  label: "Quiz me",
-                  prompt: "Quiz me on the most important ideas across these sources.",
-                },
-                {
-                  label: "Suggest flashcards",
-                  prompt: "Make flashcards on the key ideas across these sources.",
-                },
-              ]
-            : [
-                {
-                  label: "Explain key ideas",
-                  prompt: "Explain the key ideas in this source clearly.",
-                },
-                {
-                  label: "Quiz me",
-                  prompt: "Quiz me on the most important ideas in this source.",
-                },
-                {
-                  label: "Suggest flashcards",
-                  prompt: "Make flashcards on the key ideas in this source.",
-                },
-              ]
-        }
+        // Add or drop material without leaving the chat: several sources at
+        // once is the same conversation, not a separate selecting mode.
+        contextControls={({ conversationStarted }) => (
+          <TutorSourcePicker
+            sources={sources}
+            selectedIds={tutorSources.map((source) => source.id)}
+            onChange={(ids) => openTutorOn(ids)}
+            {...(conversationStarted
+              ? { changeNote: "Changing the material starts a new chat." }
+              : {})}
+          />
+        )}
+        quickActions={tutorSourceActions(tutorSources.length)}
       />
 
       <SourceDetailsWorkflow

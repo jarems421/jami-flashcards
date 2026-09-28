@@ -43,7 +43,11 @@ import {
 import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
 import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard";
 import TutorCardSuggestions from "@/components/ai/TutorCardSuggestions";
+import TutorPracticeOffer from "@/components/ai/TutorPracticeOffer";
+import TutorQuestionSuggestions from "@/components/ai/TutorQuestionSuggestions";
 import type { JamiAssistantSuggestedCard } from "@/lib/ai/tutor-card-suggestions";
+import type { TutorPracticeOffer as TutorPracticeOfferData } from "@/lib/ai/tutor-practice-offer";
+import type { JamiAssistantSuggestedQuestion } from "@/lib/ai/tutor-question-suggestions";
 import { drawnFigureToPng } from "@/components/ai/drawn-figure-image";
 import TutorReasoningMenu from "@/components/ai/TutorReasoningMenu";
 import AssistantAnswerBody from "@/components/ai/AssistantAnswerBody";
@@ -157,6 +161,19 @@ type JamiAssistantDrawerProps = {
    */
   settingsFolderIds?: readonly string[];
   /**
+   * Controls for what this conversation reads, drawn under the header -- the
+   * material picker, on surfaces that let a student choose several sources.
+   * Told whether the conversation has begun, because changing the material
+   * after that starts a new chat and the control should say so.
+   */
+  contextControls?: (state: { conversationStarted: boolean }) => ReactNode;
+  /**
+   * A message to send as soon as the drawer first opens: what the student
+   * already typed somewhere else, such as the Tutor page's ask box. Sent once
+   * per mount, so a surface that wants to send another remounts the drawer.
+   */
+  initialMessage?: string;
+  /**
    * How Jami sits over the work.
    *
    * `sidebar` is a full-height panel down the right. `floating` is a card the
@@ -175,6 +192,9 @@ type DrawerMessage = {
   followUps?: JamiAssistantFollowUp[];
   citations?: JamiAssistantCitation[];
   suggestedCards?: JamiAssistantSuggestedCard[];
+  suggestedQuestions?: JamiAssistantSuggestedQuestion[];
+  /** Live advice from the engine; shown with this answer, never saved with the chat. */
+  practiceOffer?: TutorPracticeOfferData;
   illustrations?: AssistantIllustration[];
   canIllustrate?: boolean;
 };
@@ -195,6 +215,8 @@ export default function JamiAssistantDrawer({
   onGraphInsert,
   onDrawingInsert,
   settingsFolderIds,
+  contextControls,
+  initialMessage,
   layout = "sidebar",
 }: JamiAssistantDrawerProps) {
   const [messages, setMessages] = useState<DrawerMessage[]>([]);
@@ -648,6 +670,8 @@ export default function JamiAssistantDrawer({
           followUps: response.followUps,
           citations: response.citations,
           suggestedCards: response.suggestedCards,
+          suggestedQuestions: response.suggestedQuestions,
+          practiceOffer: response.practiceOffer,
           canIllustrate: response.canIllustrate,
         };
         // Settle on the validated reply, replacing the streamed placeholder
@@ -736,6 +760,18 @@ export default function JamiAssistantDrawer({
       requestIllustration,
     ]
   );
+
+  /*
+   * What the student already asked somewhere else, sent once the drawer is
+   * open to hold the answer. After the render, not during it: sending starts
+   * a request and sets state, which a render must not do.
+   */
+  const sentInitialRef = useRef(false);
+  useEffect(() => {
+    if (!open || !initialMessage || sentInitialRef.current) return;
+    sentInitialRef.current = true;
+    void Promise.resolve().then(() => sendMessage(initialMessage));
+  }, [initialMessage, open, sendMessage]);
 
   const dictation = useVoiceDictation({ onText: setInput, onError: setError });
 
@@ -892,6 +928,12 @@ export default function JamiAssistantDrawer({
         </header>
         )}
 
+        {contextControls && !historyOpen && !viewingForeignThread ? (
+          <div className={`border-b border-[var(--color-border)] ${compact ? "px-4 py-2.5" : "px-5 py-3 sm:px-7"}`}>
+            {contextControls({ conversationStarted: messages.length > 0 })}
+          </div>
+        ) : null}
+
         <div
           ref={scrollRef}
           className={`min-h-0 flex-1 overflow-y-auto ${compact ? "px-4 py-4" : "px-5 py-5 sm:px-7 sm:py-6"}`}
@@ -1034,6 +1076,20 @@ export default function JamiAssistantDrawer({
                             userId={userId}
                             cards={message.suggestedCards}
                           />
+                        ) : null}
+                        {message.suggestedQuestions?.length ? (
+                          <TutorQuestionSuggestions
+                            userId={userId}
+                            questions={message.suggestedQuestions}
+                          />
+                        ) : null}
+                        {/* Once per conversation: the first answer that carries this advice. */}
+                        {message.practiceOffer &&
+                        messages.findIndex(
+                          (candidate) =>
+                            candidate.practiceOffer?.actionId === message.practiceOffer?.actionId
+                        ) === index ? (
+                          <TutorPracticeOffer userId={userId} offer={message.practiceOffer} />
                         ) : null}
                         {message.canIllustrate &&
                         !message.illustrations?.length &&
