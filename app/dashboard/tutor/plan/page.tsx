@@ -10,6 +10,7 @@ import PlanActiveView from "@/components/planning/PlanActiveView";
 import PlanDraftPreview from "@/components/planning/PlanDraftPreview";
 import PlanWithJami from "@/components/planning/PlanWithJami";
 import type { PlanNotice } from "@/lib/ai/assistant-plan";
+import { usePlanInterview } from "@/hooks/usePlanInterview";
 import { loadPlanNotices } from "@/services/planning/plan-draft";
 import { useUser } from "@/components/providers/UserProvider";
 import { useDashboardData } from "@/hooks/useDashboardData";
@@ -57,6 +58,11 @@ function isPermissionDenied(error: unknown) {
   );
 }
 
+/** Whether the interview has put anything in the plan yet. */
+function hasContent(draft: RevisionPlanDraft) {
+  return draft.scopes.length > 0 || draft.sessions.length > 0 || (draft.exams?.length ?? 0) > 0;
+}
+
 function planId() {
   return `plan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -70,31 +76,19 @@ export default function RevisionPlanPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   /**
-   * What the student asked Jami to change about a running plan, while that
-   * conversation is open beside the plan. Null when it is not.
+   * Whether the student is changing a running plan with Jami, with the plan
+   * and the conversation side by side. Nothing changes until they start the
+   * new version.
    */
-  const [reshaping, setReshaping] = useState<string | null>(null);
+  const [reshaping, setReshaping] = useState(false);
   const [notices, setNotices] = useState<PlanNotice[]>([]);
   /** Set when saved plans could not be read, which is not the same as having none. */
   const [plansUnavailable, setPlansUnavailable] = useState<"denied" | "error" | null>(null);
   /**
-   * Which way in the student chose, or null while they are being offered both.
-   *
-   * Null is the important state: with no plan yet, neither path is taken for
-   * them. Jami offers, and building it yourself is one press away on the same
-   * screen rather than hidden behind a refusal.
+   * Which way in the student chose: Jami's questions, which is where a new plan
+   * starts, or the full builder, one press away on the same screen.
    */
-  const [route, setRoute] = useState<"jami" | "manual" | null>(null);
-  /** The plan being built: Jami's suggestions and the student's edits, unsaved. */
-  const [proposed, setProposed] = useState<RevisionPlanDraft | null>(null);
-  /**
-   * How many times Jami has changed the draft.
-   *
-   * Only used to tell the preview that something moved. Comparing drafts to
-   * work that out would be more code and less honest -- a proposal that happens
-   * to match what was already there is still Jami having answered.
-   */
-  const [proposalCount, setProposalCount] = useState(0);
+  const [route, setRoute] = useState<"jami" | "manual">("jami");
 
   const uid = user?.uid;
   // What the engine suggests, which fills each day of a running plan.
@@ -173,26 +167,19 @@ export default function RevisionPlanPage() {
     [decks, folders]
   );
 
-  /**
-   * The draft on screen, whether or not anything has been decided yet.
-   *
-   * An empty normalised draft rather than null, so the preview has a real plan
-   * to render from the first frame and the student can see the shape of what
-   * they are about to fill in.
+  /*
+   * The interview, held here so the plan it is building survives a trip into
+   * the full builder and back. What it knows about each subject is what the
+   * student named their folders and what the Learning Engine has counted.
    */
-  const draftInProgress = useMemo(
-    () => proposed ?? normalizeRevisionPlanDraft(null).draft,
-    [proposed]
+  const interviewContext = useMemo(
+    () => ({
+      notices,
+      scopeNames: new Map(options.map((option) => [option.key, option.label])),
+    }),
+    [notices, options]
   );
-
-  /**
-   * The running plan as a draft, for Jami to change: what is on screen beside
-   * the conversation until Jami proposes something different.
-   */
-  const reshapeDraft = useMemo(
-    () => proposed ?? (active ? normalizeRevisionPlanDraft(active).draft : null),
-    [active, proposed]
-  );
+  const interview = usePlanInterview(interviewContext);
 
   const handleSave = useCallback(
     async (draft: RevisionPlanDraft) => {
@@ -204,8 +191,9 @@ export default function RevisionPlanPage() {
         setPlans((current) => [saved, ...current.filter((plan) => plan.id !== saved.id)]);
         setEditing(false);
         // A change made with Jami is finished once it is started.
-        setReshaping(null);
-        setProposed(null);
+        setReshaping(false);
+        setRoute("jami");
+        interview.begin();
       } catch (error) {
         showError(
           isPermissionDenied(error)
@@ -216,7 +204,7 @@ export default function RevisionPlanPage() {
         setSaving(false);
       }
     },
-    [active?.id, clear, showError, uid]
+    [active?.id, clear, interview, showError, uid]
   );
 
   const handleArchive = useCallback(async () => {
@@ -266,122 +254,91 @@ export default function RevisionPlanPage() {
 
       {loading ? (
         <Skeleton className="h-64 w-full rounded-2xl" />
-      ) : !active && route === null ? (
-        /*
-         * The conversation and the plan, together.
-         *
-         * A proposal used to replace this whole screen with the builder, so the
-         * chat disappeared at the exact moment it became useful and the student
-         * never watched anything being built. Both live here now: Jami fills the
-         * panel in as they talk, and the two ways out -- edit it by hand, start
-         * it -- sit on the panel rather than waiting for Jami to decide it is
-         * finished. It is not Jami's to finish.
-         */
-        <div className="space-y-4 sm:space-y-6">
-          <SectionHeader
-            title="Plan your revision"
-            description="Tell Jami what you're working towards and it will shape the plan beside you. Edit any part of it, or start it, whenever you like."
-          />
-          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-            <section className="app-panel px-5 py-6 sm:px-7 sm:py-7">
-              <PlanWithJami
-                notices={notices}
-                draft={draftInProgress}
-                onProposal={(draft) => {
-                  setProposed(draft);
-                  // Counted rather than compared, so the panel can show it moved.
-                  setProposalCount((count) => count + 1);
-                }}
-              />
-            </section>
-            {/* Sticky on a wide screen: the plan is what the conversation is
-                about, so it should not scroll away from the composer. */}
-            <div className="lg:sticky lg:top-4">
-              <PlanDraftPreview
-                draft={draftInProgress}
-                options={options}
-                changeKey={proposalCount}
-                saving={saving}
-                onEdit={() => setRoute("manual")}
-                onStart={() => void handleSave(draftInProgress)}
-              />
-            </div>
-          </div>
-        </div>
-      ) : editing || !active ? (
+      ) : editing || (!active && route === "manual") ? (
         <section className="app-panel px-5 py-6 sm:px-7 sm:py-7">
           <SectionHeader
-            title={active || proposed ? "Edit your plan" : "Build your plan"}
+            title={active ? "Edit your plan" : "Build your plan"}
             description={
               active
                 ? "Changing the shape changes what tomorrow asks for. Nothing you have already done is lost."
-                : proposed
-                  ? "Nothing is saved yet. Change anything you like, then go back to Jami or start it."
-                  : "What you're revising, when you'll sit down, and how long it runs."
+                : "Nothing is saved yet. Set it out however you like, then go back to Jami or start it."
             }
           />
           <div className="mt-6">
             <RevisionPlanBuilder
-              // Keyed so a fresh suggestion replaces what is in the form rather
-              // than leaving the first draft's state behind it.
-              key={active ? `active:${active.id}` : `draft:${proposalCount}`}
+              key={active && !reshaping ? `active:${active.id}` : "interview"}
               options={options}
-              initial={(reshaping !== null ? proposed : null) ?? active ?? proposed ?? undefined}
+              // What the interview has built so far, whether it is a new plan or
+              // a change to the running one; the running plan as saved otherwise.
+              initial={
+                !active || reshaping
+                  ? hasContent(interview.draft)
+                    ? interview.draft
+                    : undefined
+                  : active
+              }
               saving={saving}
               onSave={handleSave}
               onCancel={active ? () => setEditing(false) : undefined}
-              // Back to the conversation carrying the edits, so Jami's next
-              // answer builds on them rather than talking past them.
+              // Back to Jami carrying the edits, so the next answer builds on them.
               onBack={
                 active
                   ? undefined
                   : (draft) => {
-                      setProposed(draft);
-                      setRoute(null);
+                      interview.setDraft(draft);
+                      setRoute("jami");
                     }
               }
               backLabel="Back to Jami"
             />
           </div>
         </section>
-      ) : reshaping !== null && reshapeDraft ? (
+      ) : !active || reshaping ? (
+        /*
+         * The questions and the plan, side by side.
+         *
+         * Jami asks, the student answers by tapping or typing, and the plan on
+         * the right fills in with each answer -- so it is built in front of them
+         * rather than handed over. It starts only from the last check, after
+         * Jami has asked whether anything should change.
+         */
         <div className="space-y-4 sm:space-y-6">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <SectionHeader
-              title="Change your plan with Jami"
-              description="Jami adjusts the plan beside you. Nothing changes until you start the new version."
+              title={reshaping ? "Change your plan with Jami" : "Plan your revision"}
+              description={
+                reshaping
+                  ? "Tell Jami what's changed and watch the plan update. Nothing changes until you start the new version."
+                  : "Four quick questions, and Jami builds the plan beside you as you answer. Tap an answer or say it in your own words."
+              }
             />
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setReshaping(null);
-                setProposed(null);
-              }}
-            >
-              Back to your plan
-            </Button>
+            {reshaping ? (
+              <Button type="button" variant="secondary" onClick={() => setReshaping(false)}>
+                Back to your plan
+              </Button>
+            ) : null}
           </div>
-          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
             <section className="app-panel px-5 py-6 sm:px-7 sm:py-7">
               <PlanWithJami
+                interview={interview}
+                options={options}
                 notices={notices}
-                draft={reshapeDraft}
-                initialMessage={reshaping}
-                onProposal={(draft) => {
-                  setProposed(draft);
-                  setProposalCount((count) => count + 1);
-                }}
+                saving={saving}
+                startLabel={reshaping ? "Start the new version" : "Start this plan"}
+                onStart={() => void handleSave(interview.draft)}
+                onEditByHand={() => (active ? setEditing(true) : setRoute("manual"))}
               />
             </section>
+            {/* Sticky on a wide screen: the plan is what the questions are
+                building, so it should not scroll away from them. */}
             <div className="lg:sticky lg:top-4">
               <PlanDraftPreview
-                draft={reshapeDraft}
+                draft={interview.draft}
                 options={options}
-                changeKey={proposalCount}
-                saving={saving}
-                onEdit={() => setEditing(true)}
-                onStart={() => void handleSave(reshapeDraft)}
+                step={interview.step}
+                onEdit={() => (active ? setEditing(true) : setRoute("manual"))}
+                onJumpToStep={reshaping ? undefined : interview.jumpTo}
               />
             </div>
           </div>
@@ -395,7 +352,14 @@ export default function RevisionPlanPage() {
           decks={decks}
           onEdit={() => setEditing(true)}
           onArchive={() => void handleArchive()}
-          onChangeWithJami={setReshaping}
+          onChangeWithJami={(message) => {
+            interview.begin({
+              draft: normalizeRevisionPlanDraft(active).draft,
+              reshaping: true,
+              message,
+            });
+            setReshaping(true);
+          }}
         />
       ) : null}
     </AppPage>

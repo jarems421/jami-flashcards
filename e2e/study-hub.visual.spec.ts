@@ -32,7 +32,7 @@ async function openStudyHub(page: Page) {
   await expect(page.getByText("Getting today ready.")).toBeHidden({ timeout: 45_000 });
 }
 
-test("the Study Hub leads with one mission at every width", async ({ page }) => {
+test("the Study Hub leads with what to do at every width", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
@@ -41,26 +41,20 @@ test("the Study Hub leads with one mission at every width", async ({ page }) => 
   await openStudyHub(page);
 
   /*
-   * The mission is the page's answer, so it is the first heading inside the
-   * content and it sits above the alternatives rather than among them.
+   * Jami's suggestions lead a page with no plan, so they are the first panel
+   * and reachable without scrolling on a laptop; the week sits beside them.
    */
-  const mission = page.getByRole("heading", { level: 2 }).first();
-  await expect(mission).toBeVisible();
-  const doors = page.getByText("Or study your way", { exact: true });
-  await expect(doors).toBeVisible();
-
-  const missionBox = await mission.boundingBox();
-  const doorsBox = await doors.boundingBox();
-  expect(missionBox && doorsBox).toBeTruthy();
-  expect(doorsBox!.y).toBeGreaterThan(missionBox!.y);
-  // And it is reachable without scrolling on a laptop.
-  expect(missionBox!.y).toBeLessThan(700);
+  const suggestions = page.getByRole("heading", { name: "Jami suggests", level: 2 });
+  await expect(suggestions).toBeVisible();
+  const suggestionsBox = await suggestions.boundingBox();
+  expect(suggestionsBox).toBeTruthy();
+  expect(suggestionsBox!.y).toBeLessThan(700);
 
   /*
-   * The ways in do not depend on the student's own data being readable. This
-   * account's profile does not load in the emulator, which is exactly the case
-   * worth pinning: a failed read may cost the recommendation, never every way
-   * to start studying.
+   * A way to start does not depend on the student's own data being readable.
+   * This account's profile does not load in the emulator, which is exactly the
+   * case worth pinning: a failed read may cost the recommendation, never every
+   * way to start studying.
    */
   await expect(page.getByRole("link", { name: /^Review/ })).toBeVisible();
   await expect(page.getByText("This week", { exact: true })).toBeVisible();
@@ -69,30 +63,26 @@ test("the Study Hub leads with one mission at every width", async ({ page }) => 
 
   await page.setViewportSize({ width: 820, height: 1180 });
   await openStudyHub(page);
-  await expect(page.getByRole("heading", { level: 2 }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Jami suggests", level: 2 })).toBeVisible();
   await expectNoHorizontalOverflow(page, 820);
   await page.screenshot({ path: "test-results/study-hub-tablet.png", fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await openStudyHub(page);
-  const phoneMission = page.getByRole("heading", { level: 2 }).first();
-  await expect(phoneMission).toBeVisible();
+  const phoneSuggestions = page.getByRole("heading", { name: "Jami suggests", level: 2 });
+  await expect(phoneSuggestions).toBeVisible();
   /*
-   * Still the anchor once the two columns stack.
+   * Still first once the two columns stack: the week follows the lists.
    *
    * Measured against what follows it rather than against the top of the
-   * viewport: whatever sits above the page -- a verification notice, an
-   * offline banner -- is not the page's business, and an absolute threshold
-   * would only be measuring which banners this account happens to have.
+   * viewport: whatever sits above the page -- an offline banner, say -- is not
+   * the page's business, and an absolute threshold would only be measuring
+   * which banners this account happens to have.
    */
-  const phoneMissionBox = await phoneMission.boundingBox();
+  const phoneSuggestionsBox = await phoneSuggestions.boundingBox();
   const phoneWeekBox = await page.getByText("This week", { exact: true }).boundingBox();
-  const phoneDoorsBox = await page
-    .getByText("Or study your way", { exact: true })
-    .boundingBox();
-  expect(phoneMissionBox && phoneWeekBox && phoneDoorsBox).toBeTruthy();
-  expect(phoneWeekBox!.y).toBeGreaterThan(phoneMissionBox!.y);
-  expect(phoneDoorsBox!.y).toBeGreaterThan(phoneMissionBox!.y);
+  expect(phoneSuggestionsBox && phoneWeekBox).toBeTruthy();
+  expect(phoneWeekBox!.y).toBeGreaterThan(phoneSuggestionsBox!.y);
   await expectNoHorizontalOverflow(page, 390);
   await page.screenshot({ path: "test-results/study-hub-phone.png", fullPage: true });
 

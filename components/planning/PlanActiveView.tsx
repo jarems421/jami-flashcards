@@ -115,14 +115,9 @@ export default function PlanActiveView({
           </p>
           <p className="text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">{longDayLabel(selectedDayKey)}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="ghost" onClick={onArchive}>
-            Finish this plan
-          </Button>
-          <Button type="button" variant="secondary" onClick={onEdit}>
-            Edit plan
-          </Button>
-        </div>
+        <Button type="button" variant="secondary" onClick={onEdit}>
+          Edit plan
+        </Button>
       </header>
 
       <section aria-labelledby="plan-week-title" className="space-y-3">
@@ -132,7 +127,9 @@ export default function PlanActiveView({
               This week
             </h2>
             <p className="text-sm text-text-muted">
-              {formatPlanMinutes(week.minutes)} planned · {done} of {expected} done
+              {formatPlanMinutes(week.minutes)} planned
+              {/* Progress once there is some: "0 of 16 done" reads as a debt. */}
+              {done > 0 ? ` · ${done} of ${expected} done` : ""}
             </p>
           </div>
           <p className="text-sm text-text-muted">Pick a day to see it below</p>
@@ -155,7 +152,9 @@ export default function PlanActiveView({
               title={isToday ? "Today" : PLAN_WEEKDAY_FULL_LABELS[selectedWeekDay!.weekday]}
               summary={
                 sessionCount > 0
-                  ? `${sessionCount} ${sessionCount === 1 ? "session" : "sessions"} · ${formatPlanMinutes(selectedDay.minutes)} · ${selectedDay.doneCount} of ${selectedDay.slots.length} done`
+                  ? `${sessionCount} ${sessionCount === 1 ? "session" : "sessions"} · ${formatPlanMinutes(selectedDay.minutes)}${
+                      selectedDay.doneCount > 0 ? ` · ${selectedDay.doneCount} of ${selectedDay.slots.length} done` : ""
+                    }`
                   : undefined
               }
               scopeNames={scopeNames}
@@ -178,6 +177,18 @@ export default function PlanActiveView({
         <aside className="space-y-5">
           <PlanCountdown items={countdown} scopeColor={scopeColor} />
           <PlanChangeWithJami onStart={onChangeWithJami} />
+          {/* Ending a plan is rare and final, so it is not a button at the top
+              of it beside the one everybody wants. */}
+          <p className="px-1 text-xs text-text-muted">
+            Done with this plan early?{" "}
+            <button
+              type="button"
+              onClick={onArchive}
+              className="rounded font-semibold text-text-secondary underline-offset-4 hover:text-text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+            >
+              Finish it
+            </button>
+          </p>
         </aside>
       </div>
     </div>

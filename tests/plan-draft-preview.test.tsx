@@ -11,9 +11,9 @@ import type { RevisionPlanDraft } from "@/lib/planning/types";
 /**
  * The plan being built, while it is being built.
  *
- * The panel exists so a student can watch the thing take shape and take it over
- * at any point, so these cover the three states that matter: nothing decided
- * yet, something half-decided, and enough to start.
+ * The panel exists so a student can watch the thing take shape, section by
+ * section, as Jami's questions are answered -- so these cover an outline with
+ * nothing in it yet, one filling in, and going back to change a finished part.
  */
 
 const OPTIONS = [
@@ -66,63 +66,74 @@ function button(label: string) {
 }
 
 describe("the plan taking shape", () => {
-  it("shows the subjects, the week and the dates as they stand", () => {
+  it("shows every section from the start, waiting to be filled", () => {
     render(
-      <PlanDraftPreview draft={draft()} options={OPTIONS} onEdit={vi.fn()} onStart={vi.fn()} />
+      <PlanDraftPreview
+        draft={normalizeRevisionPlanDraft(null).draft}
+        options={OPTIONS}
+        step="goal"
+        onEdit={vi.fn()}
+      />
     );
+    const text = container.textContent ?? "";
+
+    // The outline is the plan's shape before any of it is decided.
+    for (const section of ["Working towards", "Subjects", "Your week", "Last check"]) {
+      expect(text).toContain(section);
+    }
+    expect(text).toContain("Jami’s asking");
+    expect(text).toContain("Your exams and the date you want to be ready by.");
+    // Building it yourself is a first-class way in, not a refusal.
+    expect(button("Edit by hand")).toBeTruthy();
+    // Nothing starts from here: the last check is where a plan starts.
+    expect(button("Start this plan")).toBeUndefined();
+  });
+
+  it("fills in what has been answered and marks where Jami is", () => {
+    render(<PlanDraftPreview draft={draft()} options={OPTIONS} step="time" onEdit={vi.fn()} />);
     const text = container.textContent ?? "";
 
     expect(text).toContain("Summer mocks");
     expect(text).toContain("Chemistry");
     expect(text).toContain("Biology");
     expect(text).toContain("16:30–17:15");
-    expect(text).toContain("2026-09-14");
     // Rounded to hours past an hour, the same way the saved plan reads it.
     expect(text).toContain("about 1h a week");
+    // Goal and subjects are behind; the week is the question on screen.
+    const headings = [...container.querySelectorAll("h4")].map((heading) => heading.textContent);
+    expect(headings.find((heading) => heading?.startsWith("Your week"))).toContain("Jami’s asking");
   });
 
-  it("offers both ways out at once", () => {
-    // The whole point: neither waits for Jami to decide the plan is finished.
-    const onEdit = vi.fn();
-    const onStart = vi.fn();
-    render(<PlanDraftPreview draft={draft()} options={OPTIONS} onEdit={onEdit} onStart={onStart} />);
+  it("counts down to each exam it was given", () => {
+    const withExam = normalizeRevisionPlanDraft({
+      ...draft(),
+      exams: [{ id: "e1", label: "Chemistry Paper 1", dayKey: "2026-11-12", scopeKey: "folder:chem" }],
+    }).draft;
+    render(<PlanDraftPreview draft={withExam} options={OPTIONS} step="subjects" onEdit={vi.fn()} />);
 
-    act(() => button("Edit details")?.click());
-    act(() => button("Start this plan")?.click());
-    expect(onEdit).toHaveBeenCalledTimes(1);
-    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("Chemistry Paper 1");
+    expect(container.textContent).toContain("Thu 12 Nov");
   });
 
-  it("invites the student in when nothing has been decided", () => {
+  it("reopens a finished section's question", () => {
+    const onJumpToStep = vi.fn();
     render(
       <PlanDraftPreview
-        draft={normalizeRevisionPlanDraft(null).draft}
+        draft={draft()}
         options={OPTIONS}
+        step="extras"
         onEdit={vi.fn()}
-        onStart={vi.fn()}
+        onJumpToStep={onJumpToStep}
       />
     );
-    expect(container.textContent).toContain("Nothing here yet");
-    // Building it yourself is a first-class way in, not a refusal.
-    expect(button("Build it myself")).toBeTruthy();
-    expect(button("Start this plan")?.hasAttribute("disabled")).toBe(true);
-  });
 
-  it("will not start a plan that is not a plan yet", () => {
-    const half = normalizeRevisionPlanDraft({
-      title: "Mocks",
-      scopes: [{ folderId: "chem", weight: 1 }],
-      sessions: [],
-    }).draft;
-    render(
-      <PlanDraftPreview draft={half} options={OPTIONS} onEdit={vi.fn()} onStart={vi.fn()} />
-    );
-    expect(button("Start this plan")?.hasAttribute("disabled")).toBe(true);
-    expect(container.textContent).toContain("Pick at least one day");
+    const change = container.querySelector('button[aria-label="Change subjects"]') as HTMLButtonElement;
+    act(() => change.click());
+    expect(onJumpToStep).toHaveBeenCalledWith("subjects");
   });
 
   it("names a subject that is no longer on offer rather than showing a bare id", () => {
-    render(<PlanDraftPreview draft={draft()} options={[OPTIONS[0]!]} onEdit={vi.fn()} onStart={vi.fn()} />);
+    render(<PlanDraftPreview draft={draft()} options={[OPTIONS[0]!]} step="review" onEdit={vi.fn()} />);
     expect(container.textContent).toContain("A subject you removed");
   });
 });
@@ -154,5 +165,15 @@ describe("telling Jami what the plan already says", () => {
 
   it("says nothing at all about an empty draft", () => {
     expect(describeAssistantPlanDraft(normalizeRevisionPlanDraft(null).draft, SUBJECTS)).toBeNull();
+  });
+
+  it("describes a draft that so far holds only exams", () => {
+    // The first question sets exams before any subject or day, and the next
+    // question has to see them.
+    const examsOnly = normalizeRevisionPlanDraft({
+      title: "Mocks",
+      exams: [{ id: "e1", label: "Chemistry Paper 1", dayKey: "2026-11-12" }],
+    }).draft;
+    expect(describeAssistantPlanDraft(examsOnly, SUBJECTS)).toContain("Chemistry Paper 1");
   });
 });

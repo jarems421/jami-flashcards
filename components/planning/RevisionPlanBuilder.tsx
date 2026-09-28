@@ -78,7 +78,8 @@ function SectionLabel({ title, description }: { title: string; description?: str
   );
 }
 
-function WeekdayToggles({
+/** A day per button, the same here and in the interview's week question. */
+export function WeekdayToggles({
   active,
   onToggle,
 }: {
@@ -96,11 +97,14 @@ function WeekdayToggles({
             aria-pressed={on}
             aria-label={PLAN_WEEKDAY_FULL_LABELS[weekday]}
             onClick={() => onToggle(weekday)}
-            className={`min-h-12 rounded-2xl border text-xs font-semibold transition duration-normal ease-spring active:scale-95 ${
-              on ? "app-selected shadow-accent" : "app-chip hover:border-[var(--color-border-strong)]"
+            className={`min-h-12 rounded-2xl border text-xs font-semibold transition duration-normal ease-spring active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
+              on
+                ? "app-selected shadow-accent"
+                : "border-dashed border-[var(--color-border-strong)] text-text-muted hover:border-solid hover:text-text-primary"
             }`}
           >
-            {PLAN_WEEKDAY_LABELS[weekday].slice(0, 1)}
+            {/* Three letters: one left two Ts and two Ss to tell apart. */}
+            {PLAN_WEEKDAY_LABELS[weekday]}
           </button>
         );
       })}

@@ -20,7 +20,16 @@ const TUTOR_HREF = "/dashboard/tutor";
  * to-do list rather than a library: an item leaves it once it is done, and what
  * Jami made lives with the rest of the folder's work, linked from here.
  */
-export default function RevisionTutorShelf() {
+export default function RevisionTutorShelf({
+  variant = "full",
+}: {
+  /**
+   * `full` is the way in and the shelf together. `shelf` is the shelf alone,
+   * for a page that already offers the way in, and it draws nothing at all
+   * until there is something on it.
+   */
+  variant?: "full" | "shelf";
+} = {}) {
   const { user } = useUser();
   const [items, setItems] = useState<RevisionShelfItem[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -43,9 +52,17 @@ export default function RevisionTutorShelf() {
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   const later = (items ?? []).filter((item) => item.status === "later");
   const made = (items ?? []).filter((item) => item.status === "made");
+  const shelfOnly = variant === "shelf";
+
+  if (shelfOnly && (items === null || failed || (later.length === 0 && made.length === 0))) {
+    return null;
+  }
 
   return (
     <Card padding="md">
+      {shelfOnly ? (
+        <h2 className="text-base font-semibold text-text-primary">From your revision sessions</h2>
+      ) : (
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-warm-border bg-warm-glow text-warm-accent shadow-warm">
@@ -62,6 +79,7 @@ export default function RevisionTutorShelf() {
           Start a session
         </ButtonLink>
       </div>
+      )}
 
       {items === null && !failed ? (
         <div className="mt-5 space-y-2">

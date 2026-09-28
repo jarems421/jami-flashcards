@@ -249,7 +249,11 @@ export function describeAssistantPlanDraft(
   draft: Pick<RevisionPlanDraft, "title" | "scopes" | "sessions" | "startDayKey" | "endDayKey" | "exams">,
   subjects: readonly PlanSubjectOption[]
 ): string | null {
-  if (draft.scopes.length === 0 && draft.sessions.length === 0) return null;
+  // Exams alone are a plan in progress: the first question of the interview
+  // sets them before any subject or day, and the next question has to see them.
+  if (draft.scopes.length === 0 && draft.sessions.length === 0 && (draft.exams?.length ?? 0) === 0) {
+    return null;
+  }
 
   const refByScopeKey = new Map(
     subjects.map((subject) => [

@@ -91,22 +91,24 @@ test("the plan leads Home and the planner at every width", async ({ page }) => {
   await expect(page.getByText("Chemistry Paper 1")).toBeVisible();
 
   // A student's own task, added to today's session, becomes the next thing to do.
+  await page.getByRole("button", { name: "Add a task" }).first().click();
   await page.getByLabel(/Add your own task to/).fill("Redo question 3 from Monday's paper");
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Redo question 3 from Monday's paper", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today's plan", level: 2 })).toBeVisible();
+  await expect(page.getByText("Redo question 3 from Monday's paper").first()).toBeVisible();
   await expect(page.getByText("You added").first()).toBeVisible();
   await expectNoHorizontalOverflow(page, 1440);
   await page.screenshot({ path: "test-results/plan-home-desktop.png", fullPage: true });
 
   await page.setViewportSize({ width: 820, height: 1180 });
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Redo question 3 from Monday's paper", level: 2 })).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText("Redo question 3 from Monday's paper").first()).toBeVisible({ timeout: 45_000 });
   await expectNoHorizontalOverflow(page, 820);
   await page.screenshot({ path: "test-results/plan-home-tablet.png", fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Redo question 3 from Monday's paper", level: 2 })).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText("Redo question 3 from Monday's paper").first()).toBeVisible({ timeout: 45_000 });
   await expectNoHorizontalOverflow(page, 390);
   await page.screenshot({ path: "test-results/plan-home-phone.png", fullPage: true });
 

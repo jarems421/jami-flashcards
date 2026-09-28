@@ -96,16 +96,25 @@ describe("a day in the plan", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("16:30");
     expect(text).toContain("Chemistry");
-    expect(text).toContain("titrations");
-    expect(text).toContain("Stop losing marks: titrations");
+    // The topic names the row and the verb sits quietly under it; the alarm
+    // in Jami's title ("Stop losing marks") is kept for the Up next card.
+    expect(text).toContain("Titrations");
+    expect(text).toContain("Practise · 15 min");
+    expect(text).not.toContain("Stop losing marks");
     expect(text).toContain("Up next");
     expect(text).toContain("You added");
     expect(text).toContain("Redo question 3");
+    // Most of a day is Jami's suggestions; labelling every one said nothing.
+    expect(text).not.toContain("Jami suggested");
   });
 
   it("adds the student's own task to the sitting it was typed into", () => {
     const onAddOwnTask = vi.fn(() => true);
     renderDay(null, { onAddOwnTask });
+    // The box stays closed until it is asked for, so a short day is not a form.
+    expect(container.querySelector("#add-task-chem")).toBeNull();
+    const open = [...container.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Add a task")!;
+    act(() => open.click());
     const input = container.querySelector<HTMLInputElement>("#add-task-chem")!;
     act(() => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;

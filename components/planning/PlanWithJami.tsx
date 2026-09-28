@@ -1,226 +1,182 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { JamiTutorIcon } from "@/components/ui";
 import {
   MicrophoneIcon,
   SendIcon,
   StopDictationIcon,
 } from "@/components/ai/JamiAssistantIcons";
+import PlanStepAnswers from "@/components/planning/PlanStepAnswers";
+import type { PlanScopeOption } from "@/components/planning/RevisionPlanBuilder";
+import type { PlanInterview } from "@/hooks/usePlanInterview";
 import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import type { PlanNotice } from "@/lib/ai/assistant-plan";
-import type { RevisionPlanDraft } from "@/lib/planning/types";
 import {
-  draftPlanWithJami,
-  PlanDraftError,
-  type PlanDraftTurn,
-} from "@/services/planning/plan-draft";
+  PLAN_QUESTION_STEPS,
+  PLAN_STEP_TITLES,
+  planStepStatus,
+  type PlanInterviewStep,
+  type PlanInterviewTurn,
+} from "@/lib/planning/plan-interview";
 
 /**
- * A short conversation about the shape of a student's week.
+ * Making a plan with Jami, one question at a time.
  *
- * Deliberately not a wizard. A wizard asks its questions in its order and will
- * not proceed until they are answered, which is exactly wrong here: the student
- * knows their own timetable, their own exam dates and how much they can really
- * face, and the useful version is them saying so in one go and Jami fitting
- * around it.
+ * It was an open chat, which sounded friendly and planned badly: Jami had to
+ * decide what to ask and when it had heard enough, and it usually decided that
+ * after one message, so the plan arrived whole and generic. Now the questions
+ * are fixed and asked in order -- what you're working towards, which subjects,
+ * when you can study, anything else -- and the plan beside this fills in as
+ * each is answered. The last one asks whether anything should change before it
+ * starts.
  *
- * The composer is the one from the Tutor drawer -- a box, dictation, and a send
- * arrow -- because this is a conversation with Jami and should not look like a
- * different product. It had a labelled "Ask Jami" button in the corner, which
- * read as a form being submitted rather than a message being sent.
- *
- * What Jami has noticed sits above it as context rather than as a prescription,
- * and those lines come from the Learning Engine, not from the model: "this has
- * been slipping" is a measurement, and only the thing that counted the answers
- * may say it.
- *
- * Nothing here saves. A proposed plan opens in the ordinary builder, where every
- * part of it can be changed, and the student is the one who commits it.
+ * Every question can be answered by tapping, right under it, or in the
+ * student's own words in the box below. Typing is still a conversation: Jami
+ * reads the answer, says what it took from it, and asks again if it needs to.
  */
 
-const OPENERS = [
-  "I've got mocks in three weeks",
-  "I can only do evenings",
-  "Chemistry first, then biology",
-];
+const PLACEHOLDERS: Record<PlanInterviewStep, string> = {
+  goal: "e.g. Chemistry paper 1 on 12 November, biology on the 14th",
+  subjects: "e.g. Mostly biology, a bit of physics",
+  time: "e.g. Weekday evenings after 5, never Thursdays",
+  extras: "e.g. Start with chemistry, I have football on Wednesdays",
+  review: "Ask for a change, or add something",
+};
 
-function NoticeList({ notices }: { notices: readonly PlanNotice[] }) {
-  if (notices.length === 0) {
-    return (
-      <p className="text-sm leading-6 text-text-secondary">
-        Tell Jami what&rsquo;s coming up — it knows your subjects and what you
-        study on each, so a sentence is usually enough.
-      </p>
-    );
-  }
+function StepProgress({ step }: { step: PlanInterviewStep }) {
+  const reviewing = step === "review";
+  const position = PLAN_QUESTION_STEPS.indexOf(step as (typeof PLAN_QUESTION_STEPS)[number]);
   return (
-    <div className="space-y-2">
-      <p className="text-sm leading-6 text-text-secondary">
-        From what you&rsquo;ve actually done so far:
+    <div className="space-y-2.5">
+      <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+        {reviewing ? "Last check" : `Step ${position + 1} of ${PLAN_QUESTION_STEPS.length} · ${PLAN_STEP_TITLES[step]}`}
       </p>
-      <ul className="flex flex-wrap gap-1.5">
-        {notices.map((notice) => (
-          <li
-            key={`${notice.scopeKey}:${notice.detail}`}
-            className="app-chip rounded-full px-3 py-1.5 text-xs"
-          >
-            <span className="text-text-muted">{notice.subject}</span>
-            <span className="mx-1.5 text-text-muted">·</span>
-            <span className="text-text-primary">{notice.detail}</span>
-          </li>
-        ))}
-      </ul>
+      <ol className="grid grid-cols-4 gap-1.5" aria-hidden="true">
+        {PLAN_QUESTION_STEPS.map((entry) => {
+          const status = planStepStatus(entry, step);
+          return (
+            <li
+              key={entry}
+              className={`h-1 rounded-full transition-colors duration-slow ${
+                status === "done"
+                  ? "bg-[var(--color-accent)]"
+                  : status === "current"
+                    ? "bg-[var(--color-accent)] opacity-60"
+                    : "bg-[var(--color-border-strong)]"
+              }`}
+            />
+          );
+        })}
+      </ol>
     </div>
   );
 }
 
-function Turn({ turn }: { turn: PlanDraftTurn }) {
-  const fromJami = turn.role === "jami";
+function Turn({ turn }: { turn: PlanInterviewTurn }) {
+  if (turn.role === "student") {
+    return (
+      <li className="flex justify-end">
+        <p className="max-w-[85%] animate-slide-up rounded-2xl rounded-br-md bg-[var(--color-glass-medium)] px-4 py-2.5 text-sm leading-6 text-text-primary">
+          {turn.text}
+        </p>
+      </li>
+    );
+  }
   return (
-    <div className={`flex ${fromJami ? "justify-start" : "justify-end"}`}>
+    <li className="flex animate-slide-up items-start gap-3">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-warm-border bg-warm-glow text-warm-accent"
+      >
+        <JamiTutorIcon className="h-3.5 w-3.5" />
+      </span>
       <p
-        className={`max-w-[85%] animate-slide-up rounded-2xl px-4 py-2.5 text-sm leading-6 ${
-          fromJami
-            ? "app-subtle-panel text-text-primary ring-1 ring-[var(--color-accent-muted)]"
-            : "bg-[var(--color-glass-medium)] text-text-primary"
+        className={`min-w-0 flex-1 pt-0.5 text-sm leading-6 ${
+          turn.question ? "font-medium text-text-primary" : "text-text-secondary"
         }`}
       >
         {turn.text}
       </p>
-    </div>
+    </li>
   );
 }
 
 export default function PlanWithJami({
+  interview,
+  options,
   notices,
-  draft,
-  onProposal,
-  initialMessage,
+  saving,
+  startLabel = "Start this plan",
+  onStart,
+  onEditByHand,
 }: {
+  interview: PlanInterview;
+  options: readonly PlanScopeOption[];
   notices: readonly PlanNotice[];
-  /**
-   * The plan on screen beside this conversation.
-   *
-   * Sent with every message so Jami adjusts what is there rather than starting
-   * again -- including the parts the student edited by hand, which Jami would
-   * otherwise know nothing about.
-   */
-  draft?: RevisionPlanDraft | null;
-  /** A plan Jami proposed. Nothing is saved; it lands in the preview to edit. */
-  onProposal: (draft: RevisionPlanDraft) => void;
-  /**
-   * Something the student already said, sent as soon as the conversation opens:
-   * "change the plan with Jami" on an existing plan starts here, with the
-   * message they typed there.
-   */
-  initialMessage?: string;
+  saving: boolean;
+  startLabel?: string;
+  onStart: () => void;
+  onEditByHand: () => void;
 }) {
-  const [turns, setTurns] = useState<PlanDraftTurn[]>([]);
   const [message, setMessage] = useState("");
-  const [thinking, setThinking] = useState(false);
-  const [problem, setProblem] = useState("");
+  const [dictationProblem, setDictationProblem] = useState("");
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
-  const dictation = useVoiceDictation({ onText: setMessage, onError: setProblem });
+  const dictation = useVoiceDictation({ onText: setMessage, onError: setDictationProblem });
+  const { turns, step, draft, thinking } = interview;
 
-  const send = useCallback(
-    async (text: string) => {
-      const said = text.trim();
-      if (!said || thinking) return;
-      setProblem("");
-      setMessage("");
-      const asked: PlanDraftTurn[] = [...turns, { role: "student", text: said }];
-      setTurns(asked);
-      setThinking(true);
-      try {
-        const answer = await draftPlanWithJami({ message: said, history: turns, draft });
-        setTurns([...asked, { role: "jami", text: answer.reply }]);
-        if (answer.plan) onProposal(answer.plan);
-      } catch (error) {
-        /*
-         * Never a dead end, and never a lie about why.
-         *
-         * Building one yourself is always right there in the panel beside this
-         * one, which is what the message says. What it no longer does is say the
-         * same thing to a student who needs to sign in again, one whose
-         * deployment has no provider configured, and one who hit a slow minute
-         * -- only the last of those is worth pressing send again for.
-         */
-        setProblem(
-          error instanceof PlanDraftError
-            ? error.message
-            : "Jami couldn't answer just now. You can still build a plan yourself."
-        );
-        setTurns(asked);
-      } finally {
-        setThinking(false);
-        boxRef.current?.focus();
-      }
-    },
-    [draft, onProposal, thinking, turns]
-  );
-
-  // Once, not on every render that still carries the prop.
-  const sentInitial = useRef(false);
-  useEffect(() => {
-    if (!initialMessage || sentInitial.current) return;
-    sentInitial.current = true;
-    void send(initialMessage);
-  }, [initialMessage, send]);
+  const scopeNames = new Map(options.map((option) => [option.key, option.label]));
+  // The answers sit under the question they answer, and start afresh with
+  // every new question -- including one asked again after a jump back.
+  const questionIndex = turns.findLastIndex((turn) => turn.question);
 
   const submit = useCallback(() => {
     // Dictation is stopped first and its own reading used: a word the
     // recogniser settles in the same tick would otherwise be lost, because
     // `message` is a render behind at that moment.
     const text = dictation.listening ? dictation.stop() : message;
-    void send(text);
-  }, [dictation, message, send]);
+    if (!text.trim() || thinking) return;
+    setMessage("");
+    setDictationProblem("");
+    interview.send(text);
+    boxRef.current?.focus();
+  }, [dictation, interview, message, thinking]);
+
+  const problem = interview.problem || dictationProblem;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 shrink-0 text-warm-accent">
-          <JamiTutorIcon className="h-5 w-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <NoticeList notices={notices} />
-        </div>
-      </div>
+    <div className="flex flex-col gap-5">
+      <StepProgress step={step} />
 
-      {turns.length > 0 ? (
-        <div className="space-y-2 border-t border-[var(--color-border)] pt-4">
-          {turns.map((turn, index) => (
-            <Turn key={`${turn.role}-${index}`} turn={turn} />
-          ))}
-          {thinking ? (
-            <p className="flex items-center gap-2 px-1 text-xs text-text-muted" role="status">
-              <span
-                aria-hidden="true"
-                className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--color-accent)]"
-              />
-              <span>Jami is thinking…</span>
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+      <ol aria-label="Planning with Jami" aria-live="polite" className="space-y-4">
+        {turns.map((turn, index) => (
+          <Turn key={`${turn.role}-${index}`} turn={turn} />
+        ))}
+      </ol>
 
-      {turns.length === 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {OPENERS.map((opener) => (
-            <button
-              key={opener}
-              type="button"
-              onClick={() => {
-                setMessage((current) => (current ? `${current} ${opener}` : opener));
-                boxRef.current?.focus();
-              }}
-              className="app-chip rounded-full px-3 py-1.5 text-xs font-medium transition hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-            >
-              {opener}
-            </button>
-          ))}
+      {thinking ? (
+        <p className="flex items-center gap-2 pl-10 text-xs text-text-muted" role="status">
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[var(--color-accent)]" />
+          <span>Jami is reading that…</span>
+        </p>
+      ) : (
+        <div className="pl-0 sm:pl-10">
+          <PlanStepAnswers
+            key={questionIndex}
+            step={step}
+            draft={draft}
+            options={options}
+            notices={notices}
+            scopeNames={scopeNames}
+            onDraft={interview.setDraft}
+            onAnswer={interview.answer}
+            onStart={onStart}
+            onEditByHand={onEditByHand}
+            saving={saving}
+            startLabel={startLabel}
+          />
         </div>
-      ) : null}
+      )}
 
       {/* The Tutor drawer's composer, so a conversation with Jami looks the
           same wherever it happens. */}
@@ -230,8 +186,8 @@ export default function PlanWithJami({
           rows={2}
           value={message}
           disabled={thinking}
-          aria-label="Tell Jami what you're working towards"
-          placeholder="When are your exams, which days can you study?"
+          aria-label="Answer Jami in your own words"
+          placeholder={PLACEHOLDERS[step]}
           className="min-h-[4.5rem] w-full resize-none bg-transparent px-4 pb-1 pt-3 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
           onChange={(event) => setMessage(event.target.value)}
           onKeyDown={(event) => {
@@ -241,49 +197,49 @@ export default function PlanWithJami({
             }
           }}
         />
-        <div className="flex items-center justify-end gap-1.5 px-2 pb-2">
-          {dictation.supported ? (
+        <div className="flex items-center justify-between gap-1.5 pb-2 pl-4 pr-2">
+          <span className="text-2xs text-text-muted">Or answer in your own words</span>
+          <div className="flex items-center gap-1.5">
+            {dictation.supported ? (
+              <button
+                type="button"
+                aria-label={dictation.listening ? "Stop dictating" : "Dictate your answer"}
+                aria-pressed={dictation.listening}
+                disabled={thinking}
+                className={`inline-grid h-9 w-9 place-items-center rounded-full transition duration-fast active:scale-95 disabled:cursor-not-allowed disabled:text-text-muted ${
+                  dictation.listening
+                    ? "bg-error text-text-inverse shadow-e1 hover:brightness-110"
+                    : "text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                }`}
+                onClick={() => {
+                  if (dictation.listening) {
+                    dictation.stop();
+                    boxRef.current?.focus();
+                    return;
+                  }
+                  setDictationProblem("");
+                  dictation.start(message);
+                }}
+              >
+                {dictation.listening ? <StopDictationIcon /> : <MicrophoneIcon />}
+              </button>
+            ) : null}
             <button
               type="button"
-              aria-label={dictation.listening ? "Stop dictating" : "Dictate your message"}
-              aria-pressed={dictation.listening}
-              disabled={thinking}
-              className={`inline-grid h-9 w-9 place-items-center rounded-full transition duration-fast active:scale-95 disabled:cursor-not-allowed disabled:text-text-muted ${
-                dictation.listening
-                  ? "bg-error text-text-inverse shadow-e1 hover:brightness-110"
-                  : "text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
-              }`}
-              onClick={() => {
-              if (dictation.listening) {
-                dictation.stop();
-                boxRef.current?.focus();
-                return;
-              }
-              setProblem("");
-              dictation.start(message);
-            }}
+              aria-label="Send to Jami"
+              disabled={thinking || (!message.trim() && !dictation.listening)}
+              className="inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-accent-on shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
+              onClick={submit}
             >
-              {dictation.listening ? <StopDictationIcon /> : <MicrophoneIcon />}
+              <SendIcon />
             </button>
-          ) : null}
-          <button
-            type="button"
-            aria-label="Send to Jami"
-            disabled={thinking || (!message.trim() && !dictation.listening)}
-            className="inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-accent-on shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
-            onClick={submit}
-          >
-            <SendIcon />
-          </button>
+          </div>
         </div>
       </div>
 
       {dictation.listening ? (
         <p className="flex items-center gap-2 px-1 text-xs text-text-secondary" role="status">
-          <span
-            aria-hidden="true"
-            className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-error"
-          />
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-error" />
           <span>Listening. Stop to edit what you said, or send it straight away.</span>
         </p>
       ) : null}
@@ -293,7 +249,6 @@ export default function PlanWithJami({
           {problem}
         </p>
       ) : null}
-
     </div>
   );
 }

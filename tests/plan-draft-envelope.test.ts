@@ -109,3 +109,27 @@ describe("isolating student data in the system prompt", () => {
   });
 });
 
+
+describe("the interview's step in the system prompt", () => {
+  const base = {
+    subjects: [{ ref: "S1", label: "Chemistry", folderId: "chem" }],
+    notices: [],
+    today: "2026-09-25",
+  };
+
+  it("names the step being answered and keeps the next question for the app", () => {
+    const prompt = buildPlanSystemInstruction({ ...base, step: "time" });
+    expect(prompt).toContain("THE STEP YOU ARE ON");
+    expect(prompt).toContain("Step 3 of 4, THEIR WEEK");
+    expect(prompt).toContain("Never ask the next step's question");
+    // The open conversation's licence to draft early is exactly what made
+    // plans generic; it has no place in a guided step.
+    expect(prompt).not.toContain("A draft they can change beats a question");
+  });
+
+  it("keeps the open conversation's instructions when no step is given", () => {
+    const prompt = buildPlanSystemInstruction(base);
+    expect(prompt).not.toContain("THE STEP YOU ARE ON");
+    expect(prompt).toContain("A draft they can change beats a question");
+  });
+});

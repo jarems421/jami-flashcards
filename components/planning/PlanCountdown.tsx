@@ -69,10 +69,7 @@ export default function PlanCountdown({
             />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-bold text-text-primary">{item.label}</span>
-              <span className="block text-xs text-text-muted">
-                {dateLabel(item.dayKey)}
-                {item.sessionsBefore > 0 ? ` · ${item.sessionsBefore} sessions before then` : ""}
-              </span>
+              <span className="block text-xs text-text-muted">{dateLabel(item.dayKey)}</span>
             </span>
             <span className="text-right">
               <span className="block text-2xl font-bold leading-none tabular-nums text-text-primary">{item.daysLeft}</span>

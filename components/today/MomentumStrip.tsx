@@ -71,10 +71,8 @@ export default function MomentumStrip({
   unavailable?: boolean;
 }) {
   return (
-    <div className="app-subtle-panel rounded-xl p-4 sm:p-5">
-      <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-        This week
-      </div>
+    <div className="app-panel rounded-3xl p-4">
+      <h2 className="px-1 text-sm font-bold tracking-tight text-text-primary">This week</h2>
       {unavailable ? (
         // Silence rather than noughts: a week of empty dots is a claim about
         // the student, and not being able to read their activity is not one.

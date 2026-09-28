@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Card, SectionHeader } from "@/components/ui";
 import type { TodayStudyAction } from "@/lib/dashboard/today-plan";
 import { getStudyDayKey } from "@/lib/study/day";
 import { noteMissionStarted } from "@/lib/learning/mission-handoff";
 import { noteStudyActionEvent } from "@/services/learning/study-action-events";
+
+function capitalise(text: string) {
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
+}
 
 /**
  * What to do next, from the student's own recorded work.
@@ -96,72 +99,64 @@ export default function StudyActionsCard({
 
   if (visible.length === 0) return null;
 
+  /*
+   * One line each: the topic, where it is and why, and what to press. They sit
+   * in the "Jami suggests" panel under the next step, so they are drawn as the
+   * rest of a list rather than as cards of their own.
+   */
   return (
-    <Card padding="lg">
-      <SectionHeader eyebrow="From your recent work" title="Recommended for you" />
-      <div className="mt-5 grid gap-3">
-        {visible.map((action) => (
-          <div
-            key={action.id}
-            className="app-subtle-panel rounded-lg p-4 transition duration-fast hover:-translate-y-[1px]"
+    <ul className="divide-y divide-[var(--color-border)]">
+      {visible.map((action) => (
+        <li key={action.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-1 py-3 sm:flex-nowrap">
+          <Link
+            href={action.href}
+            onClick={() => start(action)}
+            className="min-w-0 flex-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
           >
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-              <Link
-                href={action.href}
-                onClick={() => start(action)}
-                className="min-w-0"
+            <span className="block truncate text-sm font-semibold text-text-primary">
+              {capitalise(action.target.label)}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-text-muted">
+              {[action.folderName, action.description].filter(Boolean).join(" · ")}
+            </span>
+          </Link>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {action.generate && onGenerate ? (
+              <button
+                type="button"
+                disabled={generatingId !== null}
+                onClick={() => onGenerate(action)}
+                className="app-selected min-h-8 rounded-full px-3 text-xs font-semibold transition duration-fast disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
               >
-                <div className="break-words text-sm font-semibold text-text-primary">
-                  {action.title}
-                </div>
-                <p className="mt-1 text-sm leading-6 text-text-secondary">{action.description}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
-                  {action.folderName ? (
-                    <span className="break-words">{action.folderName}</span>
-                  ) : null}
-                  {action.folderName && action.targetItems ? <span aria-hidden>·</span> : null}
-                  {action.targetItems ? <span>About {action.targetItems} to work through</span> : null}
-                </div>
-              </Link>
-              <div className="flex items-center gap-2 justify-self-start sm:justify-self-end">
-                {action.generate && onGenerate ? (
-                  <button
-                    type="button"
-                    disabled={generatingId !== null}
-                    onClick={() => onGenerate(action)}
-                    className="app-selected rounded-full px-3 py-1 text-xs font-semibold transition duration-fast disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
-                  >
-                    {generatingId === action.id
-                      ? "Writing…"
-                      : action.generate.kind === "create_flashcards"
-                        ? "Make cards"
-                        : "Create practice"}
-                  </button>
-                ) : null}
-                <Link
-                  href={action.href}
-                  onClick={() => start(action)}
-                  className="app-chip rounded-full px-3 py-1 text-xs font-semibold"
-                >
-                  {action.label}
-                </Link>
-                <button
-                  type="button"
-                  aria-label={`Not now: ${action.title}`}
-                  title="Not now"
-                  onClick={() => {
-                    noteStudyActionEvent(uid, action, "dismissed", getStudyDayKey());
-                    setDismissed((current) => new Set(current).add(action.id));
-                  }}
-                  className="rounded-full px-2 py-1 text-xs font-semibold text-text-muted transition duration-fast hover:bg-[var(--color-surface-raised)] hover:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
-                >
-                  Not now
-                </button>
-              </div>
-            </div>
+                {generatingId === action.id
+                  ? "Writing…"
+                  : action.generate.kind === "create_flashcards"
+                    ? "Make cards"
+                    : "Create practice"}
+              </button>
+            ) : null}
+            <Link
+              href={action.href}
+              onClick={() => start(action)}
+              className="inline-flex min-h-8 items-center rounded-full border border-[var(--color-border-strong)] px-3 text-xs font-semibold text-text-primary transition duration-fast hover:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+            >
+              {action.label}
+            </Link>
+            <button
+              type="button"
+              aria-label={`Not now: ${action.title}`}
+              title="Not now"
+              onClick={() => {
+                noteStudyActionEvent(uid, action, "dismissed", getStudyDayKey());
+                setDismissed((current) => new Set(current).add(action.id));
+              }}
+              className="min-h-8 rounded-full px-2 text-xs font-semibold text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+            >
+              Not now
+            </button>
           </div>
-        ))}
-      </div>
-    </Card>
+        </li>
+      ))}
+    </ul>
   );
 }

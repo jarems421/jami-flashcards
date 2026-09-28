@@ -42,6 +42,9 @@ export default function PlanWeekRow({ week, days, scopeNames, scopeColor, select
         const state = planDayState(weekDay);
         const selected = weekDay.dayKey === selectedDayKey;
         const date = Number(weekDay.dayKey.slice(-2));
+        const sessions = resolved?.sessions ?? [];
+        // A day with nothing in it is drawn as an empty space, not an empty card.
+        const resting = sessions.length === 0;
         return (
           <li key={weekDay.dayKey} className="min-w-0">
             <button
@@ -50,16 +53,18 @@ export default function PlanWeekRow({ week, days, scopeNames, scopeColor, select
               aria-label={`${PLAN_WEEKDAY_FULL_LABELS[weekDay.weekday]} ${date}: ${state.text}`}
               onClick={() => onSelect(weekDay.dayKey)}
               className={`flex h-full w-full min-w-0 flex-col gap-2 rounded-2xl border p-3 text-left transition duration-fast ease-spring hover:-translate-y-[1px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
-                compact ? "min-h-[7.5rem]" : "min-h-[10.5rem]"
+                compact ? "min-h-[5.5rem]" : "min-h-[7rem]"
               } ${
                 selected
                   ? "border-[var(--color-accent)] bg-[var(--color-accent-muted)]"
-                  : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] hover:border-[var(--color-border-strong)]"
+                  : resting
+                    ? "border-dashed border-[var(--color-border)] bg-transparent hover:border-[var(--color-border-strong)]"
+                    : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] hover:border-[var(--color-border-strong)]"
               }`}
             >
               <span className="flex items-baseline justify-between gap-2">
                 <span
-                  className={`text-2xs font-bold uppercase tracking-[0.1em] ${
+                  className={`text-xs font-bold ${
                     weekDay.isToday ? "text-[var(--color-accent)]" : "text-text-secondary"
                   }`}
                 >
@@ -69,22 +74,26 @@ export default function PlanWeekRow({ week, days, scopeNames, scopeColor, select
                   {state.text}
                 </span>
               </span>
-              {resolved?.sessions.map((session) => {
+              {sessions.map((session) => {
                 const focus = weekDay.isToday ? planSessionFocus(session) : session.label;
-                const yours = session.slots.filter((slot) => slot.item.kind === "pinned").length;
                 return (
-                  <span key={session.id} className="flex min-w-0 flex-col gap-0.5 rounded-xl bg-[var(--color-glass-medium)] px-2.5 py-2">
-                    <span className="flex min-w-0 items-center gap-1.5 text-2xs font-bold uppercase tracking-[0.06em] text-text-secondary">
-                      <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: scopeColor(session.scopeKey) }} />
-                      <span className="truncate">{scopeNames.get(session.scopeKey) ?? "Study"}</span>
-                    </span>
-                    {focus ? <span className="truncate text-sm font-semibold text-text-primary">{focus}</span> : null}
-                    {compact ? null : (
-                      <span className="truncate text-2xs text-text-muted">
-                        {session.startTime ? `${session.startTime} · ` : ""}
-                        {session.minutes} min{yours ? ` · ${yours} yours` : ""}
+                  <span key={session.id} className="flex min-w-0 items-start gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: scopeColor(session.scopeKey) }}
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-text-primary">
+                        {focus ?? scopeNames.get(session.scopeKey) ?? "Study"}
                       </span>
-                    )}
+                      {compact ? null : (
+                        <span className="block truncate text-2xs text-text-muted">
+                          {focus ? `${scopeNames.get(session.scopeKey) ?? "Study"} · ` : ""}
+                          {session.startTime ?? `${session.minutes} min`}
+                        </span>
+                      )}
+                    </span>
                   </span>
                 );
               })}

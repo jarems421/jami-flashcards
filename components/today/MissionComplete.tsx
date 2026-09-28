@@ -45,7 +45,7 @@ function DoneMark({ complete }: { complete: boolean }) {
 
 export default function MissionComplete({ copy }: { copy: MissionCompletionCopy }) {
   return (
-    <div className="mission-complete border-b border-[var(--color-border)] pb-6">
+    <div className="mission-complete mb-4 border-b border-[var(--color-border)] pb-4">
       <div className="flex items-start gap-3">
         <DoneMark complete={copy.complete} />
         <div className="min-w-0">

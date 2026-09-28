@@ -160,8 +160,7 @@ each surface invented its own.
 
 **One star means earned.** Every star a student has earned is the eight-ray
 `NorthernStar` (`components/ui/NorthernStar.tsx`) — in the reward overlay, in
-the sky, in the walkthrough trail, in the nav entry, on the signed-out landing
-page. Use `northernStarTransform` to place it; never draw another star shape
+the sky, in the walkthrough trail, in the nav entry. Use `northernStarTransform` to place it; never draw another star shape
 and never substitute an image. The sky drew a PNG for a long time, so a student
 earned one star and found a different one when they went to look at it.
 

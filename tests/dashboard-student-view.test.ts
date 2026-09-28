@@ -99,28 +99,31 @@ describe("home leads with the next step for everyone", () => {
     /*
      * The hero used to promise "your next study step" and a card below it
      * announced "recommended next action" -- two eyebrows, two headings and
-     * two panels before a single instruction. There is one mission now, drawn
-     * at full size, and it is the first thing under the greeting.
+     * two panels before a single instruction. Today is laid out like a planner
+     * now: the day's plan, then what Jami suggests, led by its one next step,
+     * then what can be done any time -- in that order, with or without a plan.
      */
-    const mission = source.indexOf("<MissionCard");
-    expect(mission).toBeGreaterThan(-1);
-    expect(source.indexOf("<StudyDoors")).toBeGreaterThan(mission);
+    const plan = source.indexOf("<TodayPlanPanel");
+    const mission = source.indexOf("{planLeads ? null : missionCard}");
+    const suggestions = source.indexOf("<StudyActionsCard");
+    const anytime = source.indexOf("<TodayAnytime");
+    expect(plan).toBeGreaterThan(-1);
+    expect(mission).toBeGreaterThan(plan);
+    expect(suggestions).toBeGreaterThan(mission);
+    expect(anytime).toBeGreaterThan(suggestions);
+    expect(source).toContain("<MissionCard");
     expect(source).toContain("buildTodayMission");
     expect(source).not.toContain("RecommendedActionCard");
     expect(source).not.toContain("Recommended next action");
     expect(source).not.toContain("Your next study step");
   });
 
-  it("separates the one recommendation from everything else", () => {
-    // Without a break the page was a flat stack of equal cards, so the step
-    // Jami recommends competed with everything it merely noticed. Everything
-    // it merely noticed is now folded away behind a disclosure.
-    const mission = source.indexOf("<MissionCard");
-    const more = source.indexOf("<MoreForToday");
-
-    expect(more).toBeGreaterThan(mission);
-    // And the mission's own recommendation is not then listed again below it.
+  it("never suggests the same thing twice", () => {
+    // The mission's own recommendation is not listed again under it...
     expect(source).toContain("action.id !== mission.action?.id");
+    // ...and with a plan leading, nothing already in today's sittings is
+    // suggested again beside them.
+    expect(source).toContain("!planPlacedIds.has(action.id)");
   });
 
   it("leaves getting-started to the walkthrough, which already tracks it", () => {

@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
-import { planSessionFocus, planTask, type PlanSuggestionResult, type PlanTask } from "@/lib/planning/plan-tasks";
+import { planTask, type PlanSuggestionResult, type PlanTask } from "@/lib/planning/plan-tasks";
 import type { PlanDay, PlanDaySession, PlanSlot } from "@/lib/planning/types";
 
 /**
  * A day of the plan, read down a time rail.
  *
- * Each sitting shows when it is, which subject, what it is about, and the work
- * in it -- and every piece of work says whether Jami suggested it or the
- * student put it there, because only the second kind stays put. The student can
- * tick things off, add their own task to a sitting, or ask Jami for another.
+ * Each sitting shows when it is and which subject, then its work as a plain
+ * checklist: the topic, and quietly what to do with it. A task the student
+ * added says so, because only those stay put. The student can tick things
+ * off, add their own task to a sitting, or ask Jami for another.
  *
  * Used by the planner and by Home, so a day reads the same wherever it is.
  */
@@ -51,21 +51,52 @@ function TickMark({ done }: { done: boolean }) {
   );
 }
 
+/**
+ * The one word worth putting at the end of a row: that it is next, or that
+ * Jami saw it done. Everything else a row needs is in its two lines.
+ */
 function tagFor(task: PlanTask, upNext: boolean) {
   if (task.slot.completedBy === "activity") return { text: "Done · Jami saw this", tone: "text-[var(--color-success)]" };
   if (upNext) return { text: "Up next", tone: "text-[var(--color-success)]" };
-  if (task.source === "you") return { text: "You added", tone: "text-[var(--color-warning)]" };
-  if (task.source === "jami") return { text: "Jami suggested", tone: "text-[var(--color-accent)]" };
   return null;
 }
 
-function TaskRow({
+function capitalise(text: string) {
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
+}
+
+/**
+ * What a row says: the topic, then quietly what to do with it.
+ *
+ * Jami's own titles lead with the reason -- "Stop losing marks: titrations"
+ * -- which is the right sentence once, on the one thing to do next. Down a
+ * whole day it was the same alarm five times over. The list names the topic
+ * and the verb; the reason stays on the card that leads Today.
+ */
+function rowWords(task: PlanTask, when: { isToday: boolean; isPast: boolean }) {
+  if (task.source === "open") {
+    return when.isToday
+      ? { headline: "Free time", detail: `${task.slot.minutes} min to use however you like` }
+      : { headline: when.isPast ? "Nothing was picked" : "Jami fills this in on the day", detail: null };
+  }
+  if (task.slot.item.kind === "action") {
+    return {
+      headline: capitalise(task.slot.item.action.target.label),
+      detail: `${task.actionLabel ?? "Study"} · ${task.slot.minutes} min`,
+    };
+  }
+  return { headline: task.label, detail: "You added" };
+}
+
+/** One task in a sitting: tick, topic, what to do with it. Shared with Today's plan. */
+export function PlanTaskRow({
   task,
   isToday,
   isPast,
   upNext,
   onToggle,
   onRemove,
+  showStart = false,
 }: {
   task: PlanTask;
   isToday: boolean;
@@ -73,66 +104,83 @@ function TaskRow({
   upNext: boolean;
   onToggle: (slot: PlanSlot) => void;
   onRemove?: (actionId: string) => void;
+  /**
+   * A Start button on the next thing to do, for a page that leads with it.
+   * The planner leaves it off: there the row is one of a day being read.
+   */
+  showStart?: boolean;
 }) {
   const { slot } = task;
   const done = slot.state === "done";
   const open = task.source === "open";
-  const label = open
-    ? isToday
-      ? "Open study time"
-      : isPast
-        ? "Nothing was picked"
-        : "Jami fills this in on the day"
-    : task.label;
-  const locked = slot.completedBy === "activity" || slot.state === "skipped" || open;
+  const { headline, detail } = rowWords(task, { isToday, isPast });
+  const locked = slot.completedBy === "activity" || slot.state === "skipped";
   const tag = tagFor(task, upNext);
-  const text = (
-    <span
-      className={`min-w-0 flex-1 text-sm leading-snug transition ${
-        done
-          ? "text-text-muted line-through decoration-[var(--color-border-strong)]"
-          : open
-            ? "text-text-muted"
-            : "text-text-primary"
-      }`}
-    >
-      {label}
+  const words = (
+    <span className="min-w-0 flex-1">
+      <span
+        className={`block text-sm font-medium leading-snug transition ${
+          done
+            ? "text-text-muted line-through decoration-[var(--color-border-strong)]"
+            : open
+              ? "text-text-muted"
+              : "text-text-primary"
+        }`}
+      >
+        {headline}
+      </span>
+      {detail && !done ? <span className="mt-0.5 block text-xs text-text-muted">{detail}</span> : null}
     </span>
   );
   return (
     <li
-      className={`group flex items-center gap-3 rounded-2xl border px-3 py-2.5 transition duration-fast ${
-        upNext
-          ? "border-[var(--color-success)] bg-[var(--color-success-muted)]"
-          : "border-[var(--color-border)] bg-[var(--color-glass-subtle)]"
+      className={`group flex items-center gap-3 rounded-xl px-2.5 py-2 transition duration-fast ${
+        upNext ? "bg-[var(--color-success-muted)]" : "hover:bg-[var(--color-glass-subtle)]"
       }`}
     >
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={done}
-        aria-label={`Mark done: ${label}`}
-        disabled={locked}
-        onClick={() => onToggle(slot)}
-        className="-m-1 grid shrink-0 place-items-center rounded-full p-1 transition duration-fast ease-spring active:scale-90 disabled:cursor-default disabled:opacity-70 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-      >
-        <TickMark done={done} />
-      </button>
+      {open ? (
+        // Time with nothing in it is not a task, so there is nothing to tick.
+        <span
+          aria-hidden="true"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-dashed border-[var(--color-border-strong)]"
+        />
+      ) : (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={done}
+          aria-label={`Mark done: ${headline}`}
+          disabled={locked}
+          onClick={() => onToggle(slot)}
+          className="-m-1 grid shrink-0 place-items-center rounded-full p-1 transition duration-fast ease-spring active:scale-90 disabled:cursor-default disabled:opacity-70 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+        >
+          <TickMark done={done} />
+        </button>
+      )}
       {task.href && !done ? (
         <Link
           href={task.href}
           className="flex min-w-0 flex-1 rounded-lg hover:text-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
         >
-          {text}
+          {words}
         </Link>
       ) : (
-        text
+        words
       )}
-      {tag ? <span className={`hidden shrink-0 text-2xs font-semibold sm:inline ${tag.tone}`}>{tag.text}</span> : null}
+      {showStart && upNext && task.href && !done ? (
+        <Link
+          href={task.href}
+          className="inline-flex min-h-9 shrink-0 items-center rounded-full bg-accent px-4 text-sm font-semibold text-accent-on shadow-accent transition duration-fast hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+        >
+          {task.actionLabel ?? "Start"}
+        </Link>
+      ) : tag ? (
+        <span className={`hidden shrink-0 text-2xs font-semibold sm:inline ${tag.tone}`}>{tag.text}</span>
+      ) : null}
       {onRemove && slot.item.kind === "pinned" ? (
         <button
           type="button"
-          aria-label={`Remove ${label}`}
+          aria-label={`Remove ${headline}`}
           onClick={() => slot.item.kind === "pinned" && onRemove(slot.item.pinned.actionId)}
           className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-text-muted transition hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
         >
@@ -145,7 +193,16 @@ function TaskRow({
   );
 }
 
-function AddTask({
+/**
+ * Adding to a sitting: one quiet line until it is wanted.
+ *
+ * It was a full-width box and a button under every sitting, which made a
+ * short day look like a form to fill in. The box opens when the student asks
+ * for it; asking Jami for one is a single tap either way.
+ *
+ * Shared with Today's plan, so a sitting is added to the same way on both.
+ */
+export function PlanAddTask({
   session,
   subject,
   onAddOwnTask,
@@ -156,6 +213,7 @@ function AddTask({
   onAddOwnTask?: (sessionId: string, label: string) => boolean;
   onAskJami?: (session: PlanDaySession) => PlanSuggestionResult;
 }) {
+  const [adding, setAdding] = useState(false);
   const [text, setText] = useState("");
   const [note, setNote] = useState("");
   if (!onAddOwnTask && !onAskJami) return null;
@@ -164,54 +222,81 @@ function AddTask({
     if (onAddOwnTask?.(session.id, text)) {
       setText("");
       setNote("");
+      setAdding(false);
     }
   };
+  const quiet =
+    "rounded-lg px-1.5 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45";
   return (
     <div className="space-y-1.5">
-      <div className="flex flex-col gap-2 sm:flex-row">
-        {onAddOwnTask ? (
-          <form onSubmit={submit} className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-dashed border-[var(--color-border-strong)] px-3 focus-within:border-[var(--color-accent)]">
-            <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5 shrink-0 text-text-muted" aria-hidden="true">
-              <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-            <label className="sr-only" htmlFor={`add-task-${session.id}`}>
-              Add your own task to {subject}
-            </label>
-            <input
-              id={`add-task-${session.id}`}
-              value={text}
-              maxLength={120}
-              onChange={(event) => setText(event.target.value)}
-              placeholder="Add your own task"
-              className="min-h-[2.75rem] min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
-            />
-            {text.trim() ? (
-              <button type="submit" className="shrink-0 text-xs font-semibold text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]">
-                Add
-              </button>
-            ) : null}
-          </form>
-        ) : null}
-        {onAskJami ? (
-          <button
-            type="button"
-            onClick={() => {
-              const result = onAskJami(session);
-              setNote(
-                result === "nothing"
-                  ? `Jami has nothing else for ${subject} right now.`
-                  : result === "busy"
-                    ? "Still saving your last change. Try again in a moment."
-                    : ""
-              );
+      {adding && onAddOwnTask ? (
+        <form
+          onSubmit={submit}
+          className="flex min-w-0 items-center gap-2 rounded-2xl border border-[var(--color-border-strong)] px-3 focus-within:border-[var(--color-accent)]"
+        >
+          <label className="sr-only" htmlFor={`add-task-${session.id}`}>
+            Add your own task to {subject}
+          </label>
+          <input
+            id={`add-task-${session.id}`}
+            // Focused because the tap that opened it asked to type.
+            ref={(node) => node?.focus()}
+            value={text}
+            maxLength={120}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setAdding(false);
             }}
-            className="min-h-[2.75rem] shrink-0 rounded-2xl border border-[var(--color-border)] px-3 text-sm font-semibold text-[var(--color-accent)] transition hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-          >
-            Ask Jami for one
+            placeholder="What do you want to do?"
+            className="min-h-[2.75rem] min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
+          />
+          <button type="button" onClick={() => setAdding(false)} className={`${quiet} shrink-0 text-text-muted hover:text-text-primary`}>
+            Cancel
           </button>
-        ) : null}
-      </div>
-      {note ? <p className="px-1 text-xs text-text-muted" role="status">{note}</p> : null}
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            className={`${quiet} shrink-0 text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] disabled:text-text-muted`}
+          >
+            Add
+          </button>
+        </form>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-text-muted">
+          {onAddOwnTask ? (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className={`${quiet} inline-flex items-center gap-1.5 hover:text-text-primary`}
+            >
+              <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3" aria-hidden="true">
+                <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+              Add a task
+            </button>
+          ) : null}
+          {onAddOwnTask && onAskJami ? <span aria-hidden="true">·</span> : null}
+          {onAskJami ? (
+            <button
+              type="button"
+              onClick={() => {
+                const result = onAskJami(session);
+                setNote(
+                  result === "nothing"
+                    ? `Jami has nothing else for ${subject} right now.`
+                    : result === "busy"
+                      ? "Still saving your last change. Try again in a moment."
+                      : ""
+                );
+              }}
+              className={`${quiet} text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]`}
+            >
+              Ask Jami for one
+            </button>
+          ) : null}
+        </div>
+      )}
+      {note ? <p className="px-1.5 text-xs text-text-muted" role="status">{note}</p> : null}
     </div>
   );
 }
@@ -226,7 +311,6 @@ function SessionRow({
   props: PlanTodayTimelineProps;
 }) {
   const subject = props.scopeNames.get(session.scopeKey) ?? "Study";
-  const focus = planSessionFocus(session);
   const color = props.scopeColor(session.scopeKey);
   return (
     <li className="grid grid-cols-[3.25rem_1.25rem_minmax(0,1fr)] gap-x-2 sm:grid-cols-[3.75rem_1.5rem_minmax(0,1fr)] sm:gap-x-3">
@@ -243,14 +327,15 @@ function SessionRow({
         />
         {last ? null : <span className="mt-2 w-px flex-1 bg-[var(--color-border-strong)]" />}
       </div>
-      <div className={`min-w-0 space-y-2.5 ${last ? "pb-1" : "pb-8"}`}>
+      <div className={`min-w-0 space-y-2 ${last ? "pb-1" : "pb-7"}`}>
+        {/* The subject heads the sitting; its topics are the rows, so they are not repeated here. */}
         <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-          <span className="text-2xs font-bold uppercase tracking-[0.12em] text-text-secondary">{subject}</span>
-          {focus ? <h3 className="text-base font-bold text-text-primary">{focus}</h3> : null}
+          <h3 className="text-base font-bold text-text-primary">{subject}</h3>
+          {session.label ? <span className="text-sm text-text-muted">{session.label}</span> : null}
         </div>
-        <ul className="space-y-2">
+        <ul className="-ml-2.5 space-y-0.5">
           {session.slots.map((slot) => (
-            <TaskRow
+            <PlanTaskRow
               key={slot.id}
               task={planTask(slot)}
               isToday={props.isToday}
@@ -261,7 +346,7 @@ function SessionRow({
             />
           ))}
         </ul>
-        <AddTask
+        <PlanAddTask
           session={session}
           subject={subject}
           {...(props.onAddOwnTask ? { onAddOwnTask: props.onAddOwnTask } : {})}

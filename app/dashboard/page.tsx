@@ -7,30 +7,22 @@ import { useFeedback } from "@/hooks/useFeedback";
 import { runDashboardDataRequest } from "@/lib/app/dashboard-data";
 import type { Deck } from "@/lib/study/decks";
 import type { Goal } from "@/lib/study/goals";
-import {
-  getCustomStudyHref,
-  getQuestionPracticeSetupHref,
-  getRevisionPlanHref,
-} from "@/lib/app/routes";
+import { getCustomStudyHref, getRevisionPlanHref } from "@/lib/app/routes";
 import { countTodayReviews, type DailyStudyActivity } from "@/lib/study/activity";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import AppPage from "@/components/layout/AppPage";
-import {
-  Button,
-  ButtonLink,
-  Card,
-  FeedbackBanner,
-  ProgressBar,
-  SectionHeader,
-  Skeleton,
-  StatTile,
-} from "@/components/ui";
+import { Button, ButtonLink, FeedbackBanner, ProgressBar, Skeleton } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import type { Topic } from "@/lib/material/topics";
 import type { MasteryEvent } from "@/lib/material/mastery";
 import type { Source } from "@/lib/material/sources";
-import { buildTodayPlan, type TodayPlan, type TodayStudyAction } from "@/lib/dashboard/today-plan";
+import {
+  buildTodayPlan,
+  type TodayGoalSummary,
+  type TodayPlan,
+  type TodayStudyAction,
+} from "@/lib/dashboard/today-plan";
 import {
   buildTodayMission,
   greeting,
@@ -42,9 +34,13 @@ import InterventionDraftReview from "@/components/learning/InterventionDraftRevi
 import MissionCard from "@/components/today/MissionCard";
 import MaterialReady from "@/components/today/MaterialReady";
 import MomentumStrip, { buildMomentumWeek } from "@/components/today/MomentumStrip";
-import MoreForToday from "@/components/today/MoreForToday";
-import PlanHome from "@/components/today/PlanHome";
-import StudyDoors, { type StudyDoor } from "@/components/today/StudyDoors";
+import TodayAnytime, { type TodayAnytimeItem } from "@/components/today/TodayAnytime";
+import TodayHeader from "@/components/today/TodayHeader";
+import TodayPlanPanel from "@/components/today/TodayPlanPanel";
+import TodayWeekList from "@/components/today/TodayWeekList";
+import { planScopeColor } from "@/lib/planning/plan-colors";
+import { planCountdown } from "@/lib/planning/plan-countdown";
+import { planUpNext } from "@/lib/planning/plan-tasks";
 import { useRevisionPlanToday } from "@/hooks/useRevisionPlanToday";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useStudyActions } from "@/hooks/useStudyActions";
@@ -73,10 +69,11 @@ import { useFirstNight } from "@/components/onboarding/FirstNightProvider";
 /**
  * The Study Hub.
  *
- * Today answers one question -- what should I do now? -- and the whole layout
- * is arranged around not making the student work for the answer. One mission
- * at full size, a quiet rail of how-much beside it, four doors for a student
- * who wants something else, and everything Jami merely noticed folded away.
+ * Today answers one question -- what should I do now? -- and it is laid out
+ * like a page of a planner so the answer is the first thing on it. The day's
+ * plan, contained, with the next task marked; what Jami suggests beyond it;
+ * what can be done any time. Without a plan, Jami's suggestions lead in the
+ * same place, so it is one page either way.
  *
  * What it deliberately is not is a dashboard. Every count Jami holds could go
  * on this page and the result would be a student auditing themselves before
@@ -92,95 +89,27 @@ import { useFirstNight } from "@/components/onboarding/FirstNightProvider";
 
 const PROGRESS_VISITED_KEY = "jami:progress-visited";
 
-function DraftQueueCard({ plan }: { plan: TodayPlan }) {
+/** The goal with the nearest deadline, in the side column: where it stands, and the way to it. */
+function TodayGoalCard({ goal }: { goal: TodayGoalSummary }) {
   return (
-    <Card padding="lg">
-      <SectionHeader
-        eyebrow="Flashcard drafts"
-        title={`${plan.drafts.length} draft${plan.drafts.length === 1 ? "" : "s"} to review`}
-      />
-      <div className="mt-5 space-y-3">
-        {plan.drafts.slice(0, 2).map((draft) => (
-          <div key={draft.id} className="app-subtle-panel rounded-lg p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-              {draft.sourceTitle ? "Source draft" : "Draft"}
-            </div>
-            <div className="mt-2 text-sm font-semibold text-text-primary">{draft.front}</div>
-            <p className="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">{draft.back}</p>
-            {draft.suggestedTopic ? (
-              <div className="app-warning mt-3 rounded-full px-3 py-1 text-xs font-semibold">
-                Suggested topic: {draft.suggestedTopic}
-              </div>
-            ) : null}
-          </div>
-        ))}
+    <section aria-labelledby="today-goal-title" className="app-panel rounded-3xl p-4">
+      <p className="px-1 text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">Goal</p>
+      <h2 id="today-goal-title" className="mt-1 px-1 text-sm font-bold text-text-primary">
+        {goal.title}
+      </h2>
+      <p className="mt-1 px-1 text-xs leading-5 text-text-muted">{goal.detail}</p>
+      <div className="mt-3 px-1">
+        <ProgressBar progress={goal.progressPercent} />
       </div>
-      <div className="mt-5">
-        <ButtonLink href="/dashboard/tutor" variant="secondary">
-          Review drafts
-        </ButtonLink>
-      </div>
-    </Card>
+      <Link
+        href={goal.href}
+        className="mt-3 inline-block px-1 text-xs font-semibold text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
+      >
+        Open goals
+      </Link>
+    </section>
   );
 }
-
-function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
-  return (
-    <Card padding="lg">
-      <SectionHeader eyebrow="Weak-topic practice" title="Topics to repair" />
-      <div className="mt-5 grid gap-3">
-        {plan.weakTopics.map((topic) => (
-          <Link
-            key={topic.topicId}
-            href={topic.href}
-            className="app-subtle-panel grid gap-3 rounded-lg p-4 transition duration-fast hover:-translate-y-[1px] sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] sm:items-center"
-          >
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-text-primary">{topic.name}</div>
-              <div className="mt-1 text-xs text-text-muted">{topic.subject}</div>
-            </div>
-            <p className="text-sm leading-6 text-text-secondary sm:border-l sm:border-[var(--color-border)] sm:pl-4">
-              {topic.reason}
-            </p>
-          </Link>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
-  if (!plan.goalSummary) return null;
-  return (
-    <Card padding="lg">
-      <SectionHeader eyebrow="Goals" title="Goal in motion" />
-      <div className="mt-5">
-        <div className="text-sm font-semibold text-text-primary">{plan.goalSummary.title}</div>
-        <p className="mt-2 text-sm leading-6 text-text-secondary">{plan.goalSummary.detail}</p>
-        <div className="mt-4">
-          <div className="mb-2 flex items-center justify-between text-xs text-text-muted">
-            <span>Progress</span>
-            <span>{plan.goalSummary.progressPercent}%</span>
-          </div>
-          <ProgressBar progress={plan.goalSummary.progressPercent} />
-        </div>
-        <div className="mt-5">
-          <ButtonLink href={plan.goalSummary.href} variant="secondary">
-            Open goals
-          </ButtonLink>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-/** 24x24 stroke paths, one family, drawn by `StudyDoors`. */
-const DOOR_ICONS = {
-  review: "M4 6.5h16M4 12h16M4 17.5h10",
-  practice: "M5 4.5h11l3 3v12H5z M16 4.5v3h3",
-  pastPaper: "M6 3.5h9l4 4v13H6z M9 12h7M9 16h5",
-  folders: "M3.5 7a2 2 0 012-2h3.3l2 2h7.7a2 2 0 012 2v8a2 2 0 01-2 2h-13a2 2 0 01-2-2z",
-} as const;
 
 export default function DashboardHome() {
   const { user } = useUser();
@@ -470,48 +399,6 @@ export default function DashboardHome() {
   ] as const;
   const planUnavailable = planSections.some((section) => sectionStates[section] === "unavailable");
 
-  /*
-   * The doors, and only the ones that lead somewhere.
-   *
-   * Past Paper Practice needs a folder with a course behind it; offering it to
-   * a student who has none would be a door onto a wall.
-   */
-  const examFolder = useMemo(
-    () => studyFolders.find((folder) => !folder.archived && folder.examCourse),
-    [studyFolders]
-  );
-  const doors = useMemo<StudyDoor[]>(() => {
-    const entries: StudyDoor[] = [
-      {
-        label: "Review",
-        detail: "Cards that are due for retrieval.",
-        href: getCustomStudyHref({ mode: "daily" }),
-        icon: DOOR_ICONS.review,
-      },
-      {
-        label: "Practice",
-        detail: "Notebooks and papers to work in.",
-        href: "/dashboard/practice",
-        icon: DOOR_ICONS.practice,
-      },
-    ];
-    if (featureFlags.enablePastPaperPractice && examFolder) {
-      entries.push({
-        label: "Past papers",
-        detail: "Real exam questions, one at a time.",
-        href: getQuestionPracticeSetupHref({ folderId: examFolder.id }),
-        icon: DOOR_ICONS.pastPaper,
-      });
-    }
-    entries.push({
-      label: "Your folders",
-      detail: "Everything you have, by subject.",
-      href: "/dashboard/folders",
-      icon: DOOR_ICONS.folders,
-    });
-    return entries;
-  }, [examFolder]);
-
   const momentumWeek = useMemo(() => buildMomentumWeek(studyActivity), [studyActivity]);
 
   /** The engine's other advice: the mission's own recommendation is not repeated. */
@@ -550,17 +437,6 @@ export default function DashboardHome() {
     [startMaterial]
   );
 
-  const secondaryCount =
-    remainingActions.length +
-    Number(sectionStates.drafts !== "unavailable" && todayPlan.drafts.length > 0) +
-    Number(
-      sectionStates.topics !== "unavailable" &&
-        sectionStates.mastery !== "unavailable" &&
-        todayPlan.weakTopics.length > 0
-    ) +
-    Number(sectionStates.goals !== "unavailable" && Boolean(todayPlan.goalSummary)) +
-    Number(sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0);
-
   /*
    * The finished mission, worded. Held until the page is left rather than
    * timed out: it sits above the next recommendation as context for it, and
@@ -588,13 +464,14 @@ export default function DashboardHome() {
   const planLoading = featureFlags.enableRevisionPlans && revisionPlan.loading;
 
   /*
-   * The Learning Engine's next step. It leads Today unless a revision plan does,
-   * and then it leads only when the plan has nothing left for today.
+   * The Learning Engine's next step, as the first line of "Jami suggests". It
+   * leads Today unless a revision plan does, and then only when the plan has
+   * nothing left for today.
    */
   const missionCard = (
     <>
     {isLoading || planLoading ? (
-      <Skeleton className="h-[21rem] rounded-2xl" />
+      <Skeleton className="h-40 rounded-2xl" />
     ) : planUnavailable ? (
       <MissionCard
         tone="plain"
@@ -611,9 +488,18 @@ export default function DashboardHome() {
          */
         {...(completionCopy ? { completion: completionCopy } : {})}
         action={
-          <Button type="button" onClick={() => void handleRefresh()} size="lg">
+          <Button type="button" onClick={() => void handleRefresh()}>
             Try again
           </Button>
+        }
+        /*
+         * A failed read may cost the recommendation, never every way to start
+         * studying: due cards do not depend on the profile that failed.
+         */
+        secondaryAction={
+          <ButtonLink href={getCustomStudyHref({ mode: "daily" })} variant="secondary">
+            Review cards
+          </ButtonLink>
         }
       />
     ) : (
@@ -637,21 +523,20 @@ export default function DashboardHome() {
           mission.generate && mission.action ? (
             <Button
               type="button"
-              size="lg"
               disabled={missionBusy}
               onClick={() => handleGenerate(mission.action as TodayStudyAction)}
             >
               {generatingMission ? "Writing…" : mission.actionLabel}
             </Button>
           ) : (
-            <ButtonLink href={mission.href} size="lg" onClick={recordMissionStart}>
+            <ButtonLink href={mission.href} onClick={recordMissionStart}>
               {mission.actionLabel}
             </ButtonLink>
           )
         }
         secondaryAction={
           mission.secondary ? (
-            <ButtonLink href={mission.secondary.href} variant="secondary" size="lg">
+            <ButtonLink href={mission.secondary.href} variant="secondary">
               {mission.secondary.label}
             </ButtonLink>
           ) : null
@@ -667,6 +552,92 @@ export default function DashboardHome() {
     !planUnavailable &&
     !planLoading &&
     Boolean(revisionPlan.plan && revisionPlan.day);
+  /** The plan leads while it has something left to do today; after that, Jami does. */
+  const planLeads = planLed && Boolean(planUpNext(revisionPlan.day));
+
+  /*
+   * What Jami suggests beyond the plan. With the plan leading, anything already
+   * placed in today's sittings is left out, so a suggestion is never shown
+   * twice; with Jami leading, it is everything after its own next step.
+   */
+  const planPlacedIds = useMemo(
+    () =>
+      new Set(
+        (revisionPlan.day?.slots ?? []).flatMap((slot) =>
+          slot.item.kind === "action" ? [slot.item.action.id] : []
+        )
+      ),
+    [revisionPlan.day]
+  );
+  const suggestionActions = planLeads
+    ? todayPlan.studyActions.filter((action) => !planPlacedIds.has(action.id))
+    : remainingActions;
+
+  const todayDayKey = getStudyDayKey();
+  const planScope = revisionPlan.plan;
+  const scopeColor = useCallback((scopeKey: string) => planScopeColor(planScope, scopeKey), [planScope]);
+
+  /*
+   * The lines under "Any time today". Each used to be a card behind the "More
+   * for today" fold; they are one list now, and none of them is drawn when its
+   * data could not be read -- a missing list is not an empty one.
+   */
+  const reviewLeads = !planLeads && todayPlan.nextAction.type === "review_due_cards";
+  const anytimeItems: TodayAnytimeItem[] = [];
+  if (!isLoading && !planUnavailable) {
+    if (todayPlan.dueCards.count > 0 && !reviewLeads) {
+      anytimeItems.push({
+        id: "due-cards",
+        title: `Review ${todayPlan.dueCards.count} due ${todayPlan.dueCards.count === 1 ? "card" : "cards"}`,
+        meta: todayPlan.dueCards.primaryDeckName
+          ? `Mostly ${todayPlan.dueCards.primaryDeckName}`
+          : "Flashcards",
+        action: (
+          <ButtonLink href={getCustomStudyHref({ mode: "daily" })} variant="secondary" size="sm">
+            Review
+          </ButtonLink>
+        ),
+      });
+    }
+    if (sectionStates.drafts !== "unavailable" && todayPlan.drafts.length > 0) {
+      anytimeItems.push({
+        id: "drafts",
+        title: `Check ${todayPlan.drafts.length} new ${todayPlan.drafts.length === 1 ? "draft" : "drafts"}`,
+        meta: "Jami made them from your material",
+        action: (
+          <ButtonLink href="/dashboard/tutor" variant="secondary" size="sm">
+            Review drafts
+          </ButtonLink>
+        ),
+      });
+    }
+    if (sectionStates.topics !== "unavailable" && sectionStates.mastery !== "unavailable") {
+      for (const topic of todayPlan.weakTopics.slice(0, 3)) {
+        anytimeItems.push({
+          id: `topic-${topic.topicId}`,
+          title: `Repair ${topic.name}`,
+          meta: [topic.subject, topic.reason].filter(Boolean).join(" · "),
+          action: (
+            <ButtonLink href={topic.href} variant="secondary" size="sm">
+              Practise
+            </ButtonLink>
+          ),
+        });
+      }
+    }
+    if (sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0) {
+      anytimeItems.push({
+        id: "extras",
+        title: "Extra review",
+        meta: `${remainingOptionalCount} lighter ${remainingOptionalCount === 1 ? "card" : "cards"}, if you want more`,
+        action: (
+          <ButtonLink href={getCustomStudyHref({ mode: "daily" })} variant="secondary" size="sm">
+            Review
+          </ButtonLink>
+        ),
+      });
+    }
+  }
 
   return (
     <Refreshable onRefresh={handleRefresh}>
@@ -697,27 +668,22 @@ export default function DashboardHome() {
           />
         ) : null}
 
-        <header className="pt-1">
-          {/*
-            A greeting, not a heading: the top bar already carries this page's
-            only h1, and a second one would leave a screen reader with two
-            titles for the same page.
-          */}
-          <p className="text-xl font-medium tracking-[-0.01em] text-text-primary sm:text-2xl">
-            {greeting()}
-            {inAppUsername ? `, ${inAppUsername}` : ""}.
-          </p>
-          <p className="mt-1.5 text-sm text-text-muted">
-            {isLoading
-              ? "Getting today ready."
-              : planUnavailable
-                ? "Some of your study data could not be read just now."
-                : hubSubline({
-                    hasMission: !isLoading,
-                    extraActions: remainingActions.length,
-                  })}
-          </p>
-        </header>
+        <TodayHeader
+          greeting={`${greeting()}${inAppUsername ? `, ${inAppUsername}` : ""}.`}
+          dayKey={todayDayKey}
+          {...(planLed && revisionPlan.plan ? { planTitle: revisionPlan.plan.title } : {})}
+          {...(isLoading
+            ? { summary: "Getting today ready." }
+            : planUnavailable
+              ? { summary: "Some of your study data could not be read just now." }
+              : planLed
+                ? {}
+                : { summary: hubSubline({ hasMission: true, extraActions: remainingActions.length }) })}
+          countdown={planLed && revisionPlan.plan ? planCountdown(revisionPlan.plan, todayDayKey) : []}
+          planHref={getRevisionPlanHref()}
+          offerExamDates={featureFlags.enableRevisionPlans && !planLed && !planLoading && !isLoading}
+          scopeColor={scopeColor}
+        />
 
         {/*
           First night leads the page while it runs. A new student's Today has
@@ -727,84 +693,77 @@ export default function DashboardHome() {
         */}
         <FirstNightPanel />
 
-        {planLed ? (
-          <PlanHome
-            planToday={revisionPlan}
-            planHref={getRevisionPlanHref()}
-            doors={doors}
-            fallback={missionCard}
-          />
-        ) : (
-          <>
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:gap-5">
-            {missionCard}
+        {/*
+          * A planner page: the plan, contained, then what Jami suggests beyond
+          * it, then what can be done any time. The week and a goal sit beside
+          * them on a wide screen and after them on a phone.
+          *
+          * The page used to be a greeting, a poster-sized mission, a momentum
+          * panel, four doors and a fold of other cards -- and a different page
+          * again with a plan. There is one order now, with or without a plan:
+          * without one, Jami's suggestions simply lead.
+          */}
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_17rem] lg:gap-8">
+          <div className="min-w-0 space-y-5">
+            {planLed ? <TodayPlanPanel planToday={revisionPlan} /> : null}
 
-            <aside className="grid content-start gap-4">
-              {isLoading ? (
-                <Skeleton className="h-40 rounded-xl" />
-              ) : (
-                <MomentumStrip
-                  week={momentumWeek}
-                  unavailable={sectionStates.activity === "unavailable"}
+            <section aria-labelledby="today-suggest-title" className="app-panel rounded-3xl p-4 sm:p-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1 pb-3">
+                <h2 id="today-suggest-title" className="text-base font-bold tracking-tight text-text-primary">
+                  Jami suggests
+                </h2>
+                <span className="text-xs text-text-muted">From your recent answers</span>
+              </div>
+              {planLeads ? null : missionCard}
+              {!isLoading && !planUnavailable ? (
+                <StudyActionsCard
+                  actions={suggestionActions}
+                  uid={user.uid}
+                  onGenerate={handleGenerate}
+                  generatingId={material.generatingId}
                 />
-              )}
-            </aside>
+              ) : null}
+              {planLeads && suggestionActions.length === 0 ? (
+                <p className="px-1 text-sm leading-6 text-text-muted">
+                  Nothing extra today — your plan already has what Jami would suggest.
+                </p>
+              ) : null}
+            </section>
+
+            <TodayAnytime items={anytimeItems} />
           </div>
 
-          {/*
-            * The doors do not wait on the student's data, and must not.
-            *
-            * They were gated on the same check as the mission at first, which
-            * meant a failed read took away both the recommendation *and* every
-            * way in -- leaving a student looking at an apology with nothing to
-            * press. Nothing here needs the profile: they are four places that
-            * exist whether or not Jami could read anything today.
-            */}
-          {!isLoading ? (
-            <section className="space-y-3">
-              <h2 className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                Or study your way
-              </h2>
-              <StudyDoors doors={doors} />
-            </section>
-          ) : null}
-          </>
-        )}
+          <aside className="grid content-start gap-5">
+            {planLed ? (
+              <TodayWeekList planToday={revisionPlan} planHref={getRevisionPlanHref()} />
+            ) : isLoading ? (
+              <Skeleton className="h-40 rounded-3xl" />
+            ) : (
+              <MomentumStrip week={momentumWeek} unavailable={sectionStates.activity === "unavailable"} />
+            )}
+            {featureFlags.enableRevisionPlans && !planLed && !planLoading && !isLoading ? (
+              <section aria-labelledby="today-plan-invite" className="app-panel space-y-2 rounded-3xl p-4">
+                <h2 id="today-plan-invite" className="px-1 text-sm font-bold text-text-primary">
+                  Plan around your exams
+                </h2>
+                <p className="px-1 text-xs leading-5 text-text-muted">
+                  Four quick questions and Jami builds a week you can stick to. Today then leads with it.
+                </p>
+                <div className="px-1 pt-1">
+                  <ButtonLink href={getRevisionPlanHref()} size="sm">
+                    Plan with Jami
+                  </ButtonLink>
+                </div>
+              </section>
+            ) : null}
+            {!isLoading && sectionStates.goals !== "unavailable" && todayPlan.goalSummary ? (
+              <TodayGoalCard goal={todayPlan.goalSummary} />
+            ) : null}
+          </aside>
+        </div>
 
         <TutorialResumeCard />
         <SecondNightPanel />
-
-        {!isLoading && !planUnavailable ? (
-          <MoreForToday count={secondaryCount}>
-            {remainingActions.length > 0 ? (
-              <StudyActionsCard
-                actions={remainingActions}
-                uid={user.uid}
-                onGenerate={handleGenerate}
-                generatingId={material.generatingId}
-              />
-            ) : null}
-            {sectionStates.drafts !== "unavailable" && todayPlan.drafts.length > 0 ? (
-              <DraftQueueCard plan={todayPlan} />
-            ) : null}
-            {sectionStates.topics !== "unavailable" &&
-            sectionStates.mastery !== "unavailable" &&
-            todayPlan.weakTopics.length > 0 ? (
-              <WeakTopicsCard plan={todayPlan} />
-            ) : null}
-            {sectionStates.goals !== "unavailable" && todayPlan.goalSummary ? (
-              <GoalSnapshotCard plan={todayPlan} />
-            ) : null}
-            {sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0 ? (
-              <StatTile
-                label="Easy extras"
-                value={remainingOptionalCount}
-                detail="Daily Review is clear, but these lighter passes are still available."
-                href={getCustomStudyHref({ mode: "daily" })}
-              />
-            ) : null}
-          </MoreForToday>
-        ) : null}
 
         <InterventionDraftReview
           draft={material.draft}
