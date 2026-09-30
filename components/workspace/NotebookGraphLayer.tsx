@@ -13,8 +13,11 @@ import NotebookGraphView from "@/components/workspace/NotebookGraphView";
 import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
 import {
   moveNotebookGraphBlock,
+  pinchGraphView,
   resizeNotebookGraphBlock,
   zoomGraphView,
+  type GraphScreenFrame,
+  type GraphScreenPoint,
   type NotebookGraphBlock,
   type NotebookGraphResizeCorner,
 } from "@/lib/workspace/notebook-graphs";
@@ -88,6 +91,18 @@ type Gesture = {
   original: NotebookGraphBlock;
 };
 
+/** Two fingers on one graph, zooming what it shows rather than where it sits. */
+type Pinch = {
+  ids: [number, number];
+  from: [GraphScreenPoint, GraphScreenPoint];
+  points: Map<number, GraphScreenPoint>;
+  frame: GraphScreenFrame;
+  /** The graph as the pinch found it, including anywhere the first finger had already moved it. */
+  base: NotebookGraphBlock;
+  /** Whether that first finger had moved it, which is worth saving even if the pinch changes nothing. */
+  moved: boolean;
+};
+
 type Pending = Record<string, { commitId: number; graph: NotebookGraphBlock }>;
 
 type Props = {
@@ -108,8 +123,18 @@ function geometryFor(gesture: Gesture, clientX: number, clientY: number) {
     : resizeNotebookGraphBlock(gesture.original, deltaX, deltaY, gesture.corner);
 }
 
+function pinchedGraph(pinch: Pinch): NotebookGraphBlock {
+  const first = pinch.points.get(pinch.ids[0]) ?? pinch.from[0];
+  const second = pinch.points.get(pinch.ids[1]) ?? pinch.from[1];
+  return { ...pinch.base, view: pinchGraphView(pinch.base.view, pinch.frame, pinch.from, [first, second]) };
+}
+
 /**
  * Graphs on a notebook page, and moving, resizing, zooming and editing them.
+ *
+ * One finger moves a graph and two pinch it, zooming what it shows the way
+ * the editor does -- so a graph on the page can still be looked into after it
+ * has been placed, not only through its zoom buttons.
  *
  * They sit under the ink, so a student can annotate a graph with the pen --
  * mark an intercept, sketch a tangent -- the way they would on paper. The
@@ -128,6 +153,7 @@ function NotebookGraphLayer({
 }: Props) {
   const layerRef = useRef<HTMLDivElement | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
+  const pinchRef = useRef<Pinch | null>(null);
   const pointRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const frameRef = useRef<number | null>(null);
   const [draft, setDraft] = useState<NotebookGraphBlock | null>(null);
@@ -195,7 +221,73 @@ function NotebookGraphLayer({
     []
   );
 
+  /**
+   * A second finger on the graph the first is moving: from here it is a pinch.
+   *
+   * The graph stays wherever the first finger had taken it, and the pinch
+   * zooms it there.
+   */
+  const startPinch = useCallback((graph: NotebookGraphBlock, event: ReactPointerEvent<HTMLElement>) => {
+    const gesture = gestureRef.current;
+    if (
+      event.pointerType !== "touch" ||
+      !gesture ||
+      gesture.kind !== "move" ||
+      gesture.original.id !== graph.id ||
+      gesture.pointerId === event.pointerId
+    ) {
+      return false;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    event.stopPropagation();
+    if (frameRef.current !== null) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = pointRef.current;
+    const moved =
+      point !== null &&
+      Math.hypot(point.clientX - gesture.startClientX, point.clientY - gesture.startClientY) >= DRAG_THRESHOLD_PX;
+    const base = moved && point ? geometryFor(gesture, point.clientX, point.clientY) : gesture.original;
+    const first = point ? { x: point.clientX, y: point.clientY } : { x: gesture.startClientX, y: gesture.startClientY };
+    const second = { x: event.clientX, y: event.clientY };
+    gestureRef.current = null;
+    pointRef.current = null;
+    pinchRef.current = {
+      ids: [gesture.pointerId, event.pointerId],
+      from: [first, second],
+      points: new Map([
+        [gesture.pointerId, first],
+        [event.pointerId, second],
+      ]),
+      frame: {
+        rect,
+        drawingWidth: base.width * DRAWING_SCALE,
+        drawingHeight: base.height * DRAWING_SCALE,
+        hasTitle: Boolean(base.title),
+      },
+      base,
+      moved,
+    };
+    setDraft(base);
+    return true;
+  }, []);
+
   const moveGesture = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const pinch = pinchRef.current;
+    if (pinch?.ids.includes(event.pointerId)) {
+      event.stopPropagation();
+      pinch.points.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (frameRef.current !== null) return;
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
+        const current = pinchRef.current;
+        if (current) setDraft(pinchedGraph(current));
+      });
+      return;
+    }
     const gesture = gestureRef.current;
     if (!gesture || event.pointerId !== gesture.pointerId) return;
     event.stopPropagation();
@@ -212,6 +304,28 @@ function NotebookGraphLayer({
 
   const finishGesture = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
+      const pinch = pinchRef.current;
+      if (pinch?.ids.includes(event.pointerId)) {
+        event.stopPropagation();
+        if (frameRef.current !== null) {
+          cancelAnimationFrame(frameRef.current);
+          frameRef.current = null;
+        }
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        // The finger still down ends nothing: this pinch is over, and it is saved once.
+        pinchRef.current = null;
+        setDraft(null);
+        const travelled = pinch.ids.some((id, index) => {
+          const at = pinch.points.get(id);
+          const from = pinch.from[index];
+          return at !== undefined && from !== undefined && Math.hypot(at.x - from.x, at.y - from.y) >= DRAG_THRESHOLD_PX;
+        });
+        if (travelled) commitGraph(pinchedGraph(pinch));
+        else if (pinch.moved) commitGraph(pinch.base);
+        return;
+      }
       const gesture = gestureRef.current;
       if (!gesture || event.pointerId !== gesture.pointerId) return;
       event.stopPropagation();
@@ -291,7 +405,7 @@ function NotebookGraphLayer({
               <div key={graph.id} className="pointer-events-none absolute" style={styleFor(graph)}>
                 <button
                   type="button"
-                  aria-label={`Move ${name}. Enter to edit, plus or minus to zoom.`}
+                  aria-label={`Move ${name}. Enter to edit, plus or minus to zoom, or pinch with two fingers.`}
                   aria-pressed={selected}
                   className={`pointer-events-auto absolute inset-0 touch-none rounded-sm border bg-transparent outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/55 ${
                     selected ? "cursor-move border-accent shadow-ring" : "cursor-pointer border-transparent hover:border-accent/55"
@@ -306,6 +420,7 @@ function NotebookGraphLayer({
                   }}
                   onKeyDown={(event) => handleKeyDown(graph, event)}
                   onPointerDown={(event) => {
+                    if (startPinch(graph, event)) return;
                     onSelect?.(graph.id);
                     startGesture(graph, event);
                   }}

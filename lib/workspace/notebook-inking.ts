@@ -555,6 +555,21 @@ export function getBoundedLivePointerSamples<T extends LivePointerSample>(
   if (!previous || coalescedSamples.length === 0) return [event];
 
   const candidates = coalescedSamples.filter((sample, index, samples) => {
+    /*
+     * Nothing older than what has already been drawn.
+     *
+     * A packet is meant to hold only the samples since the last event, but
+     * nothing enforced it: `previous` was checked for existing and never read.
+     * A sample from before the last one drawn -- a packet overlapping the one
+     * before it -- was replayed, and the line jumped back to it and forward
+     * again: a kink in the middle of a straight line, at random.
+     */
+    const alreadyDrawn =
+      sample.timeStamp < previous.timeStamp ||
+      (sample.timeStamp === previous.timeStamp &&
+        sample.clientX === previous.clientX &&
+        sample.clientY === previous.clientY);
+    if (alreadyDrawn) return false;
     const duplicatesEndpoint =
       sample.clientX === event.clientX &&
       sample.clientY === event.clientY &&

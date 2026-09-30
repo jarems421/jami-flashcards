@@ -143,6 +143,7 @@ export function flashcardObservations(
       {
         kind: "flashcards",
         evidenceId: `event:${event.id}`,
+        ...(event.interventionId ? { interventionId: event.interventionId } : {}),
         itemId: `card:${card.id}`,
         topicKeys: flashcardTopicKeys(card),
         score: flashcardReviewEventScore(event),

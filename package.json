@@ -16,6 +16,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:sizes": "node scripts/check-file-sizes.mjs",
+    "check:disk": "node scripts/check-disk.mjs",
+    "eval:interventions": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/intervention-generation-batch.ts",
+    "eval:revision-lesson": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/revision-lesson.ts",
+    "eval:research-models": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/research-model-compare.ts",
+    "eval:image-models": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/image-model-compare.ts",
+    "eval:tutor-diagrams": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/tutor-diagram.ts",
+    "check:availability-latency": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/concept-availability-latency.ts",
+    "clean:artifacts": "node scripts/check-disk.mjs --clean",
     "check:ai-release": "node --env-file-if-exists=.env.local scripts/check-ai-provider-release.mjs --live",
     "check:ai-benchmark": "node scripts/check-ai-benchmark.mjs",
     "check:paper-benchmark": "node scripts/check-paper-generation-benchmark.mjs",
@@ -26,12 +34,13 @@
     "corpus:experiment": "node --no-warnings scripts/corpus-experiment.mjs",
     "eval:exemplar": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/exemplar-run.ts",
     "fit:learner-model": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/learner-model-fit.ts",
+    "diff:concept-relations": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/concept-relation-diff.ts",
     "check:study-latency": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/study-asset-latency.ts",
     "check:ink-latency": "node scripts/run-ts.mjs scripts/eval/ink-latency.ts",
     "check": "npm run typecheck && npm run lint && npm run check:sizes && npm run check:paper-benchmark && npm run check:marking-benchmark && npm test",
     "verify:all": "npm run check && npm run build && npm run test:rules && npm run test:e2e",
     "emulators:free": "node scripts/free-emulator-ports.mjs",
-    "test:rules": "npm run emulators:free && firebase emulators:exec --only firestore,storage \"vitest run --config vitest.rules.config.ts\"",
+    "test:rules": "npm run emulators:free && firebase emulators:exec --only firestore,storage \"vitest run --config vitest.rules.config.mts\"",
     "test:e2e": "npm run emulators:free && firebase emulators:exec --project demo-jami-browser --only auth,firestore,storage \"playwright test\"",
     "emulators:rules": "firebase emulators:start --only firestore,storage",
     "firebase:login": "firebase login",
@@ -41,7 +50,8 @@
     "report:ai-spend": "node --env-file-if-exists=.env.local scripts/ai-spend-report.mjs",
     "audit:legacy-shapes": "node --env-file-if-exists=.env.local scripts/audit-legacy-shapes.mjs",
     "report:analytics": "node --env-file-if-exists=.env.local scripts/analytics-report.mjs",
-    "postinstall": "node scripts/copy-sql-wasm.mjs"
+    "postinstall": "node scripts/copy-sql-wasm.mjs",
+    "check:marking-live": "node --env-file-if-exists=.env.local scripts/run-ts.mjs scripts/eval/marking-live-signal.ts"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",
@@ -57,6 +67,7 @@
     "katex": "^0.16.47",
     "mammoth": "^1.12.0",
     "next": "^16.3.4",
+    "nodemailer": "^7.0.13",
     "officeparser": "^7.8.0",
     "pdfjs-dist": "^6.3.289",
     "pdfkit": "^0.20.2",
@@ -81,6 +92,7 @@
     "@playwright/test": "^1.62.0",
     "@types/katex": "^0.16.7",
     "@types/node": "^22",
+    "@types/nodemailer": "^8.0.2",
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
@@ -104,7 +116,12 @@
       "pdfjs-dist": "6.3.289"
     },
     "protobufjs": "7.6.5",
-    "tar": "7.5.19",
+    "qs": "6.16.0",
+    "tar": "7.5.22",
+    "@workflow/core": {
+      "nanoid": "5.1.16"
+    },
+    "undici": "7.29.1",
     "websocket-driver": "0.7.5"
   }
 }

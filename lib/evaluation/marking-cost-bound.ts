@@ -52,12 +52,15 @@
  */
 export const MARKING_MODEL_PRICES = {
   /** qwen/qwen3.6-35b-a3b */
-  supervisor: { promptUsdPerToken: 0.0000001, completionUsdPerToken: 0.0000009 },
-  /** z-ai/glm-5.3-flash */
-  worker: { promptUsdPerToken: 0.00000007, completionUsdPerToken: 0.0000002333 },
+  supervisor: { promptUsdPerToken: 0.00000015, completionUsdPerToken: 0.000001 },
+  /**
+   * z-ai/glm-5.3-flash. Its output price more than doubled between the two
+   * readings (0.2333 to 0.50 a million), which is why the date travels with it.
+   */
+  worker: { promptUsdPerToken: 0.00000004, completionUsdPerToken: 0.0000005 },
 } as const;
 
-export const MARKING_PRICES_READ_ON = "2026-09-10";
+export const MARKING_PRICES_READ_ON = "2026-09-26";
 
 /** Slack on the input cap, which is enforced against an estimate. */
 const INPUT_ESTIMATE_MARGIN = 1.5;

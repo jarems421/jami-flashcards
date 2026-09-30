@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -40,6 +40,7 @@ import NotebookViewport, {
   type NotebookViewportPreview,
 } from "@/components/workspace/NotebookViewport";
 import {
+  Button,
   ButtonLink,
   ConfirmDialog,
   EmptyState,
@@ -82,8 +83,10 @@ import {
 } from "@/lib/workspace/notebooks";
 import {
   getNotebookPageStyleBackground,
+  makeNotebookTextBlockId,
   normalizeNotebookStrokes,
 } from "@/lib/workspace/notebook-page-content";
+import { createNotebookAnswerBlock } from "@/lib/workspace/notebook-answer-block";
 import {
   getNotebookSwipePreviewDirection,
   isNotebookPageSwipePreviewEnabled,
@@ -94,6 +97,7 @@ import {
   clearNotebookNativeSelection,
   installNotebookStylusTouchListeners,
   installNotebookViewportZoomBlock,
+  isNotebookSelectableTextTarget,
   isNotebookTextEditingTarget,
   NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
   safelyReleasePointerCapture,
@@ -145,16 +149,23 @@ import {
   buildNotebookPageSearch,
   prepareNotebookExit,
 } from "@/lib/workspace/notebook-navigation";
+import { setUnsavedWork } from "@/lib/app/app-build";
 import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
 import {
+  isNotebookToolDoublePress,
   readNotebookScribbleErasePreference,
   saveNotebookScribbleErasePreference,
+  type NotebookToolPress,
 } from "@/lib/workspace/notebook-toolbar";
 import {
   clampNotebookPenSettings,
   readNotebookPenSettings,
   saveNotebookPenSettings,
 } from "@/lib/workspace/notebook-pen-feel";
+import {
+  readNotebookToolPreferences,
+  saveNotebookToolPreferences,
+} from "@/lib/workspace/notebook-tool-preferences";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
 import { getNotebookAssistantQuickActions } from "@/lib/workspace/notebook-assistant";
 import { recordPracticePaperTutorUse } from "@/services/study/practice-papers";
@@ -193,12 +204,13 @@ type PageSwipeState = {
 };
 const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
+/** How recently the Pencil was writing for a touch to count as the palm holding it. */
+const RECENT_PENCIL_MS = 5_000;
 // Each edge keeps a generous 32px invisible hit area, but the visible
 // affordance is a slim grip bar sitting on the border, not a bubble.
 
 export default function NotebookEditorPage() {
   const { user } = useUser();
-  const router = useRouter();
   const params = useParams<{ notebookId?: string | string[] }>();
   const notebookId = Array.isArray(params.notebookId)
     ? params.notebookId[0]
@@ -246,7 +258,9 @@ export default function NotebookEditorPage() {
     selectedPageId,
     setSelectedPageId,
     loading,
+    loadFailed,
     takeRecoveredDraft,
+    reload: reloadNotebook,
   } = useNotebookLoader({
     userId: user?.uid,
     notebookId,
@@ -385,8 +399,8 @@ export default function NotebookEditorPage() {
     [inkHasContent, selectedPage, textBlocks]
   );
   const notebookAssistantQuickActions = useMemo(
-    () => getNotebookAssistantQuickActions({ hasWork: notebookPageHasWork, onPastPaperPractice: notebook?.folderId && notebook.id ? () => router.push(`/dashboard/practice/questions/new?folderId=${encodeURIComponent(notebook.folderId)}&notebookId=${encodeURIComponent(notebook.id)}`) : undefined }),
-    [notebook?.folderId, notebook?.id, notebookPageHasWork, router]
+    () => getNotebookAssistantQuickActions({ hasWork: notebookPageHasWork }),
+    [notebookPageHasWork]
   );
 
   // Each time the page changes, the ink editor remounts and re-deserializes the
@@ -559,6 +573,10 @@ export default function NotebookEditorPage() {
 
   const handleAssistantOpenChange = useCallback((open: boolean) => {
     if (open) {
+      // Here rather than on the toolbar button: the floating Tutor reopens from its own pill too.
+      if (!assistantOpen && practicePaperStatus === "in_progress" && user?.uid && notebook) {
+        void recordPracticePaperTutorUse(user.uid, notebook.id).catch(() => undefined);
+      }
       setPagesDrawerOpen(false);
       setPenMenuOpen(false);
       setHighlighterMenuOpen(false);
@@ -566,6 +584,10 @@ export default function NotebookEditorPage() {
     }
     setAssistantOpen(open);
   }, [
+    assistantOpen,
+    notebook,
+    practicePaperStatus,
+    user?.uid,
     setAssistantOpen,
     setEraserMenuOpen,
     setHighlighterMenuOpen,
@@ -909,10 +931,12 @@ export default function NotebookEditorPage() {
     stopEditingTextBlock,
     setTextBlockOptionsOpen,
     createTextBlockAtPoint,
+    insertTextBlock,
     updateTextBlock,
     toggleTextBlockOutline,
     deleteTextBlock,
     handleTextBlockOptionsKeyDown,
+    startTextBlockDrag,
     startTextBlockResize,
     resizeTextBlock,
     stopTextBlockResize,
@@ -966,7 +990,25 @@ export default function NotebookEditorPage() {
   useEffect(() => {
     setScribbleToErase(readNotebookScribbleErasePreference());
     setPenSettings(readNotebookPenSettings());
-  }, [setPenSettings, setScribbleToErase]);
+    // The pen as it was put down. Declared before the paper check below, so a
+    // remembered white pen opening onto white paper is still turned dark.
+    const tools = readNotebookToolPreferences();
+    setPenColor(tools.penColor);
+    setPenThicknessPercent(tools.penThicknessPercent);
+    setHighlighterColor(tools.highlighterColor);
+    setHighlighterThicknessPercent(tools.highlighterThicknessPercent);
+    setEraserMode(tools.eraserMode);
+    setEraserWidth(tools.eraserSize);
+  }, [
+    setEraserMode,
+    setEraserWidth,
+    setHighlighterColor,
+    setHighlighterThicknessPercent,
+    setPenColor,
+    setPenSettings,
+    setPenThicknessPercent,
+    setScribbleToErase,
+  ]);
 
   useEffect(() => {
     if (!selectedPage) {
@@ -1092,6 +1134,8 @@ export default function NotebookEditorPage() {
     };
     const clearSelectionIfOutsideTextEditor = () => {
       if (isNotebookTextEditingTarget(document.activeElement)) return;
+      // A selection being made in the Tutor's answers, to copy them.
+      if (isNotebookSelectableTextTarget(document.getSelection()?.anchorNode ?? null)) return;
       clearNotebookNativeSelection(document);
     };
 
@@ -1626,6 +1670,12 @@ export default function NotebookEditorPage() {
     };
   }, [pageState, persistCurrentPageDraftSync, saveCurrentPage]);
 
+  // An app update waits until this page has saved (lib/app/app-build.ts).
+  useEffect(() => {
+    setUnsavedWork("notebook", saveStatus !== "saved");
+    return () => setUnsavedWork("notebook", false);
+  }, [saveStatus]);
+
   const handleExitNotebook = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     const exitDecision = prepareNotebookExit({
       saveStatus: pageState.read().saveStatus,
@@ -2033,7 +2083,14 @@ export default function NotebookEditorPage() {
       pageSwipeRef.current?.completed ||
       // A finger on a zoomed sheet is reaching for the viewport, not drawing.
       isNotebookViewportZoomedIn(viewportLayout.zoom) ||
-      isPinchActive()
+      isPinchActive() ||
+      /*
+       * A hand that was just holding the Pencil is a palm, not somebody trying
+       * to write with a finger. Counted, every third palm lift while writing
+       * told a Pencil user to use their Pencil -- and re-rendered this whole
+       * page twice to show and hide the hint, in the middle of their words.
+       */
+      Date.now() < stylusCooldownUntilRef.current + RECENT_PENCIL_MS
     ) {
       return;
     }
@@ -2052,6 +2109,7 @@ export default function NotebookEditorPage() {
     fullNotebookEditingEnabled,
     isPinchActive,
     setTouchInkHintVisible,
+    stylusCooldownUntilRef,
     tool,
     viewportLayout.zoom,
   ]);
@@ -2104,6 +2162,11 @@ export default function NotebookEditorPage() {
     }
 
     event.preventDefault();
+    // The new box is selected and ready to type in. Stopped here, or the
+    // frame's tap-away below would let go of it in the same press -- which
+    // left every new box unselected, its caret gone, and whatever was typed
+    // next running the tool shortcuts instead.
+    event.stopPropagation();
     const point = getNotebookPointFromEvent(event);
     if (!point) return;
     createTextBlockAtPoint(point);
@@ -2296,6 +2359,12 @@ export default function NotebookEditorPage() {
         }
         return;
       }
+      // Windows' own redo, which the practice sheet already answered to.
+      if ((event.ctrlKey || event.metaKey) && key === "y") {
+        event.preventDefault();
+        handleRedo();
+        return;
+      }
 
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (key === "t") {
@@ -2364,7 +2433,24 @@ export default function NotebookEditorPage() {
     [setEraserMenuOpen, setHighlighterMenuOpen, setPenMenuOpen]
   );
 
-  /** Selecting an inactive tool switches to it; the active one toggles options. */
+  const lastToolPressRef = useRef<NotebookToolPress | null>(null);
+
+  /**
+   * Records a toolbar press, and says whether it completes a double press of
+   * the same tool. A double press is used up, so a third quick press starts a
+   * new pair rather than counting twice.
+   */
+  const takeToolDoublePress = useCallback((tool: NotebookToolPress["tool"]) => {
+    const press = { tool, at: performance.now() };
+    const double = isNotebookToolDoublePress(lastToolPressRef.current, press);
+    lastToolPressRef.current = double ? null : press;
+    return double;
+  }, []);
+
+  /**
+   * Selecting an inactive tool switches to it; the active one toggles options.
+   * A double press of any tool puts it down.
+   */
   const handleSelectDrawingTool = useCallback(
     (nextTool: "pen" | "highlighter" | "eraser") => {
       // Reaching for a tool is done with something else in mind, so whatever
@@ -2373,6 +2459,11 @@ export default function NotebookEditorPage() {
       // pressing the tool that is already on did not, and that is the press
       // where a selection is most obviously stale.
       clearPlacedSelection();
+      if (takeToolDoublePress(nextTool)) {
+        closeDrawingToolMenus();
+        switchNotebookTool("select");
+        return;
+      }
       if (pageState.read().tool !== nextTool) {
         switchNotebookTool(nextTool);
         closeDrawingToolMenus();
@@ -2387,6 +2478,7 @@ export default function NotebookEditorPage() {
       pageState,
       setToolMenuOpen,
       switchNotebookTool,
+      takeToolDoublePress,
     ]
   );
 
@@ -2395,23 +2487,31 @@ export default function NotebookEditorPage() {
     // selection by changing tool. Pressing the button has to say it.
     clearPlacedSelection();
     closeDrawingToolMenus();
+    // A double press puts it down, as it does every other tool, rather than
+    // picking it straight back up.
+    if (takeToolDoublePress("text")) {
+      switchNotebookTool("select");
+      return;
+    }
     switchNotebookTool(pageState.read().tool === "text" ? "select" : "text");
   }, [
     clearPlacedSelection,
     closeDrawingToolMenus,
     pageState,
     switchNotebookTool,
+    takeToolDoublePress,
   ]);
 
 
+  /** Resolves true once the image is on the page; failures are shown here. */
   const handleAddImage = useCallback(
-    (file: File) => {
+    (file: File): Promise<boolean> => {
       const pageId = pageState.read().selectedPage?.id;
-      if (!user?.uid || !notebookId || !pageId) return;
+      if (!user?.uid || !notebookId || !pageId) return Promise.resolve(false);
       const userId = user.uid;
       closeDrawingToolMenus();
       setAddingImage(true);
-      void queueImageWrite(async () => {
+      return queueImageWrite(async () => {
         const result = await addUploadedImageToNotebookPage({
           userId,
           notebookId,
@@ -2425,10 +2525,12 @@ export default function NotebookEditorPage() {
           switchNotebookTool("select");
           setSelectedImageId(result.imageRef.id);
         }
+        return true;
       })
-        .catch((error: unknown) =>
-          showThrownError(error, "That image could not be added. Try again.")
-        )
+        .catch((error: unknown) => {
+          showThrownError(error, "That image could not be added. Try again.");
+          return false;
+        })
         .finally(() => setAddingImage(false));
     },
     [
@@ -2618,6 +2720,44 @@ export default function NotebookEditorPage() {
     [currentGraphBlocksFor, pageState, selectPlacedGraph, showError, success, writePageGraphs]
   );
 
+  /** A Tutor answer, added to this page exactly as the Tutor showed it. */
+  const handleTutorAnswerInsert = useCallback(
+    (text: string) => {
+      const { selectedPage: page, textBlocks: currentTextBlocks } = pageState.read();
+      if (!page) return false;
+      if (!fullNotebookEditingEnabled || practicePaperEditingLocked) {
+        showError("This page can't be edited here, so the answer can't be added to it.");
+        return false;
+      }
+      const result = createNotebookAnswerBlock({
+        id: makeNotebookTextBlockId(),
+        text,
+        page: {
+          textBlocks: currentTextBlocks,
+          imageRefs: currentImageRefsFor(page.id),
+          graphBlocks: currentGraphBlocksFor(page.id),
+        },
+      });
+      if (!result.ok) {
+        showError(result.message);
+        return false;
+      }
+      const added = insertTextBlock(result.block);
+      if (added) success("Answer added to this page.");
+      return added;
+    },
+    [
+      currentGraphBlocksFor,
+      currentImageRefsFor,
+      fullNotebookEditingEnabled,
+      insertTextBlock,
+      pageState,
+      practicePaperEditingLocked,
+      showError,
+      success,
+    ]
+  );
+
   useEffect(() => {
     setSelectedGraphId(null);
     setGraphEditorTarget(null);
@@ -2655,6 +2795,16 @@ export default function NotebookEditorPage() {
     [updateTextBlock]
   );
 
+  // A box growing to hold its text is part of the typing that caused it, so
+  // it goes through the same update as the typing does and never becomes an
+  // undo step of its own.
+  const handleTextBlockFitHeight = useCallback(
+    (blockId: string, height: number) => {
+      updateTextBlock(blockId, { height });
+    },
+    [updateTextBlock]
+  );
+
   const handleRequestDeletePage = useCallback((page: NotebookPage) => {
     setConfirmDialog({ kind: "delete-page", page });
   }, [setConfirmDialog]);
@@ -2682,6 +2832,23 @@ export default function NotebookEditorPage() {
           <Skeleton className="h-40 rounded-2xl" />
           <Skeleton className="h-[34rem] rounded-2xl" />
         </div>
+      </AppPage>
+    );
+  }
+
+  if (!notebook && loadFailed) {
+    return (
+      <AppPage title="Notebook" backHref="/dashboard/folders" backLabel="Folders" width="xl">
+        <EmptyState
+          emoji="Notebook"
+          title="This notebook didn't open"
+          description="Jami couldn't reach your notebook just now. Check your connection and try again."
+          action={
+            <Button onClick={() => void reloadNotebook()}>
+              Try again
+            </Button>
+          }
+        />
       </AppPage>
     );
   }
@@ -2827,15 +2994,10 @@ export default function NotebookEditorPage() {
             />
             {!practicePaperTutorLocked ? (
               <ToolbarIconButton
-                label="Jami Tutor" icon="ai"
+                label="Ask Jami" icon="ai"
                 tutorialTarget="ask-tutor"
                 active={assistantOpen}
-                onClick={() => {
-                  if (!assistantOpen && practicePaperStatus === "in_progress" && user?.uid && notebook) {
-                    void recordPracticePaperTutorUse(user.uid, notebook.id).catch(() => undefined);
-                  }
-                  handleAssistantOpenChange(!assistantOpen);
-                }}
+                onClick={() => handleAssistantOpenChange(!assistantOpen)}
               />
             ) : null}
           </div>
@@ -2860,10 +3022,13 @@ export default function NotebookEditorPage() {
             thicknessPercent: penThicknessPercent,
             onColorChange: (color) => {
               setPenColor(color);
+              saveNotebookToolPreferences({ penColor: color });
               switchNotebookTool("pen");
             },
             onThicknessChange: (value) => {
-              setPenThicknessPercent(clampNotebookThicknessPercent(value));
+              const thickness = clampNotebookThicknessPercent(value);
+              setPenThicknessPercent(thickness);
+              saveNotebookToolPreferences({ penThicknessPercent: thickness });
               switchNotebookTool("pen");
             },
             settings: penSettings,
@@ -2884,12 +3049,15 @@ export default function NotebookEditorPage() {
             thicknessPercent: highlighterThicknessPercent,
             onColorChange: (color) => {
               setHighlighterColor(color);
+              saveNotebookToolPreferences({ highlighterColor: color });
               switchNotebookTool("highlighter");
             },
             onThicknessChange: (value) => {
-              setHighlighterThicknessPercent(
-                clampNotebookThicknessPercent(value)
-              );
+              const thickness = clampNotebookThicknessPercent(value);
+              setHighlighterThicknessPercent(thickness);
+              saveNotebookToolPreferences({
+                highlighterThicknessPercent: thickness,
+              });
               switchNotebookTool("highlighter");
             },
           }}
@@ -2898,10 +3066,12 @@ export default function NotebookEditorPage() {
             size: eraserWidth,
             onModeChange: (mode) => {
               setEraserMode(mode);
+              saveNotebookToolPreferences({ eraserMode: mode });
               switchNotebookTool("eraser");
             },
             onSizeChange: (size) => {
               setEraserWidth(size);
+              saveNotebookToolPreferences({ eraserSize: size });
               switchNotebookTool("eraser");
             },
             canClearPage: inkHasContent,
@@ -2943,6 +3113,7 @@ export default function NotebookEditorPage() {
             userId={user.uid}
             open={assistantOpen}
             onOpenChange={handleAssistantOpenChange}
+            layout="floating"
             // Keep one conversation across page turns; the current page is
             // still resolved fresh for every message.
             resetKey={`notebook:${notebook.id}`}
@@ -2955,6 +3126,8 @@ export default function NotebookEditorPage() {
             onBeforeIllustrationInsert={() => saveCurrentPage({ flush: true })}
             onIllustrationInserted={handleIllustrationInserted}
             onGraphInsert={handleTutorGraphInsert}
+            onDrawingInsert={handleAddImage}
+            onAnswerInsert={handleTutorAnswerInsert}
           />
         ) : null}
         <NotebookGraphEditorDialog
@@ -3154,9 +3327,11 @@ export default function NotebookEditorPage() {
                     onDelete={deleteTextBlock}
                     onOptionsKeyDown={handleTextBlockOptionsKeyDown}
                     onStartResize={startTextBlockResize}
+                    onStartMove={startTextBlockDrag}
                     onResize={resizeTextBlock}
                     onStopResize={stopTextBlockResize}
                     onChangeText={handleTextBlockTextChange}
+                    onFitHeight={handleTextBlockFitHeight}
                     onStopEditing={stopEditingTextBlock}
                   />
                 </>

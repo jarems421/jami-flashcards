@@ -17,6 +17,10 @@ import {
 } from "@/components/ui";
 import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
 import { useUser } from "@/components/providers/UserProvider";
+import RevisionEmblem from "@/components/revision/RevisionEmblem";
+import { featureFlags } from "@/lib/app/feature-flags";
+import { getRevisionStartHref, getTopicHref } from "@/lib/app/routes";
+import { getActiveStudyFolders } from "@/services/study/folders";
 import { useFeedback } from "@/hooks/useFeedback";
 import { buildTopicSummaries } from "@/lib/material/topic-management";
 import type { Source } from "@/lib/material/sources";
@@ -208,6 +212,8 @@ export default function TopicDetailPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  /** A folder this Topic belongs to, which is what a Revision Session on it is pitched at. */
+  const [revisionFolderId, setRevisionFolderId] = useState<string | null>(null);
   const {
     feedback,
     success,
@@ -215,6 +221,21 @@ export default function TopicDetailPage() {
     showThrownError,
     clear: clearFeedback,
   } = useFeedback();
+
+  useEffect(() => {
+    if (!featureFlags.enableRevisionSessions || !topicId) return;
+    let cancelled = false;
+    getActiveStudyFolders(user.uid)
+      .then((folders) => {
+        if (cancelled) return;
+        setRevisionFolderId(folders.find((folder) => folder.topicIds.includes(topicId))?.id ?? null);
+      })
+      // Without a folder there is no session to offer; the page is unaffected.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [topicId, user.uid]);
 
   const loadTopicData = useCallback(async (reads: DashboardDataLoadOptions = {}) => {
     const [nextTopics, nextCards, nextDecks, nextNotebooks, nextSources, nextDrafts] =
@@ -645,6 +666,21 @@ export default function TopicDetailPage() {
                 href={`/dashboard/study?mode=custom&topics=${encodeURIComponent(topic.id)}`}
               >
                 Review cards
+              </ButtonLink>
+            ) : null}
+            {revisionFolderId ? (
+              <ButtonLink
+                size="sm"
+                variant="secondary"
+                className="rounded-full"
+                href={getRevisionStartHref({
+                  folderId: revisionFolderId,
+                  topicKey: `topic:${topic.id}`,
+                  returnHref: getTopicHref(topic.id),
+                })}
+              >
+                <RevisionEmblem className="mr-1.5 h-4 w-4 text-warm-accent" />
+                Revision session
               </ButtonLink>
             ) : null}
             <TopicManageMenu

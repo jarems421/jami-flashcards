@@ -119,6 +119,20 @@ service cloud.firestore {
     // its own daily limit or hide what it costs.
     match /aiBudgets/{budgetId} { allow read, write: if false; }
     match /aiSpend/{spendId} { allow read, write: if false; }
+    // Course-level research briefs shared between students on the same course.
+    // Written and read only by the server; a client that could write one could
+    // plant evidence every paper for that course would be designed from.
+    match /courseResearchCache/{entryId} { allow read, write: if false; }
+
+    // Emailed sign-up and confirmation codes (salted hashes, never the code)
+    // and the send limits kept beside them. Server routes only: a client that
+    // could read here could lift its own limits, or work at a stored hash.
+    match /emailCodes/{codeId} { allow read, write: if false; }
+    match /emailCodeSenders/{senderId} { allow read, write: if false; }
+
+    // Settings only the server reads or writes, such as when email
+    // confirmation started to count for AI.
+    match /serverSettings/{settingId} { allow read, write: if false; }
 
     // Daily usage counters. Written only by the analytics ingest route, which
     // decides what a valid event is; a client that could write here could
@@ -150,6 +164,9 @@ service cloud.firestore {
     match /examQuestionSecrets/{questionId} { allow read, write: if false; }
     match /examQuestionRevisions/{revisionId} { allow read, write: if false; }
     match /examQuestionStats/{questionId} { allow read, write: if false; }
+    // How each board marks each kind of question, derived from its mark
+    // schemes. Server-only, like the schemes it was read from.
+    match /examQuestionTypeRules/{ruleSetId} { allow read, write: if false; }
     match /examSourceDiscoveries/{discoveryId} { allow read, write: if false; }
     match /examIngestionJobs/{jobId} { allow read, write: if false; }
     match /examCorpusBatches/{batchId} { allow read, write: if false; }
@@ -259,7 +276,7 @@ service cloud.firestore {
         allow delete: if isSelf(userId) && !isDemoAccount();
 
         function isFlashcardReviewEvent(data) {
-          return data.keys().hasOnly(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'rating', 'createdAt']) &&
+          return data.keys().hasOnly(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'rating', 'interventionId', 'createdAt']) &&
             data.keys().hasAll(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'createdAt']) &&
             data.schemaVersion == 1 &&
             data.cardId is string && data.cardId.size() > 0 && data.cardId.size() <= 160 &&
@@ -268,7 +285,94 @@ service cloud.firestore {
             data.createdAt is number &&
             data.studyDayKey is string && data.studyDayKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
             data.correct is bool &&
-            (!('rating' in data) || data.rating in ['again', 'hard', 'good', 'easy']);
+            (!('rating' in data) || data.rating in ['again', 'hard', 'good', 'easy']) &&
+            // Which recommendation opened the session this answer was given in.
+            (!('interventionId' in data) || (data.interventionId is string && data.interventionId.size() > 0 && data.interventionId.size() <= 400));
+        }
+      }
+
+      /*
+       * Tutor's verdict on a page of the student's own working.
+       *
+       * Server-written only. A client that could write here could award itself
+       * marks, and this is evidence about what a student knows -- the one kind
+       * of record where an unverifiable self-report is worse than nothing.
+       * Readable by its owner, and deletable with the page it describes.
+       */
+      match /notebookMarkings/{markingId} {
+        allow read: if isSelf(userId);
+        allow create, update: if false;
+        allow delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      /*
+       * The Tutor shelf: things a student saved from a Revision Session to do
+       * later, and things Jami made for them from one. A to-do list, written
+       * by its owner: a kind, a concept, a folder and a link into the app --
+       * never a question, an answer or anything the student typed. Not
+       * editable, because nothing about an item changes; done ones are removed.
+       */
+      match /revisionShelf/{itemId} {
+        allow read: if isSelf(userId);
+        allow create: if isSelf(userId) && !isDemoAccount() && isRevisionShelfItem(request.resource.data);
+        allow update: if false;
+        allow delete: if isSelf(userId);
+
+        function isRevisionShelfItem(data) {
+          return data.keys().hasOnly(['schemaVersion', 'kind', 'status', 'topicKey', 'conceptLabel', 'folderId', 'conceptId', 'href', 'createdAt']) &&
+            data.keys().hasAll(['schemaVersion', 'kind', 'status', 'topicKey', 'conceptLabel', 'folderId', 'createdAt']) &&
+            data.schemaVersion == 1 &&
+            data.kind in ['flashcards', 'review-cards', 'practice', 'exam-questions', 'session'] &&
+            data.status in ['later', 'made'] &&
+            data.topicKey is string && data.topicKey.size() > 0 && data.topicKey.size() <= 400 &&
+            data.conceptLabel is string && data.conceptLabel.size() > 0 && data.conceptLabel.size() <= 200 &&
+            data.folderId is string && data.folderId.size() > 0 && data.folderId.size() <= 200 &&
+            data.createdAt is number &&
+            (!('conceptId' in data) || (data.conceptId is string && data.conceptId.size() <= 200)) &&
+            (!('href' in data) || (data.href is string && data.href.size() <= 600 && data.href.matches('^/dashboard/.*')));
+        }
+      }
+
+      /*
+       * A Revision Session: Jami teaching one concept. Server-only.
+       * While it runs it holds the answers to its own questions, so it is not
+       * readable from a client either -- the session screen reads it through
+       * its API routes, which show a step's answer only once the step is over.
+       * When it ends its step outcomes are evidence about what the student
+       * knows, which no client may write. Nothing the student typed is ever in
+       * it. See docs/revision-sessions.md.
+       */
+      match /revisionSessions/{sessionId} {
+        allow read, create, update: if false;
+        allow delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      /*
+       * What became of the engine's advice: shown, started, completed or
+       * dismissed. Ids and an outcome only -- no wording, no topic labels, no
+       * reason a student typed. Create-only like the review events beside it,
+       * because a record of what was suggested must not be rewritable after
+       * the fact by anything that reads it.
+       */
+      match /studyActionEvents/{eventId} {
+        allow read: if isSelf(userId);
+        allow create: if isSelf(userId) && isStudyActionEvent(request.resource.data);
+        allow update: if false;
+        allow delete: if isSelf(userId) && !isDemoAccount();
+
+        function isStudyActionEvent(data) {
+          return data.keys().hasOnly(['schemaVersion', 'actionId', 'reason', 'targetKey', 'folderId', 'deckId', 'outcome', 'at', 'studyDayKey', 'createdAt']) &&
+            data.keys().hasAll(['schemaVersion', 'actionId', 'reason', 'targetKey', 'outcome', 'at', 'studyDayKey', 'createdAt']) &&
+            data.schemaVersion == 1 &&
+            data.actionId is string && data.actionId.size() > 0 && data.actionId.size() <= 200 &&
+            data.targetKey is string && data.targetKey.size() > 0 && data.targetKey.size() <= 200 &&
+            data.reason in ['persistent_error', 'declining_mastery', 'knowledge_decay', 'low_mastery', 'low_confidence', 'due_for_retrieval', 'recent_improvement_needs_reinforcement', 'untested_exposure', 'not_yet_assessed'] &&
+            data.outcome in ['shown', 'started', 'completed', 'dismissed', 'abandoned'] &&
+            data.at is number &&
+            data.createdAt is number &&
+            data.studyDayKey is string && data.studyDayKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+            (!('folderId' in data) || (data.folderId is string && data.folderId.size() <= 200)) &&
+            (!('deckId' in data) || (data.deckId is string && data.deckId.size() <= 200));
         }
       }
 
@@ -454,6 +558,19 @@ service cloud.firestore {
       // Embeddings and extracted chunks are server-owned private indexes. The
       // client receives only the grounded answer and source receipt.
       match /sourceChunks/{chunkId} {
+        allow read, write: if false;
+      }
+
+      // Tutor's memory of the student across chats. Written only by the
+      // server, from Tutor's answers and from the student's own changes in
+      // Personalise Jami, so every note has passed the same checks.
+      match /tutorMemory/{documentId} {
+        allow read, write: if false;
+      }
+
+      // Each indexed source's contents list (its lectures, weeks or chapters
+      // and where they start), written by the same server-only indexer.
+      match /sourceOutlines/{sourceId} {
         allow read, write: if false;
       }
 

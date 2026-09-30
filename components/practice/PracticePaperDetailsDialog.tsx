@@ -54,7 +54,7 @@ export default function PracticePaperDetailsDialog({
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <Chip>{paper.timingMode === "timed" ? "Timed" : "Untimed"}</Chip>
-              <Chip>{paper.tutorEnabled ? "Tutor assisted" : "Exam conditions"}</Chip>
+              <Chip>{paper.tutorEnabled ? "Jami assisted" : "Exam conditions"}</Chip>
               <Chip>{paper.questions.length} questions</Chip>
             </div>
             {paper.choiceGroups.length > 0 ? (

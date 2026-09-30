@@ -1,14 +1,18 @@
 import "server-only";
 
 import { featureFlags } from "@/lib/app/feature-flags";
+import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
+import { revisionSessionsEnabled } from "@/services/learning/revision-session-context.server";
 import {
   buildStudyActions,
   mergeStudyActions,
   type StudyAction,
+  type StudyActionContext,
 } from "@/lib/learning/actions/study-actions";
 import { mapStudyFolderData, type StudyFolder } from "@/lib/workspace/study-folders";
 import { getAdminDb } from "@/services/firebase/admin";
 import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
+import { loadStudyActionHistory } from "@/services/learning/study-action-history.server";
 
 /**
  * How many folders one Today request considers: the most recently used.
@@ -35,8 +39,58 @@ export type StudyActionsResult = {
   folders: StudyFolder[];
   evaluatedFolders: number;
   failedFolders: number;
+  /**
+   * Whether the student's own history of taking or refusing this advice could
+   * be read. False means the list is the engine's raw opinion, with nothing
+   * resting -- which is the right fallback, and worth being able to see in a
+   * log when Today starts repeating itself.
+   */
+  historyAvailable: boolean;
   generatedAt: number;
 };
+
+/**
+ * What this deployment can carry out for one folder.
+ *
+ * Shared by every surface that turns the engine's advice into actions, so
+ * Tutor offers exactly what Today would for the same folder: one answer to
+ * "can this be practised, written or taught here?", not one per surface.
+ */
+export function studyActionContextFor(folder: Pick<StudyFolder, "examCourse">): StudyActionContext {
+  return {
+    questionPracticeAvailable: featureFlags.enablePastPaperPractice && Boolean(folder.examCourse),
+    /*
+     * Whether this deployment may have Jami write study material.
+     *
+     * Cards and questions are one capability wearing two hats -- AI writing
+     * material the student then reads and confirms -- and `enableFlashcardAi`
+     * is the flag that already governs it. Practice is deliberately *not*
+     * gated on `enablePastPaperPractice`: that governs the licensed exam
+     * corpus, which is material Jami serves rather than writes, and conflating
+     * the two would switch generation off wherever a folder simply has no exam
+     * course.
+     */
+    canGenerate: {
+      flashcards: featureFlags.enableFlashcardAi,
+      practice: featureFlags.enableFlashcardAi,
+    },
+    // Teaching a concept directly, in a Revision Session.
+    canRunRevisionSession: revisionSessionsEnabled() && isAnyAiProviderConfigured(),
+  };
+}
+
+/** One folder, read the way the study actions read it; null when it is gone or archived. */
+export async function loadStudyFolderForActions(uid: string, folderId: string) {
+  const snapshot = await getAdminDb()
+    .collection("users")
+    .doc(uid)
+    .collection("studyFolders")
+    .doc(folderId)
+    .get();
+  if (!snapshot.exists) return null;
+  const folder = mapStudyFolderData(snapshot.id, snapshot.data() as Record<string, unknown>);
+  return folder.archived ? null : folder;
+}
 
 /**
  * The next study actions across a student's recent folders.
@@ -53,7 +107,14 @@ export async function loadStudyActions(input: {
   const uid = input.uid.trim();
   const now = input.now ?? Date.now();
   if (!uid) {
-    return { actions: [], folders: [], evaluatedFolders: 0, failedFolders: 0, generatedAt: now };
+    return {
+      actions: [],
+      folders: [],
+      evaluatedFolders: 0,
+      failedFolders: 0,
+      historyAvailable: false,
+      generatedAt: now,
+    };
   }
 
   const snapshot = await getAdminDb()
@@ -68,30 +129,47 @@ export async function loadStudyActions(input: {
     .map((folderDoc) => mapStudyFolderData(folderDoc.id, folderDoc.data() as Record<string, unknown>))
     .filter((folder) => !folder.archived);
 
-  const results = await Promise.all(
-    folders.map(async (folder) => {
-      try {
-        const profile = await loadLearnerProfile({ uid, folderId: folder.id, folder, now });
-        return profile
-          ? buildStudyActions(profile, {
-              questionPracticeAvailable:
-                featureFlags.enablePastPaperPractice && Boolean(folder.examCourse),
-            })
-          : [];
-      } catch {
-        return null;
-      }
-    })
-  );
+  /*
+   * Read alongside the profiles, not before them: it is one small query and
+   * every folder needs the same answer, so serialising it would add its
+   * latency to a page that already has a budget to keep.
+   */
+  const [historyResult, results] = await Promise.all([
+    loadStudyActionHistory({ uid, now }),
+    Promise.all(
+      folders.map(async (folder) => {
+        try {
+          const profile = await loadLearnerProfile({ uid, folderId: folder.id, folder, now });
+          return profile
+            ? { profile, folder }
+            : { profile: null, folder };
+        } catch {
+          return null;
+        }
+      })
+    ),
+  ]);
+
+  const built = results.map((result) => {
+    if (!result) return null;
+    if (!result.profile) return [];
+    return buildStudyActions(
+      result.profile,
+      studyActionContextFor(result.folder),
+      historyResult.history,
+      now
+    );
+  });
 
   return {
     actions: mergeStudyActions(
-      results.map((result) => result ?? []),
+      built.map((actions) => actions ?? []),
       { limit: input.limit ?? STUDY_ACTION_LIMIT, executableOnly: true }
     ),
     folders,
     evaluatedFolders: folders.length,
-    failedFolders: results.filter((result) => result === null).length,
+    failedFolders: built.filter((actions) => actions === null).length,
+    historyAvailable: historyResult.available,
     generatedAt: now,
   };
 }

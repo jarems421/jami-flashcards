@@ -205,7 +205,7 @@ test("a new student can complete all seven first-loop missions", async ({
   await expect(editor).toHaveAttribute("data-notebook-ink-ready", "true", {
     timeout: 45_000,
   });
-  await page.getByRole("button", { name: "Jami Tutor" }).click();
+  await page.getByRole("button", { name: "Ask Jami" }).click();
   await page.getByPlaceholder("Ask Jami...").fill("Why is this useful?");
   await page.getByRole("button", { name: "Send message to Jami" }).click();
 

@@ -6,30 +6,26 @@ import { signInWithGoogle, handleGoogleRedirectResult } from "@/services/auth";
 import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
 import { listenToAuth } from "@/services/auth/auth-listener";
 import { readLastRoute } from "@/lib/app/last-route";
-import {
-  BrandMark,
-  Card,
-  CONSTELLATION_TRAIL_LENGTH,
-  ConstellationTrail,
-} from "@/components/ui";
+import Link from "next/link";
+import { BrandMark, ButtonLink } from "@/components/ui";
 import Button from "@/components/ui/Button";
+import GoogleMark from "@/components/auth/GoogleMark";
+import LandingPreview from "@/components/landing/LandingPreview";
 
-const WORKFLOW_STEPS = [
-  {
-    number: "01",
-    label: "Work naturally",
-    detail: "Notebooks, papers, decks, and sources in one subject folder.",
-  },
-  {
-    number: "02",
-    label: "Ask when needed",
-    detail: "Bring Jami to the material you deliberately choose.",
-  },
-  {
-    number: "03",
-    label: "Remember what matters",
-    detail: "Review the useful parts again when memory needs them.",
-  },
+/**
+ * Said once, near the foot of the page, so the headline can stay about exams
+ * without shutting out everyone else: everything except past papers works for
+ * any subject, which is most of what a university student needs.
+ */
+const ANY_SUBJECT_EXAMPLES = [
+  "History",
+  "Spanish",
+  "Economics",
+  "Computer Science",
+  "Law",
+  "Psychology",
+  "Medicine",
+  "Music",
 ];
 
 /**
@@ -172,128 +168,129 @@ export default function Home() {
   return (
     <main
       data-app-surface="true"
-      className="relative min-h-[100dvh] overflow-x-hidden bg-[var(--app-background)] px-5 pb-12 pt-8 text-text-primary sm:px-8 lg:pb-16 lg:pt-10"
+      className="relative min-h-[100dvh] overflow-x-hidden text-text-primary"
     >
-      <div className="mx-auto w-full max-w-6xl">
-        <div className="flex items-center gap-3">
-          <BrandMark size="lg" />
-          <div>
-            <div className="text-lg font-semibold leading-tight text-text-primary">
-              Jami
-            </div>
-            <div className="text-2xs font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Notebook-first study
-            </div>
-          </div>
-        </div>
+      <div className="signed-out-glow signed-out-glow-hero" aria-hidden="true" />
 
-        {/*
-          * Two columns on desktop, one honest order on phones.
-          *
-          * The grid puts the headline and the three steps down the left and the
-          * sign-in panel down the right, but the source order is headline,
-          * sign-in, steps. A phone ignores the column placement and follows the
-          * source, so the reason to sign in sits directly under the headline
-          * rather than behind a scroll past everything else.
-          */}
-        {/*
-          * The second row is the flexible one. The sign-in panel spans both
-          * rows, and a grid hands a spanning item's extra height to whichever
-          * rows can take it -- with two auto rows that pushed the steps a
-          * hundred-odd pixels down the page, away from the paragraph they
-          * belong to. Sizing row two `1fr` and topping the steps out inside it
-          * puts any leftover height at the foot of the column instead.
-          */}
-        <div className="mt-10 grid items-start gap-8 lg:mt-14 lg:grid-cols-[minmax(0,1fr)_22.5rem] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:gap-y-10">
-          <section className="lg:col-start-1 lg:row-start-1">
-            <h1 className="max-w-2xl text-4xl font-semibold leading-[1.05] tracking-[-0.035em] text-text-primary sm:text-5xl lg:text-6xl">
-              One place to do the work, and remember what matters.
-            </h1>
-            <p className="mt-6 max-w-xl text-base leading-7 text-text-secondary sm:text-lg sm:leading-8">
-              Keep notebooks, papers, sources, and flashcards in one study
-              space. Work the way you already work, ask Jami when you are stuck,
-              then review what turned out to be worth keeping.
-            </p>
-          </section>
-
-          <Card
-            padding="lg"
-            className="lg:sticky lg:top-10 lg:col-start-2 lg:row-span-2 lg:row-start-1"
+      <header className="relative mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8 sm:pt-7">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2.5 rounded-md text-lg font-semibold tracking-tight text-text-primary"
+        >
+          <BrandMark size="md" />
+          Jami
+        </Link>
+        <nav className="flex items-center gap-1 sm:gap-2">
+          <Link
+            href="/auth"
+            className="inline-flex rounded-full border border-[var(--color-border-strong)] bg-[var(--color-glass-subtle)] px-4 py-2 text-sm font-medium text-text-primary transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--color-glass-medium)]"
           >
-            <div className="text-2xs font-semibold uppercase tracking-[0.2em] text-text-muted">
-              Your study space
-            </div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">
-              Ready when you are.
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-text-secondary">
-              Sign in to return to your work, or start your first study folder.
-            </p>
-            {error ? (
-              <div
-                role="alert"
-                className="app-danger mt-5 rounded-lg px-4 py-3 text-sm font-medium"
-              >
-                {error}
-              </div>
-            ) : null}
-            <div className="mt-6 grid gap-3">
-              <Button
-                disabled={isSigningIn}
-                onClick={() => void handleGoogleSignIn()}
-                variant="primary"
-                size="lg"
-                className="w-full justify-center"
-              >
-                {isSigningIn ? "Signing in..." : "Continue with Google"}
-              </Button>
-              <Button
-                onClick={() => router.push("/auth")}
-                variant="secondary"
-                size="lg"
-                className="w-full justify-center"
-              >
-                Continue with email
-              </Button>
-            </div>
-            <div className="mt-7 border-t border-[var(--color-border)] pt-6">
-              <div className="flex justify-center text-text-primary">
-                <ConstellationTrail
-                  completed={CONSTELLATION_TRAIL_LENGTH}
-                  size="md"
-                  decorative
-                />
-              </div>
-              <p className="mt-4 text-center text-sm leading-6 text-text-secondary">
-                Your first night sets up your subjects, shows you round Jami, and
-                lights your first star.
-              </p>
-            </div>
-            <p className="mt-6 text-xs leading-5 text-text-muted">
-              Your decks, notebooks, and progress sync across your devices.
-            </p>
-          </Card>
+            Sign in
+          </Link>
+        </nav>
+      </header>
 
-          <section className="grid gap-6 self-start sm:grid-cols-3 lg:col-start-1 lg:row-start-2">
-            {WORKFLOW_STEPS.map((step) => (
-              <div
-                key={step.number}
-                className="border-t border-[var(--color-border-strong)] pt-4"
-              >
-                <div className="text-2xs font-semibold tracking-[0.2em] text-warm-accent">
-                  {step.number}
-                </div>
-                <div className="mt-2.5 text-sm font-semibold text-text-primary">
-                  {step.label}
-                </div>
-                <p className="mt-1.5 text-xs leading-5 text-text-muted">
-                  {step.detail}
-                </p>
-              </div>
-            ))}
-          </section>
+      {/*
+        * Headline and sign-in first in the source, the picture after, so a
+        * phone -- which follows the source rather than the columns -- puts the
+        * way in directly under the reason for it.
+        */}
+      <section className="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-5 pb-16 pt-12 sm:px-8 sm:pt-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.02fr)] lg:gap-14 lg:pb-24 lg:pt-20">
+        <div className="animate-slide-up">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] py-1 pl-2.5 pr-3 text-xs font-medium text-text-secondary">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-success-mark)] ring-4 ring-success-muted" />
+            GCSE and A-level revision
+          </div>
+
+          <h1 className="mt-6 max-w-xl text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-text-primary sm:text-5xl">
+            Practise like the exam.{" "}
+            <span className="landing-accent block">Revise what it shows you.</span>
+          </h1>
+          <p className="mt-5 max-w-lg text-base leading-7 text-text-secondary sm:text-lg sm:leading-8">
+            Answer real past-paper questions and see which marks you lost, and
+            why. Jami connects those answers with your notebooks and
+            flashcards, so you always know what to revise next.
+          </p>
+
+          {error ? (
+            <div
+              role="alert"
+              className="app-danger mt-6 max-w-lg rounded-lg px-4 py-3 text-sm font-medium"
+            >
+              {error}
+            </div>
+          ) : null}
+
+          <div className="mt-8 flex max-w-lg flex-col gap-3 sm:flex-row">
+            <Button
+              disabled={isSigningIn}
+              onClick={() => void handleGoogleSignIn()}
+              variant="primary"
+              size="lg"
+              className="w-full justify-center gap-3 sm:w-auto sm:px-6"
+            >
+              <GoogleMark />
+              {isSigningIn ? "Signing in..." : "Continue with Google"}
+            </Button>
+            <Button
+              onClick={() => router.push("/auth")}
+              variant="secondary"
+              size="lg"
+              className="w-full justify-center sm:w-auto sm:px-6"
+            >
+              Continue with email
+            </Button>
+          </div>
+          <p className="mt-4 text-xs leading-5 text-text-muted">
+            Your decks, notebooks and progress sync across all your devices.
+          </p>
         </div>
-      </div>
+
+        <div className="animate-fade-in">
+          <LandingPreview />
+        </div>
+      </section>
+
+      <section className="relative mx-auto flex w-full max-w-3xl flex-col items-center px-5 pb-20 text-center sm:px-8 lg:pb-24">
+        <div className="signed-out-glow signed-out-glow-centred" aria-hidden="true" />
+        <h2 className="relative text-balance text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
+          Not only exams.{" "}
+          <span className="landing-accent">Any subject you study.</span>
+        </h2>
+        <p className="relative mt-3 max-w-md text-sm leading-6 text-text-secondary sm:text-base sm:leading-7">
+          Folders, notebooks, flashcards and Jami work with your own notes,
+          at school or at university.
+        </p>
+        <ul
+          aria-label="For example"
+          className="relative mt-6 flex flex-wrap justify-center gap-2"
+        >
+          {ANY_SUBJECT_EXAMPLES.map((subject) => (
+            <li
+              key={subject}
+              className="app-chip rounded-full px-3 py-1 text-xs font-medium transition duration-fast hover:-translate-y-0.5"
+            >
+              {subject}
+            </li>
+          ))}
+        </ul>
+        <ButtonLink
+          href="/auth"
+          variant="primary"
+          size="lg"
+          className="relative mt-8 justify-center px-8"
+        >
+          Get started
+        </ButtonLink>
+      </section>
+
+      <footer className="relative mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 border-t border-[var(--color-border)] px-5 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-7 text-xs text-text-muted sm:flex-row sm:px-8">
+        <span className="inline-flex items-center gap-2 font-medium text-text-secondary">
+          <BrandMark size="sm" />
+          Jami
+        </span>
+        <span>Revision for GCSE, A-level and beyond.</span>
+      </footer>
     </main>
   );
 }

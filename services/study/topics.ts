@@ -32,11 +32,20 @@ import {
   chunkTopicWrites,
   collectMissingTopicNames,
 } from "@/lib/material/topic-management";
+import {
+  migrationKnownSettled,
+  rememberMigrationSettled,
+} from "@/lib/app/settled-migrations";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;
 const BATCH_WRITE_LIMIT = 400;
 export const TOPICS_MIGRATION_VERSION = 1;
+
+/** Whether this browser already saw the topic migration finish for this account. */
+export function topicMigrationKnownSettled(userId: string) {
+  return migrationKnownSettled(userId.trim(), "topics", TOPICS_MIGRATION_VERSION);
+}
 
 function topicsCollection(userId: string) {
   return collection(db, "users", userId, "topics");
@@ -254,12 +263,14 @@ async function commitBatches(
 export async function migrateCardTagsToTopics(userId: string) {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) throw new Error("Missing userId.");
+  if (topicMigrationKnownSettled(normalizedUserId)) return { migratedCards: 0, createdTopics: 0 };
   const userRef = doc(db, "users", normalizedUserId);
   const userSnapshot = await withTimeout(getDoc(userRef), LOAD_MS, "Load topic migration");
   if (
     userSnapshot.exists() &&
     userSnapshot.data().topicsMigrationVersion === TOPICS_MIGRATION_VERSION
   ) {
+    rememberMigrationSettled(normalizedUserId, "topics", TOPICS_MIGRATION_VERSION);
     return { migratedCards: 0, createdTopics: 0 };
   }
 
@@ -384,6 +395,7 @@ export async function migrateCardTagsToTopics(userId: string) {
     "Migrate card tags to topics",
     invalidateTopicData
   );
+  rememberMigrationSettled(normalizedUserId, "topics", TOPICS_MIGRATION_VERSION);
   return { migratedCards, createdTopics: topicCreateOperations.length };
 }
 

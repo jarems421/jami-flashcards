@@ -38,11 +38,15 @@ const mocks = vi.hoisted(() => {
     },
   };
 
-  return { store, db };
+  return { store, db, emailAllowsAi: vi.fn(async () => true) };
 });
 
 vi.mock("@/services/firebase/admin", () => ({
   getAdminDb: () => mocks.db,
+}));
+
+vi.mock("@/services/auth/email-confirmation.server", () => ({
+  emailAllowsAi: mocks.emailAllowsAi,
 }));
 
 const { AI_BUDGETS, getAiTokenCap } = await import("@/lib/ai/budgets");
@@ -54,6 +58,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 beforeEach(() => {
   mocks.store.clear();
+  mocks.emailAllowsAi.mockResolvedValue(true);
 });
 
 describe("AI budget configuration", () => {
@@ -71,10 +76,13 @@ describe("AI budget configuration", () => {
         "planDraft",
         "sourceFlashcardDrafts",
         "sourcePracticeDrafts",
+        "interventionMaterial",
         "videoCardImport",
         "studyAssetGeneration",
         "studyAnswerCheck",
         "photoBackgroundRestore",
+        "revisionLesson",
+        "revisionMarking",
       ].sort()
     );
   });
@@ -145,6 +153,25 @@ describe("AI budget configuration", () => {
 });
 
 describe("checkAiBudget", () => {
+  it("gives an account with an unconfirmed email no allowance, and counts nothing", async () => {
+    mocks.emailAllowsAi.mockResolvedValue(false);
+    const decision = await checkAiBudget({ uid: "unconfirmed", action: "assistant" });
+    expect(decision).toEqual({
+      allowed: false,
+      reason: "email_unconfirmed",
+      retryAfterSeconds: 0,
+    });
+    expect(mocks.store.size).toBe(0);
+
+    if (decision.allowed) throw new Error("expected a refusal");
+    const response = createAiBudgetLimitResponse("assistant", decision);
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "email_unconfirmed",
+      error: expect.stringContaining("confirmed email"),
+    });
+  });
+
   it("allows requests up to the daily limit and refuses the next one", async () => {
     const now = 1_700_000_000_000;
     for (

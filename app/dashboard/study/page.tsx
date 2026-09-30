@@ -26,6 +26,13 @@ import { getNextDueCard, type Card } from "@/lib/study/cards";
 import { isFeatureEnabled } from "@/lib/app/feature-flags";
 import { DEFAULT_STUDY_MODE_POLICY, readStudyModePolicy, saveStudyModePolicy } from "@/lib/study/study-mode-preference";
 import { getCardContentHash, STUDY_MODE_LABELS, type StudyMode, type StudyModePolicy } from "@/lib/study/study-modes";
+import {
+  applyStudySessionShape,
+  readStudySessionShape,
+} from "@/lib/study/session-spec-queue";
+import { noteStudyActionOutcomeById } from "@/services/learning/study-action-events";
+import { noteMissionCompleted } from "@/lib/learning/mission-handoff";
+import MissionHandback from "@/components/study/MissionHandback";
 import { countedDraftKey, presentationDraftKey, resolvePresentationId } from "@/lib/study/presentation-identity";
 import { resolveCurrentExercise, type ExercisePin } from "@/lib/study/exercise-resolution";
 import { canCarryModeEventually, getModeEligibility } from "@/lib/study/mode-eligibility";
@@ -83,6 +90,8 @@ type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
 
 /** How often a session retries a send that did not land, on its own. */
 const OFFLINE_SYNC_RETRY_MS = 15_000;
+/** The longest a student waits on one card's question before it is shown as a flashcard. */
+const QUESTION_WAIT_LIMIT_MS = 20_000;
 
 export default function StudyPage() {
   const searchParams = useSearchParams();
@@ -91,6 +100,17 @@ export default function StudyPage() {
   const rawDecksParam = searchParams.get("decks");
   const rawTopicsParam = searchParams.get("topics");
   const rawTagsParam = searchParams.get("tags");
+  /*
+   * What the Learning Engine asked this session to do, when it opened it.
+   *
+   * Null for a student who opened Learn themselves, and the queue is then the
+   * ordinary scheduler one -- they are not carrying out a recommendation, so
+   * nothing should be narrowed or cut short on their behalf.
+   */
+  const sessionShape = useMemo(
+    () => readStudySessionShape(searchParams.get("focus"), searchParams.get("focusCount")),
+    [searchParams]
+  );
   const requestedMode =
     rawMode === "custom" || rawMode === "daily" ? rawMode : null;
   const requestedDeckIds = useMemo(() => parseIdsParam(rawDecksParam), [rawDecksParam]);
@@ -169,10 +189,15 @@ export default function StudyPage() {
     ),
   });
   const sessionSeedRef = useRef(0);
-  /** The card being prepared while the student waits on it, if any. */
-  const [preparingCardId, setPreparingCardId] = useState<string | null>(null);
   /** Cards already sent for last-moment preparation, so it is asked for once. */
   const justInTimePreparedRef = useRef(new Set<string>());
+  /**
+   * Showings of a card, as `cardId:presentation`, that a pinned session is
+   * asking as an ordinary flashcard: its question could not be made in time.
+   * Kept for the showing, so options that land while the student is looking at
+   * the card do not swap the question out from under them.
+   */
+  const [flashcardFallbackKeys, setFlashcardFallbackKeys] = useState<Set<string>>(() => new Set());
   const handleStarRewardDone = useCallback(
     () => setStarReward(null),
     [setStarReward]
@@ -633,8 +658,12 @@ export default function StudyPage() {
   const hasCarryoverRequiredCards = remainingCarryoverRequiredCards.length > 0;
   const hasCards = cards.length > 0;
   const customPreviewCards = useMemo(
-    () => buildCustomReviewCards(cards, selectedDeckIds, selectedTopicIds),
-    [cards, selectedDeckIds, selectedTopicIds]
+    () =>
+      applyStudySessionShape(
+        buildCustomReviewCards(cards, selectedDeckIds, selectedTopicIds),
+        sessionShape
+      ),
+    [cards, selectedDeckIds, selectedTopicIds, sessionShape]
   );
   const simpleStudyQueue = useMemo(() => buildSimpleStudyQueue(cards), [cards]);
   const hasCustomFilters = selectedDeckIds.length > 0 || selectedTopicIds.length > 0;
@@ -691,6 +720,14 @@ export default function StudyPage() {
                 : customPreviewCards;
         const seed = Math.floor(Math.random() * 0x7fffffff) || 1;
         sessionSeedRef.current = seed;
+        const wantsPreparation = studyModesEnabled && nextCards.length > 0;
+        // Started beside the history read rather than after it: neither needs the other.
+        const preparation = wantsPreparation
+          ? prepareSessionAssets(nextCards).catch((error: unknown) => {
+              console.warn("Study preparation failed; starting unprepared.", error);
+              return null;
+            })
+          : Promise.resolve(null);
         const history = await loadPresentationHistory(user.uid, nextCards);
         setVariantHistory(history.variants);
         setOutcomeHistory(history.outcomes);
@@ -699,46 +736,47 @@ export default function StudyPage() {
         setRestoredExercises([]);
         pinnedExerciseRef.current = null;
 
-        const wantsPreparation = studyModesEnabled;
-
         let assets = studyAssets;
+        let headStart: Card[] = [];
         let remainder: Card[] = [];
-        if (wantsPreparation && nextCards.length > 0) {
-          try {
-            const ready = await prepareSessionAssets(nextCards);
-            assets = { ...studyAssets, ...ready.assets };
-            remainder = ready.remainder;
-            setStudyAssets(assets);
-          } catch (error) {
-            console.warn("Study preparation failed; starting unprepared.", error);
-          } finally {
-            clearPreparation();
-          }
+        const ready = await preparation;
+        if (wantsPreparation) clearPreparation();
+        if (ready) {
+          assets = { ...studyAssets, ...ready.assets };
+          headStart = ready.headStart;
+          remainder = ready.remainder;
+          setStudyAssets(assets);
         }
 
         const asAsked = (card: Card) => askedCard(card, assets);
 
         const now = Date.now();
 
-        const eligibleCards =
-          studyModesEnabled && modePolicy.kind === "fixed"
-            ? nextCards.filter((card) =>
-                canCarryModeEventually(asAsked(card), modePolicy.mode, { seed })
-              )
-            : nextCards;
-
-        if (nextCards.length > 0 && eligibleCards.length === 0) {
+        /*
+         * Every card due is studied, whichever mode was picked.
+         *
+         * Cards that could never be asked this way used to be left out at the
+         * door, with a notice saying so -- which meant cards that were due
+         * went unreviewed, and a student saw "cannot be asked this way" at the
+         * start of most Multiple Choice sessions. They stay in now, and are
+         * shown as ordinary flashcards when they come round, with a line
+         * saying why. Only a queue with nothing at all that suits the mode is
+         * turned away, because then the choice itself was the problem.
+         */
+        const eligibleCards = nextCards;
+        if (
+          studyModesEnabled &&
+          modePolicy.kind === "fixed" &&
+          nextCards.length > 0 &&
+          !nextCards.some((card) => canCarryModeEventually(asAsked(card), modePolicy.mode, { seed }))
+        ) {
           showError(
-            "None of these cards can be studied that way yet. Try Smart Mix or another mode."
+            `None of these cards suit ${STUDY_MODE_LABELS[modePolicy.mode]}. Try Smart Mix or another mode.`
           );
           return;
         }
-        const droppedCards = nextCards.length - eligibleCards.length;
-        if (droppedCards > 0) {
-          success(
-            `${droppedCards} card${droppedCards === 1 ? "" : "s"} left out: they cannot be asked this way.`
-          );
-        }
+        justInTimePreparedRef.current.clear();
+        setFlashcardFallbackKeys(new Set());
 
         const nextStats = createEmptySessionStats();
         const sessionSelectedDeckIds = kind === "simple" ? [] : selectedDeckIds;
@@ -782,7 +820,7 @@ export default function StudyPage() {
           pushFocusedReviewRecents(selectedDeckIds, selectedTopicIds);
         }
 
-        void prepareRemainingAssets(remainder);
+        void prepareRemainingAssets(remainder, headStart);
       })();
     },
     [
@@ -810,7 +848,6 @@ export default function StudyPage() {
       showError,
       simpleStudyQueue.cards,
       studyModesEnabled,
-      success,
       user.uid,
     ]
   );
@@ -1066,6 +1103,69 @@ export default function StudyPage() {
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
   useEffect(() => { if (done) cancelPreparation(); }, [done, cancelPreparation]);
+
+  /*
+   * Tell the Learning Engine the work it asked for actually got done.
+   *
+   * Only when a recommendation opened this session, and only once cards were
+   * genuinely answered -- arriving at an empty queue is not doing the work,
+   * and recording it as such would rest the advice without anything having
+   * happened. Recorded once per session; the write is deduplicated by day
+   * anyway, and the ref keeps it from being sent on every later render.
+   */
+  const completionNotedRef = useRef(false);
+  const abandonNotedRef = useRef(false);
+  const fromActionId = searchParams.get("from");
+  useEffect(() => {
+    if (!done || !fromActionId || !user.uid) return;
+    if (sessionStats.reviewedCards === 0) return;
+    if (completionNotedRef.current) return;
+    completionNotedRef.current = true;
+    noteStudyActionOutcomeById(
+      user.uid,
+      fromActionId,
+      "completed",
+      sessionStudyDayKeyRef.current ?? getStudyDayKey()
+    );
+    /*
+     * And tell Today, so the page the student came from can say so when they
+     * go back. Separate from the record above on purpose: that one is evidence
+     * the engine reads, this one is a sentence, and losing it costs nothing.
+     */
+    noteMissionCompleted(fromActionId, sessionStats.reviewedCards);
+  }, [done, fromActionId, sessionStats.reviewedCards, user.uid]);
+
+  /*
+   * Tell the engine when the student opened its work and walked away.
+   *
+   * Recorded at the moment they go, never inferred later from the absence of a
+   * completion: a session still open, a closed tab and a lost connection are
+   * indistinguishable afterwards, and none of them is a decision to stop.
+   *
+   * `pagehide` rather than `beforeunload`, because it also fires when a phone
+   * backgrounds the tab, and a student who switches app mid-session has done
+   * the same thing as one who closes it. Recorded once; finishing first wins.
+   */
+  useEffect(() => {
+    if (!fromActionId || !user.uid) return;
+    const noteAbandoned = () => {
+      if (abandonNotedRef.current || completionNotedRef.current) return;
+      if (sessionKind === null || done) return;
+      abandonNotedRef.current = true;
+      noteStudyActionOutcomeById(
+        user.uid,
+        fromActionId,
+        "abandoned",
+        sessionStudyDayKeyRef.current ?? getStudyDayKey()
+      );
+    };
+    window.addEventListener("pagehide", noteAbandoned);
+    return () => {
+      window.removeEventListener("pagehide", noteAbandoned);
+      // Leaving the page within the app is leaving the session just the same.
+      noteAbandoned();
+    };
+  }, [done, fromActionId, sessionKind, user.uid]);
   const [daysRunning, setDaysRunning] = useState<number | null>(null);
   const reviewedThisSession = sessionStats.reviewedCards;
 
@@ -1256,6 +1356,8 @@ export default function StudyPage() {
     presentation,
   } = useStudyExerciseController({
     userId: user.uid,
+    // Stamped on every answer this session produces, when a recommendation opened it.
+    ...(fromActionId ? { interventionId: fromActionId } : {}),
     current,
     sessionKind,
     flipped,
@@ -1283,9 +1385,14 @@ export default function StudyPage() {
     notifyError: showError,
   });
 
+  const showingAsFlashcard = current
+    ? flashcardFallbackKeys.has(`${current.id}:${presentation}`)
+    : false;
+
   const currentExercise = useMemo(() => {
     const asked = preparedCurrent;
     if (!current || !asked || !sessionKind || !studyModesEnabled) return null;
+    if (showingAsFlashcard) return null;
     const { exercise, pin } = resolveCurrentExercise({
       card: current,
       asked,
@@ -1325,6 +1432,7 @@ export default function StudyPage() {
     draftResponses,
     sessionKind,
     studyModesEnabled,
+    showingAsFlashcard,
   ]);
 
   useEffect(() => {
@@ -1578,40 +1686,87 @@ export default function StudyPage() {
   const fixedModeRefusalReason =
     fixedModeRefusal && !fixedModeRefusal.eligible ? fixedModeRefusal.reason : null;
 
-  /*
-   * A card that is only unprepared is prepared now rather than refused.
+  /**
+   * The card in front of the student is still having its question written.
    *
    * Every other reason is permanent -- a picture answer, an author who turned
-   * the mode off, an answer that is all maths -- and no amount of waiting
-   * changes them. "Not prepared yet" is the one reason that is about timing,
-   * and a student who has outrun the background pass should wait a few seconds
-   * for their question rather than be told they cannot have it. One attempt per
-   * card: if it comes back with nothing, the panel below says so.
+   * the mode off, a card Jami read and found no fair question in -- and those
+   * cards are simply shown as flashcards. "Not prepared yet" is the one reason
+   * about timing, and it is never shown as a refusal any more.
+   */
+  const waitingForQuestion =
+    fixedModeRefusalReason === "needs-preparation" && !showingAsFlashcard;
+
+  /*
+   * A ready card goes first.
+   *
+   * Preparation runs through the queue in order, several cards at a time, and
+   * a student who answers quickly can still reach a card before its own call
+   * has come back. The student used to wait for it -- or, before that, be told
+   * it could not be asked. Any card further on whose question is ready is
+   * brought forward instead, and this one takes the next turn, by which time
+   * it has usually landed. Only when nothing ahead is ready does anybody wait.
+   */
+  useEffect(() => {
+    if (!waitingForQuestion || !current || modePolicy.kind !== "fixed") return;
+    const mode = modePolicy.mode;
+    const readyOffset = sessionCards
+      .slice(index + 1)
+      .findIndex(
+        (card) =>
+          getModeEligibility(askedCard(card, studyAssets), mode, {
+            seed: sessionSeedRef.current,
+          }).eligible
+      );
+    if (readyOffset < 0) return;
+    const readyAt = index + 1 + readyOffset;
+    setSessionCards((previous) => {
+      if (previous[index]?.id !== current.id || previous[readyAt] === undefined) return previous;
+      const next = [...previous];
+      const [ready] = next.splice(readyAt, 1);
+      next.splice(index, 0, ready);
+      return next;
+    });
+    pinnedExerciseRef.current = null;
+  }, [current, index, modePolicy, sessionCards, setSessionCards, studyAssets, waitingForQuestion]);
+
+  /*
+   * Nothing ahead is ready either, so this card is prepared now, on its own.
+   *
+   * Once per card. A card already on its way from the background pass is not
+   * asked for twice; it is handed over when it lands. If nothing can be made
+   * for it now -- the provider failed, or the day's allowance is spent -- it
+   * is asked as a flashcard rather than refused.
    */
   useEffect(() => {
     const card = current;
-    if (!card || fixedModeRefusalReason !== "needs-preparation") return;
+    if (!card || !waitingForQuestion) return;
     if (justInTimePreparedRef.current.has(card.id)) return;
     justInTimePreparedRef.current.add(card.id);
-    setPreparingCardId(card.id);
-    /*
-     * The cards behind this one ride along in the same request.
-     *
-     * A student who has outrun the background pass has almost certainly outrun
-     * it for the next card too, and preparing one at a time meant waiting again
-     * at each of them. The look-ahead costs nothing extra: same request, same
-     * slot of the daily allowance.
-     *
-     * They are deliberately not marked as attempted. If this request prepared
-     * them they will simply be ready and this never fires for them; if it did
-     * not, they keep their own attempt rather than inheriting a failure from a
-     * request that was really about another card.
-     */
+    const fallbackKey = `${card.id}:${presentation}`;
     const lookAhead = sessionCards.slice(index + 1, index + 3);
-    void prepareCardNow(card, lookAhead).finally(() =>
-      setPreparingCardId((preparing) => (preparing === card.id ? null : preparing))
-    );
-  }, [current, fixedModeRefusalReason, index, prepareCardNow, sessionCards]);
+    void prepareCardNow(card, lookAhead).then((result) => {
+      if (result === null) {
+        setFlashcardFallbackKeys((previous) => new Set(previous).add(fallbackKey));
+      }
+    });
+  }, [current, index, prepareCardNow, presentation, sessionCards, waitingForQuestion]);
+
+  /*
+   * A wait has a limit.
+   *
+   * One card's question takes about fifteen seconds to write and check, and a
+   * slow one forty. Past this, the student is shown the card as a flashcard
+   * and the question is kept for the next time the card comes round.
+   */
+  useEffect(() => {
+    if (!waitingForQuestion || !current) return;
+    const fallbackKey = `${current.id}:${presentation}`;
+    const timer = window.setTimeout(() => {
+      setFlashcardFallbackKeys((previous) => new Set(previous).add(fallbackKey));
+    }, QUESTION_WAIT_LIMIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [current, presentation, waitingForQuestion]);
 
   return (
     <AppPage
@@ -1967,6 +2122,10 @@ export default function StudyPage() {
                 secondaryAction={sessionKind === "custom" ? <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-button-secondary transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Edit cards</Link> : undefined}
               />
             ) : (
+              <>
+              {fromActionId && sessionStats.reviewedCards > 0 ? (
+                <MissionHandback answered={sessionStats.reviewedCards} />
+              ) : null}
               <SurfaceCard tone="warm" padding="lg" className="animate-warm-glow-pulse">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                   <div>
@@ -2094,6 +2253,7 @@ export default function StudyPage() {
                   <Button type="button" onClick={exitSession} variant="secondary" size="lg">Back to study home</Button>
                 </div>
               </SurfaceCard>
+              </>
             )
           ) : current ? (
             <div key={current.id} className="animate-slide-up space-y-4 sm:space-y-5">
@@ -2186,8 +2346,8 @@ export default function StudyPage() {
                       draftResponse={currentExercise.presentationId ? draftResponses[currentExercise.presentationId] : undefined}
                       onDraftChange={currentExercise.presentationId ? (response) => setDraftResponses((previous) => ({ ...previous, [currentExercise.presentationId!]: response })) : undefined}
                     />
-                  ) : preparingCardId === current.id ? (
-                    <div className="study-flashcard-face mx-auto flex min-h-[16rem] w-full max-w-[62rem] flex-col items-center justify-center gap-5 rounded-2xl p-6 text-center sm:p-10">
+                  ) : waitingForQuestion ? (
+                    <div data-study-current-card-id={current.id} className="study-flashcard-face mx-auto flex min-h-[16rem] w-full max-w-[62rem] flex-col items-center justify-center gap-5 rounded-2xl p-6 text-center sm:p-10">
                       <div aria-hidden className="flex items-center gap-2">
                         {[0, 1, 2].map((dot) => (
                           <span
@@ -2198,41 +2358,43 @@ export default function StudyPage() {
                         ))}
                       </div>
                       <div className="max-w-lg space-y-2">
-                        <h2 className="text-xl font-semibold text-text-primary">Getting this card ready</h2>
+                        <h2 className="text-xl font-semibold text-text-primary">Writing this question</h2>
                         <p role="status" className="text-sm leading-relaxed text-text-secondary">
-                          Jami is writing the options for this one. It takes a few seconds, and only the first time a card is asked this way.
+                          Jami is writing the options for this card. It takes a few seconds, and only the first time.
                         </p>
                       </div>
-                      <Button type="button" variant="secondary" onClick={() => {
-                        setSessionCards((previous) => [...previous.slice(0, index), ...previous.slice(index + 1)]);
-                        pinnedExerciseRef.current = null;
-                      }}>Skip this card</Button>
-                    </div>
-                  ) : fixedModeRefusalReason ? (
-                    <div className="study-flashcard-face mx-auto flex min-h-[16rem] w-full max-w-[62rem] flex-col items-center justify-center gap-5 rounded-2xl p-6 text-center sm:p-10">
-                      <div className="max-w-lg space-y-2">
-                        <h2 className="text-xl font-semibold text-text-primary">This card isn&apos;t ready for that mode</h2>
-                        <p className="text-sm leading-relaxed text-text-secondary">Use Smart Mix for this session, or continue with the cards that are ready. Jami won&apos;t quietly turn it into a different exercise.</p>
-                      </div>
-                      <div className="flex flex-wrap justify-center gap-2">
-                        <Button type="button" onClick={() => setModePolicy({ kind: "smart" })}>Switch to Smart Mix</Button>
-                        <Button type="button" variant="secondary" onClick={() => {
-                          setSessionCards((previous) => [...previous.slice(0, index), ...previous.slice(index + 1)]);
-                          pinnedExerciseRef.current = null;
-                        }}>Continue available cards</Button>
-                      </div>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() =>
+                          setFlashcardFallbackKeys((previous) =>
+                            new Set(previous).add(`${current.id}:${presentation}`)
+                          )
+                        }
+                      >
+                        Show it as a flashcard
+                      </Button>
                     </div>
                   ) : (
-                    <StudyFlashcard
-                      card={current}
-                      flipped={flipped}
-                      onReveal={handleFlip}
-                      deckName={deckNamesById[current.deckId] ?? "Flashcard"}
-                      deckColor={currentDeckColor.base}
-                      topicNames={(current.topicIds ?? []).map(
-                        (topicId) => topicNamesById[topicId] ?? "Topic"
-                      )}
-                    />
+                    <>
+                      {modePolicy.kind === "fixed" && (fixedModeRefusalReason || showingAsFlashcard) ? (
+                        <p role="status" className="mx-auto mb-3 max-w-xl text-center text-sm text-text-secondary">
+                          {showingAsFlashcard
+                            ? `Its ${STUDY_MODE_LABELS[modePolicy.mode]} question isn't ready yet, so here it is as a flashcard.`
+                            : `${STUDY_MODE_LABELS[modePolicy.mode]} doesn't suit this card, so here it is as a flashcard.`}
+                        </p>
+                      ) : null}
+                      <StudyFlashcard
+                        card={current}
+                        flipped={flipped}
+                        onReveal={handleFlip}
+                        deckName={deckNamesById[current.deckId] ?? "Flashcard"}
+                        deckColor={currentDeckColor.base}
+                        topicNames={(current.topicIds ?? []).map(
+                          (topicId) => topicNamesById[topicId] ?? "Topic"
+                        )}
+                      />
+                    </>
                   )}
               </section>
               {flipped && !currentExercise ? (

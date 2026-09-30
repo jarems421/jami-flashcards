@@ -8,6 +8,7 @@ import TopicMigrationGate from "@/components/topics/TopicMigrationGate";
 
 const ensureServiceWorkerRegistration = vi.fn();
 const migrateCardTagsToTopics = vi.fn();
+const topicMigrationKnownSettled = vi.fn();
 
 vi.mock("@/services/notifications", () => ({
   ensureServiceWorkerRegistration: () => ensureServiceWorkerRegistration(),
@@ -16,6 +17,8 @@ vi.mock("@/services/notifications", () => ({
 vi.mock("@/services/study/topics", () => ({
   migrateCardTagsToTopics: (...args: unknown[]) =>
     migrateCardTagsToTopics(...args),
+  topicMigrationKnownSettled: (...args: unknown[]) =>
+    topicMigrationKnownSettled(...args),
 }));
 
 vi.mock("@/components/providers/UserProvider", () => ({
@@ -28,6 +31,7 @@ let root: Root;
 beforeEach(() => {
   ensureServiceWorkerRegistration.mockReset().mockResolvedValue(undefined);
   migrateCardTagsToTopics.mockReset().mockResolvedValue(undefined);
+  topicMigrationKnownSettled.mockReset().mockReturnValue(false);
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -115,5 +119,14 @@ describe("TopicMigrationGate", () => {
   it("runs the migration for the signed-in user", async () => {
     await renderGate();
     expect(migrateCardTagsToTopics).toHaveBeenCalledWith("user-1");
+  });
+
+  it("renders at once for an account this browser has seen migrated", async () => {
+    topicMigrationKnownSettled.mockReturnValue(true);
+    migrateCardTagsToTopics.mockImplementation(() => new Promise<void>(() => undefined));
+    await renderGate();
+    // No round trip before the page: the spinner never shows.
+    expect(content()).not.toBeNull();
+    expect(migrateCardTagsToTopics).not.toHaveBeenCalled();
   });
 });

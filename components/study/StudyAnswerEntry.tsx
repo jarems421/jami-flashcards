@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, StudyText, SymbolKeyboard } from "@/components/ui";
+import {
+  AUTO_GROW_TEXTAREA_STYLE,
+  Button,
+  StudyText,
+  SymbolKeyboard,
+  useAutoGrowTextarea,
+} from "@/components/ui";
 import type { MarkedAnswer } from "@/lib/study/answer-marking";
 import type { ExerciseVerdict } from "@/lib/study/study-modes";
 
@@ -59,7 +65,10 @@ export default function StudyAnswerEntry({
 }: StudyAnswerEntryProps) {
   const [response, setResponse] = useState(initialResponse);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const submittingRef = useRef(false);
+  // A prose answer grows as it is written rather than scrolling in three lines.
+  useAutoGrowTextarea(areaRef, { enabled: multiline, value: response });
 
   useEffect(() => {
     // Focus without scrolling: on a phone the keyboard appearing would
@@ -107,8 +116,10 @@ export default function StudyAnswerEntry({
             id="study-answer-entry"
             ref={(node) => {
               inputRef.current = node;
+              areaRef.current = node;
             }}
             rows={3}
+            style={AUTO_GROW_TEXTAREA_STYLE}
             value={response}
             disabled={busy || Boolean(marked)}
             placeholder={placeholder}
@@ -121,7 +132,7 @@ export default function StudyAnswerEntry({
                 submit();
               }
             }}
-            className={`${fieldClasses} resize-y pb-11 leading-7`}
+            className={`${fieldClasses} pb-11 leading-7`}
           />
         ) : (
           <input

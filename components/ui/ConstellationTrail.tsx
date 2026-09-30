@@ -6,7 +6,7 @@ import {
 /*
  * Deliberately flat. A taller zig-zag reads as a chart; kept shallow and wide
  * it reads as a constellation, and it fits the strip of space the quest card
- * and the sign-in panel each have for it.
+ * has for it.
  */
 const POINTS: readonly (readonly [number, number])[] = [
   [10, 33],
@@ -29,8 +29,7 @@ type ConstellationTrailProps = {
   /**
    * Draw it as a picture rather than a readout: no marker on the mission in
    * hand, and out of the accessibility tree. For places that already say where
-   * the student is in words, and for the signed-out page, which is showing the
-   * shape of the thing rather than anyone's progress through it.
+   * the student is in words.
    */
   decorative?: boolean;
   className?: string;
@@ -54,8 +53,11 @@ function line(from: number, to: number) {
 }
 
 /**
- * Seven stars on a rising line: the walkthrough's progress, and the signed-out
- * page's picture of what finishing it looks like.
+ * Seven stars on a rising line: the walkthrough's progress.
+ *
+ * Nobody signed out sees it. The landing page carried it for a while as a
+ * picture of finishing the walkthrough, which meant nothing to a visitor who
+ * had never seen the walkthrough.
  *
  * Progress reads as the stars filling in rather than a bar filling up. A point
  * not yet reached is a faint mark, the mission in hand is an outline, and a

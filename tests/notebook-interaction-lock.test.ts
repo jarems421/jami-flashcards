@@ -5,7 +5,9 @@ import {
   NOTEBOOK_TEXT_EDITOR_SELECTOR,
   NOTEBOOK_STYLUS_ACTION_SELECTOR,
   NOTEBOOK_STYLUS_GESTURE_CONTROL_SELECTOR,
+  isNotebookSelectableTextTarget,
   isNotebookTextEditingTarget,
+  NOTEBOOK_SELECTABLE_TEXT_SELECTOR,
   shouldSuppressNotebookNativeEvent,
   shouldSuppressNotebookNativeInkPointer,
   shouldSuppressNotebookStylusTouch,
@@ -42,6 +44,21 @@ describe("notebook interaction lock", () => {
     expect(isNotebookTextEditingTarget(target)).toBe(false);
     expect(shouldSuppressNotebookNativeEvent(target)).toBe(true);
     expect(shouldSuppressNotebookNativeEvent(null)).toBe(true);
+  });
+
+  it("lets the Tutor's answers be selected and copied without counting as editing", () => {
+    const answer = makeTarget(NOTEBOOK_SELECTABLE_TEXT_SELECTOR);
+    // Selection starts on a text node, which has no closest of its own.
+    const textInAnswer = { nodeType: 3, parentElement: answer } as unknown as EventTarget;
+    const markedOnPage = makeTarget(NOTEBOOK_SELECTABLE_TEXT_SELECTOR, ".notebook-page-surface");
+
+    expect(shouldSuppressNotebookNativeEvent(answer)).toBe(false);
+    expect(shouldSuppressNotebookNativeEvent(textInAnswer)).toBe(false);
+    expect(isNotebookSelectableTextTarget(textInAnswer)).toBe(true);
+    expect(isNotebookTextEditingTarget(answer)).toBe(false);
+    // The page itself stays locked, whatever is marked on it.
+    expect(shouldSuppressNotebookNativeEvent(markedOnPage)).toBe(true);
+    expect(isNotebookSelectableTextTarget({ nodeType: 3, parentElement: null })).toBe(false);
   });
 
   it("allows Pencil taps on notebook actions but keeps resize handles guarded", () => {

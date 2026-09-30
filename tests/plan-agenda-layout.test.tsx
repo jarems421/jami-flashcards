@@ -4,7 +4,6 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import PlanDayAgenda from "@/components/planning/PlanDayAgenda";
-import PlanWeekTimetable from "@/components/planning/PlanWeekTimetable";
 import { buildPlanWeek } from "@/lib/planning/plan-week";
 import { resolvePlanDay } from "@/lib/planning/resolve-plan-day";
 import type { StudyAction } from "@/lib/learning/actions/study-actions";
@@ -168,32 +167,5 @@ describe("today's agenda", () => {
   it("says nothing is ahead rather than inventing a day", () => {
     renderAgenda(plan({ endDayKey: SUNDAY }), TUESDAY);
     expect(container.textContent).not.toContain("Next ·");
-  });
-});
-
-describe("the week timetable", () => {
-  it("draws seven days with their sittings and anything pinned", () => {
-    const revisionPlan = plan();
-    const entries = [
-      { dayKey: TUESDAY, pinned: [{ actionId: "manual:1", label: "Macbeth essay" }] },
-    ];
-    const week = buildPlanWeek({ plan: revisionPlan, entries, todayDayKey: MONDAY });
-
-    act(() => {
-      root.render(
-        <PlanWeekTimetable
-          plan={revisionPlan}
-          week={week}
-          entries={entries}
-          scopeNames={scopeNames}
-        />
-      );
-    });
-
-    const text = container.textContent ?? "";
-    expect(container.querySelectorAll("section")).toHaveLength(7);
-    expect(text).toContain("16:30–17:15");
-    expect(text).toContain("Macbeth essay");
-    expect(text).toContain("Rest day.");
   });
 });

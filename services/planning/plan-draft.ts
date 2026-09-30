@@ -1,6 +1,7 @@
 import { auth } from "@/services/firebase/client";
 import type { PlanNotice } from "@/lib/ai/assistant-plan";
 import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
+import type { PlanInterviewStep } from "@/lib/planning/plan-interview";
 import type { RevisionPlanDraft } from "@/lib/planning/types";
 
 /** One side of the planning conversation, as the panel holds it. */
@@ -55,7 +56,12 @@ function readErrorCode(status: number, body: unknown): PlanDraftErrorCode {
 
 export type PlanDraftAnswer = {
   reply: string;
-  /** A plan to open in the builder, or null while Jami is still asking. */
+  /**
+   * The plan as Jami left it, or null while Jami is still asking.
+   *
+   * Part of a plan counts: the first question fills in exams before there is
+   * any subject or day, and the interview keeps only the part it asked about.
+   */
   plan: RevisionPlanDraft | null;
   notices: PlanNotice[];
 };
@@ -73,6 +79,8 @@ export async function draftPlanWithJami(input: {
   history: readonly PlanDraftTurn[];
   /** The draft on screen, so Jami adjusts it rather than starting again. */
   draft?: RevisionPlanDraft | null;
+  /** Which question this message answers. */
+  step?: PlanInterviewStep;
 }): Promise<PlanDraftAnswer> {
   const user = auth.currentUser;
   if (!user) throw new PlanDraftError("signed_out");
@@ -87,6 +95,7 @@ export async function draftPlanWithJami(input: {
       message: input.message,
       history: input.history,
       ...(input.draft ? { draft: input.draft } : {}),
+      ...(input.step ? { step: input.step } : {}),
     }),
   });
   if (!response.ok) {
@@ -106,9 +115,7 @@ export async function draftPlanWithJami(input: {
 
   return {
     reply: typeof record.reply === "string" ? record.reply : "",
-    // A plan that does not stand on its own is not offered: half a plan in the
-    // builder is worse than the builder's own empty state.
-    plan: normalized?.valid ? normalized.draft : null,
+    plan: normalized ? normalized.draft : null,
     notices: Array.isArray(record.notices) ? (record.notices as PlanNotice[]) : [],
   };
 }

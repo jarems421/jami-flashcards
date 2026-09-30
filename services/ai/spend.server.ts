@@ -38,6 +38,7 @@ export async function recordAiSpend(input: {
     const dayKey = getSpendDayKey(input.now);
     const promptTokens = Math.max(0, input.sample.promptTokens ?? 0);
     const completionTokens = Math.max(0, input.sample.completionTokens ?? 0);
+    const searches = Math.max(0, input.sample.searches ?? 0);
 
     // Model names carry dots and slashes, which Firestore reads as a field
     // path, so they are flattened before being used as a map key.
@@ -56,6 +57,9 @@ export async function recordAiSpend(input: {
           completionTokens: FieldValue.increment(completionTokens),
           costUsd: FieldValue.increment(cost ?? 0),
           unpricedCalls: FieldValue.increment(cost === null ? 1 : 0),
+          // Web searches are billed per search, not per token, and are what a
+          // search allowance will count.
+          ...(searches > 0 ? { searches: FieldValue.increment(searches) } : {}),
           byAction: { [input.action]: FieldValue.increment(1) },
           byModel: {
             [modelKey]: {

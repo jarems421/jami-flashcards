@@ -29,12 +29,10 @@ import {
   createAssistantIllustration,
   insertAssistantIllustration,
 } from "@/services/ai/assistant-illustrations";
+import { useAssistantThreadList } from "@/hooks/useAssistantThreadList";
 import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import {
-  deleteJamiAssistantThread,
   getJamiAssistantThreadMessages,
-  getJamiAssistantThreads,
-  renameJamiAssistantThread,
   toDrawerMessages,
 } from "@/services/ai/jami-assistant-history";
 import { auth } from "@/services/firebase/client";
@@ -44,8 +42,17 @@ import {
 } from "@/services/ai/ai-privacy-notice";
 import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
 import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard";
+import TutorCardSuggestions from "@/components/ai/TutorCardSuggestions";
+import TutorPracticeOffer from "@/components/ai/TutorPracticeOffer";
+import TutorQuestionSuggestions from "@/components/ai/TutorQuestionSuggestions";
+import type { JamiAssistantSuggestedCard } from "@/lib/ai/tutor-card-suggestions";
+import type { TutorPracticeOffer as TutorPracticeOfferData } from "@/lib/ai/tutor-practice-offer";
+import type { JamiAssistantSuggestedQuestion } from "@/lib/ai/tutor-question-suggestions";
+import { drawnFigureToPng } from "@/components/ai/drawn-figure-image";
 import TutorReasoningMenu from "@/components/ai/TutorReasoningMenu";
+import AddAnswerToPageButton from "@/components/ai/AddAnswerToPageButton";
 import AssistantAnswerBody from "@/components/ai/AssistantAnswerBody";
+import { splitAssistantAnswerAtDiagram } from "@/lib/ai/assistant-answer-layout";
 import {
   AssistantGraphActionsContext,
   type AssistantGraphActions,
@@ -72,6 +79,18 @@ import {
 } from "@/components/ai/JamiAssistantIcons";
 import TutorSettingsPanel from "@/components/ai/TutorSettingsPanel";
 import TutorStudyMaterialPanel from "@/components/ai/TutorStudyMaterialPanel";
+import FloatingTutorHeader from "@/components/ai/JamiFloatingTutorHeader";
+import {
+  FloatingTutorPill,
+  FloatingTutorPinButton,
+  FloatingTutorPinnedAnswer,
+  FloatingTutorResizeFrame,
+  floatingRectStyle,
+  floatingTutorPanelClass,
+  isCompactFloatingCard,
+  MAX_PINNED_ANSWERS,
+  useFloatingTutorFrames,
+} from "@/components/ai/JamiFloatingTutor";
 import { featureFlags } from "@/lib/app/feature-flags";
 import {
   TUTOR_STUDY_MATERIAL_KINDS,
@@ -138,6 +157,17 @@ type JamiAssistantDrawerProps = {
    */
   onGraphInsert?: (graph: NotebookGraphDraft) => Promise<boolean>;
   /**
+   * Adds a drawn figure from an answer to the open notebook page, as an image.
+   * Resolves true once it is on the page; the notebook reports its own failures.
+   */
+  onDrawingInsert?: (file: File) => Promise<boolean>;
+  /**
+   * Adds a whole answer to the open notebook page, shown there exactly as it
+   * is here: tables, headings and typeset maths. True once it is on the page;
+   * the notebook reports its own failures.
+   */
+  onAnswerInsert?: (text: string) => boolean;
+  /**
    * The folders this conversation's material belongs to, when the surface
    * knows.
    *
@@ -146,6 +176,28 @@ type JamiAssistantDrawerProps = {
    * explains the rule rather than asserting an answer it does not have.
    */
   settingsFolderIds?: readonly string[];
+  /**
+   * Controls for what this conversation reads, drawn under the header -- the
+   * material picker, on surfaces that let a student choose several sources.
+   * Told whether the conversation has begun, because changing the material
+   * after that starts a new chat and the control should say so.
+   */
+  contextControls?: (state: { conversationStarted: boolean }) => ReactNode;
+  /**
+   * A message to send as soon as the drawer first opens: what the student
+   * already typed somewhere else, such as the Tutor page's ask box. Sent once
+   * per mount, so a surface that wants to send another remounts the drawer.
+   */
+  initialMessage?: string;
+  /**
+   * How Jami sits over the work.
+   *
+   * `sidebar` is a full-height panel down the right. `floating` is a card the
+   * student moves and resizes over a surface they are writing on, which can
+   * also shrink to a pill or leave one answer pinned beside the page. Phones
+   * get the full-screen sheet either way: there is no room to float.
+   */
+  layout?: "sidebar" | "floating";
 };
 
 type DrawerMessage = {
@@ -155,6 +207,10 @@ type DrawerMessage = {
   used?: JamiAssistantUsedContext[];
   followUps?: JamiAssistantFollowUp[];
   citations?: JamiAssistantCitation[];
+  suggestedCards?: JamiAssistantSuggestedCard[];
+  suggestedQuestions?: JamiAssistantSuggestedQuestion[];
+  /** Live advice from the engine; shown with this answer, never saved with the chat. */
+  practiceOffer?: TutorPracticeOfferData;
   illustrations?: AssistantIllustration[];
   canIllustrate?: boolean;
   studyMaterialRequest?: TutorStudyMaterialRequest;
@@ -193,7 +249,12 @@ export default function JamiAssistantDrawer({
   onIllustrationInserted,
   onBeforeIllustrationInsert,
   onGraphInsert,
+  onDrawingInsert,
+  onAnswerInsert,
   settingsFolderIds,
+  contextControls,
+  initialMessage,
+  layout = "sidebar",
 }: JamiAssistantDrawerProps) {
   const [messages, setMessages] = useState<DrawerMessage[]>([]);
   const [input, setInput] = useState("");
@@ -201,10 +262,7 @@ export default function JamiAssistantDrawer({
   const [error, setError] = useState<string | null>(null);
   const [historyNotice, setHistoryNotice] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
-  const [threads, setThreads] = useState<JamiAssistantThread[]>([]);
   const [activeThread, setActiveThread] = useState<JamiAssistantThread | null>(null);
   const [useRelatedSources, setUseRelatedSources] = useState(true);
   const [showAiNotice, setShowAiNotice] = useState(false);
@@ -220,13 +278,65 @@ export default function JamiAssistantDrawer({
   const [startedMaterial, setStartedMaterial] = useState<
     Record<string, TutorStudyMaterialKind[]>
   >({});
+  /** The answer just added to the page, confirmed beside it for a moment. */
+  const [addedAnswerKey, setAddedAnswerKey] = useState<string | null>(null);
   /*
    * Wide screens have room for the drawer to sit beside the work rather than
    * over it. Jami is meant to nudge you towards an answer you are looking at,
    * which does not work if opening it hides the card. Below this the page is
    * too narrow to show both, so it stays a modal sheet.
+   *
+   * A floating card is small enough to share a tablet in portrait too, so it
+   * stops being modal from there; only a phone still gets the sheet.
   */
   const [sidePanel, setSidePanel] = useState(false);
+  const floating = layout === "floating" && sidePanel;
+  // Shrunk to a pill rather than closed, so the pill stays to bring it back.
+  const [minimised, setMinimised] = useState(false);
+  /*
+   * The answer pinned beside the page, if any.
+   *
+   * Its own thing, not a state of the card. Pinning used to put the card away
+   * and leave only the answer, so asking the next question meant opening the
+   * chat on top of the answer it was about. The pin now stays whether the card
+   * is open, shrunk or closed, until it is unpinned.
+   */
+  // Up to three, oldest first; each sits in its own frame slot.
+  const [pinnedAnswers, setPinnedAnswers] = useState<{ slot: number; text: string }[]>([]);
+  const pinned = pinnedAnswers.length > 0;
+  const occupiedSlots = Array.from({ length: MAX_PINNED_ANSWERS }, (_, slot) =>
+    pinnedAnswers.some((answer) => answer.slot === slot)
+  );
+  const { card, pins } = useFloatingTutorFrames(floating, occupiedSlots);
+  const compact = floating && isCompactFloatingCard(card.rect);
+  const minimise = () => {
+    setMinimised(true);
+    onOpenChange(false);
+  };
+  const pinAnswer = (text: string) => {
+    if (pinnedAnswers.some((answer) => answer.text === text)) return;
+    // With every slot taken, the oldest pin makes way for the new one.
+    const kept =
+      pinnedAnswers.length >= MAX_PINNED_ANSWERS ? pinnedAnswers.slice(1) : pinnedAnswers;
+    const slot = occupiedSlots.findIndex((taken) => !taken);
+    const nextSlot = slot === -1 ? pinnedAnswers[0].slot : slot;
+    setPinnedAnswers([...kept, { slot: nextSlot, text }]);
+    // Placed clear of the card and of every pin still on screen, never over one.
+    const obstacles = [
+      ...(open && card.rect ? [card.rect] : []),
+      ...kept.flatMap((answer) => {
+        const rect = pins[answer.slot].rect;
+        return rect ? [rect] : [];
+      }),
+    ];
+    if (obstacles.length > 0) pins[nextSlot].moveClearOf(obstacles);
+  };
+  const unpinAnswer = (slot: number) => {
+    const remaining = pinnedAnswers.filter((answer) => answer.slot !== slot);
+    setPinnedAnswers(remaining);
+    // With the card put away, unpinning the last pin leaves the pill to bring it back.
+    if (!open && remaining.length === 0) setMinimised(true);
+  };
   /**
    * Settings, shown over the conversation rather than beside it.
    *
@@ -320,42 +430,25 @@ export default function JamiAssistantDrawer({
     setStartedMaterial({});
     setGeneratingIllustrationId(null);
     setInsertingIllustrationId(null);
+    setMinimised(false);
+    setPinnedAnswers([]);
     onOpenChange(false);
   }, [abandonActiveRequest, onOpenChange, resetKey]);
 
-  const refreshThreads = useCallback(async () => {
-    const user = auth.currentUser;
-    if (!user) {
-      setThreads([]);
-      return;
-    }
-    setHistoryLoading(true);
-    setHistoryError(null);
-    try {
-      setThreads(await getJamiAssistantThreads(user.uid));
-    } catch (loadError) {
-      setHistoryError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Your previous chats could not be loaded."
-      );
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (!open) return;
-    void refreshThreads();
-  }, [open, refreshThreads]);
-
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 1024px)");
+    const query = window.matchMedia(
+      layout === "floating" ? "(min-width: 640px)" : "(min-width: 1024px)"
+    );
     const sync = () => setSidePanel(query.matches);
     sync();
     query.addEventListener("change", sync);
     return () => query.removeEventListener("change", sync);
-  }, []);
+  }, [layout]);
+
+  // Opening the card, from anywhere, replaces the pill it left behind.
+  useEffect(() => {
+    if (open) setMinimised(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -380,6 +473,39 @@ export default function JamiAssistantDrawer({
     setStartedMaterial({});
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }, [abandonActiveRequest]);
+
+  const {
+    threads,
+    loading: historyLoading,
+    error: historyError,
+    setError: setHistoryError,
+    refresh: refreshThreads,
+    promote: promoteThread,
+    rename: renameThread,
+    remove: removeThread,
+  } = useAssistantThreadList({
+    activeThreadId: activeThread?.id ?? null,
+    onActiveThreadRemoved: startNewChat,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    void refreshThreads();
+  }, [open, refreshThreads]);
+
+  /**
+   * Renaming the open chat has to rename it in the header too, not just in the
+   * saved list the hook owns.
+   */
+  const handleRenameThread = useCallback(
+    async (thread: JamiAssistantThread, title: string) => {
+      const renamedTitle = await renameThread(thread, title);
+      setActiveThread((current) =>
+        current?.id === thread.id ? { ...current, title: renamedTitle } : current
+      );
+    },
+    [renameThread]
+  );
 
   const openThread = useCallback(async (thread: JamiAssistantThread) => {
     const user = auth.currentUser;
@@ -406,47 +532,7 @@ export default function JamiAssistantDrawer({
     } finally {
       setThreadLoading(false);
     }
-  }, [abandonActiveRequest]);
-
-  const renameThread = useCallback(
-    async (thread: JamiAssistantThread, title: string) => {
-      const user = auth.currentUser;
-      if (!user) throw new Error("Sign in again to rename this chat.");
-      const renamedTitle = await renameJamiAssistantThread(user.uid, thread.id, title);
-      setThreads((current) =>
-        current.map((candidate) =>
-          candidate.id === thread.id
-            ? { ...candidate, title: renamedTitle, updatedAt: Date.now() }
-            : candidate
-        )
-      );
-      setActiveThread((current) =>
-        current?.id === thread.id ? { ...current, title: renamedTitle } : current
-      );
-    },
-    []
-  );
-
-  const removeThread = useCallback(
-    async (thread: JamiAssistantThread) => {
-      const user = auth.currentUser;
-      if (!user) throw new Error("Sign in again to delete this chat.");
-      await deleteJamiAssistantThread(user.uid, thread.id);
-      setThreads((current) =>
-        current.filter((candidate) => candidate.id !== thread.id)
-      );
-      if (activeThread?.id === thread.id) {
-        setActiveThread(null);
-        setHistoryNotice(null);
-        setError(null);
-        setInput("");
-        setLoading(false);
-        abandonActiveRequest();
-        setMessages([]);
-      }
-    },
-    [abandonActiveRequest, activeThread?.id]
-  );
+  }, [abandonActiveRequest, setHistoryError]);
 
   const viewingForeignThread =
     activeThread !== null && activeThread.contextKey !== contextKey;
@@ -594,7 +680,53 @@ export default function JamiAssistantDrawer({
         })
         .finally(() => setInsertingGraphKey(null));
     },
+    canInsertDrawing:
+      Boolean(onDrawingInsert) && contextKey.startsWith("notebook:") && !viewingForeignThread,
+    insertDrawing: (key, svg) => {
+      if (!onDrawingInsert || insertingGraphKey) return;
+      setInsertingGraphKey(key);
+      setError(null);
+      void drawnFigureToPng(svg)
+        .then((file) => onDrawingInsert(file))
+        .then((added) => {
+          if (added) setInsertedGraphKeys((current) => new Set(current).add(key));
+        })
+        .catch((drawError: unknown) =>
+          setError(
+            drawError instanceof Error
+              ? drawError.message
+              : "That figure could not be added to this page."
+          )
+        )
+        .finally(() => setInsertingGraphKey(null));
+    },
   };
+
+  const canInsertAnswer =
+    Boolean(onAnswerInsert) && contextKey.startsWith("notebook:") && !viewingForeignThread;
+
+  useEffect(() => {
+    if (!addedAnswerKey) return;
+    const timer = window.setTimeout(() => setAddedAnswerKey(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [addedAnswerKey]);
+
+  const addAnswerToPage = useCallback(
+    (message: DrawerMessage, key: string) => {
+      if (!onAnswerInsert) return;
+      setError(null);
+      // An answer with an illustration shows the picture in place of its own
+      // sketch, which has its own button; the page gets the words around it.
+      const text = message.illustrations?.length
+        ? (() => {
+            const layout = splitAssistantAnswerAtDiagram(message.text);
+            return [layout.before, layout.after].filter(Boolean).join("\n\n");
+          })()
+        : message.text;
+      if (onAnswerInsert(text)) setAddedAnswerKey(key);
+    },
+    [onAnswerInsert]
+  );
 
   const sendMessage = useCallback(
     async (rawMessage: string) => {
@@ -669,6 +801,9 @@ export default function JamiAssistantDrawer({
           used: response.used,
           followUps: response.followUps,
           citations: response.citations,
+          suggestedCards: response.suggestedCards,
+          suggestedQuestions: response.suggestedQuestions,
+          practiceOffer: response.practiceOffer,
           canIllustrate: response.canIllustrate,
           studyMaterialRequest: response.studyMaterialRequest,
           studyMaterialOffers: response.studyMaterialOffers,
@@ -693,10 +828,7 @@ export default function JamiAssistantDrawer({
             if (requestIdRef.current !== requestId) return;
             const savedMessageId = savedThread.lastAssistantMessageId;
             setActiveThread(savedThread);
-            setThreads((current) => [
-              savedThread,
-              ...current.filter((thread) => thread.id !== savedThread.id),
-            ]);
+            promoteThread(savedThread);
             if (savedMessageId) {
               setMessages((current) => {
                 const next = [...current];
@@ -755,6 +887,7 @@ export default function JamiAssistantDrawer({
       activeThread,
       contextKey,
       getContext,
+      promoteThread,
       historyContextLabel,
       messages,
       useRelatedSources,
@@ -762,6 +895,18 @@ export default function JamiAssistantDrawer({
       requestIllustration,
     ]
   );
+
+  /*
+   * What the student already asked somewhere else, sent once the drawer is
+   * open to hold the answer. After the render, not during it: sending starts
+   * a request and sets state, which a render must not do.
+   */
+  const sentInitialRef = useRef(false);
+  useEffect(() => {
+    if (!open || !initialMessage || sentInitialRef.current) return;
+    sentInitialRef.current = true;
+    void Promise.resolve().then(() => sendMessage(initialMessage));
+  }, [initialMessage, open, sendMessage]);
 
   const dictation = useVoiceDictation({ onText: setInput, onError: setError });
 
@@ -795,8 +940,9 @@ export default function JamiAssistantDrawer({
   };
 
   return (
+    <>
     <Dialog
-      open={open}
+      open={open && (!floating || card.rect !== null)}
       modal={!sidePanel}
       initialFocusRef={inputRef}
       className={`fixed inset-0 flex justify-end ${
@@ -807,7 +953,11 @@ export default function JamiAssistantDrawer({
       <DialogBackdrop className="absolute inset-0 bg-black/55 backdrop-blur-[1px]" />
       <DialogPanel
         data-notebook-text-editor="true"
-        className="pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-shell"
+        className={
+          floating
+            ? floatingTutorPanelClass(card)
+            : "pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-shell"
+        }
         /*
           The panel colour is a few percent translucent, which reads as depth
           over the scrim but lets the card show through once the scrim is gone.
@@ -817,6 +967,7 @@ export default function JamiAssistantDrawer({
         style={
           sidePanel
             ? {
+                ...(floating && card.rect ? floatingRectStyle(card.rect) : null),
                 backgroundColor: "var(--color-surface-base)",
                 backgroundImage:
                   "linear-gradient(var(--color-surface-panel-strong), var(--color-surface-panel-strong))",
@@ -824,6 +975,27 @@ export default function JamiAssistantDrawer({
             : undefined
         }
       >
+        {floating ? (
+          <FloatingTutorHeader
+            frame={card}
+            subtitle={
+              historyOpen ? "Chat history" : viewingForeignThread ? "Saved chat · read only" : contextLabel
+            }
+            compact={compact}
+            historyOpen={historyOpen}
+            onToggleHistory={() => setHistoryOpen((current) => !current)}
+            onNewChat={startNewChat}
+            onOpenSettings={
+              featureFlags.enableTutorPersonalisation ? () => setSettingsOpen(true) : undefined
+            }
+            folderSources={{
+              on: useRelatedSources,
+              onToggle: () => setUseRelatedSources((current) => !current),
+            }}
+            onMinimise={minimise}
+            onClose={() => onOpenChange(false)}
+          />
+        ) : (
         <header className="border-b border-[var(--color-border)] px-4 py-3.5 sm:px-5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -847,8 +1019,8 @@ export default function JamiAssistantDrawer({
               {featureFlags.enableTutorPersonalisation ? (
                 <button
                   type="button"
-                  aria-label="Open Tutor settings"
-                  title="Tutor settings"
+                  aria-label="Open Jami settings"
+                  title="Jami settings"
                   className="inline-grid h-10 w-10 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
                   onClick={() => setSettingsOpen(true)}
                 >
@@ -889,8 +1061,18 @@ export default function JamiAssistantDrawer({
             </div>
           </div>
         </header>
+        )}
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+        {contextControls && !historyOpen && !viewingForeignThread ? (
+          <div className={`border-b border-[var(--color-border)] ${compact ? "px-4 py-2.5" : "px-5 py-3 sm:px-7"}`}>
+            {contextControls({ conversationStarted: messages.length > 0 })}
+          </div>
+        ) : null}
+
+        <div
+          ref={scrollRef}
+          className={`min-h-0 flex-1 overflow-y-auto ${compact ? "px-4 py-4" : "px-5 py-5 sm:px-7 sm:py-6"}`}
+        >
           {historyOpen ? (
             <JamiAssistantHistory
               threads={threads}
@@ -898,7 +1080,7 @@ export default function JamiAssistantDrawer({
               error={historyError}
               onOpen={(thread) => void openThread(thread)}
               onNew={startNewChat}
-              onRename={renameThread}
+              onRename={handleRenameThread}
               onDelete={removeThread}
             />
           ) : threadLoading ? (
@@ -950,7 +1132,9 @@ export default function JamiAssistantDrawer({
               ) : null}
             </div>
           ) : (
-            <div className="space-y-4" aria-live="polite">
+            // Selectable even over a notebook, which otherwise cancels native
+            // selection, so an answer can be copied into a text box on the page.
+            <div className="space-y-4" aria-live="polite" data-notebook-selectable-text="true">
               {messages.map((message, index) => (
                 <div
                   key={`${message.role}-${index}`}
@@ -996,10 +1180,24 @@ export default function JamiAssistantDrawer({
                     </div>
                     {message.role === "assistant" ? (
                       <>
-                        <div className="mt-1.5 px-1 text-2xs leading-relaxed text-text-muted">
-                          {message.used && message.used.length > 0
-                            ? formatJamiAssistantUsedContext(message.used)
-                            : "Used: General knowledge"}
+                        {/* The pin shares the sources line rather than taking a row of its own. */}
+                        <div className="mt-1.5 flex items-start gap-2 px-1">
+                          <div className="min-w-0 flex-1 text-2xs leading-relaxed text-text-muted">
+                            {message.used && message.used.length > 0
+                              ? formatJamiAssistantUsedContext(message.used)
+                              : "Used: General knowledge"}
+                          </div>
+                          {canInsertAnswer && !(loading && index === messages.length - 1) ? (
+                            <AddAnswerToPageButton
+                              added={addedAnswerKey === (message.id ?? `index-${index}`)}
+                              onAdd={() =>
+                                addAnswerToPage(message, message.id ?? `index-${index}`)
+                              }
+                            />
+                          ) : null}
+                          {floating && !(loading && index === messages.length - 1) ? (
+                            <FloatingTutorPinButton onPin={() => pinAnswer(message.text)} />
+                          ) : null}
                         </div>
                         {message.citations?.length ? (
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 px-1" aria-label="Web sources">
@@ -1015,6 +1213,26 @@ export default function JamiAssistantDrawer({
                               </a>
                             ))}
                           </div>
+                        ) : null}
+                        {message.suggestedCards?.length ? (
+                          <TutorCardSuggestions
+                            userId={userId}
+                            cards={message.suggestedCards}
+                          />
+                        ) : null}
+                        {message.suggestedQuestions?.length ? (
+                          <TutorQuestionSuggestions
+                            userId={userId}
+                            questions={message.suggestedQuestions}
+                          />
+                        ) : null}
+                        {/* Once per conversation: the first answer that carries this advice. */}
+                        {message.practiceOffer &&
+                        messages.findIndex(
+                          (candidate) =>
+                            candidate.practiceOffer?.actionId === message.practiceOffer?.actionId
+                        ) === index ? (
+                          <TutorPracticeOffer userId={userId} offer={message.practiceOffer} />
                         ) : null}
                         {message.canIllustrate &&
                         !message.illustrations?.length &&
@@ -1138,7 +1356,8 @@ export default function JamiAssistantDrawer({
         </div>
 
         {showAiNotice && !historyOpen ? (
-          <div className="mx-5 mb-0 rounded-xl border border-accent/20 bg-accent/8 px-3.5 py-3 text-xs leading-5 text-text-secondary sm:mx-7">
+          // Floating, the notice scrolls and gives way first, so the composer always fits the card.
+          <div className={`mx-5 mb-0 rounded-xl border border-accent/20 bg-accent/8 px-3.5 py-3 text-xs leading-5 text-text-secondary sm:mx-7 ${floating ? "max-h-32 min-h-[4.5rem] overflow-y-auto" : ""}`}>
             <div className="flex items-start justify-between gap-3">
               <p>
                 When you use Jami, relevant work may be processed through OpenRouter
@@ -1163,7 +1382,13 @@ export default function JamiAssistantDrawer({
           </div>
         ) : null}
 
-        <footer className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <footer
+          className={`shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] ${
+            compact
+              ? "px-3 pb-3 pt-3"
+              : "px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+          }`}
+        >
           {historyOpen ? (
             <div className="text-center text-2xs text-text-muted">
               Saved chats keep their messages, not source files or notebook snapshots.
@@ -1221,11 +1446,11 @@ export default function JamiAssistantDrawer({
               ref={inputRef}
               id="jami-assistant-message"
               data-notebook-text-editor="true"
-              rows={2}
+              rows={compact ? 1 : 2}
               value={input}
               disabled={loading}
               placeholder="Ask Jami..."
-              className="min-h-[5.75rem] w-full resize-none bg-transparent pb-2 pl-4 pr-4 pt-3 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82]"
+              className={`${compact ? "min-h-[3rem]" : "min-h-[5.75rem]"} w-full resize-none bg-transparent pb-2 pl-4 pr-4 pt-3 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82]`}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleComposerKeyDown}
             />
@@ -1284,6 +1509,11 @@ export default function JamiAssistantDrawer({
             </p>
           ) : null}
 
+          {compact ? (
+            <p className="mt-1.5 px-1 text-2xs text-text-muted">
+              Jami can make mistakes. Check important answers.
+            </p>
+          ) : (
           <div className="mt-2 flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
             <details className="group min-w-0 flex-1 basis-[15rem] text-xs text-text-muted">
               <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-full px-1.5 font-medium transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 [&::-webkit-details-marker]:hidden">
@@ -1339,6 +1569,7 @@ export default function JamiAssistantDrawer({
               Jami can make mistakes. Check important answers.
             </div>
           </div>
+          )}
             </>
           )}
         </footer>
@@ -1352,6 +1583,27 @@ export default function JamiAssistantDrawer({
           </div>
         ) : null}
       </DialogPanel>
+      {floating ? <FloatingTutorResizeFrame frame={card} /> : null}
     </Dialog>
+    {/* A pinned answer already says where Jami is, and opens it; the pill would repeat it. */}
+    {floating && !open && minimised && !pinned ? (
+      <FloatingTutorPill onOpen={() => onOpenChange(true)} />
+    ) : null}
+    {floating
+      ? pinnedAnswers.map((answer, index) => (
+          <FloatingTutorPinnedAnswer
+            key={answer.slot}
+            frame={pins[answer.slot]}
+            // One way back to the chat is enough: only the newest pin carries it.
+            onOpenChat={
+              open || index !== pinnedAnswers.length - 1 ? undefined : () => onOpenChange(true)
+            }
+            onUnpin={() => unpinAnswer(answer.slot)}
+          >
+            <AssistantAnswerBody text={answer.text} illustrations={[]} renderIllustration={() => null} />
+          </FloatingTutorPinnedAnswer>
+        ))
+      : null}
+    </>
   );
 }

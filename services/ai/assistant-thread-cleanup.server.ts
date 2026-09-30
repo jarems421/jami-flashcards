@@ -43,7 +43,8 @@ export async function deleteAssistantThread(uid: string, threadId: string) {
     new Set(
       messages.docs.flatMap((message) =>
         normalizeAssistantIllustrations(message.data().illustrations)
-          .map((item) => item.storagePath)
+          // A diagram is text on the message, with no file to delete.
+          .flatMap((item) => (item.kind === "diagram" ? [] : [item.storagePath]))
           .filter((path) => isOwnedAssistantImagePath(path, uid))
       )
     )

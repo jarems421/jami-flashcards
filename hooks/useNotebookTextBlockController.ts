@@ -30,6 +30,7 @@ import {
   safelyReleasePointerCapture,
   safelySetPointerCapture,
 } from "@/lib/workspace/notebook-interaction-lock";
+import { measureNotebookTextBlockContentHeight } from "@/lib/workspace/notebook-text-metrics";
 
 type Point = { x: number; y: number };
 
@@ -53,6 +54,11 @@ type TextBlockDragState = TextBlockGestureState & {
    * before this gesture began.
    */
   wasSelected: boolean;
+  /**
+   * Picked up by its move handle mid-sentence. Typing resumes where the box
+   * is put down, rather than leaving the student to tap back in.
+   */
+  wasEditing: boolean;
 };
 
 type TextBlockResizeState = TextBlockGestureState & {
@@ -64,6 +70,8 @@ type TextBlockResizeState = TextBlockGestureState & {
   originWidth: number;
   originHeight: number;
   originText: string;
+  /** The height of the text, which the box cannot be made shorter than. */
+  minHeight: number;
   pageWidth: number;
   pageHeight: number;
 };
@@ -260,6 +268,32 @@ export function useNotebookTextBlockController({
     ]
   );
 
+  /**
+   * A finished box, added as one undo step and left selected rather than open
+   * for typing: a Tutor answer arrives written, and the next thing done with
+   * it is moving it, not editing it. False when the page is full.
+   */
+  const insertTextBlock = useCallback(
+    (block: NotebookTextBlock) => {
+      if (pageState.read().textBlocks.length >= MAX_NOTEBOOK_TEXT_BLOCKS) {
+        onCreateLimitReached(MAX_NOTEBOOK_TEXT_BLOCKS);
+        return false;
+      }
+      const placed = clampNotebookTextBlock(block);
+      pageState.setTextBlocks((current) => {
+        const next = [...current, placed];
+        onHistoryCommit(current, next);
+        return next;
+      });
+      setSelectedTextBlockId(placed.id);
+      setEditingTextBlockId(null);
+      setOpenTextBlockOptionsId(null);
+      onChange();
+      return true;
+    },
+    [onChange, onCreateLimitReached, onHistoryCommit, pageState]
+  );
+
   const updateTextBlock = useCallback(
     (blockId: string, updates: Partial<NotebookTextBlock>) => {
       pageState.setTextBlocks((current) =>
@@ -451,6 +485,7 @@ export function useNotebookTextBlockController({
         pageHeight: rect.height,
         previousTextBlocks: pageState.read().textBlocks,
         wasSelected: selectedTextBlockId === block.id,
+        wasEditing: editingTextBlockId === block.id,
       };
       onGestureStart();
       setActiveTextGestureId(block.id);
@@ -462,6 +497,7 @@ export function useNotebookTextBlockController({
     },
     [
       editingEnabled,
+      editingTextBlockId,
       isNavigationLocked,
       onGestureStart,
       selectedTextBlockId,
@@ -499,10 +535,11 @@ export function useNotebookTextBlockController({
       const movedX = Math.abs(event.clientX - drag.startX);
       const movedY = Math.abs(event.clientY - drag.startY);
       if (
-        drag.wasSelected &&
-        event.type === "pointerup" &&
-        movedX < 6 &&
-        movedY < 6
+        drag.wasEditing ||
+        (drag.wasSelected &&
+          event.type === "pointerup" &&
+          movedX < 6 &&
+          movedY < 6)
       ) {
         setEditingTextBlockId(drag.id);
       }
@@ -527,6 +564,10 @@ export function useNotebookTextBlockController({
       );
       if (!pageElement) return;
       const rect = pageElement.getBoundingClientRect();
+      // Measured once: only the width changes what the text needs, and a
+      // top or bottom edge leaves the width alone.
+      const box = event.currentTarget.closest<HTMLElement>(".notebook-text-object");
+      const minHeight = (box && measureNotebookTextBlockContentHeight(box)) ?? 0;
       textBlockResizeRef.current = {
         id: block.id,
         pointerId: event.pointerId,
@@ -538,8 +579,18 @@ export function useNotebookTextBlockController({
         originX: block.x,
         originY: block.y,
         originWidth: block.width,
-        originHeight: block.height,
+        // What is on screen, which is taller than what is stored when the
+        // text needs more: the edge being held is the one the eye can see.
+        // Only for an edge that changes the height, though -- a side edge
+        // carried the on-screen height into the save, so widening a box left
+        // empty space under its text and a still tap on a side handle made an
+        // undo step of growing the box.
+        originHeight:
+          edge === "top" || edge === "bottom"
+            ? Math.max(block.height, Math.ceil(minHeight))
+            : block.height,
         originText: block.text,
+        minHeight,
         pageWidth: rect.width,
         pageHeight: rect.height,
         previousTextBlocks: pageState.read().textBlocks,
@@ -582,10 +633,12 @@ export function useNotebookTextBlockController({
           height: resize.originHeight,
           text: currentBlock?.text ?? resize.originText,
           outlineVisible: currentBlock?.outlineVisible ?? true,
+          ...(currentBlock?.format ? { format: currentBlock.format } : {}),
         },
         edge: resize.edge,
         deltaX: dx,
         deltaY: dy,
+        minHeight: resize.minHeight,
       });
       updateTextBlock(resize.id, nextBlock);
       event.preventDefault();
@@ -635,18 +688,22 @@ export function useNotebookTextBlockController({
       block: NotebookTextBlock,
       event: ReactPointerEvent<HTMLElement>
     ) => {
-      const selected = selectedTextBlockId === block.id;
-      const editing = editingTextBlockId === block.id;
-      if (event.pointerType === "touch" && !selected && !editing) {
-        onTouchPointerMove(event);
-        return;
-      }
+      // A gesture already under way owns its pointer, whatever the
+      // selection has since become. The move handle starts one while the box
+      // is still being typed in, and until the next render says otherwise
+      // that read as "editing" here and the drag went nowhere.
       if (textBlockResizeRef.current?.id === block.id) {
         resizeTextBlock(event);
         return;
       }
-      if (!editing) {
+      if (textBlockDragRef.current?.id === block.id) {
         dragTextBlock(event);
+        return;
+      }
+      const selected = selectedTextBlockId === block.id;
+      const editing = editingTextBlockId === block.id;
+      if (event.pointerType === "touch" && !selected && !editing) {
+        onTouchPointerMove(event);
       }
     },
     [
@@ -663,18 +720,18 @@ export function useNotebookTextBlockController({
       block: NotebookTextBlock,
       event: ReactPointerEvent<HTMLElement>
     ) => {
-      const selected = selectedTextBlockId === block.id;
-      const editing = editingTextBlockId === block.id;
-      if (event.pointerType === "touch" && !selected && !editing) {
-        onTouchPointerEnd(event);
-        return;
-      }
       if (textBlockResizeRef.current?.id === block.id) {
         stopTextBlockResize(event);
         return;
       }
-      if (!editing) {
+      if (textBlockDragRef.current?.id === block.id) {
         stopTextBlockDrag(event);
+        return;
+      }
+      const selected = selectedTextBlockId === block.id;
+      const editing = editingTextBlockId === block.id;
+      if (event.pointerType === "touch" && !selected && !editing) {
+        onTouchPointerEnd(event);
       }
     },
     [
@@ -691,18 +748,18 @@ export function useNotebookTextBlockController({
       block: NotebookTextBlock,
       event: ReactPointerEvent<HTMLElement>
     ) => {
-      const selected = selectedTextBlockId === block.id;
-      const editing = editingTextBlockId === block.id;
-      if (event.pointerType === "touch" && !selected && !editing) {
-        onTouchPointerEnd(event, { cancelled: true });
-        return;
-      }
       if (textBlockResizeRef.current?.id === block.id) {
         stopTextBlockResize(event);
         return;
       }
-      if (!editing) {
+      if (textBlockDragRef.current?.id === block.id) {
         stopTextBlockDrag(event);
+        return;
+      }
+      const selected = selectedTextBlockId === block.id;
+      const editing = editingTextBlockId === block.id;
+      if (event.pointerType === "touch" && !selected && !editing) {
+        onTouchPointerEnd(event, { cancelled: true });
       }
     },
     [
@@ -753,6 +810,7 @@ export function useNotebookTextBlockController({
     stopEditingTextBlock,
     setTextBlockOptionsOpen,
     createTextBlockAtPoint,
+    insertTextBlock,
     updateTextBlock,
     toggleTextBlockOutline,
     deleteTextBlock,

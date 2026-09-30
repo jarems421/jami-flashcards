@@ -1,5 +1,8 @@
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import type { JamiAssistantThread } from "@/lib/ai/jami-assistant-history";
+import type { JamiAssistantSuggestedCard } from "@/lib/ai/tutor-card-suggestions";
+import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
+import type { JamiAssistantSuggestedQuestion } from "@/lib/ai/tutor-question-suggestions";
 
 import { normalizeAssistantId as normalizeId } from "@/lib/ai/jami-assistant-normalize";
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
@@ -11,6 +14,8 @@ import {
   type TutorStudyMaterialRequest,
   type TutorStudyMaterialResult,
 } from "@/lib/ai/tutor-study-material";
+import { extractTutorDiagrams, MAX_TUTOR_DIAGRAMS, readTutorDiagramSpecs } from "@/lib/ai/tutor-diagram";
+import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 
 export const JAMI_ASSISTANT_MAX_HISTORY_MESSAGES = 12;
 export const JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH = 4_000;
@@ -82,7 +87,9 @@ export type JamiAssistantCitation = {
   url: string;
 };
 
-export type AssistantIllustration = {
+/** A picture the image model made, stored as a file. Records saved before diagrams existed have no `kind`. */
+export type AssistantImageIllustration = {
+  kind?: "image";
   id: string;
   storagePath: string;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
@@ -92,6 +99,22 @@ export type AssistantIllustration = {
   caption: string;
   createdAt: number;
 };
+
+/**
+ * A diagram drawn by `lib/ai/tutor-diagram.ts`, kept as its SVG on the message.
+ * Nothing is stored as a file: it is text, drawn in the answer like the
+ * Tutor's own figures and added to a page the same way.
+ */
+export type AssistantDiagramIllustration = {
+  kind: "diagram";
+  id: string;
+  svg: string;
+  altText: string;
+  caption: string;
+  createdAt: number;
+};
+
+export type AssistantIllustration = AssistantImageIllustration | AssistantDiagramIllustration;
 
 export type JamiAssistantSourceFailure = {
   id: string;
@@ -110,6 +133,16 @@ export type JamiAssistantResponse = {
   followUps?: JamiAssistantFollowUp[];
   sourceFailures?: JamiAssistantSourceFailure[];
   citations?: JamiAssistantCitation[];
+  /** Flashcards offered in reply to a request for them; saved only if the student chooses. */
+  suggestedCards?: JamiAssistantSuggestedCard[];
+  /** Practice questions offered in reply to a request for them; saved only if the student chooses. */
+  suggestedQuestions?: JamiAssistantSuggestedQuestion[];
+  /**
+   * The engine's practice advice for the topic in front of the student, when
+   * that is its decision. Live advice, so it is shown but never saved with
+   * the conversation: reopened next week, it may no longer be true.
+   */
+  practiceOffer?: TutorPracticeOffer;
   canIllustrate?: boolean;
   /** Tutor agreed to make these; the drawer starts making them at once. */
   studyMaterialRequest?: TutorStudyMaterialRequest;
@@ -133,6 +166,8 @@ export type ParsedJamiAssistantModelAnswer = {
   answer: string;
   /** Graphs to draw, as JSON specs, placed where the answer marks them. */
   graphs: string[];
+  /** Diagrams to draw, as JSON specs for `lib/ai/tutor-diagram.ts`, placed where the answer marks them. */
+  diagrams: string[];
   sourceRefs: string[];
   usedCurrentContext: boolean;
   usedGeneralKnowledge: boolean;
@@ -140,6 +175,31 @@ export type ParsedJamiAssistantModelAnswer = {
   /** Tutor's own reading of whether it was asked to make study material. */
   studyMaterial: TutorStudyMaterialKind | null;
   studyMaterialFocus: string;
+  /**
+   * A structured verdict on the page, when one was asked for and the model
+   * offered one.
+   *
+   * Passed through exactly as it arrived, unread. Deciding whether it is a
+   * marking is `readNotebookMarking`'s job and only its job: a second opinion
+   * here would be a second place to be lenient, and the whole point of that
+   * contract is that there is one gate and it fails closed. Absent is the
+   * normal case -- most Tutor turns are not marking.
+   */
+  marking?: unknown;
+  /**
+   * Flashcards the model offered, passed through unread. Checked by
+   * `readTutorCardSuggestions`, which drops anything unusable, and only on a
+   * turn that invited them.
+   */
+  cards?: unknown;
+  /** Practice questions, likewise passed through for `readTutorQuestionSuggestions`. */
+  questions?: unknown;
+  /**
+   * Changes Tutor proposed to its memory of the student, passed through unread.
+   * `applyTutorMemoryOperations` is the one gate, and only on a turn that
+   * offered the field.
+   */
+  memory?: unknown;
 };
 
 export type TutorRoutingPreflight = {
@@ -157,6 +217,11 @@ type ModelAnswerPayload = {
   graphs?: unknown;
   studyMaterial?: unknown;
   studyMaterialFocus?: unknown;
+  diagrams?: unknown;
+  marking?: unknown;
+  cards?: unknown;
+  questions?: unknown;
+  memory?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -248,6 +313,49 @@ export function isExplicitTutorGraphRequest(message: string) {
 export function isExplicitTutorIllustrationRequest(message: string) {
   const trimmed = message.trim();
   return ILLUSTRATION_REQUEST_PATTERN.test(trimmed) && !isTutorGraphRequest(trimmed);
+}
+
+/**
+ * Words that ask for a mark, as opposed to asking for help.
+ *
+ * Deliberately much narrower than `MARKING_PATTERN`, which exists to route a
+ * model and happily matches "check", "review" and "feedback". Those are how
+ * students ask for ordinary help, and ordinary help must never become an
+ * assessed record: a student saying "can you check my working" is asking a
+ * question, not sitting an exam. What is wanted here is an explicit request
+ * for a mark.
+ */
+const MARK_REQUEST_PATTERN =
+  /\b(?:mark (?:this|my|it)|give me a mark|how many marks|what would (?:i|this) (?:get|score)|grade (?:this|my|it)|out of \d+|score (?:this|my|it))\b/i;
+
+/**
+ * Asking to understand, which is the opposite request even when it arrives in
+ * the same sentence as a mark word.
+ */
+const EXPLANATION_REQUEST_PATTERN =
+  /\b(?:explain|why (?:is|does|did|am|are)|how do i|help me understand|what does .{1,40} mean|teach me|walk me through)\b/i;
+
+/**
+ * Whether this turn may produce a marking at all.
+ *
+ * The gate on the whole notebook-evidence path, and it is the reason ordinary
+ * educational conversation cannot quietly become evidence about what a student
+ * knows. Three things must hold: the student is on a notebook page, they asked
+ * to be marked in as many words, and they did not actually ask for an
+ * explanation.
+ *
+ * A page id is required because a marking with nothing to attach it to is
+ * discarded downstream anyway; refusing it here means never asking the model
+ * for one that cannot be kept.
+ */
+export function invitesNotebookMarking(input: {
+  message: string;
+  context: JamiAssistantContext;
+}) {
+  if (input.context.surface !== "notebook") return false;
+  if (!input.context.pageId) return false;
+  if (EXPLANATION_REQUEST_PATTERN.test(input.message)) return false;
+  return MARK_REQUEST_PATTERN.test(input.message);
 }
 
 export function isRoutineNotebookMarkMyWork(input: {
@@ -456,6 +564,19 @@ export function parseAssistantIllustration(value: unknown): AssistantIllustratio
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   const id = normalizeId(item.id);
+  if (item.kind === "diagram") {
+    // Re-checked on every read: what reaches the page has passed the allowlist
+    // now, whatever was stored.
+    const drawn = typeof item.svg === "string" ? sanitizeSvgDiagram(item.svg, { maxLength: 120_000 }) : null;
+    const altText = normalizeOptionalText(item.altText, 500);
+    const caption = normalizeOptionalText(item.caption, 500);
+    const createdAt =
+      typeof item.createdAt === "number" && Number.isFinite(item.createdAt)
+        ? Math.max(0, Math.round(item.createdAt))
+        : 0;
+    if (!id || !drawn?.ok || !altText || !caption) return null;
+    return { kind: "diagram", id, svg: drawn.svg, altText, caption, createdAt };
+  }
   const storagePath =
     typeof item.storagePath === "string" ? item.storagePath.trim().slice(0, 1_000) : "";
   const mimeType =
@@ -536,7 +657,7 @@ export function getJamiAssistantResponseGuidance(input: {
       : checksNotebookWork
         ? "For checking work: give the verdict first, identify at most three concrete issues, then give one next step. Omit any empty section."
         : input.context.surface === "sources"
-          ? "Start from what the selected sources say, then build on them with wider knowledge where it helps the student understand. Be explicit when you go beyond the sources."
+          ? "The student is asking about the sources they selected. Answer from what those sources collectively cover, explained in your own words, then build on them with wider knowledge where it helps the student understand. Be explicit when you go beyond them."
           : "";
 
   const modeInstruction =
@@ -811,11 +932,15 @@ export function parseJamiAssistantModelAnswer(
   if (!payload) return null;
 
   const extracted = extractTutorGraphs(typeof payload.answer === "string" ? payload.answer : "");
-  const answer = extracted.answer.trim();
+  const extractedDiagrams = extractTutorDiagrams(extracted.answer);
+  const answer = extractedDiagrams.answer.trim();
   const graphs = [...new Set([...readTutorGraphSpecs(payload.graphs), ...extracted.graphs])].slice(
     0,
     MAX_TUTOR_GRAPHS
   );
+  const diagrams = [
+    ...new Set([...readTutorDiagramSpecs(payload.diagrams), ...extractedDiagrams.diagrams]),
+  ].slice(0, MAX_TUTOR_DIAGRAMS);
   const sourceRefs = Array.isArray(payload.sourceRefs)
     ? Array.from(
         new Set(
@@ -826,7 +951,7 @@ export function parseJamiAssistantModelAnswer(
       )
     : null;
   if (
-    (!answer && graphs.length === 0) ||
+    (!answer && graphs.length === 0 && diagrams.length === 0) ||
     !sourceRefs ||
     typeof payload.usedCurrentContext !== "boolean" ||
     typeof payload.usedGeneralKnowledge !== "boolean" ||
@@ -842,7 +967,20 @@ export function parseJamiAssistantModelAnswer(
   return {
     answer,
     graphs,
+    diagrams,
     sourceRefs,
+    ...(payload.marking !== undefined && payload.marking !== null
+      ? { marking: payload.marking }
+      : {}),
+    ...(payload.cards !== undefined && payload.cards !== null
+      ? { cards: payload.cards }
+      : {}),
+    ...(payload.questions !== undefined && payload.questions !== null
+      ? { questions: payload.questions }
+      : {}),
+    ...(payload.memory !== undefined && payload.memory !== null
+      ? { memory: payload.memory }
+      : {}),
     usedCurrentContext: payload.usedCurrentContext,
     usedGeneralKnowledge: payload.usedGeneralKnowledge,
     usedWebResearch:

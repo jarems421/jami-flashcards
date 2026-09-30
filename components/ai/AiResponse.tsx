@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, lazy } from "react";
+import type { AiResponseVariant } from "@/components/ai/AiResponseRenderer";
 
 /**
  * react-markdown pulls in the whole unified/remark/rehype stack plus KaTeX,
@@ -18,16 +19,21 @@ const AiResponseRenderer = lazy(() => import("@/components/ai/AiResponseRenderer
 export type AiResponseProps = {
   content: string;
   className?: string;
+  variant?: AiResponseVariant;
 };
 
-export default function AiResponse({ content, className = "" }: AiResponseProps) {
+export default function AiResponse({ content, className = "", variant = "chat" }: AiResponseProps) {
   return (
     <Suspense
       fallback={
-        <div className={`ai-response whitespace-pre-wrap ${className}`}>{content}</div>
+        <div
+          className={`ai-response whitespace-pre-wrap ${variant === "page" ? "ai-response--page" : ""} ${className}`}
+        >
+          {content}
+        </div>
       }
     >
-      <AiResponseRenderer content={content} className={className} />
+      <AiResponseRenderer content={content} className={className} variant={variant} />
     </Suspense>
   );
 }

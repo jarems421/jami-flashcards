@@ -756,9 +756,11 @@ describe("deciding what is worth preparing", () => {
     );
   });
 
-  it("never sends a formula", () => {
-    const subject = card({ back: "$E_k = \frac{1}{2}mv^2$" });
-    expect(needsStudyAssetPreparation(subject, SMART)).toBe(false);
+  it("sends a formula for multiple choice, and never for gap fill", () => {
+    const subject = card({ back: "$E_k = \\frac{1}{2}mv^2$" });
+    expect(needsStudyAssetPreparation(subject, fixed("multiple-choice"))).toBe(true);
+    expect(needsStudyAssetPreparation(subject, SMART)).toBe(true);
+    expect(needsStudyAssetPreparation(subject, fixed("gap-fill"))).toBe(false);
   });
 
   it("never sends anything for Type Answer", () => {

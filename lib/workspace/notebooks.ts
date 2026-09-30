@@ -111,7 +111,17 @@ export type NotebookTextBlock = {
   height: number;
   text: string;
   outlineVisible: boolean;
+  /**
+   * How the text is read. Absent for what a student types, which shows
+   * exactly as typed. "markdown" is a Tutor answer added to the page: its
+   * text is the answer's own Markdown and maths, and it is shown the way the
+   * Tutor showed it -- tables, headings, typeset maths -- rather than as the
+   * dollar signs and pipes a copy and paste leaves behind.
+   */
+  format?: NotebookTextBlockFormat;
 };
+
+export type NotebookTextBlockFormat = "markdown";
 
 export type Notebook = {
   id: string;
@@ -164,6 +174,11 @@ export type NotebookPage = {
   pageStyle: NotebookPageStyle;
   status: NotebookPageStatus;
   questionPrompt?: string;
+  /**
+   * The answer to a practice question page, kept off the page itself: shown
+   * only when the student asks, and read by Tutor when it marks the working.
+   */
+  questionAnswer?: string;
   questionAssets?: PracticePaperQuestionAsset[];
   linkedQuestionId?: string;
   linkedSourceId?: string;
@@ -194,8 +209,21 @@ export const MAX_NOTEBOOK_TITLE_LENGTH = 140;
 export const MAX_NOTEBOOK_TOPIC_IDS = 30;
 export const MAX_NOTEBOOK_SOURCE_IDS = 30;
 export const MAX_NOTEBOOK_PAGE_TYPED_CONTENT = 30_000;
+/** An expected answer and its solution notes, as a practice draft holds them. */
+export const MAX_QUESTION_ANSWER_LENGTH = 12_500;
 export const MAX_NOTEBOOK_TEXT_BLOCKS = 80;
 export const MAX_NOTEBOOK_TEXT_BLOCK_TEXT = 4_000;
+/**
+ * A Tutor answer is one box however long it is, and its Markdown and maths
+ * take more characters than the words they show.
+ */
+export const MAX_NOTEBOOK_MARKDOWN_BLOCK_TEXT = 12_000;
+
+export function getNotebookTextBlockTextLimit(block: Pick<NotebookTextBlock, "format">) {
+  return block.format === "markdown"
+    ? MAX_NOTEBOOK_MARKDOWN_BLOCK_TEXT
+    : MAX_NOTEBOOK_TEXT_BLOCK_TEXT;
+}
 export const MAX_NOTEBOOK_INK_SVG_LENGTH = 850_000;
 // Firestore documents have a 1 MiB ceiling. Leave room for field names and
 // page metadata instead of relying on the backend to reject a nearly-full doc.
@@ -601,9 +629,19 @@ export function resizeNotebookTextBlockFromEdge(input: {
   edge: NotebookTextBlockResizeEdge;
   deltaX: number;
   deltaY: number;
+  /**
+   * The shortest the box may get: the height of the text in it. A box grows
+   * to hold its text, so shrinking it past that moves nothing -- and from the
+   * top edge it would slide the box down instead of shrinking it.
+   */
+  minHeight?: number;
 }): NotebookTextBlock {
   const roundedDeltaX = Math.round(input.deltaX);
   const roundedDeltaY = Math.round(input.deltaY);
+  const minHeight = Math.max(
+    MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT,
+    Math.ceil(input.minHeight ?? 0)
+  );
   const right = input.block.x + input.block.width;
   const bottom = input.block.y + input.block.height;
   const next: NotebookTextBlock = { ...input.block };
@@ -627,7 +665,7 @@ export function resizeNotebookTextBlockFromEdge(input: {
   if (input.edge === "top") {
     const y = Math.max(
       0,
-      Math.min(bottom - MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT, input.block.y + roundedDeltaY)
+      Math.min(bottom - minHeight, input.block.y + roundedDeltaY)
     );
     next.y = y;
     next.height = bottom - y;
@@ -635,7 +673,7 @@ export function resizeNotebookTextBlockFromEdge(input: {
 
   if (input.edge === "bottom") {
     next.height = Math.max(
-      MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT,
+      minHeight,
       Math.min(NOTEBOOK_PAGE_COORDINATE_HEIGHT - input.block.y, input.block.height + roundedDeltaY)
     );
   }
@@ -674,6 +712,8 @@ function normalizeTextBlock(value: unknown): NotebookTextBlock | null {
     text,
     outlineVisible:
       typeof block.outlineVisible === "boolean" ? block.outlineVisible : true,
+    // Set only when there is one: Firestore refuses an undefined field.
+    ...(block.format === "markdown" ? { format: "markdown" as const } : {}),
   };
 }
 
@@ -809,12 +849,14 @@ export function prepareNotebookPageSnapshotForPersistence(
     );
   }
   const oversizedTextBlock = input.textBlocks.find(
-    (block) => typeof block.text !== "string" || block.text.length > MAX_NOTEBOOK_TEXT_BLOCK_TEXT
+    (block) =>
+      typeof block.text !== "string" ||
+      block.text.length > getNotebookTextBlockTextLimit(block)
   );
   if (oversizedTextBlock) {
     throw new NotebookPagePersistenceError(
       "text-block-too-large",
-      `Each text box can sync up to ${MAX_NOTEBOOK_TEXT_BLOCK_TEXT.toLocaleString()} characters. Shorten that text box and try again.`
+      `Each text box can sync up to ${getNotebookTextBlockTextLimit(oversizedTextBlock).toLocaleString()} characters. Shorten that text box and try again.`
     );
   }
   if (input.typedContent.length > MAX_NOTEBOOK_PAGE_TYPED_CONTENT) {
@@ -929,6 +971,7 @@ export function mapNotebookPageData(
     pageStyle: isNotebookPageStyle(data.pageStyle) ? data.pageStyle : "plain",
     status: isNotebookPageStatus(data.status) ? data.status : "blank",
     questionPrompt: normalizeOptionalString(data.questionPrompt, 30_000),
+    questionAnswer: normalizeOptionalString(data.questionAnswer, MAX_QUESTION_ANSWER_LENGTH),
     questionAssets: normalizeQuestionAssets(data.questionAssets),
     linkedQuestionId: normalizeOptionalString(data.linkedQuestionId, 160),
     linkedSourceId: normalizeOptionalString(data.linkedSourceId, 160),
@@ -1013,6 +1056,7 @@ export function buildNotebookPagePayload(input: {
   pageStyle?: NotebookPageStyle;
   status?: NotebookPageStatus;
   questionPrompt?: string;
+  questionAnswer?: string;
   questionAssets?: PracticePaperQuestionAsset[];
   linkedQuestionId?: string;
   linkedSourceId?: string;
@@ -1099,6 +1143,8 @@ export function buildNotebookPagePayload(input: {
     pageStyle: input.pageStyle ?? "plain",
     status: input.status ?? "blank",
     questionPrompt: normalizeOptionalString(input.questionPrompt, 30_000) ?? null,
+    questionAnswer:
+      normalizeOptionalString(input.questionAnswer, MAX_QUESTION_ANSWER_LENGTH) ?? null,
     questionAssets: normalizeQuestionAssets(input.questionAssets),
     linkedQuestionId: normalizeOptionalString(input.linkedQuestionId, 160) ?? null,
     linkedSourceId: normalizeOptionalString(input.linkedSourceId, 160) ?? null,

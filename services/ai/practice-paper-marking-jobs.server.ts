@@ -9,7 +9,11 @@ import {
   type PracticePaperMarkingJob,
   type PracticePaperMarkingJobKind,
 } from "@/lib/practice/practice-papers";
-import { checkAiBudget, refundAiBudget } from "@/services/ai/budgets";
+import {
+  checkAiBudget,
+  EMAIL_UNCONFIRMED_AI_MESSAGE,
+  refundAiBudget,
+} from "@/services/ai/budgets";
 import { getAdminDb } from "@/services/firebase/admin";
 import { markPracticePaperWorkflow } from "@/workflows/practice-paper-marking";
 
@@ -24,6 +28,7 @@ export class PracticePaperMarkingQueueError extends Error {
       | "question_not_found"
       | "allowance_unavailable"
       | "daily_limit"
+      | "email_unconfirmed"
       | "workflow_start_failed",
     message: string,
     readonly status: number,
@@ -170,6 +175,13 @@ export async function enqueuePracticePaperMarking(input: {
       "allowance_unavailable",
       "AI usage limits are temporarily unavailable.",
       503
+    );
+  }
+  if (!budget.allowed && budget.reason === "email_unconfirmed") {
+    throw new PracticePaperMarkingQueueError(
+      "email_unconfirmed",
+      EMAIL_UNCONFIRMED_AI_MESSAGE,
+      403
     );
   }
   if (!budget.allowed) {

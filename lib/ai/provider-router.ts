@@ -39,6 +39,10 @@ export type AiResponseDiagnostics = {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
   totalTokenCount?: number;
+  /** Gemini only: thinking, billed as output. */
+  thoughtsTokenCount?: number;
+  /** Gemini only: what a tool fetched, billed as input. */
+  toolUsePromptTokenCount?: number;
   estimatedCostUsd?: number;
   finishReason?: string;
 };
@@ -71,8 +75,14 @@ export type AiRouterOptions = {
    *
    * A student can raise this for themselves in settings; it never lowers what
    * the role already requires. Left unset, the role's own level applies.
+   *
+   * `none` switches thinking off. It is the only setting between off and the
+   * model's full habit that the supervisor's endpoints honour: measured on
+   * every Qwen endpoint the role approves, `low`, `minimal` and a 400-token
+   * budget each still thought for 1,250 to 2,100 tokens on a one-line equation,
+   * where `none` answered in 113.
    */
-  reasoningEffort?: AiReasoningEffort;
+  reasoningEffort?: AiReasoningEffort | "none";
   /**
    * Send this call to a specific approved endpoint instead of the role's usual
    * one. Rejected unless the role actually lists it as a failover, so this
@@ -193,8 +203,8 @@ function recordUsage(info: AiResponseDiagnostics) {
   spend.record({
     provider: info.provider,
     model: info.modelName,
-    promptTokens: info.promptTokenCount,
-    completionTokens: info.candidatesTokenCount,
+    promptTokens: (info.promptTokenCount ?? 0) + (info.toolUsePromptTokenCount ?? 0),
+    completionTokens: (info.candidatesTokenCount ?? 0) + (info.thoughtsTokenCount ?? 0),
     ...(info.estimatedCostUsd === undefined
       ? {}
       : { reportedCostUsd: info.estimatedCostUsd }),
@@ -353,6 +363,8 @@ async function runBufferedAttempt(
         promptTokenCount: diagnostics.promptTokenCount,
         candidatesTokenCount: diagnostics.candidatesTokenCount,
         totalTokenCount: diagnostics.totalTokenCount,
+        thoughtsTokenCount: diagnostics.thoughtsTokenCount,
+        toolUsePromptTokenCount: diagnostics.toolUsePromptTokenCount,
         finishReason: diagnostics.finishReason,
       };
       recordUsage(info);
@@ -445,6 +457,8 @@ async function runStreamBufferedAttempt(
         promptTokenCount: diagnostics.promptTokenCount,
         candidatesTokenCount: diagnostics.candidatesTokenCount,
         totalTokenCount: diagnostics.totalTokenCount,
+        thoughtsTokenCount: diagnostics.thoughtsTokenCount,
+        toolUsePromptTokenCount: diagnostics.toolUsePromptTokenCount,
         finishReason: diagnostics.finishReason,
       };
       recordUsage(info);
@@ -598,6 +612,8 @@ export async function* streamAiText(
               promptTokenCount: diagnostics.promptTokenCount,
               candidatesTokenCount: diagnostics.candidatesTokenCount,
               totalTokenCount: diagnostics.totalTokenCount,
+              thoughtsTokenCount: diagnostics.thoughtsTokenCount,
+              toolUsePromptTokenCount: diagnostics.toolUsePromptTokenCount,
               finishReason: diagnostics.finishReason,
             };
             recordUsage(info);

@@ -275,7 +275,21 @@ function normalizeBands(value: unknown, questionId: string, prefix = "L") {
       descriptor: "No relevant content.",
     });
   }
-  return sorted;
+  /*
+   * Levels are numbered by where they sit, not by where they were listed.
+   *
+   * A label defaulted from list position called an unlabelled 0-mark band
+   * "Level 1" and moved every real level up one, and a model's own "Level N"
+   * labels drift the same way once it adds the zero band. The paper audit
+   * refused a finished paper for it ("band_label_offset"). Only generic
+   * "Level N" labels are renumbered; a scheme's own names are kept.
+   */
+  let level = 0;
+  return sorted.map((band) => {
+    if (!/^level\s*\d+$/i.test(band.label)) return band;
+    const label = band.maxMarks === 0 ? "Level 0" : `Level ${(level += 1)}`;
+    return label === band.label ? band : { ...band, label };
+  });
 }
 
 function normalizeTraits(value: unknown, questionId: string) {

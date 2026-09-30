@@ -22,8 +22,9 @@ import { normalizeReasoningEffort } from "@/lib/profile/reasoning-effort";
 import {
   buildTutorPersonalisationInstruction,
   normalizeTutorPreferences,
-  selectFolderTutorInstructions,
+  selectTutorFolderContext,
 } from "@/lib/ai/tutor-personalisation";
+import { readTutorFolderFacts } from "@/lib/ai/tutor-folder-facts";
 import { mapSourceData, type Source } from "@/lib/material/sources";
 import {
   getStudyLevelTutorLabel,
@@ -39,10 +40,36 @@ import {
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { examQuestionVisualParts, loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
+import { EXAM_WORKING_IMAGE_DESCRIPTION } from "@/lib/practice/single-question-paper";
 import { serializeLearnerProfileForTutor } from "@/lib/learning/serialize/tutor-context";
+import { buildStudyActions } from "@/lib/learning/actions/study-actions";
+import {
+  materialTopicKeys,
+  practiceActionForMaterial,
+} from "@/lib/learning/actions/practice-for-material";
+import { buildTutorPracticeOffer, type TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
+import { describeStudyAction } from "@/lib/dashboard/today-plan";
+import {
+  loadStudyFolderForActions,
+  studyActionContextFor,
+} from "@/services/learning/study-actions.server";
+import { loadStudyActionHistory } from "@/services/learning/study-action-history.server";
 import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
 import { createLogger } from "@/lib/observability/logger";
 import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
+import { loadRecentResultText } from "@/services/learning/recent-result-text.server";
+import {
+  buildTutorMemoryInstruction,
+  selectRecentTutorActivity,
+  selectTutorMemoriesForPrompt,
+} from "@/lib/ai/tutor-memory";
+import { loadRecentTutorActivity, loadTutorMemory } from "@/services/ai/tutor-memory.server";
+import { loadNotebookNeighbourPageParts } from "@/services/ai/notebook-neighbour-pages.server";
+import {
+  buildTutorCourseContextFor,
+  findCourseDocumentSources,
+  loadTutorCourse,
+} from "@/services/ai/tutor-course-context.server";
 
 const MAX_SOURCE_METADATA_CANDIDATES = 200;
 const MAX_SOURCE_CANDIDATES_PER_RELATION =
@@ -57,6 +84,8 @@ const NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT = 12_000;
  * The profile improves an answer; it must never be the reason one is slow.
  */
 const LEARNER_PROFILE_BUDGET_MS = 2_500;
+/** Memory is two small reads; past this the answer goes ahead without it. */
+const TUTOR_MEMORY_BUDGET_MS = 1_500;
 
 const log = createLogger({ module: "ai.assistant.context" });
 
@@ -97,16 +126,21 @@ async function loadTutorPreferences(input: {
     userSnapshot.exists ? userSnapshot.data()?.reasoningEffort : undefined
   );
   /*
-   * Folder instructions apply only when the material sits in exactly one
-   * folder, because two documents cannot be merged into one set of teaching
-   * instructions and picking between them would be a guess. A card in two
-   * folders therefore gets the general preferences and nothing else, and the
-   * settings drawer says so rather than the conversation asking about it.
+   * A folder's subject and notes apply only when the material sits in
+   * exactly one folder, because two folders' notes cannot be merged into one
+   * set of teaching instructions and picking between them would be a guess. A
+   * card in two folders therefore gets the general preferences and nothing
+   * else, and the settings drawer says so rather than the conversation asking.
    */
-  const selectedFolder = selectFolderTutorInstructions(
+  const folder = selectTutorFolderContext(
     folderSnapshots
       .filter((snapshot) => snapshot.exists)
-      .map((snapshot) => snapshot.data() ?? {})
+      .map((snapshot) =>
+        readTutorFolderFacts(
+          snapshot.id,
+          (snapshot.data() ?? {}) as Record<string, unknown>
+        )
+      )
   );
   const preferences = normalizeTutorPreferences(
     personalisationSnapshot.exists
@@ -115,10 +149,7 @@ async function loadTutorPreferences(input: {
   );
   const personalisationContext = buildTutorPersonalisationInstruction({
     preferences,
-    folderInstructions: selectedFolder.instructions,
-    ...(selectedFolder.folderName
-      ? { folderName: selectedFolder.folderName }
-      : {}),
+    ...(folder ? { folder } : {}),
     // Per request, like every other fenced block, so nothing a student saved
     // can close a marker it was not given.
     boundaryToken: randomUUID(),
@@ -167,6 +198,105 @@ async function loadTutorPreferences(input: {
   };
 }
 
+/** A lookup that gives up after `ms` with `fallback`, and never throws. */
+async function withinBudget<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  work.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), ms);
+      }),
+    ]);
+  } catch (error) {
+    log.warn("recent_results.text_unavailable", { error });
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * What Tutor remembers about the student, and their other recent chats, as the
+ * block Tutor reads.
+ *
+ * Like the learner profile, an enrichment that never costs an answer: memory
+ * switched off, a failed read or a slow one all leave the request exactly as
+ * it was before memory existed.
+ */
+async function loadTutorMemoryContext(input: {
+  uid: string;
+  folderIds: readonly string[];
+  topicIds: readonly string[];
+  currentThreadId?: string;
+  firstTurn: boolean;
+}): Promise<
+  | { memoryContext: string; memoryRefs: ReadonlyMap<string, string>; memoryWritable: boolean }
+  | undefined
+> {
+  if (!featureFlags.enableTutorMemory) return undefined;
+  const startedAt = Date.now();
+  const loading = Promise.all([
+    loadTutorMemory(input.uid),
+    loadRecentTutorActivity(input.uid, startedAt).catch((error: unknown) => {
+      // The chat list is a nicety; the memory itself is still worth having.
+      log.warn("tutor_memory.recent_unavailable", { error });
+      return [];
+    }),
+  ]);
+  loading.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const settled = await Promise.race([
+      loading,
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), TUTOR_MEMORY_BUDGET_MS);
+      }),
+    ]);
+    if (settled === "timeout") {
+      log.warn("tutor_memory.timed_out", { budgetMs: TUTOR_MEMORY_BUDGET_MS });
+      return undefined;
+    }
+    const [state, threads] = settled;
+    if (!state.enabled) return undefined;
+    const now = Date.now();
+    const memories = selectTutorMemoriesForPrompt({
+      state,
+      folderIds: input.folderIds,
+      topicIds: input.topicIds,
+      now,
+    });
+    const recent = selectRecentTutorActivity(threads, {
+      ...(input.currentThreadId ? { currentThreadId: input.currentThreadId } : {}),
+      now,
+    });
+    const { instruction, refs } = buildTutorMemoryInstruction({
+      memories,
+      recent,
+      now,
+      boundaryToken: randomUUID(),
+      firstTurn: input.firstTurn,
+      canWrite: true,
+    });
+    log.info("tutor_memory.loaded", {
+      // Counts only, never the notes themselves.
+      stored: state.items.length,
+      included: memories.length,
+      recentChats: recent.length,
+      latencyMs: now - startedAt,
+    });
+    return instruction
+      ? { memoryContext: instruction, memoryRefs: refs, memoryWritable: true }
+      : undefined;
+  } catch (error) {
+    log.warn("tutor_memory.failed", { error, latencyMs: Date.now() - startedAt });
+    return undefined;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * What the Learning Engine currently believes about the student, for the
  * material in front of them, written for Tutor.
@@ -183,7 +313,9 @@ async function loadTutorLearningContext(input: {
   uid: string;
   folderIds: readonly string[];
   deckId?: string;
-}) {
+  /** Where the material in front of the student sits in the engine's concept space. */
+  materialKeys: readonly string[];
+}): Promise<{ learningContext: string; practiceOffer?: TutorPracticeOffer } | undefined> {
   if (!featureFlags.enableLearnerProfile) return undefined;
   const folderIds = Array.from(new Set(input.folderIds.filter(Boolean)));
   const scope =
@@ -199,16 +331,33 @@ async function loadTutorLearningContext(input: {
   const loading = loadLearnerProfile({ uid: input.uid, ...scope });
   // Still settles after a timeout; without this its failure would go unhandled.
   loading.catch(() => undefined);
+  /*
+   * What turning the profile into actions needs, read beside it rather than
+   * after it: the folder, for whether its course can be practised, and the
+   * student's history with this advice, so resting advice stays at rest. Both
+   * are small, and either failing costs the offer and nothing else.
+   */
+  const actionFolderId = "folderId" in scope ? scope.folderId : undefined;
+  const actionInputs =
+    actionFolderId && featureFlags.enableStudyActions && input.materialKeys.length > 0
+      ? Promise.all([
+          loadStudyFolderForActions(input.uid, actionFolderId),
+          loadStudyActionHistory({ uid: input.uid }),
+        ]).catch((error: unknown) => {
+          log.warn("practice_offer.unavailable", { error });
+          return null;
+        })
+      : Promise.resolve(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const profile = await Promise.race([
-      loading,
+    const settled = await Promise.race([
+      Promise.all([loading, actionInputs]),
       new Promise<"timeout">((resolve) => {
         timer = setTimeout(() => resolve("timeout"), LEARNER_PROFILE_BUDGET_MS);
       }),
     ]);
     const latencyMs = Date.now() - startedAt;
-    if (profile === "timeout") {
+    if (settled === "timeout") {
       log.warn("learner_profile.timed_out", {
         consumer: "tutor",
         scope: scopeKind,
@@ -216,6 +365,7 @@ async function loadTutorLearningContext(input: {
       });
       return undefined;
     }
+    const [profile, inputs] = settled;
     if (!profile) {
       log.info("learner_profile.completed", {
         consumer: "tutor",
@@ -225,16 +375,52 @@ async function loadTutorLearningContext(input: {
       });
       return undefined;
     }
+    const [folder, history] = inputs ?? [null, null];
+    const practiceAction = folder
+      ? practiceActionForMaterial(
+          buildStudyActions(profile, studyActionContextFor(folder), history?.history),
+          input.materialKeys
+        )
+      : undefined;
+    const practiceOffer = practiceAction
+      ? buildTutorPracticeOffer(practiceAction, describeStudyAction(practiceAction))
+      : undefined;
+    /*
+     * The words of the cards and questions in the recent results, so Tutor can
+     * name the one the student got wrong. Within what is left of the budget;
+     * out of time, the results are still listed, by kind and topic.
+     */
+    const recentItemText = await withinBudget(
+      loadRecentResultText(input.uid, profile.recentResults ?? []),
+      Math.max(0, LEARNER_PROFILE_BUDGET_MS - (Date.now() - startedAt)),
+      new Map<string, string>()
+    );
     const learningContext = serializeLearnerProfileForTutor(profile, {
       boundaryToken: randomUUID(),
+      recentItemText,
+      ...(practiceAction && practiceOffer
+        ? {
+            practiceFocus: {
+              label: practiceAction.target.label,
+              reason: practiceAction.reason,
+              ...(practiceAction.intervention ? { because: practiceAction.intervention.because } : {}),
+            },
+          }
+        : {}),
     });
     log.info("learner_profile.completed", {
       consumer: "tutor",
       outcome: learningContext ? "included" : "insufficient_evidence",
       latencyMs,
+      practiceOffered: Boolean(learningContext && practiceOffer),
+      // Counts only: how many items were listed, and how many could be named.
+      recentResults: profile.recentResults?.length ?? 0,
+      recentResultsNamed: recentItemText.size,
       ...learnerProfileTelemetry(profile),
     });
-    return learningContext;
+    if (!learningContext) return undefined;
+    // Offered only alongside the profile that tells the model it is there.
+    return { learningContext, ...(practiceOffer ? { practiceOffer } : {}) };
   } catch (error) {
     log.warn("learner_profile.failed", {
       consumer: "tutor",
@@ -308,7 +494,7 @@ ${distant
     );
   }
 
-  return `Notebook page map (loaded when the student asked; handwriting and page imagery are available only for the current page, so treat the other pages' typed text as an outline rather than their full contents):
+  return `Notebook page map (loaded when the student asked; handwriting and page imagery are available for the current page and, where pictured below, the page either side of it; treat any other page's typed text as an outline rather than its full contents):
 ${sections
     .join("\n\n")
     .slice(0, NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT)}`;
@@ -381,6 +567,16 @@ async function loadSourcesById(db: AdminDb, uid: string, sourceIds: string[]) {
     .map((snapshot) => mapSourceData(snapshot.id, snapshot.data() ?? {}));
 }
 
+/** Sources chosen or attached rather than found by relation; see `pinnedSourceIds`. */
+function getPinnedSourceIds(relations: SourceRelations, includeRelated: boolean) {
+  return Array.from(
+    new Set([
+      ...relations.currentSourceIds,
+      ...(includeRelated ? relations.directSourceIds : []),
+    ])
+  );
+}
+
 async function selectSources(input: {
   db: AdminDb;
   uid: string;
@@ -388,12 +584,7 @@ async function selectSources(input: {
   message: string;
   includeRelated: boolean;
 }) {
-  const requiredIds = Array.from(
-    new Set([
-      ...input.relations.currentSourceIds,
-      ...(input.includeRelated ? input.relations.directSourceIds : []),
-    ])
-  );
+  const requiredIds = getPinnedSourceIds(input.relations, input.includeRelated);
   const required = await loadSourcesById(input.db, input.uid, requiredIds);
 
   if (!input.includeRelated) {
@@ -616,10 +807,20 @@ async function resolveNotebookContext(input: {
     )
     .filter((candidate) => candidate.notebookId === notebook.id);
   const notebookPageMap = buildNotebookPageMap(notebookPages, page.id);
+  /*
+   * A practice question's answer, which the page keeps folded away. Tutor
+   * marks against it, and holds it back as a flashcard's withheld side is held
+   * back: the student opens it themselves, or asks for it.
+   */
+  const answerKey = questionPrompt && page.questionAnswer ? page.questionAnswer.slice(0, 6_000) : "";
   const currentParts: AiContentPart[] = [
     {
       text: `Notebook: ${notebook.title}\nPage: ${page.pageNumber}${
         questionPrompt ? `\nQuestion prompt: ${questionPrompt}` : ""
+      }${
+        answerKey
+          ? `\nAnswer key for this question (hidden on the page until the student opens it). Use it to mark and check their working. Do not reveal it unless they ask for the answer or ask to be marked:\n${answerKey}`
+          : ""
       }${typedText ? `\nTyped page content:\n${typedText}` : ""}${
         notebookPageMap ? `\n\n${notebookPageMap}` : ""
       }`,
@@ -634,11 +835,22 @@ async function resolveNotebookContext(input: {
       },
     });
   }
+  /*
+   * Started here, awaited alongside the sources: drawing two pages takes a
+   * moment, and nothing else waits on it.
+   */
+  const neighbourParts = loadNotebookNeighbourPageParts({
+    uid: input.uid,
+    notebookId: notebook.id,
+    pages: notebookPages,
+    currentPageId: page.id,
+  });
 
   return {
     currentId: page.id,
     currentLabel: "Current page",
     currentParts,
+    neighbourParts,
     relations: {
       currentSourceIds: [],
       directSourceIds: notebook.sourceIds,
@@ -720,12 +932,25 @@ async function resolvePracticeContext(input: {
   }
   if (typeof attempt.workingSnapshotPath === "string") {
     const [bytes] = await getAdminStorageBucket().file(attempt.workingSnapshotPath).download();
-    if (bytes.length <= 3 * 1024 * 1024) currentParts.push({ inlineData: { mimeType: "image/png", data: bytes.toString("base64") } });
+    if (bytes.length <= 3 * 1024 * 1024) currentParts.push(
+      {
+        text: `${EXAM_WORKING_IMAGE_DESCRIPTION} Working often runs from one page onto the next with no label, mid-line or part way down a sheet; read the pages as one answer, joined in the order it was done, before saying anything about it.`,
+      },
+      { inlineData: { mimeType: "image/png", data: bytes.toString("base64") } }
+    );
   }
   return {
     currentId: attemptSnapshot.id,
     currentLabel: "Marked practice answer",
     currentParts,
+    /*
+     * The specification topics and concepts the question is filed under, so
+     * the engine's advice about them can be found. Kept apart from `topicIds`,
+     * which are the student's own Topics and choose their sources.
+     */
+    specificationIds: [question.topicIds, question.conceptIds].flatMap((ids) =>
+      Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : []
+    ),
     relations: {
       currentSourceIds: [],
       directSourceIds: [],
@@ -740,6 +965,12 @@ export async function resolveJamiAssistantContext(input: {
   message: string;
   context: JamiAssistantContext;
   useRelatedSources: boolean;
+  /** The chat this question belongs to, left out of "recent chats". */
+  threadId?: string;
+  /** Whether this is the chat's first message. */
+  firstTurn?: boolean;
+  /** False for an account that must not remember anyone, such as the shared demo. */
+  useMemory?: boolean;
 }): Promise<ResolvedJamiAssistantContext> {
   const uid = input.uid.trim();
   if (!uid) {
@@ -754,7 +985,17 @@ export async function resolveJamiAssistantContext(input: {
         : input.context.surface === "practice"
           ? await resolvePracticeContext({ db, uid, context: input.context })
           : await resolveNotebookContext({ db, uid, context: input.context });
-  const [sources, preferences, learningContext] = await Promise.all([
+  const pinnedSourceIds = getPinnedSourceIds(resolved.relations, input.useRelatedSources);
+  const deckId =
+    "deckId" in resolved && typeof resolved.deckId === "string" && resolved.deckId
+      ? resolved.deckId
+      : undefined;
+  const materialKeys = materialTopicKeys({
+    topicIds: resolved.relations.topicIds,
+    ...(deckId ? { deckId } : {}),
+    ...("specificationIds" in resolved ? { specificationIds: resolved.specificationIds } : {}),
+  });
+  const [sources, preferences, learning, course, neighbourParts, memory] = await Promise.all([
     selectSources({
       db,
       uid,
@@ -770,28 +1011,71 @@ export async function resolveJamiAssistantContext(input: {
     loadTutorLearningContext({
       uid,
       folderIds: resolved.relations.folderIds,
-      ...("deckId" in resolved && typeof resolved.deckId === "string" && resolved.deckId
-        ? { deckId: resolved.deckId }
-        : {}),
+      ...(deckId ? { deckId } : {}),
+      materialKeys,
     }),
+    loadTutorCourse({ uid, folderIds: resolved.relations.folderIds }),
+    "neighbourParts" in resolved ? resolved.neighbourParts : Promise.resolve([]),
+    input.useMemory === false
+      ? Promise.resolve(undefined)
+      : loadTutorMemoryContext({
+          uid,
+          folderIds: resolved.relations.folderIds,
+          topicIds: resolved.relations.topicIds,
+          ...(input.threadId ? { currentThreadId: input.threadId } : {}),
+          firstTurn: input.firstTurn ?? true,
+        }),
   ]);
+  // After the current page's own parts, so the page asked about is read first.
+  const currentParts = [...resolved.currentParts, ...neighbourParts];
+  /*
+   * Course documents are searched like sources the student chose, so a rubric
+   * is consulted on every question rather than only when its wording happens
+   * to match the question's.
+   */
+  const courseDocuments = findCourseDocumentSources(sources);
+  const courseContext = buildTutorCourseContextFor({
+    loaded: course,
+    courseDocuments,
+    currentText: resolved.currentParts
+      .flatMap((part) => ("text" in part ? [part.text] : []))
+      .join("\n"),
+  });
 
   return {
     currentId: resolved.currentId,
     currentLabel: resolved.currentLabel,
-    currentParts: resolved.currentParts,
+    currentParts,
     sources,
-    pinnedSourceIds: Array.from(
-      new Set([
-        ...resolved.relations.currentSourceIds,
-        ...(input.useRelatedSources ? resolved.relations.directSourceIds : []),
-      ])
-    ),
+    pinnedSourceIds: sources
+      .filter(
+        (source) =>
+          pinnedSourceIds.includes(source.id) ||
+          courseDocuments.some((document) => document.id === source.id)
+      )
+      .map((source) => source.id),
     studyLevelContext: preferences.studyLevelContext,
     personalisationContext: preferences.personalisationContext,
-    ...(learningContext ? { learningContext } : {}),
-    reasoningEffort: preferences.reasoningEffort,
+    ...(learning ? { learningContext: learning.learningContext } : {}),
+    ...(learning?.practiceOffer ? { practiceOffer: learning.practiceOffer } : {}),
+    ...(courseContext ? { courseContext } : {}),
+    /**
+     * The Topics this material is filed under.
+     *
+     * Needed so a marking of a notebook page can be placed on a concept:
+     * evidence that cannot be attributed is discarded, so a page in an
+     * untagged notebook produces none. Already loaded for source selection.
+     */
+    topicIds: resolved.relations.topicIds,
     folderIds: resolved.relations.folderIds,
+    ...(memory
+      ? {
+          memoryContext: memory.memoryContext,
+          memoryRefs: memory.memoryRefs,
+          memoryWritable: memory.memoryWritable,
+        }
+      : {}),
+    reasoningEffort: preferences.reasoningEffort,
     ...("deckId" in resolved && typeof resolved.deckId === "string" && resolved.deckId
       ? { deckId: resolved.deckId }
       : {}),

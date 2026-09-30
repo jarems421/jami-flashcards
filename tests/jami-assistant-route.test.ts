@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => {
     checkBudget: vi.fn(),
     prepareSource: vi.fn(),
     retrieveChunks: vi.fn(),
+    after: vi.fn(),
+    applyMemory: vi.fn(async () => ({ added: 1, updated: 0, forgotten: 0, rejected: 0 })),
     generateText: vi.fn(),
     streamText: vi.fn(),
     generateResearch: vi.fn<
@@ -112,8 +114,21 @@ vi.mock("@/lib/ai/source-ingestion", () => ({
 }));
 
 vi.mock("@/services/ai/source-index.server", () => ({
-  retrieveSourceChunks: mocks.retrieveChunks,
+  retrieveTutorEvidence: mocks.retrieveChunks,
 }));
+
+vi.mock("@/services/ai/tutor-memory.server", () => ({
+  applyTutorMemoryFromAnswer: mocks.applyMemory,
+}));
+
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: mocks.after,
+}));
+
+function evidence(passages: unknown[] = [], extra: Record<string, unknown> = {}) {
+  return { passages, outlines: new Map(), targets: new Map(), ...extra };
+}
 
 vi.mock("@/lib/ai/provider-router", () => ({
   isAnyAiProviderConfigured: () => true,
@@ -227,7 +242,8 @@ beforeEach(() => {
     inputBytes: 100,
     parts: [{ text: "Plants capture light energy." }],
   });
-  mocks.retrieveChunks.mockResolvedValue([]);
+  mocks.retrieveChunks.mockResolvedValue(evidence());
+  mocks.after.mockReset();
   const validAnswer = JSON.stringify({
     answer: "Plants turn light energy into stored chemical energy.",
     sourceRefs: ["S1"],
@@ -265,6 +281,8 @@ describe("universal Jami assistant route", () => {
       message: "What is photosynthesis?",
       context: { surface: "learn", cardId: "card-1", phase: "answer" },
       useRelatedSources: true,
+      firstTurn: true,
+      useMemory: true,
     });
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -467,31 +485,6 @@ describe("universal Jami assistant route", () => {
     expect(mocks.streamText).not.toHaveBeenCalled();
   });
 
-  it("reads a folder's material by what fits the question, not file by file", async () => {
-    const file = (id: string, title: string) => ({
-      id, title, type: "file", folderIds: ["module"], topicIds: [], status: "active",
-      createdBy: "user-1", createdAt: 1, updatedAt: 1, sizeBytes: 10 * 1024 * 1024,
-    });
-    mocks.resolveContext.mockResolvedValueOnce({
-      currentId: "card-1",
-      currentLabel: "Current card",
-      currentParts: [{ text: "Card front and answer" }],
-      // Thirty lectures, 300 MB between them: every one attached, none chosen.
-      sources: Array.from({ length: 30 }, (_, index) => file(`lecture-${index + 1}`, `Lecture ${index + 1}`)),
-      pinnedSourceIds: [],
-    });
-    mocks.retrieveChunks.mockResolvedValueOnce([
-      { id: "lecture-27-0003", sourceId: "lecture-27", chunkIndex: 3, text: "Compactness: every open cover has a finite subcover.", pageStart: 12, pageEnd: 12 },
-    ]);
-
-    const response = await postAssistant(request(validBody()));
-
-    expect(response.status).toBe(200);
-    // Searched across all thirty, and only the matching lecture read -- as its passage, not a download.
-    expect(mocks.retrieveChunks.mock.calls.at(-1)?.[0].sourceIds).toHaveLength(30);
-    expect(mocks.prepareSource).not.toHaveBeenCalled();
-  });
-
   it("rejects obviously oversized source selections before charging", async () => {
     mocks.resolveContext.mockResolvedValueOnce({
       currentId: "card-1",
@@ -600,6 +593,311 @@ describe("universal Jami assistant route", () => {
           reason: "Unreadable file",
         },
       ],
+    });
+  });
+
+  it("leaves out an indexed folder source that has nothing relevant, rather than reading it whole", async () => {
+    const resolved = (await mocks.resolveContext.getMockImplementation()?.({})) as {
+      sources: Array<Record<string, unknown>>;
+    };
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...resolved,
+      sources: [{ ...resolved.sources[0], indexStatus: "ready" }],
+    });
+    mocks.streamText.mockResolvedValueOnce(
+      JSON.stringify({
+        answer: "A general explanation.",
+        sourceRefs: [],
+        usedCurrentContext: true,
+        usedGeneralKnowledge: true,
+      })
+    );
+
+    const { terminal } = await readStream(await postAssistant(request(validBody())));
+
+    expect(terminal).toMatchObject({ type: "done", reply: "A general explanation." });
+    expect(terminal).not.toHaveProperty("sourceFailures");
+    expect(mocks.prepareSource).not.toHaveBeenCalled();
+  });
+
+  it("gives each chosen source its own search and sends passages, not whole documents", async () => {
+    const resolved = (await mocks.resolveContext.getMockImplementation()?.({})) as {
+      sources: Array<Record<string, unknown>>;
+    };
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...resolved,
+      pinnedSourceIds: ["source-1"],
+      sources: [{ ...resolved.sources[0], indexStatus: "ready" }],
+    });
+    mocks.retrieveChunks.mockResolvedValueOnce(evidence([
+      {
+        id: "source-1-0003",
+        sourceId: "source-1",
+        sourceTitle: "Biology notes",
+        chunkIndex: 3,
+        text: "Chlorophyll absorbs red and blue light.",
+        pageStart: 2,
+        pageEnd: 2,
+        distance: 0.2,
+      },
+    ]));
+
+    await readStream(await postAssistant(request(validBody())));
+
+    expect(mocks.retrieveChunks).toHaveBeenCalledWith(
+      expect.objectContaining({ pinnedSourceIds: ["source-1"], relatedSourceIds: [] })
+    );
+    expect(mocks.prepareSource).not.toHaveBeenCalled();
+    const generationRequest = mocks.streamText.mock.calls[0]?.[0] as {
+      request: { contents: Array<{ parts: Array<{ text?: string }> }>; systemInstruction: string };
+    };
+    const sent = generationRequest.request.contents
+      .at(-1)
+      ?.parts.map((part) => part.text ?? "")
+      .join("\n");
+    expect(sent).toContain("[p. 2]\nChlorophyll absorbs red and blue light.");
+    expect(generationRequest.request.systemInstruction).toContain("Teach the ideas; do not reproduce the passages.");
+  });
+
+  it("reads the lecture a student names from a long pack, and labels where each passage is", async () => {
+    const resolved = (await mocks.resolveContext.getMockImplementation()?.({})) as {
+      sources: Array<Record<string, unknown>>;
+    };
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...resolved,
+      pinnedSourceIds: ["source-1"],
+      sources: [{ ...resolved.sources[0], title: "Thermal physics pack", indexStatus: "ready", indexVersion: 2 }],
+    });
+    const lecture4 = {
+      key: "lecture:4",
+      kind: "lecture",
+      number: 4,
+      title: "Entropy",
+      label: "Lecture 4: Entropy",
+      pageStart: 26,
+      pageEnd: 33,
+      chunkStart: 9,
+      chunkEnd: 10,
+    };
+    mocks.retrieveChunks.mockResolvedValueOnce(evidence(
+      [
+        {
+          id: "source-1-0009",
+          sourceId: "source-1",
+          sourceTitle: "Thermal physics pack",
+          chunkIndex: 9,
+          text: "Entropy of an isolated system never decreases.",
+          pageStart: 26,
+          pageEnd: 29,
+          sectionLabel: "Lecture 4: Entropy",
+          distance: 0.3,
+          targeted: true,
+        },
+      ],
+      {
+        outlines: new Map([["source-1", {
+          sourceId: "source-1",
+          pageKind: "page",
+          sections: [
+            { ...lecture4, key: "lecture:3", number: 3, title: "The first law", label: "Lecture 3: The first law", pageStart: 18, pageEnd: 25, chunkStart: 7, chunkEnd: 8 },
+            lecture4,
+          ],
+          chunkCount: 11,
+          chunkPageStarts: [],
+          chunkPageEnds: [],
+        }]]),
+        targets: new Map([["source-1", {
+          chunkIndexes: [9, 10],
+          sections: [lecture4],
+          missing: [],
+          via: "named",
+        }]]),
+      }
+    ));
+
+    await readStream(await postAssistant(request(validBody({
+      message: "In lecture 4, why does entropy increase?",
+    }))));
+
+    expect(mocks.retrieveChunks).toHaveBeenCalledWith(expect.objectContaining({
+      references: { sections: [{ kind: "lecture", number: 4 }], pages: [] },
+      focusText: "In lecture 4, why does entropy increase?",
+    }));
+    const generationRequest = mocks.streamText.mock.calls[0]?.[0] as {
+      request: { contents: Array<{ parts: Array<{ text?: string }> }>; systemInstruction: string };
+    };
+    const sent = generationRequest.request.contents
+      .at(-1)
+      ?.parts.map((part) => part.text ?? "")
+      .join("\n");
+    expect(sent).toContain("- Lecture 4: Entropy (pp. 26–33)  <- asked about");
+    expect(sent).toContain("The student asked about Lecture 4: Entropy");
+    expect(sent).toContain("[Lecture 4: Entropy · pp. 26–29]\nEntropy of an isolated system never decreases.");
+    expect(generationRequest.request.systemInstruction).toContain(
+      "When the student names a part of their material"
+    );
+    // A current index is not rebuilt.
+    expect(mocks.after).not.toHaveBeenCalled();
+  });
+
+  it("searches a folder's file for the named lecture as if the student had chosen it", async () => {
+    const resolved = (await mocks.resolveContext.getMockImplementation()?.({})) as {
+      sources: Array<Record<string, unknown>>;
+    };
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...resolved,
+      pinnedSourceIds: [],
+      sources: [
+        { ...resolved.sources[0], id: "lecture-3", title: "Lecture 3 - Heat engines.pdf", indexStatus: "ready", indexVersion: 2 },
+        { ...resolved.sources[0], id: "lecture-4", title: "Lecture 4 - Entropy.pdf", indexStatus: "ready", indexVersion: 2 },
+      ],
+    });
+
+    await readStream(await postAssistant(request(validBody({
+      message: "What did lecture 4 say about the second law?",
+    }))));
+
+    expect(mocks.retrieveChunks).toHaveBeenCalledWith(expect.objectContaining({
+      pinnedSourceIds: ["lecture-4"],
+      relatedSourceIds: ["lecture-3"],
+    }));
+  });
+
+  it("rebuilds an older index through the indexing route once the answer is on its way", async () => {
+    const resolved = (await mocks.resolveContext.getMockImplementation()?.({})) as {
+      sources: Array<Record<string, unknown>>;
+    };
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...resolved,
+      pinnedSourceIds: ["source-1"],
+      sources: [{ ...resolved.sources[0], indexStatus: "ready" }],
+    });
+    const fetchMock = vi.fn(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await readStream(await postAssistant(request(validBody())));
+      expect(mocks.after).toHaveBeenCalledTimes(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      await (mocks.after.mock.calls[0][0] as () => Promise<void>)();
+      expect(fetchMock).toHaveBeenCalledWith(
+        new URL("http://localhost/api/ai/source-index"),
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({ Authorization: "Bearer test-token" }),
+          body: JSON.stringify({ sourceId: "source-1" }),
+        })
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("tells Tutor what it remembers, lets it propose changes, and keeps them after the answer", async () => {
+    const resolved = (await mocks.resolveContext.getMockImplementation()?.({})) as Record<string, unknown>;
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...resolved,
+      folderIds: ["chemistry"],
+      topicIds: ["moles"],
+      memoryContext: "--- BEGIN TUTOR MEMORY t ---\n[m1] (finds hard) \"Finds moles hard\"\n--- END TUTOR MEMORY t ---",
+      memoryRefs: new Map([["m1", "memory-1"]]),
+      memoryWritable: true,
+    });
+    const operations = [{ action: "remember", kind: "plan", text: "About to try the moles questions" }];
+    mocks.streamText.mockResolvedValueOnce(JSON.stringify({
+      answer: "Let's work through one together.",
+      sourceRefs: [],
+      usedCurrentContext: true,
+      usedGeneralKnowledge: true,
+      usedWebResearch: false,
+      graphs: [],
+      memory: operations,
+    }));
+
+    const { terminal } = await readStream(await postAssistant(request(validBody())));
+
+    expect(terminal).toMatchObject({ type: "done", reply: "Let's work through one together." });
+    expect(mocks.resolveContext).toHaveBeenCalledWith(
+      expect.objectContaining({ firstTurn: true, useMemory: true })
+    );
+    const call = mocks.streamText.mock.calls[0]?.[0] as {
+      request: { systemInstruction: string };
+      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+    };
+    expect(call.request.systemInstruction).toContain('[m1] (finds hard) "Finds moles hard"');
+    expect(call.generationConfig.responseSchema.properties).toHaveProperty("memory");
+    expect(mocks.applyMemory).toHaveBeenCalledWith(expect.objectContaining({
+      uid: "user-1",
+      operations,
+      context: { folderId: "chemistry", topicIds: ["moles"], surface: "learn" },
+      refs: new Map([["m1", "memory-1"]]),
+    }));
+  });
+
+  it("offers no memory field and saves nothing when memory is not in play", async () => {
+    mocks.streamText.mockResolvedValueOnce(JSON.stringify({
+      answer: "An answer.",
+      sourceRefs: [],
+      usedCurrentContext: true,
+      usedGeneralKnowledge: true,
+      usedWebResearch: false,
+      graphs: [],
+      memory: [{ action: "remember", kind: "goal", text: "Planted by an answer" }],
+    }));
+
+    await readStream(await postAssistant(request(validBody())));
+
+    const call = mocks.streamText.mock.calls[0]?.[0] as {
+      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+    };
+    expect(call.generationConfig.responseSchema.properties).not.toHaveProperty("memory");
+    expect(mocks.applyMemory).not.toHaveBeenCalled();
+  });
+
+  it("never remembers anything for the shared demo account", async () => {
+    mocks.verifyIdToken.mockResolvedValueOnce({ uid: "user-1", demo: true } as { uid: string });
+
+    await readStream(await postAssistant(request(validBody())));
+
+    expect(mocks.resolveContext).toHaveBeenCalledWith(expect.objectContaining({ useMemory: false }));
+  });
+
+  it("hands a request for flashcards to the study-material panel instead of writing cards inline", async () => {
+    mocks.streamText.mockResolvedValueOnce(JSON.stringify({
+      answer: "I'll make flashcards on how light energy is captured.",
+      sourceRefs: ["S1"],
+      usedCurrentContext: false,
+      usedGeneralKnowledge: true,
+      studyMaterial: "flashcards",
+      studyMaterialFocus: "how chlorophyll captures light energy",
+    }));
+
+    const { terminal } = await readStream(
+      await postAssistant(request(validBody({ message: "Make flashcards from this." })))
+    );
+
+    expect(terminal).toMatchObject({
+      type: "done",
+      studyMaterialRequest: { kind: "flashcards", focus: "how chlorophyll captures light energy" },
+    });
+    expect(terminal).not.toHaveProperty("suggestedCards");
+    const schema = (mocks.streamText.mock.calls.at(-1)?.[0] as {
+      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+    }).generationConfig.responseSchema.properties;
+    // One way to make cards: the panel. The inline field is never offered.
+    expect(schema).not.toHaveProperty("cards");
+    expect(schema).toHaveProperty("studyMaterial");
+  });
+
+  it("offers to make flashcards after an answer drawn from sources", async () => {
+    const { terminal } = await readStream(
+      await postAssistant(
+        request(validBody({ context: { surface: "sources", sourceIds: ["source-1"] } }))
+      )
+    );
+
+    expect(terminal).toMatchObject({
+      studyMaterialOffers: expect.arrayContaining(["flashcards"]),
     });
   });
 

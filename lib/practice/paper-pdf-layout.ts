@@ -90,9 +90,19 @@ export function answerSpacePoints(
   if (kind === "draw") return ANSWER_LINE_SPACING * 2;
   if (group === "maths") return 30 + 75 * marks;
   if (kind === "calculation") return 26 + 51 * marks;
-  if (kind === "extended") return 67 * marks;
+  if (kind === "extended") return Math.min(67 * marks, EXTENDED_ANSWER_MAX);
   return ANSWER_LINE_SPACING * (1 + 2 * marks);
 }
+
+/**
+ * The most answer space any one written answer gets: about four pages of lines.
+ *
+ * The per-mark rate was measured on science answers up to six marks and does
+ * not hold for an essay. An 87-mark writing task asking for 400 to 600 words
+ * was given eight pages of lines, most of a booklet, where an exam answer
+ * booklet gives an essay about four.
+ */
+export const EXTENDED_ANSWER_MAX = 2_800;
 
 /** How many ruled lines fill a given space. Maths working space is left blank. */
 export function answerLineCount(points: number) {

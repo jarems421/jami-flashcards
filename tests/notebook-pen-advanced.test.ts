@@ -6,11 +6,11 @@ import { createNotebookSmoothPenStrokeFactory } from "@/lib/workspace/notebook-s
 import { NOTEBOOK_INK_SMOOTHING } from "@/lib/workspace/notebook-ink-smoothing";
 import {
   clampNotebookPenSettings,
-  getNotebookCornerSharpness,
   getNotebookInkSmoothingOptions,
   getNotebookPenFeel,
   getNotebookPenFeelFromSettings,
   hasNotebookPenAdvancedChanges,
+  NOTEBOOK_CORNER_SHARPNESS_DEFAULT,
   NOTEBOOK_MINIMUM_WIDTH_FRACTION_DEFAULT,
   NOTEBOOK_PEN_SETTINGS_DEFAULT,
   NOTEBOOK_PEN_SETTINGS_STORAGE_KEY,
@@ -175,20 +175,47 @@ describe("advanced pen settings", () => {
     }
   });
 
-  it("follows Smoothing until it is told not to, and does not jump when told", () => {
-    // Letting go of the link must not move the pen: the control shows where
-    // Smoothing had it, so taking it over starts from exactly there.
-    const following = settings({ smoothingPercent: 20 });
-    expect(getNotebookCornerSharpness(following)).toBe(80);
+  it("leaves the corners alone when Smoothing moves", () => {
+    /*
+     * The complaint this answers: Smoothing was the corner control in all but
+     * name, so moving it to steady a shaky line rounded every turn off too.
+     * Now it moves the tremor filter and the easing, and the corners stay
+     * wherever their own control has them.
+     */
+    const faithful = settings({ smoothingPercent: 0 });
+    const steady = settings({ smoothingPercent: 100 });
 
-    const taken = settings({
-      smoothingPercent: 20,
-      cornerSharpnessPercent: getNotebookCornerSharpness(following),
-    });
-    expect(getNotebookPenFeelFromSettings(taken).cornerDegrees).toBeCloseTo(
-      getNotebookPenFeelFromSettings(following).cornerDegrees,
+    expect(getNotebookPenFeelFromSettings(faithful).cornerDegrees).toBeCloseTo(
+      getNotebookPenFeelFromSettings(steady).cornerDegrees,
       10
     );
+    expect(getNotebookPenFeelFromSettings(faithful).cornerDominance).toBeCloseTo(
+      getNotebookPenFeelFromSettings(steady).cornerDominance,
+      10
+    );
+    expect(getNotebookPenFeelFromSettings(steady).easeTowardsNeighbours).toBeGreaterThan(
+      getNotebookPenFeelFromSettings(faithful).easeTowardsNeighbours
+    );
+    expect(getNotebookInkSmoothingOptions(steady).minCutoff).toBeLessThan(
+      getNotebookInkSmoothingOptions(faithful).minCutoff
+    );
+  });
+
+  it("keeps the corners a store had while they followed Smoothing", () => {
+    // Stores written before the split say null -- "follow Smoothing" -- or
+    // nothing at all. Either way the pen must not change under its owner: the
+    // corners start exactly where Smoothing was putting them.
+    for (const stored of [
+      { smoothingPercent: 20, cornerSharpnessPercent: null },
+      { smoothingPercent: 20 },
+    ]) {
+      const migrated = clampNotebookPenSettings(stored);
+      expect(migrated.cornerSharpnessPercent).toBe(80);
+      expect(getNotebookPenFeelFromSettings(migrated).cornerDegrees).toBeCloseTo(
+        getNotebookPenFeel(20).cornerDegrees,
+        10
+      );
+    }
   });
 
   it("turns pressure off into one width rather than a thinner taper", () => {
@@ -244,12 +271,12 @@ describe("advanced pen settings", () => {
   });
 
   it("moves the input filter in the direction each end promises", () => {
-    const raw = getNotebookInkSmoothingOptions(settings({ steadinessPercent: 0 }));
+    const raw = getNotebookInkSmoothingOptions(settings({ smoothingPercent: 0 }));
     const steady = getNotebookInkSmoothingOptions(
-      settings({ steadinessPercent: 100 })
+      settings({ smoothingPercent: 100 })
     );
-    // Steadier is a lower cutoff, so the control reads backwards -- and the
-    // floor stops short of where the ink was reported as magnetic.
+    // More smoothing is a lower cutoff, so the control reads backwards -- and
+    // the floor stops short of where the ink was reported as magnetic.
     expect(raw.minCutoff).toBeGreaterThan(NOTEBOOK_INK_SMOOTHING.minCutoff);
     expect(steady.minCutoff).toBeLessThan(NOTEBOOK_INK_SMOOTHING.minCutoff);
     expect(steady.minCutoff).toBeGreaterThanOrEqual(4);
@@ -291,21 +318,21 @@ describe("advanced pen settings", () => {
     const clamped = clampNotebookPenSettings({
       smoothingPercent: 140,
       cornerSharpnessPercent: -20,
-      steadinessPercent: Number.NaN,
-      trackingPercent: 61.6,
+      trackingPercent: Number.NaN,
       pressurePercent: 200,
       straightenOnHold: "sideways" as never,
     });
 
     expect(clamped.smoothingPercent).toBe(100);
     expect(clamped.cornerSharpnessPercent).toBe(0);
-    expect(clamped.steadinessPercent).toBe(50);
-    expect(clamped.trackingPercent).toBe(62);
+    expect(clamped.trackingPercent).toBe(50);
     expect(clamped.pressurePercent).toBe(100);
     expect(clamped.straightenOnHold).toBe("guided");
 
-    // Null is a real value here, not a missing one: it is "follow Smoothing".
-    expect(clampNotebookPenSettings({}).cornerSharpnessPercent).toBe(null);
+    // Nothing stored is the default pen, corners included.
+    expect(clampNotebookPenSettings({}).cornerSharpnessPercent).toBe(
+      NOTEBOOK_CORNER_SHARPNESS_DEFAULT
+    );
   });
 
   it("remembers the settings and survives a corrupted store", () => {
@@ -334,6 +361,9 @@ describe("advanced pen settings", () => {
     // The advanced key is absent for everybody who set Smoothing before today,
     // and that must not read as a reason to forget what they set.
     window.localStorage.setItem(NOTEBOOK_PEN_SMOOTHING_STORAGE_KEY, "12");
-    expect(readNotebookPenSettings()).toEqual(settings({ smoothingPercent: 12 }));
+    // Its corners were following that Smoothing, so they start from it.
+    expect(readNotebookPenSettings()).toEqual(
+      settings({ smoothingPercent: 12, cornerSharpnessPercent: 88 })
+    );
   });
 });

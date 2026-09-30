@@ -21,10 +21,10 @@ test("Release 1 landing stays clear at desktop and phone sizes", async ({ page }
   await page.goto("/");
   await expect(
     page.getByRole("heading", {
-      name: "One place to do the work, and remember what matters.",
+      name: "Practise like the exam. Revise what it shows you.",
     })
   ).toBeVisible();
-  await expect(page.getByText("Work naturally", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Get marked" })).toBeVisible();
   await expectNoHorizontalOverflow(page, 1440);
   await page.screenshot({ path: "test-results/release-one-landing-desktop.png", fullPage: true });
 
@@ -40,7 +40,7 @@ test("Release 1 landing stays clear at desktop and phone sizes", async ({ page }
     .getByRole("button", { name: "Continue with Google" })
     .boundingBox();
   const steps = await page
-    .getByText("Work naturally", { exact: true })
+    .getByRole("button", { name: "Get marked" })
     .boundingBox();
   expect(headline && signIn && steps).toBeTruthy();
   expect(signIn!.y).toBeGreaterThan(headline!.y);
@@ -58,7 +58,7 @@ test("Release 1 navigation and study workspace stay usable across sizes", async 
   await expect(page.getByRole("heading", { name: "Today", level: 1 })).toBeVisible();
   const desktopNav = page.locator("nav[data-nav='sidebar']");
   await expect(desktopNav).toBeVisible();
-  await expect(desktopNav.getByText("Learning loop", { exact: true }).last()).toBeVisible();
+  await expect(desktopNav.getByText("Study", { exact: true }).last()).toBeVisible();
   await expect(desktopNav.getByText("Workspace", { exact: true })).toBeVisible();
   await expect(page.getByText("Getting today ready.")).toBeHidden({ timeout: 45_000 });
   await expectNoHorizontalOverflow(page, 1440);
@@ -77,22 +77,32 @@ test("Release 1 navigation and study workspace stay usable across sizes", async 
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: "Today", level: 1 })).toBeVisible();
   await expect(page.getByText("Getting today ready.")).toBeHidden({ timeout: 45_000 });
-  const mobileNav = page.locator("nav").filter({ has: page.getByRole("button", { name: "More" }) });
+  /*
+   * One scrolling row, not a "More" sheet.
+   *
+   * This checked for a sheet behind a More button until b351da8 removed it and
+   * left the test behind, so it had been failing on a design decision rather
+   * than on a defect. What the check is actually for is that every destination
+   * is reachable from the phone nav, and that is still true -- they are all in
+   * one snap-scrolling row, which auto-scrolls to whichever is current.
+   */
+  const mobileNav = page.locator("nav[data-nav='bar']");
   await expect(mobileNav).toBeVisible();
-  await expect(mobileNav.getByText("Today", { exact: true })).toBeVisible();
-  await expect(mobileNav.getByText("Learn", { exact: true })).toBeVisible();
-  await expect(mobileNav.getByText("Practice", { exact: true })).toBeVisible();
-  await expect(mobileNav.getByText("Tutor", { exact: true })).toBeVisible();
-  await expect(mobileNav.getByText("Cards", { exact: true })).toBeVisible();
+  for (const label of ["Today", "Learn", "Practice", "Jami", "Cards"]) {
+    await expect(mobileNav.getByText(label, { exact: true })).toBeVisible();
+  }
   await expectNoHorizontalOverflow(page, 390);
   await page.screenshot({ path: "test-results/release-one-today-phone.png", fullPage: true });
 
-  await mobileNav.getByRole("button", { name: "More" }).click();
-  const more = page.getByRole("dialog");
-  await expect(more).toBeVisible();
+  // The workspace entries live in the same row, reached by scrolling it.
   for (const label of ["Topics", "Goals", "Stars", "Progress", "Account"]) {
-    await expect(more.getByText(label, { exact: true })).toBeVisible();
+    const entry = mobileNav.getByText(label, { exact: true });
+    await expect(entry).toHaveCount(1);
+    await entry.scrollIntoViewIfNeeded();
+    await expect(entry).toBeVisible();
   }
-  await page.screenshot({ path: "test-results/release-one-more-phone.png", fullPage: true });
+  // Scrolling the nav must not drag the page sideways with it.
+  await expectNoHorizontalOverflow(page, 390);
+  await page.screenshot({ path: "test-results/release-one-nav-phone.png", fullPage: true });
   expect(errors).toEqual([]);
 });

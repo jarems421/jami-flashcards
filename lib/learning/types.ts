@@ -20,9 +20,30 @@
  * That is "seen", not "known", and the engine keeps the two apart.
  */
 
-export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v6-2026-09-16";
+export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v9-2026-09-30";
 
-export type LearningEvidenceKind = "flashcards" | "practice" | "past-paper";
+/**
+ * Where a piece of evidence came from.
+ *
+ * `notebook` is the weakest of the four and is kept separate for that reason.
+ * The others are answers to a question with a known right answer, marked
+ * against a scheme. Notebook working is marked by Tutor against a question the
+ * student was answering, which is real evidence -- it is the student's own
+ * reasoning, graded -- but it is graded by a model rather than a scheme, on
+ * work the student chose rather than work that was set. It counts, at a
+ * fraction of the weight, and never on its own: see `NOTEBOOK_EVIDENCE_WEIGHT`.
+ *
+ * `revision` is the same kind of evidence from a different place: answers
+ * given during a Revision Session, marked by a model against the question the
+ * session set. Trusted exactly as far as notebook marking, and kept apart from
+ * it only so the two can be told apart. See `revision-signals.ts`.
+ */
+export type LearningEvidenceKind =
+  | "flashcards"
+  | "practice"
+  | "past-paper"
+  | "notebook"
+  | "revision";
 
 export type LearningTrend = "improving" | "stable" | "declining";
 
@@ -81,6 +102,14 @@ export type LearningObservation = {
   topicShares?: Readonly<Record<string, number>>;
   /** The command word a marked question opened with, where it printed one. */
   commandWord?: string;
+  /**
+   * The recommendation whose session produced this answer, when one did.
+   *
+   * Provenance, not scoring: nothing weighs an observation differently for
+   * having it. It exists so the engine can ask whether the work it asked for
+   * was actually done, without inferring that from timestamps.
+   */
+  interventionId?: string;
   /** 0 to 1: the share of the available credit that was earned. */
   score: number;
   /** How much this observation counts towards mastery, before recency. */
@@ -194,6 +223,35 @@ export type LearningSignal = {
   dueCards: number;
   lastSeenAt: number;
   evidence: LearningEvidenceKind[];
+  /**
+   * The same evidence split by what it claims: recall from flashcards,
+   * application from marked exam, practice and notebook answers.
+   *
+   * `mastery` above blends the two, which is right for "how well is this
+   * known" and wrong for "what kind of work would help". A student can recall
+   * a method every time and still lose marks using it, and only the split can
+   * see that. Notebook working was once left out of both, as marked by a model
+   * rather than a scheme. It counts as application since 28 September 2026,
+   * by the owner's decision: without it a student's own Topic could never show
+   * the gap, because only specification concepts have exam answers. It keeps
+   * its lower weight, so it takes more marked pages than exam answers to make
+   * the claim.
+   */
+  claims?: LearningClaims;
+};
+
+/** One kind of claim, estimated from its own evidence only. */
+export type LearningClaimEstimate = {
+  /** 0 to 1, with no pooling towards the student's average. */
+  evidenceMastery: number;
+  /** 0 to 1: how much evidence of this kind stands behind it. */
+  confidence: number;
+  attempts: number;
+};
+
+export type LearningClaims = {
+  recall?: LearningClaimEstimate;
+  application?: LearningClaimEstimate;
 };
 
 /**
@@ -302,6 +360,17 @@ export type LearningTopicState = {
   memory: LearningMemoryState[];
   /** Includes evidence on finer concepts beneath this one. */
   signal?: LearningSignal;
+  /**
+   * Recall is holding up and application is not: flashcards on this concept,
+   * or on the student's own Topic that covers it, read strong, while marked
+   * exam and practice answers on this concept read weak.
+   *
+   * `recallFrom` is where the recall evidence sits, so a sentence about it can
+   * name the Topic the student actually studied instead of implying they
+   * drilled this exact concept. The broad Topic's cards never become evidence
+   * about the concept; they only say what kind of work is missing.
+   */
+  applicationGap?: { recallFrom: string; recallLabel: string };
   /** Absent when nothing is warranted, or when the decision belongs to a broader concept. */
   decision?: LearningTopicDecision;
   /**
@@ -314,6 +383,15 @@ export type LearningTopicState = {
    * a recommendation goes to them rather than to this broader concept.
    */
   coveredBy?: string[];
+  /**
+   * When the student last told Tutor this feels hard, while it still counts.
+   *
+   * What the student says, not what they did: like exposure it never moves
+   * mastery, confidence or a decision. It only moves a topic the engine
+   * already recommends ahead of others recommended for the same reason, and
+   * lets Tutor know the student raised it.
+   */
+  studentConcernAt?: number;
 };
 
 export type LearningRecommendationTarget =
@@ -333,6 +411,8 @@ export type LearningRecommendationEvidence = {
   exposure?: LearningExposure;
   lastEvidenceAt?: number;
   sources: LearningEvidenceKind[];
+  /** The student has said they find this hard; see `LearningTopicState.studentConcernAt`. */
+  studentConcernAt?: number;
 };
 
 export type LearningRecommendation = {
@@ -416,6 +496,26 @@ export type LearningCommandWordSignal = {
   lastSeenAt: number;
 };
 
+/** How the latest attempt at one item went. See `profile/recent-results.ts`. */
+export type LearningRecentOutcome = "missed" | "partial" | "correct";
+
+export type LearningRecentResult = {
+  kind: LearningEvidenceKind;
+  /** `card:<id>`, `paper:<paperId>:<questionId>`, `exam:<questionId>`, and so on. */
+  itemId: string;
+  topicKey?: string;
+  topicLabel?: string;
+  outcome: LearningRecentOutcome;
+  /** The latest attempt's share of the credit, 0 to 1. */
+  score: number;
+  at: number;
+  /** Attempts in the window, and how many of them went wrong. */
+  attempts: number;
+  misses: number;
+  /** Where the latest attempt lost marks, from the fixed vocabulary. */
+  missedErrors: LearningErrorCategory[];
+};
+
 export type LearnerProfile = {
   algorithmVersion: string;
   generatedAt: number;
@@ -437,6 +537,11 @@ export type LearnerProfile = {
   /** "unknown" when there is not enough dated evidence to say either way. */
   recentTrend: LearningTrend | "unknown";
   recommendedFocus: LearningRecommendation[];
+  /**
+   * The latest attempts at individual items in the last three weeks, wrong
+   * answers first. Absent from profiles built before this was kept.
+   */
+  recentResults?: LearningRecentResult[];
   coverage?: LearningSpecificationCoverage;
   evidenceSummary: LearnerEvidenceSummary;
   diagnostics: LearnerProfileDiagnostics;

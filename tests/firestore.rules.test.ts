@@ -194,12 +194,188 @@ describe("Firestore security rules", () => {
     // Written once, never edited.
     await assertFails(updateDoc(event("commit-1"), { correct: false }));
     // Nothing beyond the compact shape: no card or answer text rides along.
+    // Which recommendation opened the session an answer was given in.
+    await assertSucceeds(
+      setDoc(event("commit-8"), {
+        ...valid,
+        interventionId: "folder:f1|low_mastery|topic:osmosis",
+      })
+    );
+    await assertFails(setDoc(event("commit-9"), { ...valid, interventionId: "" }));
     await assertFails(setDoc(event("commit-4"), { ...valid, front: "Question" }));
     await assertFails(setDoc(event("commit-5"), { ...valid, rating: "perfect" }));
     await assertFails(setDoc(event("commit-6"), { ...valid, schemaVersion: 2 }));
     await assertFails(setDoc(event("commit-7"), { ...valid, studyDayKey: "yesterday" }));
 
     await assertSucceeds(deleteDoc(event("commit-1")));
+  });
+
+  it("keeps the record of what became of advice private, append-only and free of wording", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const event = (id: string) => doc(aliceDb, "users", ALICE, "studyActionEvents", id);
+    const valid = {
+      schemaVersion: 1,
+      actionId: "folder:f1|low_mastery|topic:osmosis",
+      reason: "low_mastery",
+      targetKey: "topic:osmosis",
+      folderId: "f1",
+      outcome: "shown",
+      at: 1_789_000_000_000,
+      studyDayKey: "2026-09-21",
+      createdAt: 1_789_000_000_001,
+    };
+
+    await assertSucceeds(setDoc(event("2026-09-21_shown_abc"), valid));
+    await assertSucceeds(getDoc(event("2026-09-21_shown_abc")));
+    await assertSucceeds(
+      setDoc(event("2026-09-21_started_abc"), { ...valid, outcome: "started" })
+    );
+    // A deck-scoped action carries a deckId instead of a folderId.
+    const deckScoped = Object.fromEntries(
+      Object.entries(valid).filter(([key]) => key !== "folderId")
+    );
+    await assertSucceeds(
+      setDoc(event("2026-09-21_dismissed_abc"), {
+        ...deckScoped,
+        deckId: "d1",
+        outcome: "dismissed",
+      })
+    );
+
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "studyActionEvents", "2026-09-21_shown_abc")));
+    await assertFails(
+      setDoc(doc(bobDb, "users", ALICE, "studyActionEvents", "other"), valid)
+    );
+    // Written once: what was suggested must not be rewritable after the fact.
+    await assertFails(updateDoc(event("2026-09-21_shown_abc"), { outcome: "completed" }));
+    // Nothing beyond the compact shape: no labels, no student wording.
+    await assertFails(setDoc(event("bad-1"), { ...valid, label: "Revisit Osmosis" }));
+    await assertSucceeds(
+      setDoc(event("2026-09-21_abandoned_abc"), { ...valid, outcome: "abandoned" })
+    );
+    await assertFails(setDoc(event("bad-2"), { ...valid, outcome: "ignored" }));
+    await assertFails(setDoc(event("bad-3"), { ...valid, reason: "because" }));
+    await assertFails(setDoc(event("bad-4"), { ...valid, schemaVersion: 2 }));
+    await assertFails(setDoc(event("bad-5"), { ...valid, studyDayKey: "today" }));
+    await assertFails(setDoc(event("bad-6"), { ...valid, actionId: "" }));
+
+    await assertSucceeds(deleteDoc(event("2026-09-21_shown_abc")));
+  });
+
+  it("keeps Tutor's marking of a page server-written and owner-readable", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const marking = doc(aliceDb, "users", ALICE, "notebookMarkings", "nb-1_page-3");
+    const record = {
+      schemaVersion: 1,
+      notebookId: "nb-1",
+      pageId: "page-3",
+      topicIds: ["quadratics"],
+      markedAt: 1_789_000_000_000,
+      awardedMarks: 3,
+      maxMarks: 5,
+      criterionResults: [{ criterion: "States the gradient", awarded: true }],
+      provenance: "tutor",
+      markerVersion: "tutor-notebook-marking-v1-2026-09-21",
+      createdAt: 1_789_000_000_001,
+    };
+
+    // A student who could write their own marks could write their own evidence.
+    await assertFails(setDoc(marking, record));
+    await assertFails(setDoc(doc(bobDb, "users", ALICE, "notebookMarkings", "x"), record));
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(context.firestore(), "users", ALICE, "notebookMarkings", "nb-1_page-3"),
+        record
+      );
+    });
+    await assertSucceeds(getDoc(marking));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "notebookMarkings", "nb-1_page-3")));
+    // Deletable with the page it describes.
+    await assertSucceeds(deleteDoc(marking));
+  });
+
+  it("keeps a Revision Session, and the answers it holds, on the server", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const session = doc(aliceDb, "users", ALICE, "revisionSessions", "session-1");
+    const record = {
+      schemaVersion: 1,
+      policy: "teach",
+      status: "active",
+      target: { topicKey: "topic:quadratics", source: "student-topic", conceptLabel: "Quadratics" },
+      actionId: "folder:f1|low_mastery|topic:topic:quadratics",
+      why: [],
+      lesson: { guided: { answer: "(x + 4)^2 - 13" } },
+      steps: [{ kind: "orient", attempts: 0, hintUsed: false, skipped: false, selfGraded: false }],
+      position: 0,
+      createdAt: 1_789_000_000_000,
+      updatedAt: 1_789_000_000_000,
+    };
+
+    // Writable by nobody but the server: its outcomes are evidence.
+    await assertFails(setDoc(session, record));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", ALICE, "revisionSessions", "session-1"), record);
+    });
+    // Not readable from a client either, even by its owner: it holds the
+    // answers to the questions the student is about to be asked.
+    await assertFails(getDoc(session));
+    await assertFails(updateDoc(session, { position: 1 }));
+    await assertSucceeds(deleteDoc(session));
+  });
+
+  it("lets a student keep a shelf of sessions to do later, and nothing more", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const item = (id: string) => doc(aliceDb, "users", ALICE, "revisionShelf", id);
+    const valid = {
+      schemaVersion: 1,
+      kind: "practice",
+      status: "made",
+      topicKey: "spec:completing-the-square",
+      conceptLabel: "Completing the square",
+      folderId: "maths",
+      conceptId: "completing-the-square",
+      href: "/dashboard/practice/paper-1",
+      createdAt: 1_789_000_000_000,
+    };
+
+    await assertSucceeds(setDoc(item("ok"), valid));
+    await assertSucceeds(getDoc(item("ok")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "revisionShelf", "ok")));
+    // A link out of the app, a kind nobody defined, or question text: refused.
+    await assertFails(setDoc(item("bad-1"), { ...valid, href: "https://evil.example" }));
+    await assertFails(setDoc(item("bad-2"), { ...valid, kind: "question-bank" }));
+    await assertFails(setDoc(item("bad-3"), { ...valid, question: "Solve x^2 + 6x + 5 = 0" }));
+    // Done items are removed, never edited.
+    await assertFails(updateDoc(item("ok"), { status: "later" }));
+    await assertSucceeds(deleteDoc(item("ok")));
+  });
+
+  it("keeps a Topic's specification relation inside the owner's own subtree", async () => {
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const topic = doc(aliceDb, "users", ALICE, "topics", "quadratics");
+    const relation = {
+      name: "Quadratics",
+      subject: "Maths",
+      status: "active",
+      specificationRelation: {
+        type: "covers",
+        conceptIds: ["completing-the-square", "factorisation"],
+        confirmedByOwner: true,
+      },
+    };
+
+    await assertSucceeds(setDoc(topic, relation));
+    await assertSucceeds(getDoc(topic));
+    // A relation decides how this student's evidence is attributed; nobody else may set it.
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "topics", "quadratics")));
+    await assertFails(setDoc(doc(bobDb, "users", ALICE, "topics", "other"), relation));
+    // Reversible: withdrawing the relation is an ordinary owner write.
+    await assertSucceeds(updateDoc(topic, { specificationRelation: null }));
   });
 
   it("allows owners to read decks stored with either userId or legacy uid", async () => {
@@ -909,6 +1085,20 @@ describe("Firestore security rules", () => {
     await assertFails(getDoc(chunkRef));
     await assertFails(setDoc(chunkRef, { sourceId: "source-1", text: "changed" }));
     await assertFails(getDocs(collection(aliceDb, "users", ALICE, "sourceChunks")));
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", ALICE, "sourceOutlines", "source-1"), {
+        sourceId: "source-1",
+        sections: [{ kind: "lecture", number: 4, title: "Entropy", chunkStart: 9, chunkEnd: 12 }],
+      });
+    });
+    const outlineRef = doc(aliceDb, "users", ALICE, "sourceOutlines", "source-1");
+    await assertFails(getDoc(outlineRef));
+    await assertFails(setDoc(outlineRef, { sourceId: "source-1", sections: [] }));
+
+    const memoryRef = doc(aliceDb, "users", ALICE, "tutorMemory", "state");
+    await assertFails(getDoc(memoryRef));
+    await assertFails(setDoc(memoryRef, { enabled: true, items: [{ id: "m", kind: "goal", text: "planted" }] }));
   });
 
   it("blocks demo accounts from mutating decks and notification setup", async () => {
@@ -1126,6 +1316,30 @@ describe("Firestore security rules", () => {
           notice: "",
           items: [{ questionId: "q1", answer: "secret answer" }],
         },
+      })
+    );
+
+    /*
+     * A generated paper is the server's to write, not the browser's.
+     *
+     * Even with the mark scheme stripped to its public projection, a paper
+     * carrying questions and marks is an assessment definition, and those do
+     * not originate in a client. This is not hypothetical: the intervention
+     * flow first wrote one straight from the browser, which would have been
+     * refused for every student on four counts at once, and the mark scheme
+     * would have been silently dropped even if it had not been.
+     */
+    await assertFails(
+      setDoc(doc(aliceDb, "users", ALICE, "pastPapers", "attempted-generated"), {
+        folderId: "folder-linear-algebra",
+        title: "Completing the square",
+        origin: "generated",
+        status: "ready",
+        questions: [{ id: "q1", label: "Question 1", prompt: "Solve", marks: 3, assets: [] }],
+        totalMarks: 3,
+        markScheme: { kind: "generated", label: "Guide", notice: "", items: [] },
+        createdAt: 1,
+        updatedAt: 1,
       })
     );
   });

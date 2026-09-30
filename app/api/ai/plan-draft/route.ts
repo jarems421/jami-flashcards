@@ -15,6 +15,7 @@ import {
 } from "@/services/ai/plan-draft.server";
 import { loadStudyActions } from "@/services/learning/study-actions.server";
 import { normalizeRevisionPlanDraft } from "@/lib/planning/normalize-plan";
+import { isPlanInterviewStep } from "@/lib/planning/plan-interview";
 import { planScopeKey, type RevisionPlanDraft } from "@/lib/planning/types";
 import { describeUnmetAiProviderRequirements } from "@/lib/ai/provider-policy";
 import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
@@ -207,6 +208,8 @@ export async function POST(request: NextRequest) {
       subjects,
       notices,
       current,
+      // Only a step the interview has; anything else is an open conversation.
+      ...(isPlanInterviewStep(record.step) ? { step: record.step } : {}),
     });
 
     log.info("plan_draft.answered", {

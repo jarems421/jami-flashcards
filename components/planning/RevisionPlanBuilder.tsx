@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Button, DateField, Input, OptionSwitch, Select } from "@/components/ui";
+import PlanExamsEditor from "@/components/planning/PlanExamsEditor";
 import PlanWeightDots from "@/components/planning/PlanWeightDots";
 import {
   normalizeRevisionPlanDraft,
@@ -16,6 +17,7 @@ import {
   planScopeKey,
   type PlanWeekday,
   type RevisionPlanDraft,
+  type RevisionPlanExam,
   type RevisionPlanScope,
   type RevisionPlanSession,
 } from "@/lib/planning/types";
@@ -76,7 +78,8 @@ function SectionLabel({ title, description }: { title: string; description?: str
   );
 }
 
-function WeekdayToggles({
+/** A day per button, the same here and in the interview's week question. */
+export function WeekdayToggles({
   active,
   onToggle,
 }: {
@@ -94,11 +97,14 @@ function WeekdayToggles({
             aria-pressed={on}
             aria-label={PLAN_WEEKDAY_FULL_LABELS[weekday]}
             onClick={() => onToggle(weekday)}
-            className={`min-h-12 rounded-2xl border text-xs font-semibold transition duration-normal ease-spring active:scale-95 ${
-              on ? "app-selected shadow-accent" : "app-chip hover:border-[var(--color-border-strong)]"
+            className={`min-h-12 rounded-2xl border text-xs font-semibold transition duration-normal ease-spring active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
+              on
+                ? "app-selected shadow-accent"
+                : "border-dashed border-[var(--color-border-strong)] text-text-muted hover:border-solid hover:text-text-primary"
             }`}
           >
-            {PLAN_WEEKDAY_LABELS[weekday].slice(0, 1)}
+            {/* Three letters: one left two Ts and two Ss to tell apart. */}
+            {PLAN_WEEKDAY_LABELS[weekday]}
           </button>
         );
       })}
@@ -228,6 +234,7 @@ export default function RevisionPlanBuilder({
   const [sessions, setSessions] = useState<RevisionPlanSession[]>(start.sessions);
   const [startDayKey, setStartDayKey] = useState(start.startDayKey);
   const [endDayKey, setEndDayKey] = useState(start.endDayKey);
+  const [exams, setExams] = useState<RevisionPlanExam[]>(start.exams ?? []);
   const [mode, setMode] = useState<BuilderMode>(
     needsTimetableMode(start.sessions) ? "timetable" : "simple"
   );
@@ -261,8 +268,10 @@ export default function RevisionPlanBuilder({
       scopes,
       sessions,
       emphasis: start.emphasis,
+      // A row still being typed is not an exam yet; the plan keeps only ones with a name.
+      ...(exams.some((exam) => exam.label.trim()) ? { exams: exams.filter((exam) => exam.label.trim()) } : {}),
     }),
-    [endDayKey, initial?.origin, scopes, sessions, start.emphasis, startDayKey, title]
+    [endDayKey, exams, initial?.origin, scopes, sessions, start.emphasis, startDayKey, title]
   );
 
   const { problems } = normalizeRevisionPlanDraft(draft);
@@ -581,6 +590,16 @@ export default function RevisionPlanBuilder({
             />
           </div>
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <SectionLabel title="Exams to count down to" />
+        <PlanExamsEditor
+          exams={exams}
+          subjects={scopeOptions}
+          defaultDayKey={endDayKey}
+          onChange={setExams}
+        />
       </section>
 
       {problems.length > 0 ? (

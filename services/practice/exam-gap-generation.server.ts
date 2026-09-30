@@ -248,7 +248,7 @@ ${batch.map((item, index) => (item.exemplar ? `<<<EXEMPLAR ${index + 1}>>>
 ${item.exemplar.text}
 <<<END EXEMPLAR ${index + 1}>>>` : "")).filter(Boolean).join("\n\n")}` : ""}
 
-Return {${inferLevel ? '"studyLevel":"one of the levels above",' : ""}"questions":[{"difficulty":"easy|medium|hard","prompt":"...","answer":"complete example answer","points":["one mark point per string"],"assets":[{"id":"fig1","type":"table|graph|diagram|formula_sheet|source_extract","title":"Figure 1","content":"Markdown table, graph spec JSON as a string, SVG, or plain text","altText":"what it shows, including every value a candidate needs"}],"topicIds":["only supplied ids when relevant"],"conceptIds":["only supplied concept ids when relevant"]}]}. Use an empty assets array for a question that needs none. No citations or copyrighted wording.${feedback}` }] }],
+Return {${inferLevel ? '"studyLevel":"one of the levels above",' : ""}"questions":[{"difficulty":"easy|medium|hard","prompt":"...","answer":"complete example answer","points":["one mark point per string"],"assets":[{"id":"fig1","type":"table|graph|diagram|formula_sheet|source_extract","title":"Figure 1","content":"Markdown table, the JSON chart for a graph written as a string, SVG, or plain text","altText":"what it shows, including every value a candidate needs"}],"topicIds":["only supplied ids when relevant"],"conceptIds":["only supplied concept ids when relevant"]}]}. Use an empty assets array for a question that needs none. No citations or copyrighted wording.${feedback}` }] }],
         },
       });
       const payload = parseJsonObject(response);

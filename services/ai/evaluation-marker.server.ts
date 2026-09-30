@@ -1,4 +1,5 @@
 import "server-only";
+import { loadQuestionTypeRules } from "@/services/practice/question-type-rules.server";
 
 import { getAiInputTokenCap, getAiTokenCap } from "@/lib/ai/budgets";
 import {
@@ -12,6 +13,7 @@ import type { Marker, MarkRequest, MarkResponse } from "@/lib/evaluation/experim
 import {
   markPracticePaperWithAudit,
   markSingleQuestionAdaptively,
+  type MarkingVariant,
   type PracticePaperMarkingInput,
 } from "@/services/ai/practice-paper-marking.server";
 import { PracticePaperMarkingFailedError } from "@/lib/practice/marker-stages";
@@ -96,7 +98,7 @@ export type EvaluationPipeline = "wholePaper" | "pastPaperPractice";
  * observer looks exactly like a clean run.
  */
 type MarkerObservers = Partial<
-  Pick<PracticePaperMarkingInput, "onMarkerReport" | "onParseFailure" | "logFallback">
+  Pick<PracticePaperMarkingInput, "onMarkerReport" | "onParseFailure" | "logFallback" | "variant">
 >;
 
 /**
@@ -121,6 +123,7 @@ async function markPastPaperPracticeQuestion(
   const marked = await markSingleQuestionAdaptively({
     paper: adapted.paper,
     answerParts: adapted.answerParts,
+    examinerPracticeRules: await loadQuestionTypeRules(adapted.paper.assessmentProfile, adapted.paper.title),
     deadlineAt,
     maxOutputTokens: getAiTokenCap("examQuestionMarking"),
     inputTokenCap: getAiInputTokenCap("examQuestionMarking"),
@@ -156,6 +159,8 @@ async function markPastPaperPracticeQuestion(
 export type EvaluationMarkerOptions = {
   /** Hard ceiling on marking calls. The run stops rather than exceeding it. */
   maxRecords: number;
+  /** A marking change switched off, to measure what it does. Unset is the shipped marker. */
+  variant?: MarkingVariant;
   /** Which student-facing marker to measure. Defaults to the paper surface. */
   pipeline?: EvaluationPipeline;
   /**
@@ -472,6 +477,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
      */
     const observers: MarkerObservers = {
       logFallback: options.onFallback,
+      ...(options.variant ? { variant: options.variant } : {}),
       ...(options.onMarkerReport
         ? {
             onMarkerReport: (report) =>
@@ -502,6 +508,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
             return await markPracticePaperWithAudit({
               paper: adapted.adapted.paper,
               answerParts: adapted.adapted.answerParts,
+              examinerPracticeRules: await loadQuestionTypeRules(adapted.adapted.paper.assessmentProfile, adapted.adapted.paper.title),
               exemplarParts: exemplarsToParts(request.exemplars),
               deadlineAt,
               maxOutputTokens: getAiTokenCap("practicePaperMarking"),

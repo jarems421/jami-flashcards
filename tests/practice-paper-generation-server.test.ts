@@ -205,6 +205,29 @@ describe("practice-paper generation provider normalization", () => {
     ).toEqual([["q1", "q2"], ["q3", "q4"]]);
   });
 
+  /**
+   * One essay reply in three from the scheme writer, probed 23 September:
+   * the whole scheme nested inside `answer`, nothing at the top level.
+   */
+  it("reads an essay scheme the writer nested inside its answer", () => {
+    const questions = [{ id: "q4", label: "0 4", prompt: "Explore how far you agree.", marks: 25, assets: [] }];
+    const bands = [
+      { band: "Level 0", marks: "0", descriptor: "Nothing creditworthy." },
+      { band: "Level 1", marks: "1–10", descriptor: "Some relevant comment." },
+      { band: "Level 2", marks: "11–20", descriptor: "Clear, developed argument." },
+      { band: "Level 3", marks: "21–25", descriptor: "Perceptive, sustained argument." },
+    ];
+    const items = normalizeGeneratedMarkSchemeBatch([{
+      questionId: "q4",
+      maxMarks: 25,
+      answer: { marking: "banded", bands, indicativeContent: "Resentment and love coexist." },
+      acceptableAlternatives: [],
+      commonMistakes: [],
+    }], questions);
+    expect(items).not.toBeNull();
+    expect(items?.[0]).toMatchObject({ marking: "banded", answer: "Resentment and love coexist." });
+  });
+
   it("rejects an unreadable mark-scheme batch before whole-paper repair", () => {
     const questions = [{
       id: "q1",
@@ -372,6 +395,36 @@ describe("holding a draft to the sections the profile lists", () => {
       aqaPaper1
     );
     expect(wrong).toEqual([]);
+  });
+
+  /**
+   * The benchmark pilot of 23 September: two papers built exactly to their
+   * profiles -- 87 and 63, 60 and 60 -- were refunded because the designer
+   * wrote "A" and "B", as asked, and the profiles' ids were "section-a" and
+   * "section-b".
+   */
+  it("matches a bare letter to a hyphenated section id", () => {
+    const { wrong } = sectionMarkIssues(
+      [{ section: "A", marks: 87 }, { section: "B", marks: 63 }],
+      [{ id: "section-a", title: "Physical geography", marks: 87 }, { id: "section-b", title: "Human geography", marks: 63 }]
+    );
+    expect(wrong).toEqual([]);
+    expect(sectionKey("section-a")).toBe("a");
+    expect(sectionKey("Section_B")).toBe("b");
+  });
+
+  /**
+   * The same pilot's third section failure: two 40-mark options offered, one
+   * to be answered, counted as an 80-mark section.
+   */
+  it("counts a choice section at what the student answers, as the paper's total does", () => {
+    const questions = [
+      { id: "q1", section: "selected-option", marks: 40 },
+      { id: "q2", section: "selected-option", marks: 40 },
+    ];
+    const sections = [{ id: "selected-option", marks: 40 }];
+    expect(sectionMarkIssues(questions, sections).wrong).toEqual([{ section: "selected-option", expected: 40, actual: 80 }]);
+    expect(sectionMarkIssues(questions, sections, [{ questionIds: ["q1", "q2"], requiredCount: 1 }]).wrong).toEqual([]);
   });
 
   /**

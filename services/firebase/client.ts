@@ -124,8 +124,14 @@ const dbInstance = app
   ? typeof window === "undefined"
     ? getFirestore(app)
     : initializeFirestore(app, {
-        // Avoid WebChannel requests being buffered indefinitely by mobile
-        // networks, privacy relays, antivirus proxies, or restrictive Wi-Fi.
+        /*
+         * Forced, not detected. Auto-detection probes with a small response,
+         * so a network that buffers streaming (campus Wi-Fi, mobile carriers,
+         * privacy relays, antivirus proxies) could pass the probe and then
+         * hold a large read -- a drawn notebook page's ink -- until it timed
+         * out, and the notebook failed to open. Long-polling costs a few more
+         * round trips but always delivers.
+         */
         experimentalForceLongPolling: true,
       })
   : createUninitializedProxy<ReturnType<typeof getFirestore>>("db");

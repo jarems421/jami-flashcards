@@ -192,7 +192,10 @@ export function examSheetPageCaption(input: {
 }) {
   const label = input.questionLabel.trim() || "this question";
   if (input.page.kind === "continuation") {
-    return `${label} — extra answer sheet ${input.page.number}`;
+    // A Jami-created question has no printed page, so its sheet is where the whole answer is, not an overflow from one.
+    return input.printedPageCount === 0
+      ? `${label} — answer sheet ${input.page.number}`
+      : `${label} — extra answer sheet ${input.page.number}`;
   }
   return input.printedPageCount > 1
     ? `${label} — written on printed page ${input.page.number} of ${input.printedPageCount}`

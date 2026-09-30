@@ -13,8 +13,14 @@
  * fixed on 11 August but was still being seen, and only inside the installed
  * app. That was never confirmed as the cause, but a stale install is worth
  * removing from the list of things a bug report can mean.
+ *
+ * Bumped to v6 on 25 September for the same reason: severe pen lag in one
+ * student's installed app, a day after the fixes for it were deployed. From
+ * this build the app also checks the deployed build itself and reloads onto it
+ * (lib/app/app-build.ts), so a bump is no longer the only way out of a stale
+ * install.
  */
-const STATIC_CACHE = "jami-static-v5";
+const STATIC_CACHE = "jami-static-v6";
 
 /**
  * How long the network gets to produce a current page before the cached one is

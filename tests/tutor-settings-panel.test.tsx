@@ -11,18 +11,34 @@ import { DEFAULT_TUTOR_PREFERENCES } from "@/lib/ai/tutor-personalisation";
  * something is wrong: a load that failed, a folder with nothing written for it,
  * an account with no folders at all.
  *
- * Plus the status strip, which is the first thing on the panel and now says all
- * three of those things in three chips rather than three sentences.
+ * Plus what each tab says it is set to, which is the first thing on the panel
+ * and says all three of those things without a sentence between them.
  */
 
 const serviceMocks = vi.hoisted(() => ({
   loadTutorPersonalisation: vi.fn(),
   saveTutorPreferences: vi.fn(),
   saveTutorStudyProfile: vi.fn(),
-  saveFolderTutorInstructions: vi.fn(),
+  saveFolderTutorNotes: vi.fn(),
 }));
 
 vi.mock("@/services/ai/tutor-personalisation", () => serviceMocks);
+
+const memoryMocks = vi.hoisted(() => ({
+  loadTutorMemoryView: vi.fn(),
+  changeTutorMemory: vi.fn(),
+}));
+
+vi.mock("@/services/ai/tutor-memory", () => memoryMocks);
+
+const NOW = Date.now();
+const MEMORY = {
+  enabled: true,
+  items: [
+    { id: "hard", kind: "struggle", text: "Finds limiting reagents hard", createdAt: NOW, updatedAt: NOW - 60 * 60 * 1000 },
+    { id: "likes", kind: "preference", text: "Likes a worked example first", createdAt: NOW, updatedAt: NOW },
+  ],
+};
 
 let container: HTMLDivElement;
 let root: Root;
@@ -32,19 +48,20 @@ const FOLDER = {
   name: "Biology",
   subject: "Biology",
   studyLevel: "post-16-equivalent" as const,
-  hasInstructions: false,
+  course: null,
+  noteCount: 0,
   instructionsUpdatedAt: 0,
 };
 
 function personalisation(overrides: Record<string, unknown> = {}) {
   return {
-    preferences: { ...DEFAULT_TUTOR_PREFERENCES, folderGuideCompleted: true },
+    preferences: { ...DEFAULT_TUTOR_PREFERENCES },
     accountStudyLevel: "post-16-equivalent",
     accountStudySubjects: ["Biology", "Chemistry"],
     folders: [FOLDER],
     folder: {
       ...FOLDER,
-      instructions: "",
+      notes: [],
       instructionsUpdatedAt: 0,
     },
     ...overrides,
@@ -63,11 +80,26 @@ function buttonWithText(text: string) {
   );
 }
 
-async function openTab(label: string) {
-  const tab = [...container.querySelectorAll('[role="tab"]')].find(
-    (entry) => entry.textContent?.trim() === label
+/** A tab by its name, which is its label alone: each tab also shows its value. */
+function tabNamed(label: string) {
+  return [...container.querySelectorAll('[role="tab"]')].find(
+    (entry) =>
+      document
+        .getElementById(entry.getAttribute("aria-labelledby") ?? "")
+        ?.textContent?.trim() === label
   ) as HTMLButtonElement;
+}
+
+async function openTab(label: string) {
+  const tab = tabNamed(label);
   await act(async () => tab.click());
+}
+
+/** What a tab tells assistive tech it is currently set to. */
+function tabDescription(label: string) {
+  return document
+    .getElementById(tabNamed(label).getAttribute("aria-describedby") ?? "")
+    ?.textContent?.trim();
 }
 
 beforeEach(() => {
@@ -77,7 +109,9 @@ beforeEach(() => {
   serviceMocks.loadTutorPersonalisation.mockReset();
   serviceMocks.saveTutorPreferences.mockReset();
   serviceMocks.saveTutorStudyProfile.mockReset();
-  serviceMocks.saveFolderTutorInstructions.mockReset();
+  serviceMocks.saveFolderTutorNotes.mockReset();
+  memoryMocks.loadTutorMemoryView.mockReset().mockResolvedValue(MEMORY);
+  memoryMocks.changeTutorMemory.mockReset();
 });
 
 afterEach(async () => {
@@ -103,19 +137,22 @@ describe("the Tutor settings panel", () => {
 
     // Not "no folder instructions apply", which would be a claim the panel has
     // no basis for.
-    expect(container.textContent).toContain("Set per folder");
+    expect(tabDescription("Notes")).toBe("Set per folder");
   });
 
   it("names the folder when the conversation resolves to exactly one", async () => {
     serviceMocks.loadTutorPersonalisation.mockResolvedValue(
       personalisation({
-        folders: [{ ...FOLDER, hasInstructions: true }],
+        folders: [{ ...FOLDER, noteCount: 2 }],
       })
     );
 
     await render(<TutorSettingsPanel activeFolderIds={["folder-1"]} />);
 
-    expect(container.textContent).toContain("Biology — on");
+    expect(tabDescription("Notes")).toBe("Biology — 2 notes");
+    // The tile itself says it in two short lines, not one truncated chip.
+    expect(tabNamed("Notes").textContent).toContain("2 notes");
+    expect(tabNamed("Notes").textContent).toContain("Biology");
   });
 
   it("explains the multi-folder case instead of interrupting the chat", async () => {
@@ -125,18 +162,18 @@ describe("the Tutor settings panel", () => {
       <TutorSettingsPanel activeFolderIds={["folder-1", "folder-2"]} />
     );
 
-    expect(container.textContent).toContain("Several folders — off");
+    expect(tabDescription("Notes")).toBe("Several folders — off");
   });
 
   it("reports a failed load and offers a retry rather than an empty form", async () => {
     serviceMocks.loadTutorPersonalisation.mockRejectedValue(
-      new Error("Jami could not load your Tutor settings.")
+      new Error("Jami could not load your Jami settings.")
     );
 
     await render(<TutorSettingsPanel />);
 
     expect(container.textContent).toContain(
-      "Jami could not load your Tutor settings."
+      "Jami could not load your Jami settings."
     );
     expect(buttonWithText("Try again")).toBeDefined();
   });
@@ -146,7 +183,7 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel />);
 
-    expect(container.textContent).toContain("Default");
+    expect(tabDescription("Style")).toBe("Default");
   });
 
   it("counts the preferences that will actually reach the prompt", async () => {
@@ -154,28 +191,89 @@ describe("the Tutor settings panel", () => {
       personalisation({
         preferences: {
           ...DEFAULT_TUTOR_PREFERENCES,
-          folderGuideCompleted: true,
           helpApproach: "hints-first",
-          customGuidance: "Name the rule first.",
+          feedbackDirectness: "direct",
+          notes: ["Name the rule first."],
         },
       })
     );
 
     await render(<TutorSettingsPanel />);
 
-    expect(container.textContent).toContain("2 changed");
+    expect(tabDescription("Style")).toBe("2 changed");
   });
 
-  it("keeps Save disabled until something has actually changed", async () => {
+  it("saves a style choice the moment it is picked, with no Save button", async () => {
     serviceMocks.loadTutorPersonalisation.mockResolvedValue(personalisation());
+    serviceMocks.saveTutorPreferences.mockResolvedValue(DEFAULT_TUTOR_PREFERENCES);
 
     await render(<TutorSettingsPanel />);
     await openTab("Style");
+    expect(buttonWithText("Save changes")).toBeUndefined();
 
-    const save = buttonWithText("Save changes");
-    expect(save).toBeDefined();
-    expect((save as HTMLButtonElement).disabled).toBe(true);
-    expect(container.textContent).not.toContain("Unsaved");
+    const option = [...container.querySelectorAll('[role="radio"]')].find(
+      (entry) => entry.textContent?.includes("Just explain it")
+    ) as HTMLButtonElement;
+    await act(async () => option.click());
+
+    expect(serviceMocks.saveTutorPreferences).toHaveBeenCalledWith({
+      helpApproach: "explain-directly",
+    });
+    expect(option.getAttribute("aria-checked")).toBe("true");
+    expect(container.textContent).toContain("Saved");
+  });
+
+  it("puts a choice back and says so when the save fails", async () => {
+    serviceMocks.loadTutorPersonalisation.mockResolvedValue(personalisation());
+    serviceMocks.saveTutorPreferences.mockRejectedValue(new Error("Offline"));
+
+    await render(<TutorSettingsPanel />);
+    await openTab("Style");
+    const option = () =>
+      [...container.querySelectorAll('[role="radio"]')].find((entry) =>
+        entry.textContent?.includes("Just explain it")
+      ) as HTMLButtonElement;
+    await act(async () => option().click());
+
+    expect(option().getAttribute("aria-checked")).toBe("false");
+    expect(container.textContent).toContain("Offline");
+  });
+
+  it("adds a note for every subject from one of the offered ideas", async () => {
+    serviceMocks.loadTutorPersonalisation.mockResolvedValue(personalisation());
+    serviceMocks.saveTutorPreferences.mockResolvedValue(DEFAULT_TUTOR_PREFERENCES);
+
+    await render(<TutorSettingsPanel />);
+    await openTab("Notes");
+    const idea = buttonWithText("Name the rule or formula before you use it.");
+    await act(async () => idea!.click());
+
+    expect(serviceMocks.saveTutorPreferences).toHaveBeenCalledWith({
+      notes: ["Name the rule or formula before you use it."],
+    });
+    expect(
+      container.querySelector('[aria-label="Notes for every subject"]')?.textContent
+    ).toContain("Name the rule or formula before you use it.");
+  });
+
+  it("shows what Jami already knows about a folder before any note is written", async () => {
+    serviceMocks.loadTutorPersonalisation.mockResolvedValue(
+      personalisation({
+        folder: {
+          ...FOLDER,
+          course: "AQA · A level Biology",
+          notes: [],
+          instructionsUpdatedAt: 0,
+        },
+      })
+    );
+
+    await render(<TutorSettingsPanel />);
+    await openTab("Notes");
+
+    expect(container.textContent).toContain("Jami already knows");
+    expect(container.textContent).toContain("AQA · A level Biology");
+    expect(container.textContent).not.toContain("Which course is this for?");
   });
 
   it("tells a student with no folders what to do first", async () => {
@@ -199,7 +297,8 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel activeFolderIds={["folder-1"]} />);
 
-    expect(container.textContent).toContain("University (folder)");
+    expect(tabDescription("Course")).toBe("University (folder)");
+    expect(tabNamed("Course").textContent).toContain("From Biology");
     expect(container.textContent).toContain("Biology overrides this with");
   });
 
@@ -208,8 +307,43 @@ describe("the Tutor settings panel", () => {
 
     await render(<TutorSettingsPanel />);
 
+    expect(tabNamed("Course").getAttribute("aria-selected")).toBe("true");
     expect(container.textContent).toContain("Your subjects");
     expect(container.textContent).toContain("Biology");
     expect(container.textContent).toContain("Chemistry");
+  });
+
+  it("shows what Jami remembers, and lets the student correct, forget or switch it off", async () => {
+    serviceMocks.loadTutorPersonalisation.mockResolvedValue(personalisation());
+    memoryMocks.changeTutorMemory.mockImplementation(async (change: { target: string; id?: string; enabled?: boolean }) =>
+      change.target === "forget"
+        ? { ...MEMORY, items: MEMORY.items.filter((item) => item.id !== change.id) }
+        : change.target === "enabled"
+          ? { ...MEMORY, enabled: change.enabled }
+          : MEMORY
+    );
+
+    await render(<TutorSettingsPanel />);
+    expect(tabDescription("Memory")).toBe("2 memories across chats");
+    await openTab("Memory");
+
+    expect(container.textContent).toContain("Finds hard");
+    expect(container.textContent).toContain("Finds limiting reagents hard");
+    expect(container.textContent).toContain("How you like to learn");
+
+    const forget = container.querySelector(
+      '[aria-label="Forget: Finds limiting reagents hard"]'
+    ) as HTMLButtonElement;
+    await act(async () => forget.click());
+    expect(memoryMocks.changeTutorMemory).toHaveBeenCalledWith({ target: "forget", id: "hard" });
+    expect(container.textContent).not.toContain("Finds limiting reagents hard");
+
+    const toggle = container.querySelector('[role="switch"][aria-label="Remember across chats"]') as HTMLButtonElement;
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    await act(async () => toggle.click());
+    expect(memoryMocks.changeTutorMemory).toHaveBeenLastCalledWith({ target: "enabled", enabled: false });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(container.textContent).toContain("Memory is off.");
+    expect(tabDescription("Memory")).toBe("Memory off");
   });
 });

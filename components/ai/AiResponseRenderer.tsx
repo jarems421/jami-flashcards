@@ -1,20 +1,30 @@
 "use client";
 
-import type { AnchorHTMLAttributes, ReactNode } from "react";
+import type { AnchorHTMLAttributes, ComponentPropsWithoutRef, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import { repairModelLatex } from "@/lib/ai/model-json";
 import {
   normalizeLegacyJamiMathText,
-  preprocessMathDelimiters,
+  prepareAiMarkdown,
 } from "@/lib/study/math-text";
 import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 import AssistantGraphFigure from "@/components/ai/AssistantGraphFigure";
+import { useAssistantGraphActions } from "@/components/ai/AssistantGraphActions";
+
+/**
+ * Where the reply is read. "chat" is the Tutor's own card. "page" is an
+ * answer added to a notebook page, where it takes the page's type size and
+ * ink colour and grows to fit rather than scrolling inside itself.
+ */
+export type AiResponseVariant = "chat" | "page";
 
 export type AiResponseRendererProps = {
   content: string;
   className?: string;
+  variant?: AiResponseVariant;
 };
 
 /**
@@ -64,6 +74,46 @@ function SafeLink({
   );
 }
 
+/** The part of react-markdown's syntax tree a table needs: its rows and their cells. */
+type TableNode = { type?: string; tagName?: string; children?: TableNode[] };
+
+/** How many columns a table has, read from its first row. */
+function tableColumnCount(node: TableNode | undefined): number {
+  if (!node) return 0;
+  if (node.tagName === "tr") {
+    return (node.children ?? []).filter((child) => child.tagName === "th" || child.tagName === "td").length;
+  }
+  for (const child of node.children ?? []) {
+    const count = tableColumnCount(child);
+    if (count > 0) return count;
+  }
+  return 0;
+}
+
+/** Room a column needs before its words stop fitting a line or two. */
+const TABLE_COLUMN_MIN_REM = 7;
+
+/**
+ * A table the tutor wrote, in a frame that scrolls sideways.
+ *
+ * The Tutor's card can be shrunk to a strip beside a notebook, and a table
+ * squeezed to that width puts one word on each line of every cell. Each
+ * column keeps enough room to read instead, and the frame scrolls once they no
+ * longer fit. The room is set on the table, from its column count, because
+ * browsers disagree about a minimum width on the cells themselves.
+ */
+function ScrollingTable({ node, style, ...props }: ComponentPropsWithoutRef<"table"> & { node?: TableNode }) {
+  const columns = tableColumnCount(node);
+  return (
+    <div className="ai-response-table">
+      <table
+        {...props}
+        style={columns > 0 ? { ...style, minWidth: `${columns * TABLE_COLUMN_MIN_REM}rem` } : style}
+      />
+    </div>
+  );
+}
+
 /**
  * A figure the tutor drew.
  *
@@ -78,9 +128,13 @@ function SafeLink({
  * rendered. What reaches the page is rebuilt by the sanitiser from an element
  * and attribute allowlist, and anything that does not survive is shown as the
  * code it was, which is ugly and honest.
+ *
+ * On a notebook it can be added to the page, as a picture of what is shown
+ * here: the sanitised figure, never the model's own markup.
  */
 function DrawnFigure({ source }: { source: string }) {
   const drawn = sanitizeSvgDiagram(source);
+  const actions = useAssistantGraphActions();
   if (!drawn.ok) {
     return (
       <pre className="overflow-x-auto rounded-lg bg-[var(--color-glass-subtle)] p-3 text-xs text-text-muted">
@@ -88,14 +142,34 @@ function DrawnFigure({ source }: { source: string }) {
       </pre>
     );
   }
-  return (
+  const figure = (
     <div
       role="img"
-      className="my-3 overflow-x-auto rounded-lg bg-[var(--color-surface-page)] p-3 [&>svg]:mx-auto [&>svg]:h-auto [&>svg]:max-w-full"
+      // Scrolls rather than shrinking past legible when the card is narrow; see `.ai-drawn-figure`.
+      className="ai-drawn-figure rounded-lg bg-[var(--color-surface-page)] p-3"
       // Rebuilt above from an allowlist: no script, foreignObject, href or
       // event handler survives it.
       dangerouslySetInnerHTML={{ __html: drawn.svg }}
     />
+  );
+  if (!actions?.canInsertDrawing) return <div className="my-3">{figure}</div>;
+
+  const inserted = actions.isInserted(source);
+  const inserting = actions.insertingKey === source;
+  return (
+    <figure className="my-3 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-e0">
+      {figure}
+      <figcaption className="flex justify-end p-2.5">
+        <button
+          type="button"
+          disabled={inserted || inserting}
+          className="rounded-full bg-accent px-3 py-1.5 text-2xs font-semibold text-accent-on transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted"
+          onClick={() => actions.insertDrawing(source, drawn.svg)}
+        >
+          {inserted ? "Added to page" : inserting ? "Adding..." : "Add to page"}
+        </button>
+      </figcaption>
+    </figure>
   );
 }
 
@@ -107,23 +181,50 @@ function DrawnFigure({ source }: { source: string }) {
  * disabled. The component preserves Jami's existing \( ... \), \[ ... \],
  * $...$ and $$...$$ math delimiters.
  */
+/**
+ * A table on a notebook page. The box it sits in is as wide as the student
+ * made it, and the page is not a place to scroll sideways, so it wraps.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function PageTable({ node, ...props }: ComponentPropsWithoutRef<"table"> & { node?: TableNode }) {
+  return (
+    <div className="ai-response-table">
+      <table {...props} />
+    </div>
+  );
+}
+
 export default function AiResponseRenderer({
   content,
   className = "",
+  variant = "chat",
 }: AiResponseRendererProps) {
-  const normalizedContent = preprocessMathDelimiters(
-    normalizeLegacyJamiMathText(content)
+  const normalizedContent = prepareAiMarkdown(
+    normalizeLegacyJamiMathText(content),
+    repairModelLatex
   );
 
   return (
-    <div className={`ai-response ${className}`}>
+    <div className={`ai-response ${variant === "page" ? "ai-response--page" : ""} ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
-          [rehypeKatex, { trust: false, strict: "ignore", throwOnError: false }],
+          [
+            rehypeKatex,
+            {
+              trust: false,
+              strict: "ignore",
+              throwOnError: false,
+              // Maths KaTeX cannot read is shown as written, in the colour of
+              // the words around it. Its default is a loud red, which read as
+              // an error the student had made.
+              errorColor: "currentColor",
+            },
+          ],
         ]}
         components={{
           a: SafeLink,
+          table: variant === "page" ? PageTable : ScrollingTable,
           /*
            * Intercepted at the pre, not the code inside it: a figure returned
            * from the code component would be nested in the pre markdown puts

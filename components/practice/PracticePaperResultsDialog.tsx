@@ -173,8 +173,8 @@ export default function PracticePaperResultsDialog({
               <StatusPill>
                 {paper.tutorEnabled
                   ? paper.tutorUsed
-                    ? "Tutor-assisted · used"
-                    : "Tutor-assisted · unused"
+                    ? "Jami-assisted · used"
+                    : "Jami-assisted · unused"
                   : "Exam conditions"}
               </StatusPill>
               <StatusPill>{paper.markScheme.label}</StatusPill>
@@ -887,7 +887,7 @@ function AttemptHistory({ attempts }: { attempts: PracticePaperAttempt[] }) {
                 <p className="mt-1 text-xs leading-5 text-text-muted">
                   {new Date(attempt.startedAt).toLocaleDateString()} ·{" "}
                   {attempt.status.replace("_", " ")} ·{" "}
-                  {attempt.assisted ? "Tutor-assisted" : "Exam conditions"}
+                  {attempt.assisted ? "Jami-assisted" : "Exam conditions"}
                 </p>
               </div>
               {result ? (

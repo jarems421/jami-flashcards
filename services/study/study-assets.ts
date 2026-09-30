@@ -38,6 +38,37 @@ async function authHeaders() {
 }
 
 /**
+ * Why preparation was refused, in the terms the caller acts on.
+ *
+ * Only one of these means stop: the day's allowance is spent, and every
+ * further request will be refused the same way. Being asked to slow down is
+ * a wait, not an end, and treating it as the end is what left a session's
+ * later cards unprepared -- the first refusal stopped the whole background
+ * pass, and every card after it arrived with no question.
+ */
+export class StudyAssetPreparationError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly retryAfterMs: number | null;
+
+  constructor(message: string, status: number, code: string | null, retryAfterSeconds: unknown) {
+    super(message);
+    this.name = "StudyAssetPreparationError";
+    this.status = status;
+    this.code = code;
+    this.retryAfterMs =
+      typeof retryAfterSeconds === "number" && Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds * 1000
+        : null;
+  }
+
+  /** Worth trying again after a pause: too many at once, or the provider stumbled. */
+  get isTemporary() {
+    return this.code === "burst_limit" || this.status >= 500 || this.status === 0;
+  }
+}
+
+/**
  * Ask the server to prepare study material for a deck.
  *
  * Only ever called from an explicit Prepare action. Nothing about editing or
@@ -46,18 +77,30 @@ async function authHeaders() {
 export async function prepareStudyAssets(input: {
   deckId: string;
   cardIds: string[];
+  /** A session pinned to multiple choice: cards prepared with no question get one more try. */
+  purpose?: "multiple-choice";
 }): Promise<StudyAssetPreparation> {
-  const response = await fetch("/api/ai/study-assets/jobs", {
-    method: "POST",
-    headers: await authHeaders(),
-    body: JSON.stringify(input),
-  });
+  let response: Response;
+  try {
+    response = await fetch("/api/ai/study-assets/jobs", {
+      method: "POST",
+      headers: await authHeaders(),
+      body: JSON.stringify(input),
+    });
+  } catch {
+    throw new StudyAssetPreparationError("Jami could not reach the server.", 0, null, null);
+  }
 
   const data = (await response.json().catch(() => null)) as
-    | (StudyAssetPreparation & { error?: string })
+    | (StudyAssetPreparation & { error?: string; code?: string; retryAfterSeconds?: number })
     | null;
   if (!response.ok || !data) {
-    throw new Error(data?.error ?? "Jami could not prepare these cards.");
+    throw new StudyAssetPreparationError(
+      data?.error ?? "Jami could not prepare these cards.",
+      response.status,
+      typeof data?.code === "string" ? data.code : null,
+      data?.retryAfterSeconds
+    );
   }
   return data;
 }
@@ -101,7 +144,7 @@ export async function loadStudyAssets(
         const data = entry.data();
         const card = byId.get(entry.id);
         if (card && data?.asset && hasCurrentStudySource(data, card) && !data.generationFailed && data.schemaVersion === STUDY_ASSET_SCHEMA_VERSION && data.promptVersion === STUDY_ASSET_PROMPT_VERSION && data.validatorVersion === STUDY_ASSET_VALIDATOR_VERSION && typeof data.bundleRevision === "string") {
-          assets[entry.id] = { ...data.asset, retiredVariantIds: [...new Set([...(data.asset.retiredVariantIds ?? []), ...(data.retiredVariantIds ?? [])])], cacheKey: data.cacheKey, sourceFingerprint: data.sourceFingerprint, bundleRevision: data.bundleRevision, validatorVersion: data.validatorVersion, repairRequested: data.repairRequested === true && data.repairAttemptedForPromptVersion !== STUDY_ASSET_PROMPT_VERSION } as StudyAsset;
+          assets[entry.id] = { ...data.asset, retiredVariantIds: [...new Set([...(data.asset.retiredVariantIds ?? []), ...(data.retiredVariantIds ?? [])])], cacheKey: data.cacheKey, sourceFingerprint: data.sourceFingerprint, bundleRevision: data.bundleRevision, validatorVersion: data.validatorVersion, repairRequested: data.repairRequested === true && data.repairAttemptedForPromptVersion !== STUDY_ASSET_PROMPT_VERSION, mcqRetried: data.mcqRetryPromptVersion === STUDY_ASSET_PROMPT_VERSION } as StudyAsset;
         }
       });
     } catch (error) {

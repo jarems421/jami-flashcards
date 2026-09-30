@@ -20,6 +20,9 @@ const read = (relativePath: string) =>
   readFileSync(join(root, relativePath), "utf8");
 
 const tutorPage = read("app/dashboard/tutor/page.tsx");
+// The page's ask box is its own component; what it promises is still the page's.
+const tutorSurface = `${tutorPage}
+${read("components/ai/TutorAskPanel.tsx")}`;
 const libraryPage = read("app/dashboard/library/page.tsx");
 const homePage = read("app/dashboard/page.tsx");
 const tabBar = read("components/layout/TabBar.tsx");
@@ -32,9 +35,11 @@ const tabBar = read("components/layout/TabBar.tsx");
  */
 describe("the drafts queue has a home", () => {
   it("is reachable in one press from Home", () => {
-    expect(homePage).toContain(
-      '<ActionPill href="/dashboard/tutor" variant="secondary">Review drafts</ActionPill>'
-    );
+    // Matched on the destination rather than the whole element: the Study Hub
+    // redesign swapped the button primitive, and this test is about where the
+    // drafts queue lives, not which component draws the link.
+    expect(homePage).toContain('<ButtonLink href="/dashboard/tutor"');
+    expect(homePage).toContain("Review drafts");
     expect(homePage).not.toContain('plan.drafts[0]?.href ?? "/dashboard/progress"');
   });
 
@@ -83,7 +88,7 @@ describe("the tutor owns the sidebar entry sources used to have", () => {
 
     expect(entries).toContain("/dashboard/tutor");
     expect(entries).not.toContain("/dashboard/library");
-    expect(tabBar).toContain('label: "Tutor"');
+    expect(tabBar).toContain('label: "Jami"');
   });
 
   it("stays lit wherever the tutor's own surfaces are", () => {
@@ -108,7 +113,7 @@ describe("the tutor owns the sidebar entry sources used to have", () => {
       expect(page).toContain("views={TUTOR_VIEWS}");
       expect(page).toContain("TUTOR_TITLE");
     }
-    expect(TUTOR_TITLE).toBe("Tutor");
+    expect(TUTOR_TITLE).toBe("Jami");
   });
 });
 
@@ -125,7 +130,7 @@ describe("it does not promise Jami a memory it does not have", () => {
     const withoutComments = (source: string) =>
       source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 
-    for (const page of [tutorPage, read("lib/app/tutor-views.ts")]) {
+    for (const page of [tutorSurface, read("lib/app/tutor-views.ts")]) {
       const copy = withoutComments(page);
       expect(copy).not.toMatch(/Jami'?s (context|memory|knowledge)/i);
       expect(copy).not.toMatch(/knowledge base/i);
@@ -136,9 +141,9 @@ describe("it does not promise Jami a memory it does not have", () => {
     // Two short lines beside the offer rather than a paragraph inside it: a
     // wall of prose about what Jami does not retain is skipped exactly when it
     // matters, which is the first visit.
-    expect(tutorPage).toMatch(/Reads only what you hand it/i);
-    expect(tutorPage).toMatch(/Keeps nothing between conversations/i);
-    expect(tutorPage).toMatch(/for that conversation only/i);
+    expect(tutorSurface).toMatch(/Reads only what you hand it/i);
+    expect(tutorSurface).toMatch(/Keeps nothing between conversations/i);
+    expect(tutorSurface).toMatch(/for that conversation only/i);
   });
 
   it("keeps the student as the one who approves what Jami writes", () => {

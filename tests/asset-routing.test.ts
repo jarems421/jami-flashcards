@@ -115,16 +115,17 @@ describe("choosing between a drawing and a photograph", () => {
     ).toContain("asset_not_described");
   });
 
-  it("refuses a graph that is not data, and accepts one that is", () => {
+  it("refuses a graph that is not a chart, and accepts one that is", () => {
     expect(
       codes({ prompt: "Use Figure 1.", assets: [{ id: "g1", type: "graph", title: "Figure 1", content: "a rising line", ...described }] })
-    ).toContain("asset_graph_unreadable");
-    expect(
-      codes({
-        prompt: "Use Figure 1.",
-        assets: [{ id: "g1", type: "graph", title: "Figure 1", content: '{"series":[{"points":[[0,0],[1,2]]}]}', ...described }],
-      })
-    ).toEqual([]);
+    ).toContain("asset_chart_unreadable");
+    const chart = JSON.stringify({
+      kind: "graph",
+      x: { label: "Time", unit: "s", min: 0, max: 10, step: 2 },
+      y: { label: "Speed", unit: "m/s", min: 0, max: 20, step: 5 },
+      series: [{ points: [[0, 0], [10, 20]], join: "line" }],
+    });
+    expect(codes({ prompt: "Use Figure 1.", assets: [{ id: "g1", type: "graph", title: "Figure 1", content: chart, ...described }] })).toEqual([]);
   });
 
   it("says nothing about a question that needs no picture", () => {

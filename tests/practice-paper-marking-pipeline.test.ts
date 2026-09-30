@@ -337,6 +337,65 @@ describe("what a quantitative paper's marker is told", () => {
 });
 
 /**
+ * A student who runs out of room carries on on another page and seldom says
+ * so. Only a marker shown handwriting is told how to put that back together,
+ * so a typed answer's request stays exactly what it was.
+ */
+describe("what a marker shown handwriting across pages is told", () => {
+  const image = { inlineData: { mimeType: "image/png", data: "iVBORw0KGgo=" } };
+  const requestText = (options: {
+    answerParts: Parameters<typeof buildMarkerRequest>[0]["answerParts"];
+    thirdViewParts?: Parameters<typeof buildMarkerRequest>[0]["thirdViewParts"];
+    role?: Parameters<typeof buildMarkerRequest>[0]["role"];
+    variant?: Parameters<typeof buildMarkerRequest>[0]["variant"];
+  }) =>
+    buildMarkerRequest({
+      paper,
+      answerParts: options.answerParts,
+      ...(options.thirdViewParts ? { thirdViewParts: options.thirdViewParts } : {}),
+      ...(options.variant ? { variant: options.variant } : {}),
+      deadlineAt: Date.now() + 60_000,
+      maxOutputTokens: 1_000,
+      role: options.role ?? "primary",
+    }).contents[0].parts
+      .map((part) => ("text" in part ? part.text : ""))
+      .join("\n");
+
+  it("tells it to read every page as one answer, however it is labelled", () => {
+    const text = requestText({ answerParts: [{ text: "working" }, image] });
+    expect(text).toContain("Read every page before marking anything");
+    expect(text).toMatch(/need not repeat the question or part number, say "continued", or begin at the top of the page/);
+    expect(text).toMatch(/not by which page it is on/);
+    expect(text).toMatch(/never withhold a mark because the work for it is on another page or is unlabelled/);
+  });
+
+  it("tells a continuation from a fresh start by the crossing-out rule", () => {
+    const text = requestText({ answerParts: [{ text: "working" }, image] });
+    expect(text).toContain("Carrying on is not starting again.");
+    expect(text).toMatch(/crossed out and redone elsewhere is not marked; work crossed out and never replaced still is/);
+  });
+
+  it("leaves a typed answer's request as it was", () => {
+    expect(requestText({ answerParts: [{ text: "typed answer" }] })).not.toContain("Read every page");
+  });
+
+  it("follows the parts the juror is actually sent", () => {
+    expect(
+      requestText({ role: "third-view", answerParts: [{ text: "working" }, image], thirdViewParts: [{ text: "typed" }] })
+    ).not.toContain("Read every page");
+    expect(
+      requestText({ role: "third-view", answerParts: [{ text: "typed" }], thirdViewParts: [{ text: "working" }, image] })
+    ).toContain("Read every page");
+  });
+
+  it("can be switched off to measure it", () => {
+    expect(
+      requestText({ answerParts: [{ text: "working" }, image], variant: { workAcrossPages: false } })
+    ).not.toContain("Read every page");
+  });
+});
+
+/**
  * Jami has marked half a mark generous through every configuration tried this
  * week -- with and without the question and scheme in front of it, and with
  * and without a prompt telling it to check the working. Neither more
@@ -567,5 +626,189 @@ describe("a request too large to send", () => {
   it("does not count when no ceiling was set", async () => {
     await markSingleQuestionAdaptively(single());
     expect(countAiInputTokens).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Essays are marked by level, and the model that settles a disputed essay is
+ * the one measured to mark essays where examiners do. On 36 GCSE English
+ * answers the supervisor placed essays 2.0 marks below the examiners and the
+ * worker 0.5 below; with the supervisor adjudicating, the final mark was 2.2
+ * low. Point-marked questions keep the supervisor, where +0.09 was measured.
+ */
+describe("marking by levels", () => {
+  const essay = mapPracticePaperData("essay-1", {
+    notebookId: "essay-1",
+    folderId: "folder-1",
+    title: "English paper",
+    status: "submitted",
+    assessmentProfile: { qualificationOrModule: "GCSE English Language" },
+    questions: [{ id: "q1", label: "Question 2", prompt: "How does the writer use language?", marks: 8 }],
+    markScheme: {
+      kind: "generated",
+      items: [{
+        questionId: "q1",
+        marking: "banded",
+        answer: "Analysis of language",
+        acceptableAlternatives: [],
+        commonMistakes: [],
+        bands: [
+          { label: "Level 1", minMarks: 1, maxMarks: 2, descriptor: "Simple comment" },
+          { label: "Level 2", minMarks: 3, maxMarks: 4, descriptor: "Some comment" },
+          { label: "Level 3", minMarks: 5, maxMarks: 6, descriptor: "Clear explanation" },
+          { label: "Level 4", minMarks: 7, maxMarks: 8, descriptor: "Perceptive analysis" },
+        ],
+      }],
+    },
+  });
+  const pointsPaper = mapPracticePaperData("maths-1", {
+    notebookId: "maths-1",
+    folderId: "folder-1",
+    title: "Maths paper",
+    status: "submitted",
+    assessmentProfile: { qualificationOrModule: "GCSE Mathematics" },
+    questions: [{ id: "q1", label: "Question 1", prompt: "Solve 2x = 6.", marks: 2 }],
+    markScheme: {
+      kind: "generated",
+      items: [{
+        questionId: "q1",
+        marking: "additive",
+        answer: "x = 3",
+        acceptableAlternatives: [],
+        commonMistakes: [],
+        points: [
+          { id: "m1", marks: 1, code: "M", text: "Divides by 2", dep: [], ft: false, essentialTerms: [], allow: [], reject: [] },
+          { id: "a1", marks: 1, code: "A", text: "x = 3", dep: ["m1"], ft: false, essentialTerms: [], allow: [], reject: [] },
+        ],
+      }],
+    },
+  });
+  const levelReport = (label: string, max: number, marks: number) => JSON.stringify({
+    summary: "Evidence-based report.",
+    strengths: [],
+    priorities: ["Develop the analysis"],
+    questionResults: [{
+      questionId: "q1",
+      label,
+      awardedMarks: marks,
+      maxMarks: max,
+      feedback: "Specific feedback.",
+      criterionResults: [{ criterion: "Level placement", awarded: true, awardedMarks: marks, evidence: "Quoted line" }],
+      evidence: ["Quoted line"],
+      strengths: [],
+      improvements: [],
+      nextStep: "Develop the analysis.",
+      confidence: "high",
+      attempted: true,
+    }],
+  });
+  const markDisputed = async (target: typeof essay, label: string, max: number) => {
+    generateAiText.mockReset();
+    generateAiText.mockImplementation(async ({ role, request }: { role: string; request: { contents: unknown } }) => {
+      const adjudicating = JSON.stringify(request.contents).includes("Resolve this one disputed question");
+      if (adjudicating) return levelReport(label, max, 1);
+      return levelReport(label, max, role === "supervisor" ? max : 1);
+    });
+    await markSingleQuestionAdaptively({
+      paper: target,
+      answerParts: [{ text: "--- BEGIN UNTRUSTED REFERENCE: ANSWER q1 ---\nThe writer uses a metaphor.\n--- END UNTRUSTED REFERENCE: ANSWER q1 ---" }],
+      deadlineAt: Date.now() + 60_000,
+      maxOutputTokens: 2_000,
+      forceVerification: true,
+    });
+    const calls = generateAiText.mock.calls.map((entry) => entry[0]);
+    return {
+      adjudicator: calls.find((call) => JSON.stringify(call.request.contents).includes("Resolve this one disputed question")),
+      prompt: JSON.stringify(calls[0].request.contents),
+    };
+  };
+
+  it("settles a disputed essay with the worker", async () => {
+    const { adjudicator } = await markDisputed(essay, "Question 2", 8);
+    expect(adjudicator?.role).toBe("worker");
+  });
+
+  it("keeps the supervisor for a disputed point-marked question", async () => {
+    const { adjudicator } = await markDisputed(pointsPaper, "Question 1", 2);
+    expect(adjudicator?.role).toBe("supervisor");
+  });
+
+  it("tells the marker how levels are marked only where the guide uses them", async () => {
+    expect((await markDisputed(essay, "Question 2", 8)).prompt).toContain("best fit");
+    expect((await markDisputed(pointsPaper, "Question 1", 2)).prompt).not.toContain("best fit");
+  });
+
+  it("does not mark English Language as a foreign language", async () => {
+    const { prompt } = await markDisputed(essay, "Question 2", 8);
+    expect(prompt).toContain("For essays");
+    expect(prompt).not.toContain("For languages");
+  });
+
+  /**
+   * Adjudication is the slow step in marking an essay, and replayed from the
+   * markers' logged decisions, essays whose markers were within a mark lost
+   * nothing by taking the worker's report instead.
+   */
+  const markEssayAt = async (supervisorMarks: number, workerMarks: number, variant?: { settleCloseLevelsDisputes: boolean }) => {
+    generateAiText.mockReset();
+    generateAiText.mockImplementation(async ({ role, request }: { role: string; request: { contents: unknown } }) => {
+      if (JSON.stringify(request.contents).includes("Resolve this one disputed question")) return levelReport("Question 2", 8, 5);
+      return levelReport("Question 2", 8, role === "supervisor" ? supervisorMarks : workerMarks);
+    });
+    const marked = await markSingleQuestionAdaptively({
+      paper: essay,
+      answerParts: [{ text: "--- BEGIN UNTRUSTED REFERENCE: ANSWER q1 ---\nThe writer uses a metaphor.\n--- END UNTRUSTED REFERENCE: ANSWER q1 ---" }],
+      deadlineAt: Date.now() + 60_000,
+      maxOutputTokens: 2_000,
+      forceVerification: true,
+      ...(variant ? { variant } : {}),
+    });
+    const adjudications = generateAiText.mock.calls.filter((entry) =>
+      JSON.stringify(entry[0].request.contents).includes("Resolve this one disputed question")
+    ).length;
+    return { marked, adjudications };
+  };
+
+  it("settles an essay whose markers are a mark apart without an adjudicator, on the worker's report", async () => {
+    const { marked, adjudications } = await markEssayAt(5, 4);
+    expect(adjudications).toBe(0);
+    expect(marked.result.questionResults[0]?.awardedMarks).toBe(4);
+    expect(marked.audit).toMatchObject({ primaryScore: 5, verifierScore: 4, adjudicated: false });
+  });
+
+  it("still adjudicates an essay whose markers are further apart", async () => {
+    const { marked, adjudications } = await markEssayAt(6, 4);
+    expect(adjudications).toBe(1);
+    expect(marked.audit.adjudicated).toBe(true);
+  });
+
+  it("tells the marker the board's own researched rule in place of practice written from memory", async () => {
+    generateAiText.mockReset();
+    generateAiText.mockImplementation(async () => levelReport("Question 2", 8, 5));
+    await markSingleQuestionAdaptively({
+      paper: essay,
+      answerParts: [{ text: "--- BEGIN UNTRUSTED REFERENCE: ANSWER q1 ---\nThe writer uses a metaphor.\n--- END UNTRUSTED REFERENCE: ANSWER q1 ---" }],
+      deadlineAt: Date.now() + 60_000,
+      maxOutputTokens: 2_000,
+      examinerPracticeRules: [{
+        id: "language-analysis",
+        name: "Researched language analysis (8 marks)",
+        tariffs: [8],
+        commandWords: ["language"],
+        cues: [],
+        marking: "levels",
+        answerShape: "Analyses how the writer's word choices shape the reader's response.",
+        examinerRules: ["Four levels, decided by how perceptively effects are analysed."],
+        pitfalls: [],
+        sources: [{ title: "AQA 8700 mark scheme" }],
+      }],
+    });
+    const prompt = JSON.stringify(generateAiText.mock.calls[0][0].request.contents);
+    expect(prompt).toContain("Researched language analysis (8 marks)");
+  });
+
+  it("adjudicates every essay dispute when an evaluation switches the rule off", async () => {
+    const { adjudications } = await markEssayAt(5, 4, { settleCloseLevelsDisputes: false });
+    expect(adjudications).toBe(1);
   });
 });

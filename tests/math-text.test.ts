@@ -3,7 +3,10 @@ import {
   attachInlineMathPunctuation,
   normalizeLegacyJamiMathText,
   normalizeMathDelimiters,
+  prepareAiMarkdown,
   preprocessMathDelimiters,
+  readFencedBlockAsMath,
+  readInlineCodeAsMath,
   splitMathRichText,
   wrapBareLatex,
 } from "@/lib/study/math-text";
@@ -158,6 +161,35 @@ describe("preprocessMathDelimiters", () => {
   it("leaves inline code untouched", () => {
     const input = "Use `$x^2$` as a literal";
     expect(preprocessMathDelimiters(input)).toBe(input);
+  });
+
+  it("reads maths in backticks as maths, and code as code", () => {
+    expect(readInlineCodeAsMath("$v = u + at$")).toBe("v = u + at");
+    expect(readInlineCodeAsMath("\\frac{1}{2}mv^2")).toBe("\\frac{1}{2}mv^2");
+    expect(readInlineCodeAsMath("x^2 - 4")).toBe("x^2 - 4");
+    for (const code of ["console.log", 'print("\\n")', "snake_case", "$HOME", "$a + $b", "a ^= b;"]) {
+      expect(readInlineCodeAsMath(code), code).toBeNull();
+    }
+  });
+
+  it("reads a latex fence as maths and a python fence as code", () => {
+    expect(readFencedBlockAsMath("```latex\n\\int_0^1 x\\,dx\n```")).toBe("\\int_0^1 x\\,dx");
+    expect(readFencedBlockAsMath("```\n$$a^2 + b^2$$\n```")).toBe("a^2 + b^2");
+    expect(readFencedBlockAsMath("```python\nx = 2 ** 3\n```")).toBeNull();
+    expect(readFencedBlockAsMath("```\nx = 2\n```")).toBeNull();
+  });
+
+  it("prepares a reply: repairs its LaTeX, and leaves real code alone", () => {
+    const repair = (value: string) => value.replace(/\\imes/g, "\\times");
+    expect(prepareAiMarkdown("So $3 \\imes 4$, and `x^2`.", repair)).toBe("So $3 \\times 4$, and $x^2$.");
+    const code = "```js\nconst price = `$${cost}`;\n```";
+    expect(prepareAiMarkdown(code, repair)).toBe(code);
+  });
+
+  it("keeps display maths on its line when it sits in a table row", () => {
+    expect(normalizeMathDelimiters("| Area | $$\\pi r^2$$ |")).toBe(
+      "| Area | $\\displaystyle \\pi r^2$ |"
+    );
   });
 
   it("still converts display math in the surrounding text", () => {

@@ -9,7 +9,8 @@ import {
 import { getAdminAuth } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+/** A whole lecture pack: hundreds of pages to read, cut and embed. */
+export const maxDuration = 300;
 
 async function authenticate(request: NextRequest) {
   const token = getBearerToken(request.headers.get("authorization"));

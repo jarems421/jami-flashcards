@@ -104,6 +104,8 @@ test("signed-in notebook work autosaves and survives navigation and reload", asy
     "Highlighter (H)",
     "Eraser (E)",
     "Text box (T)",
+    "Add image",
+    "Add graph",
     "Undo (Ctrl+Z)",
     "Redo (Ctrl+Shift+Z)",
   ]);

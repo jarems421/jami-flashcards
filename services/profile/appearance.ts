@@ -62,3 +62,25 @@ export async function syncAppearance(userId: string, accountCreatedAt: number) {
 export function resetDeviceAppearance() {
   applyAppearanceToDevice(DEFAULT_APPEARANCE, null);
 }
+
+/**
+ * Record which sky, if any, is the account's background.
+ *
+ * The page has already switched the background over locally, so a failure here
+ * must not undo that or interrupt the student -- it only means the choice will
+ * not follow them to another device. Warn and carry on.
+ */
+export async function saveSkyBackgroundChoice(
+  uid: string,
+  sky: boolean,
+  skyConstellationId?: string
+) {
+  try {
+    await updateAppearance(
+      uid,
+      skyConstellationId === undefined ? { sky } : { sky, skyConstellationId }
+    );
+  } catch (error) {
+    console.warn("Could not save the background to your account.", error);
+  }
+}

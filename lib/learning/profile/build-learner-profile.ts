@@ -1,3 +1,4 @@
+import { selectRecentResults } from "@/lib/learning/profile/recent-results";
 import {
   buildConceptRegistry,
   conceptShares,
@@ -19,6 +20,19 @@ import {
   canonicalizeObservations,
   groupObservationsByTopic,
 } from "@/lib/learning/profile/observations";
+import {
+  notebookObservations,
+  type NotebookMarkedWorking,
+} from "@/lib/learning/profile/notebook-signals";
+import {
+  revisionObservations,
+  type RevisionSessionEvidence,
+} from "@/lib/learning/profile/revision-signals";
+import {
+  applyTopicRelations,
+  resolveTopicRelations,
+  type TopicRelationInput,
+} from "@/lib/learning/concepts/topic-relations";
 import {
   pastPaperObservations,
   type PastPaperEvidenceAttempt,
@@ -43,7 +57,7 @@ import { countUniqueItems } from "@/lib/learning/scoring/item-weights";
 import { tuningWithLearnerPrior } from "@/lib/learning/scoring/learner-prior";
 import { masteryScore, weightedAccuracy } from "@/lib/learning/scoring/mastery-score";
 import { DEFAULT_LEARNING_TUNING, type LearningTuning } from "@/lib/learning/scoring/tuning";
-import { measureTrend } from "@/lib/learning/scoring/trend-score";
+import { measureTrend, measureTrendWithinKinds } from "@/lib/learning/scoring/trend-score";
 import {
   LEARNER_PROFILE_ALGORITHM_VERSION,
   type ConceptProvenance,
@@ -51,6 +65,8 @@ import {
   type LearnerEvidenceSource,
   type LearnerProfile,
   type LearnerProfileScope,
+  type LearningClaimEstimate,
+  type LearningClaims,
   type LearningConcept,
   type LearningDemonstration,
   type LearningEvidenceKind,
@@ -90,6 +106,16 @@ export type LearnerEvidence = {
   pastPaperAttempts: readonly PastPaperEvidenceAttempt[];
   practicePaperAttempts: readonly PracticePaperEvidenceAttempt[];
   /**
+   * Notebook working Tutor has marked. Weaker than the three above and
+   * weighted accordingly; see `notebook-signals.ts` for why.
+   */
+  notebookMarkings?: readonly NotebookMarkedWorking[];
+  /**
+   * Finished Revision Sessions on concepts in scope. Model-marked like notebook
+   * working and weighted the same; see `revision-signals.ts`.
+   */
+  revisionSessions?: readonly RevisionSessionEvidence[];
+  /**
    * Plain display names by key, for concepts with no hierarchy. A key with no
    * label or concept -- deleted, merged away, or from a catalogue that is not
    * servable -- is left out of the profile rather than shown as "Unknown".
@@ -99,10 +125,21 @@ export type LearnerEvidence = {
   concepts?: readonly LearningConcept[];
   /** Keys that now mean another concept, such as a merged Topic. */
   conceptRedirects?: Readonly<Record<string, string>>;
+  /**
+   * How the student's own Topics relate to the specification, where anyone has
+   * said. Empty unless `enableConceptRelations` is on; see
+   * `lib/learning/concepts/topic-relations.ts`.
+   */
+  topicRelations?: readonly TopicRelationInput[];
   /** Topic-linked notebooks and sources in scope: exposure, never evidence. */
   exposureItems?: readonly LearnerExposureItem[];
   /** Concepts the folder itself lists, which exist for it whatever the evidence. */
   declaredTopicKeys?: readonly string[];
+  /**
+   * Topics the student has told Tutor they find hard, and when. Neither
+   * evidence nor exposure: see `LearningTopicState.studentConcernAt`.
+   */
+  studentConcerns?: readonly { topicKey: string; at: number }[];
   specification?: LearnerSpecification;
   limitsReached?: readonly LearnerEvidenceLimit[];
   unavailableSources?: readonly LearnerEvidenceSource[];
@@ -117,7 +154,13 @@ export const LEARNER_PROFILE_LIMITS = {
   recommendations: 5,
 } as const;
 
-const EVIDENCE_ORDER: readonly LearningEvidenceKind[] = ["flashcards", "practice", "past-paper"];
+const EVIDENCE_ORDER: readonly LearningEvidenceKind[] = [
+  "flashcards",
+  "practice",
+  "past-paper",
+  "notebook",
+  "revision",
+];
 
 const PROVENANCE_FOR_SOURCE: Readonly<Record<LearningTopicSource, ConceptProvenance>> = {
   specification: "verified_specification",
@@ -141,8 +184,7 @@ const EMPTY_DEMONSTRATION_COUNTS: Record<LearningDemonstration, number> = {
  * key. Drafts and unchecked catalogue entries never enter.
  */
 export function buildEvidenceConceptRegistry(evidence: LearnerEvidence): ConceptRegistry {
-  return buildConceptRegistry({
-    concepts: [
+  const declared: LearningConcept[] = [
       ...(evidence.specification?.topics ?? []).map(
         (topic): LearningConcept => ({
           key: `spec:${topic.id}`,
@@ -161,9 +203,27 @@ export function buildEvidenceConceptRegistry(evidence: LearnerEvidence): Concept
           verified: true,
         })
       ),
-      ...(evidence.concepts ?? []),
-    ],
-    ...(evidence.conceptRedirects ? { redirects: evidence.conceptRedirects } : {}),
+    ...(evidence.concepts ?? []),
+  ];
+
+  /*
+   * Relations are laid over the concepts rather than mixed in with them,
+   * because they change how existing concepts hang rather than adding new
+   * ones: a covered specification concept gets the student's Topic as its
+   * parent, and that Topic takes the parent the concept used to have.
+   *
+   * Nothing downstream changes. Evidence still expands upward only, so a
+   * flashcard on the broad Topic stays broad while an exam answer on one
+   * covered concept counts there and rolls up to meet it.
+   */
+  const resolution = resolveTopicRelations(
+    evidence.topicRelations ?? [],
+    declared.filter((concept) => concept.key.startsWith("spec:"))
+  );
+
+  return buildConceptRegistry({
+    concepts: applyTopicRelations(declared, resolution),
+    redirects: { ...(evidence.conceptRedirects ?? {}), ...resolution.redirects },
   });
 }
 
@@ -188,6 +248,8 @@ export function collectLearnerObservations(
       ...flashcardObservations(evidence.cards, evidence.flashcardReviewEvents, now),
       ...pastPaperObservations(evidence.pastPaperAttempts),
       ...practicePaperObservations(evidence.practicePaperAttempts),
+      ...notebookObservations(evidence.notebookMarkings ?? []),
+      ...revisionObservations(evidence.revisionSessions ?? []),
     ],
     now
   );
@@ -223,6 +285,44 @@ function dueCardsByTopic(
   return due;
 }
 
+/** What each kind of evidence claims; see `LearningSignal.claims`. */
+const RECALL_EVIDENCE: ReadonlySet<LearningEvidenceKind> = new Set(["flashcards"]);
+const APPLICATION_EVIDENCE: ReadonlySet<LearningEvidenceKind> = new Set([
+  "past-paper",
+  "practice",
+  "notebook",
+]);
+
+function claimEstimate(
+  observations: readonly LearningObservation[],
+  kinds: ReadonlySet<LearningEvidenceKind>,
+  now: number,
+  tuning: LearningTuning,
+  scoped: LearningTuning
+): LearningClaimEstimate | undefined {
+  const own = observations.filter((observation) => kinds.has(observation.kind));
+  if (own.length === 0) return undefined;
+  return {
+    // Unpooled, like `evidenceMastery`: the split exists to find a gap the
+    // student's average would hide.
+    evidenceMastery: masteryScore(own, now, tuning),
+    confidence: evidenceConfidence(own, now, scoped),
+    attempts: own.reduce((total, observation) => total + observation.count, 0),
+  };
+}
+
+function claimsFor(
+  observations: readonly LearningObservation[],
+  now: number,
+  tuning: LearningTuning,
+  scoped: LearningTuning
+): LearningClaims | undefined {
+  const recall = claimEstimate(observations, RECALL_EVIDENCE, now, tuning, scoped);
+  const application = claimEstimate(observations, APPLICATION_EVIDENCE, now, tuning, scoped);
+  if (!recall && !application) return undefined;
+  return { ...(recall ? { recall } : {}), ...(application ? { application } : {}) };
+}
+
 export function buildLearningSignals(
   observations: readonly LearningObservation[],
   registry: ConceptRegistry,
@@ -240,8 +340,9 @@ export function buildLearningSignals(
   for (const [topicKey, topicObservations] of byTopic) {
     const concept = registry.concepts.get(topicKey);
     if (!concept) continue;
-    const trend = measureTrend(topicObservations, scoped);
+    const trend = measureTrendWithinKinds(topicObservations, scoped);
     const kinds = new Set(topicObservations.map((observation) => observation.kind));
+    const claims = claimsFor(topicObservations, now, tuning, scoped);
     signals.push({
       topicKey,
       topic: concept.label,
@@ -265,6 +366,7 @@ export function buildLearningSignals(
         0
       ),
       evidence: EVIDENCE_ORDER.filter((kind) => kinds.has(kind)),
+      ...(claims ? { claims } : {}),
     });
   }
   return signals.sort((left, right) => left.topicKey.localeCompare(right.topicKey));
@@ -318,6 +420,13 @@ export function buildLearnerProfile(input: {
   const signals = buildLearningSignals(observations, registry, evidence.cards, now);
 
   const specificationTopicKeys = (evidence.specification?.topics ?? []).map((topic) => `spec:${topic.id}`);
+  const concernAt = new Map<string, number>();
+  for (const concern of evidence.studentConcerns ?? []) {
+    const key = resolveConceptKey(registry, concern.topicKey);
+    if (key && Number.isFinite(concern.at)) {
+      concernAt.set(key, Math.max(concernAt.get(key) ?? 0, concern.at));
+    }
+  }
   const topics = buildTopicStates({
     signals,
     exposure: buildExposureByTopic({
@@ -333,6 +442,9 @@ export function buildLearnerProfile(input: {
       }),
       ...specificationTopicKeys,
     ],
+  }).map((topic) => {
+    const at = concernAt.get(topic.topicKey);
+    return at ? { ...topic, studentConcernAt: at } : topic;
   });
   const deferred = new Set(topics.filter((topic) => topic.deferredTo).map((topic) => topic.topicKey));
 
@@ -408,6 +520,7 @@ export function buildLearnerProfile(input: {
       { topics, recurringErrors },
       LEARNER_PROFILE_LIMITS.recommendations
     ),
+    recentResults: selectRecentResults({ observations, topics, now }),
     ...(coverage ? { coverage } : {}),
     evidenceSummary: {
       flashcardReviews: evidence.cards.reduce(

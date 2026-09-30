@@ -112,7 +112,7 @@ describe("the sidebar", () => {
 
   it("reads its entries", () => {
     expect(tabs.length).toBeGreaterThan(5);
-    expect(tabs.map((tab) => tab.label)).toContain("Tutor");
+    expect(tabs.map((tab) => tab.label)).toContain("Jami");
   });
 
   it("keeps the learning loop to what a student does, and the rest to the workspace", () => {
@@ -121,7 +121,7 @@ describe("the sidebar", () => {
     // Progress is somewhere you go to look back, not a step in the loop.
     expect(byLabel.get("Progress")).toBe("support");
     expect(byLabel.get("Learn")).toBe("loop");
-    expect(byLabel.get("Tutor")).toBe("loop");
+    expect(byLabel.get("Jami")).toBe("loop");
   });
 
   it("puts the two you visit occasionally at the bottom, together", () => {
@@ -151,7 +151,7 @@ describe("the sidebar", () => {
 
   it("keeps a drawable fallback behind the tutor's drawn mark", () => {
     const byLabel = new Map(tabs.map((tab) => [tab.label, tab.icon]));
-    const tutor = byLabel.get("Tutor") ?? "";
+    const tutor = byLabel.get("Jami") ?? "";
 
     // Jami is drawn by a component, but the path stays required so no entry is
     // ever shapeless -- it inherited the shelf icon from the Sources entry it

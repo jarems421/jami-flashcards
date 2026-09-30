@@ -1,6 +1,6 @@
 import { drawnFigureIssues } from "@/lib/practice/drawn-figure";
+import { EXAM_CHART_INSTRUCTION, examChartIssues, parseExamChart } from "@/lib/practice/exam-chart";
 import { looksLikeSvg, sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
-import { PAPER_GRAPH_INSTRUCTION, readPaperGraph } from "@/lib/practice/paper-graph";
 
 /**
  * Which kind of picture a question needs, if it needs one at all.
@@ -22,9 +22,9 @@ import { PAPER_GRAPH_INSTRUCTION, readPaperGraph } from "@/lib/practice/paper-gr
 /** What the designer is told, and what these checks then hold it to. */
 export const ASSET_ROUTING_INSTRUCTION =
   "Only include an asset when a candidate cannot answer without it. Decide its kind by what the " +
-  "candidate must do with it. If they must read a value off it -- a measured figure, a graph, a " +
-  "scattergram, a labelled diagram, a circuit, apparatus, a net, a transformation -- use a graph " +
-  "asset plotted from data or a diagram asset drawn as SVG, because those numbers have to be exact. If they must recognise " +
+  "candidate must do with it. If they must read a value off it, it has to be exact: a graph, " +
+  "scattergram, bar chart or histogram is a graph asset stated as a JSON chart, and a labelled " +
+  "diagram, circuit, apparatus, net or transformation is a diagram asset drawn as SVG. If they must recognise " +
   "something real that cannot be drawn from coordinates -- a micrograph, a photograph of rock " +
   "strata, a landscape, a work of art, a historical source image -- use an image asset and " +
   "describe it in content for the generator. Never use an image asset for a figure carrying " +
@@ -66,7 +66,7 @@ export function figureInstruction(options: { rasterEnabled: boolean }) {
       'real paper for this qualification uses them, refer to each by its title ("Figure 1", "Table 2") in the ' +
       "prompt, and number them in order through the paper.",
     "Table assets are Markdown tables, header row first; leave a cell empty where the candidate completes it.",
-    PAPER_GRAPH_INSTRUCTION,
+    EXAM_CHART_INSTRUCTION,
     SVG_DIAGRAM_INSTRUCTION,
     options.rasterEnabled
       ? ""
@@ -163,15 +163,22 @@ export function assetRoutingIssues(
       );
     }
 
-    if (kind === "graph" && !looksLikeSvg(asset.content ?? "") && !readPaperGraph(asset.content ?? "")) {
-      fail(
-        "asset_graph_unreadable",
-        `${asset.id ?? "an asset"} is a graph whose content is not a graph spec. Give the JSON object with ` +
-          "series points and/or functions, x and y ranges and axis labels."
-      );
+    /*
+     * A graph is stated, then drawn by code. One that cannot be read, or whose
+     * own numbers contradict it -- a point off its axes, a step that does not
+     * divide the scale, a blank grid with no scale to plot on -- is refused
+     * here, before a candidate is asked to read a value off it.
+     */
+    if (kind === "graph") {
+      const chart = parseExamChart(asset.content ?? "");
+      if (!chart) {
+        fail("asset_chart_unreadable", `${asset.id ?? "a graph"} is not a chart Jami can draw: give its axes and data as the JSON chart.`);
+      } else {
+        for (const issue of examChartIssues(chart)) fail(issue.code, `${asset.id ?? "a graph"}: ${issue.detail}`);
+      }
     }
 
-    if ((kind === "diagram" || kind === "graph") && looksLikeSvg(asset.content ?? "")) {
+    if (kind === "diagram" && looksLikeSvg(asset.content ?? "")) {
       const drawn = sanitizeSvgDiagram(asset.content ?? "");
       if (!drawn.ok) {
         fail("asset_svg_unusable", `${asset.id ?? "an asset"} sent SVG that ${drawn.reason}.`);

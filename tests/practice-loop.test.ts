@@ -237,8 +237,10 @@ describe("Jami notebook-first learning foundations", () => {
       linkedSourceId: "source-history-note",
       status: "blank",
     });
-    expect(page.typedContent).toContain("Expected answer:");
-    expect(page.typedContent).toContain("Solution notes:");
+    // Kept with the page but off it: a practice question must not open with its answer showing.
+    expect(page).not.toHaveProperty("typedContent");
+    expect(page.questionAnswer).toContain("Expected answer:");
+    expect(page.questionAnswer).toContain("Solution notes:");
   });
 
   it("rejects unsafe generated draft conversions", () => {

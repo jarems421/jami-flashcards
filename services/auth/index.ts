@@ -5,13 +5,10 @@ import {
   applyActionCode,
   browserLocalPersistence,
   confirmPasswordReset,
-  createUserWithEmailAndPassword,
   getRedirectResult,
-  reload,
   verifyPasswordResetCode,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
-  sendEmailVerification,
   sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
@@ -24,6 +21,7 @@ import {
   type AccountDeletionErrorCode,
   type AccountDeletionPhase,
 } from "@/lib/auth/account-deletion-contract";
+import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
 import { getPasswordRequirementMessage } from "@/lib/auth/password-strength";
 import { writePhotoBackground } from "@/lib/app/photo-background";
 import { applyAppearanceToDevice, DEFAULT_APPEARANCE } from "@/lib/app/appearance";
@@ -150,59 +148,121 @@ export class WeakPasswordError extends Error {
   }
 }
 
-export const signUpWithEmail = async (email: string, password: string) => {
-  /*
-   * The policy is enforced here rather than only on the form, because this is
-   * the last point at which a password can still be refused. Once the account
-   * exists there is nothing left to check: Firebase's own floor is six
-   * characters and it will happily have accepted `123456`.
-   */
-  const problem = getPasswordRequirementMessage(password, email);
-  if (problem) throw new WeakPasswordError(problem);
+/**
+ * A refusal from one of Jami's own account routes.
+ *
+ * Its message is already the sentence to show -- the server knows which of a
+ * dozen things went wrong with a code or an address, and a generic mapping
+ * would lose that.
+ */
+export class AuthRequestError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly retryAfterSeconds?: number
+  ) {
+    super(message);
+    this.name = "AuthRequestError";
+  }
+}
 
-  await initAuth();
-  const result = await withAuthTimeout(
-    createUserWithEmailAndPassword(auth, email, password)
-  );
-
-  /*
-   * Sent, not enforced. Proving the address matters -- it is the only way back
-   * in after a forgotten password, and an unverified one may belong to someone
-   * else entirely -- but locking a new account out of the app until a mail
-   * arrives is a worse first minute than the risk warrants here. The account is
-   * usable now and the banner asks until it is done.
-   */
+async function postAuthRoute(
+  path: string,
+  body: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  let response: Response;
   try {
-    await sendEmailVerification(result.user);
-  } catch {
-    // A verification mail that does not send must not fail the sign-up; the
-    // account exists and the banner offers to send it again.
+    response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(AUTH_OPERATION_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const timedOut = (error as { name?: string })?.name === "TimeoutError";
+    throw new AuthRequestError(
+      timedOut ? "auth/timeout" : "auth/network-request-failed",
+      timedOut
+        ? "That took too long. Check your connection and try again."
+        : "Jami could not reach the sign-in service. Check your connection and try again."
+    );
   }
 
-  return result.user;
-};
+  const result = (await response.json().catch(() => null)) as Record<
+    string,
+    unknown
+  > | null;
 
-/** Sends the verification mail again, for the banner's "resend". */
-export const resendEmailVerification = async () => {
-  await initAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error("Sign in first.");
-  await withAuthTimeout(sendEmailVerification(user));
+  if (!response.ok) {
+    throw new AuthRequestError(
+      typeof result?.code === "string" ? result.code : "auth/unknown",
+      typeof result?.error === "string" && result.error.trim()
+        ? result.error
+        : "That did not work. Please try again.",
+      typeof result?.retryAfterSeconds === "number"
+        ? result.retryAfterSeconds
+        : undefined
+    );
+  }
+
+  return result ?? {};
+}
+
+/**
+ * The sentence to show for anything thrown while signing in or up: Jami's own
+ * refusals already carry one, and Firebase's codes are mapped to one.
+ */
+export function getAuthErrorMessage(error: unknown) {
+  if (error instanceof AuthRequestError || error instanceof WeakPasswordError) {
+    return error.message;
+  }
+  return getFriendlyAuthError(getAuthErrorCode(error));
+}
+
+function readResendAfterSeconds(result: Record<string, unknown>) {
+  return typeof result.resendAfterSeconds === "number"
+    ? result.resendAfterSeconds
+    : 60;
+}
+
+/**
+ * Emails a sign-up code: the first half of creating an email account.
+ *
+ * Nothing is created yet. The account only exists once the code comes back,
+ * which is what makes an address somebody cannot read useless for signing up.
+ */
+export const requestSignUpCode = async (email: string) => {
+  const result = await postAuthRoute("/api/auth/sign-up/code", { email });
+  return { resendAfterSeconds: readResendAfterSeconds(result) };
 };
 
 /**
- * Re-reads the account from Firebase.
+ * Creates the account with the emailed code, then signs straight in.
  *
- * `emailVerified` is baked into the token the browser is holding, so following
- * the link in another tab changes nothing here until the account is fetched
- * again. This is what the banner's "I have verified" does.
+ * Jami's server creates it, already confirmed, after checking the code and
+ * the password -- the password check here only answers faster than a round
+ * trip would.
  */
-export const refreshCurrentUser = async () => {
-  await initAuth();
-  const user = auth.currentUser;
-  if (!user) return null;
-  await withAuthTimeout(reload(user));
-  return auth.currentUser;
+export const createAccountWithCode = async (
+  email: string,
+  password: string,
+  code: string
+) => {
+  const problem = getPasswordRequirementMessage(password, email);
+  if (problem) throw new WeakPasswordError(problem);
+
+  await postAuthRoute("/api/auth/sign-up", { email, password, code });
+  try {
+    return await signInWithEmail(email, password);
+  } catch {
+    // The account exists by now; only the sign-in after it did not happen.
+    // Saying sign-up failed would send them round for a new code they no
+    // longer need.
+    throw new AuthRequestError(
+      "auth/created-not-signed-in",
+      "Your account is ready. Sign in with your email and password to continue."
+    );
+  }
 };
 
 /** Whose address a reset link belongs to, and whether it is still good. */

@@ -320,6 +320,55 @@ export function panGraphView(view: GraphViewWindow, deltaX: number, deltaY: numb
   });
 }
 
+export type GraphScreenPoint = { x: number; y: number };
+
+/** Where a graph is on screen, and the size of the drawing NotebookGraphView was given. */
+export type GraphScreenFrame = {
+  rect: { left: number; top: number; width: number; height: number };
+  drawingWidth: number;
+  drawingHeight: number;
+  hasTitle: boolean;
+};
+
+/** The point on the graph under a point on the screen. */
+export function graphPointAtScreen(view: GraphViewWindow, frame: GraphScreenFrame, point: GraphScreenPoint) {
+  const plot = graphPlotArea(frame.drawingWidth, frame.drawingHeight, frame.hasTitle, view);
+  const pixelsX = frame.rect.width / frame.drawingWidth;
+  const pixelsY = frame.rect.height / frame.drawingHeight;
+  const unitsPerPixelX = (view.xMax - view.xMin) / Math.max(1e-9, (plot.right - plot.left) * pixelsX);
+  const unitsPerPixelY = (view.yMax - view.yMin) / Math.max(1e-9, (plot.bottom - plot.top) * pixelsY);
+  return {
+    x: view.xMin + (point.x - frame.rect.left - plot.left * pixelsX) * unitsPerPixelX,
+    y: view.yMax - (point.y - frame.rect.top - plot.top * pixelsY) * unitsPerPixelY,
+  };
+}
+
+/**
+ * The view a two-finger pinch leaves, the way a map follows one.
+ *
+ * The spread of the fingers sets the zoom, about the point of the graph that
+ * was between them when they landed, and that point then stays between them
+ * wherever they move -- so a pinch can zoom and slide in one gesture.
+ */
+export function pinchGraphView(
+  view: GraphViewWindow,
+  frame: GraphScreenFrame,
+  from: readonly [GraphScreenPoint, GraphScreenPoint],
+  to: readonly [GraphScreenPoint, GraphScreenPoint]
+) {
+  const startDistance = Math.hypot(from[1].x - from[0].x, from[1].y - from[0].y);
+  const distance = Math.hypot(to[1].x - to[0].x, to[1].y - to[0].y);
+  if (!(startDistance > 0) || !(distance > 0)) return view;
+  const middle = (points: readonly [GraphScreenPoint, GraphScreenPoint]) => ({
+    x: (points[0].x + points[1].x) / 2,
+    y: (points[0].y + points[1].y) / 2,
+  });
+  const anchor = graphPointAtScreen(view, frame, middle(from));
+  const zoomed = zoomGraphView(view, startDistance / distance, anchor);
+  const landed = graphPointAtScreen(zoomed, frame, middle(to));
+  return panGraphView(zoomed, anchor.x - landed.x, anchor.y - landed.y);
+}
+
 /**
  * A view whose y range shows what is plotted across the given x range.
  *

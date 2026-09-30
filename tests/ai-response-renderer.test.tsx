@@ -112,6 +112,17 @@ describe("AiResponseRenderer", () => {
     expect(() => render("$\\frac{1}{2")).not.toThrow();
   });
 
+  it("puts a table in a frame that scrolls, with room for each column", () => {
+    const html = render(
+      ["| Organelle | Job | Found in |", "| --- | --- | --- |", "| Mitochondria | Respiration | Both |"].join("\n")
+    );
+    expect(html).toContain('class="ai-response-table"');
+    // Three columns at seven rem each: the frame scrolls rather than the cells squeezing.
+    expect(html).toContain("min-width:21rem");
+    expect(html).toContain("<th>Organelle</th>");
+    expect(html).not.toContain("[object Object]");
+  });
+
   it("does not crash on empty content", () => {
     expect(() => render("")).not.toThrow();
     const html = render("");
@@ -145,18 +156,72 @@ function derivative(x: number): number {
     expect(html).toContain("katex");
   });
 
-  it("does not render math inside fenced code blocks", () => {
-    const markdown = "```\n$$\\sum_{i=1}^{n} i$$\n```";
+  it("does not render math inside a code block written in a programming language", () => {
+    const markdown = "```python\ncost = f\"${price}\"\nprint(\"\\n\")\n```";
     const html = render(markdown);
     expect(html).toContain("<pre");
     expect(html).toContain("<code");
     expect(html).not.toContain("katex");
   });
 
-  it("does not render math inside inline code", () => {
-    const html = render("`$x^2$` is not math here");
-    expect(html).toContain("<code");
-    expect(html).toContain("$x^2$");
-    expect(html).not.toContain("katex");
+  it("does not read ordinary inline code as maths", () => {
+    for (const code of ["`console.log`", "`print(\"\\n\")`", "`snake_case_name`", "`$HOME`"]) {
+      const html = render(`Use ${code} here`);
+      expect(html).toContain("<code>");
+      expect(html).not.toContain("katex");
+    }
+  });
+
+  /*
+   * Models put equations in backticks, and students saw them as monospace
+   * with the dollar signs showing, in the code colour -- red on the light
+   * theme. Maths is maths wherever the model fenced it.
+   */
+  it("renders maths a model put in inline code as maths", () => {
+    for (const code of ["`$x^2$`", "`\\frac{1}{2}mv^2`", "`x^2 + 3x - 4 = 0`", "`\\(v = u + at\\)`"]) {
+      const html = render(`The equation ${code} holds.`);
+      expect(html, code).toContain("katex");
+      expect(html, code).not.toContain("<code>");
+      expect(html, code).not.toContain("$");
+    }
+  });
+
+  it("renders a latex fence, or a plain fence of delimited maths, as display maths", () => {
+    for (const markdown of ["```latex\n\\sum_{i=1}^{n} i\n```", "```\n$$\\sum_{i=1}^{n} i$$\n```"]) {
+      const html = render(markdown);
+      expect(html).toContain("katex-display");
+      expect(html).not.toContain("<pre");
+    }
+  });
+
+  it("renders LaTeX written with no delimiters", () => {
+    const html = render("So the answer is \\frac{3}{4} of the whole.");
+    // Typeset as a fraction; the source survives only in KaTeX's hidden annotation.
+    expect(html).toContain("<mfrac>");
+    expect(html).toContain("So the answer is <span class=\"katex\">");
+  });
+
+  it("keeps display maths inside a table row from breaking the table", () => {
+    const html = render(["| Quantity | Formula |", "| --- | --- |", "| Area | $$\\pi r^2$$ |"].join("\n"));
+    expect(html).toContain("<table");
+    expect(html).toContain("<td>Area</td>");
+    expect(html).toContain("katex");
+  });
+
+  it("shows maths it cannot read in the text colour, not red", () => {
+    const html = render("$\\notacommand{x}$");
+    expect(html).not.toMatch(/#cc0000/i);
+  });
+
+  it("sets an answer for a notebook page without a sideways-scrolling table", () => {
+    const html = renderToString(
+      <AiResponseRenderer
+        variant="page"
+        content={["| A | B | C |", "| --- | --- | --- |", "| 1 | 2 | 3 |"].join("\n")}
+      />
+    );
+    expect(html).toContain("ai-response--page");
+    expect(html).toContain('class="ai-response-table"');
+    expect(html).not.toContain("min-width");
   });
 });

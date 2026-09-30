@@ -5,6 +5,7 @@ import {
   fitGraphYRange,
   formatGraphTick,
   graphPlotArea,
+  graphPointAtScreen,
   graphTicks,
   MAX_GRAPH_POINTS,
   moveNotebookGraphBlock,
@@ -12,6 +13,7 @@ import {
   normalizeNotebookGraphBlocks,
   panGraphView,
   parseGraphPointsText,
+  pinchGraphView,
   resizeNotebookGraphBlock,
   zoomGraphView,
 } from "@/lib/workspace/notebook-graphs";
@@ -109,6 +111,52 @@ describe("graph views", () => {
       5
     );
     expect(fitted!.yMax).toBeLessThan(100);
+  });
+});
+
+describe("pinching a graph", () => {
+  const view = { xMin: -10, xMax: 10, yMin: -10, yMax: 10 };
+  // Drawn at 360 by 288 into a box twice that size, a little way down the screen.
+  const frame = {
+    rect: { left: 40, top: 100, width: 720, height: 576 },
+    drawingWidth: 360,
+    drawingHeight: 288,
+    hasTitle: false,
+  };
+  const at = (x: number, y: number) => ({ x, y });
+
+  it("reads the graph point under the screen, through the plotted area", () => {
+    const plot = graphPlotArea(360, 288, false, view);
+    const corner = graphPointAtScreen(view, frame, at(40 + plot.left * 2, 100 + plot.top * 2));
+    expect(corner.x).toBeCloseTo(-10);
+    expect(corner.y).toBeCloseTo(10);
+  });
+
+  it("zooms by how far the fingers spread, about the point between them", () => {
+    const from = [at(300, 400), at(400, 400)] as const;
+    const to = [at(250, 400), at(450, 400)] as const;
+    const anchor = graphPointAtScreen(view, frame, at(350, 400));
+    const pinched = pinchGraphView(view, frame, from, to);
+    expect(pinched.xMax - pinched.xMin).toBeCloseTo(10);
+    expect(pinched.yMax - pinched.yMin).toBeCloseTo(10);
+    const stayed = graphPointAtScreen(pinched, frame, at(350, 400));
+    expect(stayed.x).toBeCloseTo(anchor.x);
+    expect(stayed.y).toBeCloseTo(anchor.y);
+  });
+
+  it("keeps that point between the fingers as they slide, and pinching in zooms out", () => {
+    const from = [at(300, 400), at(400, 400)] as const;
+    const to = [at(380, 330), at(430, 330)] as const;
+    const anchor = graphPointAtScreen(view, frame, at(350, 400));
+    const pinched = pinchGraphView(view, frame, from, to);
+    expect(pinched.xMax - pinched.xMin).toBeCloseTo(40);
+    const followed = graphPointAtScreen(pinched, frame, at(405, 330));
+    expect(followed.x).toBeCloseTo(anchor.x);
+    expect(followed.y).toBeCloseTo(anchor.y);
+  });
+
+  it("leaves the view alone when the fingers have no distance between them", () => {
+    expect(pinchGraphView(view, frame, [at(300, 400), at(300, 400)], [at(250, 400), at(450, 400)])).toBe(view);
   });
 });
 

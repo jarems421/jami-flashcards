@@ -9,13 +9,6 @@ export type OptionSwitchOption<Value extends string> = {
   detail?: string;
 };
 
-const columnClasses: Record<number, string> = {
-  2: "sm:grid-cols-2",
-  3: "sm:grid-cols-3",
-  4: "grid-cols-2 sm:grid-cols-4",
-  5: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5",
-};
-
 /**
  * Picks one of two or three ways of doing the same thing.
  *
@@ -28,6 +21,12 @@ const columnClasses: Record<number, string> = {
  * unselected one -- which is what hand-rolled versions of this kept doing --
  * hides half the decision from someone who has not made it yet, and this
  * control exists precisely at the moment they are deciding.
+ *
+ * The row lays itself out by the room it has, not the screen it is on. The
+ * same four choices sit on a full page and inside the Tutor's card, which a
+ * student can shrink to a sliver of a laptop screen; columns chosen by the
+ * screen kept four across there and squeezed each label into a column of
+ * single words. `.option-switch` in globals.css holds the widths.
  */
 export default function OptionSwitch<Value extends string>({
   label,
@@ -55,7 +54,10 @@ export default function OptionSwitch<Value extends string>({
   disabled?: boolean;
   onChange: (value: Value) => void;
   className?: string;
-  /** Overrides the default of two columns for two options and three for more. */
+  /**
+   * How many across when there is room: the default is two for two options and
+   * three for three. With less room the row wraps to fewer, down to one.
+   */
   columns?: 2 | 3 | 4 | 5;
   /**
    * Where the details go.
@@ -74,11 +76,10 @@ export default function OptionSwitch<Value extends string>({
     detail === "selected"
       ? options.find((option) => option.value === value)?.detail
       : undefined;
-  const grid =
-    columnClasses[columns ?? (options.length === 3 ? 3 : 2)] ?? "sm:grid-cols-2";
+  const across = columns ?? (options.length === 3 ? 3 : 2);
 
   return (
-    <div className={className}>
+    <div className={`option-switch ${className}`}>
       <span
         id={labelId}
         className={
@@ -89,7 +90,12 @@ export default function OptionSwitch<Value extends string>({
       >
         {label}
       </span>
-      <div role="radiogroup" aria-labelledby={labelId} className={`grid gap-2 ${grid}`}>
+      <div
+        role="radiogroup"
+        aria-labelledby={labelId}
+        data-columns={across}
+        className="option-switch-grid grid gap-2"
+      >
         {options.map((option) => {
           const selected = option.value === value;
           return (

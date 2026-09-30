@@ -191,6 +191,23 @@ describe("notebook inking helpers", () => {
     ]);
   });
 
+  it("never replays a sample from before the last one drawn", () => {
+    // A packet that overlaps the one before it: replaying its first two samples
+    // would pull a straight line back to where it already was -- a kink.
+    const previous = { clientX: 20, clientY: 0, pressure: 0.5, timeStamp: 20 };
+    const stale = { clientX: 15, clientY: 0, pressure: 0.5, timeStamp: 15 };
+    const repeated = { ...previous };
+    const fresh = { clientX: 25, clientY: 0, pressure: 0.5, timeStamp: 25 };
+    const event = {
+      clientX: 30,
+      clientY: 0,
+      pressure: 0.5,
+      timeStamp: 30,
+      getCoalescedEvents: () => [stale, repeated, fresh],
+    };
+    expect(getBoundedLivePointerSamples(event, previous)).toEqual([fresh, event]);
+  });
+
   it("retains one meaningful bend from a dense Pencil packet", () => {
     const bend = {
       clientX: 5,

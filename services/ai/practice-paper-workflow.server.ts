@@ -4,6 +4,7 @@ import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { runWithAiSpendContext } from "@/lib/ai/spend-context";
 import { Timestamp } from "firebase-admin/firestore";
 import sharp from "sharp";
+import { FatalError } from "workflow";
 
 import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import {
@@ -13,7 +14,8 @@ import {
   type PracticePaperGenerationRequest,
 } from "@/lib/ai/practice-paper-generation";
 import { generateAiText } from "@/lib/ai/provider-router";
-import { generateGeminiImage, generateGroundedResearch } from "@/lib/ai/gemini";
+import { generateGeminiImage } from "@/lib/ai/gemini";
+import { researchCourseWithCache } from "@/services/ai/course-research-cache.server";
 import { mapSourceData } from "@/lib/material/sources";
 import {
   buildPracticePaperPayload,
@@ -204,7 +206,7 @@ async function buildResearchContext(uid: string, request: PracticePaperGeneratio
     studyLevel,
     request: request.request,
   });
-  const result = await generateGroundedResearch({
+  const result = await researchCourseWithCache({
     sanitizedQuery,
     urls: sources.flatMap((source) =>
       source.type === "link" && source.externalUrl ? [source.externalUrl] : []
@@ -280,7 +282,26 @@ function rasterBriefs(generated: GeneratedPracticePaper) {
   ).slice(0, 8);
 }
 
-async function validateGeneratedPaperImage(input: {
+/** What the image model is asked for one paper figure. Exported so an image-model comparison sends exactly this. */
+export function buildPaperFigurePrompt(input: {
+  assessment: string;
+  question: string;
+  figure: string;
+  altText: string;
+}) {
+  return [
+    "Create an accurate, accessible educational visual for a formal practice paper.",
+    `Assessment: ${input.assessment}.`,
+    `Question: ${input.question}`,
+    `Required figure: ${input.figure}`,
+    `Alt-text intent: ${input.altText}`,
+    "Do not include an answer, solution, grading cue, watermark, or decorative clutter.",
+    "All labels and quantities must agree exactly with the question.",
+  ].join("\n");
+}
+
+/** The check every generated paper figure must pass before a student sees it. */
+export async function validateGeneratedPaperImage(input: {
   question: string;
   brief: string;
   markScheme: string;
@@ -348,15 +369,12 @@ export async function createPaperRasterAssets(input: {
   if (briefs.length === 0) return current;
   const bucket = getAdminStorageBucket();
   for (const { question, asset } of briefs) {
-    const prompt = [
-      "Create an accurate, accessible educational visual for a formal practice paper.",
-      `Assessment: ${current.assessmentProfile.qualificationOrModule}.`,
-      `Question: ${question.prompt}`,
-      `Required figure: ${asset.content || asset.title}`,
-      `Alt-text intent: ${asset.altText}`,
-      "Do not include an answer, solution, grading cue, watermark, or decorative clutter.",
-      "All labels and quantities must agree exactly with the question.",
-    ].join("\n");
+    const prompt = buildPaperFigurePrompt({
+      assessment: current.assessmentProfile.qualificationOrModule,
+      question: question.prompt,
+      figure: asset.content || asset.title,
+      altText: asset.altText,
+    });
     let generatedImage: Awaited<ReturnType<typeof generateGeminiImage>> | null = null;
     let lastError: unknown;
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -539,6 +557,19 @@ async function prepareQueuedPracticePaperResearchMetered(
   return "ready";
 }
 
+/**
+ * A run stopped by its cost ceiling must not be retried.
+ *
+ * A thrown step is retried by the workflow, and each retry is a new run with
+ * its own ceiling -- so retrying one would spend the ceiling again, which is
+ * the thing it exists to stop. The paper fails once and the budget is refunded.
+ */
+function throwUnlessRetryable(payload: { code?: string; error?: string } | null) {
+  if (payload?.code === "cost_limit") {
+    throw new FatalError(payload.error || "Jami could not finish that paper just now.");
+  }
+}
+
 export async function generateQueuedPracticePaperDraft(uid: string, jobId: string) {
   return runWithAiSpendContext(aiSpendContextFor(uid, "practicePaperGeneration"), () =>
     generateQueuedPracticePaperDraftMetered(uid, jobId)
@@ -574,6 +605,7 @@ async function generateQueuedPracticePaperDraftMetered(
     | null;
   if (!response.ok || !rawPayload) {
     if (rawPayload?.code === "cancelled") return "cancelled";
+    throwUnlessRetryable(rawPayload);
     throw new Error(rawPayload?.error || "Jami could not finish that paper just now.");
   }
   let payload = rawPayload;
@@ -598,6 +630,7 @@ async function generateQueuedPracticePaperDraftMetered(
           | (PracticePaperGenerationResponse & { error?: string; code?: string })
           | null;
         if (!repairedResponse.ok || !repairedPayload || repairedPayload.status !== "ready") {
+          throwUnlessRetryable(repairedPayload);
           throw new Error(repairedPayload?.error || "Jami could not repair the paper safely.");
         }
         payload = repairedPayload;

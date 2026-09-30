@@ -7,6 +7,7 @@ import {
   type ExamAttempt,
   type ExamSession,
 } from "@/lib/practice/exam-questions";
+import { schemePageRevealsUnanswered } from "@/lib/practice/exam-assets";
 import { loadServableExamQuestion } from "@/services/practice/exam-evidence.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 
@@ -31,7 +32,10 @@ function notFound() {
  * schemes. Showing it as soon as a question is marked was a deliberate product
  * decision: the published page is more useful to a student than any retelling
  * of it. `candidateExamAssets` still keeps it out of question material, so it
- * never appears beside a question that has not been answered.
+ * never appears beside a question that has not been answered -- and it waits
+ * while this session still holds an unanswered question from the same paper,
+ * whose scheme could be printed on it. The report falls back to this
+ * question's own scheme text meanwhile.
  */
 export async function GET(
   request: NextRequest,
@@ -76,6 +80,37 @@ export async function GET(
   const mimeType = typeof asset?.mimeType === "string" ? asset.mimeType : "";
   if (!path.startsWith("internal/examQuestionBank/") || !SCHEME_IMAGE_TYPES.includes(mimeType)) {
     return notFound();
+  }
+  if (!question?.paperId) return notFound();
+
+  /*
+   * Only official questions carry a printed scheme page, and only those not
+   * yet unlocked can be given away by one. Bounded by the session itself.
+   */
+  const pending = session.questions.filter(
+    (item) => item.id !== attempt.questionId && item.origin === "official_past_paper"
+  );
+  if (pending.length > 0) {
+    const db = getAdminDb();
+    const [attempts, questions] = await Promise.all([
+      db.getAll(...pending.map((item) => userRef.collection("examAttempts").doc(item.attemptId))),
+      db.getAll(...pending.map((item) => db.collection("examQuestions").doc(item.id))),
+    ]);
+    const siblings = pending.map((_, index) => {
+      const sibling = attempts[index]?.data() as ExamAttempt | undefined;
+      const paperId = questions[index]?.data()?.paperId;
+      return {
+        ...(typeof paperId === "string" ? { paperId } : {}),
+        unlocked: Boolean(
+          sibling &&
+            !sibling.answerDeletedAt &&
+            sibling.status === "marked" &&
+            sibling.result &&
+            examAnswerUnlocksModelAnswer(sibling.result)
+        ),
+      };
+    });
+    if (schemePageRevealsUnanswered({ paperId: question.paperId, siblings })) return notFound();
   }
   const [bytes] = await getAdminStorageBucket().file(path).download();
   return new Response(new Uint8Array(bytes), {

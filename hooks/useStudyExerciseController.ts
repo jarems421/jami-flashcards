@@ -110,6 +110,14 @@ export type StudyExerciseController = {
 
 type ControllerOptions = {
   userId: string;
+  /**
+   * The recommendation that opened this session, when one did.
+   *
+   * Written onto every answer it produces, so the engine can later separate
+   * evidence that arrived *because* a student took its advice from evidence
+   * that merely arrived afterwards.
+   */
+  interventionId?: string;
   current: Card | null;
   sessionKind: StudySessionKind | null;
   flipped: boolean;
@@ -169,6 +177,7 @@ export function useStudyExerciseController(
 ): StudyExerciseController {
   const {
     userId,
+    interventionId,
     current,
     sessionKind,
     flipped,
@@ -301,8 +310,23 @@ export function useStudyExerciseController(
       sessionKind: kind,
       cardUpdates: outcome.cardUpdates,
       clearMemoryRiskOverrideDayKey: Boolean(outcome.schedule && outcome.isCorrect),
+      /*
+       * Which advice this answer belongs to.
+       *
+       * The session's own wins: a student sent here by a recommendation is
+       * answering that one, whatever else produced the card. Failing that, a
+       * card Jami wrote attributes its reviews to the recommendation that
+       * asked for it -- otherwise "create some cards" could never be shown to
+       * have led anywhere, because the student usually reviews them later by
+       * their own route rather than from the link.
+       */
+      ...(interventionId
+        ? { interventionId }
+        : card.createdByInterventionId
+          ? { interventionId: card.createdByInterventionId }
+          : {}),
     }),
-    [folderIdsForCard, measureResponseTime, userId]
+    [folderIdsForCard, interventionId, measureResponseTime, userId]
   );
 
   /** Moves the session on from an answer: the card, Daily Review, stats, feedback, what comes next. */
@@ -407,7 +431,7 @@ export function useStudyExerciseController(
       if (sessionKind !== "simple") return;
 
       const now = intent?.answeredAt ?? Date.now();
-      const queued = queueOfflineStudyReview({ userId, cardId: card.id, commitId, intent, rating: result === "correct" ? "good" : "again", reviewedAt: now, studyDayKey: getStudyDayKey(now), isCorrect: result === "correct", sessionKind: "simple", cardUpdates: {} });
+      const queued = queueOfflineStudyReview({ userId, cardId: card.id, commitId, intent, rating: result === "correct" ? "good" : "again", reviewedAt: now, studyDayKey: getStudyDayKey(now), isCorrect: result === "correct", sessionKind: "simple", cardUpdates: {}, ...(interventionId ? { interventionId } : {}) });
       refreshPendingOfflineReviews();
       const nextCard = applySimpleStudyResultToCard(card, result, now);
       const nextCardsSnapshot = cards.map((entry) =>
@@ -453,6 +477,7 @@ export function useStudyExerciseController(
       bumpSessionRevision,
       cards,
       decks,
+      interventionId,
       offlineMode,
       persistInBackground,
       refreshPendingOfflineReviews,

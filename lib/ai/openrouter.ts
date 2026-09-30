@@ -41,8 +41,8 @@ export type OpenRouterCallOptions = {
   stallTimeoutMs?: number;
   signal?: AbortSignal;
   reasoning: boolean;
-  /** How hard to let it think. Defaults to a bounded `medium`. */
-  reasoningEffort?: "low" | "medium" | "high";
+  /** How hard to let it think. Defaults to a bounded `medium`; `none` is off. */
+  reasoningEffort?: "none" | "low" | "medium" | "high";
   temperature?: number;
   topP?: number;
   maxOutputTokens?: number;
@@ -234,13 +234,16 @@ export function buildOpenRouterRequestBody(
      * with how hard the question was judged to be, and a student can raise it
      * for themselves -- see `getReasoningEffort` in provider-policy.
      */
-    reasoning: {
-      enabled: true,
-      // Streamed only for a stall watchdog, which needs to see the model
-      // thinking; the stream reader still passes content alone to the caller.
-      exclude: !(stream && options.stallTimeoutMs !== undefined),
-      effort: options.reasoningEffort ?? (options.reasoning ? "medium" : "low"),
-    },
+    // Off is asked for by effort alone: `enabled` beside it would contradict it.
+    reasoning: options.reasoningEffort === "none"
+      ? { effort: "none" as const }
+      : {
+          enabled: true,
+          // Streamed only for a stall watchdog, which needs to see the model
+          // thinking; the stream reader still passes content alone to the caller.
+          exclude: !(stream && options.stallTimeoutMs !== undefined),
+          effort: options.reasoningEffort ?? (options.reasoning ? "medium" : "low"),
+        },
     ...(options.jsonSchema
       ? {
           response_format: {

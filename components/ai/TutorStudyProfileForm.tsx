@@ -109,6 +109,21 @@ export default function TutorStudyProfileForm({
         onChange={(next) => setLevel(next)}
       />
 
+      {/*
+        The folder override, said once and only when it is actually in force.
+        Editing the account default while a folder quietly outranks it is the
+        kind of thing that makes a student stop trusting the screen.
+      */}
+      {folderLevel && folderName ? (
+        <p className="rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-2xs leading-5 text-text-muted">
+          {folderName} overrides this with{" "}
+          <span className="font-semibold text-text-secondary">
+            {getStudyLevelShortLabel(folderLevel)}
+          </span>
+          .
+        </p>
+      ) : null}
+
       {showSubjects ? (
         <div>
           <label
@@ -180,21 +195,6 @@ export default function TutorStudyProfileForm({
               : `Jami uses these for examples and notation. ${subjects.length}/${MAX_STUDY_SUBJECTS}.`}
           </p>
         </div>
-      ) : null}
-
-      {/*
-        The folder override, said once and only when it is actually in force.
-        Editing the account default while a folder quietly outranks it is the
-        kind of thing that makes a student stop trusting the screen.
-      */}
-      {folderLevel && folderName ? (
-        <p className="rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-2xs leading-5 text-text-muted">
-          {folderName} overrides this with{" "}
-          <span className="font-semibold text-text-secondary">
-            {getStudyLevelShortLabel(folderLevel)}
-          </span>
-          .
-        </p>
       ) : null}
 
       <div className="flex items-center gap-3">

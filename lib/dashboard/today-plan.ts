@@ -1,5 +1,6 @@
 import { getCustomStudyHref } from "@/lib/app/routes";
-import type { StudyAction } from "@/lib/learning/actions/study-actions";
+import { DAILY_REVIEW_MISSION_ID } from "@/lib/learning/mission-handoff";
+import type { StudyAction, StudyActionDestinationKind } from "@/lib/learning/actions/study-actions";
 import type { LearningRecommendationReason } from "@/lib/learning/types";
 import { buildTopicProgress, type TopicProgressSummary } from "@/lib/material/progress";
 import type { MasteryEvent } from "@/lib/material/mastery";
@@ -35,6 +36,14 @@ export type TodayNextAction = {
   priority: number;
   secondaryHref?: string;
   secondaryLabel?: string;
+  /**
+   * The study action this came from, when the engine's advice is what leads.
+   *
+   * Carried so a surface can find the rest of it -- the evidence, the
+   * intervention, whether Jami can write the material -- without matching on
+   * wording, and so the same recommendation is not then listed again below.
+   */
+  actionId?: string;
 };
 
 export type TodayDueCardsSummary = {
@@ -71,17 +80,6 @@ export type TodayGoalSummary = {
   href: string;
 };
 
-export type TodayChecklist = {
-  createFolder: boolean;
-  createDeck: boolean;
-  addCards: boolean;
-  reviewCards: boolean;
-  createNotebook: boolean;
-  reviewDrafts: boolean;
-  checkProgress: boolean;
-  setGoal: boolean;
-};
-
 export type TodayWorkspaceSummary = {
   folderCount: number;
   notebookCount: number;
@@ -103,7 +101,43 @@ export type TodayStudyAction = {
   description: string;
   label: string;
   href: string;
+  /** What the link opens, so the copy can say so -- a Revision Session reads differently from a page. */
+  destinationKind?: StudyActionDestinationKind;
   folderName?: string;
+  /**
+   * What this action is about and which scope decided it, carried through so
+   * the card can record what the student did with it. Kept as the engine's own
+   * shapes rather than flattened, so the recording path and the ranking path
+   * cannot drift apart.
+   */
+  target: StudyAction["target"];
+  scope: StudyAction["scope"];
+  /**
+   * What was counted, and where it came from.
+   *
+   * Carried so a surface can account for the recommendation without asking the
+   * engine a second question. The engine's own shape, not a flattened copy:
+   * "Why this?" and the ranking must be reading the same numbers.
+   */
+  evidence: StudyAction["evidence"];
+  /**
+   * What can be done about this, given the material that exists.
+   *
+   * Absent whenever the catalogue had no action to offer -- for an error
+   * target, and for a decision no available intervention fits. A surface with
+   * no intervention still has the engine's own wording to fall back on.
+   */
+  intervention?: StudyAction["intervention"];
+  /** How many items the engine thinks this is worth, when a surface can honour it. */
+  targetItems?: number;
+  /**
+   * What Jami can do about this, when the answer is to make something.
+   *
+   * Only the generating kinds travel this far: the others already have a
+   * destination, and a link is the whole of the action. Present, the card
+   * offers to write the material rather than sending the student somewhere.
+   */
+  generate?: { kind: "create_flashcards" | "create_practice"; conceptId: string };
 };
 
 export type TodayPlan = {
@@ -115,7 +149,6 @@ export type TodayPlan = {
   drafts: TodayDraft[];
   goalSummary?: TodayGoalSummary;
   workspace: TodayWorkspaceSummary;
-  checklist: TodayChecklist;
   topicProgress: TopicProgressSummary[];
 };
 
@@ -293,7 +326,7 @@ function buildWeakTopics(input: BuildTodayPlanInput, now: number) {
  * yet" for a check, "unknown rather than weak" for an untested topic. Topic
  * names are the student's own, rendered as text.
  */
-function describeStudyAction(action: StudyAction): Pick<TodayStudyAction, "title" | "description" | "label"> {
+export function describeStudyAction(action: StudyAction): Pick<TodayStudyAction, "title" | "description" | "label"> {
   const name = action.target.label;
   switch (action.reason) {
     case "persistent_error":
@@ -315,12 +348,31 @@ function describeStudyAction(action: StudyAction): Pick<TodayStudyAction, "title
         label: action.action === "retrieve" ? "Refresh" : "Practise",
       };
     case "low_mastery":
+      /*
+       * A practice decision on a weak concept means the engine found recall
+       * holding up and application failing. "Consistently difficult" would be
+       * false: the cards on it are going well.
+       */
+      if (action.action === "practice") {
+        return {
+          title: `Put ${name} into practice`,
+          description: "Recall looks fine, but exam-style answers on this keep losing marks.",
+          label: "Practise",
+        };
+      }
       return {
         title: `Work on ${name}`,
         description: `Consistently difficult across ${pluralize(action.evidence.count, "answer")}.`,
         label: action.destination?.kind === "topic" || action.destination?.kind === "deck" ? "Open" : "Study",
       };
     case "low_confidence":
+      if (action.action === "practice") {
+        return {
+          title: `Check ${name} in exam questions`,
+          description: "Recall looks fine, but your first exam-style answers on this went wrong.",
+          label: "Practise",
+        };
+      }
       return {
         title: `Check ${name}`,
         description: "It might need attention, but there is not enough evidence yet. A few questions will tell.",
@@ -359,6 +411,27 @@ function describeStudyAction(action: StudyAction): Pick<TodayStudyAction, "title
   }
 }
 
+/**
+ * The action as something to make, when that is what it is.
+ *
+ * `fill_specification_gap` resolves to cards: a concept with nothing behind it
+ * needs something to study from before it needs testing on, and cards are the
+ * cheapest useful thing to build. The other intervention kinds lead somewhere
+ * that already exists, so they keep their link.
+ */
+function generating(action: StudyAction) {
+  const type = action.intervention?.type;
+  if (!type) return undefined;
+  const conceptId = action.target.kind === "topic" ? action.target.topicKey : "";
+  if (!conceptId.startsWith("spec:")) return undefined;
+  const id = conceptId.slice("spec:".length);
+  if (type === "create_flashcards" || type === "fill_specification_gap") {
+    return { kind: "create_flashcards" as const, conceptId: id };
+  }
+  if (type === "create_practice") return { kind: "create_practice" as const, conceptId: id };
+  return undefined;
+}
+
 function buildStudyActions(input: BuildTodayPlanInput): TodayStudyAction[] {
   const folderNames = new Map((input.studyActionFolders ?? []).map((folder) => [folder.id, folder.name]));
   return (input.studyActions ?? [])
@@ -372,7 +445,17 @@ function buildStudyActions(input: BuildTodayPlanInput): TodayStudyAction[] {
           action: action.action,
           ...describeStudyAction(action),
           href: action.destination.href,
+          destinationKind: action.destination.kind,
           ...(folderName ? { folderName } : {}),
+          target: action.target,
+          scope: action.scope,
+          evidence: action.evidence,
+          ...(action.intervention ? { intervention: action.intervention } : {}),
+          ...(generating(action) ? { generate: generating(action)! } : {}),
+          // A session is not a number of items: finishing it is the whole of it.
+          ...(action.spec && action.destination.kind !== "revision-session"
+            ? { targetItems: action.spec.targetItems }
+            : {}),
         },
       ];
     })
@@ -432,19 +515,6 @@ function buildWorkspaceSummary(input: BuildTodayPlanInput): TodayWorkspaceSummar
   };
 }
 
-function buildChecklist(input: BuildTodayPlanInput): TodayChecklist {
-  return {
-    createFolder: (input.studyFolders ?? []).some((folder) => !folder.archived),
-    createDeck: input.decks.length > 0,
-    addCards: input.cards.length >= 5,
-    reviewCards: (input.reviewedToday ?? 0) > 0,
-    createNotebook: (input.notebooks ?? []).some((notebook) => !notebook.archived),
-    reviewDrafts: input.drafts.some((draft) => draft.contentStatus === "draft"),
-    checkProgress: input.progressVisited === true,
-    setGoal: (input.activeGoals ?? []).some((goal) => goal.status === "active"),
-  };
-}
-
 function buildNextAction(input: {
   decks: TodayDeckInput[];
   cards: Card[];
@@ -475,7 +545,13 @@ function buildNextAction(input: {
       type: "review_due_cards",
       title: `Review ${pluralize(input.dueCards.count, "due flashcard")}${deckText}${input.dueCards.primaryDeckName ? "" : "."}`,
       description: "Due cards are time-sensitive. Review them, then return to notebook work.",
-      href: getCustomStudyHref({ mode: "daily" }),
+      /*
+       * Carries the day-review marker so Today can tell, when the student
+       * comes back, that they went and did the thing it asked for. It is not
+       * a recommendation id and cannot be read as one -- see
+       * `DAILY_REVIEW_MISSION_ID`.
+       */
+      href: getCustomStudyHref({ mode: "daily", fromActionId: DAILY_REVIEW_MISSION_ID }),
       label: "Start review",
       priority: 2,
       secondaryHref: "/dashboard/folders",
@@ -503,6 +579,7 @@ function buildNextAction(input: {
       href: leadingStudyAction.href,
       label: leadingStudyAction.label,
       priority: 3,
+      actionId: leadingStudyAction.id,
     };
   }
 
@@ -634,7 +711,6 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
   const studyActions = buildStudyActions(input);
   const goalSummary = buildGoalSummary(input, now);
   const workspace = buildWorkspaceSummary(input);
-  const checklist = buildChecklist(input);
   const nextAction = buildNextAction({
     decks: input.decks,
     cards: input.cards,
@@ -657,7 +733,6 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
     drafts,
     goalSummary,
     workspace,
-    checklist,
     topicProgress,
   };
 }

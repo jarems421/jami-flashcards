@@ -86,63 +86,64 @@ describe("the backlog is used, not counted at the student", () => {
 /**
  * Home serves two people. Somebody opening Jami for the first time needs to be
  * shown the way in; somebody who studies every day needs their review and
- * nothing in front of it. It used to serve neither: the setup checklist sat
- * above the recommended action for everyone, and because it counted "set a
- * goal" and "earn a star" -- which most students never do -- it never
- * completed and never went away.
+ * nothing in front of it. It used to serve neither: a setup checklist sat above
+ * the recommended action for everyone, and because it counted things most
+ * students never do it never completed and never went away.
+ *
+ * Showing the way in is the walkthrough's job now, and only the walkthrough's.
  */
 describe("home leads with the next step for everyone", () => {
   const source = read("app/dashboard/page.tsx");
 
-  it("says the next step once, in the hero itself", () => {
+  it("says the next step once, as the page's own answer", () => {
     /*
      * The hero used to promise "your next study step" and a card below it
      * announced "recommended next action" -- two eyebrows, two headings and
-     * two panels before a single instruction. The recommendation is the hero
-     * now, so the action is the first and largest thing on the page.
+     * two panels before a single instruction. Today is laid out like a planner
+     * now: the day's plan, then what Jami suggests, led by its one next step,
+     * then what can be done any time -- in that order, with or without a plan.
      */
-    const hero = source.slice(
-      source.indexOf("<PageHero"),
-      source.indexOf("<GettingStartedChecklist")
-    );
-
-    expect(hero).toContain("todayPlan.nextAction.title");
-    expect(hero).toContain("todayPlan.nextAction.href");
+    const plan = source.indexOf("<TodayPlanPanel");
+    const mission = source.indexOf("{planLeads ? null : missionCard}");
+    const suggestions = source.indexOf("<StudyActionsCard");
+    const anytime = source.indexOf("<TodayAnytime");
+    expect(plan).toBeGreaterThan(-1);
+    expect(mission).toBeGreaterThan(plan);
+    expect(suggestions).toBeGreaterThan(mission);
+    expect(anytime).toBeGreaterThan(suggestions);
+    expect(source).toContain("<MissionCard");
+    expect(source).toContain("buildTodayMission");
     expect(source).not.toContain("RecommendedActionCard");
     expect(source).not.toContain("Recommended next action");
     expect(source).not.toContain("Your next study step");
   });
 
-  it("separates the one recommendation from everything else", () => {
-    // Without a break the page was a flat stack of equal cards, so the step
-    // Jami recommends competed with everything it merely noticed.
-    const checklist = source.indexOf("<GettingStartedChecklist");
-    const alsoToday = source.indexOf('title="Also today"');
-
-    expect(alsoToday).toBeGreaterThan(checklist);
-    expect(source).toContain("hasSecondaryTier");
+  it("never suggests the same thing twice", () => {
+    // The mission's own recommendation is not listed again under it...
+    expect(source).toContain("action.id !== mission.action?.id");
+    // ...and with a plan leading, nothing already in today's sittings is
+    // suggested again beside them.
+    expect(source).toContain("!planPlacedIds.has(action.id)");
   });
 
-  it("stops setup at the first review, so it can finish", () => {
-    const items = source.slice(
-      source.indexOf("const gettingStartedItems"),
-      source.indexOf("const dueCount")
-    );
+  it("leaves getting-started to the walkthrough, which already tracks it", () => {
+    /*
+     * Home used to carry a setup checklist of its own. It duplicated the
+     * walkthrough -- which has missions, notices real work done out of order,
+     * and knows when it is finished -- so a new student met two trackers of the
+     * same four steps, and a returning one met a card that never completed
+     * because it counted things most people never do.
+     */
+    expect(source).not.toContain("GettingStartedChecklist");
+    expect(source).not.toContain("gettingStartedItems");
+    // Onboarding proper is still on the page, and is now the only one.
+    expect(source).toContain("<FirstNightPanel");
+    expect(source).toContain("<TutorialResumeCard");
 
-    expect(items).toContain('label: "Create a folder"');
-    expect(items).toContain('label: "Create a deck"');
-    expect(items).toContain('label: "Add cards"');
-    expect(items).toContain('label: "Study a deck"');
-    // Both are worth doing and neither is in the way of studying.
-    expect(items).not.toContain('label: "Set a goal"');
-    expect(items).not.toContain('label: "Earn a star"');
-  });
-
-  it("opens the checklist only for a student with nothing to study", () => {
-    expect(source).toContain("defaultOpen={!hasStudyMaterial}");
-    expect(source).toContain(
-      "const hasStudyMaterial = cards.length > 0 || notebooks.length > 0"
-    );
+    // And the plan no longer computes a checklist nothing reads.
+    const plan = read("lib/dashboard/today-plan.ts");
+    expect(plan).not.toContain("TodayChecklist");
+    expect(plan).not.toContain("buildChecklist");
   });
 
   it("does not put the streak on the page you arrive at before studying", () => {
@@ -163,12 +164,70 @@ describe("home leads with the next step for everyone", () => {
     expect(study).toContain("reviewedThisSession === 0");
   });
 
-  it("does not welcome a first-time student back, or show them two zeros", () => {
-    // The counters are the returning student's; on day one there is nothing to
-    // count and a pair of noughts is a poor first thing to see.
-    expect(source).toContain("!hasStudyMaterial || isLoading ? undefined :");
-    // And the greeting knows which of the two it is talking to.
-    expect(source).toContain("`Welcome, ${inAppUsername}`");
-    expect(source).toContain("`Today, ${inAppUsername}`");
+  it("does not open on a pair of zeros, whoever is reading it", () => {
+    /*
+     * There used to be a counter panel beside the hero -- reviewed today, due
+     * now -- hidden from a first-time student precisely because two noughts is
+     * a poor first thing to see. The Study Hub does not have it at all: the
+     * only figures on the page are the week strip, which says nothing when
+     * there is nothing to say, and the effort line on the mission, which is
+     * absent unless the engine actually sized the work.
+     */
+    expect(source).not.toContain("Reviewed today");
+    expect(source).not.toContain("Due now");
+    expect(source).toContain("<MomentumStrip");
+    // And the greeting is about the time of day rather than about them.
+    expect(source).toContain("greeting()");
+
+    const momentum = read("components/today/MomentumStrip.tsx");
+    expect(momentum).toContain("Nothing reviewed this week yet.");
+    // Unreadable activity is silence, not a week of empty dots: a blank week
+    // is a claim about the student, and a failed read is not one.
+    expect(momentum).toContain("could not be read");
+  });
+
+  it("recalculates on the way back rather than repeating what it already said", () => {
+    /*
+     * Both caches would otherwise serve the answer from before the student did
+     * the work -- recommendations for five minutes, the snapshot for its own
+     * window -- so Jami would acknowledge the session and suggest it again in
+     * the same breath, which would demonstrate the loop is not really closed.
+     */
+    const effect = source.slice(
+      source.indexOf("const completed = takeCompletedMission()"),
+      source.indexOf("}, [loadAll, refreshStudyActions, user.uid]);")
+    );
+
+    expect(effect).toContain("if (!completed) return;");
+    expect(effect).toContain("loadAll(user.uid, { force: true })");
+    expect(effect).toContain("refreshStudyActions()");
+  });
+
+  it("acknowledges inside the mission rather than as something to close", () => {
+    // One card carries what was finished and what follows from it, so the
+    // student reads the relationship instead of dismissing a notice about it.
+    expect(source).toContain("completion: completionCopy");
+    expect(source).not.toContain("onDismiss={() => setCompletedMission(null)}");
+
+    const card = read("components/today/MissionCard.tsx");
+    expect(card).toContain('{completion ? "Next up" : eyebrow}');
+
+    // The earned-star symbol stays reserved for goals.
+    const complete = read("components/today/MissionComplete.tsx");
+    expect(complete).not.toContain("NorthernStar");
+    expect(complete).not.toContain("NORTHERN_STAR_PATH");
+  });
+
+  it("offers the way back only when the session produced answers", () => {
+    const study = read("app/dashboard/study/page.tsx");
+    expect(study).toContain("{fromActionId && sessionStats.reviewedCards > 0 ? (");
+    expect(study).toContain("<MissionHandback");
+  });
+
+  it("puts the engine's reasoning behind a disclosure rather than on the face", () => {
+    const mission = read("components/today/MissionCard.tsx");
+    expect(mission).toContain("Why this?");
+    // Offered only where there is something to account for.
+    expect(mission).toContain("explanation.length > 0");
   });
 });

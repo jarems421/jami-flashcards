@@ -332,6 +332,13 @@ describe("how hard a model is allowed to think", () => {
     await collect(streamOpenRouterText({ ...baseInput, reasoning: false, reasoningEffort: "high" }));
     expect(bodyOf(fetchMock).reasoning.effort).toBe("high");
   });
+
+  it("switches thinking off with effort alone, even on a reasoning role", async () => {
+    // `enabled: true` beside `effort: "none"` would ask for both at once.
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(streamResponse(SSE));
+    await collect(streamOpenRouterText({ ...baseInput, reasoning: true, reasoningEffort: "none" }));
+    expect(bodyOf(fetchMock).reasoning).toEqual({ effort: "none" });
+  });
 });
 
 /**

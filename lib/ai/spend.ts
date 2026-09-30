@@ -20,6 +20,21 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export type AiModelPrice = {
   inputPerMillionUsd: number;
   outputPerMillionUsd: number;
+  /**
+   * Gemini bills a video's soundtrack above its frames: 2.5 Flash-Lite charges
+   * three times as much for audio input. Absent, audio is billed as input.
+   */
+  audioInputPerMillionUsd?: number;
+  /**
+   * Generated image tokens, which image models bill far above their text:
+   * a 1K image from 3.1 Flash Image is about $0.067 of output at $60 a million.
+   */
+  imageOutputPerMillionUsd?: number;
+  /**
+   * One grounded web search. Gemini 3 bills each search query the model runs;
+   * Gemini 2.5 bills each grounded prompt, however many queries it ran.
+   */
+  searchUsd?: number;
 };
 
 export type AiSpendSample = {
@@ -27,6 +42,12 @@ export type AiSpendSample = {
   model: string;
   promptTokens?: number;
   completionTokens?: number;
+  /** The part of `promptTokens` that was audio. */
+  audioPromptTokens?: number;
+  /** The part of `completionTokens` that was a generated image. */
+  imageCompletionTokens?: number;
+  /** Billable web searches, counted the way the model's provider bills them. */
+  searches?: number;
   /** What the provider says it charged, where it says so. */
   reportedCostUsd?: number;
 };
@@ -51,6 +72,10 @@ export function getSpendDayKey(now = Date.now()) {
  * environment -- `{"gemini-2.5-flash-lite":{"in":0.1,"out":0.4}}` -- rather
  * than hardcoding numbers here, because published prices change and a stale
  * constant compiled into the app reads as authoritative when it is not.
+ *
+ * Optional per-model extras: `audioIn` and `imageOut` (per million tokens) and
+ * `search` (per billable search). A call that used one of those without its
+ * price configured is reported unpriced, never priced as if it were free.
  */
 export function readModelPrices(
   env: Record<string, string | undefined>
@@ -68,7 +93,18 @@ export function readModelPrices(
       const output = Number(entry.out ?? entry.outputPerMillionUsd);
       if (!Number.isFinite(input) || !Number.isFinite(output)) continue;
       if (input < 0 || output < 0) continue;
-      prices[model] = { inputPerMillionUsd: input, outputPerMillionUsd: output };
+      const audioInput = optionalPrice(entry.audioIn ?? entry.audioInputPerMillionUsd);
+      const imageOutput = optionalPrice(entry.imageOut ?? entry.imageOutputPerMillionUsd);
+      const search = optionalPrice(entry.search ?? entry.searchUsd);
+      // A malformed extra makes the whole entry untrustworthy, not free.
+      if (audioInput === null || imageOutput === null || search === null) continue;
+      prices[model] = {
+        inputPerMillionUsd: input,
+        outputPerMillionUsd: output,
+        ...(audioInput === undefined ? {} : { audioInputPerMillionUsd: audioInput }),
+        ...(imageOutput === undefined ? {} : { imageOutputPerMillionUsd: imageOutput }),
+        ...(search === undefined ? {} : { searchUsd: search }),
+      };
     }
     return prices;
   } catch {
@@ -97,6 +133,13 @@ export function findModelPrice(
   return best?.price ?? null;
 }
 
+/** Undefined when absent, null when present but unusable, else the price. */
+function optionalPrice(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  const price = Number(value);
+  return Number.isFinite(price) && price >= 0 ? price : null;
+}
+
 /** What a single call cost, or null when that cannot honestly be said. */
 export function estimateCallCostUsd(
   sample: AiSpendSample,
@@ -111,11 +154,22 @@ export function estimateCallCostUsd(
 
   const promptTokens = Math.max(0, sample.promptTokens ?? 0);
   const completionTokens = Math.max(0, sample.completionTokens ?? 0);
-  if (!promptTokens && !completionTokens) return null;
+  const audioTokens = Math.min(promptTokens, Math.max(0, sample.audioPromptTokens ?? 0));
+  const imageTokens = Math.min(completionTokens, Math.max(0, sample.imageCompletionTokens ?? 0));
+  const searches = Math.max(0, sample.searches ?? 0);
+  if (!promptTokens && !completionTokens && !searches) return null;
 
+  // Priced parts the table cannot price make the whole call unknown.
+  if (imageTokens > 0 && price.imageOutputPerMillionUsd === undefined) return null;
+  if (searches > 0 && price.searchUsd === undefined) return null;
+
+  const audioRate = price.audioInputPerMillionUsd ?? price.inputPerMillionUsd;
   return (
-    (promptTokens * price.inputPerMillionUsd) / 1_000_000 +
-    (completionTokens * price.outputPerMillionUsd) / 1_000_000
+    ((promptTokens - audioTokens) * price.inputPerMillionUsd) / 1_000_000 +
+    (audioTokens * audioRate) / 1_000_000 +
+    ((completionTokens - imageTokens) * price.outputPerMillionUsd) / 1_000_000 +
+    (imageTokens * (price.imageOutputPerMillionUsd ?? 0)) / 1_000_000 +
+    searches * (price.searchUsd ?? 0)
   );
 }
 

@@ -2,18 +2,29 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useUser } from "@/components/providers/UserProvider";
-import { migrateCardTagsToTopics } from "@/services/study/topics";
+import {
+  migrateCardTagsToTopics,
+  topicMigrationKnownSettled,
+} from "@/services/study/topics";
 
 export default function TopicMigrationGate({ children }: { children: ReactNode }) {
   const { user } = useUser();
-  const [ready, setReady] = useState(false);
+  // An account this browser has seen migrated renders at once, without the
+  // round trip that used to hold every dashboard page behind a spinner.
+  const [ready, setReady] = useState(() => topicMigrationKnownSettled(user.uid));
 
   useEffect(() => {
     let active = true;
+    const settled = topicMigrationKnownSettled(user.uid);
 
     queueMicrotask(() => {
-      if (active) setReady(false);
+      if (active) setReady(settled);
     });
+    if (settled) {
+      return () => {
+        active = false;
+      };
+    }
     void migrateCardTagsToTopics(user.uid)
       .catch((error) => {
         console.error("Topic migration failed.", error);

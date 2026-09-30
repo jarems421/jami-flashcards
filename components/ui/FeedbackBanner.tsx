@@ -6,6 +6,11 @@ type FeedbackBannerProps = {
   type: "success" | "error";
   message: string;
   onDismiss: () => void;
+  /**
+   * How long before it goes by itself; 0 keeps it until dismissed. A success
+   * goes after three seconds. An error stays: it is the one message a student
+   * has to read to act on, and three seconds was often gone before they had.
+   */
   autoDismissMs?: number;
 };
 
@@ -13,7 +18,7 @@ export default function FeedbackBanner({
   type,
   message,
   onDismiss,
-  autoDismissMs = 3000,
+  autoDismissMs = type === "error" ? 0 : 3000,
 }: FeedbackBannerProps) {
   const [leaving, setLeaving] = useState(false);
   const onDismissRef = useRef(onDismiss);

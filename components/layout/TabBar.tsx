@@ -70,11 +70,11 @@ const tabs: Tab[] = [
   },
   {
     href: "/dashboard/tutor",
-    // The plan is made by talking to Jami, so the Tutor entry stays lit while a
+    // The plan is made by talking to Jami, so the Jami entry stays lit while a
     // student is in it rather than the sidebar growing a second home for it.
     owns: ["/dashboard/library", "/dashboard/tutor/plan"],
     iconComponent: JamiTutorIcon,
-    label: "Tutor",
+    label: "Jami",
     description: "Ask Jami, review drafts",
     group: "loop",
     icon: "M12 2.5l1.25 3.75 3.75 1.25-3.75 1.25-1.25 3.75-1.25-3.75-3.75-1.25 3.75-1.25z M17.8 12l.85 2.35 2.35.85-2.35.85-.85 2.35-.85-2.35-2.35-.85 2.35-.85z M6 14.4l.55 1.65 1.65.55-1.65.55-.55 1.65-.55-1.65-1.65-.55 1.65-.55z",
@@ -145,8 +145,8 @@ const tabs: Tab[] = [
 const navGroups: { id: TabGroup; label: string; helper: string }[] = [
   {
     id: "loop",
-    label: "Learning loop",
-    helper: "Today, memory, your work, and Jami",
+    label: "Study",
+    helper: "Today, review, practice and Jami",
   },
   {
     id: "support",
@@ -398,9 +398,6 @@ export default function TabBar({
             <div className="hidden min-w-0 lg:block">
               <div className="text-base font-semibold text-text-primary">
                 Jami
-              </div>
-              <div className="mt-0.5 truncate text-xs text-text-muted">
-                Learning loop
               </div>
             </div>
           </div>

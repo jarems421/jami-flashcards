@@ -8,6 +8,9 @@ import {
 import { markSchemeIssues, sameFixedPaper } from "@/lib/ai/practice-paper-quality";
 import type { AiGenerationRole } from "@/lib/ai/provider-policy";
 import { normalizePracticePaperMarkScheme } from "@/lib/practice/practice-papers";
+import { describeQuestionConvention, questionConventionFor } from "@/lib/practice/question-conventions";
+import { matchQuestionTypeRule, ruleAsConvention, type QuestionTypeRule } from "@/lib/practice/question-types";
+import { loadQuestionTypeRules } from "@/services/practice/question-type-rules.server";
 import type { ReadyPracticePaper } from "@/services/ai/practice-paper-generation-design.server";
 import {
   parseJsonObject,
@@ -27,6 +30,30 @@ import {
  */
 
 /**
+ * How the board's examiners mark each kind of question in this batch, so the
+ * scheme written for it says what they would: that Level 3 of a 9-marker needs
+ * a supported judgement, that a language answer's top band is for analysis of
+ * effect. See `lib/practice/question-conventions.ts`.
+ */
+function examinerPracticeFor(
+  draft: Pick<ReadyPracticePaper, "assessmentProfile" | "title">,
+  questions: readonly { id: string; prompt: string; marks: number }[],
+  researched: readonly QuestionTypeRule[]
+) {
+  const notes = questions.flatMap((question) => {
+    // The board's own researched rule first, practice written from memory where none matches.
+    const rule = matchQuestionTypeRule(researched, question);
+    const convention = rule
+      ? ruleAsConvention(rule)
+      : questionConventionFor({ profile: draft.assessmentProfile, title: draft.title, question });
+    return convention ? [`${question.id}: ${describeQuestionConvention(convention)}`] : [];
+  });
+  return notes.length
+    ? `\n\n--- EXAMINER PRACTICE ---\nHow this board's examiners mark these kinds of question. Write each scheme so it carries this: level descriptors that state what caps a level, and the marks' split where one is given.\n${notes.join("\n\n")}`
+    : "";
+}
+
+/**
  * Returns the paper carrying its scheme, or the refunded failure that ends the
  * request. A batch still unreadable after its retry throws, which the request
  * reports as a provider failure.
@@ -40,6 +67,7 @@ export async function buildPracticePaperMarkScheme(
 ): Promise<Response | ReadyPracticePaper> {
   const { runPass, refund, log, draft, evidenceContents, markSchemeRole } = input;
   const markSchemeInstruction = MARK_SCHEME_INSTRUCTION;
+  const researched = await loadQuestionTypeRules(draft.assessmentProfile, draft.title);
   const questionBatches = partitionMarkSchemeQuestions(draft.questions);
   const generatedItems: unknown[] = [];
   const batchShape = (value: unknown, questions: typeof draft.questions) => {
@@ -66,6 +94,20 @@ export async function buildPracticePaperMarkScheme(
         const candidate = (item as Record<string, unknown>).marking ?? (item as Record<string, unknown>).markingModel;
         return typeof candidate === "string" && acceptedMarkings.has(candidate);
       }).length,
+      /*
+       * The shape of what came back -- its keys and what kind of value each
+       * holds, never the content. Essay batches returned the right question
+       * with no readable marking three times in one pilot, and counts alone
+       * could not say whether the bands were missing, nested or misnamed.
+       */
+      itemShapes: items.slice(0, 3).map((item) =>
+        item && typeof item === "object"
+          ? Object.entries(item as Record<string, unknown>)
+              .slice(0, 24)
+              .map(([key, value]) => `${key}:${Array.isArray(value) ? `array${value.length}` : value === null ? "null" : typeof value}`)
+              .join(",")
+          : typeof item
+      ),
     };
   };
   /*
@@ -120,7 +162,7 @@ export async function buildPracticePaperMarkScheme(
           {
             role: "user" as const,
             parts: [{
-              text: `--- ASSESSMENT PROFILE ---\n${JSON.stringify(draft.assessmentProfile)}\n\n--- FIXED QUESTIONS ---\n${JSON.stringify(questions)}\n\nReturn only the matching mark-scheme items.`,
+              text: `--- ASSESSMENT PROFILE ---\n${JSON.stringify(draft.assessmentProfile)}\n\n--- FIXED QUESTIONS ---\n${JSON.stringify(questions)}${examinerPracticeFor(draft, questions, researched)}\n\nReturn only the matching mark-scheme items.`,
             }],
           },
         ],

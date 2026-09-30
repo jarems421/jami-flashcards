@@ -13,9 +13,12 @@ export type AiBudgetAction =
   | "videoCardImport"
   | "sourceFlashcardDrafts"
   | "sourcePracticeDrafts"
+  | "interventionMaterial"
   | "studyAssetGeneration"
   | "studyAnswerCheck"
-  | "photoBackgroundRestore";
+  | "photoBackgroundRestore"
+  | "revisionLesson"
+  | "revisionMarking";
 
 type AiBudgetConfig = {
   dailyRequestLimit: number;
@@ -30,7 +33,10 @@ type AiBudgetConfig = {
     | "studyModes"
     // Restoring a background photo is paid image work, not text, and must not
     // eat into what the tutor has left.
-    | "photoBackgrounds";
+    | "photoBackgrounds"
+    // A Revision Session marks every answer, so it gets its own window rather
+    // than spending the tutor's while a student works through one.
+    | "revisionSessions";
   tokenCap: number;
   /**
    * Ceiling on what one request may cost to *send*, or null where the input is
@@ -43,7 +49,12 @@ type AiBudgetConfig = {
   inputTokenCap: number | null;
 };
 
-export type AiBudgetLimitReason = "daily_limit" | "burst_limit";
+/**
+ * Why a request got no allowance. `email_unconfirmed` is not a limit being
+ * reached: an account made around Jami's sign-up, with an address nobody has
+ * proved, has no allowance at all.
+ */
+export type AiBudgetLimitReason = "daily_limit" | "burst_limit" | "email_unconfirmed";
 
 /**
  * A receipt for one charged request, so it can be given back.
@@ -141,9 +152,11 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstRequestLimit: 3,
     burstWindowMs: 60_000,
     burstScope: "tutorIllustrations",
-    // The image model can also return a short caption/alt-text payload. Image
-    // bytes are billed separately by Gemini and are limited by the route.
-    tokenCap: 1_024,
+    // A visual is first asked of the text model as an SVG diagram, which with
+    // its labels, leader lines and the model's reasoning runs to several
+    // thousand tokens. Only a picture of what something looks like reaches the
+    // image model, whose bytes are billed separately and limited by the route.
+    tokenCap: 16_000,
     inputTokenCap: null,
   },
   practicePaperGeneration: {
@@ -228,6 +241,26 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     tokenCap: 12_000,
     inputTokenCap: null,
   },
+  /*
+   * Material written in answer to a recommendation, from Today.
+   *
+   * Its own action rather than a share of `sourceFlashcardDrafts`: this is
+   * pressed on the home page, several times over a revision session, and a
+   * student who used it up would find the button on their most-visited surface
+   * quietly stops working. The daily limit is generous for that and still far
+   * below what a loop could spend, because nothing here retries.
+   *
+   * Input is a concept label and at most forty existing fronts, all
+   * length-capped, so it is bounded by construction.
+   */
+  interventionMaterial: {
+    dailyRequestLimit: 20,
+    burstRequestLimit: 3,
+    burstWindowMs: 60_000,
+    burstScope: "sourceDrafts",
+    tokenCap: 12_000,
+    inputTokenCap: null,
+  },
   // One job prepares up to a hundred cards, so the daily limit is a job count
   // rather than a card count.
   //
@@ -268,6 +301,35 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstScope: "photoBackgrounds",
     tokenCap: 1,
     inputTokenCap: null,
+  },
+  /*
+   * Writing a Revision Session: the lesson at the start, and a second
+   * explanation if the guided question goes wrong. At most two a session, so
+   * twenty-four is a dozen sessions a day -- far more than anyone studies, and
+   * still a ceiling on a loop. Input is a concept label, a course line and at
+   * most one earlier task, so it is bounded by construction. The cap is
+   * generous because the worker model reasons before it writes, and a lesson
+   * is the longest thing it writes for a student.
+   */
+  revisionLesson: {
+    dailyRequestLimit: 24,
+    burstRequestLimit: 4,
+    burstWindowMs: 60_000,
+    burstScope: "revisionSessions",
+    tokenCap: 12_000,
+    inputTokenCap: null,
+  },
+  /*
+   * Marking one answer in a Revision Session. Up to five a session, and an
+   * exact match against the expected answer is marked locally without one.
+   */
+  revisionMarking: {
+    dailyRequestLimit: 120,
+    burstRequestLimit: 12,
+    burstWindowMs: 60_000,
+    burstScope: "revisionSessions",
+    tokenCap: 2_000,
+    inputTokenCap: 6_000,
   },
 };
 

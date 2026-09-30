@@ -338,3 +338,32 @@ describe("what Jami says it has noticed", () => {
     expect(buildPlanNotices([errorAction], names)).toEqual([]);
   });
 });
+
+describe("exams Jami was told about", () => {
+  it("keeps the exams the student named, tied to a subject where Jami said which", async () => {
+    const { describeAssistantPlanDraft } = await import("@/lib/ai/assistant-plan");
+    const parsed = parseAssistantPlanSpec(
+      spec({
+        title: "Mocks",
+        subjects: [{ ref: "S1", weight: 2 }],
+        days: [1, 3],
+        minutes: 45,
+        end: "2026-11-20",
+        exams: [
+          { label: "Chemistry Paper 1", date: "2026-11-12", ref: "S1" },
+          { label: "Biology Paper 1", date: "2026-11-20", ref: "S9" },
+          { label: "No date", ref: "S1" },
+        ],
+      }),
+      SUBJECTS,
+      NOW
+    );
+    expect(parsed?.draft.exams).toEqual([
+      { id: "e0", label: "Chemistry Paper 1", dayKey: "2026-11-12", scopeKey: "folder:chem" },
+      // A subject Jami was never offered is dropped from the exam, not the exam from the plan.
+      { id: "e1", label: "Biology Paper 1", dayKey: "2026-11-20" },
+    ]);
+    // Jami is shown them again next turn, so changing one thing does not lose the exams.
+    expect(describeAssistantPlanDraft(parsed!.draft, SUBJECTS)).toContain('- Exams: "Chemistry Paper 1" 2026-11-12 (S1); "Biology Paper 1" 2026-11-20');
+  });
+});

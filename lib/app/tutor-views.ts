@@ -50,7 +50,7 @@ export const TUTOR_VIEWS: TutorView[] = [
   },
 ];
 
-export const TUTOR_TITLE = "Tutor";
+export const TUTOR_TITLE = "Jami";
 
 export type SourcePanelLink = {
   sourceId: string | null;

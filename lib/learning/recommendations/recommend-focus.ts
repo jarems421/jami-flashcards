@@ -81,8 +81,16 @@ function topicEvidence(state: LearningTopicState): LearningRecommendationEvidenc
     ...(hasExposure(state.exposure) ? { exposure: { ...state.exposure } } : {}),
     ...(lastEvidenceAt !== undefined ? { lastEvidenceAt } : {}),
     sources: signal?.evidence ?? [],
+    ...(state.studentConcernAt !== undefined ? { studentConcernAt: state.studentConcernAt } : {}),
   };
 }
+
+/**
+ * How far a topic the student said they find hard moves up within its reason.
+ * Within its reason only: the order of reasons is the policy, and a student
+ * saying something is hard is not evidence that outranks a marked answer.
+ */
+const STUDENT_CONCERN_STRENGTH = 0.5;
 
 function errorEvidence(error: LearningError): LearningRecommendationEvidence {
   return {
@@ -138,7 +146,9 @@ function candidates(input: RecommendFocusInput): Candidate[] {
       action: decision.action,
       target: { kind: "topic", topicKey: state.topicKey, label: state.label, source: state.source },
       evidence: topicEvidence(state),
-      strength: topicStrength(state, decision.reason),
+      strength:
+        topicStrength(state, decision.reason) +
+        (state.studentConcernAt !== undefined ? STUDENT_CONCERN_STRENGTH : 0),
     });
   }
 

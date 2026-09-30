@@ -19,10 +19,63 @@ import {
   getPasswordRequirementMessage,
   PASSWORD_MINIMUM_LENGTH,
 } from "@/lib/auth/password-strength";
-import AppPage from "@/components/layout/AppPage";
-import { Button, Card, Input } from "@/components/ui";
+import AuthShell from "@/components/auth/AuthShell";
+import PasswordField from "@/components/auth/PasswordField";
+import PasswordStrength from "@/components/auth/PasswordStrength";
+import { Button } from "@/components/ui";
 
 type Status = "checking" | "ready" | "working" | "done" | "failed";
+
+/**
+ * The badge at the top of the card: a spinner while the link is checked, a
+ * key while a new password is wanted, and a tick or a warning once it is over.
+ */
+function StatusBadge({ status }: { status: Status }) {
+  const tone =
+    status === "done"
+      ? "text-[var(--color-success-mark)]"
+      : status === "failed"
+        ? "text-[var(--color-error-mark)]"
+        : "text-text-primary";
+
+  return (
+    <div
+      className={`grid h-14 w-14 place-items-center rounded-full border border-[var(--color-border-strong)] bg-[var(--color-glass-medium)] shadow-e1 ${tone}`}
+      aria-hidden="true"
+    >
+      {status === "checking" ? (
+        <span className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--color-border-strong)] border-t-[var(--color-text-primary)] motion-reduce:animate-none" />
+      ) : (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-6 w-6"
+        >
+          {status === "done" ? (
+            <path d="m5 12.5 4.5 4.5L19 7.5" />
+          ) : status === "failed" ? (
+            <>
+              <path d="M12 8v5" />
+              <path d="M12 16.5h.01" />
+              <circle cx="12" cy="12" r="9" />
+            </>
+          ) : (
+            <>
+              <circle cx="8" cy="15" r="4" />
+              <path d="m10.8 12.2 8.2-8.2" />
+              <path d="m16 7 2.5 2.5" />
+              <path d="m13.5 9.5 2 2" />
+            </>
+          )}
+        </svg>
+      )}
+    </div>
+  );
+}
 
 function AuthActionContent() {
   const router = useRouter();
@@ -33,10 +86,18 @@ function AuthActionContent() {
   // A link with no code, or a mode Jami does not handle, is already decided --
   // there is nothing to go and ask Firebase. Starting there rather than
   // correcting it from an effect avoids a render that only exists to fail.
+  //
+  // A known mode with no code is a link that lost its end on the way, which is
+  // what Firebase's own "invalid code" message already says. Showing the mode's
+  // instructions instead put "pick a password" in an error box.
   const unusable = !code || mode === "unknown";
   const [status, setStatus] = useState<Status>(unusable ? "failed" : "checking");
   const [message, setMessage] = useState<string | null>(
-    unusable ? copy.description : null
+    unusable
+      ? mode === "unknown"
+        ? copy.description
+        : getAuthActionErrorMessage("auth/invalid-action-code")
+      : null
   );
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [password, setPassword] = useState("");
@@ -105,106 +166,87 @@ function AuthActionContent() {
   const showResetForm = mode === "resetPassword" && (status === "ready" || status === "working");
 
   return (
-    <AppPage title="Jami" backHref="/auth" backLabel="Sign in" width="md">
-      <Card padding="lg" className="mx-auto max-w-md">
-        <h1 className="text-2xl font-medium tracking-tight text-text-primary">
-          {status === "done" ? "All done" : copy.title}
+    <AuthShell back={{ href: "/auth", label: "Sign in" }}>
+      <div className="flex flex-col items-center text-center">
+        <StatusBadge status={status} />
+        <h1 className="mt-5 text-2xl font-semibold tracking-tight text-text-primary">
+          {status === "done"
+            ? "All done"
+            : status === "failed"
+              ? getAuthActionCopy("unknown").title
+              : copy.title}
         </h1>
         {accountEmail && showResetForm ? (
-          <p className="mt-2 text-sm text-text-secondary">
+          <p className="mt-1.5 text-sm text-text-secondary">
             For <span className="font-medium text-text-primary">{accountEmail}</span>
           </p>
         ) : null}
-
         {status === "checking" ? (
-          <p className="mt-4 text-sm leading-7 text-text-secondary" role="status">
+          <p className="mt-1.5 text-sm leading-6 text-text-secondary" role="status">
             Checking your link...
           </p>
         ) : null}
+      </div>
 
-        {showResetForm ? (
-          <form
-            className="mt-5 space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submitNewPassword();
-            }}
-          >
-            <p className="text-sm leading-7 text-text-secondary">
-              {copy.description}
-            </p>
-            <div>
-              <Input
-                type="password"
-                label="New password"
-                placeholder={`At least ${PASSWORD_MINIMUM_LENGTH} characters`}
-                value={password}
-                autoComplete="new-password"
-                onChange={(event) => {
-                  setPassword(event.target.value);
-                  setMessage(null);
-                }}
-              />
-              {password ? (
-                <div className="mt-2.5 flex items-center gap-2" aria-live="polite">
-                  <div className="flex flex-1 gap-1">
-                    {[0, 1, 2, 3].map((segment) => (
-                      <span
-                        key={segment}
-                        className={`h-1 flex-1 rounded-full transition duration-fast ${
-                          assessment.acceptable && segment < assessment.strength
-                            ? assessment.strength >= 3
-                              ? "bg-success"
-                              : "bg-warning"
-                            : "bg-[var(--color-border)]"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <span className="shrink-0 text-2xs font-semibold uppercase tracking-[0.14em] text-text-secondary">
-                    {assessment.label}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              className="w-full justify-center"
-              disabled={status === "working"}
-            >
-              {status === "working" ? "Changing password..." : "Change password"}
-            </Button>
-          </form>
-        ) : null}
-
-        {message ? (
-          <p
-            role={status === "failed" ? "alert" : "status"}
-            className={`mt-4 rounded-2xl px-4 py-3 text-sm leading-6 ${
-              status === "failed"
-                ? "border border-error-muted bg-error-muted text-[var(--color-error-text)]"
-                : "app-success"
-            }`}
-          >
-            {message}
+      {showResetForm ? (
+        <form
+          className="mt-6 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitNewPassword();
+          }}
+        >
+          <p className="text-center text-sm leading-6 text-text-secondary">
+            {copy.description}
           </p>
-        ) : null}
-
-        {status === "done" || status === "failed" ? (
+          <div>
+            <PasswordField
+              label="New password"
+              placeholder={`At least ${PASSWORD_MINIMUM_LENGTH} characters`}
+              value={password}
+              autoComplete="new-password"
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setMessage(null);
+              }}
+            />
+            {password ? <PasswordStrength assessment={assessment} /> : null}
+          </div>
           <Button
-            type="button"
-            variant="secondary"
+            type="submit"
+            variant="primary"
             size="lg"
-            className="mt-5 w-full justify-center"
-            onClick={() => router.replace("/auth")}
+            className="!mt-6 w-full justify-center"
+            disabled={status === "working"}
           >
-            Go to sign in
+            {status === "working" ? "Changing password..." : "Change password"}
           </Button>
-        ) : null}
-      </Card>
-    </AppPage>
+        </form>
+      ) : null}
+
+      {message ? (
+        <p
+          role={status === "failed" ? "alert" : "status"}
+          className={`mt-5 rounded-lg px-4 py-3 text-sm leading-6 ${
+            status === "failed" ? "app-danger" : "app-success"
+          }`}
+        >
+          {message}
+        </p>
+      ) : null}
+
+      {status === "done" || status === "failed" ? (
+        <Button
+          type="button"
+          variant={status === "done" ? "primary" : "secondary"}
+          size="lg"
+          className="mt-5 w-full justify-center"
+          onClick={() => router.replace("/auth")}
+        >
+          Go to sign in
+        </Button>
+      ) : null}
+    </AuthShell>
   );
 }
 

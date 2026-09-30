@@ -13,6 +13,15 @@ export type PracticePaperEvidenceAttempt = {
   markedAt?: number;
   updatedAt: number;
   questionResults: readonly (StoredMarkedAnswer & { questionId?: unknown })[];
+  /**
+   * The specification concepts each of the paper's questions was written
+   * against, by question id, where the paper recorded them.
+   *
+   * Supplied by the caller rather than stored on the attempt: the concepts
+   * belong to the question, and a question re-tagged later should not leave
+   * every past sitting of it saying something different.
+   */
+  conceptIdsByQuestion?: Readonly<Record<string, readonly string[]>>;
 };
 
 /**
@@ -25,10 +34,12 @@ export const ASSISTED_PRACTICE_WEIGHT = 0.5;
 /**
  * One observation per marked question.
  *
- * Practice-paper questions carry no topic, so these observations shape the
- * recurring errors and the overall trend but never a topic's mastery. Guessing
- * a topic from the question wording is exactly the kind of inference the
- * engine does not make.
+ * A question whose paper recorded the concepts it was written against counts
+ * towards those concepts, and towards everything above them. A question with
+ * none -- every paper generated before questions were tagged -- still shapes
+ * recurring errors and the overall trend, and still counts towards no concept
+ * at all. Guessing a concept from the question wording is exactly the kind of
+ * inference the engine does not make, so an untagged question stays untagged.
  */
 export function practicePaperObservations(
   attempts: readonly PracticePaperEvidenceAttempt[]
@@ -46,7 +57,9 @@ export function practicePaperObservations(
           kind: "practice",
           evidenceId: `${attempt.id}:${questionId}`,
           itemId: `paper:${attempt.paperId}:${questionId}`,
-          topicKeys: [],
+          topicKeys: (attempt.conceptIdsByQuestion?.[questionId] ?? []).map(
+            (conceptId) => `spec:${conceptId}`
+          ),
           score: marked.score,
           weight:
             markedAnswerWeight(marked.maxMarks) *

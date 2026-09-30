@@ -74,10 +74,18 @@ export function NotebookLivePageLayers({
 
   return (
     <>
+      {/*
+        Each background on a GPU layer of its own. Ruled paper is a page-sized
+        SVG and a PDF page a page-sized canvas, and both sat in the painting
+        layer under the transparent ink -- so on iPad every frame of wet ink
+        made WebKit repaint them, and writing lagged on lined and PDF pages
+        while plain paper, a flat colour, stayed quick. Promoted, each is
+        rasterised once and only composited while the pen moves.
+      */}
       <NotebookPageBackground
         {...backgroundProps}
-        pageStyleClassName="pointer-events-none absolute inset-0 z-0"
-        fileLayerClassName="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden"
+        pageStyleClassName="pointer-events-none absolute inset-0 z-0 [contain:paint] [transform:translateZ(0)] [will-change:transform]"
+        fileLayerClassName="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden [contain:paint] [transform:translateZ(0)] [will-change:transform]"
         inkSvg={
           !inkReady && hasPersistedInk ? persistedInkSvg : undefined
         }

@@ -27,7 +27,7 @@ not oversights.
 
 9 permanent skips → **0**. The Storage rule tests were skipping inside ordinary
 Vitest because they need an emulator. Firestore and Storage rules now run only
-through `vitest.rules.config.ts` under `npm run test:rules`, so `npm test`
+through `vitest.rules.config.mts` under `npm run test:rules`, so `npm test`
 reports no skips at all.
 
 Suite size: 999 tests → **1,132**.

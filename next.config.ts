@@ -64,6 +64,17 @@ export const nextConfig: NextConfig = {
   // The floating "N" dev badge sits over the signed-out pages' bottom corner.
   // Compile and runtime errors still surface with it off.
   devIndicators: false,
+  /*
+   * Which build this is, stamped into the client and the server alike, so an
+   * installed app can tell it is running an older one. The commit rather than
+   * the deployment, so the version shown on the account page is the hash in
+   * `git log`. Empty outside Vercel, which turns the check off. See
+   * lib/app/app-build.ts.
+   */
+  env: {
+    NEXT_PUBLIC_APP_BUILD:
+      process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_DEPLOYMENT_ID || "",
+  },
   // PDF evidence rendering uses a native Skia binary and must remain a
   // server runtime dependency rather than being parsed by webpack.
   // pdfkit reads its font metrics from disk, and MathJax imports glyph ranges

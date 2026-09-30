@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(async () => "user-1" as string | null),
   generateImage: vi.fn(),
+  generateText: vi.fn(),
   checkBudget: vi.fn(),
   refundBudget: vi.fn(),
   save: vi.fn(),
@@ -26,10 +27,14 @@ vi.mock("@/services/ai/assistant-assets.server", () => ({
 vi.mock("@/lib/ai/gemini", () => ({
   generateGeminiImage: mocks.generateImage,
 }));
+vi.mock("@/lib/ai/provider-router", () => ({
+  generateAiText: mocks.generateText,
+}));
 vi.mock("@/services/ai/budgets", () => ({
   checkAiBudget: mocks.checkBudget,
   createAiBudgetLimitResponse: () => Response.json({ error: "limit" }, { status: 429 }),
   refundAiBudget: mocks.refundBudget,
+  getAiTokenCap: () => 16_000,
 }));
 vi.mock("@/lib/observability/logger", () => ({
   createLogger: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }),
@@ -133,6 +138,11 @@ describe("Tutor illustration route trust boundary", () => {
       retryAfterSeconds: 0,
       grant: { uid: "user-1" },
     });
+    mocks.refundBudget.mockResolvedValue(undefined);
+    // The diagram model asks for a photo unless a test says otherwise.
+    mocks.generateText.mockResolvedValue(
+      JSON.stringify({ kind: "photo", altText: "A leaf in sunlight." })
+    );
     mocks.generateImage.mockResolvedValue({
       data: "YWJj",
       mimeType: "image/png",
@@ -152,6 +162,50 @@ describe("Tutor illustration route trust boundary", () => {
     expect(prompt).not.toContain("FORGED TUTOR ANSWER");
     expect(mocks.save).toHaveBeenCalledOnce();
     expect(mocks.transactionUpdate).toHaveBeenCalledOnce();
+
+    // The diagram request is built from the same stored history.
+    const diagramPrompt = JSON.stringify(mocks.generateText.mock.calls[0][0].request);
+    expect(diagramPrompt).toContain("TRUSTED SAVED STUDENT QUESTION");
+    expect(diagramPrompt).toContain("TRUSTED SAVED TUTOR EXPLANATION");
+    expect(diagramPrompt).not.toContain("FORGED");
+  });
+
+  it("saves a diagram as text on the message, with no image model and no file", async () => {
+    mocks.generateText.mockResolvedValueOnce(JSON.stringify({
+      kind: "diagram",
+      altText: "The water cycle as a loop.",
+      diagram: {
+        type: "cycle",
+        title: "The water cycle",
+        nodes: [{ id: "sea", label: "Sea" }, { id: "clouds", label: "Clouds" }, { id: "land", label: "Land" }],
+      },
+    }));
+
+    const response = await POST(request(body()));
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { illustration: Record<string, unknown> };
+    expect(payload.illustration).toMatchObject({ kind: "diagram", caption: "The water cycle" });
+    expect(String(payload.illustration.svg)).toMatch(/^<svg/);
+    expect(mocks.generateImage).not.toHaveBeenCalled();
+    expect(mocks.save).not.toHaveBeenCalled();
+    expect(mocks.transactionUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("asks once more with the reason, then refuses rather than drawing a picture", async () => {
+    mocks.generateText.mockResolvedValue(JSON.stringify({
+      kind: "diagram",
+      altText: "A circuit.",
+      diagram: { type: "circuit", loop: [{ kind: "lamp" }] },
+    }));
+
+    const response = await POST(request(body()));
+
+    expect(response.status).toBe(502);
+    expect(mocks.generateText).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(mocks.generateText.mock.calls[1][0].request)).toContain("COULD NOT BE DRAWN");
+    expect(mocks.generateImage).not.toHaveBeenCalled();
+    expect(mocks.refundBudget).toHaveBeenCalledOnce();
   });
 
   it("cannot bypass the flashcard visual hold by forging an answer-phase context", async () => {

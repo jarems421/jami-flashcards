@@ -3,6 +3,7 @@ import "server-only";
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
 import type { AiReasoningEffort } from "@/lib/ai/provider-policy";
+import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
 import type { Source } from "@/lib/material/sources";
 
 /**
@@ -22,17 +23,19 @@ export type SourceRelations = {
 };
 
 export type ResolvedJamiAssistantContext = {
+  /** Topics this material is filed under, so a marking can be placed on a concept. */
+  topicIds?: readonly string[];
   currentId: string;
   currentLabel: string;
   currentParts: AiContentPart[];
   sources: Source[];
   /**
-   * The sources the student is looking at or chose, or that the current item
-   * links to directly. These are read even when the search finds nothing in
-   * them; the rest of `sources` are the folder's material, read only where the
-   * search finds passages that fit the question.
+   * The sources the student chose, or attached to what they are working on,
+   * as opposed to ones found through a shared folder or topic. Each is
+   * searched on its own, so a question across many chosen sources still
+   * hears from every one of them.
    */
-  pinnedSourceIds: string[];
+  pinnedSourceIds?: string[];
   studyLevelContext?: string;
   /**
    * The student's saved teaching preferences and, where the material sits in
@@ -52,14 +55,38 @@ export type ResolvedJamiAssistantContext = {
    */
   learningContext?: string;
   /**
+   * What Tutor remembers about the student from earlier chats, and their other
+   * recent chats. Undefined when memory is off or could not load in time.
+   */
+  memoryContext?: string;
+  /** Short references in `memoryContext` (`m1`...) to memory ids, for updates. */
+  memoryRefs?: ReadonlyMap<string, string>;
+  /** Whether Tutor may propose memory changes on this turn. */
+  memoryWritable?: boolean;
+  /** The folders this material belongs to, which scope a remembered difficulty. */
+  folderIds?: readonly string[];
+  /**
+   * The engine's advice to practise the topic in front of the student, when
+   * that is its decision for it. Only ever present with `learningContext`,
+   * which tells the model the offer is there. See `practiceActionForMaterial`.
+   */
+  practiceOffer?: TutorPracticeOffer;
+  /**
+   * The course behind the folder: its verified specification, topic headings
+   * and examiners' question-type rules, and any of the student's sources that
+   * define the course themselves. See `lib/ai/tutor-course-context.ts`.
+   *
+   * Undefined when there is no single folder, no catalogued course and no
+   * course document, or when it could not be loaded in time.
+   */
+  courseContext?: string;
+  /**
    * How hard this student has asked Jami to think, if they have said.
    *
    * Read from the same user document the study level comes from, so wanting it
    * costs no extra round trip.
    */
   reasoningEffort?: AiReasoningEffort;
-  /** The folders the current material sits in, for filing what Tutor makes from it. */
-  folderIds?: string[];
   /** The deck being studied, on the flashcard surface. */
   deckId?: string;
 };

@@ -944,7 +944,9 @@
   /* Fields over the page -- a dialog's, the Tutor's -- are ordinary text fields. */
   body.jami-notebook-editor-active input,
   body.jami-notebook-editor-active textarea,
-  body.jami-notebook-editor-active [contenteditable="true"] {
+  body.jami-notebook-editor-active [contenteditable="true"],
+  /* Text off the page that is there to be copied: the Tutor's answers. */
+  body.jami-notebook-editor-active [data-notebook-selectable-text="true"] {
     -webkit-touch-callout: default !important;
     -webkit-user-select: text !important;
     user-select: text !important;
@@ -1082,6 +1084,22 @@
     overscroll-behavior: none;
     touch-action: none;
     user-select: none;
+  }
+
+  /*
+   * A fitted practice sheet, inline, lets a finger scroll the page it sits on.
+   *
+   * The sheet used to refuse every native pan and scroll the page itself from
+   * the finger's position, which on iPad fed back on itself and shook the page
+   * up and down. Up and down is the browser's again; the sheet keeps sideways
+   * swipes and pinches by cancelling their touches, and the Pencil by the
+   * notebook's stylus guard. Set by ExamScratchpad only while the sheet is
+   * fitted and not full screen.
+   */
+  [data-sheet-touch="scroll"],
+  [data-sheet-touch="scroll"] .notebook-page-surface,
+  [data-sheet-touch="scroll"] .notebook-ink-surface {
+    touch-action: pan-y;
   }
 
   .notebook-thickness-slider {
@@ -1324,6 +1342,218 @@
     }
   }
 
+  /*
+   * The signed-out pages: the landing page, sign-in, and the page an emailed
+   * link opens.
+   *
+   * These always sit on the night sky (`isNightSkyRoute`), whatever theme the
+   * student has chosen, so they are drawn for that palette alone. None of it
+   * uses `backdrop-filter`: the sky twinkles behind every panel, and a blur has
+   * to be recomputed each time anything behind it changes.
+   */
+  .signed-out-panel {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.012) 46%),
+      rgba(11, 8, 24, 0.86);
+    border: 1px solid var(--color-border-strong);
+    box-shadow: var(--elevation-3);
+    position: relative;
+  }
+
+  /* For a panel laid over another one, whose text must not show through. */
+  .signed-out-panel-opaque {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.02) 46%),
+      #0e0b1d;
+  }
+
+  /* A lit top edge, the way starlight would catch a pane of glass. */
+  .signed-out-panel::before {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    content: "";
+    height: 1px;
+    left: 12%;
+    pointer-events: none;
+    position: absolute;
+    right: 12%;
+    top: -1px;
+  }
+
+  /*
+   * Light pooled behind the content. Radial gradients rather than blurred
+   * shapes: they are already soft, and cost nothing to keep on screen.
+   */
+  .signed-out-glow {
+    inset: 0 0 auto;
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+  }
+
+  .signed-out-glow-hero {
+    background:
+      radial-gradient(40rem 30rem at 76% 22%, rgba(143, 125, 232, 0.26), transparent 70%),
+      radial-gradient(28rem 22rem at 10% 58%, rgba(125, 224, 204, 0.09), transparent 70%);
+    height: 64rem;
+  }
+
+  /* `closest-side`, so it has faded out before it reaches its own edges. */
+  .signed-out-glow-centred {
+    background: radial-gradient(closest-side, rgba(143, 125, 232, 0.2), transparent);
+    height: 100%;
+  }
+
+  /*
+   * The second half of the landing headline, in Jami's own face with the app
+   * icon's lavender and teal running through it. It used to be an italic serif,
+   * which read as a different product from the app a student signs in to.
+   */
+  .landing-accent {
+    /* The shorthand first: it would reset a clip declared before it. */
+    background: linear-gradient(100deg, #fff8ff 4%, #dccfff 46%, #b2eadd 96%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font-weight: 600;
+  }
+
+  /* A few lines of exercise-book paper for the example answer. */
+  .landing-ruled {
+    background-image: repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent calc(1.625rem - 1px),
+      rgba(214, 193, 244, 0.16) calc(1.625rem - 1px),
+      rgba(214, 193, 244, 0.16) 1.625rem
+    );
+    line-height: 1.625rem;
+  }
+
+  /* The pen as the example answer is written. */
+  .landing-caret {
+    background: currentColor;
+    display: inline-block;
+    height: 1.05em;
+    margin-left: 1px;
+    vertical-align: -0.15em;
+    width: 1.5px;
+  }
+
+  /* The demo card leans a little toward the pointer. */
+  .landing-lean {
+    transform: perspective(1200px) rotateX(var(--landing-lean-x, 0deg))
+      rotateY(var(--landing-lean-y, 0deg));
+    transition: transform 500ms var(--ease-standard);
+  }
+
+  /* Light that follows the pointer across the demo card. */
+  .landing-spotlight::after {
+    background: radial-gradient(
+      18rem circle at var(--landing-spot-x, 50%) var(--landing-spot-y, 0%),
+      rgba(200, 185, 255, 0.12),
+      transparent 70%
+    );
+    border-radius: inherit;
+    content: "";
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    transition: opacity 300ms ease;
+  }
+
+  .landing-stage:hover .landing-spotlight::after {
+    opacity: 1;
+  }
+
+  .landing-ring {
+    transition: stroke-dasharray 500ms var(--ease-standard);
+  }
+
+  /* The flashcard kept from the missed mark: turns over by itself, or on hover. */
+  .landing-flip {
+    perspective: 1000px;
+  }
+
+  .landing-flip-inner {
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 700ms var(--ease-standard);
+  }
+
+  .landing-flip[data-flipped="true"] .landing-flip-inner,
+  .landing-flip:hover .landing-flip-inner {
+    transform: rotateY(180deg);
+  }
+
+  .landing-flip-face {
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    inset: 0;
+    position: absolute;
+  }
+
+  .landing-flip-back {
+    transform: rotateY(180deg);
+  }
+
+  .landing-step-progress {
+    background: linear-gradient(90deg, #dccfff, #b2eadd);
+    transition: transform 60ms linear;
+  }
+
+  .landing-tilted {
+    transform: rotate(var(--landing-tilt, 0deg));
+  }
+
+  .landing-orbit {
+    border: 1px solid rgba(214, 193, 244, 0.1);
+    border-radius: 999px;
+    left: 50%;
+    pointer-events: none;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .landing-orbit::after {
+    background: #fff;
+    border-radius: 999px;
+    box-shadow: 0 0 10px 2px rgba(200, 185, 255, 0.8);
+    content: "";
+    height: 4px;
+    left: 50%;
+    position: absolute;
+    top: -2px;
+    width: 4px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .landing-tilted {
+      animation: landing-float 7s ease-in-out infinite;
+    }
+
+    .landing-orbit-turning {
+      animation: landing-orbit 90s linear infinite;
+    }
+
+    .landing-accent {
+      animation: landing-shimmer 9s ease-in-out infinite;
+    }
+
+    .landing-caret {
+      animation: landing-caret 1s steps(1) infinite;
+    }
+
+    .landing-next-live {
+      animation:
+        landing-float 7s ease-in-out infinite,
+        landing-glow 1.8s ease-in-out infinite;
+    }
+  }
+
   .app-panel {
     position: relative;
     overflow: hidden;
@@ -1354,6 +1584,29 @@
   .app-field::placeholder {
     color: var(--color-field-placeholder);
     opacity: 1;
+  }
+
+  /*
+   * The type a field is written in.
+   *
+   * 14px, except where Safari on an iPhone or iPad would zoom the whole page
+   * into any field set smaller than 16px the moment it is focused -- and leave
+   * it zoomed after the keyboard goes, so every answer began with the layout
+   * lurching and ended with a pinch to put it back. `-webkit-touch-callout`
+   * exists only in iOS and iPadOS WebKit, so nothing else changes size.
+   *
+   * A component rule, so a field asked for larger type -- an answer set at
+   * text-lg -- still gets it.
+   */
+  .app-field-text {
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  @supports (-webkit-touch-callout: none) {
+    .app-field-text {
+      font-size: 1rem;
+    }
   }
 
   .app-field:hover {
@@ -1397,6 +1650,126 @@
   @container plan-dates (min-width: 26rem) {
     .plan-dates-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  /*
+   * OptionSwitch's columns, by the width it is given rather than the screen's.
+   *
+   * Each step is where a tile still fits its label on a line or two: about
+   * nine rem a tile, more where the choices are written out in full. Below the
+   * first step it is one tile a row, which reads fine; a squeezed row never
+   * does.
+   *
+   * Four choices wait for thirteen rem a tile. Their labels are whole phrases
+   * ("Walk me through it"), and at nine rem the Tutor's card showed every one
+   * of them broken over two lines.
+   */
+  .option-switch {
+    container: option-switch / inline-size;
+  }
+
+  .option-switch-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @container option-switch (min-width: 26rem) {
+    .option-switch-grid:is([data-columns="4"], [data-columns="5"]) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container option-switch (min-width: 28rem) {
+    .option-switch-grid[data-columns="2"] {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container option-switch (min-width: 33rem) {
+    .option-switch-grid:is([data-columns="3"], [data-columns="5"]) {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @container option-switch (min-width: 44rem) {
+    .option-switch-grid[data-columns="4"] {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  @container option-switch (min-width: 55rem) {
+    .option-switch-grid[data-columns="5"] {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+  }
+
+  /*
+   * Personalising Jami, laid out by the room the page is given.
+   *
+   * The read-back sits beside the four steps only once both fit; until then it
+   * follows them. Chosen by the screen, it went beside them at 1024px, where
+   * the app's own sidebar had already taken 18rem, and left the subject notes
+   * a column a few words wide.
+   */
+  .tutor-personalise {
+    container: tutor-personalise / inline-size;
+  }
+
+  .tutor-personalise-grid {
+    display: grid;
+    gap: 1rem;
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @container tutor-personalise (min-width: 62rem) {
+    .tutor-personalise-grid {
+      grid-template-columns: minmax(0, 1fr) 19rem;
+      gap: 1.25rem;
+    }
+
+    .tutor-personalise-aside {
+      position: sticky;
+      top: 1rem;
+    }
+  }
+
+  /*
+   * Subject notes, the same way: a folder list beside the notes once both fit,
+   * a dropdown above them until then. One component serves a 20rem Tutor card
+   * and a desktop page.
+   */
+  .tutor-folder-notes {
+    container: tutor-folder-notes / inline-size;
+  }
+
+  .tutor-folder-notes-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tutor-folder-notes-list,
+  .tutor-folder-notes-title {
+    display: none;
+  }
+
+  @container tutor-folder-notes (min-width: 38rem) {
+    .tutor-folder-notes-grid {
+      grid-template-columns: 12.5rem minmax(0, 1fr);
+      gap: 1.5rem;
+    }
+
+    .tutor-folder-notes-picker {
+      display: none;
+    }
+
+    .tutor-folder-notes-list {
+      display: flex;
+    }
+
+    .tutor-folder-notes-title {
+      display: block;
     }
   }
 
@@ -1475,6 +1848,20 @@
     opacity: 1;
   }
 
+  .plan-outline-current {
+    position: relative;
+  }
+
+  .plan-outline-current::after {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: 9999px;
+    border: 2px solid var(--color-accent);
+    opacity: 0;
+    pointer-events: none;
+  }
+
   @media (prefers-reduced-motion: no-preference) {
     .plan-aurora {
       animation: plan-aurora-drift 34s var(--ease-standard) infinite alternate;
@@ -1515,6 +1902,22 @@
     /* A proposal arriving: one soft sweep, then still. */
     .plan-sweep {
       animation: plan-sweep-in var(--duration-slow) var(--ease-standard) both;
+    }
+
+    /*
+     * One piece of a plan being put in place: an exam, a subject, a day.
+     *
+     * Runs when the element mounts, and the outline keys each piece by what it
+     * is, so only the piece that was just added moves -- the rest stay still,
+     * which is what lets a student see which answer did what.
+     */
+    .plan-build-in {
+      animation: plan-build-in var(--duration-slow) var(--ease-spring) both;
+    }
+
+    /* The section Jami is asking about: a ring that breathes out, then rests. */
+    .plan-outline-current::after {
+      animation: plan-outline-pulse 2.4s var(--ease-standard) infinite;
     }
   }
 
@@ -2006,6 +2409,55 @@
   48% {
     opacity: var(--login-brand-spark-opacity);
     transform: scale(1);
+  }
+}
+
+@keyframes landing-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(var(--landing-tilt, 0deg));
+  }
+
+  50% {
+    transform: translateY(-8px) rotate(var(--landing-tilt, 0deg));
+  }
+}
+
+@keyframes landing-shimmer {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes landing-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes landing-glow {
+  0%,
+  100% {
+    box-shadow: var(--elevation-3), 0 0 0 0 rgba(200, 185, 255, 0);
+  }
+
+  50% {
+    box-shadow: var(--elevation-3), 0 0 26px 2px rgba(200, 185, 255, 0.35);
+  }
+}
+
+@keyframes landing-orbit {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
   }
 }
 
@@ -3151,9 +3603,27 @@ html.panels-solid body.constellation-background-enabled .app-nav {
     border-top: 1px solid var(--color-border);
   }
 
+  /*
+   * Tables and drawn figures scroll sideways inside their own frame rather
+   * than squeezing into a narrow Tutor card. The table's minimum width comes
+   * from its column count, set in AiResponseRenderer.
+   */
+  .ai-response .ai-response-table {
+    margin: 0.75rem 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    border-radius: var(--radius-md);
+  }
+
+  .ai-response .ai-response-table:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
   .ai-response table {
     width: 100%;
-    margin: 0.75rem 0;
+    margin: 0;
     border-collapse: collapse;
     font-size: 0.875rem;
   }
@@ -3168,6 +3638,24 @@ html.panels-solid body.constellation-background-enabled .app-nav {
   .ai-response th {
     background-color: var(--color-glass-subtle);
     font-weight: 600;
+  }
+
+  .ai-response .ai-drawn-figure {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Its own size, or the card's width, but never smaller than a figure can be read at. */
+  .ai-response .ai-drawn-figure > svg {
+    display: block;
+    height: auto;
+    margin-inline: auto;
+    max-width: max(100%, 20rem);
+  }
+
+  .ai-response .ai-drawn-figure > svg:not([width]) {
+    width: 100%;
+    min-width: 20rem;
   }
 
   /*
@@ -3208,6 +3696,133 @@ html.panels-solid body.constellation-background-enabled .app-nav {
     display: inline-block;
     /* Display maths already had room on its own line; only inline needed the step up. */
     font-size: 1em;
+  }
+
+  /*
+   * A Tutor answer added to a notebook page.
+   *
+   * The same answer as the chat card, set on paper: its size comes from the
+   * box, which is in page units, so everything here is in em and scales with
+   * the page at any zoom. Colour comes from the paper's ink rather than the
+   * app theme -- a dark theme can hold a white page -- so rules, cells and
+   * code are drawn from the text colour itself.
+   */
+  .ai-response.ai-response--page {
+    color: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  .ai-response--page p,
+  .ai-response--page ul,
+  .ai-response--page ol,
+  .ai-response--page pre,
+  .ai-response--page blockquote,
+  .ai-response--page .ai-response-table {
+    margin: 0.5em 0;
+  }
+
+  .ai-response--page h1,
+  .ai-response--page h2,
+  .ai-response--page h3,
+  .ai-response--page h4,
+  .ai-response--page h5,
+  .ai-response--page h6 {
+    margin: 0.9em 0 0.35em;
+    color: inherit;
+  }
+
+  .ai-response--page h1 {
+    font-size: 1.3em;
+  }
+
+  .ai-response--page h2 {
+    font-size: 1.18em;
+  }
+
+  .ai-response--page h3 {
+    font-size: 1.06em;
+  }
+
+  .ai-response--page h4,
+  .ai-response--page h5,
+  .ai-response--page h6 {
+    font-size: 1em;
+  }
+
+  .ai-response--page ul,
+  .ai-response--page ol {
+    padding-left: 1.4em;
+  }
+
+  .ai-response--page li {
+    margin: 0.2em 0;
+    padding-left: 0.2em;
+  }
+
+  .ai-response--page strong,
+  .ai-response--page em {
+    color: inherit;
+  }
+
+  .ai-response--page code {
+    background-color: color-mix(in srgb, currentColor 8%, transparent);
+    color: inherit;
+  }
+
+  .ai-response--page pre {
+    background-color: color-mix(in srgb, currentColor 4%, transparent);
+    border-color: color-mix(in srgb, currentColor 18%, transparent);
+  }
+
+  .ai-response--page pre code {
+    color: inherit;
+    white-space: pre-wrap;
+  }
+
+  .ai-response--page blockquote {
+    border-left-color: color-mix(in srgb, currentColor 40%, transparent);
+    background-color: color-mix(in srgb, currentColor 4%, transparent);
+    color: inherit;
+  }
+
+  .ai-response--page hr {
+    border-top-color: color-mix(in srgb, currentColor 22%, transparent);
+  }
+
+  /* A page does not scroll sideways inside itself: a table wraps to its box. */
+  .ai-response--page .ai-response-table {
+    overflow: visible;
+  }
+
+  .ai-response--page table {
+    font-size: 0.95em;
+  }
+
+  .ai-response--page th,
+  .ai-response--page td {
+    padding: 0.35em 0.6em;
+    border-color: color-mix(in srgb, currentColor 25%, transparent);
+  }
+
+  .ai-response--page th {
+    background-color: color-mix(in srgb, currentColor 6%, transparent);
+  }
+
+  .ai-response--page .katex-display {
+    margin: 0.5em 0;
+  }
+
+  /* Figures are drawn for a white ground, and keep one on cream and black paper. */
+  .ai-response--page .ai-drawn-figure {
+    overflow: visible;
+    background-color: #ffffff;
+  }
+
+  .ai-response--page .ai-drawn-figure > svg,
+  .ai-response--page .ai-drawn-figure > svg:not([width]) {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 
@@ -3305,14 +3920,30 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 .fn-tag{display:inline-flex;align-items:center;gap:.45rem;padding:.5rem .8rem;border-radius:12px;background:rgba(255,255,255,.045);border:1px solid rgba(226,220,255,.1);font-size:.88rem;color:rgba(240,236,255,.88)}
 
 .fn-nav-star{position:absolute;right:-4px;top:-4px;display:grid;color:var(--color-accent);filter:drop-shadow(0 0 4px rgba(150,120,255,.9));animation:fn-breathe 2.6s ease-in-out infinite}
-.fn-spot{position:fixed;z-index:70;border-radius:18px;pointer-events:none;box-shadow:0 0 0 9999px rgba(4,2,12,.55),0 0 0 1px rgba(205,190,255,.6),0 0 36px 8px rgba(142,112,255,.45);transition:left .5s cubic-bezier(.22,1,.36,1),top .5s cubic-bezier(.22,1,.36,1),width .5s,height .5s;animation:fn-halo 3.4s ease-in-out infinite}
-.fn-note{position:fixed;z-index:71;width:340px;padding:1.05rem 1.15rem 1rem;border-radius:22px;background:linear-gradient(180deg,rgba(34,23,72,.96),rgba(14,9,32,.98));border:1px solid rgba(226,220,255,.16);color:#f4f0ff;box-shadow:0 24px 70px -20px rgba(0,0,0,.85),0 0 44px -10px rgba(142,112,255,.4);animation:fn-enter .9s .2s cubic-bezier(.22,1,.36,1) both}
+/*
+ * The walkthrough's light: a veil of night with one control left in view, a
+ * ring that follows it, and a thread from the note to it. Positions are
+ * written by FirstNightGuide every frame, so nothing here transitions them --
+ * a transition on a tracked position is what made the old highlight swim.
+ */
+@property --fn-angle{syntax:"<angle>";inherits:false;initial-value:0deg}
+.fn-guide{position:fixed;inset:0;z-index:70;pointer-events:none}
+.fn-guide .fn-veil,.fn-guide .fn-light,.fn-guide .fn-note{transition:opacity .55s cubic-bezier(.22,1,.36,1)}
+.fn-guide[data-state="seeking"] .fn-veil,.fn-guide[data-state="seeking"] .fn-light,.fn-guide[data-state="seeking"] .fn-note{opacity:0;pointer-events:none}
+.fn-veil{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;overflow:visible}
+.fn-veil-star{fill:#fff;opacity:.2;animation:fn-veil-twinkle 4s ease-in-out infinite}
+.fn-thread{fill:none;stroke-width:1.25;stroke-linecap:round;stroke-dasharray:2.5 5.5;filter:drop-shadow(0 0 3px rgba(190,170,255,.75));animation:fn-thread-flow 1.8s linear infinite;transition:opacity .4s}
+.fn-thread-end{fill:#fff;filter:drop-shadow(0 0 5px rgba(206,192,255,.95));transition:opacity .4s}
+.fn-light{position:fixed;left:0;top:0;border-radius:18px;pointer-events:none;will-change:transform,width,height;animation:fn-light-breathe 3.6s ease-in-out infinite}
+.fn-light::before{content:"";position:absolute;inset:-1.5px;border-radius:inherit;padding:1.5px;background:conic-gradient(from var(--fn-angle),rgba(255,255,255,0) 0deg,rgba(240,234,255,.95) 38deg,rgba(142,112,255,.12) 110deg,rgba(255,255,255,0) 180deg,rgba(204,188,255,.85) 250deg,rgba(255,255,255,0) 320deg);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:fn-light-orbit 7s linear infinite}
+.fn-note{position:fixed;left:0;top:0;z-index:72;width:min(340px,calc(100vw - 24px));pointer-events:auto;will-change:transform;border-radius:22px;padding:1.05rem 1.15rem 1rem;color:#f4f0ff;background:radial-gradient(1px 1px at 16% 24%,rgba(255,255,255,.6),transparent 70%),radial-gradient(1px 1px at 71% 13%,rgba(255,255,255,.45),transparent 70%),radial-gradient(1.3px 1.3px at 88% 70%,rgba(255,255,255,.5),transparent 70%),radial-gradient(1px 1px at 36% 86%,rgba(255,255,255,.35),transparent 70%),radial-gradient(1px 1px at 55% 48%,rgba(255,255,255,.25),transparent 70%),radial-gradient(130% 90% at 0% 0%,rgba(142,112,255,.3),transparent 62%),linear-gradient(180deg,rgba(34,23,72,.97),rgba(12,8,30,.98));border:1px solid rgba(226,220,255,.16);box-shadow:0 24px 70px -20px rgba(0,0,0,.85),0 0 54px -14px rgba(142,112,255,.55),inset 0 1px 0 rgba(255,255,255,.08)}
+.fn-note::before{content:"";position:absolute;left:22px;right:22px;top:-1px;height:1px;background:linear-gradient(90deg,transparent,rgba(222,210,255,.9),transparent)}
+.fn-note-body{animation:fn-note-in .75s cubic-bezier(.22,1,.36,1) both}
 .fn-note-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem}
-.fn-note-star{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;color:#fff;background:radial-gradient(circle,rgba(142,112,255,.5),rgba(142,112,255,0) 70%)}
-.fn-note-text{font-size:1.02rem;line-height:1.5;color:#f4f0ff}
+.fn-note-sigil{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;color:#fff;background:radial-gradient(circle,rgba(142,112,255,.6),rgba(142,112,255,0) 70%);animation:fn-breathe 3s ease-in-out infinite}
+.fn-note-text{font-size:1.02rem;line-height:1.55;color:#f4f0ff}
 .fn-note-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;margin-top:.9rem}
 .fn-skip{margin-left:auto;font-size:.8rem}
-@media (max-width:767px){.fn-note{left:12px!important;right:12px!important;top:auto!important;bottom:calc(env(safe-area-inset-bottom,0px) + 5.8rem)!important;width:auto!important}}
 .fn-toast{position:fixed;left:50%;top:18px;z-index:80;transform:translateX(-50%);display:flex;align-items:center;gap:.55rem;padding:.6rem 1rem;border-radius:999px;background:rgba(14,9,32,.92);border:1px solid rgba(226,220,255,.18);color:#f4f0ff;font-size:.85rem;white-space:nowrap;box-shadow:0 0 40px -8px rgba(142,112,255,.55);animation:fn-toast 3.4s ease both}
 .fn-toast-hint{color:rgba(230,224,255,.55);padding-left:.55rem;border-left:1px solid rgba(226,220,255,.18)}
 .fn-first-sky{position:relative;height:210px;margin:1rem 0;border-radius:16px;background:radial-gradient(ellipse at 50% 40%,rgba(90,70,190,.26),rgba(9,4,19,0) 70%),#090413;border:1px solid rgba(226,220,255,.08);overflow:hidden;transition:box-shadow 1.5s}
@@ -3323,7 +3954,56 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 .fn-row-mark-lit{color:var(--color-accent);border-color:var(--color-accent);box-shadow:0 0 16px rgba(142,112,255,.45)}
 .fn-leave{animation:fn-leave 1s cubic-bezier(.4,0,.2,1) both}
 
+/*
+ * First night on Today: the sky gets depth, the next star says so, and the
+ * next step is offered as one card with one button. The card is a window
+ * into the night in either theme, so its colours are its own.
+ */
+.fn-constellation{position:relative;overflow:hidden}
+.fn-constellation::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(90% 60% at 100% 0%,rgba(142,112,255,.1),transparent 60%)}
+.fn-sky-dust{position:absolute;inset:-10%;pointer-events:none;background-image:radial-gradient(1px 1px at 12% 18%,rgba(255,255,255,.7),transparent 70%),radial-gradient(1px 1px at 27% 72%,rgba(255,255,255,.45),transparent 70%),radial-gradient(1.4px 1.4px at 41% 34%,rgba(255,255,255,.6),transparent 70%),radial-gradient(1px 1px at 56% 83%,rgba(255,255,255,.4),transparent 70%),radial-gradient(1px 1px at 63% 12%,rgba(255,255,255,.55),transparent 70%),radial-gradient(1.2px 1.2px at 79% 46%,rgba(255,255,255,.5),transparent 70%),radial-gradient(1px 1px at 88% 88%,rgba(255,255,255,.35),transparent 70%),radial-gradient(1px 1px at 94% 22%,rgba(255,255,255,.5),transparent 70%),radial-gradient(1px 1px at 6% 58%,rgba(255,255,255,.4),transparent 70%),radial-gradient(1.2px 1.2px at 34% 8%,rgba(255,255,255,.45),transparent 70%),radial-gradient(1px 1px at 70% 64%,rgba(255,255,255,.3),transparent 70%),radial-gradient(1px 1px at 49% 55%,rgba(255,255,255,.25),transparent 70%);animation:fn-dust-drift 60s linear infinite,fn-breathe 7s ease-in-out infinite}
+.fn-unlit-next{color:#f1ecff;animation:none}
+.fn-unlit-next::after{content:"";position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:1px solid rgba(206,192,255,.55);box-shadow:0 0 18px rgba(142,112,255,.55);animation:fn-beckon 2.4s ease-out infinite}
+.fn-second-sky{height:150px}
+.fn-second-lit{position:absolute;transform:translate(-50%,-50%);display:grid;color:#fff;filter:drop-shadow(0 0 8px rgba(206,192,255,.95));animation:fn-star-pop 1.6s cubic-bezier(.22,1,.36,1) both}
+.fn-next{position:relative;overflow:hidden;margin:.25rem 0 .5rem;padding:1.1rem 1.15rem 1.15rem;border-radius:18px;color:#f4f0ff;background:radial-gradient(1px 1px at 84% 20%,rgba(255,255,255,.6),transparent 70%),radial-gradient(1px 1px at 92% 64%,rgba(255,255,255,.4),transparent 70%),radial-gradient(1.2px 1.2px at 70% 82%,rgba(255,255,255,.45),transparent 70%),radial-gradient(120% 120% at 100% 0%,rgba(142,112,255,.42),transparent 58%),linear-gradient(160deg,#1c1242,#0d0822 70%);border:1px solid rgba(226,220,255,.16);box-shadow:0 18px 50px -24px rgba(90,60,200,.8),inset 0 1px 0 rgba(255,255,255,.08);animation:fn-note-in .8s cubic-bezier(.22,1,.36,1) both}
+.fn-next::after{content:"";position:absolute;right:-40px;top:-40px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(190,170,255,.28),transparent 65%);pointer-events:none;animation:fn-breathe 5s ease-in-out infinite}
+.fn-next-meta{display:flex;align-items:center;gap:.45rem;font-size:.7rem;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:rgba(222,212,255,.72)}
+.fn-next-title{margin-top:.55rem;font-size:1.2rem;font-weight:600;letter-spacing:-.01em;line-height:1.25}
+.fn-next-text{margin-top:.35rem;max-width:34rem;font-size:.92rem;line-height:1.55;color:rgba(236,230,255,.76)}
+.fn-next-go{margin-top:.95rem;position:relative;z-index:1}
+
+/*
+ * A star lighting. Top and centre, above everything but the reward itself,
+ * because it is the moment the walkthrough exists for.
+ */
+.fn-bloom{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 16px);z-index:80;transform:translateX(-50%);width:min(430px,calc(100vw - 24px));display:flex;gap:1rem;align-items:flex-start;padding:1rem 1.1rem 1rem 1rem;border-radius:22px;color:#f4f0ff;background:radial-gradient(1px 1px at 88% 18%,rgba(255,255,255,.6),transparent 70%),radial-gradient(1px 1px at 72% 80%,rgba(255,255,255,.4),transparent 70%),radial-gradient(130% 100% at 0% 0%,rgba(142,112,255,.4),transparent 60%),linear-gradient(180deg,rgba(34,23,72,.97),rgba(12,8,30,.98));border:1px solid rgba(226,220,255,.18);box-shadow:0 26px 70px -22px rgba(0,0,0,.85),0 0 60px -12px rgba(142,112,255,.6);animation:fn-bloom-in .9s cubic-bezier(.22,1,.36,1) both}
+.fn-bloom-mark{position:relative;width:52px;height:52px;flex-shrink:0;display:grid;place-items:center}
+.fn-bloom-core{position:relative;z-index:1;display:grid;color:#fff;filter:drop-shadow(0 0 10px rgba(214,200,255,1));animation:fn-bloom-star 1.2s cubic-bezier(.22,1,.36,1) both}
+.fn-bloom-mark::before{content:"";position:absolute;inset:6px;border-radius:50%;background:radial-gradient(circle,rgba(214,200,255,.34) 0%,rgba(190,170,255,.12) 38%,rgba(190,170,255,0) 70%);animation:fn-bloom-halo 1.4s cubic-bezier(.22,1,.36,1) both}
+.fn-bloom-orbit{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.fn-bloom-orbit path{fill:none;stroke-width:.9;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;animation:fn-draw 1.3s .25s cubic-bezier(.45,0,.2,1) forwards}
+.fn-bloom-orbit-back{z-index:0;opacity:.4}
+.fn-bloom-orbit-front{z-index:2}
+.fn-bloom-orbit-front path{animation-delay:.55s}
+.fn-bloom-spark{fill:#fff;filter:drop-shadow(0 0 2px rgba(214,200,255,.95))}
+.fn-bloom-body{min-width:0;flex:1}
+.fn-bloom-title{margin-top:.3rem;font-size:1.06rem;font-weight:600;line-height:1.3}
+.fn-bloom-text{margin-top:.3rem;font-size:.9rem;line-height:1.5;color:rgba(236,230,255,.78)}
+.fn-bloom-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.35rem .6rem;margin-top:.75rem}
+
+
 @keyframes fn-glow{0%,100%{opacity:.3}50%{opacity:1}}
+@keyframes fn-dust-drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-4%,2%,0)}}
+@keyframes fn-beckon{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(1.6)}}
+@keyframes fn-bloom-in{0%{opacity:0;transform:translate(-50%,-14px) scale(.96)}100%{opacity:1;transform:translate(-50%,0) scale(1)}}
+@keyframes fn-bloom-star{0%{opacity:0;transform:scale(.2) rotate(-90deg)}60%{opacity:1;transform:scale(1.25) rotate(8deg)}100%{transform:scale(1) rotate(0)}}
+@keyframes fn-bloom-halo{0%{opacity:0;transform:scale(.4)}100%{opacity:1;transform:scale(1)}}
+@keyframes fn-veil-twinkle{0%,100%{opacity:.1}50%{opacity:.7}}
+@keyframes fn-thread-flow{to{stroke-dashoffset:-16}}
+@keyframes fn-light-orbit{to{--fn-angle:360deg}}
+@keyframes fn-light-breathe{0%,100%{box-shadow:0 0 0 1px rgba(214,200,255,.4),0 0 22px 3px rgba(142,112,255,.3),inset 0 0 14px rgba(170,150,255,.1)}50%{box-shadow:0 0 0 1px rgba(236,228,255,.75),0 0 42px 10px rgba(142,112,255,.5),inset 0 0 24px rgba(170,150,255,.2)}}
+@keyframes fn-note-in{0%{opacity:0;filter:blur(6px);transform:translateY(8px)}100%{opacity:1;filter:none;transform:none}}
 @keyframes fn-twinkle{0%,100%{opacity:var(--fn-dust)}50%{opacity:calc(var(--fn-dust) * .2)}}
 @keyframes fn-enter{0%{opacity:0;transform:translateY(16px)}100%{opacity:1;transform:none}}
 @keyframes fn-fade{0%{opacity:0}100%{opacity:1}}
@@ -3332,30 +4012,56 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 @keyframes fn-spin{to{transform:rotate(360deg)}}
 @keyframes fn-spin-back{to{transform:rotate(-360deg)}}
 @keyframes fn-draw{to{stroke-dashoffset:0}}
-@keyframes fn-halo{0%,100%{box-shadow:0 0 0 9999px rgba(4,2,12,.55),0 0 0 1px rgba(205,190,255,.5),0 0 30px 6px rgba(142,112,255,.38)}50%{box-shadow:0 0 0 9999px rgba(4,2,12,.55),0 0 0 1px rgba(228,218,255,.85),0 0 50px 12px rgba(142,112,255,.58)}}
 @keyframes fn-breathe{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes fn-ring{0%{opacity:1;box-shadow:0 0 0 0 rgba(190,170,255,.8)}100%{opacity:0;box-shadow:0 0 0 46px rgba(190,170,255,0)}}
 @keyframes fn-leave{0%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-10px) scale(.98)}}
 @keyframes fn-toast{0%{opacity:0;transform:translate(-50%,-10px)}12%,85%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-6px)}}
 
 @media (prefers-reduced-motion: reduce){
-  .fn-root *,.fn-root *::after,.fn-note,.fn-spot,.fn-toast,.fn-nav-star,.fn-unlit,.fn-ring,.fn-leave{animation-duration:1ms!important;animation-iteration-count:1!important;animation-delay:0s!important;transition-duration:1ms!important}
+  .fn-root *,.fn-root *::after,.fn-note,.fn-note-body,.fn-note-sigil,.fn-light,.fn-light::before,.fn-veil-star,.fn-thread,.fn-toast,.fn-nav-star,.fn-unlit,.fn-ring,.fn-leave,.fn-bloom,.fn-bloom *,.fn-next,.fn-next::after,.fn-next *,.fn-sky-dust,.fn-unlit-next::after,.fn-second-lit{animation-duration:1ms!important;animation-iteration-count:1!important;animation-delay:0s!important;transition-duration:1ms!important}
+  .fn-bloom-spark{display:none}
+  .fn-bloom-mark::before{animation:none}
 }
 
 /*
  * Shooting stars.
  *
- * Each streak spends most of its cycle invisible and falls for the last few
- * per cent of it, bright head first, fading as it goes. How many a sky gets is
- * decided in lib/constellation/shooting-stars.ts; this only draws one.
+ * Each streak spends most of its cycle invisible and falls for the last tenth
+ * of it: it strikes already moving, its tapered tail stretches out behind a
+ * glowing head, then the tail burns back into the head and the head flares
+ * once before it goes out. Fireballs are longer, thicker and flare harder.
+ * How many a sky gets, where they fall and what colour they burn is decided in
+ * lib/constellation/shooting-stars.ts; this only draws one.
  */
 .shooting-stars{position:absolute;inset:0;overflow:hidden;pointer-events:none}
-.shooting-star{position:absolute;height:1.5px;border-radius:999px;background:linear-gradient(90deg,#fff 0%,rgba(236,232,255,.55) 22%,rgba(236,232,255,0) 100%);box-shadow:0 0 6px rgba(220,214,255,.55);opacity:0;transform-origin:left center;animation-name:shooting-star;animation-timing-function:cubic-bezier(.3,0,.7,1);animation-iteration-count:infinite;animation-fill-mode:both}
+.shooting-star{--shooting-tint:222,212,255;--shooting-glow:176,150,255;--shooting-tail:2px;--shooting-head:3px;--shooting-flare:1.5;--shooting-bloom:2px;position:absolute;height:0;opacity:0;transform-origin:left center;filter:drop-shadow(0 0 var(--shooting-bloom) rgba(var(--shooting-glow),.85));animation-name:shooting-star;animation-iteration-count:infinite;animation-fill-mode:both;will-change:transform,opacity}
+.shooting-star--ice{--shooting-tint:204,232,255;--shooting-glow:130,196,255}
+.shooting-star--green{--shooting-tint:196,255,228;--shooting-glow:84,226,170}
+.shooting-star--gold{--shooting-tint:255,228,186;--shooting-glow:255,178,96}
+.shooting-star--fireball{--shooting-tail:3.5px;--shooting-head:4.5px;--shooting-flare:2.6;--shooting-bloom:5px}
+.shooting-star-tail,.shooting-star-head{position:absolute;left:0;top:0;animation-iteration-count:infinite;animation-fill-mode:both}
+.shooting-star-tail{width:100%;height:var(--shooting-tail);margin-top:calc(var(--shooting-tail) / -2);clip-path:polygon(0 0,100% 50%,0 100%);background:linear-gradient(90deg,#fff 0%,rgba(var(--shooting-tint),.9) 10%,rgba(var(--shooting-tint),.4) 42%,rgba(var(--shooting-glow),0) 100%);transform-origin:left center;animation-name:shooting-star-tail}
+.shooting-star-head{width:var(--shooting-head);height:var(--shooting-head);border-radius:50%;background:#fff;box-shadow:0 0 3px 1px #fff,0 0 8px 2px rgba(var(--shooting-tint),.9),0 0 20px 5px rgba(var(--shooting-glow),.4);animation-name:shooting-star-head}
 .night-backdrop-fixed{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;background:#05020d}
 @keyframes shooting-star{
-  0%,91%{opacity:0;transform:rotate(calc(-1 * var(--shooting-angle,24deg))) translateX(0)}
-  93%{opacity:1}
-  100%{opacity:0;transform:rotate(calc(-1 * var(--shooting-angle,24deg))) translateX(-280px)}
+  0%,90%{opacity:0;transform:rotate(calc(-1 * var(--shooting-angle,24deg))) translateX(0);animation-timing-function:cubic-bezier(.22,.55,.45,1)}
+  90.5%{opacity:1}
+  97%{opacity:1}
+  100%{opacity:0;transform:rotate(calc(-1 * var(--shooting-angle,24deg))) translateX(var(--shooting-travel,-280px))}
+}
+@keyframes shooting-star-tail{
+  0%,90%{opacity:0;transform:scaleX(.04)}
+  91%{opacity:1}
+  94.5%{transform:scaleX(1)}
+  97.5%{opacity:.9;transform:scaleX(.75)}
+  100%{opacity:0;transform:scaleX(.15)}
+}
+@keyframes shooting-star-head{
+  0%,90%{opacity:0;transform:translate(-50%,-50%) scale(.3)}
+  91%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  96%{transform:translate(-50%,-50%) scale(.9)}
+  98.2%{opacity:1;transform:translate(-50%,-50%) scale(var(--shooting-flare))}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(.2)}
 }
 @media (prefers-reduced-motion: reduce){
   .shooting-star{display:none}
@@ -3393,6 +4099,49 @@ html.panels-solid body.constellation-background-enabled .app-nav {
   }
 }
 
+/*
+ * The completion moment, and the recommendation that follows it.
+ *
+ * Two entrances, one after the other, because the order is the message: the
+ * student reads what they finished, and then the next thing resolves under it.
+ * Both are short. A student who has just done five exam questions wants to see
+ * what is next, not wait for a page to congratulate them.
+ *
+ * No keyframes are guarded here: the global reduced-motion rule at the end of
+ * this file already collapses every animation in the app to nothing, so these
+ * settle instantly for anyone who asked for that.
+ */
+@keyframes mission-complete-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes mission-body-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes mission-done-mark-in {
+  0% { transform: scale(0.72); }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+.mission-complete {
+  animation: mission-complete-in var(--duration-normal) var(--ease-standard) both;
+}
+
+.mission-done-mark {
+  animation: mission-done-mark-in var(--duration-slow) var(--ease-spring) both;
+  animation-delay: 90ms;
+}
+
+.mission-complete + * + .mission-body,
+.mission-complete ~ .mission-body {
+  animation: mission-body-in var(--duration-slow) var(--ease-standard) both;
+  animation-delay: 160ms;
+}
+
 @keyframes app-rise-in {
   from {
     opacity: 0;
@@ -3401,6 +4150,29 @@ html.panels-solid body.constellation-background-enabled .app-nav {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes plan-build-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes plan-outline-pulse {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.8);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
   }
 }
 

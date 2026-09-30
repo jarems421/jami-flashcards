@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { JamiTutorIcon } from "@/components/ui";
 
-const pillBase =
+export const pillBase =
   "group inline-flex min-h-[2.25rem] items-center gap-2 rounded-full border text-sm font-medium shadow-e1 transition duration-fast ease-spring hover:-translate-y-px active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50";
 
-const neutralPill =
+export const neutralPill =
   "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] hover:text-text-primary";
 
-function Chevron({ className }: { className: string }) {
+export function Chevron({ className }: { className: string }) {
   return (
     <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className={className}>
       <path

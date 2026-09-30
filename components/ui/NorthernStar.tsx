@@ -1,8 +1,8 @@
 /**
  * Jami's star, in one place.
  *
- * The reward moment, the walkthrough's progress trail, the sky and the
- * signed-out landing page all draw the same star. Keeping the path
+ * The reward moment, the walkthrough's progress trail and the sky all draw
+ * the same star. Keeping the path
  * here is what makes them read as one object at three sizes rather than three
  * unrelated star drawings, and it is why the reward can grow its own animated
  * layers without the small ones drifting away from it.

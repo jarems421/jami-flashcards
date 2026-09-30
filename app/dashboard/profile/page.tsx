@@ -14,6 +14,7 @@ import {
   reauthenticateForAccountDeletion,
 } from "@/services/auth";
 import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
+import { appBuildLabel } from "@/lib/app/app-build";
 import {
   loadInAppUsername,
   MAX_USERNAME_LENGTH,
@@ -321,7 +322,7 @@ export default function ProfilePage() {
                 </p>
                 <p className="mt-2 text-sm leading-6 text-text-secondary">
                   Jami will remove your decks, cards, folders, notebooks and
-                  pages, uploaded files, sources, Topics, Tutor history, AI
+                  pages, uploaded files, sources, Topics, Jami chat history, AI
                   usage records, goals, stars, study history, notification data,
                   profile, and Firebase sign-in.
                 </p>
@@ -408,6 +409,10 @@ export default function ProfilePage() {
             ) : null}
           </div>
         </div>
+
+        <p className="mt-4 text-xs leading-5 text-text-muted">
+          Jami version {appBuildLabel()}
+        </p>
       </Card>
     </AppPage>
   );

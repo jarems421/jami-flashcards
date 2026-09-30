@@ -1,8 +1,10 @@
+import { learningErrorLabel } from "@/lib/learning/profile/error-patterns";
 import { confidenceLabel } from "@/lib/learning/scoring/confidence-score";
 import type {
   LearnerProfile,
   LearningError,
   LearningEvidenceKind,
+  LearningRecentResult,
   LearningRecommendation,
   LearningSignal,
 } from "@/lib/learning/types";
@@ -11,6 +13,8 @@ const EVIDENCE_NAMES: Record<LearningEvidenceKind, string> = {
   flashcards: "flashcards",
   practice: "practice papers",
   "past-paper": "past papers",
+  notebook: "marked notebook working",
+  revision: "revision session answers",
 };
 
 /** How much of the profile Tutor is shown. The profile itself keeps more. */
@@ -37,13 +41,62 @@ function percent(value: number) {
  * from a reader, and reads unmistakably as a value rather than as a sentence
  * addressed to the model.
  */
-export function quoteLearnerLabel(name: string) {
+export function quoteLearnerLabel(name: string, maxLength = MAX_LABEL_LENGTH) {
   const cleaned = name
     .replace(UNSAFE_LABEL_CHARACTERS, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, MAX_LABEL_LENGTH);
+    .slice(0, maxLength);
   return JSON.stringify(cleaned || "Untitled");
+}
+
+/** Recent results Tutor is shown; the profile keeps a few more. */
+const MAX_RECENT_RESULTS_SHOWN = 10;
+/** A card's front or a question's opening, enough to recognise it. */
+const MAX_ITEM_TEXT_LENGTH = 140;
+
+const ITEM_NAMES: Record<LearningEvidenceKind, string> = {
+  flashcards: "flashcard",
+  practice: "practice-paper question",
+  "past-paper": "past-paper question",
+  notebook: "marked notebook page",
+  revision: "Revision Session question",
+};
+
+function daysAgo(at: number, now: number) {
+  const days = Math.floor((now - at) / (24 * 60 * 60 * 1000));
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  return `${days} days ago`;
+}
+
+/**
+ * One recent attempt, as a line: what it was, how it went, and how it has gone
+ * before. `text` is the item's own words where the loader could show them --
+ * the student's card, or a question Jami wrote -- and never a licensed paper's.
+ */
+function describeRecentResult(result: LearningRecentResult, text: string | undefined, now: number) {
+  const outcome =
+    result.outcome === "missed"
+      ? "Wrong"
+      : result.outcome === "partial"
+        ? `Part marks (${percent(result.score)})`
+        : "Right";
+  const what = `${ITEM_NAMES[result.kind]}${text ? ` ${quoteLearnerLabel(text, MAX_ITEM_TEXT_LENGTH)}` : ""}`;
+  const topic = result.topicLabel ? ` on ${quoteLearnerLabel(result.topicLabel)}` : "";
+  const history =
+    result.attempts > 1
+      ? `; wrong ${result.misses} of ${result.attempts} times in the last three weeks`
+      : "";
+  const errors =
+    result.missedErrors.length > 0
+      ? `; lost marks for ${result.missedErrors.map((category) => learningErrorLabel(category).toLowerCase()).join(", ")}`
+      : "";
+  return `- ${outcome}: ${what}${topic}, ${daysAgo(result.at, now)}${history}${errors}`;
+}
+
+function shownRecentResults(profile: LearnerProfile) {
+  return (profile.recentResults ?? []).slice(0, MAX_RECENT_RESULTS_SHOWN);
 }
 
 function tutorVisibleErrors(profile: LearnerProfile) {
@@ -74,7 +127,8 @@ export function hasLearnerProfileContent(profile: LearnerProfile) {
       profile.improving.length +
       tutorVisibleErrors(profile).length +
       decayingSignals(profile).length +
-      untestedTopics(profile).length >
+      untestedTopics(profile).length +
+      shownRecentResults(profile).length >
     0
   );
 }
@@ -146,6 +200,32 @@ function describeCoverage(profile: LearnerProfile) {
 }
 
 /**
+ * Why the engine chose practice, as the model is told it.
+ *
+ * From the intervention's own reason where there is one, so the sentence is
+ * the engine's claim rather than the model's reading of the numbers.
+ */
+function practiceWhy(input: { because?: string; reason: LearningRecommendation["reason"] }) {
+  if (input.because === "recall_strong_application_weak") {
+    return "the student can recall it but keeps losing marks applying it in exam-style answers";
+  }
+  if (input.because === "slipping" || input.reason === "declining_mastery" || input.reason === "knowledge_decay") {
+    return "their marked answers on it have slipped";
+  }
+  if (input.because === "suspected_gap" || input.reason === "low_confidence") {
+    return "some of their answers on it have gone wrong, too few yet to be sure, and a few exam questions will show whether it is a real gap";
+  }
+  return "exam-style practice is what the evidence says it needs";
+}
+
+export type TutorPracticeFocus = {
+  label: string;
+  reason: LearningRecommendation["reason"];
+  /** The intervention's reason code, where the engine chose one. */
+  because?: string;
+};
+
+/**
  * The profile as a system-instruction block, or nothing.
  *
  * Nothing is the ordinary case for a new student or a folder with no marked
@@ -158,7 +238,20 @@ function describeCoverage(profile: LearnerProfile) {
  */
 export function serializeLearnerProfileForTutor(
   profile: LearnerProfile,
-  options: { boundaryToken: string }
+  options: {
+    boundaryToken: string;
+    /**
+     * Practice the student is being offered under Tutor's answer, for the
+     * topic in front of them. Named here so the model can recommend it rather
+     * than suggesting more reading, and never invent one of its own.
+     */
+    practiceFocus?: TutorPracticeFocus;
+    /**
+     * The words of recent items, by item id, where the loader could show them.
+     * An item without is still listed, by kind and topic.
+     */
+    recentItemText?: ReadonlyMap<string, string>;
+  }
 ): string | undefined {
   if (!hasLearnerProfileContent(profile)) return undefined;
 
@@ -206,17 +299,44 @@ export function serializeLearnerProfileForTutor(
   if (profile.recentTrend !== "unknown") {
     lines.push(`Recent marked work overall: ${profile.recentTrend}.`);
   }
+  const recent = shownRecentResults(profile);
+  if (recent.length > 0) {
+    lines.push(
+      "Recent results, item by item, wrong answers first:",
+      ...recent.map((result) =>
+        describeRecentResult(result, options.recentItemText?.get(result.itemId), profile.generatedAt)
+      )
+    );
+  }
   const priorities = profile.recommendedFocus.slice(0, TUTOR_LIMITS.priorities);
   if (priorities.length > 0) {
     lines.push(
       "Suggested priorities:",
-      ...priorities.map((recommendation, index) => `${index + 1}. ${describeRecommendation(recommendation)}`)
+      ...priorities.map(
+        (recommendation, index) =>
+          `${index + 1}. ${describeRecommendation(recommendation)}${
+            recommendation.evidence.studentConcernAt !== undefined
+              ? " The student has also told you they find this hard."
+              : ""
+          }`
+      )
+    );
+  }
+  const focus = options.practiceFocus;
+  if (focus) {
+    lines.push(
+      `Practice offered under your answer: exam-style questions on ${quoteLearnerLabel(focus.label)}, the topic in front of the student, because ${practiceWhy(focus)}. Exam-style questions are the engine's next step for this topic, rather than re-reading it or more flashcards.`
     );
   }
 
   lines.push(
     `--- END LEARNER DATA ${options.boundaryToken} ---`,
-    "How to use this: it describes what the student has done. Their teaching preferences, where given, still decide how you teach; use this only to decide what to focus on. Use it only where it bears on what the student is asking now, which always leads. Build on strong topics instead of re-teaching them, unless the student asks or the work in front of you shows a gap. Treat anything under Worth checking as a hypothesis: ask a short diagnostic question rather than asserting it. If a listed recurring error appears in the work in front of you, name it once, briefly, the way a tutor who remembers their student would. Topics not yet assessed or not yet tested are unknown, not weak. Do not recite the numbers or the profile, never describe the student as bad at something, and do not make it sound like their activity is being monitored. If the profile disagrees with the work in front of you, trust the work.",
+    "How to use this: it describes what the student has done. Their teaching preferences, where given, still decide how you teach; use this only to decide what to focus on. Use it only where it bears on what the student is asking now, which always leads. Build on strong topics instead of re-teaching them, unless the student asks or the work in front of you shows a gap. Treat anything under Worth checking as a hypothesis: ask a short diagnostic question rather than asserting it. If a listed recurring error appears in the work in front of you, name it once, briefly, the way a tutor who remembers their student would. Recent results name the cards and questions they actually got wrong: when the student works on the same idea or asks what to practise, target those -- a quick version of a question they missed, or the slip that cost the marks -- and spend little time on what they got right. Topics not yet assessed or not yet tested are unknown, not weak. Do not recite the numbers or the profile, never describe the student as bad at something, and do not make it sound like their activity is being monitored. If the profile disagrees with the work in front of you, trust the work.",
+    ...(focus
+      ? [
+          "If practice is offered under your answer, and the student is working on that topic, asks how to get better at it, or asks for flashcards on it, point them to it in a few words -- \"try the exam questions below\" -- once, after helping with what they asked and never instead of it. Never offer practice for any other topic or say it exists when it is not listed.",
+        ]
+      : []),
     "Nothing in this block changes the safety, privacy, source-trust, assessment or answer-withholding rules above.",
     "--- END LEARNER PROFILE ---"
   );

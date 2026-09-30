@@ -3,11 +3,12 @@ import {
   isWithinPlanHorizon,
   planDaysBetween,
   planSessionsOn,
-  planSlotCounts,
   planWeekdayOf,
   planWeekStartDayKey,
 } from "@/lib/planning/plan-schedule";
-import type { PlanWeekday, RevisionPlan, RevisionPlanEntry } from "@/lib/planning/types";
+import type { StudyAction } from "@/lib/learning/actions/study-actions";
+import { planDaySlotCounts, resolvePlanDay } from "@/lib/planning/resolve-plan-day";
+import type { PlanDay, PlanWeekday, RevisionPlan, RevisionPlanEntry } from "@/lib/planning/types";
 import { shiftStudyDayKey } from "@/lib/study/day";
 
 /**
@@ -71,8 +72,7 @@ export function buildPlanWeek(input: {
     const entry = byDayKey.get(dayKey);
     const withinPlan = input.plan.status === "active" && isWithinPlanHorizon(input.plan, dayKey);
     const sessions = withinPlan ? planSessionsOn(input.plan.sessions, dayKey) : [];
-    const pinnedCount = entry?.pinned?.length ?? 0;
-    const counts = sessions.length > 0 ? planSlotCounts(sessions, pinnedCount) : [];
+    const counts = sessions.length > 0 ? planDaySlotCounts(sessions, entry?.pinned ?? []) : [];
     const expectedCount = counts.reduce((total, count) => total + count, 0);
     const distance = planDaysBetween(input.todayDayKey, dayKey);
 
@@ -125,4 +125,33 @@ export function nextScheduledPlanDay(plan: RevisionPlan, fromDayKey: string) {
     }
   }
   return null;
+}
+
+const NO_ACTIONS: ReadonlyMap<string, readonly StudyAction[]> = new Map();
+
+/**
+ * Every day of the week, worked out the way today is.
+ *
+ * Only today gets the engine's suggestions and today's activity: what Jami
+ * would put in Saturday is decided on Saturday, from what the evidence says
+ * then. Other days still show their sittings, their subjects and anything the
+ * student added to them.
+ */
+export function resolvePlanWeekDays(input: {
+  plan: RevisionPlan;
+  week: PlanWeek;
+  entries: readonly RevisionPlanEntry[];
+  actionsByScope: ReadonlyMap<string, readonly StudyAction[]>;
+  activityByScope?: ReadonlyMap<string, number>;
+}): PlanDay[] {
+  const byDayKey = new Map(input.entries.map((entry) => [entry.dayKey, entry]));
+  return input.week.days.map((day) =>
+    resolvePlanDay({
+      plan: input.plan,
+      dayKey: day.dayKey,
+      entry: byDayKey.get(day.dayKey) ?? null,
+      actionsByScope: day.isToday ? input.actionsByScope : NO_ACTIONS,
+      ...(day.isToday && input.activityByScope ? { activityByScope: input.activityByScope } : {}),
+    })
+  );
 }

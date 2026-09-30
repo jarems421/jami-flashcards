@@ -139,6 +139,94 @@ describe("ai spend", () => {
     });
   });
 
+  /*
+   * Gemini bills three things per item rather than per plain token: a
+   * generated image, a video's soundtrack, and each web search. Those were the
+   * calls the meter never saw, and they are most of what Gemini costs.
+   */
+  describe("per-item prices", () => {
+    const imageModel = {
+      "image-model": { inputPerMillionUsd: 0.5, outputPerMillionUsd: 3, imageOutputPerMillionUsd: 60 },
+    };
+
+    it("reads the optional extras in both spellings", () => {
+      const prices = readModelPrices({
+        AI_MODEL_PRICES_JSON: JSON.stringify({
+          short: { in: 0.1, out: 0.4, audioIn: 0.3, imageOut: 60, search: 0.035 },
+          long: {
+            inputPerMillionUsd: 0.3,
+            outputPerMillionUsd: 2.5,
+            audioInputPerMillionUsd: 0.3,
+            imageOutputPerMillionUsd: 30,
+            searchUsd: 0.014,
+          },
+        }),
+      });
+
+      expect(prices.short).toEqual({
+        inputPerMillionUsd: 0.1,
+        outputPerMillionUsd: 0.4,
+        audioInputPerMillionUsd: 0.3,
+        imageOutputPerMillionUsd: 60,
+        searchUsd: 0.035,
+      });
+      expect(prices.long?.searchUsd).toBe(0.014);
+    });
+
+    it("drops an entry whose extra is unusable rather than pricing it as free", () => {
+      const prices = readModelPrices({
+        AI_MODEL_PRICES_JSON: JSON.stringify({ broken: { in: 0.1, out: 0.4, search: "cheap" } }),
+      });
+      expect(prices).toEqual({});
+    });
+
+    it("prices a generated image at the image rate and its caption at the text rate", () => {
+      const cost = estimateCallCostUsd(
+        { provider: "gemini", model: "image-model", promptTokens: 200, completionTokens: 1_220, imageCompletionTokens: 1_120 },
+        imageModel
+      );
+      expect(cost).toBeCloseTo((200 * 0.5 + 100 * 3 + 1_120 * 60) / 1_000_000, 12);
+    });
+
+    it("leaves an image unpriced when the table has no image rate", () => {
+      expect(
+        estimateCallCostUsd(
+          { provider: "gemini", model: "text-only", completionTokens: 1_120, imageCompletionTokens: 1_120 },
+          { "text-only": { inputPerMillionUsd: 0.5, outputPerMillionUsd: 3 } }
+        )
+      ).toBeNull();
+    });
+
+    it("prices audio at its own rate, and at the input rate when it has none", () => {
+      const sample = { provider: "gemini", model: "video-model", promptTokens: 1_000_000, audioPromptTokens: 400_000 };
+      expect(
+        estimateCallCostUsd(sample, {
+          "video-model": { inputPerMillionUsd: 0.1, outputPerMillionUsd: 0.4, audioInputPerMillionUsd: 0.3 },
+        })
+      ).toBeCloseTo(0.6 * 0.1 + 0.4 * 0.3, 10);
+      expect(
+        estimateCallCostUsd(sample, { "video-model": { inputPerMillionUsd: 0.1, outputPerMillionUsd: 0.4 } })
+      ).toBeCloseTo(0.1, 10);
+    });
+
+    it("adds each billed search to the token cost", () => {
+      const cost = estimateCallCostUsd(
+        { provider: "gemini", model: "research", promptTokens: 1_000_000, completionTokens: 0, searches: 3 },
+        { research: { inputPerMillionUsd: 0.3, outputPerMillionUsd: 2.5, searchUsd: 0.014 } }
+      );
+      expect(cost).toBeCloseTo(0.3 + 3 * 0.014, 10);
+    });
+
+    it("leaves a searched call unpriced when searches have no price", () => {
+      expect(
+        estimateCallCostUsd(
+          { provider: "gemini", model: "research", promptTokens: 5_000, searches: 1 },
+          { research: { inputPerMillionUsd: 0.3, outputPerMillionUsd: 2.5 } }
+        )
+      ).toBeNull();
+    });
+  });
+
   describe("getSpendDayKey", () => {
     it("buckets by UTC day", () => {
       expect(getSpendDayKey(Date.UTC(2026, 8, 3, 23, 59))).toBe("2026-09-03");

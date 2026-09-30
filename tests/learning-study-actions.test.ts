@@ -87,7 +87,12 @@ describe("study action destinations", () => {
         reason: "due_for_retrieval",
         action: "retrieve",
         explanationCode: "due_for_retrieval.retrieve",
-        destination: { kind: "flashcards", href: "/dashboard/study?mode=custom&topics=matrix" },
+        destination: {
+          kind: "flashcards",
+          // The link carries what the session should do, not just what it covers.
+          href: "/dashboard/study?mode=custom&topics=matrix&focus=retrieve&focusCount=12&from=folder%3Afolder-1%7Cdue_for_retrieval%7Ctopic%3Amatrix",
+          selection: { topicIds: ["matrix"] },
+        },
       }),
     ]);
   });
@@ -145,6 +150,7 @@ describe("study action destinations", () => {
     expect(actions[0]?.destination).toEqual({
       kind: "question-practice",
       href: "/dashboard/practice/questions/new?folderId=folder-1&concepts=quadratics",
+      selection: { conceptIds: ["quadratics"] },
     });
   });
 
@@ -179,6 +185,8 @@ describe("study action destinations", () => {
     expect(fromPracticePapers[0]?.destination).toEqual({
       kind: "practice-papers",
       href: "/dashboard/folders/folder-1?tab=practice",
+      // An error spans topics; its practice is the folder's whole pool.
+      selection: {},
     });
   });
 
@@ -205,7 +213,8 @@ describe("study action destinations", () => {
     );
     expect(deckActions[0]?.destination).toEqual({
       kind: "flashcards",
-      href: "/dashboard/study?mode=custom&decks=deck-1",
+      href: "/dashboard/study?mode=custom&decks=deck-1&focus=diagnose&focusCount=5&from=folder%3Afolder-1%7Cuntested_exposure%7Cdeck%3Adeck-1",
+      selection: { deckIds: ["deck-1"] },
     });
 
     const oddActions = buildStudyActions(
@@ -238,7 +247,7 @@ describe("merging study actions across folders", () => {
       evidence: { count: 1, uniqueItems: 1, sources: ["flashcards"] },
       scope: { folderId: "folder" },
       explanationCode: "low_confidence.diagnose",
-      ...(href ? { destination: { kind: "flashcards", href } } : {}),
+      ...(href ? { destination: { kind: "flashcards" as const, href, selection: {} } } : {}),
     };
   }
 
@@ -247,6 +256,45 @@ describe("merging study actions across folders", () => {
     const olderFolder = [action("a", 5, "/a"), action("shared-older", 4, "/shared"), action("top", 6, "/top")];
     const merged = mergeStudyActions([recentFolder, olderFolder], { limit: 10, executableOnly: true });
     expect(merged.map((item) => item.id)).toEqual(["top", "b", "a", "shared-recent"]);
+  });
+
+  it("stops one busy subject taking every slot", () => {
+    // A folder with lots of evidence produces higher-confidence candidates, so
+    // ranked on priority alone it would fill Today and hide the other subject.
+    const busy = Array.from({ length: 6 }, (_, index) =>
+      action(`busy-${index}`, 9 - index * 0.1, `/busy-${index}`)
+    );
+    const quiet = [action("quiet-1", 3, "/quiet-1"), action("quiet-2", 2, "/quiet-2")];
+    const merged = mergeStudyActions([busy, quiet], { limit: 4, executableOnly: true });
+
+    expect(merged).toHaveLength(4);
+    expect(merged.filter((item) => item.id.startsWith("quiet")).length).toBeGreaterThan(0);
+    expect(merged.filter((item) => item.id.startsWith("busy")).length).toBeLessThanOrEqual(2);
+  });
+
+  it("still fills the list for a student with one active subject", () => {
+    const only = Array.from({ length: 6 }, (_, index) =>
+      action(`only-${index}`, 9 - index, `/only-${index}`)
+    );
+    const merged = mergeStudyActions([only], { limit: 4, executableOnly: true });
+    expect(merged.map((item) => item.id)).toEqual(["only-0", "only-1", "only-2", "only-3"]);
+  });
+
+  it("keeps advice already acted on off the list unless asked for it", () => {
+    const resting = { ...action("resting", 9, "/resting"), cooldown: "acted_on" as const };
+    const fresh = action("fresh", 1, "/fresh");
+
+    expect(
+      mergeStudyActions([[resting, fresh]], { limit: 4, executableOnly: true }).map((item) => item.id)
+    ).toEqual(["fresh"]);
+
+    expect(
+      mergeStudyActions([[resting, fresh]], {
+        limit: 4,
+        executableOnly: true,
+        includeCooling: true,
+      }).map((item) => item.id)
+    ).toEqual(["resting", "fresh"]);
   });
 
   it("drops actions with nowhere to go, and respects the limit", () => {

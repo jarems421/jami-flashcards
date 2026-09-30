@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import NotebookPenAdvancedSettings from "@/components/workspace/NotebookPenAdvancedSettings";
 import {
+  NOTEBOOK_CORNER_SHARPNESS_DEFAULT,
   NOTEBOOK_PEN_SETTINGS_DEFAULT,
   type NotebookPenSettings,
 } from "@/lib/workspace/notebook-pen-feel";
@@ -103,9 +104,15 @@ describe("the advanced pen settings", () => {
   it("names where each control sits rather than showing a bare number", () => {
     render();
 
-    for (const label of ["Line steadiness", "Nib tracking", "Pressure"]) {
+    for (const label of ["Nib tracking", "Pressure"]) {
       expect(slider(label).value, label).toBe("50");
     }
+    expect(slider("Corner sharpness").value).toBe(
+      String(NOTEBOOK_CORNER_SHARPNESS_DEFAULT)
+    );
+    // Steadiness is what Smoothing on the front of the panel does now; asking
+    // it twice was two controls fighting over one filter.
+    expect(container.querySelector('input[aria-label="Line steadiness"]')).toBeNull();
     // The name is what the reader is given; the percentage stays in the
     // accessible value text, where a screen reader can still reach it.
     expect(slider("Pressure").getAttribute("aria-valuetext")).toBe(
@@ -114,26 +121,18 @@ describe("the advanced pen settings", () => {
     expect(container.textContent).toContain("Width follows pressure as a pen does");
   });
 
-  it("holds the corner control at Smoothing until it is taken over", () => {
+  it("gives corners a control of their own, live from the start", () => {
     render({ ...NOTEBOOK_PEN_SETTINGS_DEFAULT, smoothingPercent: 20 });
 
-    // Following Smoothing: it shows where Smoothing has it, and is not the
-    // reader's to move yet.
-    expect(slider("Corner sharpness").value).toBe("80");
-    expect(slider("Corner sharpness").disabled).toBe(true);
-
-    click(button("Set separately from Smoothing"));
+    // It used to sit greyed out, following Smoothing, until a link beside it
+    // was found and pressed -- which read as a control that did nothing.
     expect(slider("Corner sharpness").disabled).toBe(false);
-    // Taking it over must not move the pen: it starts exactly where it was.
-    expect(slider("Corner sharpness").value).toBe("80");
+    expect(container.textContent).not.toContain("Set separately from Smoothing");
 
     drag(slider("Corner sharpness"), 10);
     expect(slider("Corner sharpness").value).toBe("10");
+    expect(container.textContent).toContain("Flowing");
     expect(container.textContent).toContain("Customised");
-
-    click(button("Follow Smoothing again"));
-    expect(slider("Corner sharpness").value).toBe("80");
-    expect(slider("Corner sharpness").disabled).toBe(true);
   });
 
   it("offers the three answers to holding still, one at a time", () => {
@@ -166,9 +165,11 @@ describe("the advanced pen settings", () => {
     expect(button("Straighten and level").getAttribute("aria-checked")).toBe(
       "true"
     );
-    // Smoothing is not an advanced setting, so reset leaves it alone -- and the
-    // corner control, which follows it again, reads it.
-    expect(slider("Corner sharpness").value).toBe("85");
+    // Smoothing is not an advanced setting, so reset leaves it alone; the
+    // corners go back to their own default, whatever Smoothing says.
+    expect(slider("Corner sharpness").value).toBe(
+      String(NOTEBOOK_CORNER_SHARPNESS_DEFAULT)
+    );
     expect(
       (button("Reset advanced settings") as HTMLButtonElement).disabled
     ).toBe(true);

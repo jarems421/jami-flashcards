@@ -12,11 +12,21 @@ const THUMB_RADIUS = "9px";
 const RAIL_MIDDLE = 7;
 const RAIL_AMPLITUDE = 4;
 const RAIL_HALF_WAVES = 8;
+/** How far the shaky half of the rail strays either side of its wave. */
+export const RAIL_TREMOR = 0.9;
+/** Samples per shaky half-wave: enough to read as a tremor, not as a zig-zag. */
+const RAIL_TREMOR_STEPS = 6;
+
+const round = (value: number) => Math.round(value * 100) / 100;
 
 /**
- * The rail: one wave of the same height the whole way across, drawn with
- * corners on the left and rounded through on the right -- the line the pen
- * makes at either end of the control.
+ * The rail: one wave of the same height the whole way across, drawn shaky on
+ * the left and clean on the right -- the line the pen makes at either end of
+ * the control.
+ *
+ * It used to be drawn with corners on the left and curves on the right, when
+ * this slider was mostly moving corners. Corners have their own control now,
+ * and what this one does is take wobble out, so that is what the rail shows.
  *
  * Built rather than written out because the last one was hand-tuned and tapered
  * off towards one end, so the wave ran out a quarter of the way along and the
@@ -29,17 +39,28 @@ const RAIL = (() => {
   const parts = [`M0 ${RAIL_MIDDLE}`];
 
   for (let index = 0; index < RAIL_HALF_WAVES; index += 1) {
+    const from = index * step;
     const to = (index + 1) * step;
-    const peakX = index * step + step / 2;
     const reach = index % 2 === 0 ? -RAIL_AMPLITUDE : RAIL_AMPLITUDE;
-    parts.push(
-      index < RAIL_HALF_WAVES / 2
-        ? // A point: straight up to the peak and straight back down.
-          `L${peakX} ${RAIL_MIDDLE + reach} L${to} ${RAIL_MIDDLE}`
-        : // A curve reaching the same peak, which a quadratic does with its
-          // control twice as far out as the height it should touch.
-          `Q${peakX} ${RAIL_MIDDLE + reach * 2} ${to} ${RAIL_MIDDLE}`
-    );
+    if (index < RAIL_HALF_WAVES / 2) {
+      // The same arch, drawn through samples that shake either side of it.
+      for (let sample = 1; sample < RAIL_TREMOR_STEPS; sample += 1) {
+        const along = sample / RAIL_TREMOR_STEPS;
+        const shake = (sample % 2 === 0 ? 1 : -1) * RAIL_TREMOR;
+        parts.push(
+          `L${round(from + step * along)} ${round(
+            RAIL_MIDDLE + reach * Math.sin(Math.PI * along) + shake
+          )}`
+        );
+      }
+      parts.push(`L${to} ${RAIL_MIDDLE}`);
+    } else {
+      // A clean curve reaching the same peak, which a quadratic does with its
+      // control twice as far out as the height it should touch.
+      parts.push(
+        `Q${from + step / 2} ${RAIL_MIDDLE + reach * 2} ${to} ${RAIL_MIDDLE}`
+      );
+    }
   }
   return parts.join(" ");
 })();
@@ -66,11 +87,12 @@ function Rail({ className }: { className: string }) {
 }
 
 /**
- * How hard the pen tidies the line.
+ * How much wobble the pen takes out of the line.
  *
  * Named rather than shown as a bare percentage: the number means nothing on its
- * own, and the two ends are a genuine preference -- a fast joined-up hand wants
- * the line carried through, a careful printed one wants every point it made.
+ * own, and the two ends are a genuine preference -- a steady hand wants its
+ * line exactly as drawn, and a shaky one wants the tremor filtered out even at
+ * the cost of the ink sitting a fraction behind a slow nib.
  */
 export default function SmoothingSlider({
   percent,

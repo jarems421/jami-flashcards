@@ -120,4 +120,14 @@ describe("asset content parsing", () => {
       ["2", "19.6"],
     ]);
   });
+
+});
+
+describe("space for a long essay", () => {
+  it("stops growing at about four pages, however many marks the essay carries", async () => {
+    const { answerSpacePoints, EXTENDED_ANSWER_MAX } = await import("@/lib/practice/paper-pdf-layout");
+    const essay = (marks: number) => ({ prompt: "Write an article for your school magazine.", marks });
+    expect(answerSpacePoints(essay(12), "writing")).toBe(67 * 12);
+    expect(answerSpacePoints(essay(87), "writing")).toBe(EXTENDED_ANSWER_MAX);
+  });
 });

@@ -96,31 +96,16 @@ export function compactExamWorkingPages(pages: readonly string[]): string[] {
 }
 
 /**
- * Zoom levels on the full-screen sheet, as multiples of the page fitted to the
- * screen. The first is the fit itself.
+ * Where the sheet's zoom buttons step to, as multiples of the fitted page. The
+ * first is the fit itself; a pinch can land anywhere in between.
+ *
+ * The page's fit, pan and pinch are the notebook's viewport's own -- see
+ * `useNotebookViewportController`. So is the rule for telling a palm from a
+ * finger: touch is ignored while the Pencil is down and just after it lifts.
+ * The sheet used to judge that by contact size instead, and iPadOS reports a
+ * fingertip at around the size it took for a palm.
  */
 export const EXAM_WORKING_ZOOM_STEPS = [1, 1.25, 1.5, 2, 2.5, 3] as const;
-
-/** The widest a page can be drawn and still be seen whole, inside some padding. */
-export function examWorkingFitWidth(input: {
-  containerWidth: number;
-  containerHeight: number;
-  pageWidth: number;
-  pageHeight: number;
-  padding: number;
-}) {
-  const width = Math.max(0, input.containerWidth - input.padding * 2);
-  const height = Math.max(0, input.containerHeight - input.padding * 2);
-  if (input.pageWidth <= 0 || input.pageHeight <= 0) return 0;
-  return Math.floor(Math.min(width, (height * input.pageWidth) / input.pageHeight));
-}
-
-/** Contacts wider than this, in CSS pixels, are a resting hand rather than a fingertip. */
-export const EXAM_WORKING_PALM_CONTACT_SIZE = 40;
-
-export function examWorkingTouchIsPalm(contact: { width: number; height: number }) {
-  return Math.max(contact.width, contact.height) > EXAM_WORKING_PALM_CONTACT_SIZE;
-}
 
 export type ExamWorkingSheetPage = {
   /** The page's own size, in the sheet's coordinates. */

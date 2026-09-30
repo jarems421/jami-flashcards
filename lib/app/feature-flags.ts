@@ -8,7 +8,10 @@ export type FeatureFlagKey =
   | "enableLearnerProfile"
   | "enableFlashcardReviewEvents"
   | "enableStudyActions"
-  | "enableRevisionPlans";
+  | "enableRevisionPlans"
+  | "enableRevisionSessions"
+  | "enableConceptRelations"
+  | "enableTutorMemory";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
@@ -53,6 +56,35 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    * has not asked for it. A public override still removes the surface.
    */
   enableRevisionPlans: true,
+  /*
+   * Revision Sessions: Jami teaching what the engine says needs teaching. See
+   * `docs/revision-sessions.md`. On for this deployment, whose owner is its only
+   * user; off, Today's teach recommendations go back to opening the Topic page,
+   * and the engine stops reading session evidence.
+   */
+  enableRevisionSessions: true,
+  /*
+   * On, by the owner's decision on 28 September 2026.
+   *
+   * Joining a student's own Topics to the specification changes numbers a
+   * student has already been shown: evidence that was split across two
+   * unrelated concepts starts meeting, and a topic's mastery moves as a
+   * result. That is correct rather than a fault, but it is visible. It was held
+   * off for a before/after diff on real evidence, which no account could yet
+   * supply; it is on because without it the engine can never see that a
+   * student recalls a topic from their own cards and still loses marks on it
+   * in exam questions. `scripts/eval/concept-relation-diff.ts` still reads the
+   * difference for any folder. Only relations recorded on a Topic are used.
+   */
+  enableConceptRelations: true,
+  /*
+   * Tutor's memory across chats: what a student likes, finds hard, is aiming
+   * for and said they would do next, plus their other recent chats. On by the
+   * owner's decision on 30 September 2026, and on for every student until they
+   * turn it off in Personalise Jami. Off here removes it from every prompt and
+   * stops every write, without deleting what is stored.
+   */
+  enableTutorMemory: true,
 };
 
 /**
@@ -73,6 +105,9 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableFlashcardReviewEvents: process.env.NEXT_PUBLIC_ENABLE_FLASHCARD_REVIEW_EVENTS,
   enableStudyActions: process.env.NEXT_PUBLIC_ENABLE_STUDY_ACTIONS,
   enableRevisionPlans: process.env.NEXT_PUBLIC_ENABLE_REVISION_PLANS,
+  enableRevisionSessions: process.env.NEXT_PUBLIC_ENABLE_REVISION_SESSIONS,
+  enableConceptRelations: process.env.NEXT_PUBLIC_ENABLE_CONCEPT_RELATIONS,
+  enableTutorMemory: process.env.NEXT_PUBLIC_ENABLE_TUTOR_MEMORY,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -98,4 +133,7 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableFlashcardReviewEvents: isFeatureEnabled("enableFlashcardReviewEvents"),
   enableStudyActions: isFeatureEnabled("enableStudyActions"),
   enableRevisionPlans: isFeatureEnabled("enableRevisionPlans"),
+  enableRevisionSessions: isFeatureEnabled("enableRevisionSessions"),
+  enableConceptRelations: isFeatureEnabled("enableConceptRelations"),
+  enableTutorMemory: isFeatureEnabled("enableTutorMemory"),
 };

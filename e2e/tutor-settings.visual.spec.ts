@@ -37,10 +37,10 @@ test("the Tutor settings drawer holds up at every width", async ({ page }) => {
   await signIn(page);
   await page.goto("/dashboard/tutor");
   await expect(
-    page.getByRole("heading", { name: "Tutor", level: 1 })
+    page.getByRole("heading", { name: "Jami", level: 1 })
   ).toBeVisible({ timeout: 45_000 });
 
-  await page.getByRole("button", { name: "Open Tutor settings" }).click();
+  await page.getByRole("button", { name: "Open Jami settings" }).click();
   await expect(
     page.getByRole("heading", { name: "Tutor settings" })
   ).toBeVisible({ timeout: 20_000 });

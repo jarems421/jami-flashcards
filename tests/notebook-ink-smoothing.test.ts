@@ -118,7 +118,8 @@ describe("notebook ink smoothing", () => {
 
   it("draws the ink at the pen once lag correction is on", () => {
     /*
-     * The same fast stroke through the pipeline the notebook actually uses.
+     * The same fast stroke with lag correction on, which the notebook no
+     * longer ships but which is kept measurable.
      *
      * The test above asserts the filter sits *behind* the pen, which was the
      * whole truth before correction existed. It is not any more: correction
@@ -128,7 +129,10 @@ describe("notebook ink smoothing", () => {
      * at `maxLeadPx`, so overshoot is bounded by construction rather than by
      * tuning.
      */
-    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    const smoother = new NotebookInkSmoother(
+      { x: 0, y: 0, time: 0 },
+      { ...NOTEBOOK_INK_SMOOTHING, prediction: NOTEBOOK_INK_PREDICTION }
+    );
     const perSampleStep = (1500 * SAMPLE_INTERVAL_MS) / 1000;
     const samples = makeSamples(
       Array.from({ length: 60 }, (_, index) => ({
@@ -279,5 +283,41 @@ describe("notebook ink smoothing", () => {
       expect(Number.isFinite(filtered.x)).toBe(true);
       expect(Number.isFinite(filtered.y)).toBe(true);
     }
+  });
+});
+
+describe("samples that share a timestamp", () => {
+  /*
+   * Batched pointer samples can arrive with one timestamp between them. Read as
+   * a millisecond apart, an ordinary step looked like a burst of speed and that
+   * one sample escaped the smoothing its neighbours got -- lumps along a loop.
+   * Unfixed, a fast circle with every other timestamp shared came out at 8.8
+   * radians of heading reversal; fixed, 0.01, the same as clean timestamps.
+   */
+  it("keeps a fast loop round", () => {
+    const roughness = (shared: boolean) => {
+      const smoother = new NotebookInkSmoother({ x: 100, y: 0, time: 0 });
+      let total = 0;
+      let previousTurn = 0;
+      let a = { x: 100, y: 0 };
+      let b = { x: 100, y: 0 };
+      for (let index = 1; index <= 240; index += 1) {
+        const at = index * 4.17;
+        const time = shared && index % 2 === 1 ? at + 4.17 : at;
+        // Four loops a second at radius 100: about 2500px/s.
+        const angle = (at / 1000) * 2 * Math.PI * 4;
+        const out = smoother.next({ x: 100 * Math.cos(angle), y: 100 * Math.sin(angle), time });
+        const turn = Math.atan2(
+          (b.x - a.x) * (out.y - b.y) - (b.y - a.y) * (out.x - b.x),
+          (b.x - a.x) * (out.x - b.x) + (b.y - a.y) * (out.y - b.y)
+        );
+        if (index > 20) total += Math.abs(turn - previousTurn);
+        previousTurn = turn;
+        a = b;
+        b = out;
+      }
+      return total;
+    };
+    expect(roughness(true)).toBeLessThan(0.5);
   });
 });

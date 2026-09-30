@@ -23,6 +23,12 @@ export type ModeIneligibilityReason =
   | "answer-too-long"
   | "no-safe-gap"
   | "needs-preparation"
+  /**
+   * Jami has read the card and has no multiple-choice question for it: the
+   * model wrote none, or the review turned down what it wrote. Waiting does
+   * not change that, so the card is asked as a flashcard rather than waited on.
+   */
+  | "no-prepared-options"
   /** The answer is a picture, which only flipping the card can show. */
   | "image-answer"
   /** The question is a picture, and this mode needs material Jami cannot write without seeing it. */
@@ -128,8 +134,12 @@ export function getGapFillEligibility(card: Card): ModeEligibility {
    */
   if (card.frontImage) return { eligible: false, reason: "image-prompt" };
   const wordCount = card.back.trim().split(/\s+/).filter(Boolean).length;
-  return wordCount < 4 || hasMathDelimiters(card.back)
-    ? { eligible: false, reason: "no-safe-gap" }
+  if (wordCount < 4 || hasMathDelimiters(card.back)) {
+    return { eligible: false, reason: "no-safe-gap" };
+  }
+  // Read already, and no gap was worth hiding: an answer, not a delay.
+  return card.studySettings?.generatedStudy
+    ? { eligible: false, reason: "no-prepared-options" }
     : { eligible: false, reason: "needs-preparation" };
 }
 
@@ -180,6 +190,10 @@ export function getMultipleChoiceEligibility(
   }
   // Wrong options written without seeing the picture could be right for it.
   if (card.frontImage) return { eligible: false, reason: "image-prompt" };
+  // Read already, and nothing came of it: an answer, not a delay.
+  if (card.studySettings?.generatedStudy) {
+    return { eligible: false, reason: "no-prepared-options" };
+  }
   return { eligible: false, reason: "needs-preparation" };
 }
 
@@ -502,11 +516,14 @@ export function buildDeterministicExercise(
  * exact within a tolerance; and blanking a word in "9.8 m/s" is just the
  * question again.
  *
- * A **maths-heavy** answer needs nothing either, and more than that should not
- * be sent. A model writing plausible wrong formulas is the case where a
- * hallucination is most convincing and least checkable: nothing downstream can
- * tell "confidently wrong" from "subtly right", so the honest move is to leave
- * formula cards on Classic rather than invent options for them.
+ * A **maths-heavy** answer is sent for Multiple Choice and for nothing else.
+ * It was kept out altogether, on the grounds that a model's wrong formula is
+ * the most convincing kind of wrong. Measured on 30 Sep 2026
+ * (scripts/eval/study-mcq-readiness.ts, maths set), with the review pass in
+ * place: 14 of 16 formula and calculation cards came out with a question, and
+ * all 22 questions read by eye had exactly one right option, the wrong ones
+ * being the slips students make -- a sign, a power, the inverse. There is no
+ * word worth hiding in a formula, so Gap Fill still never asks for one.
  *
  * Then it comes down to the mode. **Type Answer needs no preparation at all** --
  * showing the front and asking for the back is entirely deterministic, and the
@@ -525,11 +542,11 @@ export function needsStudyAssetPreparation(
   if (!hasContent(card) || cardHasImages(card)) return false;
 
   const answer = card.back.trim();
-  if (mathsShare(answer) > MAX_MATHS_SHARE_OF_ANSWER) return false;
+  const isMaths = mathsShare(answer) > MAX_MATHS_SHARE_OF_ANSWER;
 
   const mcqIsMissing = () => card.studySettings?.mcqDistractors === undefined && buildMultipleChoiceQuestion({ card }) === null;
-  // A one-word answer has no choice of word to hide, so nothing to improve.
-  const gapHasOptions = () => card.studySettings?.pinnedGaps === undefined && answer.split(/\s+/).length > 2;
+  // A one-word answer has no choice of word to hide, and a formula no word at all.
+  const gapHasOptions = () => !isMaths && card.studySettings?.pinnedGaps === undefined && answer.split(/\s+/).length > 2;
 
   if (policy.kind === "smart") return mcqIsMissing() || gapHasOptions();
   switch (policy.mode) {

@@ -64,6 +64,8 @@ export type NotebookLoader = {
   setSelectedPageId: Dispatch<SetStateAction<string | null>>;
   loading: boolean;
   setLoading: Dispatch<SetStateAction<boolean>>;
+  /** The notebook could not be read, as opposed to not existing. */
+  loadFailed: boolean;
   /**
    * Consumed by page hydration: a draft restored during load still needs its
    * local revision applied once the page's content reaches the editor.
@@ -101,6 +103,9 @@ export function useNotebookLoader({
   >({});
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // The notebook record itself could not be read (offline, timed out), as
+  // opposed to not existing. Shown as a retry, never as "not found".
+  const [loadFailed, setLoadFailed] = useState(false);
   const recoveredDraftRef = useRef<RecoveredNotebookDraft | null>(null);
 
   const latestRef = useRef({ onFeedback, onBeforeLoad, onDraftRestored });
@@ -115,6 +120,62 @@ export function useNotebookLoader({
     return recovered;
   }, []);
 
+  /**
+   * Folds a fetched ink record into the page as it stands *now*.
+   *
+   * The fetch takes a page object read before the await and returns a copy of
+   * it carrying ink. Writing that copy back would also restore every other
+   * field as it was when the fetch started — and pages are renumbered while a
+   * fetch is in flight, notably by a delete. Merging only the ink keeps the
+   * rest of the record whoever's it currently is.
+   */
+  const applyHydratedInk = useCallback(
+    (hydrated: NotebookPage) => {
+      setPages((current) =>
+        current.map((page) => {
+          if (page.id !== hydrated.id) return page;
+          // Ink that arrived while the fetch was running is newer than the
+          // fetch, and must not be replaced by it.
+          if (page.inkData || page.strokeData) return page;
+          return {
+            ...page,
+            ...(hydrated.inkData ? { inkData: hydrated.inkData } : {}),
+            ...(hydrated.strokeData ? { strokeData: hydrated.strokeData } : {}),
+          };
+        })
+      );
+    },
+    [setPages]
+  );
+
+  /**
+   * Keeps asking for the open page's ink after the first fetch failed, so a
+   * slow connection ends with the drawing on screen rather than a page that
+   * stays read-only until a refresh.
+   */
+  const retrySelectedPageInk = useCallback(
+    async (ownerId: string, page: NotebookPage) => {
+      for (const delayMs of [1_500, 4_000, 10_000]) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        const current = pagesRef.current.find((entry) => entry.id === page.id);
+        if (!current || !pageHasUnloadedInk(current)) return;
+        try {
+          const hydrated = await getNotebookPageWithInk(ownerId, current);
+          if (hydrated !== current) applyHydratedInk(hydrated);
+          return;
+        } catch {
+          // Try again after the next delay.
+        }
+      }
+      latestRef.current.onFeedback({
+        type: "error",
+        message:
+          "Jami could not load this page's drawing. Check your connection and refresh to try again.",
+      });
+    },
+    [applyHydratedInk]
+  );
+
   const reload = useCallback(async () => {
     if (!userId || !notebookId) {
       setLoading(false);
@@ -122,6 +183,7 @@ export function useNotebookLoader({
     }
 
     setLoading(true);
+    setLoadFailed(false);
     latestRef.current.onBeforeLoad();
     pageState.resetHydration();
     pageState.setContentRevision(0);
@@ -173,19 +235,29 @@ export function useNotebookLoader({
       const lightSelectedPage = nextPages.find(
         (page) => page.id === nextSelectedPageId
       );
+      //
+      // A failed ink fetch must not fail the notebook: the page opens without
+      // its ink, which the editor treats as read-only and never saves, and the
+      // ink is fetched again once the notebook is on screen.
+      let selectedInkPending = false;
       if (lightSelectedPage) {
-        const hydrated = await getNotebookPageWithInk(userId, lightSelectedPage);
-        if (hydrated !== lightSelectedPage) {
-          nextPages = nextPages.map((page) =>
-            page.id === hydrated.id ? hydrated : page
-          );
+        try {
+          const hydrated = await getNotebookPageWithInk(userId, lightSelectedPage);
+          if (hydrated !== lightSelectedPage) {
+            nextPages = nextPages.map((page) =>
+              page.id === hydrated.id ? hydrated : page
+            );
+          }
+        } catch (error) {
+          console.warn("This page's drawing could not load yet.", error);
+          selectedInkPending = true;
         }
       }
       const nextSelectedPage = nextPages.find(
         (page) => page.id === nextSelectedPageId
       );
 
-      if (nextSelectedPage && nextNotebook) {
+      if (nextSelectedPage && nextNotebook && !selectedInkPending) {
         const draft = await readNotebookPageDraft({
           userId,
           notebookId: nextNotebook.id,
@@ -216,8 +288,13 @@ export function useNotebookLoader({
       setPages(nextPages);
       setFiles(nextFiles);
       setSelectedPageId(nextSelectedPageId);
+
+      if (selectedInkPending && lightSelectedPage) {
+        void retrySelectedPageInk(userId, lightSelectedPage);
+      }
     } catch (error) {
       console.error("Failed to load notebook content.", error);
+      setLoadFailed(true);
       latestRef.current.onFeedback({
         type: "error",
         message:
@@ -228,7 +305,7 @@ export function useNotebookLoader({
     } finally {
       setLoading(false);
     }
-  }, [notebookId, pageState, userId]);
+  }, [notebookId, pageState, retrySelectedPageInk, userId]);
 
   useEffect(() => {
     void reload();
@@ -337,34 +414,6 @@ export function useNotebookLoader({
    * open a page for editing on a false, or an autosave would write an empty
    * canvas over saved work.
    */
-  /**
-   * Folds a fetched ink record into the page as it stands *now*.
-   *
-   * The fetch takes a page object read before the await and returns a copy of
-   * it carrying ink. Writing that copy back would also restore every other
-   * field as it was when the fetch started — and pages are renumbered while a
-   * fetch is in flight, notably by a delete. Merging only the ink keeps the
-   * rest of the record whoever's it currently is.
-   */
-  const applyHydratedInk = useCallback(
-    (hydrated: NotebookPage) => {
-      setPages((current) =>
-        current.map((page) => {
-          if (page.id !== hydrated.id) return page;
-          // Ink that arrived while the fetch was running is newer than the
-          // fetch, and must not be replaced by it.
-          if (page.inkData || page.strokeData) return page;
-          return {
-            ...page,
-            ...(hydrated.inkData ? { inkData: hydrated.inkData } : {}),
-            ...(hydrated.strokeData ? { strokeData: hydrated.strokeData } : {}),
-          };
-        })
-      );
-    },
-    [setPages]
-  );
-
   const hydratePageInk = useCallback(
     async (pageId: string): Promise<boolean> => {
       const target = pagesRef.current.find((page) => page.id === pageId);
@@ -437,6 +486,7 @@ export function useNotebookLoader({
     setSelectedPageId,
     loading,
     setLoading,
+    loadFailed,
     takeRecoveredDraft,
     reload,
   };

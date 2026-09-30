@@ -42,6 +42,8 @@ type CreateCardInput = {
   backImage?: CardImage;
   topicIds?: readonly string[];
   createdAt?: number;
+  /** The recommendation that asked for this card, when Jami wrote it. */
+  createdByInterventionId?: string;
 };
 
 type CreateCardsInBatchesInput = {
@@ -50,13 +52,15 @@ type CreateCardsInBatchesInput = {
   drafts: readonly ImportedCardDraft[];
   topicIds?: readonly string[];
   createdAtBase?: number;
+  /** The recommendation that asked for these cards, when Jami wrote them. */
+  createdByInterventionId?: string;
 };
 
 type CardWrite = Pick<
   Card,
   "deckId" | "userId" | "front" | "back" | "tags" | "topicIds" | "createdAt"
 > &
-  Partial<Pick<Card, "frontImage" | "backImage">>;
+  Partial<Pick<Card, "frontImage" | "backImage" | "createdByInterventionId">>;
 
 export class CardBatchCreateError extends Error {
   readonly createdCards: Card[];
@@ -84,6 +88,18 @@ function buildNewCard(
     // Left off entirely when absent: Firestore refuses an explicit undefined.
     ...(input.frontImage ? { frontImage: input.frontImage } : {}),
     ...(input.backImage ? { backImage: input.backImage } : {}),
+    /*
+     * Provenance, attached at creation.
+     *
+     * The field was on the input type and on the stored shape, and the write
+     * dropped it silently -- so a card Jami wrote in answer to a recommendation
+     * was indistinguishable from one the student typed, and the question the
+     * intervention loop exists to answer ("did the work we asked for happen?")
+     * had no way to be asked of a card.
+     */
+    ...(input.createdByInterventionId
+      ? { createdByInterventionId: input.createdByInterventionId }
+      : {}),
     tags: [],
     topicIds: [...(input.topicIds ?? [])],
     createdAt,
@@ -98,6 +114,9 @@ function getCardWrite(card: Card): CardWrite {
     back: card.back,
     ...(card.frontImage ? { frontImage: card.frontImage } : {}),
     ...(card.backImage ? { backImage: card.backImage } : {}),
+    ...(card.createdByInterventionId
+      ? { createdByInterventionId: card.createdByInterventionId }
+      : {}),
     tags: card.tags,
     topicIds: card.topicIds,
     createdAt: card.createdAt,
@@ -349,6 +368,9 @@ export async function createCardsInBatches(
             front: draft.front,
             back: draft.back,
             topicIds: input.topicIds,
+            ...(input.createdByInterventionId
+              ? { createdByInterventionId: input.createdByInterventionId }
+              : {}),
           },
           cardRef.id,
           createdAtBase - cardIndex

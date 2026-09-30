@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai/provider-router";
 import type { AiGenerationRole, AiReasoningEffort, AiTaskClass } from "@/lib/ai/provider-policy";
 import type { Logger } from "@/lib/observability/logger";
+import { successfulCost } from "@/lib/practice/marking-accounting";
 import { getAiTokenCap } from "@/services/ai/budgets";
 import { PAPER_PASS_STALL_TIMEOUT_MS } from "@/services/ai/practice-paper-generation-request.server";
 
@@ -52,6 +53,29 @@ export function parseJsonObject(value: string) {
   }
 }
 
+export class PracticePaperGenerationCostLimitError extends Error {
+  constructor(readonly spentUsd: number, readonly limitUsd: number) {
+    super("Practice-paper generation reached its configured cost ceiling.");
+    this.name = "PracticePaperGenerationCostLimitError";
+  }
+}
+
+/**
+ * The most one generation run may spend on model calls, in US dollars.
+ *
+ * Marking has had a ceiling since it went durable; generation had none, and it
+ * is the longer pipeline -- about 28 sequential calls. A normal paper costs well
+ * under $0.30. What the ceiling is for is the abnormal one: the supervisor's
+ * standby, moonshotai/kimi-k3, bills output at fifteen times the supervisor's
+ * price, so a paper that fails over mid-run could otherwise spend several
+ * dollars without anything noticing. $1 is several normal papers of headroom,
+ * so it never shortens a paper that is going well.
+ */
+export function generationCostCeilingUsd(env: Record<string, string | undefined> = process.env) {
+  const configured = Number.parseFloat(env.PRACTICE_PAPER_GENERATION_MAX_COST_USD ?? "1.00");
+  return Number.isFinite(configured) ? Math.max(0.1, Math.min(5, configured)) : 1;
+}
+
 /** What a pass sends: the student's fenced evidence, then what this pass is for. */
 export type GenerationContents = { role: "user"; parts: AiContentPart[] }[];
 
@@ -70,6 +94,11 @@ export function createGenerationPassRunner(context: {
   signal: AbortSignal;
   log: Logger;
   diagnostics: AiResponseDiagnostics[];
+  /**
+   * Reported spend at which no further pass may start. Read off successful
+   * calls, as marking's is; a pass already running is allowed to finish.
+   */
+  maxEstimatedCostUsd?: number;
 }) {
   const {
     durableRequest,
@@ -79,6 +108,7 @@ export function createGenerationPassRunner(context: {
     signal,
     log,
     diagnostics,
+    maxEstimatedCostUsd,
   } = context;
   return async (input: {
     name: string;
@@ -168,6 +198,16 @@ export function createGenerationPassRunner(context: {
           subject: input.checkpoint.subject.length,
         });
         return stored;
+      }
+    }
+
+    // Checked after the checkpoint read: a pass already paid for costs nothing
+    // to reuse, and refusing it would throw away work the ceiling allowed.
+    if (maxEstimatedCostUsd !== undefined) {
+      const spentUsd = successfulCost(diagnostics);
+      if (spentUsd >= maxEstimatedCostUsd) {
+        log.warn("generation.cost_limit", { pass: input.name, spentUsd, limitUsd: maxEstimatedCostUsd });
+        throw new PracticePaperGenerationCostLimitError(spentUsd, maxEstimatedCostUsd);
       }
     }
 

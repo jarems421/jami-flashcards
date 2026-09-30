@@ -1,6 +1,7 @@
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDocs,
   limit,
@@ -21,6 +22,7 @@ import {
   type RevisionPlanDraft,
   type RevisionPlanEntry,
 } from "@/lib/planning/types";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 /**
  * Where a student's revision plans live.
@@ -128,6 +130,9 @@ export async function saveRevisionPlan(
     planPath(uid, planId),
     {
       ...safe,
+      // The draft leaves out an empty exam list, and a merge keeps whatever it
+      // leaves out -- so removing the last exam has to delete it by name.
+      exams: safe.exams ?? deleteField(),
       schemaVersion: REVISION_PLAN_SCHEMA_VERSION,
       createdAt: now,
       updatedAt: now,
@@ -137,6 +142,7 @@ export async function saveRevisionPlan(
     },
     { merge: true }
   );
+  reportTutorialAction("plan-week");
   return { ...safe, id: planId, schemaVersion: REVISION_PLAN_SCHEMA_VERSION, createdAt: now, updatedAt: now };
 }
 

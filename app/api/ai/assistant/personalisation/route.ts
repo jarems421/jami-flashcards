@@ -9,9 +9,11 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { createLogger } from "@/lib/observability/logger";
 import {
   buildTutorPreferencesPayload,
-  normalizeFolderTutorInstructions,
   normalizeTutorPreferences,
+  parseTutorNotes,
+  serializeFolderTutorNotes,
 } from "@/lib/ai/tutor-personalisation";
+import { readTutorFolderFacts } from "@/lib/ai/tutor-folder-facts";
 import { normalizeStudyLevel } from "@/lib/profile/study-level";
 import { normalizeStudySubjects } from "@/lib/profile/study-subjects";
 import { getAdminDb } from "@/services/firebase/admin";
@@ -36,12 +38,12 @@ function settingsRef(uid: string) {
 }
 
 /**
- * The folders a student can write instructions for, and whether they have.
+ * The folders a student can write notes for, and how many each has.
  *
- * Deliberately without the documents themselves: sixty folders each carrying up
- * to four thousand characters is a quarter of a megabyte to open a settings
- * drawer, and only one of them is ever being edited. The selected document is
- * fetched by id instead.
+ * Deliberately without the notes themselves: sixty folders each carrying up to
+ * five thousand characters is a quarter of a megabyte to open a settings
+ * drawer, and only one of them is ever being edited. The selected folder's
+ * notes are fetched by id instead.
  */
 async function loadFolderSummaries(uid: string) {
   const snapshot = await getAdminDb()
@@ -55,13 +57,14 @@ async function loadFolderSummaries(uid: string) {
 
   return snapshot.docs.map((folderDoc) => {
     const data = folderDoc.data() as Record<string, unknown>;
-    const instructions = normalizeFolderTutorInstructions(data.tutorInstructions);
+    const facts = readTutorFolderFacts(folderDoc.id, data);
     return {
       id: folderDoc.id,
-      name: typeof data.name === "string" ? data.name : "Untitled folder",
-      subject: typeof data.subject === "string" ? data.subject : null,
-      studyLevel: normalizeStudyLevel(data.studyLevel) ?? null,
-      hasInstructions: instructions.length > 0,
+      name: facts.name,
+      subject: facts.subject,
+      studyLevel: facts.studyLevel,
+      course: facts.course,
+      noteCount: parseTutorNotes(facts.tutorInstructions).length,
       instructionsUpdatedAt:
         typeof data.tutorInstructionsUpdatedAt === "number"
           ? data.tutorInstructionsUpdatedAt
@@ -123,26 +126,27 @@ export async function GET(request: NextRequest) {
       userSnapshot.exists ? userSnapshot.data()?.studySubjects : undefined
     ),
     folders,
-    folder: folderData
-      ? {
-          id: requestedFolderId,
-          name:
-            typeof folderData.name === "string"
-              ? folderData.name
-              : "Untitled folder",
-          subject:
-            typeof folderData.subject === "string" ? folderData.subject : null,
-          studyLevel: normalizeStudyLevel(folderData.studyLevel) ?? null,
-          instructions: normalizeFolderTutorInstructions(
-            folderData.tutorInstructions
-          ),
-          instructionsUpdatedAt:
-            typeof folderData.tutorInstructionsUpdatedAt === "number"
-              ? folderData.tutorInstructionsUpdatedAt
-              : 0,
-        }
-      : null,
+    folder:
+      folderData && requestedFolderId
+        ? folderNotesResponse(requestedFolderId, folderData)
+        : null,
   });
+}
+
+function folderNotesResponse(id: string, data: Record<string, unknown>) {
+  const facts = readTutorFolderFacts(id, data);
+  return {
+    id,
+    name: facts.name,
+    subject: facts.subject,
+    studyLevel: facts.studyLevel,
+    course: facts.course,
+    notes: parseTutorNotes(facts.tutorInstructions),
+    instructionsUpdatedAt:
+      typeof data.tutorInstructionsUpdatedAt === "number"
+        ? data.tutorInstructionsUpdatedAt
+        : 0,
+  };
 }
 
 export async function PATCH(request: NextRequest) {
@@ -153,7 +157,7 @@ export async function PATCH(request: NextRequest) {
   if (!writer) return assistantAssetError("Unauthorized", 401, "unauthorized");
   if (writer.isDemo) {
     return assistantAssetError(
-      "The demo account cannot change Tutor settings.",
+      "The demo account cannot change Jami settings.",
       403,
       "demo_account"
     );
@@ -225,7 +229,7 @@ export async function PATCH(request: NextRequest) {
     return Response.json({ studyLevel: level, studySubjects: subjects });
   }
 
-  if (body.target === "folder-instructions") {
+  if (body.target === "folder-notes") {
     const folderId =
       typeof body.folderId === "string" ? body.folderId.trim().slice(0, 160) : "";
     if (!folderId) {
@@ -240,7 +244,10 @@ export async function PATCH(request: NextRequest) {
     if (!snapshot.exists) {
       return assistantAssetError("That folder no longer exists.", 404, "not_found");
     }
-    const instructions = normalizeFolderTutorInstructions(body.instructions);
+    if (!Array.isArray(body.notes)) {
+      return assistantAssetError("Invalid notes", 400, "invalid_request");
+    }
+    const instructions = serializeFolderTutorNotes(body.notes);
     await folderRef.set(
       {
         tutorInstructions: instructions,
@@ -251,14 +258,15 @@ export async function PATCH(request: NextRequest) {
       },
       { merge: true }
     );
-    log.info("folder_instructions.saved", {
-      characters: instructions.length,
-      cleared: instructions.length === 0,
+    const notes = parseTutorNotes(instructions);
+    log.info("folder_notes.saved", {
+      // A count, never the student's own words.
+      notes: notes.length,
     });
     return Response.json({
       folder: {
         id: folderId,
-        instructions,
+        notes,
         instructionsUpdatedAt: now,
       },
     });

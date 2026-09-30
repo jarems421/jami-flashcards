@@ -183,6 +183,32 @@ function markSchemeFor(record: MarkingCorpusRecord): PracticePaperMarkScheme {
   };
 }
 
+/**
+ * The board and course a source's questions were set for, where it is known.
+ *
+ * An evaluation paper should look like the production paper the same question
+ * would sit on, and production papers name their board. These named the corpus
+ * instead -- "medly-gcse", qualification "GCSE" -- so nothing that depends on
+ * the board could be measured: Medly's English questions are AQA English
+ * Language questions word for word, and were marked as nobody's.
+ */
+function realCourse(record: MarkingCorpusRecord): { board: string; course: string } | null {
+  switch (record.sourceId) {
+    case "medly-gcse":
+      return record.subject === "english" ? { board: "AQA", course: "GCSE English Language" } : null;
+    case "aqa-alevel-english":
+      return { board: "AQA", course: "A-level English Literature" };
+    case "qualifications-scotland":
+      return { board: "SQA", course: "Higher Mathematics" };
+    case "sqa-extended-response":
+      return { board: "SQA", course: record.subject === "history" ? "Higher History" : "Higher Chemistry" };
+    case "pearson-alevel":
+      return { board: "Pearson Edexcel", course: "A-level Economics" };
+    default:
+      return null;
+  }
+}
+
 function describe(record: MarkingCorpusRecord) {
   const subject = SUBJECT_DESCRIPTIONS[record.subject] ?? record.subject;
   const level = LEVEL_DESCRIPTIONS[record.level] ?? record.level;
@@ -233,8 +259,8 @@ export function adaptRecordToPaper(
     },
     markSchemeItem: markScheme.items[0],
     studyLevel: `${level}${record.levelDetail ? ` (${record.levelDetail})` : ""}`,
-    qualification: level,
-    awardingBody: record.sourceId,
+    qualification: realCourse(record)?.course ?? level,
+    awardingBody: realCourse(record)?.board ?? record.sourceId,
     specification: subject,
     component: stageOf(record),
     formatSummary: `Single ${subject} question worth ${record.maxMarks} marks, marked by ${record.regime}.`,

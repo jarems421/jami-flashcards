@@ -139,15 +139,18 @@ export function normalizeMathDelimiters(text: string): string {
 
     result.push(text.slice(cursor, index));
 
-    if (match[1] !== undefined) {
-      // \[ ... \] -> multi-line display math
-      result.push(`$$\n${match[1].trim()}\n$$`);
+    const display = match[1] ?? match[3];
+    if (display !== undefined) {
+      // \[ ... \] and $$...$$ -> multi-line display math, except on a table
+      // row, where a line break would end the row: there it stays on its line.
+      result.push(
+        isOnTableRow(text, index)
+          ? `$\\displaystyle ${display.trim().replace(/\s*\n\s*/g, " ")}$`
+          : `$$\n${display.trim()}\n$$`
+      );
     } else if (match[2] !== undefined) {
       // \( ... \) -> inline math
       result.push(`$${match[2].trim()}$`);
-    } else if (match[3] !== undefined) {
-      // $$...$$ -> multi-line display math
-      result.push(`$$\n${match[3].trim()}\n$$`);
     } else if (match[4] !== undefined) {
       // $...$ -> keep as inline math
       result.push(`$${match[4]}$`);
@@ -158,6 +161,12 @@ export function normalizeMathDelimiters(text: string): string {
 
   result.push(text.slice(cursor));
   return result.join("");
+}
+
+/** Whether the character at `index` sits on a Markdown table row. */
+function isOnTableRow(text: string, index: number) {
+  const lineStart = text.lastIndexOf("\n", index - 1) + 1;
+  return /^\s*\|/.test(text.slice(lineStart, index));
 }
 
 // Pattern that captures fenced code blocks, tilde code blocks, and inline code
@@ -190,4 +199,104 @@ export function preprocessMathDelimiters(text: string): string {
   return parts
     .map((part) => (part.type === "code" ? part.value : normalizeMathDelimiters(part.value)))
     .join("");
+}
+
+/*
+ * Commands only maths uses. Inline code holding one of these is maths the
+ * model put in backticks by mistake. Code with a stray backslash -- a "\n" in
+ * a Python string -- is not, because every name here must end at a non-letter.
+ */
+const MATH_COMMAND_PATTERN =
+  /\\(?:frac|dfrac|tfrac|sqrt|times|cdot|div|pm|mp|leq?|geq?|neq|approx|equiv|propto|infty|int|iint|oint|sum|prod|lim|log|ln|exp|sin|cos|tan|sec|csc|cot|arcsin|arccos|arctan|sinh|cosh|tanh|alpha|beta|gamma|Gamma|delta|Delta|epsilon|varepsilon|eta|theta|Theta|kappa|lambda|Lambda|mu|xi|pi|Pi|rho|sigma|Sigma|tau|phi|Phi|varphi|chi|psi|Psi|omega|Omega|partial|nabla|vec|hat|bar|overline|underline|overrightarrow|text|mathrm|mathbf|mathit|mathbb|operatorname|left|right|begin|circ|degree|rightarrow|leftarrow|Rightarrow|Leftarrow|leftrightarrow|rightleftharpoons|mapsto|notin|subset|subseteq|cup|cap|emptyset|forall|exists|binom|therefore|because|angle|triangle|perp|parallel|ce|pu|quad|qquad|displaystyle|boxed|ldots|cdots)(?![a-zA-Z])/;
+
+/** A piece of text that is nothing but delimited maths. */
+const DELIMITED_MATH_PATTERN =
+  /^(?:\$\$([\s\S]+)\$\$|\$([^$]+)\$|\\\(([\s\S]+)\\\)|\\\[([\s\S]+)\\\])$/;
+
+/** Letters, numbers and arithmetic with a power in it: `x^2 + 3x`. */
+const PLAIN_POWER_PATTERN = /^[A-Za-z0-9\s+\-*/=().,{}]*[A-Za-z0-9)}]\s*\^[A-Za-z0-9\s+\-*/=().,^{}]+$/;
+
+function readDelimitedMath(value: string): string | null {
+  const match = value.match(DELIMITED_MATH_PATTERN);
+  if (!match) return null;
+  const math = (match[1] ?? match[2] ?? match[3] ?? match[4] ?? "").trim();
+  return math && !math.includes("$") ? math : null;
+}
+
+/**
+ * Maths a model wrapped in backticks, or null if it is really code.
+ *
+ * Models put an equation in inline code often enough -- `$v = u + at$`,
+ * `\frac{1}{2}mv^2` -- and it reached students as monospace with its dollar
+ * signs showing, in the code colour, which on the light theme is a red. Code
+ * is only read as maths when it could not sensibly be anything else.
+ */
+export function readInlineCodeAsMath(code: string): string | null {
+  const value = code.trim();
+  if (!value) return null;
+  if (value.startsWith("$") || value.startsWith("\\(") || value.startsWith("\\[")) {
+    return readDelimitedMath(value);
+  }
+  if (value.includes("$")) return null;
+  if (MATH_COMMAND_PATTERN.test(value)) return value;
+  if (PLAIN_POWER_PATTERN.test(value)) return value;
+  return null;
+}
+
+const MATH_FENCE_LANGUAGES = new Set(["latex", "tex", "math", "katex"]);
+
+/**
+ * A fenced block that is maths, as the maths inside it, or null if it is code.
+ *
+ * A `latex` or `math` fence is maths by its own label. An unlabelled one is
+ * maths only when everything in it is already in maths delimiters.
+ */
+export function readFencedBlockAsMath(block: string): string | null {
+  const fence = block.match(/^(`{3,}|~{3,})[ \t]*([^\s`~]*)[^\n]*\n([\s\S]*?)\n?[ \t]*\1[ \t]*$/);
+  if (!fence) return null;
+  const language = fence[2].toLowerCase();
+  const body = fence[3].trim();
+  if (!body) return null;
+  const delimited = readDelimitedMath(body);
+  if (MATH_FENCE_LANGUAGES.has(language)) return delimited ?? (body.includes("$") ? null : body);
+  return language ? null : delimited;
+}
+
+/**
+ * An AI reply, made ready for the Markdown renderer.
+ *
+ * Everything preprocessMathDelimiters does, plus what a reply needs before its
+ * maths can render: LaTeX commands written with no delimiters, and maths put
+ * in code by mistake. `repairLatex` is applied to everything that is not code,
+ * for repairs that belong to the model rather than to Markdown. Real code is
+ * left exactly as it was written.
+ */
+export function prepareAiMarkdown(
+  text: string,
+  repairLatex: (value: string) => string = (value) => value
+): string {
+  const parts: string[] = [];
+  let cursor = 0;
+
+  const pushProse = (value: string) => {
+    if (value) parts.push(normalizeMathDelimiters(wrapBareLatex(repairLatex(value))));
+  };
+
+  for (const match of text.matchAll(CODE_BLOCK_PATTERN)) {
+    const index = match.index ?? -1;
+    if (index < 0) continue;
+    pushProse(text.slice(cursor, index));
+    const code = match[0];
+    if (/^(?:`{3,}|~{3,})/.test(code)) {
+      const math = readFencedBlockAsMath(code);
+      parts.push(math ? `$$\n${repairLatex(math)}\n$$` : code);
+    } else {
+      const math = readInlineCodeAsMath(code.slice(1, -1));
+      parts.push(math ? `$${repairLatex(math)}$` : code);
+    }
+    cursor = index + code.length;
+  }
+  pushProse(text.slice(cursor));
+
+  return parts.join("");
 }

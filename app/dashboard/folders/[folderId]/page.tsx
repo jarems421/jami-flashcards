@@ -22,7 +22,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { getDeckHref } from "@/lib/app/routes";
+import { getDeckHref, getFolderHref, getRevisionStartHref } from "@/lib/app/routes";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
 import type { Source } from "@/lib/material/sources";
@@ -62,6 +62,7 @@ import {
   ExamQuestionsPill,
   PracticePaperPill,
 } from "@/components/practice/PaperEntryPills";
+import RevisionSessionPill from "@/components/revision/RevisionSessionPill";
 
 const FOLDER_ASSET_PAGE_SIZE = 30;
 
@@ -864,6 +865,14 @@ export default function FolderDetailPage() {
                 <PracticePaperPill
                   href={`/dashboard/practice/new?folder=${encodeURIComponent(folder.id)}`}
                 />
+                {featureFlags.enableRevisionSessions ? (
+                  <RevisionSessionPill
+                    href={getRevisionStartHref({
+                      folderId: folder.id,
+                      returnHref: getFolderHref(folder.id),
+                    })}
+                  />
+                ) : null}
                 <Button
                   type="button"
                   size="sm"

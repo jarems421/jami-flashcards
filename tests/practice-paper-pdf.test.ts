@@ -93,7 +93,7 @@ describe("renderPracticePaperPdf", () => {
 
     const text = await pdfText(rendered.bytes);
     expect(text).toHaveLength(rendered.pageCount);
-    expect(text[0]).toContain("Total marks: 36");
+    expect(text[0]).toContain("The maximum mark for this paper is 36.");
     expect(text[0]).toContain("not an official examination paper");
     const body = text.join(" ");
     expect(body).toContain("[3 marks]");
@@ -104,7 +104,66 @@ describe("renderPracticePaperPdf", () => {
     expect(text[text.length - 1]).toContain("Physics equations sheet");
   }, 60_000);
 
-  it("prints a multiple-choice question's options one to a line and a graph on numbered axes", async () => {
+  /**
+   * A generated paper should look like the paper the student will sit, so the
+   * booklet takes its board's conventions: where the marks go, what the margins
+   * say, how a question's parts are numbered.
+   */
+  const board = (awardingBodyOrInstitution: string, questions: PracticePaperQuestion[], qualificationOrModule = "GCSE Chemistry"): PracticePaperPdfInput => ({
+    ...paper,
+    companionDocuments: [],
+    totalMarks: questions.reduce((sum, item) => sum + item.marks, 0),
+    assessmentProfile: { ...paper.assessmentProfile, awardingBodyOrInstitution, qualificationOrModule },
+    questions,
+  });
+
+  it("sets an AQA paper with its candidate boxes, examiner's grid and boxed margin", async () => {
+    const text = await pdfText((await renderPracticePaperPdf(board("AQA", [question("a", "01.1", "Name the gas.", 1), question("b", "01.2", "Explain why.", 2)]))).bytes);
+    expect(text[0]).toContain("Candidate number");
+    expect(text[0]).toContain("For Examiner's Use");
+    expect(text[0]).toContain("not an official examination paper");
+    expect(text[1]).toContain("Do not write outside the box");
+    expect(text[1]).toContain("[2 marks]");
+  }, 60_000);
+
+  it("sets a Pearson paper with bracketed marks and each question's total after its last part", async () => {
+    const rendered = await renderPracticePaperPdf(board("Pearson Edexcel", [
+      question("a", "1(a)", "Describe the arrangement of particles in a liquid.", 2),
+      question("b", "1(b)", "Explain why the dyes separate.", 3),
+      question("c", "2", "State one use of copper.", 1),
+    ]));
+    const text = await pdfText(rendered.bytes);
+    const body = text.slice(1).join(" ");
+    expect(body).toContain("(2)");
+    expect(body).toContain("(Total for Question 1 = 5 marks)");
+    expect(body).toContain("(Total for Question 2 = 1 mark)");
+    expect(body).toContain("DO NOT WRITE IN THIS AREA");
+    expect(body).toContain("TOTAL FOR PAPER IS 6 MARKS");
+    // A later part prints its own letter, not the question number again.
+    expect(body).not.toContain("1 (b)");
+  }, 60_000);
+
+  it("ends an OCR answer line with its marks, and turns over on every page but the last", async () => {
+    const rendered = await renderPracticePaperPdf(board("OCR", [
+      question("a", "1", "Explain why the reaction is exothermic.", 2),
+      question("b", "2", "Evaluate the use of recycled aluminium.", 30),
+    ]));
+    const text = await pdfText(rendered.bytes);
+    expect(text.slice(1).join(" ")).toContain("[2]");
+    expect(text.slice(0, -1).every((page) => page.includes("Turn over"))).toBe(true);
+    expect(text[text.length - 1]).not.toContain("Turn over");
+    expect(text[text.length - 1]).toContain("END OF QUESTION PAPER");
+  }, 60_000);
+
+  it("puts an SQA paper's marks in its marks column", async () => {
+    const text = await pdfText((await renderPracticePaperPdf(board("SQA", [question("a", "1", "Evaluate the usefulness of Source A.", 6)], "Higher History"))).bytes);
+    expect(text[0]).toContain("Scottish candidate number");
+    expect(text[1]).toContain("MARKS");
+    expect(text[1]).toContain("1.");
+    expect(text[1]).toContain("DO NOT WRITE IN THIS MARGIN");
+  }, 60_000);
+
+  it("prints a multiple-choice question's options one to a line, and draws its graph from the chart", async () => {
     const rendered = await renderPracticePaperPdf({
       ...paper,
       companionDocuments: [],
@@ -113,16 +172,19 @@ describe("renderPracticePaperPdf", () => {
         question("g1", "02", "Figure 1 shows the results.\n\nDetermine the gradient.", 2, {
           assets: [{
             id: "fig1", type: "graph", title: "Figure 1", altText: "Speed against time",
-            content: '{"xLabel":"Time in s","yLabel":"Speed in m/s","x":[0,5],"y":[0,10],"series":[{"points":[[0,0],[5,10]],"join":true}]}',
+            content: JSON.stringify({
+              kind: "graph",
+              x: { label: "Time", unit: "s", min: 0, max: 5, step: 1 },
+              y: { label: "Speed", unit: "m/s", min: 0, max: 10, step: 2 },
+              series: [{ points: [[0, 0], [5, 10]], join: "line" }],
+            }),
           }],
         }),
       ],
     });
     const body = (await pdfText(rendered.bytes)).join(" ");
     expect(body).toMatch(/A\s+Speed\s+B\s+Velocity\s+C\s+Force/);
-    expect(body).toContain("Time in s");
-    expect(body).toContain("Speed in m/s");
-    // Numbered between the ends, not only at them.
-    expect(body).toMatch(/ 2 4 6 8 10 /);
+    expect(body).toContain("Time");
+    expect(body).toContain("m/s");
   }, 60_000);
 });

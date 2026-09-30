@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
 import { featureFlags } from "@/lib/app/feature-flags";
+import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 import { getCustomStudyHref, getDeckStudyHref } from "@/lib/app/routes";
 import type { Topic } from "@/lib/material/topics";
 import { buildSpacedRepetitionAnalytics } from "@/lib/study/analytics";
@@ -210,6 +211,11 @@ export default function ProgressPage() {
     onError: handleProgressLoadError,
     onLoadStart: handleProgressLoadStart,
   });
+
+  // Seen, not merely opened: the second night's star lights once there is something on the page.
+  useEffect(() => {
+    if (!loading) reportTutorialAction("view-progress");
+  }, [loading]);
 
   const deckNamesById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),

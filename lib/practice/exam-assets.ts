@@ -35,3 +35,21 @@ export function markerExamAssets(question: {
   // otherwise be marked with no picture at all.
   return stitched.length > 0 ? stitched : candidates;
 }
+
+/**
+ * Whether a whole mark-scheme page would show a scheme the student has not
+ * earned yet.
+ *
+ * The page served after marking is the board's facsimile, and one printed page
+ * carries several questions' schemes. Which page each question sits on is not
+ * kept, only which paper, so any other question from the same paper that is
+ * still waiting in this session could be on it. Until every one of those is
+ * marked the page waits; the question's own scheme text is shown instead, and
+ * the page arrives once there is nothing left on it to give away.
+ */
+export function schemePageRevealsUnanswered(input: {
+  paperId: string;
+  siblings: readonly { paperId?: string; unlocked: boolean }[];
+}) {
+  return input.siblings.some((sibling) => sibling.paperId === input.paperId && !sibling.unlocked);
+}

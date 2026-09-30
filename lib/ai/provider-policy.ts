@@ -138,7 +138,11 @@ const DEFAULT_MODELS = {
   juror: "moonshotai/kimi-k2.6",
   research: "gemini-3.5-flash-lite",
   documentVision: "gemini-3.5-flash-lite",
-  tutorImage: "gemini-3.1-flash-lite-image",
+  // Flash-Lite Image drew convincing pictures with wrong details, and at 29 Sep
+  // 2026 a side-by-side put the full model clearly ahead on realism. Labelled
+  // diagrams no longer reach an image model at all, so this is only ever asked
+  // what something looks like, and its extra cost is paid rarely.
+  tutorImage: "gemini-3.1-flash-image",
   paperImage: "gemini-3.1-flash-image",
   embedding: "gemini-embedding-2",
 } satisfies Record<AiRole, string>;

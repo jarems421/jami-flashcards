@@ -56,6 +56,45 @@ export function memoryOf(signal: LearningSignal | undefined): LearningMemoryStat
 }
 
 /**
+ * Whether recall is holding up where application is not.
+ *
+ * Both halves must be established on their own evidence: marked exam or
+ * practice answers on this concept that read weak on enough of them to say so,
+ * and flashcard recall that reads strong on enough reviews to say that. Recall
+ * is taken from this concept's own cards when it has any, and otherwise from
+ * the student's own Topic directly covering it -- the "drilled Quadratics,
+ * failed completing the square" case. It is never borrowed from a broader
+ * specification heading, whose cards could be about something else entirely.
+ */
+export function applicationGapOf(
+  signal: LearningSignal | undefined,
+  covering: { topicKey: string; label: string; signal?: LearningSignal } | undefined,
+  own: { topicKey: string; label: string }
+): LearningTopicState["applicationGap"] {
+  const application = signal?.claims?.application;
+  if (
+    !application ||
+    application.confidence < MIN_SIGNAL_CONFIDENCE ||
+    application.evidenceMastery >= WEAKNESS_MASTERY_BELOW
+  ) {
+    return undefined;
+  }
+  const source = signal?.claims?.recall
+    ? { ...own, recall: signal.claims.recall }
+    : covering?.signal?.claims?.recall
+      ? { topicKey: covering.topicKey, label: covering.label, recall: covering.signal.claims.recall }
+      : undefined;
+  if (
+    !source ||
+    source.recall.evidenceMastery < STRENGTH_MASTERY_FROM ||
+    source.recall.confidence < MIN_STRENGTH_CONFIDENCE
+  ) {
+    return undefined;
+  }
+  return { recallFrom: source.topicKey, recallLabel: source.label };
+}
+
+/**
  * The one decision the engine makes about a topic on its own evidence.
  *
  * The rules read as a tutor would reason: slipping after being strong is
@@ -71,8 +110,25 @@ export function decideTopic(input: {
   exposure: LearningExposure;
   source: LearningTopicSource;
   declared: boolean;
+  /** See `applicationGapOf`. */
+  applicationGap?: boolean;
 }): LearningTopicDecision | undefined {
   const { signal } = input;
+  /*
+   * First, because it is the most specific thing the evidence can say. The
+   * blended mastery of such a concept can read anywhere from weak to fine,
+   * and every reading would send the student to the wrong work: teaching what
+   * they can already recall, or leaving alone what they cannot yet use. What
+   * helps is practice at using it, sized by how sure the application evidence
+   * is -- a confident gap is worked on, a thin one is checked.
+   */
+  const application = signal?.claims?.application;
+  if (input.applicationGap && application) {
+    return {
+      action: "practice",
+      reason: application.confidence >= TOPIC_FOCUS_CONFIDENCE ? "low_mastery" : "low_confidence",
+    };
+  }
   if (signal && input.memory.includes("decaying")) {
     return {
       action: signal.evidence.includes("flashcards") ? "retrieve" : "practice",
@@ -231,6 +287,16 @@ export function buildTopicStates(input: {
 }): LearningTopicState[] {
   const signalsByKey = new Map(input.signals.map((signal) => [signal.topicKey, signal]));
   const declared = new Set(input.declaredTopicKeys);
+  /** The student's own Topic nearest above a concept, which is what covers it. */
+  const coveringTopic = (topicKey: string) => {
+    for (const ancestorKey of conceptAncestors(input.registry, topicKey)) {
+      const ancestor = input.registry.concepts.get(ancestorKey);
+      if (ancestor?.source !== "student-topic") continue;
+      const signal = signalsByKey.get(ancestorKey);
+      return { topicKey: ancestorKey, label: ancestor.label, ...(signal ? { signal } : {}) };
+    }
+    return undefined;
+  };
   const keys = new Set([...signalsByKey.keys(), ...input.exposure.keys(), ...declared]);
 
   const states: LearningTopicState[] = [];
@@ -241,6 +307,10 @@ export function buildTopicStates(input: {
     const exposure = { ...(input.exposure.get(topicKey) ?? emptyExposure()) };
     const demonstration = demonstrationOf(signal);
     const memory = memoryOf(signal);
+    const applicationGap = applicationGapOf(signal, coveringTopic(topicKey), {
+      topicKey,
+      label: concept.label,
+    });
     const decision = decideTopic({
       ...(signal ? { signal } : {}),
       demonstration,
@@ -248,6 +318,7 @@ export function buildTopicStates(input: {
       exposure,
       source: concept.source,
       declared: declared.has(topicKey),
+      applicationGap: Boolean(applicationGap),
     });
     states.push({
       topicKey,
@@ -260,6 +331,7 @@ export function buildTopicStates(input: {
       demonstration,
       memory,
       ...(signal ? { signal } : {}),
+      ...(applicationGap ? { applicationGap } : {}),
       ...(decision ? { decision } : {}),
     });
   }

@@ -281,7 +281,14 @@ export function advanceTutorialProgress(
  * Everything a walkthrough can hear the app do: the missions, plus the two
  * First night also counts -- answering a real exam question and setting a goal.
  */
-export type OnboardingActionId = TutorialMissionId | "mark-exam-answer" | "create-goal";
+export type OnboardingActionId =
+  | TutorialMissionId
+  | "mark-exam-answer"
+  | "create-goal"
+  /* Second night: the parts of Jami the first six stars do not reach. */
+  | "add-source"
+  | "plan-week"
+  | "view-progress";
 
 export function isTutorialMissionId(id: unknown): id is TutorialMissionId {
   return missionIds.has(id as TutorialMissionId);

@@ -59,13 +59,13 @@ type CacheEntry = {
 const sourceCache = new Map<string, CacheEntry>();
 let sourceCacheBytes = 0;
 
-function normalizeExtractedText(value: string) {
+function normalizeExtractedText(value: string, limit = MAX_EXTRACTED_TEXT_LENGTH) {
   return value
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
-    .slice(0, MAX_EXTRACTED_TEXT_LENGTH);
+    .slice(0, limit);
 }
 
 function isPrivateIpv4(address: string) {
@@ -130,7 +130,14 @@ async function assertPublicSourceUrl(value: string) {
   return url;
 }
 
-async function fetchPublicSourceText(value: string) {
+/**
+ * A public webpage's readable text. `limit` is the whole-read cap by default;
+ * the indexer, which cuts the text into passages, asks for all of it.
+ */
+export async function fetchPublicSourceText(
+  value: string,
+  limit = MAX_EXTRACTED_TEXT_LENGTH
+) {
   let currentUrl = await assertPublicSourceUrl(value);
 
   for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
@@ -173,14 +180,22 @@ async function fetchPublicSourceText(value: string) {
 
     const raw = buffer.toString("utf8");
     if (contentType.includes("text/plain")) {
-      return normalizeExtractedText(raw);
+      return normalizeExtractedText(raw, limit);
     }
 
     const $ = load(raw);
     $("script,style,noscript,svg,nav,footer,form").remove();
+    // Keep the page's own structure: its headings mark where one part ends
+    // and the next begins, and blocks run together without breaks between them.
+    $("h1,h2,h3").each((_, element) => {
+      const level = Number(element.tagName.slice(1)) || 2;
+      $(element).prepend(`\n\n${"#".repeat(level)} `).append("\n\n");
+    });
+    $("p,li,tr,h4,h5,h6,section,article,blockquote,pre").append("\n\n");
+    $("br").replaceWith("\n");
     const title = $("title").first().text().trim();
     const mainText = $("main,article").first().text() || $("body").text();
-    return normalizeExtractedText(`${title}\n\n${mainText}`);
+    return normalizeExtractedText(`${title}\n\n${mainText}`, limit);
   }
 
   throw new Error("The link could not be read.");
@@ -299,7 +314,7 @@ export async function prepareSourceForTutor(
     };
   } else if (source.type === "file" && source.storagePath && source.fileType) {
     if (!isSourceFileMimeType(source.fileType)) {
-      throw new Error("This uploaded file type is not supported by Tutor.");
+      throw new Error("This uploaded file type is not supported by Jami.");
     }
     const buffer = await loadStoredFile(source.storagePath);
     if (buffer.byteLength <= 0 || buffer.byteLength >= MAX_SOURCE_FILE_SIZE) {

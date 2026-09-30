@@ -5,6 +5,11 @@ import { describe, expect, it } from "vitest";
 const pageSource = [
   "app/dashboard/constellation/page.tsx",
   "components/constellation/ConstellationControls.tsx",
+  // The line-drawing and arranging behaviour these tests protect lives in the
+  // page's own controllers; they are read with it so a rule cannot be lost by
+  // moving the code that carries it out of the page file.
+  "hooks/useConstellationLineEditing.ts",
+  "hooks/useSkyPattern.ts",
 ]
   .map((file) => readFileSync(path.join(process.cwd(), file), "utf8"))
   .join("\n");
@@ -90,11 +95,11 @@ describe("arranging a finished constellation", () => {
   });
 
   it("keeps undone lines available to restore until the drawing changes", () => {
-    expect(pageSource).toContain("const [lineRedoHistory, setLineRedoHistory]");
-    expect(pageSource).toContain("const handleRedoLine");
+    expect(pageSource).toContain("const [redoHistory, setRedoHistory]");
+    expect(pageSource).toContain("const redoLine");
     expect(pageSource).toContain("current.lines.slice(0, -1)");
     expect(pageSource).toContain(
-      'setLineRedoHistory({ constellationId: "", lines: [] })'
+      'setRedoHistory({ constellationId: "", lines: [] })'
     );
   });
 });

@@ -23,18 +23,26 @@ import {
   FIRST_NIGHT_QUERY_PARAM,
   FIRST_NIGHT_TOUR_LENGTH,
   getFirstNightDiscovery,
+  isOnDiscoveryRoute,
   loadLocalFirstNight,
   mergeFirstNight,
   pendingNavLabels,
+  firstNightDiscoveries,
+  nextFirstNightDiscovery,
   planFirstNightGuide,
   readFirstNightQuery,
   saveLocalFirstNight,
+  SECOND_NIGHT_ACTIONS,
+  SECOND_NIGHT_STARS,
+  secondNightOpen,
   type FirstNightAnswers,
   type FirstNightDiscoveryId,
   type FirstNightGuidePlan,
   type FirstNightStage,
   type FirstNightState,
+  type SecondNightStarId,
 } from "@/lib/onboarding/first-night";
+import FirstNightBloom, { type FirstNightBloomContent } from "@/components/onboarding/FirstNightBloom";
 import { TUTORIAL_ACTION_EVENT, type OnboardingActionId } from "@/lib/onboarding/tutorial";
 import { createOnboardingStarIfMissing } from "@/services/constellation/stars";
 import { setUpFirstNightSubjects } from "@/services/onboarding/first-night-setup";
@@ -51,6 +59,12 @@ type FirstNightContextValue = {
   justLit: FirstNightDiscoveryId | null;
   finale: FirstNightFinale;
   point: (id: FirstNightDiscoveryId) => void;
+  /** Goes to where a star is lit, and lets that page's note take over. */
+  goTo: (id: FirstNightDiscoveryId) => void;
+  /** Whether Today should offer the second night. */
+  secondNight: boolean;
+  goToSecondNight: (id: SecondNightStarId) => void;
+  hideSecondNight: () => void;
   /** Opens the welcome from the top, whatever ran before. */
   start: () => void;
   end: () => void;
@@ -64,6 +78,10 @@ const INACTIVE: FirstNightContextValue = {
   justLit: null,
   finale: "none",
   point: () => undefined,
+  goTo: () => undefined,
+  secondNight: false,
+  goToSecondNight: () => undefined,
+  hideSecondNight: () => undefined,
   start: () => undefined,
   end: () => undefined,
 };
@@ -108,6 +126,8 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [justLit, setJustLit] = useState<FirstNightDiscoveryId | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [bloom, setBloom] = useState<FirstNightBloomContent | null>(null);
+  const pathnameRef = useRef(pathname);
   const [finale, setFinale] = useState<FirstNightFinale>("none");
   const [reward, setReward] = useState<StarReward | null>(null);
   const [isPhone, setIsPhone] = useState(() => typeof window !== "undefined" && window.innerWidth < PHONE_WIDTH);
@@ -188,6 +208,39 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
 
   const running = Boolean(state && state.stage !== "finished");
 
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
+
+  /*
+   * Straight to where a star is lit. The sidebar entry still carries its small
+   * star and the page still explains itself on arrival, so the way there is
+   * learned without having to be hunted for first.
+   */
+  const goTo = useCallback(
+    (id: FirstNightDiscoveryId) => {
+      const discovery = getFirstNightDiscovery(id);
+      setPointing(null);
+      setBloom(null);
+      change((current) => (current.intent === id ? current : { ...current, intent: id }));
+      if (!isOnDiscoveryRoute(pathnameRef.current, discovery)) router.push(discovery.href);
+    },
+    [change, router]
+  );
+
+  const goToSecondNight = useCallback(
+    (id: SecondNightStarId) => {
+      const star = SECOND_NIGHT_STARS.find((entry) => entry.id === id);
+      setBloom(null);
+      if (star && !pathnameRef.current.startsWith(star.href)) router.push(star.href);
+    },
+    [router]
+  );
+
+  const hideSecondNight = useCallback(() => {
+    change((current) => (current.bonusHidden ? current : { ...current, bonusHidden: true }));
+  }, [change]);
+
   // Which page controls are on screen, since pages render theirs as data arrives.
   useEffect(() => {
     if (!running) return;
@@ -212,21 +265,54 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
    * says can light one, so a star always stands for something done.
    */
   useEffect(() => {
-    if (!running) return;
     const onAction = (event: Event) => {
       const action = (event as CustomEvent<{ missionId?: OnboardingActionId }>).detail?.missionId;
-      const id = action ? FIRST_NIGHT_ACTIONS[action] : undefined;
       const current = stateRef.current;
-      if (!id || !current || (current.stage !== "tour" && current.stage !== "exploring")) return;
+      if (!action || !current) return;
+
+      // The second night lights only once the first is over, and only its own stars.
+      if (current.stage === "finished") {
+        const bonusId = SECOND_NIGHT_ACTIONS[action];
+        if (!bonusId || current.bonusHidden || current.bonus.includes(bonusId)) return;
+        const bonus = [...current.bonus, bonusId];
+        change((latest) => (latest.bonus.includes(bonusId) ? latest : { ...latest, bonus: [...latest.bonus, bonusId] }));
+        const star = SECOND_NIGHT_STARS.find((entry) => entry.id === bonusId)!;
+        const next = SECOND_NIGHT_STARS.find((entry) => !bonus.includes(entry.id));
+        setBloom({
+          key: `second-${bonusId}`,
+          eyebrow: next ? `Second night · ${bonus.length} of ${SECOND_NIGHT_STARS.length}` : "Second night · complete",
+          title: star.title,
+          text: next ? star.unlocked : `${star.unlocked} That is all of Jami's night sky. The rest is yours.`,
+          ...(next ? { next: { label: `Next: ${next.title}`, run: () => goToSecondNight(next.id) } } : {}),
+        });
+        return;
+      }
+
+      const id = FIRST_NIGHT_ACTIONS[action];
+      if (!id || (current.stage !== "tour" && current.stage !== "exploring")) return;
       if (current.lit.includes(id)) return;
-      change((latest) => (latest.lit.includes(id) ? latest : { ...latest, lit: [...latest.lit, id] }));
+      const lit = [...current.lit, id];
+      change((latest) => (latest.lit.includes(id) ? latest : { ...latest, lit: [...latest.lit, id], intent: null }));
       setPointing((pointed) => (pointed === id ? null : pointed));
       setJustLit(id);
-      setToast(`Star lit: ${getFirstNightDiscovery(id).title}`);
+      const discovery = getFirstNightDiscovery(id);
+      const total = firstNightDiscoveries(current).length;
+      const next = nextFirstNightDiscovery({ ...current, lit, intent: null });
+      setBloom({
+        key: `first-${id}`,
+        eyebrow: next ? `Star ${lit.length} of ${total} lit` : `All ${total} stars lit`,
+        title: discovery.title,
+        text: next ? discovery.unlocked : `${discovery.unlocked} Your first constellation is complete.`,
+        ...(next
+          ? { next: { label: `Next: ${next.title}`, run: () => goTo(next.id) } }
+          : pathnameRef.current !== "/dashboard"
+            ? { next: { label: "See your constellation", run: () => router.push("/dashboard") } }
+            : {}),
+      });
     };
     window.addEventListener(TUTORIAL_ACTION_EVENT, onAction);
     return () => window.removeEventListener(TUTORIAL_ACTION_EVENT, onAction);
-  }, [change, running]);
+  }, [change, goTo, goToSecondNight, router]);
 
   // Heading for another page from a note: once there, the page's own note takes over.
   useEffect(() => {
@@ -374,8 +460,10 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
   }, [change, rewardPending, userId]);
 
   const presentSet = useMemo(() => new Set(present.split("\n")), [present]);
+  // One voice at a time: while a star's bloom is open the guide waits, rather
+  // than gliding an empty note across the page to a target it has not found.
   const plan: FirstNightGuidePlan | null =
-    state && !leavingWelcome && !reward && finale === "none"
+    state && !leavingWelcome && !reward && !bloom && finale === "none"
       ? planFirstNightGuide({ state, pathname, isPhone, pointing, present: (selector) => presentSet.has(selector) })
       : null;
   const guide = plan && !dismissed.includes(plan.key) ? plan : null;
@@ -386,9 +474,13 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
       case "next-tour":
         change((current) => ({ ...current, tourStep: Math.min(current.tourStep + 1, FIRST_NIGHT_TOUR_LENGTH - 1) }));
         break;
-      case "finish-tour":
+      case "finish-tour": {
         change((current) => ({ ...current, stage: "exploring" }));
+        // Straight into the first star: the tour's last word is "let's go", so it goes.
+        const first = state ? nextFirstNightDiscovery({ ...state, stage: "exploring" }) : null;
+        if (first) goTo(first.id);
         break;
+      }
       case "clear-point":
         setPointing(null);
         break;
@@ -410,10 +502,14 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
       justLit,
       finale,
       point,
+      goTo,
+      secondNight: finale === "none" && secondNightOpen(state),
+      goToSecondNight,
+      hideSecondNight,
       start,
       end,
     }),
-    [end, finale, justLit, point, ready, running, start, state]
+    [end, finale, goTo, goToSecondNight, hideSecondNight, justLit, point, ready, running, start, state]
   );
 
   const exploring = state?.stage === "tour" || state?.stage === "exploring";
@@ -430,6 +526,7 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
         <FirstNightGuide
           target={guide.target}
           near={guide.near}
+          {...(guide.eyebrow ? { eyebrow: guide.eyebrow } : {})}
           text={guide.text}
           doneLabel={guide.doneLabel}
           onDone={finishGuide}
@@ -443,6 +540,8 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
           {pathname !== "/dashboard" && exploring ? <span className="fn-toast-hint">See it on Today</span> : null}
         </div>
       ) : null}
+
+      <FirstNightBloom content={finale === "none" ? bloom : null} onClose={() => setBloom(null)} />
 
       <StarRewardOverlay
         reward={reward}

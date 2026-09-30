@@ -1,4 +1,5 @@
 import "server-only";
+import { loadRulesForFormat } from "@/services/practice/question-type-rules.server";
 
 import { createHash, randomUUID } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
@@ -571,7 +572,7 @@ export async function resolvePracticePaperFormat(input: {
     definition: candidate,
     profile,
     brief: buildPracticePaperBrief(profile),
-    promptContext: practicePaperFormatContext(profile),
+    promptContext: practicePaperFormatContext(profile, await loadRulesForFormat(profile)),
   };
 }
 

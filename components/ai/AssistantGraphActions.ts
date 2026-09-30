@@ -16,6 +16,12 @@ export type AssistantGraphActions = {
   insertingKey: string | null;
   isInserted: (key: string) => boolean;
   insert: (key: string, graph: NotebookGraphDraft) => void;
+  /**
+   * Whether a drawn figure (a fenced `svg` block) can be added too. It lands as
+   * a picture rather than an editable graph, so it is offered separately.
+   */
+  canInsertDrawing: boolean;
+  insertDrawing: (key: string, svg: string) => void;
 };
 
 export const AssistantGraphActionsContext = createContext<AssistantGraphActions | null>(null);

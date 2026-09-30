@@ -231,6 +231,230 @@ describe("JamiAssistantDrawer", () => {
     });
     expect(document.body.textContent).toContain("Because of the sign.");
   });
+
+  it("sends what was asked elsewhere once, as soon as it opens", async () => {
+    sendJamiAssistantMessage.mockResolvedValue({ reply: "Enzymes speed reactions up.", followUps: [], used: [] });
+    const drawer = (
+      <JamiAssistantDrawer
+        userId="user-1"
+        open
+        onOpenChange={vi.fn()}
+        resetKey="reset-1"
+        contextKey={CONTEXT_KEY}
+        contextLabel="Enzymes notes"
+        historyContextLabel="Enzymes notes"
+        getContext={getContext}
+        initialMessage="What do enzymes do?"
+      />
+    );
+    await act(async () => {
+      root.render(drawer);
+    });
+    // A re-render with the same message must not ask it again.
+    await act(async () => {
+      root.render(drawer);
+    });
+
+    expect(sendJamiAssistantMessage).toHaveBeenCalledTimes(1);
+    expect(sendJamiAssistantMessage.mock.calls[0]?.[0]).toMatchObject({ message: "What do enzymes do?" });
+    expect(document.body.textContent).toContain("Enzymes speed reactions up.");
+  });
+
+  it("draws the surface's material controls, told whether the chat has begun", async () => {
+    sendJamiAssistantMessage.mockResolvedValue({ reply: "Sure.", followUps: [], used: [] });
+    const controls = vi.fn(({ conversationStarted }: { conversationStarted: boolean }) => (
+      <p data-controls>{conversationStarted ? "started" : "not started"}</p>
+    ));
+    act(() => {
+      root.render(
+        <JamiAssistantDrawer
+          userId="user-1"
+          open
+          onOpenChange={vi.fn()}
+          resetKey="reset-1"
+          contextKey={CONTEXT_KEY}
+          contextLabel="This page"
+          historyContextLabel="this page"
+          getContext={getContext}
+          contextControls={controls}
+        />
+      );
+    });
+    expect(document.querySelector("[data-controls]")?.textContent).toBe("not started");
+
+    typeMessage("Help");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(document.querySelector("[data-controls]")?.textContent).toBe("started");
+  });
+});
+
+describe("JamiAssistantDrawer floating over a notebook", () => {
+  let onOpenChange: Mock<(open: boolean) => void>;
+
+  function renderFloating(open: boolean, onAnswerInsert?: (text: string) => boolean) {
+    act(() => {
+      root.render(
+        <JamiAssistantDrawer
+          userId="user-1"
+          open={open}
+          onOpenChange={onOpenChange}
+          resetKey="reset-1"
+          contextKey={CONTEXT_KEY}
+          contextLabel="Current notebook page"
+          historyContextLabel="this notebook"
+          getContext={getContext}
+          layout="floating"
+          onAnswerInsert={onAnswerInsert}
+        />
+      );
+    });
+  }
+
+  function button(label: RegExp) {
+    return [...document.querySelectorAll("button")].find((b) =>
+      label.test(b.getAttribute("aria-label") ?? b.textContent ?? "")
+    );
+  }
+
+  beforeEach(() => {
+    // A tablet: wide enough to float rather than take the whole screen.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    localStorage.clear();
+    onOpenChange = vi.fn();
+  });
+
+  it("is a card over the page, not a modal that stops writing", () => {
+    renderFloating(true);
+    const panel = document.querySelector<HTMLElement>("[role='dialog']");
+    expect(panel?.getAttribute("aria-modal")).toBeNull();
+    expect(panel?.style.width).toBe("360px");
+    expect(document.querySelector("[data-dialog-backdrop]")).toBeNull();
+  });
+
+  it("folds the chat's own actions into one menu on a small card", () => {
+    renderFloating(true);
+    // The window's controls stay out; history and a new chat do not crowd them.
+    expect(button(/make jami full size/i)).toBeDefined();
+    expect(button(/open jami chat history/i)).toBeUndefined();
+
+    const more = button(/more jami options/i);
+    act(() => more?.click());
+    expect(more?.getAttribute("aria-expanded")).toBe("true");
+    const items = [...document.querySelectorAll("[role='menu'] [role^='menuitem']")].map(
+      (item) => item.textContent
+    );
+    expect(items).toEqual(expect.arrayContaining(["New chat", "Chat history"]));
+
+    const history = [...document.querySelectorAll<HTMLElement>("[role='menuitem']")].find(
+      (item) => item.textContent === "Chat history"
+    );
+    act(() => history?.click());
+    expect(document.querySelector("[role='menu']")).toBeNull();
+    expect(document.body.textContent).toContain("Chat history");
+  });
+
+  it("lays the chat's actions out again once the card is wide", () => {
+    localStorage.setItem(
+      "jami:tutor-card:v1",
+      JSON.stringify({ rect: { x: 20, y: 20, width: 600, height: 600 }, maximised: false })
+    );
+    renderFloating(true);
+    expect(button(/more jami options/i)).toBeUndefined();
+    expect(button(/open jami chat history/i)).toBeDefined();
+  });
+
+  it("shrinks to a pill that brings the card back", () => {
+    renderFloating(true);
+    act(() => button(/shrink jami/i)?.click());
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+
+    renderFloating(false);
+    const pill = button(/^open jami$/i);
+    expect(pill).toBeDefined();
+    act(() => pill?.click());
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("closing outright leaves nothing behind", () => {
+    renderFloating(true);
+    act(() => button(/close jami/i)?.click());
+    renderFloating(false);
+    expect(button(/^open jami$/i)).toBeUndefined();
+  });
+
+  it("keeps one answer beside the page", async () => {
+    sendJamiAssistantMessage.mockResolvedValue({
+      reply: "Swap the signs in the second bracket.",
+      followUps: [],
+      used: [],
+    });
+    renderFloating(true);
+    typeMessage("Is my factorising right?");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    onOpenChange.mockClear();
+    act(() => button(/keep beside page/i)?.click());
+    // The chat stays open for the next question, with the answer beside it.
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(sendButton()).toBeDefined();
+
+    const pinned = () => document.querySelector("[aria-label='Pinned answer from Jami']");
+    expect(pinned()?.textContent).toContain("Swap the signs in the second bracket.");
+    expect(pinned()?.textContent).not.toContain("Is my factorising right?");
+    // Nothing to open while the chat is already open.
+    expect(pinned()?.textContent).not.toContain("Open chat");
+
+    // Put the chat away, and the pin stays with the way back to it.
+    renderFloating(false);
+    expect(pinned()?.textContent).toContain("Open chat");
+
+    act(() => button(/unpin/i)?.click());
+    expect(pinned()).toBeNull();
+    expect(button(/^open jami$/i)).toBeDefined();
+  });
+
+  /*
+   * Copying an answer into a text box left its table as pipes and its maths as
+   * dollar signs. The whole answer goes to the page as it was written, for the
+   * page to show the way the chat does.
+   */
+  it("adds a whole answer to the page as it was written", async () => {
+    const reply = ["| Quantity | Formula |", "| --- | --- |", "| Area | $\\pi r^2$ |"].join("\n");
+    sendJamiAssistantMessage.mockResolvedValue({ reply, followUps: [], used: [] });
+    const onAnswerInsert = vi.fn(() => true);
+    renderFloating(true, onAnswerInsert);
+    typeMessage("What is the area of a circle?");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    act(() => button(/add this answer to the page/i)?.click());
+    expect(onAnswerInsert).toHaveBeenCalledWith(reply);
+    expect(button(/answer added to page/i)).toBeDefined();
+  });
+
+  it("offers no Add to page where there is no page to add to", async () => {
+    sendJamiAssistantMessage.mockResolvedValue({ reply: "An answer.", followUps: [], used: [] });
+    renderFloating(true);
+    typeMessage("A question");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(button(/add this answer to the page/i)).toBeUndefined();
+  });
 });
 
 describe("JamiAssistantDrawer study material", () => {

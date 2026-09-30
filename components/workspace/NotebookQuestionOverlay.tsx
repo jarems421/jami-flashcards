@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Card } from "@/components/ui";
 import PracticePaperAssets from "@/components/practice/PracticePaperAssets";
 import type { NotebookPage } from "@/lib/workspace/notebooks";
@@ -19,7 +20,14 @@ export default function NotebookQuestionOverlay({
   page: NotebookPage;
   dockedTop: boolean;
 }) {
+  /*
+   * A practice question's answer, folded away until asked for. Revealing it is
+   * the student's call -- after an attempt, or when they are stuck -- and never
+   * something they meet before writing a line.
+   */
+  const [answerShownFor, setAnswerShownFor] = useState<string | null>(null);
   if (!page.questionPrompt) return null;
+  const answerShown = answerShownFor === page.id;
   return (
     <div
       className={`absolute left-1/2 z-20 w-[min(92vw,36rem)] -translate-x-1/2 ${
@@ -31,6 +39,23 @@ export default function NotebookQuestionOverlay({
           {page.questionPrompt}
         </p>
         <PracticePaperAssets assets={page.questionAssets ?? []} />
+        {page.questionAnswer ? (
+          <div className="mt-2">
+            <button
+              type="button"
+              aria-expanded={answerShown}
+              onClick={() => setAnswerShownFor(answerShown ? null : page.id)}
+              className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+            >
+              {answerShown ? "Hide answer" : "Show answer"}
+            </button>
+            {answerShown ? (
+              <p className="mt-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap border-t border-[var(--color-border)] pt-1.5 text-xs leading-5 text-text-secondary">
+                {page.questionAnswer}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {page.linkedExamSessionId ? (
           <Link
             href={`/dashboard/practice/questions/${encodeURIComponent(page.linkedExamSessionId)}`}

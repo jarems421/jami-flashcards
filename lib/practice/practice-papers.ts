@@ -2,6 +2,7 @@ import {
   normalizeOptionalString,
   normalizeStringArray,
 } from "@/lib/material/content";
+import { filterCanonicalConceptIds } from "@/lib/practice/exam-specification-concepts";
 import {
   calculatePracticePaperPercentage,
   getPracticePaperGradeLabel,
@@ -20,6 +21,42 @@ import {
 import { normalizeManualCorrectionAudits, normalizePracticePaperMarkRange, type PracticePaperManualCorrectionAudit, type PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
 import { normalizePracticePaperPdfLayout, type PracticePaperPdfLayout } from "@/lib/practice/paper-pdf-layout";
 import { normalizePracticePaperCorpusCalibration, type PracticePaperCorpusCalibration } from "@/lib/practice/paper-corpus-calibration";
+import {
+  isAssetSource,
+  isAssetType,
+  isAssetValidationStatus,
+  isConfidence,
+  isFocus,
+  isLength,
+  isMarkSchemeKind,
+  isStatus,
+  isTimingMode,
+  isTimingState,
+  type PracticePaperAssetSource,
+  type PracticePaperAssetType,
+  type PracticePaperAssetValidationStatus,
+  type PracticePaperConfidence,
+  type PracticePaperFocus,
+  type PracticePaperLength,
+  type PracticePaperMarkSchemeKind,
+  type PracticePaperOrigin,
+  type PracticePaperStatus,
+  type PracticePaperTimingMode,
+  type PracticePaperTimingState,
+} from "@/lib/practice/practice-paper-fields";
+export type {
+  PracticePaperAssetSource,
+  PracticePaperAssetType,
+  PracticePaperAssetValidationStatus,
+  PracticePaperConfidence,
+  PracticePaperFocus,
+  PracticePaperLength,
+  PracticePaperMarkSchemeKind,
+  PracticePaperOrigin,
+  PracticePaperStatus,
+  PracticePaperTimingMode,
+  PracticePaperTimingState,
+} from "@/lib/practice/practice-paper-fields";
 export { mapPracticePaperMarkingJobData } from "@/lib/practice/practice-paper-marking-types";
 export { mapPracticePaperJobData } from "@/lib/practice/practice-paper-jobs";
 export type { PracticePaperEvidenceIssue, PracticePaperEvidenceManifest, PracticePaperEvidencePage, PracticePaperManualCorrectionAudit, PracticePaperMarkingJob, PracticePaperMarkingJobKind, PracticePaperMarkingJobStage, PracticePaperMarkingJobStatus, PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
@@ -39,47 +76,6 @@ export const MAX_PRACTICE_PAPER_SOURCE_IDS = 100;
  */
 export const MAX_PRACTICE_PAPER_SOURCE_TEXT = 15 * 30_000;
 export const MAX_PRACTICE_PAPER_QUESTIONS = 30;
-
-export type PracticePaperOrigin = "generated" | "uploaded";
-export type PracticePaperStatus =
-  | "setup"
-  | "ready"
-  | "in_progress"
-  | "submitted"
-  | "marked";
-export type PracticePaperLength = "full";
-export type PracticePaperFocus = "balanced" | "weak_areas" | "custom";
-export type PracticePaperTimingMode = "timed" | "untimed";
-export type PracticePaperTimingState =
-  | "not_started"
-  | "running"
-  | "paused"
-  | "awaiting_overtime"
-  | "overtime"
-  | "submitted";
-export type PracticePaperConfidence = "low" | "medium" | "high";
-export type PracticePaperMarkSchemeKind =
-  | "generated"
-  | "official"
-  | "estimated"
-  | "missing";
-export type PracticePaperAssetType =
-  | "table"
-  | "graph"
-  | "diagram"
-  | "formula_sheet"
-  | "source_extract"
-  | "image"
-  | "illustration";
-
-export type PracticePaperAssetSource =
-  | "deterministic"
-  | "generated"
-  | "uploaded";
-export type PracticePaperAssetValidationStatus =
-  | "pending"
-  | "valid"
-  | "invalid";
 
 export type PracticePaperQuestionAsset = {
   id: string;
@@ -175,6 +171,21 @@ export type PracticePaperQuestion = {
    * stored paper predates this.
    */
   section?: string;
+  /**
+   * The specification concepts this question tests, where they are known.
+   *
+   * Written when the paper is generated: the pipeline is told which concepts
+   * the paper is for and asks for each question to name the one it was written
+   * against, so nothing has to be rediscovered afterwards from the wording.
+   *
+   * Absent on every paper generated before this existed, and absent means
+   * absent -- the Learning Engine counts such a question towards recurring
+   * errors and the overall trend, as it always did, and towards no concept at
+   * all. Guessing a concept from the prompt is the inference the engine exists
+   * to avoid making. See `scripts/eval/practice-concept-backfill.ts` for the
+   * legacy path.
+   */
+  conceptIds?: string[];
 };
 
 export type PracticePaperChoiceGroup = {
@@ -455,6 +466,13 @@ export type PracticePaper = {
   totalMarks: number;
   markScheme: PracticePaperMarkScheme;
   markSchemeSourceId?: string;
+  /**
+   * The recommendation that asked for this paper, when Jami wrote it. The same
+   * provenance a generated card carries: without it a paper written in answer
+   * to advice is indistinguishable from one the student made themselves, and
+   * nothing can ask whether the advice was ever carried out.
+   */
+  createdByInterventionId?: string;
   preparedAt?: number;
   startedAt?: number;
   submittedAt?: number;
@@ -513,74 +531,6 @@ function finiteInteger(value: unknown, fallback = 0) {
 
 function normalizeTextList(value: unknown, maximum: number, maxLength = 800) {
   return normalizeStringArray(value, maximum, maxLength);
-}
-
-function isConfidence(value: unknown): value is PracticePaperConfidence {
-  return value === "low" || value === "medium" || value === "high";
-}
-
-function isStatus(value: unknown): value is PracticePaperStatus {
-  return (
-    value === "setup" ||
-    value === "ready" ||
-    value === "in_progress" ||
-    value === "submitted" ||
-    value === "marked"
-  );
-}
-
-function isLength(value: unknown): value is PracticePaperLength {
-  return value === "full";
-}
-
-function isTimingMode(value: unknown): value is PracticePaperTimingMode {
-  return value === "timed" || value === "untimed";
-}
-
-function isTimingState(value: unknown): value is PracticePaperTimingState {
-  return (
-    value === "not_started" ||
-    value === "running" ||
-    value === "paused" ||
-    value === "awaiting_overtime" ||
-    value === "overtime" ||
-    value === "submitted"
-  );
-}
-
-function isFocus(value: unknown): value is PracticePaperFocus {
-  return value === "balanced" || value === "weak_areas" || value === "custom";
-}
-
-function isMarkSchemeKind(value: unknown): value is PracticePaperMarkSchemeKind {
-  return (
-    value === "generated" ||
-    value === "official" ||
-    value === "estimated" ||
-    value === "missing"
-  );
-}
-
-function isAssetType(value: unknown): value is PracticePaperAssetType {
-  return (
-    value === "table" ||
-    value === "graph" ||
-    value === "diagram" ||
-    value === "formula_sheet" ||
-    value === "source_extract" ||
-    value === "image" ||
-    value === "illustration"
-  );
-}
-
-function isAssetSource(value: unknown): value is PracticePaperAssetSource {
-  return value === "deterministic" || value === "generated" || value === "uploaded";
-}
-
-function isAssetValidationStatus(
-  value: unknown
-): value is PracticePaperAssetValidationStatus {
-  return value === "pending" || value === "valid" || value === "invalid";
 }
 
 export function normalizeQuestionAssets(value: unknown): PracticePaperQuestionAsset[] {
@@ -652,7 +602,11 @@ export function normalizePracticePaperAssessmentProfile(
   };
 }
 
-export function normalizePracticePaperQuestions(value: unknown) {
+export function normalizePracticePaperQuestions(
+  value: unknown,
+  /** The course whose catalogue any concept id must belong to; without it, none are kept. */
+  specificationId?: string
+) {
   if (!Array.isArray(value)) return [];
   const questions: PracticePaperQuestion[] = [];
   const seen = new Set<string>();
@@ -663,6 +617,16 @@ export function normalizePracticePaperQuestions(value: unknown) {
     const prompt = normalizeOptionalString(item.prompt, 4_000) ?? "";
     if (!id || !prompt || seen.has(id)) continue;
     seen.add(id);
+    /*
+     * Kept only where a checked catalogue holds the id. A concept the course
+     * does not have is not a near miss worth correcting: it is a concept this
+     * student's specification never mentions, and attributing evidence to it
+     * would be worse than attributing none.
+     */
+    const conceptIds = specificationId
+      ? filterCanonicalConceptIds(specificationId, normalizeStringArray(item.conceptIds, 8, 160))
+          .conceptIds
+      : [];
     questions.push({
       id,
       label: normalizeOptionalString(item.label, 80) ?? `Question ${questions.length + 1}`,
@@ -672,6 +636,7 @@ export function normalizePracticePaperQuestions(value: unknown) {
         ? { section: normalizeOptionalString(item.section, 80)! }
         : {}),
       assets: normalizeQuestionAssets(item.assets),
+      ...(conceptIds.length > 0 ? { conceptIds } : {}),
     });
   }
   return questions;
@@ -1085,9 +1050,19 @@ export function mapPracticePaperAttemptData(
 
 export function mapPracticePaperData(
   id: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  /**
+   * The catalogue any stored concept id is checked against.
+   *
+   * The paper itself records its course only as the wording a student would
+   * read ("AQA GCSE Mathematics 8300"), which is not a catalogue id. The
+   * folder the paper lives in holds the real one, so the caller supplies it.
+   * Without it no concept is kept, which is the safe direction: unattributed
+   * evidence rather than evidence attributed to a course it is not from.
+   */
+  specificationId?: string
 ): PracticePaper {
-  const questions = normalizePracticePaperQuestions(data.questions);
+  const questions = normalizePracticePaperQuestions(data.questions, specificationId);
   const choiceGroups = normalizePracticePaperChoiceGroups(data.choiceGroups, questions);
   const totalMarks = calculatePracticePaperTotalMarks(questions, choiceGroups);
   return {
@@ -1144,6 +1119,7 @@ export function mapPracticePaperData(
     totalMarks: totalMarks || finiteInteger(data.totalMarks),
     markScheme: normalizePracticePaperMarkScheme(data.markScheme, questions),
     markSchemeSourceId: normalizeOptionalString(data.markSchemeSourceId, 160),
+    createdByInterventionId: normalizeOptionalString(data.createdByInterventionId, 400),
     preparedAt: finiteInteger(data.preparedAt) || undefined,
     startedAt: finiteInteger(data.startedAt) || undefined,
     submittedAt: finiteInteger(data.submittedAt) || undefined,
@@ -1172,8 +1148,15 @@ export function buildPracticePaperPayload(
   input: Omit<PracticePaper, "id" | "createdAt" | "updatedAt"> & { now?: number }
 ) {
   const now = input.now ?? Date.now();
-  const paper = { ...input };
-  delete paper.now;
+  /*
+   * Fields left undefined are left out. The browser's Firestore refuses a
+   * document holding one, and an uploaded paper starts with its timer fields
+   * -- `deadlineAt`, `pausedAt` and the rest -- deliberately unset, so every
+   * upload failed here after its notebook had already been made.
+   */
+  const paper = Object.fromEntries(
+    Object.entries(input).filter(([key, value]) => key !== "now" && value !== undefined)
+  ) as Omit<typeof input, "now">;
   return {
     ...paper,
     sourceIds: normalizeStringArray(
@@ -1199,12 +1182,22 @@ export function buildPracticePaperPayload(
     ),
     focusDetail: input.focusDetail?.trim().slice(0, 1_000) || null,
     markSchemeSourceId: input.markSchemeSourceId?.trim().slice(0, 160) || null,
+    createdByInterventionId: input.createdByInterventionId?.trim().slice(0, 400) || null,
     preparedAt: input.preparedAt ?? null,
     startedAt: input.startedAt ?? null,
     submittedAt: input.submittedAt ?? null,
     markedAt: input.markedAt ?? null,
     result: input.result ?? null,
     activeAttemptId: input.activeAttemptId?.trim().slice(0, 160) || null,
+    /*
+     * Optional, and Firestore refuses a field set to undefined outright. A paper
+     * generated without web research carries no receipt, and writing it as
+     * undefined threw away the finished paper at the last step.
+     */
+    researchReceipt: input.researchReceipt ?? null,
+    generationAudit: input.generationAudit ?? null,
+    gradeGuidance: input.gradeGuidance ?? null,
+    examinerInsights: input.examinerInsights ?? null,
     createdAt: now,
     updatedAt: now,
   };

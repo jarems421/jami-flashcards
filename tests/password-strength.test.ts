@@ -18,7 +18,28 @@ describe("password policy", () => {
     // A passphrase with no digits or punctuation is a good password.
     expect(assessPassword("correct horse battery").acceptable).toBe(true);
     // And a short one with all the trimmings is not.
-    expect(assessPassword("Pw1!aB2@").acceptable).toBe(false);
+    expect(assessPassword("Pw1!aB2").acceptable).toBe(false);
+  });
+
+  it("accepts an ordinary password at the eight-character floor", () => {
+    expect(PASSWORD_MINIMUM_LENGTH).toBe(8);
+    expect(assessPassword("maple owl").acceptable).toBe(true);
+    expect(assessPassword("tulip8rx").acceptable).toBe(true);
+    expect(assessPassword("tulip8r").acceptable).toBe(false);
+  });
+
+  it("refuses the common eight-character passwords a shorter floor lets in", () => {
+    for (const password of ["iloveyou", "sunshine", "Football", "qwerty12"]) {
+      expect(assessPassword(password).problems).toContain("well-known");
+    }
+  });
+
+  it("refuses a straight run of letters or digits in either direction", () => {
+    for (const password of ["abcdefgh", "23456789", "87654321", "ZYXWVUTS"]) {
+      expect(assessPassword(password).problems).toContain("well-known");
+    }
+    // A run inside something longer is just part of a password.
+    expect(assessPassword("abcdefgh river").acceptable).toBe(true);
   });
 
   it("turns away the passwords that get tried first", () => {

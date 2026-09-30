@@ -6,7 +6,11 @@ import {
   type KeyboardEventHandler,
   type ReactNode,
 } from "react";
-import { SymbolKeyboard } from "@/components/ui";
+import {
+  AUTO_GROW_TEXTAREA_STYLE,
+  SymbolKeyboard,
+  useAutoGrowTextarea,
+} from "@/components/ui";
 
 type CardBackEditorProps = {
   label?: string;
@@ -38,6 +42,7 @@ export default function CardBackEditor({
 }: CardBackEditorProps) {
   const textareaId = useId();
   const fieldRef = useRef<HTMLTextAreaElement>(null);
+  useAutoGrowTextarea(fieldRef, { value });
 
   return (
     <div>
@@ -67,9 +72,10 @@ export default function CardBackEditor({
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={onKeyDown}
+          style={AUTO_GROW_TEXTAREA_STYLE}
           // Inherit the wrapper's radius so the field reads as one shape rather
           // than two rounded rectangles sitting on top of each other.
-          className="w-full resize-y rounded-[inherit] bg-transparent px-5 pb-12 pt-4 text-sm leading-6 text-field-text placeholder:text-field-placeholder outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="app-field-text block w-full rounded-[inherit] bg-transparent px-5 pb-12 pt-4 leading-6 text-field-text placeholder:text-field-placeholder outline-none disabled:cursor-not-allowed disabled:opacity-60"
         />
         {/*
           An answer is where the symbols actually go -- a formula, a unit, a

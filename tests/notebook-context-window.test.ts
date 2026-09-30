@@ -3,6 +3,7 @@ import {
   getNotebookContextPageTextLimit,
   NOTEBOOK_CONTEXT_WINDOW_RADIUS,
   selectNotebookContextWindow,
+  selectNotebookPicturedNeighbours,
 } from "@/lib/ai/notebook-context-window";
 
 const pages = (count: number) =>
@@ -90,5 +91,33 @@ describe("choosing which notebook pages Jami is told about", () => {
       getNotebookContextPageTextLimit(false) * 4
     );
     expect(NOTEBOOK_CONTEXT_WINDOW_RADIUS).toBe(3);
+  });
+});
+
+describe("choosing which neighbouring pages Jami is shown as pictures", () => {
+  it("takes the page before and the page after", () => {
+    expect(
+      selectNotebookPicturedNeighbours(pages(20), "page-10").map(({ page, position }) => [
+        page.pageNumber,
+        position,
+      ])
+    ).toEqual([
+      [9, "before"],
+      [11, "after"],
+    ]);
+  });
+
+  it("takes only what exists at either end of the notebook", () => {
+    expect(
+      selectNotebookPicturedNeighbours(pages(20), "page-1").map(({ page }) => page.pageNumber)
+    ).toEqual([2]);
+    expect(
+      selectNotebookPicturedNeighbours(pages(20), "page-20").map(({ page }) => page.pageNumber)
+    ).toEqual([19]);
+    expect(selectNotebookPicturedNeighbours(pages(1), "page-1")).toEqual([]);
+  });
+
+  it("pictures nothing when the current page is not among those loaded", () => {
+    expect(selectNotebookPicturedNeighbours(pages(5), "page-99")).toEqual([]);
   });
 });

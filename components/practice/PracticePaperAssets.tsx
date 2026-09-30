@@ -1,9 +1,8 @@
 import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
+import { parseExamChart, renderExamChartSvg } from "@/lib/practice/exam-chart";
 import { looksLikeSvg, sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 import { useEffect, useState } from "react";
 import { getStorageFileDownloadUrl } from "@/services/firebase/storage-files";
-import NotebookGraphView from "@/components/workspace/NotebookGraphView";
-import { describePaperGraph, readPaperGraph } from "@/lib/practice/paper-graph";
 
 function PrivatePaperImage({ asset }: { asset: PracticePaperQuestionAsset }) {
   const [url, setUrl] = useState("");
@@ -31,31 +30,19 @@ function parseRows(content: string) {
 }
 
 /**
- * A question's graph, drawn from its data by the same renderer as notebook and
- * Tutor graphs: ruled axes at round steps, labelled quantities, and every point
- * where its numbers put it. Content that is not a graph is shown as written.
+ * A graph asset, drawn by the same code that prints it in the booklet.
+ *
+ * It used to be redrawn here from bare x,y rows with only the ends of each
+ * scale labelled, so the screen and the printed paper were two different
+ * graphs of the same data. Now both come from `renderExamChartSvg`: graph
+ * paper, numbered ticks, axis titles with units, plotted crosses.
  */
 function Graph({ content, altText, title }: { content: string; altText: string; title: string }) {
-  // A chart drawn as SVG -- a bar chart, say -- is drawn like any diagram.
-  if (looksLikeSvg(content)) return <DiagramAsset content={content} altText={altText} title={title} />;
-  const graph = readPaperGraph(content);
-  if (!graph) return <pre className="whitespace-pre-wrap text-xs leading-5">{content}</pre>;
-  return (
-    <div className="mx-auto aspect-[440/320] w-full max-w-md overflow-hidden rounded-lg" role="img" aria-label={altText || describePaperGraph(graph)}>
-      <NotebookGraphView graph={graph} width={440} height={320} />
-    </div>
-  );
+  const chart = parseExamChart(content);
+  if (!chart) return <pre className="whitespace-pre-wrap text-xs leading-5">{content}</pre>;
+  return <DiagramAsset content={renderExamChartSvg(chart)} altText={altText} title={title} />;
 }
 
-/**
- * A diagram, drawn where it is drawable and described where it is not.
- *
- * The designer may answer with SVG, because a labelled figure has to be exact:
- * angles that sum, points that match the table beside them, a scale that is
- * true. Everything it sends goes through the sanitiser first, and anything that
- * does not survive falls back to being read as text -- which is what every
- * diagram did before, so the floor is unchanged.
- */
 function DiagramAsset({ content, altText, title }: { content: string; altText?: string; title: string }) {
   const drawn = looksLikeSvg(content) ? sanitizeSvgDiagram(content) : null;
   if (drawn?.ok) {

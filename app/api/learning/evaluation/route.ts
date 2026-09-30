@@ -7,7 +7,8 @@ export const runtime = "nodejs";
 
 /**
  * How well the learner model has predicted the signed-in student's own
- * answers in one folder or deck. Aggregate calibration numbers only.
+ * answers in one folder or deck, and whether acting on its advice went
+ * anywhere. Aggregate numbers only.
  */
 export async function GET(request: NextRequest) {
   if (!featureFlags.enableLearnerProfile) return apiFailure("Not found", 404, "not_found");
@@ -20,12 +21,12 @@ export async function GET(request: NextRequest) {
     return apiFailure("Choose a folder or deck to evaluate.", 400, "invalid_request");
   }
   try {
-    const evaluation = await evaluateLearnerModel({
+    const result = await evaluateLearnerModel({
       uid,
       ...(folderId ? { folderId } : { deckId }),
     });
-    if (!evaluation) return apiFailure("That folder or deck could not be found.", 404, "not_found");
-    return Response.json({ evaluation });
+    if (!result) return apiFailure("That folder or deck could not be found.", 404, "not_found");
+    return Response.json(result);
   } catch {
     return apiFailure("The evaluation could not be run right now.", 503, "evaluation_unavailable");
   }

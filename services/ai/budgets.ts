@@ -6,6 +6,7 @@ import {
   type AiBudgetDecision,
   type AiBudgetGrant,
 } from "@/lib/ai/budgets";
+import { emailAllowsAi } from "@/services/auth/email-confirmation.server";
 import { getAdminDb } from "@/services/firebase/admin";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -32,6 +33,13 @@ export async function checkAiBudget(input: {
   skipBurstLimit?: boolean;
 }): Promise<AiBudgetDecision> {
   const now = input.now ?? Date.now();
+
+  // Before anything is counted: a throwaway account made around the sign-up
+  // form gets no allowance. Existing students are never refused here.
+  if (!(await emailAllowsAi(input.uid, now))) {
+    return { allowed: false, reason: "email_unconfirmed", retryAfterSeconds: 0 };
+  }
+
   const config = AI_BUDGETS[input.action];
   const db = getAdminDb();
   const dayKey = getBudgetDayKey(now);
@@ -223,12 +231,40 @@ const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
   sourcePracticeDrafts: "AI budget reached for source drafts today.",
   photoBackgroundRestore:
     "Jami has sharpened as many photos as it can today. Your photo was still saved.",
+  // Says what is still possible, because the recommendation itself has not
+  // gone away -- only Jami's offer to write the material for it.
+  interventionMaterial:
+    "Jami has written as much study material as it can today. You can still make cards and questions yourself.",
+  revisionLesson:
+    "Jami has done a lot of teaching today. Try another session tomorrow.",
+  // Marking running out mid-session costs a self-grade tap, not the session.
+  revisionMarking:
+    "Jami has checked as many answers as it can today. You can still mark your own.",
 };
+
+/**
+ * Shown wherever AI is refused over an unconfirmed email. Only an account made
+ * around Jami's sign-up form can see it, so there is nothing to offer beyond
+ * saying what is needed.
+ */
+export const EMAIL_UNCONFIRMED_AI_MESSAGE =
+  "Jami's AI needs an account with a confirmed email address. Create one through Jami's sign-up to use it.";
 
 export function createAiBudgetLimitResponse(
   action: AiBudgetAction,
   decision: Extract<AiBudgetDecision, { allowed: false }>
 ) {
+  if (decision.reason === "email_unconfirmed") {
+    return Response.json(
+      {
+        error: EMAIL_UNCONFIRMED_AI_MESSAGE,
+        code: decision.reason,
+        retryAfterSeconds: 0,
+      },
+      { status: 403 }
+    );
+  }
+
   const isBurstLimit = decision.reason === "burst_limit";
   return Response.json(
     {
