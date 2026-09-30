@@ -1,11 +1,28 @@
 export const SOURCE_EMBEDDING_DIMENSIONS = 768;
-export const SOURCE_INDEX_VERSION = 1;
+/**
+ * 2: passages carry the lecture, week or chapter they belong to, never cross
+ * from one to the next, and a source is indexed whole rather than its first
+ * 60,000 characters. An index older than this is rebuilt when Tutor next
+ * reads the source for a student.
+ */
+export const SOURCE_INDEX_VERSION = 2;
 export const SOURCE_CHUNK_TARGET_CHARACTERS = 4_000;
 export const SOURCE_CHUNK_MAX_CHARACTERS = 4_800;
+/**
+ * A heading closes the passage before it only once that passage has this much
+ * in it. Every slide title is a heading, and a passage per slide would leave
+ * each one too short to explain anything.
+ */
+const SOURCE_CHUNK_MIN_CHARACTERS = 1_500;
 
 export type SourceTextPage = {
   pageNumber?: number;
   heading?: string;
+  /** 1 for a document's top-level heading; only structured documents have one. */
+  headingLevel?: number;
+  /** The lecture, week or chapter this page belongs to, when the source has them. */
+  sectionKey?: string;
+  sectionLabel?: string;
   text: string;
 };
 
@@ -14,6 +31,8 @@ export type SourceTextChunk = {
   pageStart?: number;
   pageEnd?: number;
   heading?: string;
+  sectionKey?: string;
+  sectionLabel?: string;
   text: string;
 };
 
@@ -62,7 +81,13 @@ function inferredHeading(paragraph: string) {
   return looksLikeShortHeading ? paragraph.trim() : "";
 }
 
-/** Page-aware, paragraph-preserving chunks averaging roughly 800-1,200 tokens. */
+/**
+ * Page-aware, paragraph-preserving chunks averaging roughly 800-1,200 tokens.
+ *
+ * A chunk never spans two sections, so every passage belongs to exactly one
+ * lecture, week or chapter. Headings stay in the text they head: a slide's
+ * title is often the only place its subject is named.
+ */
 export function chunkSourcePages(pages: readonly SourceTextPage[]): SourceTextChunk[] {
   const chunks: Omit<SourceTextChunk, "chunkIndex">[] = [];
   let current: Omit<SourceTextChunk, "chunkIndex"> | null = null;
@@ -75,17 +100,18 @@ export function chunkSourcePages(pages: readonly SourceTextPage[]): SourceTextCh
   for (const page of pages) {
     const text = normalizeText(page.text);
     if (!text) continue;
+    if (current && current.sectionKey !== page.sectionKey) flush();
     const paragraphs = text
       .split(/\n{2,}/)
       .flatMap(splitLongParagraph)
       .filter(Boolean);
     let activeHeading = page.heading;
-    for (const paragraph of paragraphs) {
-      const nextHeading = inferredHeading(paragraph);
+    for (const rawParagraph of paragraphs) {
+      const nextHeading = inferredHeading(rawParagraph);
+      const paragraph = nextHeading && /^#{1,6}\s/.test(rawParagraph) ? nextHeading : rawParagraph;
       if (nextHeading) {
-        if (current?.text) flush();
+        if (current && current.text.length >= SOURCE_CHUNK_MIN_CHARACTERS) flush();
         activeHeading = nextHeading;
-        continue;
       }
       const separator = current?.text ? "\n\n" : "";
       const wouldExceed = Boolean(
@@ -100,10 +126,13 @@ export function chunkSourcePages(pages: readonly SourceTextPage[]): SourceTextCh
           pageStart: page.pageNumber,
           pageEnd: page.pageNumber,
           heading: activeHeading,
+          ...(page.sectionKey ? { sectionKey: page.sectionKey } : {}),
+          ...(page.sectionLabel ? { sectionLabel: page.sectionLabel } : {}),
         };
       } else if (current.text.length + separator.length + paragraph.length <= SOURCE_CHUNK_MAX_CHARACTERS) {
         current.text += `${separator}${paragraph}`;
         current.pageEnd = page.pageNumber ?? current.pageEnd;
+        current.heading ??= activeHeading;
       } else {
         flush();
         current = {
@@ -111,6 +140,8 @@ export function chunkSourcePages(pages: readonly SourceTextPage[]): SourceTextCh
           pageStart: page.pageNumber,
           pageEnd: page.pageNumber,
           heading: activeHeading,
+          ...(page.sectionKey ? { sectionKey: page.sectionKey } : {}),
+          ...(page.sectionLabel ? { sectionLabel: page.sectionLabel } : {}),
         };
       }
     }
@@ -121,7 +152,8 @@ export function chunkSourcePages(pages: readonly SourceTextPage[]): SourceTextCh
 
 export function buildEmbeddingDocumentText(title: string, chunk: SourceTextChunk) {
   const location = [
-    chunk.heading,
+    chunk.sectionLabel,
+    chunk.heading && chunk.heading !== chunk.sectionLabel ? chunk.heading : "",
     chunk.pageStart
       ? chunk.pageStart === chunk.pageEnd
         ? `page ${chunk.pageStart}`

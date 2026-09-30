@@ -1085,6 +1085,16 @@ describe("Firestore security rules", () => {
     await assertFails(getDoc(chunkRef));
     await assertFails(setDoc(chunkRef, { sourceId: "source-1", text: "changed" }));
     await assertFails(getDocs(collection(aliceDb, "users", ALICE, "sourceChunks")));
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", ALICE, "sourceOutlines", "source-1"), {
+        sourceId: "source-1",
+        sections: [{ kind: "lecture", number: 4, title: "Entropy", chunkStart: 9, chunkEnd: 12 }],
+      });
+    });
+    const outlineRef = doc(aliceDb, "users", ALICE, "sourceOutlines", "source-1");
+    await assertFails(getDoc(outlineRef));
+    await assertFails(setDoc(outlineRef, { sourceId: "source-1", sections: [] }));
   });
 
   it("blocks demo accounts from mutating decks and notification setup", async () => {

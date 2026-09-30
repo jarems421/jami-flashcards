@@ -21,6 +21,10 @@ export type Source = {
   status: SourceStatus;
   /** Absent on a source that has never been indexed. */
   indexStatus?: SourceIndexStatus;
+  /** The index format the source was last indexed with; absent before versions were recorded. */
+  indexVersion?: number;
+  indexChunkCount?: number;
+  indexUpdatedAt?: number;
   createdBy: string;
   createdAt: number;
   updatedAt: number;
@@ -75,6 +79,15 @@ export function mapSourceData(id: string, data: Record<string, unknown>): Source
         : undefined,
     status: isSourceStatus(data.status) ? data.status : "active",
     ...(isSourceIndexStatus(data.indexStatus) ? { indexStatus: data.indexStatus } : {}),
+    ...(typeof data.indexVersion === "number" && Number.isFinite(data.indexVersion)
+      ? { indexVersion: data.indexVersion }
+      : {}),
+    ...(typeof data.indexChunkCount === "number" && Number.isFinite(data.indexChunkCount)
+      ? { indexChunkCount: Math.max(0, Math.round(data.indexChunkCount)) }
+      : {}),
+    ...(typeof data.indexUpdatedAt === "number" && Number.isFinite(data.indexUpdatedAt)
+      ? { indexUpdatedAt: data.indexUpdatedAt }
+      : {}),
     createdBy: normalizeOptionalString(data.createdBy, 160) ?? "",
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,

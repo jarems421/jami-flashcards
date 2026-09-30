@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   formatEvidencePassages,
   getPinnedPassageLimit,
+  isSourceIndexSearchable,
   longestCopiedRun,
+  sourceIndexNeedsRebuild,
   MAX_WHOLE_SOURCE_READS,
   planSourceEvidence,
   type EvidencePassage,
@@ -123,7 +125,7 @@ describe("what each source contributes to a question", () => {
     ]);
 
     expect(text).toContain("in your own words");
-    expect(text).toContain("[pp. 4-5 · Enzymes]");
+    expect(text).toContain("[pp. 4–5 · Enzymes]");
   });
 });
 
@@ -143,5 +145,72 @@ describe("measuring how much of an answer was copied", () => {
       "An enzyme lowers the energy a reaction needs to get going, so it happens faster, and the enzyme is free to do it again afterwards.";
 
     expect(longestCopiedRun(answer, [source])).toBe(0);
+  });
+});
+
+describe("a part of a source the student named", () => {
+  it("is read before anything the search found, most of a lecture in order", () => {
+    const lecture4 = Array.from({ length: 10 }, (_, index) => ({
+      ...passage("pack", 30 + index, 0.5, 3_000),
+      targeted: true,
+      sectionLabel: "Lecture 4: Entropy",
+    }));
+    const plans = planSourceEvidence({
+      sources: [
+        { id: "pack", pinned: true, indexed: true },
+        { id: "notes", pinned: true, indexed: true },
+      ],
+      passages: [
+        passage("pack", 2, 0.1, 3_000),
+        passage("pack", 90, 0.15, 3_000),
+        passage("notes", 5, 0.1, 3_000),
+        ...lecture4,
+      ],
+    });
+    const pack = plans.find((plan) => plan.sourceId === "pack");
+    expect(pack?.kind).toBe("passages");
+    const chosen = pack?.kind === "passages" ? pack.passages : [];
+    // The whole named lecture, beyond the usual eight per source.
+    expect(chosen.filter((entry) => entry.targeted)).toHaveLength(10);
+    expect(chosen.map((entry) => entry.chunkIndex)).toEqual(
+      [...chosen.map((entry) => entry.chunkIndex)].sort((left, right) => left - right)
+    );
+    // The other chosen source is still heard from.
+    expect(plans.find((plan) => plan.sourceId === "notes")?.kind).toBe("passages");
+  });
+
+  it("labels each passage with its lecture and slides", () => {
+    const text = formatEvidencePassages(
+      [{
+        ...passage("pack", 3, 0.2, 40),
+        pageStart: 12,
+        pageEnd: 15,
+        pageKind: "slide",
+        sectionLabel: "Lecture 4: Entropy",
+        heading: "The second law",
+      }],
+      { outline: "Contents of this source..." }
+    );
+    expect(text.startsWith("Contents of this source...")).toBe(true);
+    expect(text).toContain("[Lecture 4: Entropy · slides 12–15 · The second law]");
+  });
+});
+
+describe("when a source's index is searched or rebuilt", () => {
+  it("searches a ready index, and one being rebuilt that still has its passages", () => {
+    expect(isSourceIndexSearchable({ indexStatus: "ready" })).toBe(true);
+    expect(isSourceIndexSearchable({ indexStatus: "processing", indexChunkCount: 40 })).toBe(true);
+    expect(isSourceIndexSearchable({ indexStatus: "processing" })).toBe(false);
+    expect(isSourceIndexSearchable({ indexStatus: "failed" })).toBe(false);
+  });
+
+  it("rebuilds an index that is missing, older, or stuck, once per format", () => {
+    const now = 1_000_000_000;
+    expect(sourceIndexNeedsRebuild({}, now)).toBe(true);
+    expect(sourceIndexNeedsRebuild({ indexStatus: "ready" }, now)).toBe(true);
+    expect(sourceIndexNeedsRebuild({ indexStatus: "ready", indexVersion: 2 }, now)).toBe(false);
+    expect(sourceIndexNeedsRebuild({ indexStatus: "failed", indexVersion: 2 }, now)).toBe(false);
+    expect(sourceIndexNeedsRebuild({ indexStatus: "processing", indexUpdatedAt: now - 60_000 }, now)).toBe(false);
+    expect(sourceIndexNeedsRebuild({ indexStatus: "processing", indexUpdatedAt: now - 60 * 60_000 }, now)).toBe(true);
   });
 });

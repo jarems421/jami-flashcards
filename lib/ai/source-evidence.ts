@@ -13,6 +13,46 @@
  * goes in front of the model.
  */
 
+import { SOURCE_INDEX_VERSION } from "@/lib/ai/source-chunking";
+import { describePageRange, type SourcePageKind } from "@/lib/ai/source-outline";
+
+type IndexedSourceState = {
+  indexStatus?: "processing" | "ready" | "empty" | "failed";
+  indexVersion?: number;
+  indexChunkCount?: number;
+  indexUpdatedAt?: number;
+};
+
+/** An index that stopped partway (a timed-out function) is retried after this. */
+const STALLED_INDEX_MS = 15 * 60 * 1000;
+
+/**
+ * Whether a source's index can be searched for this question. One being
+ * rebuilt still has its previous passages until the new ones replace them.
+ */
+export function isSourceIndexSearchable(source: IndexedSourceState) {
+  return (
+    source.indexStatus === "ready" ||
+    (source.indexStatus === "processing" && (source.indexChunkCount ?? 0) > 0)
+  );
+}
+
+/**
+ * Whether Tutor should rebuild a source's index after answering, because the
+ * student has just asked about it and its index is missing, from an older
+ * format that lacks lecture labels and its later pages, or stuck.
+ *
+ * Each source is tried once per format: a failed or empty build records the
+ * version it was tried with, so it is not retried on every question.
+ */
+export function sourceIndexNeedsRebuild(source: IndexedSourceState, now = Date.now()) {
+  if (!source.indexStatus) return true;
+  if (source.indexStatus === "processing") {
+    return now - (source.indexUpdatedAt ?? 0) > STALLED_INDEX_MS;
+  }
+  return (source.indexVersion ?? 1) < SOURCE_INDEX_VERSION;
+}
+
 /** Characters of retrieved passages one question may carry, across every source. */
 export const TUTOR_EVIDENCE_CHARACTER_BUDGET = 48_000;
 
@@ -27,6 +67,11 @@ export const MAX_WHOLE_SOURCE_READS = 5;
 
 /** The most passages any one source contributes, however few sources there are. */
 const MAX_PASSAGES_PER_SOURCE = 8;
+/**
+ * The most a source contributes when the student named the part of it they
+ * mean: enough for most of one lecture, read in order.
+ */
+const MAX_TARGETED_PASSAGES_PER_SOURCE = 14;
 
 export type EvidenceSource = {
   id: string;
@@ -44,8 +89,14 @@ export type EvidencePassage = {
   pageStart?: number;
   pageEnd?: number;
   heading?: string;
+  /** The lecture, week or chapter the passage belongs to, e.g. "Lecture 4: Entropy". */
+  sectionLabel?: string;
+  /** What the source's page numbers count. */
+  pageKind?: SourcePageKind;
   /** Cosine distance to the question; lower is closer. Absent for a neighbouring passage. */
   distance?: number;
+  /** From a part of the source the student named or plainly asked about. */
+  targeted?: boolean;
 };
 
 export type SourceEvidencePlan =
@@ -73,6 +124,7 @@ export function getRelatedPassageLimit(relatedCount: number) {
 
 function byCloseness(left: EvidencePassage, right: EvidencePassage) {
   return (
+    Number(Boolean(right.targeted)) - Number(Boolean(left.targeted)) ||
     (left.distance ?? Number.POSITIVE_INFINITY) -
       (right.distance ?? Number.POSITIVE_INFINITY) ||
     left.chunkIndex - right.chunkIndex
@@ -111,8 +163,19 @@ export function planSourceEvidence(input: {
   }
   queues.forEach((queue) => queue.sort(byCloseness));
 
+  const targetedCount = (sourceId: string) =>
+    queues.get(sourceId)?.filter((passage) => passage.targeted).length ?? 0;
+  const capFor = (sourceId: string) => {
+    const targeted = targetedCount(sourceId);
+    return targeted > 0
+      ? Math.min(MAX_TARGETED_PASSAGES_PER_SOURCE, Math.max(MAX_PASSAGES_PER_SOURCE, targeted + 2))
+      : MAX_PASSAGES_PER_SOURCE;
+  };
+  // A source the student pointed into goes first: what they named is what
+  // they are asking about.
   const order = [...input.sources].sort(
     (left, right) =>
+      Number(targetedCount(right.id) > 0) - Number(targetedCount(left.id) > 0) ||
       Number(right.pinned) - Number(left.pinned) ||
       (queues.get(left.id)?.[0]?.distance ?? Number.POSITIVE_INFINITY) -
         (queues.get(right.id)?.[0]?.distance ?? Number.POSITIVE_INFINITY)
@@ -120,9 +183,10 @@ export function planSourceEvidence(input: {
 
   const chosen = new Map<string, EvidencePassage[]>();
   let remaining = budget;
-  for (let round = 0; round < MAX_PASSAGES_PER_SOURCE && remaining > 0; round += 1) {
+  for (let round = 0; round < MAX_TARGETED_PASSAGES_PER_SOURCE && remaining > 0; round += 1) {
     let dealt = false;
     for (const source of order) {
+      if (round >= capFor(source.id)) continue;
       const next = queues.get(source.id)?.[round];
       if (!next) continue;
       // The first passage of each source is always dealt, so a source that was
@@ -170,26 +234,32 @@ export function planSourceEvidence(input: {
 }
 
 function describeLocation(passage: EvidencePassage) {
-  const pages = passage.pageStart
-    ? passage.pageStart === passage.pageEnd || !passage.pageEnd
-      ? `p. ${passage.pageStart}`
-      : `pp. ${passage.pageStart}-${passage.pageEnd}`
-    : "";
-  return [pages, passage.heading].filter(Boolean).join(" · ") || "Extract";
+  const pages = describePageRange(passage.pageStart, passage.pageEnd, passage.pageKind);
+  const heading =
+    passage.heading && passage.heading !== passage.sectionLabel ? passage.heading : "";
+  return [passage.sectionLabel, pages, heading].filter(Boolean).join(" · ") || "Extract";
 }
 
 /**
- * The passages as the model reads them.
+ * The passages as the model reads them, after the source's contents list when
+ * it has one.
  *
  * Headed as material to understand rather than text to reproduce, because the
  * framing a passage arrives in is a large part of whether it comes back out
- * verbatim.
+ * verbatim. Each is labelled with where it sits in the student's material, so
+ * Tutor can tell them where to look.
  */
-export function formatEvidencePassages(passages: readonly EvidencePassage[]) {
+export function formatEvidencePassages(
+  passages: readonly EvidencePassage[],
+  options: { outline?: string } = {}
+) {
   return [
-    "Passages the search judged relevant to this question. They are for your understanding: teach the ideas in your own words rather than reproducing these sentences.",
+    options.outline ?? "",
+    "Passages the search judged relevant to this question, each labelled with where it is in the source. They are for your understanding: teach the ideas in your own words rather than reproducing these sentences.",
     ...passages.map((passage) => `[${describeLocation(passage)}]\n${passage.text.trim()}`),
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function words(text: string) {
