@@ -11,7 +11,6 @@ import { BrandMark, ButtonLink } from "@/components/ui";
 import Button from "@/components/ui/Button";
 import GoogleMark from "@/components/auth/GoogleMark";
 import LandingPreview from "@/components/landing/LandingPreview";
-import LandingSteps from "@/components/landing/LandingSteps";
 
 /**
  * Said once, near the foot of the page, so the headline can stay about exams
@@ -182,12 +181,6 @@ export default function Home() {
           Jami
         </Link>
         <nav className="flex items-center gap-1 sm:gap-2">
-          <a
-            href="#how-it-works"
-            className="hidden rounded-full px-4 py-2 text-sm font-medium text-text-secondary transition duration-fast hover:bg-[var(--button-ghost-bg-hover)] hover:text-text-primary sm:inline-flex"
-          >
-            How it works
-          </a>
           <Link
             href="/auth"
             className="inline-flex rounded-full border border-[var(--color-border-strong)] bg-[var(--color-glass-subtle)] px-4 py-2 text-sm font-medium text-text-primary transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--color-glass-medium)]"
@@ -209,7 +202,7 @@ export default function Home() {
             GCSE and A-level revision
           </div>
 
-          <h1 className="mt-6 max-w-xl text-balance text-4xl font-medium leading-[1.1] tracking-[-0.03em] text-text-primary sm:text-5xl sm:leading-[1.08]">
+          <h1 className="mt-6 max-w-xl text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-text-primary sm:text-5xl">
             Practise like the exam.{" "}
             <span className="landing-accent block">Revise what it shows you.</span>
           </h1>
@@ -258,73 +251,34 @@ export default function Home() {
         </div>
       </section>
 
-      <section
-        id="how-it-works"
-        className="relative mx-auto w-full max-w-6xl scroll-mt-8 px-5 pb-20 sm:px-8 lg:pb-28"
-      >
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="text-2xs font-semibold uppercase tracking-[0.22em] text-text-muted">
-            How it works
-          </div>
-          <h2 className="mt-3 text-balance text-2xl font-medium tracking-tight text-text-primary sm:text-3xl">
-            From a past paper to{" "}
-            <span className="landing-accent">what you revise next.</span>
-          </h2>
-          <p className="mt-3 text-sm leading-6 text-text-secondary sm:text-base sm:leading-7">
-            Every answer you mark tells Jami a little more about where you are,
-            and what is worth your time tomorrow.
-          </p>
-        </div>
-        <div className="mt-10">
-          <LandingSteps />
-        </div>
-
-        <div className="signed-out-panel mt-5 flex flex-col gap-6 rounded-xl p-6 md:flex-row md:items-center md:justify-between md:gap-10 md:p-8">
-          <div className="max-w-md">
-            <h3 className="text-base font-semibold text-text-primary">
-              Studying something else, or at university?
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-text-muted">
-              Folders, notebooks, flashcards and Jami work with your own notes
-              in any subject.
-            </p>
-          </div>
-          <ul
-            aria-label="For example"
-            className="flex flex-wrap gap-2 md:max-w-sm md:justify-end"
-          >
-            {ANY_SUBJECT_EXAMPLES.map((subject) => (
-              <li
-                key={subject}
-                className="app-chip rounded-full px-3 py-1 text-xs font-medium"
-              >
-                {subject}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      <section className="relative mx-auto flex w-full max-w-2xl flex-col items-center px-5 pb-20 text-center sm:px-8 lg:pb-28">
+      <section className="relative mx-auto flex w-full max-w-3xl flex-col items-center px-5 pb-20 text-center sm:px-8 lg:pb-24">
         <div className="signed-out-glow signed-out-glow-centred" aria-hidden="true" />
-        <div className="login-brand-halo [--brand-halo-size:3.5rem]" aria-hidden="true">
-          <span className="login-brand-spark login-brand-spark-one" />
-          <span className="login-brand-spark login-brand-spark-two" />
-          <span className="login-brand-spark login-brand-spark-three" />
-          <BrandMark size="lg" />
-        </div>
-        <h2 className="mt-7 text-2xl font-medium tracking-tight text-text-primary sm:text-3xl">
-          Ready when you are.
+        <h2 className="relative text-balance text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
+          Not only exams.{" "}
+          <span className="landing-accent">Any subject you study.</span>
         </h2>
-        <p className="mt-3 max-w-md text-sm leading-6 text-text-secondary sm:text-base sm:leading-7">
-          Sign in to return to your work, or set up your first study folder in
-          under a minute.
+        <p className="relative mt-3 max-w-md text-sm leading-6 text-text-secondary sm:text-base sm:leading-7">
+          Folders, notebooks, flashcards and Jami work with your own notes,
+          at school or at university.
         </p>
+        <ul
+          aria-label="For example"
+          className="relative mt-6 flex flex-wrap justify-center gap-2"
+        >
+          {ANY_SUBJECT_EXAMPLES.map((subject) => (
+            <li
+              key={subject}
+              className="app-chip rounded-full px-3 py-1 text-xs font-medium transition duration-fast hover:-translate-y-0.5"
+            >
+              {subject}
+            </li>
+          ))}
+        </ul>
         <ButtonLink
           href="/auth"
           variant="primary"
           size="lg"
-          className="mt-7 justify-center px-8"
+          className="relative mt-8 justify-center px-8"
         >
           Get started
         </ButtonLink>

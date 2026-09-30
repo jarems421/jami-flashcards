@@ -45,7 +45,6 @@ const auditedFiles = [
   "components/auth/PasswordField.tsx",
   "components/auth/PasswordStrength.tsx",
   "components/landing/LandingPreview.tsx",
-  "components/landing/LandingSteps.tsx",
   "app/dashboard/goals/page.tsx",
   "app/dashboard/decks/page.tsx",
   "app/dashboard/profile/page.tsx",

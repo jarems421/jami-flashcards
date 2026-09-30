@@ -1404,23 +1404,18 @@
   }
 
   /*
-   * The second half of the landing headline, in an italic serif with the
-   * app icon's lavender and teal running through it. Newsreader is one of the
-   * faces a student can choose, so it is already self-hosted.
+   * The second half of the landing headline, in Jami's own face with the app
+   * icon's lavender and teal running through it. It used to be an italic serif,
+   * which read as a different product from the app a student signs in to.
    */
   .landing-accent {
     /* The shorthand first: it would reset a clip declared before it. */
     background: linear-gradient(100deg, #fff8ff 4%, #dccfff 46%, #b2eadd 96%);
+    background-size: 200% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    font-family: var(--font-newsreader), "Iowan Old Style", Georgia, serif;
-    font-size: 1.06em;
-    font-style: italic;
-    font-weight: 400;
-    letter-spacing: -0.015em;
-    /* Room for the italic's overhang, which `background-clip` would crop. */
-    padding-right: 0.08em;
+    font-weight: 600;
   }
 
   /* A few lines of exercise-book paper for the example answer. */
@@ -1432,9 +1427,81 @@
       rgba(214, 193, 244, 0.16) calc(1.625rem - 1px),
       rgba(214, 193, 244, 0.16) 1.625rem
     );
-    font-family: var(--font-newsreader), "Iowan Old Style", Georgia, serif;
-    font-style: italic;
     line-height: 1.625rem;
+  }
+
+  /* The pen as the example answer is written. */
+  .landing-caret {
+    background: currentColor;
+    display: inline-block;
+    height: 1.05em;
+    margin-left: 1px;
+    vertical-align: -0.15em;
+    width: 1.5px;
+  }
+
+  /* The demo card leans a little toward the pointer. */
+  .landing-lean {
+    transform: perspective(1200px) rotateX(var(--landing-lean-x, 0deg))
+      rotateY(var(--landing-lean-y, 0deg));
+    transition: transform 500ms var(--ease-standard);
+  }
+
+  /* Light that follows the pointer across the demo card. */
+  .landing-spotlight::after {
+    background: radial-gradient(
+      18rem circle at var(--landing-spot-x, 50%) var(--landing-spot-y, 0%),
+      rgba(200, 185, 255, 0.12),
+      transparent 70%
+    );
+    border-radius: inherit;
+    content: "";
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    transition: opacity 300ms ease;
+  }
+
+  .landing-stage:hover .landing-spotlight::after {
+    opacity: 1;
+  }
+
+  .landing-ring {
+    transition: stroke-dasharray 500ms var(--ease-standard);
+  }
+
+  /* The flashcard kept from the missed mark: turns over by itself, or on hover. */
+  .landing-flip {
+    perspective: 1000px;
+  }
+
+  .landing-flip-inner {
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 700ms var(--ease-standard);
+  }
+
+  .landing-flip[data-flipped="true"] .landing-flip-inner,
+  .landing-flip:hover .landing-flip-inner {
+    transform: rotateY(180deg);
+  }
+
+  .landing-flip-face {
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    inset: 0;
+    position: absolute;
+  }
+
+  .landing-flip-back {
+    transform: rotateY(180deg);
+  }
+
+  .landing-step-progress {
+    background: linear-gradient(90deg, #dccfff, #b2eadd);
+    transition: transform 60ms linear;
   }
 
   .landing-tilted {
@@ -1468,13 +1535,22 @@
       animation: landing-float 7s ease-in-out infinite;
     }
 
-    .landing-tilted-late {
-      animation-delay: -3.5s;
-      animation-duration: 8.5s;
-    }
-
     .landing-orbit-turning {
       animation: landing-orbit 90s linear infinite;
+    }
+
+    .landing-accent {
+      animation: landing-shimmer 9s ease-in-out infinite;
+    }
+
+    .landing-caret {
+      animation: landing-caret 1s steps(1) infinite;
+    }
+
+    .landing-next-live {
+      animation:
+        landing-float 7s ease-in-out infinite,
+        landing-glow 1.8s ease-in-out infinite;
     }
   }
 
@@ -2344,6 +2420,34 @@
 
   50% {
     transform: translateY(-8px) rotate(var(--landing-tilt, 0deg));
+  }
+}
+
+@keyframes landing-shimmer {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes landing-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes landing-glow {
+  0%,
+  100% {
+    box-shadow: var(--elevation-3), 0 0 0 0 rgba(200, 185, 255, 0);
+  }
+
+  50% {
+    box-shadow: var(--elevation-3), 0 0 26px 2px rgba(200, 185, 255, 0.35);
   }
 }
 
@@ -3570,6 +3674,133 @@ html.panels-solid body.constellation-background-enabled .app-nav {
     display: inline-block;
     /* Display maths already had room on its own line; only inline needed the step up. */
     font-size: 1em;
+  }
+
+  /*
+   * A Tutor answer added to a notebook page.
+   *
+   * The same answer as the chat card, set on paper: its size comes from the
+   * box, which is in page units, so everything here is in em and scales with
+   * the page at any zoom. Colour comes from the paper's ink rather than the
+   * app theme -- a dark theme can hold a white page -- so rules, cells and
+   * code are drawn from the text colour itself.
+   */
+  .ai-response.ai-response--page {
+    color: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  .ai-response--page p,
+  .ai-response--page ul,
+  .ai-response--page ol,
+  .ai-response--page pre,
+  .ai-response--page blockquote,
+  .ai-response--page .ai-response-table {
+    margin: 0.5em 0;
+  }
+
+  .ai-response--page h1,
+  .ai-response--page h2,
+  .ai-response--page h3,
+  .ai-response--page h4,
+  .ai-response--page h5,
+  .ai-response--page h6 {
+    margin: 0.9em 0 0.35em;
+    color: inherit;
+  }
+
+  .ai-response--page h1 {
+    font-size: 1.3em;
+  }
+
+  .ai-response--page h2 {
+    font-size: 1.18em;
+  }
+
+  .ai-response--page h3 {
+    font-size: 1.06em;
+  }
+
+  .ai-response--page h4,
+  .ai-response--page h5,
+  .ai-response--page h6 {
+    font-size: 1em;
+  }
+
+  .ai-response--page ul,
+  .ai-response--page ol {
+    padding-left: 1.4em;
+  }
+
+  .ai-response--page li {
+    margin: 0.2em 0;
+    padding-left: 0.2em;
+  }
+
+  .ai-response--page strong,
+  .ai-response--page em {
+    color: inherit;
+  }
+
+  .ai-response--page code {
+    background-color: color-mix(in srgb, currentColor 8%, transparent);
+    color: inherit;
+  }
+
+  .ai-response--page pre {
+    background-color: color-mix(in srgb, currentColor 4%, transparent);
+    border-color: color-mix(in srgb, currentColor 18%, transparent);
+  }
+
+  .ai-response--page pre code {
+    color: inherit;
+    white-space: pre-wrap;
+  }
+
+  .ai-response--page blockquote {
+    border-left-color: color-mix(in srgb, currentColor 40%, transparent);
+    background-color: color-mix(in srgb, currentColor 4%, transparent);
+    color: inherit;
+  }
+
+  .ai-response--page hr {
+    border-top-color: color-mix(in srgb, currentColor 22%, transparent);
+  }
+
+  /* A page does not scroll sideways inside itself: a table wraps to its box. */
+  .ai-response--page .ai-response-table {
+    overflow: visible;
+  }
+
+  .ai-response--page table {
+    font-size: 0.95em;
+  }
+
+  .ai-response--page th,
+  .ai-response--page td {
+    padding: 0.35em 0.6em;
+    border-color: color-mix(in srgb, currentColor 25%, transparent);
+  }
+
+  .ai-response--page th {
+    background-color: color-mix(in srgb, currentColor 6%, transparent);
+  }
+
+  .ai-response--page .katex-display {
+    margin: 0.5em 0;
+  }
+
+  /* Figures are drawn for a white ground, and keep one on cream and black paper. */
+  .ai-response--page .ai-drawn-figure {
+    overflow: visible;
+    background-color: #ffffff;
+  }
+
+  .ai-response--page .ai-drawn-figure > svg,
+  .ai-response--page .ai-drawn-figure > svg:not([width]) {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 

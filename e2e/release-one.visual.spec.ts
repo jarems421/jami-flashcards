@@ -24,7 +24,7 @@ test("Release 1 landing stays clear at desktop and phone sizes", async ({ page }
       name: "Practise like the exam. Revise what it shows you.",
     })
   ).toBeVisible();
-  await expect(page.getByText("Practise the real thing", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Get marked" })).toBeVisible();
   await expectNoHorizontalOverflow(page, 1440);
   await page.screenshot({ path: "test-results/release-one-landing-desktop.png", fullPage: true });
 
@@ -40,7 +40,7 @@ test("Release 1 landing stays clear at desktop and phone sizes", async ({ page }
     .getByRole("button", { name: "Continue with Google" })
     .boundingBox();
   const steps = await page
-    .getByText("Practise the real thing", { exact: true })
+    .getByRole("button", { name: "Get marked" })
     .boundingBox();
   expect(headline && signIn && steps).toBeTruthy();
   expect(signIn!.y).toBeGreaterThan(headline!.y);
