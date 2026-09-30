@@ -125,14 +125,14 @@ const dbInstance = app
     ? getFirestore(app)
     : initializeFirestore(app, {
         /*
-         * Detected, not forced. Forcing long-polling protected the few networks
-         * that buffer WebChannel -- mobile carriers, privacy relays, antivirus
-         * proxies -- by making every student pay for them: each response is
-         * closed as soon as it is sent, so every read on every page costs extra
-         * round trips. Auto-detection probes the connection once and falls back
-         * to long-polling only where streaming is actually being buffered.
+         * Forced, not detected. Auto-detection probes with a small response,
+         * so a network that buffers streaming (campus Wi-Fi, mobile carriers,
+         * privacy relays, antivirus proxies) could pass the probe and then
+         * hold a large read -- a drawn notebook page's ink -- until it timed
+         * out, and the notebook failed to open. Long-polling costs a few more
+         * round trips but always delivers.
          */
-        experimentalAutoDetectLongPolling: true,
+        experimentalForceLongPolling: true,
       })
   : createUninitializedProxy<ReturnType<typeof getFirestore>>("db");
 

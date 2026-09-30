@@ -150,6 +150,40 @@ describe("useNotebookLoader", () => {
     await mount();
     expect(feedback?.message).toBe("no network");
     expect(loader.loading).toBe(false);
+    expect(loader.notebook).toBeNull();
+    expect(loader.loadFailed).toBe(true);
+  });
+
+  it("opens the notebook when the open page's ink fails, and fetches it again", async () => {
+    vi.useFakeTimers();
+    try {
+      const lightPage = {
+        ...PAGE_ONE,
+        thumbnail: { inkSvg: "<svg data-thumb='1' />", strokes: [] },
+      } as unknown as NotebookPage;
+      const inkedPage = {
+        ...lightPage,
+        inkData: { version: 2, format: "js-draw-svg", svg: "<svg data-ink='1' />" },
+      } as NotebookPage;
+      getNotebookPages.mockResolvedValue([lightPage]);
+      getNotebookPageWithInk
+        .mockRejectedValueOnce(new Error("Load notebook page ink timed out"))
+        .mockResolvedValueOnce(inkedPage);
+      await mount();
+      expect(loader.notebook?.id).toBe("notebook-1");
+      expect(loader.loadFailed).toBe(false);
+      expect(loader.selectedPageId).toBe("page-1");
+      // A draft is only weighed against a page whose ink is known.
+      expect(readNotebookPageDraft).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+      expect(loader.pages[0]?.inkData?.svg).toBe("<svg data-ink='1' />");
+    } finally {
+      getNotebookPageWithInk.mockImplementation((_userId: unknown, page: unknown) => page);
+      vi.useRealTimers();
+    }
   });
 
   it("discards a stale draft without disturbing the page", async () => {

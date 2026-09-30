@@ -40,6 +40,7 @@ import NotebookViewport, {
   type NotebookViewportPreview,
 } from "@/components/workspace/NotebookViewport";
 import {
+  Button,
   ButtonLink,
   ConfirmDialog,
   EmptyState,
@@ -257,7 +258,9 @@ export default function NotebookEditorPage() {
     selectedPageId,
     setSelectedPageId,
     loading,
+    loadFailed,
     takeRecoveredDraft,
+    reload: reloadNotebook,
   } = useNotebookLoader({
     userId: user?.uid,
     notebookId,
@@ -2829,6 +2832,23 @@ export default function NotebookEditorPage() {
           <Skeleton className="h-40 rounded-2xl" />
           <Skeleton className="h-[34rem] rounded-2xl" />
         </div>
+      </AppPage>
+    );
+  }
+
+  if (!notebook && loadFailed) {
+    return (
+      <AppPage title="Notebook" backHref="/dashboard/folders" backLabel="Folders" width="xl">
+        <EmptyState
+          emoji="Notebook"
+          title="This notebook didn't open"
+          description="Jami couldn't reach your notebook just now. Check your connection and try again."
+          action={
+            <Button onClick={() => void reloadNotebook()}>
+              Try again
+            </Button>
+          }
+        />
       </AppPage>
     );
   }
