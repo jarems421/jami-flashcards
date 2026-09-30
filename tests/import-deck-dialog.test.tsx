@@ -71,6 +71,8 @@ describe("importing cards", () => {
         { front: "Mitosis", back: "Cell division" },
         { front: "Osmosis", back: "Water moving across a membrane" },
       ],
+      // A pasted list has no pictures; only an Anki package can bring diagrams.
+      diagrams: [],
     });
   });
 });

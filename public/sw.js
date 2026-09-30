@@ -21,6 +21,12 @@
  * install.
  */
 const STATIC_CACHE = "jami-static-v6";
+/*
+ * Card pictures kept for offline study (services/study/offline-card-images.ts
+ * fills it). Kept across app updates: it holds the student's own pictures,
+ * not a build, and the page prunes it itself.
+ */
+const CARD_IMAGE_CACHE = "jami-card-images-v1";
 
 /**
  * How long the network gets to produce a current page before the cached one is
@@ -41,6 +47,14 @@ const APP_SHELL_URLS = [
   "/icons/notification-icon-192.png",
 ];
 
+function isCardPicture(url) {
+  try {
+    return /\/users\/[^/]+\/cardImages\//.test(decodeURIComponent(url.pathname));
+  } catch {
+    return false;
+  }
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
@@ -58,7 +72,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key !== STATIC_CACHE)
+            .filter((key) => key !== STATIC_CACHE && key !== CARD_IMAGE_CACHE)
             .map((key) => caches.delete(key))
         )
       )
@@ -69,6 +83,22 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
+
+  /*
+   * A card picture from Storage: the network when there is one, the copy kept
+   * for offline study when there is not. Only card pictures, recognised by
+   * their path, so no other cross-origin request is ever touched.
+   */
+  if (request.method === "GET" && url.origin !== self.location.origin && isCardPicture(url)) {
+    event.respondWith(
+      fetch(request).catch(async () => {
+        const cache = await caches.open(CARD_IMAGE_CACHE);
+        const kept = await cache.match(request.url, { ignoreVary: true });
+        return kept || Response.error();
+      })
+    );
+    return;
+  }
 
   if (request.method !== "GET" || url.origin !== self.location.origin) {
     return;

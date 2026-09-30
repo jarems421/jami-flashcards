@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { loadPresentationHistory, recordPresentation } from "@/services/study/presentation-history";
+import { keepCardPicturesForOffline } from "@/services/study/card-images";
 import { readPresentationViewState } from "@/lib/study/presentation-state";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
@@ -22,7 +23,7 @@ import StudySessionPreparing from "@/components/study/StudySessionPreparing";
 import FocusedReviewBuilder from "@/components/study/FocusedReviewBuilder";
 import StudyHomeStat from "@/components/study/StudyHomeStat";
 import { isSuccessfulRating, type CardRating } from "@/lib/study/scheduler";
-import { getNextDueCard, type Card } from "@/lib/study/cards";
+import { getCardListTitle, getNextDueCard, type Card } from "@/lib/study/cards";
 import { isFeatureEnabled } from "@/lib/app/feature-flags";
 import { DEFAULT_STUDY_MODE_POLICY, readStudyModePolicy, saveStudyModePolicy } from "@/lib/study/study-mode-preference";
 import { getCardContentHash, STUDY_MODE_LABELS, type StudyMode, type StudyModePolicy } from "@/lib/study/study-modes";
@@ -357,6 +358,8 @@ export default function StudyPage() {
       setTopics(nextTopics);
       setDailyReviewState(nextDailyReviewState);
       saveOfflineStudySnapshot(user.uid, { cards: sortedCards, decks: nextDecks });
+      // Their pictures too, once the page has settled: diagram cards are no use offline without them.
+      window.setTimeout(() => keepCardPicturesForOffline(sortedCards), 4_000);
       setOfflineMode(false);
       setOfflineSnapshotAt(Date.now());
     } catch (error) {
@@ -1507,7 +1510,7 @@ export default function StudyPage() {
   }, [current, currentExercise, presentation, showError, prepareRemainingAssets]);
 
   const handleRating = useCallback(
-    (rating: CardRating, options: { requeueOnMiss?: boolean } = {}) => {
+    (rating: CardRating, options: { requeueOnMiss?: boolean; confusedWithLabelId?: string } = {}) => {
       if (!current) return;
       const presentationKey = presentationDraftKey({
         sessionId: sessionIdRef.current ?? "session",
@@ -1542,6 +1545,7 @@ export default function StudyPage() {
         rating,
         answeredAt: Date.now(),
         requeueOnMiss: options.requeueOnMiss,
+        ...(options.confusedWithLabelId ? { confusedWithLabelId: options.confusedWithLabelId } : {}),
       });
     },
     [commitReview, current, currentExercise, draftResponses, index, presentation, recordModeAnswer, setDraftResponses, studyModesEnabled]
@@ -2299,7 +2303,7 @@ export default function StudyPage() {
                     resetKey={current.id}
                     contextKey={`learn:${current.id}`}
                     contextLabel="Current flashcard"
-                    historyContextLabel={`Flashcard · ${current.front.slice(0, 72)}`}
+                    historyContextLabel={`Flashcard · ${getCardListTitle(current).slice(0, 72)}`}
                     getContext={getLearnAssistantContext}
                     quickActions={learnAssistantQuickActions}
                     settingsFolderIds={

@@ -11,7 +11,9 @@ import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { getBulkTopicCapacity } from "@/lib/material/topic-management";
 import { MAX_LINKED_TOPICS } from "@/lib/material/topics";
 import type { Card } from "@/lib/study/cards";
+import { applyOcclusionUpdates } from "@/lib/study/image-occlusion";
 import { deleteCardImageFiles } from "@/services/study/card-images";
+import { releaseDiagramLabels } from "@/services/study/image-occlusion";
 import {
   deleteCards,
   moveCardsToDeck,
@@ -248,12 +250,20 @@ export function useCardBulkActions({
       const deletedCount = selectedCardIds.length;
       // Their images go with them. The cards are already deleted, so a file
       // that refuses to follow is not worth an error about the cards.
-      const images = cards
-        .filter((card) => deletedIds.has(card.id))
-        .flatMap((card) => [card.frontImage, card.backImage]);
+      const deletedCards = cards.filter((card) => deletedIds.has(card.id));
+      const images = deletedCards.flatMap((card) => [card.frontImage, card.backImage]);
       if (images.some(Boolean)) await deleteCardImageFiles(images);
+      // Diagram labels whose cards went leave their diagrams too.
+      const diagramCleanup = await releaseDiagramLabels(
+        deletedCards[0]?.userId ?? "",
+        deletedCards
+      );
       setCards((current) =>
-        current.filter((card) => !deletedIds.has(card.id))
+        applyOcclusionUpdates(
+          current.filter((card) => !deletedIds.has(card.id)),
+          diagramCleanup.updates,
+          diagramCleanup.deletedCardIds
+        )
       );
       setSelectedCardIds([]);
       setBulkDeletePending(false);

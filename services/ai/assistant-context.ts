@@ -712,6 +712,10 @@ async function resolveLearnContext(input: {
         ...(cardData.frontImage
           ? ["The card's front is an image, which you cannot see. Do not guess what it shows; ask the student to describe it if you need to."]
           : []),
+        // A diagram card's question is one covered label on a picture.
+        ...(cardData.occlusion
+          ? ["This card asks the student to name one covered label on a diagram, which you cannot see. Do not guess what the diagram shows; ask the student to describe where the label sits if you need to."]
+          : []),
         ...(answerIsVisibleToStudent && cardData.backImage
           ? ["The card's answer includes an image, which you cannot see."]
           : []),

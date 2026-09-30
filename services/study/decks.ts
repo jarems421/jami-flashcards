@@ -17,7 +17,9 @@ import {
 } from "@/lib/study/deck-style";
 import type { Deck } from "@/lib/study/decks";
 import { normalizeCardImage } from "@/lib/study/card-images";
+import { mapCardData } from "@/lib/study/cards";
 import { deleteCardImageFiles } from "@/services/study/card-images";
+import { releaseDiagramLabels } from "@/services/study/image-occlusion";
 import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 import {
   addDoc,
@@ -462,12 +464,19 @@ export const deleteDeck = async (
     ];
   });
 
+  const diagramCards = cardDocuments
+    .map((cardDoc) => mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>))
+    .filter((card) => card.occlusion);
+
   await deleteSnapshotsInBatches(
     cardDocuments,
     "Delete deck cards",
     invalidateDeckData
   );
   await deleteCardImageFiles(cardImages);
+  // A diagram whose cards were all in this deck frees its picture; one with
+  // cards moved elsewhere keeps it, minus the labels deleted here.
+  await releaseDiagramLabels(normalizedUserId, diagramCards);
 
   await deleteUserDeckHistory(
     normalizedUserId,

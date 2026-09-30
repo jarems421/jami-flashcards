@@ -42,6 +42,12 @@ export type FlashcardReviewEvent = {
    * they acted.
    */
   interventionId?: string;
+  /**
+   * On a diagram card: which other label of the same diagram was given
+   * instead of the one asked. A label id, never words -- enough to show a
+   * student the pairs they mix up, and nothing about what they typed.
+   */
+  confusedWithLabelId?: string;
 };
 
 export type FlashcardReviewEventWrite = Omit<FlashcardReviewEvent, "id"> & {
@@ -79,6 +85,7 @@ export function buildFlashcardReviewEventWrite(
     | "rating"
     | "sessionKind"
     | "interventionId"
+    | "confusedWithLabelId"
   >,
   createdAt: number
 ): FlashcardReviewEventWrite | null {
@@ -103,6 +110,10 @@ export function buildFlashcardReviewEventWrite(
       ? { rating: review.rating }
       : {}),
     ...(readId(review.interventionId) ? { interventionId: readId(review.interventionId) } : {}),
+    // A mix-up is only a mix-up when the answer was wrong.
+    ...(review.isCorrect !== true && readId(review.confusedWithLabelId, 64)
+      ? { confusedWithLabelId: readId(review.confusedWithLabelId, 64) }
+      : {}),
     createdAt,
   };
 }
@@ -131,6 +142,7 @@ export function decodeFlashcardReviewEvent(
     return null;
   }
   const interventionId = readId(data.interventionId, 400);
+  const confusedWithLabelId = readId(data.confusedWithLabelId, 64);
   return {
     id,
     cardId,
@@ -140,6 +152,7 @@ export function decodeFlashcardReviewEvent(
     correct: data.correct,
     ...(isCardRating(data.rating) ? { rating: data.rating } : {}),
     ...(interventionId ? { interventionId } : {}),
+    ...(confusedWithLabelId ? { confusedWithLabelId } : {}),
   };
 }
 

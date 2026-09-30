@@ -34,7 +34,11 @@ export default function CardGrid({
       <ConfirmDialog
         open={pendingDeleteId !== null}
         title="Delete this card?"
-        description="This permanently removes the card from its deck and review queue. This cannot be undone."
+        description={
+          cards.find((card) => card.id === pendingDeleteId)?.occlusion
+            ? "This removes this label from its diagram, with its review history. The diagram's other labels stay. This cannot be undone."
+            : "This permanently removes the card from its deck and review queue. This cannot be undone."
+        }
         confirmLabel="Delete card"
         busy={pendingDeleteId !== null && rows.isDeleting(pendingDeleteId)}
         onClose={editing.deletion.close}
@@ -62,6 +66,7 @@ export default function CardGrid({
                     back={card.back}
                     frontImage={card.frontImage}
                     backImage={card.backImage}
+                    occlusion={card.occlusion}
                     onPreview={() => editing.preview.open(card.id)}
                   />
                 </div>

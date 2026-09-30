@@ -1,10 +1,17 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import CardFaceImage from "@/components/cards/CardFaceImage";
+import DiagramZoomDialog from "@/components/cards/DiagramZoomDialog";
+import OcclusionFigure from "@/components/cards/OcclusionFigure";
 import { StudyText } from "@/components/ui";
 import type { CardImage } from "@/lib/study/card-images";
 import type { Card } from "@/lib/study/cards";
+import {
+  getOcclusionPrompt,
+  getOcclusionTargets,
+  type CardOcclusion,
+} from "@/lib/study/image-occlusion";
 
 const VISIBLE_TOPIC_LIMIT = 2;
 
@@ -56,6 +63,74 @@ function FlashcardFaceContent({
           }`}
         />
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A diagram card's face: the picture, and one line under it.
+ *
+ * The front asks -- the header, or what to do when there is none. The back
+ * answers with the label's words and note (every label's, for a group), and
+ * offers the whole picture uncovered, which is how a student checks the
+ * neighbours they were unsure of. Either face can be opened full screen for a
+ * closer look.
+ */
+function DiagramFaceContent({
+  occlusion,
+  header,
+  side,
+}: {
+  occlusion: CardOcclusion;
+  header: string;
+  side: "front" | "back";
+}) {
+  const [unmasked, setUnmasked] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
+  const { labels } = getOcclusionTargets(occlusion);
+  const answers = labels.map((label) => label.answer.trim()).filter(Boolean);
+  const notes = labels.map((label) => label.note?.trim()).filter((note): note is string => Boolean(note));
+  const canUnmask = side === "back" && occlusion.diagram.labels.length > labels.length;
+  const phase = side === "front" ? "question" : unmasked ? "unmasked" : "answer";
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 py-4">
+      <div className="flex min-h-0 w-full flex-1 items-center justify-center">
+        <OcclusionFigure occlusion={occlusion} phase={phase} fit="contain" onZoom={() => setZoomed(true)} />
+      </div>
+      {side === "front" ? (
+        <StudyText
+          as="p"
+          text={getOcclusionPrompt(occlusion, header)}
+          className="max-w-4xl shrink-0 text-center text-sm font-medium opacity-80 sm:text-base"
+        />
+      ) : (
+        <div className="flex w-full max-w-4xl shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center">
+          {answers.length > 0 ? (
+            <StudyText
+              as="p"
+              text={answers.join(" · ")}
+              className={`font-semibold ${answers.length > 1 ? "text-sm sm:text-base xl:text-lg" : "text-base sm:text-xl xl:text-2xl"}`}
+            />
+          ) : null}
+          {notes.map((note) => (
+            <StudyText key={note} as="p" text={note} className="w-full text-sm opacity-75" />
+          ))}
+          {canUnmask ? (
+            <button
+              type="button"
+              aria-pressed={unmasked}
+              onClick={() => setUnmasked((current) => !current)}
+              className="rounded-full border border-current/20 px-3 py-1 text-xs font-medium opacity-80 transition hover:opacity-100"
+            >
+              {unmasked ? "Hide the other labels" : "Show every label"}
+            </button>
+          ) : null}
+        </div>
+      )}
+      <DiagramZoomDialog open={zoomed} title={header.trim() || "Diagram"} onClose={() => setZoomed(false)}>
+        <OcclusionFigure occlusion={occlusion} phase={phase} fit="contain" />
+      </DiagramZoomDialog>
     </div>
   );
 }
@@ -136,7 +211,16 @@ export default function StudyFlashcard({
               </div>
             ) : null}
           </div>
-          <FlashcardFaceContent text={card.front} image={card.frontImage} side="front" />
+          {card.occlusion ? (
+            <DiagramFaceContent
+              key={`${card.id}:front`}
+              occlusion={card.occlusion}
+              header={card.front}
+              side="front"
+            />
+          ) : (
+            <FlashcardFaceContent text={card.front} image={card.frontImage} side="front" />
+          )}
           <div className="text-center text-xs font-medium opacity-60">
             Tap anywhere on the card or press Space to reveal
           </div>
@@ -161,7 +245,17 @@ export default function StudyFlashcard({
             />
             <span>Answer</span>
           </div>
-          <FlashcardFaceContent text={card.back} image={card.backImage} side="back" />
+          {card.occlusion ? (
+            // Keyed on the card so "Show every label" never carries over to the next one.
+            <DiagramFaceContent
+              key={`${card.id}:back`}
+              occlusion={card.occlusion}
+              header={card.front}
+              side="back"
+            />
+          ) : (
+            <FlashcardFaceContent text={card.back} image={card.backImage} side="back" />
+          )}
           <div className="text-center text-xs font-medium opacity-60">
             {answerHint}
           </div>

@@ -77,6 +77,8 @@ export type StudyAttemptCommit = {
    * still stops.
    */
   requeueOnMiss?: boolean;
+  /** On a diagram card: the other label given instead. Carried to the review event as an id. */
+  confusedWithLabelId?: string;
 };
 
 /**
@@ -309,6 +311,7 @@ export function useStudyExerciseController(
       durationMs: measureResponseTime(attempt),
       sessionKind: kind,
       cardUpdates: outcome.cardUpdates,
+      ...(attempt.confusedWithLabelId ? { confusedWithLabelId: attempt.confusedWithLabelId } : {}),
       clearMemoryRiskOverrideDayKey: Boolean(outcome.schedule && outcome.isCorrect),
       /*
        * Which advice this answer belongs to.

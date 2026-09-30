@@ -2,6 +2,7 @@ import "server-only";
 
 export type AiBudgetAction =
   | "autocompleteCard"
+  | "diagramLabelDetection"
   | "constellationPattern"
   | "assistant"
   | "planDraft"
@@ -99,6 +100,17 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstWindowMs: 60_000,
     burstScope: "assistantInteractive",
     tokenCap: 900,
+    inputTokenCap: null,
+  },
+  // One picture, sent once when a student asks Jami to find a diagram's
+  // labels. The picture is scaled down in the browser first, so the input is
+  // bounded; the output is up to sixty short labels with their boxes.
+  diagramLabelDetection: {
+    dailyRequestLimit: 25,
+    burstRequestLimit: 4,
+    burstWindowMs: 60_000,
+    burstScope: "assistantInteractive",
+    tokenCap: 3_000,
     inputTokenCap: null,
   },
   // One worker call over at most forty stars and a short request, so the input

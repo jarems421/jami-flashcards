@@ -19,6 +19,12 @@ import {
   releaseCardImageDraft,
 } from "@/services/study/card-images";
 import { getCardContentDuplicateCounts } from "@/lib/study/card-quality";
+import {
+  applyOcclusionUpdates,
+  mergeSavedDiagramCards,
+  type OcclusionDiagram,
+} from "@/lib/study/image-occlusion";
+import { releaseDiagramLabels } from "@/services/study/image-occlusion";
 import { useUser } from "@/components/providers/UserProvider";
 import type { Feedback } from "@/lib/app/feedback";
 import type { Deck } from "@/lib/study/decks";
@@ -26,6 +32,11 @@ import AppPage from "@/components/layout/AppPage";
 import CardCreationPanel from "@/components/decks/CardCreationPanel";
 import CardActionsMenu from "@/components/decks/CardActionsMenu";
 import CardFaceSummary from "@/components/decks/CardFaceSummary";
+import DeckDiagramsSection from "@/components/decks/diagram/DeckDiagramsSection";
+import DiagramEditorDialog, {
+  type DiagramEditorStart,
+} from "@/components/decks/diagram/DiagramEditorDialog";
+import DiagramWalkthroughDialog from "@/components/decks/diagram/DiagramWalkthroughDialog";
 import BulkTopicToolbar from "@/components/topics/BulkTopicToolbar";
 import { getBulkTopicCapacity } from "@/lib/material/topic-management";
 import CardPreviewDialog from "@/components/decks/CardPreviewDialog";
@@ -87,6 +98,8 @@ export default function DeckDetailPageClient() {
   const [cardPendingDeleteId, setCardPendingDeleteId] = useState<string | null>(
     null
   );
+  const [diagramStart, setDiagramStart] = useState<DiagramEditorStart | null>(null);
+  const [walkthrough, setWalkthrough] = useState<{ diagram: OcclusionDiagram; title: string; cards: Card[] } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [bulkTopicIds, setBulkTopicIds] = useState<string[]>([]);
@@ -174,6 +187,12 @@ export default function DeckDetailPageClient() {
   };
 
   const startEditingCard = (card: Card) => {
+    // A diagram label is edited with its whole diagram.
+    if (card.occlusion) {
+      clearFeedback();
+      setDiagramStart({ kind: "edit", card });
+      return;
+    }
     setEditingCardId(card.id);
     setEditingFront(card.front);
     setEditingBack(card.back);
@@ -214,7 +233,14 @@ export default function DeckDetailPageClient() {
       return;
     }
 
-    const sortedCards = [...cards].sort((left, right) => left.createdAt - right.createdAt);
+    // A diagram label is a box on a picture, which a text file cannot carry.
+    const textCards = cards.filter((card) => !card.occlusion);
+    const diagramCount = cards.length - textCards.length;
+    if (textCards.length === 0) {
+      showError("Diagram cards stay in Jami: their pictures cannot go in a text file.");
+      return;
+    }
+    const sortedCards = [...textCards].sort((left, right) => left.createdAt - right.createdAt);
     const text = exportCardsToSeparatedText(sortedCards, format);
     const extension = format === "csv" ? "csv" : "tsv";
     downloadTextFile(
@@ -222,7 +248,11 @@ export default function DeckDetailPageClient() {
       text,
       format === "csv" ? "text/csv;charset=utf-8" : "text/tab-separated-values;charset=utf-8"
     );
-    success(`Downloaded ${cards.length} cards.`);
+    success(
+      diagramCount > 0
+        ? `Downloaded ${textCards.length} cards. ${diagramCount} diagram card${diagramCount === 1 ? "" : "s"} stay in Jami, since their pictures cannot go in a text file.`
+        : `Downloaded ${textCards.length} cards.`
+    );
   };
 
   const handleSaveCard = async (cardId: string) => {
@@ -295,7 +325,16 @@ export default function DeckDetailPageClient() {
       if (deleted?.frontImage || deleted?.backImage) {
         await deleteCardImageFiles([deleted.frontImage, deleted.backImage]);
       }
-      setCards((prev) => prev.filter((card) => card.id !== cardId));
+      const diagramCleanup = deleted
+        ? await releaseDiagramLabels(user.uid, [deleted])
+        : { updates: [], deletedCardIds: [] };
+      setCards((prev) =>
+        applyOcclusionUpdates(
+          prev.filter((card) => card.id !== cardId),
+          diagramCleanup.updates,
+          diagramCleanup.deletedCardIds
+        )
+      );
       setSelectedCardIds((prev) => prev.filter((selectedId) => selectedId !== cardId));
       if (editingCardId === cardId) {
         resetEditingCard();
@@ -420,7 +459,11 @@ export default function DeckDetailPageClient() {
       <ConfirmDialog
         open={cardPendingDeleteId !== null}
         title="Delete this card?"
-        description="This permanently removes the card from this deck and its review queue. This cannot be undone."
+        description={
+          cards.find((card) => card.id === cardPendingDeleteId)?.occlusion
+            ? "This removes this label from its diagram, with its review history. The diagram's other labels stay. This cannot be undone."
+            : "This permanently removes the card from this deck and its review queue. This cannot be undone."
+        }
         confirmLabel="Delete card"
         busy={
           cardPendingDeleteId !== null &&
@@ -592,6 +635,16 @@ export default function DeckDetailPageClient() {
             onClearSelection={clearSelection}
           />
 
+          <DeckDiagramsSection
+            cards={cards}
+            onEdit={startEditingCard}
+            onWalkthrough={(diagram, title, diagramCards) => setWalkthrough({ diagram, title, cards: diagramCards })}
+            onReuse={(diagram) => {
+              clearFeedback();
+              setDiagramStart({ kind: "reuse", image: diagram.image });
+            }}
+          />
+
           {filteredCards.length === 0 ? (
             <EmptyState
               emoji="Search"
@@ -616,6 +669,7 @@ export default function DeckDetailPageClient() {
                           back={card.back}
                           frontImage={card.frontImage}
                           backImage={card.backImage}
+                          occlusion={card.occlusion}
                           onPreview={() => setPreviewCardId(card.id)}
                         />
                       </div>
@@ -663,6 +717,46 @@ export default function DeckDetailPageClient() {
           setPreviewCardId(null);
           startEditingCard(card);
         }}
+        onWalkthrough={(card) => {
+          if (!card.occlusion) return;
+          setPreviewCardId(null);
+          const diagramId = card.occlusion.diagram.id;
+          setWalkthrough({
+            diagram: card.occlusion.diagram,
+            title: card.front.trim() || "Diagram",
+            cards: cards.filter((entry) => entry.occlusion?.diagram.id === diagramId),
+          });
+        }}
+      />
+      <DiagramEditorDialog
+        start={diagramStart}
+        userId={user.uid}
+        deckId={deck?.id ?? deckId}
+        deckName={deck?.name ?? "Deck"}
+        topics={topics}
+        onTopicsChange={setTopics}
+        onClose={() => setDiagramStart(null)}
+        onSaved={(result) => {
+          setDiagramStart(null);
+          // Labels moved to another deck stay listed there, not here.
+          const inThisDeck = result.cards.filter((card) => card.deckId === deckId);
+          setCards((prev) => mergeSavedDiagramCards(prev, inThisDeck, result.removedCardIds));
+          success(`Diagram saved: ${result.cards.length} label card${result.cards.length === 1 ? "" : "s"}.`);
+        }}
+        onDeleted={(removedIds) => {
+          setDiagramStart(null);
+          const removed = new Set(removedIds);
+          setCards((prev) => prev.filter((card) => !removed.has(card.id)));
+          setSelectedCardIds((prev) => prev.filter((id) => !removed.has(id)));
+          success("Diagram deleted.");
+        }}
+      />
+      <DiagramWalkthroughDialog
+        diagram={walkthrough?.diagram ?? null}
+        title={walkthrough?.title ?? "Diagram"}
+        cards={walkthrough?.cards}
+        userId={user.uid}
+        onClose={() => setWalkthrough(null)}
       />
       <CardEditorDialog
         card={editingCard}

@@ -1,14 +1,24 @@
 "use client";
 
 import CardFaceImage from "@/components/cards/CardFaceImage";
+import OcclusionFigure from "@/components/cards/OcclusionFigure";
 import { StudyText } from "@/components/ui";
 import type { CardImage } from "@/lib/study/card-images";
+import {
+  getGroupAnswerText,
+  getGroupDisplayName,
+  getLabelDisplayName,
+  getOcclusionGroup,
+  getOcclusionLabel,
+  type CardOcclusion,
+} from "@/lib/study/image-occlusion";
 
 type CardFaceSummaryProps = {
   front: string;
   back: string;
   frontImage?: CardImage;
   backImage?: CardImage;
+  occlusion?: CardOcclusion;
   onPreview: () => void;
 };
 
@@ -17,15 +27,43 @@ function sideText(text: string, image: CardImage | undefined, fallback: string) 
   return text.trim() || (image ? fallback : "");
 }
 
+/**
+ * What a diagram label card is called in a list.
+ *
+ * The header names the diagram and the label names the card. A label with no
+ * words is printed on the picture, so it is named by its number and the
+ * thumbnail shows which box that is.
+ */
+function diagramText(front: string, occlusion: CardOcclusion) {
+  const group = getOcclusionGroup(occlusion);
+  if (group) {
+    const answers = getGroupAnswerText(occlusion.diagram, group);
+    return {
+      front: front.trim() || "Diagram",
+      back: `${getGroupDisplayName(group)} · ${answers || `${group.labelIds.length} labels on the picture`}`,
+    };
+  }
+  const { label, index } = getOcclusionLabel(occlusion);
+  const total = occlusion.diagram.labels.length;
+  return {
+    front: front.trim() || "Diagram",
+    back: label?.answer.trim()
+      ? `${getLabelDisplayName(label, index)} · label ${index + 1} of ${total}`
+      : `Label ${index + 1} of ${total}, on the picture`,
+  };
+}
+
 export default function CardFaceSummary({
   front,
   back,
   frontImage,
   backImage,
+  occlusion,
   onPreview,
 }: CardFaceSummaryProps) {
-  const frontLabel = sideText(front, frontImage, "Image prompt");
-  const backLabel = sideText(back, backImage, "Image answer");
+  const diagram = occlusion ? diagramText(front, occlusion) : null;
+  const frontLabel = diagram?.front ?? sideText(front, frontImage, "Image prompt");
+  const backLabel = diagram?.back ?? sideText(back, backImage, "Image answer");
 
   return (
     <button
@@ -35,7 +73,11 @@ export default function CardFaceSummary({
       aria-label={`Preview card: ${frontLabel}`}
     >
       <div className="flex min-w-0 items-start gap-2.5">
-        {frontImage ? (
+        {occlusion ? (
+          <div className="h-11 w-14 shrink-0 overflow-hidden rounded-md bg-[var(--color-glass-subtle)]">
+            <OcclusionFigure occlusion={occlusion} phase="question" fit="contain" compact />
+          </div>
+        ) : frontImage ? (
           <CardFaceImage
             source={frontImage}
             alt=""

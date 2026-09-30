@@ -67,6 +67,7 @@ describe("AI budget configuration", () => {
       [
         "assistant",
         "autocompleteCard",
+        "diagramLabelDetection",
         "constellationPattern",
         "tutorIllustration",
         "practicePaperGeneration",

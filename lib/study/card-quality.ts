@@ -73,7 +73,9 @@ export function getCardQualityWarnings(
 }
 
 export function getCardContentDuplicateCounts(
-  cards: Array<Pick<Card, "front" | "back"> & Partial<Pick<Card, "frontImage" | "backImage">>>
+  cards: Array<
+    Pick<Card, "front" | "back"> & Partial<Pick<Card, "frontImage" | "backImage" | "occlusion">>
+  >
 ) {
   const counts = new Map<string, number>();
   for (const card of cards) {

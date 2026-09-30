@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
     if (!front.trim() || !back.trim()) continue;
     // Preparation reads words and cannot see a picture, so a card carrying one
     // is never prepared, whatever a client asks for.
-    if (data.frontImage || data.backImage) continue;
+    if (data.frontImage || data.backImage || data.occlusion) continue;
     cards.push({
       id: snapshot.id,
       front,
