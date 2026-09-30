@@ -170,13 +170,14 @@ function memorySchema(): Schema {
         action: {
           type: Type.STRING,
           format: "enum",
-          enum: ["remember", "forget"],
-          description: "remember to add or update a memory; forget to drop one that is no longer true.",
+          enum: ["remember", "keep", "forget"],
+          description:
+            "remember to add or rewrite a memory; keep when a listed memory came up again, so it lasts longer; forget to drop one that is no longer true.",
         },
         kind: {
           type: Type.STRING,
           format: "enum",
-          enum: ["preference", "struggle", "goal", "plan", "context"],
+          enum: ["mistake", "struggle", "plan", "goal", "preference", "context", "strength"],
           description: "What sort of memory this is.",
         },
         text: {
@@ -185,7 +186,7 @@ function memorySchema(): Schema {
         },
         ref: {
           type: Type.STRING,
-          description: "The reference (m1, m2...) of the memory to update or forget, when there is one.",
+          description: "The reference (m1, m2...) of the memory to rewrite, keep or forget.",
         },
       },
       required: ["action"],

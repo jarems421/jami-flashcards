@@ -9,6 +9,7 @@ import { createLogger } from "@/lib/observability/logger";
 import {
   activeTutorMemories,
   isRememberableText,
+  tutorMemoryFadesAt,
   MAX_TUTOR_MEMORY_TEXT_LENGTH,
   type TutorMemoryState,
 } from "@/lib/ai/tutor-memory";
@@ -31,6 +32,7 @@ function view(state: TutorMemoryState, now = Date.now()) {
         ...(item.folderId ? { folderId: item.folderId } : {}),
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
+        fadesAt: tutorMemoryFadesAt(item),
       })),
   };
 }
@@ -100,7 +102,10 @@ export async function PATCH(request: NextRequest) {
         ? {
             ...state,
             items: state.items.map((item) =>
-              item.id === id ? { ...item, text, updatedAt: now } : item
+              // The student confirming it, in their own words: it lasts longer.
+              item.id === id
+                ? { ...item, text, updatedAt: now, reinforced: Math.min(99, item.reinforced + 1) }
+                : item
             ),
             updatedAt: now,
           }

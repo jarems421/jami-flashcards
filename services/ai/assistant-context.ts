@@ -57,6 +57,7 @@ import { loadStudyActionHistory } from "@/services/learning/study-action-history
 import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
 import { createLogger } from "@/lib/observability/logger";
 import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
+import { loadRecentResultText } from "@/services/learning/recent-result-text.server";
 import {
   buildTutorMemoryInstruction,
   selectRecentTutorActivity,
@@ -195,6 +196,25 @@ async function loadTutorPreferences(input: {
     personalisationContext,
     reasoningEffort,
   };
+}
+
+/** A lookup that gives up after `ms` with `fallback`, and never throws. */
+async function withinBudget<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  work.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), ms);
+      }),
+    ]);
+  } catch (error) {
+    log.warn("recent_results.text_unavailable", { error });
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -365,8 +385,19 @@ async function loadTutorLearningContext(input: {
     const practiceOffer = practiceAction
       ? buildTutorPracticeOffer(practiceAction, describeStudyAction(practiceAction))
       : undefined;
+    /*
+     * The words of the cards and questions in the recent results, so Tutor can
+     * name the one the student got wrong. Within what is left of the budget;
+     * out of time, the results are still listed, by kind and topic.
+     */
+    const recentItemText = await withinBudget(
+      loadRecentResultText(input.uid, profile.recentResults ?? []),
+      Math.max(0, LEARNER_PROFILE_BUDGET_MS - (Date.now() - startedAt)),
+      new Map<string, string>()
+    );
     const learningContext = serializeLearnerProfileForTutor(profile, {
       boundaryToken: randomUUID(),
+      recentItemText,
       ...(practiceAction && practiceOffer
         ? {
             practiceFocus: {
@@ -382,6 +413,9 @@ async function loadTutorLearningContext(input: {
       outcome: learningContext ? "included" : "insufficient_evidence",
       latencyMs,
       practiceOffered: Boolean(learningContext && practiceOffer),
+      // Counts only: how many items were listed, and how many could be named.
+      recentResults: profile.recentResults?.length ?? 0,
+      recentResultsNamed: recentItemText.size,
       ...learnerProfileTelemetry(profile),
     });
     if (!learningContext) return undefined;

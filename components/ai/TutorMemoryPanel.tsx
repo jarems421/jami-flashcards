@@ -14,20 +14,27 @@ import {
   describeTimeAgo,
   MAX_TUTOR_MEMORY_TEXT_LENGTH,
   TUTOR_MEMORY_KIND_LABELS,
+  TUTOR_MEMORY_KINDS,
   type TutorMemoryKind,
 } from "@/lib/ai/tutor-memory";
 import type { TutorMemoryEntry } from "@/services/ai/tutor-memory";
 
-/** The order a student reads their memory in: what's live first, what lasts last. */
-const KIND_ORDER: readonly TutorMemoryKind[] = ["plan", "struggle", "goal", "preference", "context"];
-
 const KIND_HINTS: Record<TutorMemoryKind, string> = {
+  mistake: "Jami checks for these when your work touches them. They stay the longest.",
+  struggle: "Jami offers help with these when they come up.",
   plan: "Picked up in your next chat, then let go after two days.",
-  struggle: "Jami offers help with these, and fades them after a month unless they come up again.",
   goal: "What Jami keeps in mind when it suggests what to do next.",
   preference: "Your teaching settings still win if the two disagree.",
   context: "Facts about your course that save you repeating yourself.",
+  strength: "So Jami doesn't re-teach what you already know.",
 };
+
+/** "Fades in 5 days", or nothing for a memory that is about to be confirmed anyway. */
+function describeFading(item: TutorMemoryEntry, now: number) {
+  if (!item.fadesAt) return "";
+  const days = Math.max(0, Math.ceil((item.fadesAt - now) / (24 * 60 * 60 * 1000)));
+  return days <= 1 ? "fades within a day" : `fades in ${days} days unless it comes up again`;
+}
 
 function RemoveIcon() {
   return (
@@ -102,7 +109,9 @@ function MemoryRow({
             {item.text}
           </button>
         )}
-        <p className="pb-0.5 text-2xs text-text-muted">{describeTimeAgo(item.updatedAt, now)}</p>
+        <p className="pb-0.5 text-2xs text-text-muted">
+          {[describeTimeAgo(item.updatedAt, now), describeFading(item, now)].filter(Boolean).join(" · ")}
+        </p>
       </div>
       <button
         type="button"
@@ -156,7 +165,7 @@ export default function TutorMemoryPanel({ memory, density = "comfortable" }: Tu
     );
   }
 
-  const groups = KIND_ORDER.map((kind) => ({
+  const groups = TUTOR_MEMORY_KINDS.map((kind) => ({
     kind,
     items: view.items.filter((item) => item.kind === kind),
   })).filter((group) => group.items.length > 0);
@@ -169,7 +178,7 @@ export default function TutorMemoryPanel({ memory, density = "comfortable" }: Tu
 
       <SettingSwitch
         label="Remember across chats"
-        description="Jami keeps short notes from your chats — how you like to learn, what you find hard, what you're working on next — so every chat picks up where the last one left off."
+        description="Jami keeps short notes from your chats — what you get wrong, what you find hard, what you're working on next — so every chat picks up where the last one left off. Notes fade unless they come up again."
         checked={view.enabled}
         density={compact ? "compact" : "comfortable"}
         onChange={(enabled) => void memory.setEnabled(enabled)}

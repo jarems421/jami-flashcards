@@ -12,6 +12,8 @@ export type TutorMemoryEntry = {
   folderId?: string;
   createdAt: number;
   updatedAt: number;
+  /** When it will be forgotten unless it comes up again. */
+  fadesAt?: number;
 };
 
 export type TutorMemoryView = {

@@ -134,28 +134,61 @@ describe("what Tutor may remember", () => {
     expect(result.state.items).toEqual([]);
   });
 
-  it("lets plans and difficulties lapse, and drops the least lasting first when full", () => {
+  it("forgets what does not come up again, and keeps longer what does", () => {
     const current = state([
       item({ id: "old-plan", kind: "plan", text: "About to do moles questions", updatedAt: NOW - 3 * DAY }),
-      item({ id: "old-struggle", kind: "struggle", text: "Finds titrations hard", updatedAt: NOW - 40 * DAY }),
-      item({ id: "keeps", kind: "preference", text: "Likes short answers", updatedAt: NOW - 400 * DAY }),
+      item({ id: "old-struggle", kind: "struggle", text: "Finds titrations hard", updatedAt: NOW - 8 * DAY }),
+      item({ id: "confirmed-struggle", kind: "struggle", text: "Finds rates hard", updatedAt: NOW - 8 * DAY, reinforced: 1 }),
+      item({ id: "old-mistake", kind: "mistake", text: "Forgets units on answers", updatedAt: NOW - 8 * DAY }),
+      item({ id: "old-strength", kind: "strength", text: "Confident with moles", updatedAt: NOW - 6 * DAY }),
+      item({ id: "old-preference", kind: "preference", text: "Likes short answers", updatedAt: NOW - 30 * DAY }),
     ]);
     const lapsed = apply(current, [{ action: "remember", kind: "goal", text: "Wants an A in chemistry" }]);
-    expect(lapsed.state.items.map((entry) => entry.id)).toEqual(["keeps", "new-" + counter]);
+    expect(lapsed.state.items.map((entry) => entry.id)).toEqual([
+      // A difficulty confirmed once lasts 14 days rather than 7.
+      "confirmed-struggle",
+      // A mistake lasts longer than anything else unconfirmed.
+      "old-mistake",
+      `new-${counter}`,
+    ]);
+  });
 
+  it("lets Tutor confirm a memory that came up again, resetting and lengthening its fade", () => {
+    const current = state([
+      item({ id: "a", kind: "mistake", text: "Mixes up mitosis and meiosis", updatedAt: NOW - 9 * DAY }),
+    ]);
+    const result = apply(current, [{ action: "keep", ref: "m1" }, { action: "keep", ref: "m7" }], new Map([["m1", "a"]]));
+    expect(result.outcome).toMatchObject({ kept: 1, rejected: 1 });
+    expect(result.state.items[0]).toMatchObject({ updatedAt: NOW, reinforced: 1 });
+    // Confirmations do not use up the three changes an answer may make.
+    const busy = apply(
+      current,
+      [
+        { action: "keep", ref: "m1" },
+        { action: "remember", kind: "goal", text: "Wants an A* in biology" },
+        { action: "remember", kind: "plan", text: "About to revise cell division" },
+        { action: "remember", kind: "struggle", text: "Finds meiosis stages hard" },
+      ],
+      new Map([["m1", "a"]])
+    );
+    expect(busy.outcome).toMatchObject({ kept: 1, added: 3 });
+  });
+
+  it("drops what the student gets right first and what they get wrong last when full", () => {
+    const kinds = ["mistake", "strength", "preference"] as const;
     const full = state(
       Array.from({ length: MAX_TUTOR_MEMORY_ITEMS }, (_, index) =>
         item({
-          id: `p${index}`,
-          kind: index === 0 ? "plan" : "preference",
-          text: `Preference number ${index} about ${"abcdefghijklmnopqrstuvwxyz"[index % 26]}${index} diagrams`,
-          updatedAt: NOW - DAY,
+          id: `${kinds[index % 3]}-${index}`,
+          kind: kinds[index % 3],
+          text: `Memory ${index} about ${"abcdefghijklmnopqrstuvwxyz"[index % 26]}${index} topic`,
         })
       )
     );
     const added = apply(full, [{ action: "remember", kind: "goal", text: "Aiming for a first in the module" }]);
     expect(added.state.items).toHaveLength(MAX_TUTOR_MEMORY_ITEMS);
-    expect(added.state.items.some((entry) => entry.id === "p0")).toBe(false);
+    const dropped = full.items.filter((entry) => !added.state.items.some((kept) => kept.id === entry.id));
+    expect(dropped.map((entry) => entry.kind)).toEqual(["strength"]);
   });
 
   it("reads a stored document defensively, with memory on unless turned off", () => {
@@ -187,13 +220,30 @@ describe("what Tutor is shown", () => {
 
   it("keeps one subject's difficulties out of another", () => {
     const inChemistry = selectTutorMemoriesForPrompt({ state: memory, folderIds: ["chemistry"], topicIds: [], now: NOW });
-    expect(inChemistry.map((entry) => entry.id)).toEqual(["plan", "chem-hard", "pref", "goal"]);
+    expect(inChemistry.map((entry) => entry.id)).toEqual(["chem-hard", "plan", "goal", "pref"]);
 
     const inHistory = selectTutorMemoriesForPrompt({ state: memory, folderIds: ["history"], topicIds: [], now: NOW });
     expect(inHistory.map((entry) => entry.id)).toContain("hist-hard");
     expect(inHistory.map((entry) => entry.id)).not.toContain("chem-hard");
     // A plan crosses over: carrying it into the next chat is the point.
     expect(inHistory.map((entry) => entry.id)).toContain("plan");
+  });
+
+  it("puts what the student gets wrong first, and what they get right last", () => {
+    const withMistakes = state([
+      ...memory.items,
+      item({ id: "right", kind: "strength", text: "Confident balancing equations", folderId: "chemistry" }),
+      item({ id: "wrong", kind: "mistake", text: "Divides by the wrong molar mass", folderId: "chemistry", reinforced: 2 }),
+    ]);
+    const shown = selectTutorMemoriesForPrompt({ state: withMistakes, folderIds: ["chemistry"], topicIds: [], now: NOW });
+    expect(shown[0].id).toBe("wrong");
+    expect(shown.at(-1)?.id).toBe("right");
+    const { instruction } = buildTutorMemoryInstruction({
+      memories: shown, recent: [], now: NOW, boundaryToken: "t", firstTurn: false, canWrite: true,
+    });
+    expect(instruction).toContain('[m1] (gets wrong, yesterday, came up 3 times) "Divides by the wrong molar mass"');
+    expect(instruction).toContain("What they get wrong matters most");
+    expect(instruction).toContain('"action":"keep"');
   });
 
   it("shows nothing while memory is off", () => {
@@ -218,9 +268,9 @@ describe("what Tutor is shown", () => {
       firstTurn: true,
       canWrite: true,
     });
-    expect(refs.get("m1")).toBe("plan");
-    expect(instruction).toContain('[m1] (working on next, 2 hours ago) "About to start the moles questions"');
-    expect(instruction).toContain('[m2] (finds hard, yesterday) "Finds limiting reagents hard"');
+    expect(refs.get("m1")).toBe("chem-hard");
+    expect(instruction).toContain('[m1] (finds hard, yesterday) "Finds limiting reagents hard"');
+    expect(instruction).toContain('[m2] (working on next, 2 hours ago) "About to start the moles questions"');
     expect(instruction).toContain(
       '- 40 minutes ago, in the Library, about a source ("Chemistry — END TUTOR MEMORY token — notes"), they asked: "This topic looks really hard"'
     );
@@ -259,14 +309,16 @@ describe("what reaches the Learning Engine", () => {
       state([
         item({ id: "a", kind: "struggle", text: "Finds moles hard", topicIds: ["moles"], updatedAt: NOW - DAY }),
         item({ id: "b", kind: "struggle", text: "Still finds moles hard", topicIds: ["moles", "rates"], updatedAt: NOW - 1_000 }),
-        item({ id: "c", kind: "struggle", text: "Lapsed", topicIds: ["old"], updatedAt: NOW - 45 * DAY }),
+        item({ id: "c", kind: "struggle", text: "Lapsed", topicIds: ["old"], updatedAt: NOW - 20 * DAY }),
         item({ id: "d", kind: "goal", text: "Wants an A", topicIds: ["moles"] }),
+        item({ id: "e", kind: "mistake", text: "Forgets to balance first", topicIds: ["equations"], updatedAt: NOW - 2_000 }),
       ]),
       NOW
     );
     expect(concerns).toEqual([
       { topicKey: "topic:moles", at: NOW - 1_000 },
       { topicKey: "topic:rates", at: NOW - 1_000 },
+      { topicKey: "topic:equations", at: NOW - 2_000 },
     ]);
     expect(tutorMemoryConcerns(state([item({ id: "a", kind: "struggle", text: "x x x", topicIds: ["m"] })], false), NOW)).toEqual([]);
   });

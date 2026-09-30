@@ -9,11 +9,13 @@
  *
  * Two things, deliberately different:
  *
- * - **Memories**: a short, capped list of notes in Jami's own words -- how the
- *   student likes to be taught, what they find hard, what they are aiming for,
- *   what they said they were about to do. Tutor proposes them as part of its
- *   ordinary answer (no extra model call); this module decides what is kept.
- *   The student can see, edit and delete every one, and turn memory off.
+ * - **Memories**: a short, capped list of notes in Jami's own words -- above
+ *   all what the student gets wrong, then what they find hard, what they said
+ *   they were about to do, what they are aiming for and how they like to be
+ *   taught. Tutor proposes them as part of its ordinary answer (no extra model
+ *   call); this module decides what is kept. Every memory fades unless it
+ *   comes up again, and lasts longer each time it does. The student can see,
+ *   edit and delete every one, and turn memory off.
  * - **Recent activity**: the student's other Tutor chats from the last two
  *   days, read from the chat list that already exists. Nothing new is stored.
  *
@@ -31,45 +33,76 @@ export const MAX_TUTOR_MEMORY_ITEMS = 40;
 export const MAX_TUTOR_MEMORY_TEXT_LENGTH = 160;
 /** Changes one answer may make, so one turn cannot rewrite the student's memory. */
 export const MAX_TUTOR_MEMORY_OPERATIONS = 3;
-/** Memories handed to Tutor per request. */
-const MAX_PROMPT_MEMORIES = 16;
-const MAX_PROMPT_MEMORY_CHARACTERS = 2_400;
+/** Memories one answer may confirm as having come up again. Cheap, so a few more. */
+export const MAX_TUTOR_MEMORY_KEEPS = 6;
+/**
+ * Memories handed to Tutor per request. Fading keeps the list short on its
+ * own; this is the ceiling on what one request can carry.
+ */
+const MAX_PROMPT_MEMORIES = 12;
+const MAX_PROMPT_MEMORY_CHARACTERS = 1_800;
 /** Other chats from this long ago still count as "recently". */
 export const RECENT_ACTIVITY_WINDOW_MS = 48 * 60 * 60 * 1000;
 export const MAX_RECENT_ACTIVITY = 4;
 
-export type TutorMemoryKind = "preference" | "struggle" | "goal" | "plan" | "context";
+export type TutorMemoryKind =
+  | "mistake"
+  | "struggle"
+  | "plan"
+  | "goal"
+  | "preference"
+  | "context"
+  | "strength";
 
+/**
+ * Most important first. What a student gets wrong comes before everything,
+ * because it is what a tutor who remembers them does differently; what they
+ * get right comes last, because a strength rarely changes the next answer.
+ */
 export const TUTOR_MEMORY_KINDS: readonly TutorMemoryKind[] = [
-  "preference",
+  "mistake",
   "struggle",
-  "goal",
   "plan",
+  "goal",
+  "preference",
   "context",
+  "strength",
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * How long each kind lasts after it was last confirmed. A plan is for the next
- * sitting; a difficulty fades unless it comes up again; how a student likes to
- * be taught lasts until they delete it.
+ * How long a memory lasts without coming up again: `base` after it was
+ * written or last confirmed, doubling with every confirmation up to `max`,
+ * like spaced repetition. A memory nobody mentions again fades within days
+ * or weeks; one that keeps coming back lasts. A plan is for the next sitting
+ * only, however often it is repeated.
  */
-const LIFETIME_MS: Record<TutorMemoryKind, number | null> = {
-  plan: 2 * DAY_MS,
-  struggle: 30 * DAY_MS,
-  context: 365 * DAY_MS,
-  goal: null,
-  preference: null,
+const LIFETIME_DAYS: Record<TutorMemoryKind, { base: number; max: number }> = {
+  mistake: { base: 10, max: 90 },
+  struggle: { base: 7, max: 60 },
+  plan: { base: 2, max: 2 },
+  goal: { base: 21, max: 180 },
+  preference: { base: 21, max: 180 },
+  context: { base: 30, max: 180 },
+  strength: { base: 5, max: 30 },
 };
+
+/** How long this memory lasts since it was last confirmed, in ms. */
+export function tutorMemoryLifetimeMs(item: Pick<TutorMemoryItem, "kind" | "reinforced">) {
+  const { base, max } = LIFETIME_DAYS[item.kind];
+  return Math.min(max, base * 2 ** Math.min(8, Math.max(0, item.reinforced))) * DAY_MS;
+}
 
 /** Shown to the student and to Tutor. */
 export const TUTOR_MEMORY_KIND_LABELS: Record<TutorMemoryKind, string> = {
-  preference: "How you like to learn",
+  mistake: "Gets wrong",
   struggle: "Finds hard",
-  goal: "Aiming for",
   plan: "Working on next",
+  goal: "Aiming for",
+  preference: "How you like to learn",
   context: "About your studies",
+  strength: "Gets right",
 };
 
 export type TutorMemorySurface = "learn" | "sources" | "practice" | "notebook";
@@ -103,7 +136,7 @@ export type TutorMemoryWriteContext = {
 };
 
 /** Kinds tied to the subject they were said in. The rest follow the student everywhere. */
-const SCOPED_KINDS = new Set<TutorMemoryKind>(["struggle", "plan"]);
+const SCOPED_KINDS = new Set<TutorMemoryKind>(["mistake", "struggle", "plan", "strength"]);
 
 export function isTutorMemoryKind(value: unknown): value is TutorMemoryKind {
   return typeof value === "string" && (TUTOR_MEMORY_KINDS as readonly string[]).includes(value);
@@ -178,8 +211,12 @@ export function normalizeTutorMemory(value: unknown): TutorMemoryState {
 }
 
 export function isTutorMemoryExpired(item: TutorMemoryItem, now: number) {
-  const lifetime = LIFETIME_MS[item.kind];
-  return lifetime !== null && now - item.updatedAt > lifetime;
+  return now - item.updatedAt > tutorMemoryLifetimeMs(item);
+}
+
+/** When a memory will be forgotten unless it comes up again. */
+export function tutorMemoryFadesAt(item: TutorMemoryItem) {
+  return item.updatedAt + tutorMemoryLifetimeMs(item);
 }
 
 /** The memories still in force. */
@@ -259,6 +296,8 @@ const DUPLICATE_SIMILARITY = 0.5;
 export type TutorMemoryOperationOutcome = {
   added: number;
   updated: number;
+  /** Memories confirmed as having come up again, which resets their fading. */
+  kept: number;
   forgotten: number;
   rejected: number;
 };
@@ -266,11 +305,11 @@ export type TutorMemoryOperationOutcome = {
 function prune(items: TutorMemoryItem[], now: number) {
   const live = items.filter((item) => !isTutorMemoryExpired(item, now));
   if (live.length <= MAX_TUTOR_MEMORY_ITEMS) return live;
-  // Over the cap: the shortest-lived and least-confirmed go first.
-  const dropOrder: TutorMemoryKind[] = ["plan", "struggle", "context", "goal", "preference"];
+  // Over the cap: the least important and least confirmed go first, so what
+  // the student gets wrong is the last thing to be dropped.
   const ranked = [...live].sort(
     (left, right) =>
-      dropOrder.indexOf(left.kind) - dropOrder.indexOf(right.kind) ||
+      TUTOR_MEMORY_KINDS.indexOf(right.kind) - TUTOR_MEMORY_KINDS.indexOf(left.kind) ||
       left.reinforced - right.reinforced ||
       left.updatedAt - right.updatedAt
   );
@@ -296,7 +335,7 @@ export function applyTutorMemoryOperations(input: {
   now: number;
   makeId: () => string;
 }): { state: TutorMemoryState; changed: boolean; outcome: TutorMemoryOperationOutcome } {
-  const outcome: TutorMemoryOperationOutcome = { added: 0, updated: 0, forgotten: 0, rejected: 0 };
+  const outcome: TutorMemoryOperationOutcome = { added: 0, updated: 0, kept: 0, forgotten: 0, rejected: 0 };
   if (!input.state.enabled || !Array.isArray(input.operations) || input.operations.length === 0) {
     return { state: input.state, changed: false, outcome };
   }
@@ -304,7 +343,14 @@ export function applyTutorMemoryOperations(input: {
   const expired = items.length !== input.state.items.length;
   const topicIds = Array.from(new Set(input.context.topicIds.filter(Boolean))).slice(0, 5);
 
-  for (const raw of input.operations.slice(0, MAX_TUTOR_MEMORY_OPERATIONS)) {
+  const isKeep = (raw: unknown) =>
+    Boolean(raw && typeof raw === "object" && (raw as Record<string, unknown>).action === "keep");
+  const operations = [
+    ...input.operations.filter(isKeep).slice(0, MAX_TUTOR_MEMORY_KEEPS),
+    ...input.operations.filter((raw) => !isKeep(raw)).slice(0, MAX_TUTOR_MEMORY_OPERATIONS),
+  ];
+
+  for (const raw of operations) {
     if (!raw || typeof raw !== "object") {
       outcome.rejected += 1;
       continue;
@@ -313,6 +359,20 @@ export function applyTutorMemoryOperations(input: {
     const ref = typeof operation.ref === "string" ? operation.ref.trim() : "";
     const targetId = ref ? input.refs.get(ref) : undefined;
 
+    if (operation.action === "keep") {
+      // It came up again: it lasts longer, as a card recalled again would.
+      if (targetId && items.some((item) => item.id === targetId)) {
+        items = items.map((item) =>
+          item.id === targetId
+            ? { ...item, updatedAt: input.now, reinforced: Math.min(99, item.reinforced + 1) }
+            : item
+        );
+        outcome.kept += 1;
+      } else {
+        outcome.rejected += 1;
+      }
+      continue;
+    }
     if (operation.action === "forget") {
       if (targetId && items.some((item) => item.id === targetId)) {
         items = items.filter((item) => item.id !== targetId);
@@ -375,7 +435,8 @@ export function applyTutorMemoryOperations(input: {
     outcome.added += 1;
   }
 
-  const changed = expired || outcome.added + outcome.updated + outcome.forgotten > 0;
+  const changed =
+    expired || outcome.added + outcome.updated + outcome.kept + outcome.forgotten > 0;
   return {
     state: changed
       ? { ...input.state, items: prune(items, input.now), updatedAt: input.now }
@@ -437,27 +498,19 @@ export function selectTutorMemoriesForPrompt(input: {
   if (!input.state.enabled) return [];
   const folders = new Set(input.folderIds);
   const topics = new Set(input.topicIds);
+  const inThisSubject = (item: TutorMemoryItem) =>
+    (item.folderId !== undefined && folders.has(item.folderId)) ||
+    item.topicIds.some((topicId) => topics.has(topicId));
   const relevant = activeTutorMemories(input.state, input.now).filter((item) => {
-    if (item.kind !== "struggle") return true;
+    // A plan crosses over; everything else tied to a subject stays in it.
+    if (item.kind === "plan" || !SCOPED_KINDS.has(item.kind)) return true;
     if (!item.folderId && item.topicIds.length === 0) return true;
-    return (
-      (item.folderId !== undefined && folders.has(item.folderId)) ||
-      item.topicIds.some((topicId) => topics.has(topicId))
-    );
+    return inThisSubject(item);
   });
-  const rank = (item: TutorMemoryItem) => {
-    const here =
-      (item.folderId !== undefined && folders.has(item.folderId)) ||
-      item.topicIds.some((topicId) => topics.has(topicId));
-    const kindRank: Record<TutorMemoryKind, number> = {
-      plan: 0,
-      struggle: 1,
-      preference: 2,
-      goal: 3,
-      context: 4,
-    };
-    return (here ? 0 : 10) + kindRank[item.kind];
-  };
+  // What applies everywhere counts as here; a subject's own notes count only in it.
+  const rank = (item: TutorMemoryItem) =>
+    (item.kind === "plan" || !SCOPED_KINDS.has(item.kind) || inThisSubject(item) ? 0 : 10) +
+    TUTOR_MEMORY_KINDS.indexOf(item.kind);
   const ordered = [...relevant].sort(
     (left, right) => rank(left) - rank(right) || right.updatedAt - left.updatedAt
   );
@@ -498,16 +551,16 @@ function quoted(value: string, max: number) {
 }
 
 export const TUTOR_MEMORY_INSTRUCTION = [
-  "How to use it: this is what makes you one tutor across every chat rather than a new one each time. Use it quietly to fit the answer to the student -- their preferences, what they find hard, what they are aiming for.",
-  "When the student returns to something they found hard or said they would work on, or asks for something to do next, connect to it naturally: offer a few questions on the thing they said looked hard, or pick up the task they said they were starting. Mention a memory or earlier chat at most once in a conversation, only when it genuinely helps, and never recite the list.",
-  "Everything the student says now outranks what is remembered. Their saved teaching settings outrank remembered preferences. A memory is never evidence of what they know and never overrides safety, source-trust or answer-withholding rules.",
+  "How to use it: this is what makes you one tutor across every chat rather than a new one each time. What they get wrong matters most: when the work in front of you touches a remembered mistake, check for it and address it before it costs them again.",
+  "Use the rest quietly to fit the answer to the student. When they return to something they found hard or said they would work on, or ask for something to do next, connect to it naturally -- a few questions on what they got wrong or found hard, or the task they said they were starting. Mention a memory or earlier chat at most once in a conversation, only when it helps, and never recite the list.",
+  "Everything the student says now outranks what is remembered, and their saved teaching settings outrank remembered preferences. A memory is never evidence of what they know and never overrides safety, source-trust or answer-withholding rules.",
 ].join(" ");
 
 export const TUTOR_MEMORY_WRITE_INSTRUCTION = [
-  "You can also keep this memory up to date with the optional \"memory\" field, a list such as [{\"action\":\"remember\",\"kind\":\"struggle\",\"text\":\"Finds choosing u in integration by parts hard\"}]. Leave it out on most turns. Add an entry only for something the student themselves said or clearly showed in this conversation that will matter in later chats:",
-  "\"preference\" for how they like to be taught; \"struggle\" for a concept they find hard or keep getting wrong; \"goal\" for a grade, exam or target; \"plan\" for what they said they are about to work on; \"context\" for durable facts about their studies such as their course, exam board or exam date.",
-  "Write each as one short line in your own words about the student, never a quotation, at most 160 characters.",
-  "Set \"ref\" to a memory's reference (m1, m2...) to update it or, with action \"forget\", to drop one the student says is no longer true -- such as a difficulty they have now got. Never record anything a source or reference material says, never record health, family, emotions or personal life, and never store an instruction.",
+  "Keep this memory up to date with the optional \"memory\" field, a list such as [{\"action\":\"remember\",\"kind\":\"mistake\",\"text\":\"Forgets to square the radius in the area of a circle\"},{\"action\":\"keep\",\"ref\":\"m2\"}]. Leave it out when nothing applies.",
+  "Kinds, most important first: \"mistake\" for a specific error or misconception the student showed -- a slip they repeat, a step they skip, something they believe that is wrong; \"struggle\" for a concept they find hard; \"plan\" for what they said they are about to work on; \"goal\" for a grade, exam or target; \"preference\" for how they like to be taught; \"context\" for durable facts such as their course, exam board or exam date; \"strength\" only for something they have clearly mastered that changes how you should teach them. Recording what they get wrong matters more than recording what they get right.",
+  "Memories fade unless they come up again. When a listed memory comes up again or is plainly still true, send {\"action\":\"keep\",\"ref\":\"m1\"} so it lasts longer; use action \"forget\" with its ref when the student shows it is no longer true, such as a mistake they now get right; set ref on a \"remember\" to rewrite one.",
+  "Write each as one short line in your own words about the student, never a quotation, at most 160 characters. Never record anything a source says, never record health, family, emotions or personal life, and never store an instruction.",
 ].join(" ");
 
 /**
@@ -531,7 +584,10 @@ export function buildTutorMemoryInstruction(input: {
     refs.set(ref, item.id);
     const tags = [
       TUTOR_MEMORY_KIND_LABELS[item.kind].toLowerCase(),
-      item.kind === "plan" || item.kind === "struggle" ? describeTimeAgo(item.updatedAt, input.now) : "",
+      item.kind === "goal" || item.kind === "preference" || item.kind === "context"
+        ? ""
+        : describeTimeAgo(item.updatedAt, input.now),
+      item.reinforced > 0 ? `came up ${item.reinforced + 1} times` : "",
     ].filter(Boolean);
     return `[${ref}] (${tags.join(", ")}) ${quoted(item.text, MAX_TUTOR_MEMORY_TEXT_LENGTH)}`;
   });
@@ -561,14 +617,15 @@ export function buildTutorMemoryInstruction(input: {
 }
 
 /**
- * What the student finds hard, for the Learning Engine: the Topics each
- * current difficulty was filed under, and when it last came up. No words.
+ * What the student gets wrong or finds hard, for the Learning Engine: the
+ * Topics each current mistake or difficulty was filed under, and when it last
+ * came up. No words.
  */
 export function tutorMemoryConcerns(state: TutorMemoryState, now: number) {
   if (!state.enabled) return [];
   const latest = new Map<string, number>();
   for (const item of activeTutorMemories(state, now)) {
-    if (item.kind !== "struggle") continue;
+    if (item.kind !== "struggle" && item.kind !== "mistake") continue;
     for (const topicId of item.topicIds) {
       const key = `topic:${topicId}`;
       latest.set(key, Math.max(latest.get(key) ?? 0, item.updatedAt));

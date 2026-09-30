@@ -1,3 +1,4 @@
+import { selectRecentResults } from "@/lib/learning/profile/recent-results";
 import {
   buildConceptRegistry,
   conceptShares,
@@ -519,6 +520,7 @@ export function buildLearnerProfile(input: {
       { topics, recurringErrors },
       LEARNER_PROFILE_LIMITS.recommendations
     ),
+    recentResults: selectRecentResults({ observations, topics, now }),
     ...(coverage ? { coverage } : {}),
     evidenceSummary: {
       flashcardReviews: evidence.cards.reduce(

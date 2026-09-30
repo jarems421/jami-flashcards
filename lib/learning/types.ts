@@ -20,7 +20,7 @@
  * That is "seen", not "known", and the engine keeps the two apart.
  */
 
-export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v8-2026-09-30";
+export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v9-2026-09-30";
 
 /**
  * Where a piece of evidence came from.
@@ -496,6 +496,26 @@ export type LearningCommandWordSignal = {
   lastSeenAt: number;
 };
 
+/** How the latest attempt at one item went. See `profile/recent-results.ts`. */
+export type LearningRecentOutcome = "missed" | "partial" | "correct";
+
+export type LearningRecentResult = {
+  kind: LearningEvidenceKind;
+  /** `card:<id>`, `paper:<paperId>:<questionId>`, `exam:<questionId>`, and so on. */
+  itemId: string;
+  topicKey?: string;
+  topicLabel?: string;
+  outcome: LearningRecentOutcome;
+  /** The latest attempt's share of the credit, 0 to 1. */
+  score: number;
+  at: number;
+  /** Attempts in the window, and how many of them went wrong. */
+  attempts: number;
+  misses: number;
+  /** Where the latest attempt lost marks, from the fixed vocabulary. */
+  missedErrors: LearningErrorCategory[];
+};
+
 export type LearnerProfile = {
   algorithmVersion: string;
   generatedAt: number;
@@ -517,6 +537,11 @@ export type LearnerProfile = {
   /** "unknown" when there is not enough dated evidence to say either way. */
   recentTrend: LearningTrend | "unknown";
   recommendedFocus: LearningRecommendation[];
+  /**
+   * The latest attempts at individual items in the last three weeks, wrong
+   * answers first. Absent from profiles built before this was kept.
+   */
+  recentResults?: LearningRecentResult[];
   coverage?: LearningSpecificationCoverage;
   evidenceSummary: LearnerEvidenceSummary;
   diagnostics: LearnerProfileDiagnostics;
