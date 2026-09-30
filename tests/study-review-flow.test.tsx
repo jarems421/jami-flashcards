@@ -647,59 +647,103 @@ describe("the answer-first modes", () => {
    * ever worked on the second run. The session opens instead, and a card
    * reached before its own options land is asked the best way it can be.
    */
-  it("does not substitute another format when a fresh fixed MCQ has no validated options", async () => {
+  /*
+   * A card whose question cannot be written is still studied.
+   *
+   * It used to stop the session on a panel -- "This card isn't ready for that
+   * mode" -- whose only ways on were to abandon the mode or drop the card,
+   * which was due. Students met it constantly, because every blip in
+   * preparation put a card there. It is shown as an ordinary flashcard now,
+   * with a line saying why, and the session carries on.
+   */
+  it("asks a card as a flashcard, saying why, when its question cannot be written", async () => {
     await selectMode("Multiple Choice");
     await click("Start Daily Review");
-    expect(document.body.textContent).toContain("This card isn't ready for that mode");
-    expect(button("Switch to Smart Mix")).toBeDefined();
-    expect(button("Continue available cards")).toBeDefined();
+    await settle();
+    expect(currentCardId()).toBe("card-1");
+    expect(document.body.textContent).not.toContain("This card isn't ready for that mode");
+    expect(document.body.textContent).toContain(
+      "Its Multiple Choice question isn't ready yet, so here it is as a flashcard."
+    );
+    expect(button("Switch to Smart Mix")).toBeUndefined();
+    expect(button("Continue available cards")).toBeUndefined();
   });
 
   /*
    * Preparation runs behind the student and merges what it finds into the
-   * session, which changes what a card is eligible for. The exercise stage is
-   * keyed on the mode, so recomputing it on every render meant a card could
-   * change question underneath somebody halfway through answering it -- a gap
-   * fill they were typing into remounting as a multiple choice, taking the
-   * answer with it. The question is fixed for as long as the card is on screen.
+   * session, which changes what a card is eligible for. A card already on
+   * screen as a flashcard stays one when its options land: turning it into a
+   * multiple-choice question halfway through somebody reading it would take
+   * the card away from under them.
    */
   it("does not change the question under a student when late assets land", async () => {
     const distractor = "The main store of genetic information.";
-    /*
-     * Nothing at session start, prepared by the time the queue is read again:
-     * exactly the order a student hits on a deck nobody has studied. Two empty
-     * reads because preparation makes both of them -- what is already cached,
-     * then the first card its wait prepared. After that a read finds card-1's
-     * options only when it asks for card-1: the background pass reads the
-     * cards behind it, and the session's own read of the queue is what lands
-     * them late.
-     */
-    vi.mocked(loadStudyAssets)
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({})
-      .mockImplementation(async (cards) => {
-        const assets: Awaited<ReturnType<typeof loadStudyAssets>> = {};
-        if (cards.some((card) => card.id === "card-1")) {
-          assets["card-1"] = preparedAsset("card-1", [
-            distractor,
-            "Where lipids are packaged for export.",
-            "The site of photosynthesis in a plant.",
-          ]);
-        }
-        return assets;
-      });
+    let landed = false;
+    let finishPreparing: () => void = () => {};
+    vi.mocked(loadStudyAssets).mockImplementation(async (cards) => {
+      const assets: Awaited<ReturnType<typeof loadStudyAssets>> = {};
+      if (landed && cards.some((card) => card.id === "card-1")) {
+        assets["card-1"] = preparedAsset("card-1", [
+          distractor,
+          "Where lipids are packaged for export.",
+          "The site of photosynthesis in a plant.",
+        ]);
+      }
+      return assets;
+    });
+    // The first card's own request is slow: the session waits for it only so long.
+    vi.mocked(prepareStudyAssets).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishPreparing = () =>
+            resolve({ jobId: "job-1", status: "completed", requested: 1, prepared: 1, reused: 0, failed: 0 });
+        })
+    );
 
     await selectMode("Multiple Choice");
-    await click("Start Daily Review");
+    await act(async () => {
+      button("Start Daily Review")?.click();
+    });
+    await click("Start now");
+    await settle();
     expect(currentCardId()).toBe("card-1");
-    // Asked some other way, because its own options had not arrived yet.
-    expect(document.body.textContent).not.toContain(distractor);
+    expect(document.body.textContent).toContain("Writing this question");
 
-    // The session re-reads its assets once the queue is set, which is where the
-    // swap used to happen.
+    await click("Show it as a flashcard");
+    expect(document.body.textContent).toContain("isn't ready yet, so here it is as a flashcard");
+
+    // Now the options arrive, while the flashcard is on screen.
+    landed = true;
+    await act(async () => {
+      finishPreparing();
+    });
     await settle();
     expect(currentCardId()).toBe("card-1");
     expect(document.body.textContent).not.toContain(distractor);
+  });
+
+  it("brings a ready card forward rather than waiting on one still being written", async () => {
+    vi.mocked(loadStudyAssets).mockImplementation(async (cards) => {
+      const assets: Awaited<ReturnType<typeof loadStudyAssets>> = {};
+      if (cards.some((card) => card.id === "card-2")) {
+        assets["card-2"] = preparedAsset("card-2", [
+          "Where energy is released from glucose.",
+          "Where waste is broken down.",
+          "Where the cell is held together.",
+        ]);
+      }
+      return assets;
+    });
+    vi.mocked(prepareStudyAssets).mockImplementation(() => new Promise(() => {}));
+
+    await selectMode("Multiple Choice");
+    await act(async () => {
+      button("Start Daily Review")?.click();
+    });
+    await click("Start now");
+    await settle();
+    expect(currentCardId()).toBe("card-2");
+    expect(document.body.textContent).toContain("Where waste is broken down.");
   });
 
   it("completes a due card once Jami has written the wrong answers", async () => {

@@ -8,6 +8,7 @@ import type { StudyModePolicy } from "@/lib/study/study-modes";
 import {
   loadStudyAssets,
   prepareStudyAssets,
+  StudyAssetPreparationError,
 } from "@/services/study/study-assets";
 
 export type StudyPreparationProgress = {
@@ -18,129 +19,60 @@ export type StudyPreparationProgress = {
 /*
  * Preparation is a head start, not a wait for the whole queue.
  *
- * Measured against the worker model, six cards take 18-21 seconds on the fast
- * endpoint and 39-46 on the fallback, and running four requests at once pushed
- * most of them onto the slow one -- 24 cards took 46 seconds of wall clock for
- * a bar that was supposed to finish in 25. No batch size fixes that, because
- * the model is simply not fast enough to prepare a whole session while somebody
- * watches.
- *
- * What does fix it is that the student is about to spend ten to twenty seconds
- * on each card. Preparing the first few buys a minute or two of runway, and the
- * rest of the queue is prepared behind them while they work: assets arrive as
- * they land, and a card reached before its own have arrived is simply asked a
- * way that needs none. So the visible wait is one small batch, and the queue is
- * fully prepared long before the student reaches the end of it.
- *
- * Five rather than three. Three was tuned for Smart Mix, where outrunning the
- * background pass costs nothing -- the card is asked a way that needs no
- * assets. A session pinned to Multiple Choice has no such fallback, so every
- * card the student reaches early is one they have to read a refusal about. The
- * requests run in parallel and the visible wait is capped either way, so the
- * extra two cost runway, not time.
+ * Measured on the worker (scripts/eval/study-mcq-readiness.ts, 30 Sep 2026),
+ * one card takes a median of fifteen seconds to be written and checked, and
+ * the slowest take forty. No batch size makes a whole session ready while
+ * somebody watches, so nobody watches it: the server works on up to eight cards
+ * at once and saves each as it lands, the page reads them as they arrive, and
+ * the student is kept waiting for one card at most -- and only when a session
+ * pinned to one mode has nothing else ready to show.
  */
-const PREPARATION_HEAD_START = 5;
-/*
- * Nothing is waited for in Smart Mix, and only the first card in a fixed mode.
- *
- * The head start used to be a visible wait for all five cards, up to twenty
- * seconds, every time a session opened on new material. Smart Mix never needed
- * it: a card reached before its assets is asked a way that needs none, so the
- * head start now runs behind the first card instead of in front of it. A
- * session pinned to one mode does need its first card -- there is nothing else
- * to show -- so it waits for that card alone, and the next four arrive while
- * the student answers it.
- */
+/** The visible wait for a pinned session's first card, and the only clock a student sees. */
+const PREPARATION_BUDGET_MS = 25_000;
 /**
- * One card a request for the head start, all of them at once.
+ * Cards a request, in queue order.
  *
- * The background pass batches for cost, and this one does the opposite on
- * purpose. Three cards in a single request finish together, so the bar sat at
- * "0 of 3 ready" for the whole twenty-second wait and then jumped to done --
- * indistinguishable from a hung screen, which is what it was reported as. Three
- * requests of one card each land separately and the bar moves three times.
- *
- * It is also faster: output tokens dominate the latency of a call, so three
- * one-card requests in parallel return in roughly the time the slowest single
- * card takes rather than the sum of all three.
+ * The server writes each on its own call, eight at a time, so a request of
+ * eight is eight cards landing separately rather than a batch landing at once.
+ * Fewer, larger requests also keep a session inside the per-minute request
+ * limit, which it used to hit -- and hitting it stopped preparation outright.
  */
-const PREPARATION_HEAD_START_CHUNK_SIZE = 1;
-/** The visible wait, and the only clock a student ever sees. */
-const PREPARATION_BUDGET_MS = 20_000;
-/**
- * Twelve cards a request for the background pass, two requests at a time.
- *
- * The server splits each request into two batches, so this is four model calls
- * in flight -- measured at 18-42 seconds for the wave, which is nothing when
- * the student is on card one of fifty. Twelve rather than six because each
- * request costs a slot of the daily preparation allowance, and halving the
- * number of requests halves what a session of new cards spends.
- */
-const PREPARATION_CHUNK_SIZE = 12;
+const PREPARATION_CHUNK_SIZE = 8;
 const PREPARATION_CONCURRENCY = 2;
 /** A queue longer than this is prepared as far as it goes and no further. */
 const MAX_PREPARED_CARDS_PER_SESSION = 100;
-/**
- * The card being waited on, plus the next two.
- *
- * Small on purpose: this request is the one a student is actually watching, and
- * output tokens dominate its latency, so every card added to it lengthens the
- * wait they can see. Three covers the gap until the background pass catches up
- * without turning a wait into a batch job.
- */
-const JUST_IN_TIME_BATCH_SIZE = 3;
+/** How often the page looks for cards the server has finished while it works. */
+const PUBLISH_INTERVAL_MS = 2_500;
+/** A request refused for being one too many is tried again this many times. */
+const TEMPORARY_RETRIES = 2;
+const TEMPORARY_RETRY_DELAY_MS = 8_000;
+
+const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+type PreparationRequest = {
+  deckId: string;
+  cards: Card[];
+};
 
 /**
- * Send a set of cards to the preparation endpoint, a chunk at a time.
+ * Split cards into requests, in queue order.
  *
- * Chunks are grouped by deck because the endpoint verifies ownership one deck
- * at a time. `stop` is read before each chunk rather than passed to fetch: a
- * request already sent is allowed to finish and cache its answer, because the
- * work is worth keeping even once nobody is waiting for it.
+ * Grouped by deck because the endpoint verifies ownership one deck at a time;
+ * the order is kept so the cards a student reaches first are asked for first.
  */
-async function runPreparationChunks(
-  cards: Card[],
-  options: {
-    chunkSize: number;
-    concurrency: number;
-    stop: { value: boolean };
-    onChunkDone?: (count: number) => void;
-  }
-) {
-  const byDeck = new Map<string, string[]>();
+function toRequests(cards: readonly Card[], size: number): PreparationRequest[] {
+  const requests: PreparationRequest[] = [];
+  const open = new Map<string, PreparationRequest>();
   for (const card of cards) {
-    byDeck.set(card.deckId, [...(byDeck.get(card.deckId) ?? []), card.id]);
-  }
-  const chunks: Array<{ deckId: string; cardIds: string[] }> = [];
-  for (const [deckId, ids] of byDeck) {
-    for (let at = 0; at < ids.length; at += options.chunkSize) {
-      chunks.push({ deckId, cardIds: ids.slice(at, at + options.chunkSize) });
+    let request = open.get(card.deckId);
+    if (!request || request.cards.length >= size) {
+      request = { deckId: card.deckId, cards: [] };
+      open.set(card.deckId, request);
+      requests.push(request);
     }
+    request.cards.push(card);
   }
-  if (chunks.length === 0) return;
-
-  let cursor = 0;
-  const worker = async () => {
-    for (;;) {
-      const position = cursor;
-      cursor += 1;
-      if (options.stop.value || position >= chunks.length) return;
-      const chunk = chunks[position];
-      try {
-        await prepareStudyAssets(chunk);
-      } catch (error) {
-        // One chunk failing usually means the daily limit or the provider, and
-        // both apply to every other chunk too. Stop rather than find out again.
-        console.warn("Study preparation was cut short.", error);
-        options.stop.value = true;
-      }
-      options.onChunkDone?.(chunk.cardIds.length);
-    }
-  };
-
-  await Promise.all(
-    Array.from({ length: Math.min(options.concurrency, chunks.length) }, worker)
-  );
+  return requests;
 }
 
 /**
@@ -158,7 +90,7 @@ async function runPreparationChunks(
 export function useStudyPreparation(input: {
   enabled: boolean;
   modePolicy: StudyModePolicy;
-  /** Called when background preparation lands more assets. */
+  /** Called whenever prepared assets land. */
   onAssetsReady: (assets: Record<string, StudyAsset>) => void;
 }) {
   const { enabled: studyModesEnabled, modePolicy, onAssetsReady } = input;
@@ -170,18 +102,176 @@ export function useStudyPreparation(input: {
   const jobsRef = useRef(new Set<{ value: boolean }>());
   const epochRef = useRef(0);
   const stoppedRef = useRef(false);
+  /** Cards with a request in flight, and how many requests each is in. */
+  const inFlightRef = useRef(new Map<string, number>());
+  /** Cards asked for and not yet seen to land, which the reader keeps looking for. */
+  const watchedRef = useRef(new Map<string, Card>());
+  const tickerRef = useRef(0);
+  /** Set once the day's allowance is spent: nothing more is sent this session. */
+  const exhaustedRef = useRef(false);
+  const onAssetsReadyRef = useRef(onAssetsReady);
+  useEffect(() => {
+    onAssetsReadyRef.current = onAssetsReady;
+  }, [onAssetsReady]);
+
+  const stopTicker = useCallback(() => {
+    if (tickerRef.current) window.clearInterval(tickerRef.current);
+    tickerRef.current = 0;
+  }, []);
+
   const cancel = useCallback(() => {
     stoppedRef.current = true;
     epochRef.current += 1;
     for (const stop of jobsRef.current) stop.value = true;
     jobsRef.current.clear();
+    inFlightRef.current.clear();
+    watchedRef.current.clear();
+    exhaustedRef.current = false;
+    stopTicker();
     skipPreparationRef.current?.();
-  }, []);
+  }, [stopTicker]);
   useEffect(() => { stoppedRef.current = false; return cancel; }, [cancel]);
 
+  /*
+   * One reader for everything in flight.
+   *
+   * The server saves each card as its own call lands, so a request of eight is
+   * eight separate arrivals over half a minute. Reading only when a request
+   * returned left the first seven sitting prepared and unused until the eighth
+   * was done; reading every few seconds hands each over as it lands.
+   */
+  const readingRef = useRef(false);
+  const publish = useCallback(async () => {
+    const epoch = epochRef.current;
+    const watched = [...watchedRef.current.values()];
+    if (readingRef.current || watched.length === 0) return;
+    readingRef.current = true;
+    try {
+      const landed = await loadStudyAssets(watched);
+      if (epoch !== epochRef.current) return;
+      for (const id of Object.keys(landed)) {
+        if (!inFlightRef.current.has(id)) watchedRef.current.delete(id);
+      }
+      if (Object.keys(landed).length > 0) onAssetsReadyRef.current(landed);
+    } catch {
+      // The next tick reads again; a read that failed is not fatal.
+    } finally {
+      readingRef.current = false;
+      if (inFlightRef.current.size === 0) {
+        watchedRef.current.clear();
+        stopTicker();
+      }
+    }
+  }, [stopTicker]);
+
+  const startTicker = useCallback(() => {
+    if (tickerRef.current) return;
+    tickerRef.current = window.setInterval(() => void publish(), PUBLISH_INTERVAL_MS);
+  }, [publish]);
+
+  const purpose =
+    modePolicy.kind === "fixed" && modePolicy.mode === "multiple-choice"
+      ? ("multiple-choice" as const)
+      : undefined;
+
   /**
-   * Read the queue's new cards: a few before the session opens, the rest behind
-   * the student while they work.
+   * Send one request, trying again when the refusal was only about timing.
+   *
+   * Being asked to slow down is a wait, not an end: treating it as the end is
+   * what left a session's later cards with no question, because the first
+   * refusal stopped the whole background pass. Only a spent daily allowance,
+   * or a failure no wait fixes, stops preparation. Returns whether the request
+   * went through.
+   */
+  const send = useCallback(
+    async (request: PreparationRequest, stop: { value: boolean }) => {
+      if (exhaustedRef.current || stop.value) return false;
+      const epoch = epochRef.current;
+      for (const card of request.cards) {
+        inFlightRef.current.set(card.id, (inFlightRef.current.get(card.id) ?? 0) + 1);
+        watchedRef.current.set(card.id, card);
+      }
+      startTicker();
+      try {
+        for (let attempt = 0; ; attempt += 1) {
+          if (stop.value || epoch !== epochRef.current) return false;
+          try {
+            await prepareStudyAssets({
+              deckId: request.deckId,
+              cardIds: request.cards.map((card) => card.id),
+              ...(purpose ? { purpose } : {}),
+            });
+            return true;
+          } catch (error) {
+            const temporary = error instanceof StudyAssetPreparationError && error.isTemporary;
+            if (!temporary || attempt >= TEMPORARY_RETRIES) {
+              console.warn("Study preparation was cut short.", error);
+              if (
+                error instanceof StudyAssetPreparationError &&
+                (error.code === "daily_limit" || error.code === "email_unconfirmed")
+              ) {
+                exhaustedRef.current = true;
+              }
+              return false;
+            }
+            await wait(
+              (error instanceof StudyAssetPreparationError ? error.retryAfterMs : null) ??
+                TEMPORARY_RETRY_DELAY_MS
+            );
+          }
+        }
+      } finally {
+        if (epoch === epochRef.current) {
+          for (const card of request.cards) {
+            const count = (inFlightRef.current.get(card.id) ?? 1) - 1;
+            if (count <= 0) inFlightRef.current.delete(card.id);
+            else inFlightRef.current.set(card.id, count);
+          }
+          void publish();
+        }
+      }
+    },
+    [publish, purpose, startTicker]
+  );
+
+  /**
+   * Keep preparing after the session has opened.
+   *
+   * Nothing waits on this. Cards are asked for in queue order, a few requests
+   * at a time, and handed to the page as each one lands.
+   */
+  const prepareRemainingAssets = useCallback(async (remainder: Card[], headStart: Card[] = []) => {
+    const pending = [...headStart, ...remainder].filter(
+      (card) => !inFlightRef.current.has(card.id)
+    );
+    if (pending.length === 0 || stoppedRef.current) return;
+    const stop = { value: false };
+    jobsRef.current.add(stop);
+    const requests = toRequests(pending, PREPARATION_CHUNK_SIZE);
+    let cursor = 0;
+    const worker = async () => {
+      for (;;) {
+        const position = cursor;
+        cursor += 1;
+        if (stop.value || position >= requests.length) return;
+        const kept = await send(requests[position], stop);
+        if (!kept && exhaustedRef.current) stop.value = true;
+      }
+    };
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(PREPARATION_CONCURRENCY, requests.length) }, worker)
+      );
+    } catch (error) {
+      console.warn("Background study preparation stopped.", error);
+    } finally {
+      jobsRef.current.delete(stop);
+    }
+  }, [send]);
+
+  /**
+   * Read the queue's new cards: the first one before a pinned session opens,
+   * the rest behind the student while they work.
    *
    * Everything good about the non-Classic modes comes from here. Without it a
    * gap is chosen by a rule that can only see which words look important, and a
@@ -190,16 +280,14 @@ export function useStudyPreparation(input: {
    * being built badly.
    *
    * Cached cards never leave the browser, so a deck studied before returns
-   * instantly and this does no work at all. What is left is split: the first
-   * few are waited for, and the remainder is handed back as a promise the
-   * caller starts and does not await.
+   * instantly and this does no work at all.
    */
   const prepareSessionAssets = useCallback(
     async (
       queue: Card[]
     ): Promise<{
       assets: Record<string, StudyAsset>;
-      /** Not waited for: prepared first, one card a request, behind the session. */
+      /** For the caller to start behind the session with prepareRemainingAssets. */
       headStart: Card[];
       remainder: Card[];
     }> => {
@@ -221,48 +309,47 @@ export function useStudyPreparation(input: {
       const known = await loadStudyAssets(worthPreparing);
       if (epoch !== epochRef.current) return empty;
       const missing = worthPreparing
-        .filter((card) => !known[card.id] || known[card.id].repairRequested)
+        .filter((card) => {
+          const asset = known[card.id];
+          if (!asset || asset.repairRequested) return true;
+          // Prepared with no question: a session that wants one asks once more.
+          return purpose === "multiple-choice" && !asset.mcqVariants?.length && !asset.mcqRetried;
+        })
         .slice(0, MAX_PREPARED_CARDS_PER_SESSION);
       if (missing.length === 0) return { assets: known, headStart: [], remainder: [] };
 
-      const headStart = missing.slice(0, PREPARATION_HEAD_START);
-      const remainder = missing.slice(PREPARATION_HEAD_START);
-      if (modePolicy.kind === "smart") return { assets: known, headStart, remainder };
+      // Smart Mix never waits: a card reached before its assets is asked a way
+      // that needs none.
+      if (modePolicy.kind === "smart") return { assets: known, headStart: [], remainder: missing };
 
-      const [first, ...rest] = headStart;
-      setPreparation({ prepared: 0, total: 1 });
-
+      /*
+       * A pinned session waits for its first card, and only that one.
+       *
+       * The rest start at the same moment rather than after it: they used to be
+       * sent once the session had opened, so every card after the first began
+       * its fifteen seconds only when the student was already answering, and a
+       * quick student reached the second card before it had been asked for.
+       */
+      const [first, ...rest] = missing;
       const stop = { value: false };
       jobsRef.current.add(stop);
+      setPreparation({ prepared: 0, total: 1 });
+      const firstRequest = send({ deckId: first.deckId, cards: [first] }, stop);
+      void prepareRemainingAssets(rest);
+
       let expiryTimer = 0;
       const expiry = new Promise<void>((resolve) => {
-        expiryTimer = window.setTimeout(() => {
-          stop.value = true;
-          resolve();
-        }, PREPARATION_BUDGET_MS);
+        expiryTimer = window.setTimeout(resolve, PREPARATION_BUDGET_MS);
       });
       const skipped = new Promise<void>((resolve) => {
-        skipPreparationRef.current = () => {
-          stop.value = true;
-          resolve();
-        };
+        skipPreparationRef.current = resolve;
       });
 
       try {
-        await Promise.race([
-          runPreparationChunks([first], {
-            chunkSize: PREPARATION_HEAD_START_CHUNK_SIZE,
-            concurrency: 1,
-            stop,
-            onChunkDone: () => setPreparation((prev) => (prev ? { ...prev, prepared: 1 } : prev)),
-          }),
-          expiry,
-          skipped,
-        ]);
+        await Promise.race([firstRequest, expiry, skipped]);
       } finally {
-        // A request already in flight is left to finish. It cannot reach this
-        // session any more, but what it writes is cached, so the work is
-        // waiting the next time rather than thrown away.
+        // The first card's request is left to finish: the reader hands it to
+        // the session whenever it lands.
         window.clearTimeout(expiryTimer);
         skipPreparationRef.current = null;
         /*
@@ -278,132 +365,57 @@ export function useStudyPreparation(input: {
         jobsRef.current.delete(stop);
       }
 
-      const refreshed = await loadStudyAssets([first]);
+      const refreshed = await loadStudyAssets(missing);
       if (epoch !== epochRef.current) return empty;
-      return { assets: { ...known, ...refreshed }, headStart: rest, remainder };
+      return { assets: { ...known, ...refreshed }, headStart: [], remainder: [] };
     },
-    [modePolicy, studyModesEnabled, cancel]
+    [modePolicy, studyModesEnabled, cancel, prepareRemainingAssets, purpose, send]
   );
 
   /**
-   * Prepare one card now, because the student is looking at it.
-   *
-   * The head start covers the first few cards and the background pass catches
-   * the rest, but a student who answers faster than the pass can run still
-   * arrives at a card with nothing prepared -- and in a session locked to one
-   * mode, that card had nowhere to go but a panel apologising for itself. This
-   * is the same preparation for a single card, asked for at the moment it is
-   * needed, so the wait is a few seconds on one card rather than a question the
-   * student cannot have.
-   */
-  /**
    * Prepare the card a student is waiting on, and the next few behind it.
    *
-   * One card a request was the whole cost of outrunning the background pass: a
-   * student who reached an unprepared card waited for it, answered it, and then
-   * reached the next unprepared card and waited again. In a session pinned to
-   * Multiple Choice -- where there is no other way to ask the card -- that is a
-   * refusal panel every time, which is what made a fifteen-card session feel
-   * like six.
+   * The background pass is usually well ahead, but a student can still reach a
+   * card before it. That card is sent on its own, because a request's reply
+   * waits for every card in it and a student is watching this one; the next
+   * two go in a request of their own beside it. A card already on its way is
+   * not asked for twice -- the reader hands it over when it lands.
    *
-   * The look-ahead rides along in the same request, so it costs no extra slot
-   * of the daily allowance and no extra wait: the student is already waiting
-   * for the first card, and the next two arrive with it. Only cards from the
-   * same deck, because the endpoint checks ownership one deck at a time.
+   * Resolves to the card's asset, or null when none could be made now.
+   * "pending" means it is still on its way from an earlier request.
    */
-  const prepareCardNow = useCallback(async (card: Card, lookAhead: readonly Card[] = []) => {
-    if (!studyModesEnabled) return null;
-    if (typeof navigator !== "undefined" && !navigator.onLine) return null;
-    const stop = { value: false };
-    const epoch = epochRef.current;
-    jobsRef.current.add(stop);
+  const prepareCardNow = useCallback(
+    async (card: Card, lookAhead: readonly Card[] = []): Promise<StudyAsset | null | "pending"> => {
+      if (!studyModesEnabled) return null;
+      if (typeof navigator !== "undefined" && !navigator.onLine) return null;
+      const stop = { value: false };
+      const epoch = epochRef.current;
+      jobsRef.current.add(stop);
 
-    const batch = [
-      card,
-      ...lookAhead.filter((next) => next.deckId === card.deckId && next.id !== card.id),
-    ].slice(0, JUST_IN_TIME_BATCH_SIZE);
-
-    try {
-      await prepareStudyAssets({ deckId: card.deckId, cardIds: batch.map((item) => item.id) });
-      const refreshed = await loadStudyAssets(batch);
-      if (stop.value || epoch !== epochRef.current) return null;
-      onAssetsReady(refreshed);
-      return refreshed[card.id] ?? null;
-    } catch (error) {
-      console.warn("Jami could not prepare this card in time.", error);
-      return null;
-    } finally {
-      jobsRef.current.delete(stop);
-    }
-  }, [onAssetsReady, studyModesEnabled]);
-
-  /**
-   * Keep preparing after the session has opened.
-   *
-   * Nothing waits on this. Assets are merged in as they land, so a card the
-   * student has not reached yet gets the better question, and one they reach
-   * first is asked a way that needs no preparation.
-   */
-  const prepareRemainingAssets = useCallback(async (remainder: Card[], headStart: Card[] = []) => {
-    const pending = [...headStart, ...remainder];
-    if (pending.length === 0 || stoppedRef.current) return;
-    const stop = { value: false };
-    const epoch = epochRef.current;
-    jobsRef.current.add(stop);
-    /*
-     * Published as it lands, rather than once at the end.
-     *
-     * This used to read the assets a single time, after every chunk of the
-     * remainder had finished. On a long queue that is minutes away, so the
-     * first chunk sat prepared and unusable while the student worked through
-     * cards that could already have been asked as Gap Fill or Multiple
-     * Choice -- and the session kept serving the two modes that need no assets
-     * at all. Publishing per chunk means the modes widen as the queue is read
-     * rather than all at once, long after it matters.
-     *
-     * Guarded against overlap so a slow read cannot stack up behind the
-     * chunks, and a failed one is simply retried by the next chunk.
-     */
-    let refreshing = false;
-    const publish = async () => {
-      if (refreshing || stop.value || epoch !== epochRef.current) return;
-      refreshing = true;
+      const ahead = lookAhead
+        .filter(
+          (next) =>
+            next.deckId === card.deckId && next.id !== card.id && !inFlightRef.current.has(next.id)
+        )
+        .slice(0, 2);
       try {
-        const landed = await loadStudyAssets(pending);
-        if (!stop.value && epoch === epochRef.current) onAssetsReady(landed);
-      } catch {
-        // The next chunk publishes again; a read that failed is not fatal.
+        if (ahead.length > 0) void send({ deckId: card.deckId, cards: ahead }, stop);
+        if (inFlightRef.current.has(card.id)) return "pending";
+        const kept = await send({ deckId: card.deckId, cards: [card] }, stop);
+        if (!kept) return null;
+        const refreshed = await loadStudyAssets([card]);
+        if (stop.value || epoch !== epochRef.current) return null;
+        onAssetsReadyRef.current(refreshed);
+        return refreshed[card.id] ?? null;
+      } catch (error) {
+        console.warn("Jami could not prepare this card in time.", error);
+        return null;
       } finally {
-        refreshing = false;
+        jobsRef.current.delete(stop);
       }
-    };
-
-    try {
-      // The cards nearest the student first, each on its own so each lands alone.
-      await runPreparationChunks(headStart, {
-        chunkSize: PREPARATION_HEAD_START_CHUNK_SIZE,
-        concurrency: PREPARATION_HEAD_START,
-        stop,
-        onChunkDone: () => {
-          void publish();
-        },
-      });
-      await publish();
-      await runPreparationChunks(remainder, {
-        chunkSize: PREPARATION_CHUNK_SIZE,
-        concurrency: PREPARATION_CONCURRENCY,
-        stop,
-        onChunkDone: () => {
-          void publish();
-        },
-      });
-      await publish();
-    } catch (error) {
-      console.warn("Background study preparation stopped.", error);
-    } finally {
-      jobsRef.current.delete(stop);
-    }
-  }, [onAssetsReady]);
+    },
+    [send, studyModesEnabled]
+  );
 
   return {
     cancel,
