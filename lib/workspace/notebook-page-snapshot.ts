@@ -19,9 +19,7 @@ import {
   getNotebookRuleColor,
 } from "@/lib/workspace/notebook-paper-palette";
 import {
-  NOTEBOOK_TEXT_FONT_SIZE,
-  NOTEBOOK_TEXT_LINE_HEIGHT,
-  NOTEBOOK_TEXT_PADDING,
+  getNotebookTextBlockMetrics,
 } from "@/lib/workspace/notebook-text-metrics";
 
 export const NOTEBOOK_PAGE_SNAPSHOT_SCALE = 2;
@@ -343,15 +341,21 @@ function drawTextBlocks(
   textBlocks: readonly NotebookTextBlock[],
   pageColor: NotebookPageColor
 ) {
-  context.font = `600 ${NOTEBOOK_TEXT_FONT_SIZE}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
   context.textBaseline = "top";
   context.lineJoin = "round";
 
   for (const block of textBlocks) {
     if (block.width <= 0 || block.height <= 0) continue;
+    // A Tutor answer is set a size down from typed notes, on the page and here.
+    const {
+      fontSize,
+      lineHeight,
+      padding,
+    } = getNotebookTextBlockMetrics(block);
+    context.font = `600 ${fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
     const lines = wrapNotebookSnapshotText(
       block.text,
-      block.width - NOTEBOOK_TEXT_PADDING * 2,
+      block.width - padding * 2,
       (value) => context.measureText(value).width
     );
     /*
@@ -363,7 +367,7 @@ function drawTextBlocks(
       NOTEBOOK_PAGE_COORDINATE_HEIGHT - block.y,
       Math.max(
         block.height,
-        lines.length * NOTEBOOK_TEXT_LINE_HEIGHT + NOTEBOOK_TEXT_PADDING * 2
+        lines.length * lineHeight + padding * 2
       )
     );
     context.save();
@@ -389,15 +393,15 @@ function drawTextBlocks(
 
     context.fillStyle = getNotebookPaperPalette(pageColor).ink;
     // Each line sits in the middle of its leading, as it does on the page.
-    const halfLeading = (NOTEBOOK_TEXT_LINE_HEIGHT - NOTEBOOK_TEXT_FONT_SIZE) / 2;
+    const halfLeading = (lineHeight - fontSize) / 2;
     lines.forEach((line, index) => {
       context.fillText(
         line,
-        block.x + NOTEBOOK_TEXT_PADDING,
+        block.x + padding,
         block.y +
-          NOTEBOOK_TEXT_PADDING +
+          padding +
           halfLeading +
-          index * NOTEBOOK_TEXT_LINE_HEIGHT
+          index * lineHeight
       );
     });
     context.restore();

@@ -12,6 +12,7 @@ import {
   clampFloatingRect,
   cornerFloatingRect,
   floatingRectClearOf,
+  floatingRectClearOfAll,
   floatingRectsOverlap,
   maximisedFloatingRect,
   moveFloatingRect,
@@ -237,13 +238,17 @@ export function useFloatingPanel({
    * against the live viewport. A full-size panel covers everything, so it
    * comes back to its own size to be moved.
    */
-  const moveClearOf = (other: FloatingRect) => {
+  const moveClearOf = (other: FloatingRect | FloatingRect[]) => {
     const currentViewport = readViewport();
     const own = placed
       ? clampFloatingRect(placed, currentViewport, limits)
       : cornerFloatingRect(preferredSize, currentViewport, limits);
-    if (!maximised && !floatingRectsOverlap(own, other)) return;
-    const clear = floatingRectClearOf(own, other, currentViewport, limits);
+    const others = Array.isArray(other) ? other : [other];
+    if (!maximised && others.every((rect) => !floatingRectsOverlap(own, rect))) return;
+    const clear =
+      others.length === 1
+        ? floatingRectClearOf(own, others[0], currentViewport, limits)
+        : floatingRectClearOfAll(own, others, currentViewport, limits);
     setPlaced(clear);
     setMaximised(false);
     writeStored(storageKey, { rect: clear, maximised: false });

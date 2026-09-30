@@ -14,7 +14,7 @@ import { CloseIcon } from "@/components/ai/JamiAssistantIcons";
  * The drawer owns the conversation; this owns where it sits. The card can be
  * dragged anywhere and resized from any edge or corner, like an image, from
  * small enough to sit in a margin up to the whole window, or shrunk to a pill.
- * One answer can be pinned beside the page to copy from while writing, with
+ * Up to three answers can be pinned beside the page to copy from while writing, with
  * the card still open for the next question or put away.
  */
 
@@ -31,20 +31,41 @@ const PIN_LIMITS = { minWidth: 200, minHeight: 110, margin: 12 };
 
 export type FloatingFrame = ReturnType<typeof useFloatingPanel>;
 
-export function useFloatingTutorFrames(floating: boolean, pinned: boolean) {
+/** How many answers can be kept beside the page at once. */
+export const MAX_PINNED_ANSWERS = 3;
+
+/**
+ * The card, and one frame per pin slot.
+ *
+ * Slots are fixed (hooks cannot be called in a loop), each remembering its own
+ * place on this device; the first keeps the key the single pin always used.
+ */
+export function useFloatingTutorFrames(floating: boolean, occupiedSlots: readonly boolean[]) {
   const card = useFloatingPanel({
     storageKey: "jami:tutor-card:v1",
     enabled: floating,
     preferredSize: CARD_SIZE,
     limits: CARD_LIMITS,
   });
-  const pin = useFloatingPanel({
+  const pin0 = useFloatingPanel({
     storageKey: "jami:tutor-pin:v1",
-    enabled: floating && pinned,
+    enabled: floating && Boolean(occupiedSlots[0]),
     preferredSize: PIN_SIZE,
     limits: PIN_LIMITS,
   });
-  return { card, pin };
+  const pin1 = useFloatingPanel({
+    storageKey: "jami:tutor-pin:v1:2",
+    enabled: floating && Boolean(occupiedSlots[1]),
+    preferredSize: PIN_SIZE,
+    limits: PIN_LIMITS,
+  });
+  const pin2 = useFloatingPanel({
+    storageKey: "jami:tutor-pin:v1:3",
+    enabled: floating && Boolean(occupiedSlots[2]),
+    preferredSize: PIN_SIZE,
+    limits: PIN_LIMITS,
+  });
+  return { card, pins: [pin0, pin1, pin2] };
 }
 
 /**

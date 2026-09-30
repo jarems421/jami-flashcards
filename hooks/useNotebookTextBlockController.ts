@@ -268,6 +268,32 @@ export function useNotebookTextBlockController({
     ]
   );
 
+  /**
+   * A finished box, added as one undo step and left selected rather than open
+   * for typing: a Tutor answer arrives written, and the next thing done with
+   * it is moving it, not editing it. False when the page is full.
+   */
+  const insertTextBlock = useCallback(
+    (block: NotebookTextBlock) => {
+      if (pageState.read().textBlocks.length >= MAX_NOTEBOOK_TEXT_BLOCKS) {
+        onCreateLimitReached(MAX_NOTEBOOK_TEXT_BLOCKS);
+        return false;
+      }
+      const placed = clampNotebookTextBlock(block);
+      pageState.setTextBlocks((current) => {
+        const next = [...current, placed];
+        onHistoryCommit(current, next);
+        return next;
+      });
+      setSelectedTextBlockId(placed.id);
+      setEditingTextBlockId(null);
+      setOpenTextBlockOptionsId(null);
+      onChange();
+      return true;
+    },
+    [onChange, onCreateLimitReached, onHistoryCommit, pageState]
+  );
+
   const updateTextBlock = useCallback(
     (blockId: string, updates: Partial<NotebookTextBlock>) => {
       pageState.setTextBlocks((current) =>
@@ -607,6 +633,7 @@ export function useNotebookTextBlockController({
           height: resize.originHeight,
           text: currentBlock?.text ?? resize.originText,
           outlineVisible: currentBlock?.outlineVisible ?? true,
+          ...(currentBlock?.format ? { format: currentBlock.format } : {}),
         },
         edge: resize.edge,
         deltaX: dx,
@@ -783,6 +810,7 @@ export function useNotebookTextBlockController({
     stopEditingTextBlock,
     setTextBlockOptionsOpen,
     createTextBlockAtPoint,
+    insertTextBlock,
     updateTextBlock,
     toggleTextBlockOutline,
     deleteTextBlock,

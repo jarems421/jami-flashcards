@@ -8,6 +8,8 @@ import { normalizeAssistantId as normalizeId } from "@/lib/ai/jami-assistant-nor
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 
 import { extractTutorGraphs, MAX_TUTOR_GRAPHS, readTutorGraphSpecs } from "@/lib/ai/assistant-graph";
+import { extractTutorDiagrams, MAX_TUTOR_DIAGRAMS, readTutorDiagramSpecs } from "@/lib/ai/tutor-diagram";
+import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 
 export const JAMI_ASSISTANT_MAX_HISTORY_MESSAGES = 12;
 export const JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH = 4_000;
@@ -78,7 +80,9 @@ export type JamiAssistantCitation = {
   url: string;
 };
 
-export type AssistantIllustration = {
+/** A picture the image model made, stored as a file. Records saved before diagrams existed have no `kind`. */
+export type AssistantImageIllustration = {
+  kind?: "image";
   id: string;
   storagePath: string;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
@@ -88,6 +92,22 @@ export type AssistantIllustration = {
   caption: string;
   createdAt: number;
 };
+
+/**
+ * A diagram drawn by `lib/ai/tutor-diagram.ts`, kept as its SVG on the message.
+ * Nothing is stored as a file: it is text, drawn in the answer like the
+ * Tutor's own figures and added to a page the same way.
+ */
+export type AssistantDiagramIllustration = {
+  kind: "diagram";
+  id: string;
+  svg: string;
+  altText: string;
+  caption: string;
+  createdAt: number;
+};
+
+export type AssistantIllustration = AssistantImageIllustration | AssistantDiagramIllustration;
 
 export type JamiAssistantSourceFailure = {
   id: string;
@@ -133,6 +153,8 @@ export type ParsedJamiAssistantModelAnswer = {
   answer: string;
   /** Graphs to draw, as JSON specs, placed where the answer marks them. */
   graphs: string[];
+  /** Diagrams to draw, as JSON specs for `lib/ai/tutor-diagram.ts`, placed where the answer marks them. */
+  diagrams: string[];
   sourceRefs: string[];
   usedCurrentContext: boolean;
   usedGeneralKnowledge: boolean;
@@ -171,6 +193,7 @@ type ModelAnswerPayload = {
   usedGeneralKnowledge?: unknown;
   usedWebResearch?: unknown;
   graphs?: unknown;
+  diagrams?: unknown;
   marking?: unknown;
   cards?: unknown;
   questions?: unknown;
@@ -516,6 +539,19 @@ export function parseAssistantIllustration(value: unknown): AssistantIllustratio
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
   const id = normalizeId(item.id);
+  if (item.kind === "diagram") {
+    // Re-checked on every read: what reaches the page has passed the allowlist
+    // now, whatever was stored.
+    const drawn = typeof item.svg === "string" ? sanitizeSvgDiagram(item.svg, { maxLength: 120_000 }) : null;
+    const altText = normalizeOptionalText(item.altText, 500);
+    const caption = normalizeOptionalText(item.caption, 500);
+    const createdAt =
+      typeof item.createdAt === "number" && Number.isFinite(item.createdAt)
+        ? Math.max(0, Math.round(item.createdAt))
+        : 0;
+    if (!id || !drawn?.ok || !altText || !caption) return null;
+    return { kind: "diagram", id, svg: drawn.svg, altText, caption, createdAt };
+  }
   const storagePath =
     typeof item.storagePath === "string" ? item.storagePath.trim().slice(0, 1_000) : "";
   const mimeType =
@@ -871,11 +907,15 @@ export function parseJamiAssistantModelAnswer(
   if (!payload) return null;
 
   const extracted = extractTutorGraphs(typeof payload.answer === "string" ? payload.answer : "");
-  const answer = extracted.answer.trim();
+  const extractedDiagrams = extractTutorDiagrams(extracted.answer);
+  const answer = extractedDiagrams.answer.trim();
   const graphs = [...new Set([...readTutorGraphSpecs(payload.graphs), ...extracted.graphs])].slice(
     0,
     MAX_TUTOR_GRAPHS
   );
+  const diagrams = [
+    ...new Set([...readTutorDiagramSpecs(payload.diagrams), ...extractedDiagrams.diagrams]),
+  ].slice(0, MAX_TUTOR_DIAGRAMS);
   const sourceRefs = Array.isArray(payload.sourceRefs)
     ? Array.from(
         new Set(
@@ -886,7 +926,7 @@ export function parseJamiAssistantModelAnswer(
       )
     : null;
   if (
-    (!answer && graphs.length === 0) ||
+    (!answer && graphs.length === 0 && diagrams.length === 0) ||
     !sourceRefs ||
     typeof payload.usedCurrentContext !== "boolean" ||
     typeof payload.usedGeneralKnowledge !== "boolean" ||
@@ -902,6 +942,7 @@ export function parseJamiAssistantModelAnswer(
   return {
     answer,
     graphs,
+    diagrams,
     sourceRefs,
     ...(payload.marking !== undefined && payload.marking !== null
       ? { marking: payload.marking }

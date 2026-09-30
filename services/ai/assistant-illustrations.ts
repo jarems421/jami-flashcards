@@ -1,5 +1,6 @@
 import type {
   AssistantIllustration,
+  AssistantImageIllustration,
   JamiAssistantContext,
 } from "@/lib/ai/jami-assistant";
 import { parseAssistantIllustration } from "@/lib/ai/jami-assistant";
@@ -46,7 +47,7 @@ export async function createAssistantIllustration(input: {
 }
 
 export async function loadAssistantIllustrationBlob(
-  illustration: AssistantIllustration,
+  illustration: AssistantImageIllustration,
   signal?: AbortSignal
 ) {
   const response = await fetch(
@@ -73,6 +74,11 @@ export async function insertAssistantIllustration(input: {
   notebookId: string;
   pageId: string;
 }) {
+  // A diagram is added from its own figure, as the Tutor's drawings are; only a
+  // stored picture is copied onto a page by the server.
+  if (input.illustration.kind === "diagram") {
+    throw new Error("Use the diagram's own Add to page.");
+  }
   const response = await fetch("/api/ai/assistant/illustrations/insert", {
     method: "POST",
     headers: await authenticatedHeaders(),

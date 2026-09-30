@@ -8,10 +8,11 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import AiResponse from "@/components/ai/AiResponse";
 import NotebookTextBlockOptions from "@/components/workspace/NotebookTextBlockOptions";
 import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
 import {
-  MAX_NOTEBOOK_TEXT_BLOCK_TEXT,
+  getNotebookTextBlockTextLimit,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
   type NotebookPageColor,
@@ -23,9 +24,9 @@ import {
   NOTEBOOK_TEXT_BODY_ATTRIBUTE,
   NOTEBOOK_TEXT_LAYER_ATTRIBUTE,
   NOTEBOOK_TEXT_LAYER_STYLE,
-  NOTEBOOK_TEXT_STYLE,
   getNotebookTextBlockBodyHeight,
   getNotebookTextBlockFitHeight,
+  getNotebookTextBlockStyle,
 } from "@/lib/workspace/notebook-text-metrics";
 
 const TEXT_COLOR_CLASS: Record<NotebookPageColor, string> = {
@@ -165,7 +166,7 @@ function NotebookTextEditor({
     <textarea
       ref={editorRef}
       value={block.text}
-      maxLength={MAX_NOTEBOOK_TEXT_BLOCK_TEXT}
+      maxLength={getNotebookTextBlockTextLimit(block)}
       // The box beneath owns dragging; typing must not start one.
       onPointerDown={(event) => event.stopPropagation()}
       onPointerMove={(event) => event.stopPropagation()}
@@ -181,9 +182,75 @@ function NotebookTextEditor({
       onChange={(event) => onChangeText(block.id, event.target.value)}
       placeholder="Type here..."
       data-notebook-text-editor="true"
-      style={{ ...NOTEBOOK_TEXT_STYLE, height: getNotebookTextBlockBodyHeight(block) }}
+      style={{ ...getNotebookTextBlockStyle(block), height: getNotebookTextBlockBodyHeight(block) }}
       className={`notebook-text-editor block w-full resize-none overflow-y-auto break-words rounded-sm bg-transparent font-medium outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
     />
+  );
+}
+
+/**
+ * A Tutor answer on the page, shown the way the Tutor showed it.
+ *
+ * Its tables, headings and maths only take their final size once KaTeX has
+ * set them -- after the renderer's chunk arrives, after fonts load -- so the
+ * box is fitted whenever the answer changes size, not once. It only ever
+ * grows, like a typed box, and stops at the foot of the page.
+ */
+function NotebookMarkdownText({
+  block,
+  onFitHeight,
+}: {
+  block: NotebookTextBlock;
+  onFitHeight?: (blockId: string, height: number) => void;
+}) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const blockRef = useRef(block);
+  const fitRef = useRef(onFitHeight);
+
+  // Read by the observer, which outlives any one render.
+  useLayoutEffect(() => {
+    blockRef.current = block;
+    fitRef.current = onFitHeight;
+  });
+
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    const holder = body?.parentElement;
+    if (!body || !holder || typeof ResizeObserver === "undefined") return;
+    const fit = () => {
+      const current = blockRef.current;
+      const layer = body.closest(`[${NOTEBOOK_TEXT_LAYER_ATTRIBUTE}]`);
+      const pageWidthPx = layer instanceof HTMLElement ? layer.clientWidth : 0;
+      if (!(pageWidthPx > 0) || !fitRef.current) return;
+      const style = window.getComputedStyle(holder);
+      const contentHeightPx =
+        body.offsetHeight +
+        (Number.parseFloat(style.paddingTop) || 0) +
+        (Number.parseFloat(style.paddingBottom) || 0);
+      const height = getNotebookTextBlockFitHeight({
+        block: current,
+        contentHeightPx,
+        // What the stored height shows, less the border, as the text area does.
+        visibleHeightPx:
+          (current.height / NOTEBOOK_PAGE_COORDINATE_WIDTH) * pageWidthPx - 2,
+        pageWidthPx,
+      });
+      if (height !== null) fitRef.current(current.id, height);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={bodyRef}
+      {...{ [NOTEBOOK_TEXT_BODY_ATTRIBUTE]: "true" }}
+      className="min-w-0 flex-1 break-words"
+    >
+      <AiResponse content={block.text} variant="page" />
+    </div>
   );
 }
 
@@ -342,6 +409,35 @@ function NotebookTextBlockLayer({
                 onFitHeight={onFitHeight}
                 onStopEditing={onStopEditing}
               />
+            ) : block.format === "markdown" && block.text.trim() ? (
+              /*
+               * Not a button: an answer holds tables, figures and links, none
+               * of which a button may contain. It is selected the same way.
+               */
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label={`Select Tutor answer: ${block.text.slice(0, 80)}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect(block.id);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSelect(block.id);
+                }}
+                style={{
+                  ...getNotebookTextBlockStyle(block),
+                  minHeight: getNotebookTextBlockBodyHeight(block),
+                }}
+                className={`flex w-full items-start rounded-sm text-left font-normal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-selected-border)] ${
+                  onBlack ? "text-[#f8fafc]" : "text-slate-950"
+                }`}
+              >
+                <NotebookMarkdownText block={block} onFitHeight={onFitHeight} />
+              </div>
             ) : (
               <button
                 type="button"
@@ -358,7 +454,7 @@ function NotebookTextBlockLayer({
                 // in to type moves no words: same type, same padding, and
                 // top-aligned, where a button would otherwise centre its text.
                 style={{
-                  ...NOTEBOOK_TEXT_STYLE,
+                  ...getNotebookTextBlockStyle(block),
                   minHeight: getNotebookTextBlockBodyHeight(block),
                 }}
                 className={`flex w-full items-start rounded-sm border-0 bg-transparent text-left font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-selected-border)] ${

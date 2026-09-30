@@ -306,8 +306,24 @@ item 2:
 
 - Paper research is now shared per course for a week
   (`services/ai/course-research-cache.server.ts`).
-- The research model switch waits on `npm run eval:research-models`. It
-  could not run because the Gemini project had reached its monthly spend cap.
+- The research model switch was **rejected on 29 Sep**
+  (`npm run eval:research-models`, 14 queries each). 2.5 Flash-Lite was
+  faster and cited more, but it described AQA's History structure as WJEC's
+  from third-party sites alone. A wrong exam format is disqualifying for
+  paper design, so research stays on 3.5 Flash-Lite.
+- The paper image switch to Flash-Lite Image was **rejected on 29 Sep**
+  (`npm run eval:image-models`). Flash-Lite drew onion cells as round
+  polygonal cells, and a "fault" whose beds do not move. The paper
+  validator passed the worse image in both of the pairs I checked, so its
+  pass rate cannot decide this.
+- Tutor pictures had used Flash-Lite Image, and labelled diagrams from both
+  image models had errors: Flash-Lite's heart mislabelled vessels and
+  valves, and 3.1 Flash Image invented a leaf label, "SCORKA". **Built 29
+  Sep:** the Tutor now describes diagrams as specs that
+  `lib/ai/tutor-diagram.ts` draws: labelled parts, cycles, flows and
+  circuits. This covers both its answers and "Show this visually". Only
+  photo requests reach an image model, now 3.1 Flash Image, asked for no
+  text. Diagrams cost about 0.05p each, against 3.4p to 6.8p for an image.
 - Video Flex was **dropped**. It adds up to 15 minutes to an import the
   student is waiting on, and Google bills an abandoned Flex request, so
   falling back to standard can cost more than never using Flex. The saving

@@ -12,7 +12,9 @@ import {
   isTutorGraphRequest,
   normalizeAssistantIllustrations,
   type AssistantIllustration,
+  type AssistantImageIllustration,
 } from "@/lib/ai/jami-assistant";
+import { drawTutorDiagram, TutorDiagramUnavailableError } from "@/services/ai/tutor-diagram.server";
 import {
   getJamiAssistantContextKey,
   getJamiAssistantSavedContext,
@@ -32,7 +34,8 @@ import {
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// Up to two diagram attempts, then an image only when a photo was asked for.
+export const maxDuration = 180;
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -135,10 +138,48 @@ export async function POST(request: NextRequest) {
   const requestId = randomUUID();
   const log = createLogger({ route: "ai.assistant.illustrations", requestId, uid });
   let storagePath = "";
+  const saveIllustration = (illustration: AssistantIllustration) =>
+    db.runTransaction(async (transaction) => {
+      const latest = await transaction.get(messageRef);
+      if (
+        !latest.exists ||
+        latest.data()?.threadId !== parsed.threadId ||
+        latest.data()?.role !== "assistant" ||
+        latest.data()?.canIllustrate !== true ||
+        latest.data()?.text !== storedMessage.text
+      ) {
+        throw new Error("Jami's answer changed before the visual was saved.");
+      }
+      const existing = normalizeAssistantIllustrations(latest.data()?.illustrations);
+      if (existing.length >= 10) throw new Error("This answer from Jami already has enough visuals.");
+      transaction.update(messageRef, {
+        illustrations: [...existing, illustration],
+      });
+    });
   try {
+    /*
+     * A diagram first. Anything with labels, stages or components is drawn by
+     * code from what the model says is in it; only a picture of what something
+     * really looks like reaches the image model, which is asked for no text.
+     */
+    const drawn = await drawTutorDiagram({ ...trustedPromptContext, signal: request.signal, log });
+    if (drawn.kind === "diagram") {
+      const illustration: AssistantIllustration = {
+        kind: "diagram",
+        id: randomUUID(),
+        svg: drawn.svg,
+        altText: drawn.altText,
+        caption: drawn.title || drawn.altText,
+        createdAt: Date.now(),
+      };
+      await saveIllustration(illustration);
+      log.info("request.completed", { assetId: illustration.id, kind: "diagram" });
+      return Response.json({ illustration });
+    }
+
     const generated = await generateGeminiImage({
       role: "tutorImage",
-      prompt: buildTutorIllustrationPrompt(trustedPromptContext),
+      prompt: buildTutorIllustrationPrompt({ ...trustedPromptContext, pictureWanted: drawn.altText }),
       aspectRatio: "4:3",
       imageSize: "1K",
       referenceImages:
@@ -179,37 +220,22 @@ export async function POST(request: NextRequest) {
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 160);
-    const illustration: AssistantIllustration = {
+    const illustration: AssistantImageIllustration = {
+      kind: "image",
       id: assetId,
       storagePath,
-      mimeType: generated.mimeType as AssistantIllustration["mimeType"],
+      mimeType: generated.mimeType as AssistantImageIllustration["mimeType"],
       width: metadata.width,
       height: metadata.height,
-      altText: description || `Educational visual explaining ${topic}`,
+      altText: description || drawn.altText || `Educational visual explaining ${topic}`,
       caption: description || `Visual explanation of ${topic}`,
       createdAt: Date.now(),
     };
-
-    await db.runTransaction(async (transaction) => {
-      const latest = await transaction.get(messageRef);
-      if (
-        !latest.exists ||
-        latest.data()?.threadId !== parsed.threadId ||
-        latest.data()?.role !== "assistant" ||
-        latest.data()?.canIllustrate !== true ||
-        latest.data()?.text !== storedMessage.text
-      ) {
-        throw new Error("Jami's answer changed before the visual was saved.");
-      }
-      const existing = normalizeAssistantIllustrations(latest.data()?.illustrations);
-      if (existing.length >= 10) throw new Error("This answer from Jami already has enough visuals.");
-      transaction.update(messageRef, {
-        illustrations: [...existing, illustration],
-      });
-    });
+    await saveIllustration(illustration);
 
     log.info("request.completed", {
       assetId,
+      kind: "image",
       mimeType: illustration.mimeType,
       width: illustration.width,
       height: illustration.height,
@@ -222,7 +248,9 @@ export async function POST(request: NextRequest) {
     await refundAiBudget(budget.grant).catch(() => undefined);
     log.error("request.failed", { error });
     return assistantAssetError(
-      "Jami could not create that visual just now. Try again in a moment.",
+      error instanceof TutorDiagramUnavailableError
+        ? "Jami could not draw that diagram accurately, so it has not shown one. Try asking again."
+        : "Jami could not create that visual just now. Try again in a moment.",
       502,
       "generation_failed"
     );

@@ -60,6 +60,51 @@ export const NOTEBOOK_TEXT_STYLE = {
   padding: notebookPageUnits(NOTEBOOK_TEXT_PADDING),
 } as const;
 
+/**
+ * A Tutor answer on the page, set a size down from typed notes.
+ *
+ * An answer is written to be read in a card, at the length a card allows, and
+ * at the size of a student's own notes a middling one ran past the foot of
+ * the page. This is the size of a printed handout: read comfortably on a
+ * fitted page, and a table of four columns still fits across a box.
+ */
+export const NOTEBOOK_ANSWER_FONT_SIZE = 18;
+export const NOTEBOOK_ANSWER_LINE_HEIGHT = 27;
+
+export const NOTEBOOK_ANSWER_TEXT_STYLE = {
+  fontSize: notebookPageUnits(NOTEBOOK_ANSWER_FONT_SIZE),
+  lineHeight: notebookPageUnits(NOTEBOOK_ANSWER_LINE_HEIGHT),
+  padding: notebookPageUnits(NOTEBOOK_TEXT_PADDING),
+} as const;
+
+export type NotebookTextBlockMetrics = {
+  fontSize: number;
+  lineHeight: number;
+  padding: number;
+};
+
+/** The type a box is set in, in page units. */
+export function getNotebookTextBlockMetrics(
+  block: Pick<NotebookTextBlock, "format">
+): NotebookTextBlockMetrics {
+  return block.format === "markdown"
+    ? {
+        fontSize: NOTEBOOK_ANSWER_FONT_SIZE,
+        lineHeight: NOTEBOOK_ANSWER_LINE_HEIGHT,
+        padding: NOTEBOOK_TEXT_PADDING,
+      }
+    : {
+        fontSize: NOTEBOOK_TEXT_FONT_SIZE,
+        lineHeight: NOTEBOOK_TEXT_LINE_HEIGHT,
+        padding: NOTEBOOK_TEXT_PADDING,
+      };
+}
+
+/** The same, as CSS, for the box on the page and the text area editing it. */
+export function getNotebookTextBlockStyle(block: Pick<NotebookTextBlock, "format">) {
+  return block.format === "markdown" ? NOTEBOOK_ANSWER_TEXT_STYLE : NOTEBOOK_TEXT_STYLE;
+}
+
 /** The box's border, which sits outside the text but inside its height. */
 const TEXT_BLOCK_BORDER_PX = 2;
 

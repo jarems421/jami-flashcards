@@ -3,7 +3,10 @@ import {
   getAssistantImageExtension,
   isOwnedAssistantImagePath,
 } from "@/lib/ai/assistant-illustrations";
-import { normalizeAssistantIllustrations } from "@/lib/ai/jami-assistant";
+import {
+  normalizeAssistantIllustrations,
+  type AssistantImageIllustration,
+} from "@/lib/ai/jami-assistant";
 import {
   createCenteredNotebookImageRef,
   MAX_NOTEBOOK_IMAGE_REFS,
@@ -51,7 +54,12 @@ export async function POST(request: NextRequest) {
   ]);
   const illustration = normalizeAssistantIllustrations(
     messageSnapshot.data()?.illustrations
-  ).find((item) => item.id === assetId && item.storagePath === storagePath);
+  ).find(
+    // Only a stored picture is copied onto a page from here; a diagram is added
+    // from the answer, as the Tutor's own figures are.
+    (item): item is AssistantImageIllustration =>
+      item.kind !== "diagram" && item.id === assetId && item.storagePath === storagePath
+  );
   if (!messageSnapshot.exists || messageSnapshot.data()?.role !== "assistant" || !illustration) {
     return assistantAssetError("That visual from Jami could not be found.", 404, "illustration_not_found");
   }

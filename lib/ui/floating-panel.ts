@@ -233,6 +233,69 @@ export function floatingRectClearOf(
   return clampFloatingRect({ x: limits.margin, y: limits.margin, width, height }, viewport, limits);
 }
 
+/**
+ * The panel moved off every other panel it would cover, at its own size.
+ *
+ * Tries beside each of the others in turn, in the same order as
+ * `floatingRectClearOf`, then walks the screen for any clear spot. Only when
+ * nothing is clear anywhere does it settle for overlapping, and then it steps
+ * down from the top-left so it never lands exactly on top of another panel.
+ */
+export function floatingRectClearOfAll(
+  rect: FloatingRect,
+  others: FloatingRect[],
+  viewport: FloatingViewport,
+  limits: FloatingLimits
+): FloatingRect {
+  const panel = clampFloatingRect(rect, viewport, limits);
+  const clearOfAll = (candidate: FloatingRect) =>
+    others.every((other) => !floatingRectsOverlap(candidate, other));
+  if (clearOfAll(panel)) return panel;
+  const gap = limits.margin;
+  const { width, height } = panel;
+  for (const other of others) {
+    const level = other.y + other.height - height;
+    const aligned = other.x + other.width - width;
+    const candidates: FloatingRect[] = [
+      { x: other.x - gap - width, y: level, width, height },
+      { x: other.x + other.width + gap, y: level, width, height },
+      { x: aligned, y: other.y - gap - height, width, height },
+      { x: aligned, y: other.y + other.height + gap, width, height },
+    ];
+    for (const candidate of candidates) {
+      const placed = clampFloatingRect(candidate, viewport, limits);
+      if (clearOfAll(placed)) return placed;
+    }
+  }
+  const step = 24;
+  for (let y = viewport.height - limits.margin - height; y >= limits.margin; y -= step) {
+    for (let x = viewport.width - limits.margin - width; x >= limits.margin; x -= step) {
+      const placed = clampFloatingRect({ x, y, width, height }, viewport, limits);
+      if (clearOfAll(placed)) return placed;
+    }
+  }
+  /*
+   * No room anywhere: overlap, but cascaded so each panel's header stays
+   * visible, giving up some size when the panel is too big to step down.
+   */
+  const cascade = 32;
+  for (let index = 0; index <= others.length; index += 1) {
+    const offset = limits.margin + index * cascade;
+    const placed = clampFloatingRect(
+      {
+        x: offset,
+        y: offset,
+        width: Math.max(limits.minWidth, Math.min(width, viewport.width - limits.margin - offset)),
+        height: Math.max(limits.minHeight, Math.min(height, viewport.height - limits.margin - offset)),
+      },
+      viewport,
+      limits
+    );
+    if (others.every((other) => other.x !== placed.x || other.y !== placed.y)) return placed;
+  }
+  return clampFloatingRect({ x: limits.margin, y: limits.margin, width, height }, viewport, limits);
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }

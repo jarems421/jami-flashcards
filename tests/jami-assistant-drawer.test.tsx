@@ -287,7 +287,7 @@ describe("JamiAssistantDrawer", () => {
 describe("JamiAssistantDrawer floating over a notebook", () => {
   let onOpenChange: Mock<(open: boolean) => void>;
 
-  function renderFloating(open: boolean) {
+  function renderFloating(open: boolean, onAnswerInsert?: (text: string) => boolean) {
     act(() => {
       root.render(
         <JamiAssistantDrawer
@@ -300,6 +300,7 @@ describe("JamiAssistantDrawer floating over a notebook", () => {
           historyContextLabel="this notebook"
           getContext={getContext}
           layout="floating"
+          onAnswerInsert={onAnswerInsert}
         />
       );
     });
@@ -417,5 +418,35 @@ describe("JamiAssistantDrawer floating over a notebook", () => {
     act(() => button(/unpin/i)?.click());
     expect(pinned()).toBeNull();
     expect(button(/^open jami$/i)).toBeDefined();
+  });
+
+  /*
+   * Copying an answer into a text box left its table as pipes and its maths as
+   * dollar signs. The whole answer goes to the page as it was written, for the
+   * page to show the way the chat does.
+   */
+  it("adds a whole answer to the page as it was written", async () => {
+    const reply = ["| Quantity | Formula |", "| --- | --- |", "| Area | $\\pi r^2$ |"].join("\n");
+    sendJamiAssistantMessage.mockResolvedValue({ reply, followUps: [], used: [] });
+    const onAnswerInsert = vi.fn(() => true);
+    renderFloating(true, onAnswerInsert);
+    typeMessage("What is the area of a circle?");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    act(() => button(/add this answer to the page/i)?.click());
+    expect(onAnswerInsert).toHaveBeenCalledWith(reply);
+    expect(button(/answer added to page/i)).toBeDefined();
+  });
+
+  it("offers no Add to page where there is no page to add to", async () => {
+    sendJamiAssistantMessage.mockResolvedValue({ reply: "An answer.", followUps: [], used: [] });
+    renderFloating(true);
+    typeMessage("A question");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(button(/add this answer to the page/i)).toBeUndefined();
   });
 });

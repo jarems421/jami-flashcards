@@ -82,8 +82,10 @@ import {
 } from "@/lib/workspace/notebooks";
 import {
   getNotebookPageStyleBackground,
+  makeNotebookTextBlockId,
   normalizeNotebookStrokes,
 } from "@/lib/workspace/notebook-page-content";
+import { createNotebookAnswerBlock } from "@/lib/workspace/notebook-answer-block";
 import {
   getNotebookSwipePreviewDirection,
   isNotebookPageSwipePreviewEnabled,
@@ -926,6 +928,7 @@ export default function NotebookEditorPage() {
     stopEditingTextBlock,
     setTextBlockOptionsOpen,
     createTextBlockAtPoint,
+    insertTextBlock,
     updateTextBlock,
     toggleTextBlockOutline,
     deleteTextBlock,
@@ -2714,6 +2717,44 @@ export default function NotebookEditorPage() {
     [currentGraphBlocksFor, pageState, selectPlacedGraph, showError, success, writePageGraphs]
   );
 
+  /** A Tutor answer, added to this page exactly as the Tutor showed it. */
+  const handleTutorAnswerInsert = useCallback(
+    (text: string) => {
+      const { selectedPage: page, textBlocks: currentTextBlocks } = pageState.read();
+      if (!page) return false;
+      if (!fullNotebookEditingEnabled || practicePaperEditingLocked) {
+        showError("This page can't be edited here, so the answer can't be added to it.");
+        return false;
+      }
+      const result = createNotebookAnswerBlock({
+        id: makeNotebookTextBlockId(),
+        text,
+        page: {
+          textBlocks: currentTextBlocks,
+          imageRefs: currentImageRefsFor(page.id),
+          graphBlocks: currentGraphBlocksFor(page.id),
+        },
+      });
+      if (!result.ok) {
+        showError(result.message);
+        return false;
+      }
+      const added = insertTextBlock(result.block);
+      if (added) success("Answer added to this page.");
+      return added;
+    },
+    [
+      currentGraphBlocksFor,
+      currentImageRefsFor,
+      fullNotebookEditingEnabled,
+      insertTextBlock,
+      pageState,
+      practicePaperEditingLocked,
+      showError,
+      success,
+    ]
+  );
+
   useEffect(() => {
     setSelectedGraphId(null);
     setGraphEditorTarget(null);
@@ -3066,6 +3107,7 @@ export default function NotebookEditorPage() {
             onIllustrationInserted={handleIllustrationInserted}
             onGraphInsert={handleTutorGraphInsert}
             onDrawingInsert={handleAddImage}
+            onAnswerInsert={handleTutorAnswerInsert}
           />
         ) : null}
         <NotebookGraphEditorDialog

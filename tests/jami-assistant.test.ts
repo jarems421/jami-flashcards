@@ -155,6 +155,7 @@ describe("Jami assistant model and receipt contract", () => {
     ).toEqual({
       answer: "Photosynthesis stores light energy.",
       graphs: [],
+      diagrams: [],
       sourceRefs: ["S1"],
       usedCurrentContext: true,
       usedGeneralKnowledge: true,

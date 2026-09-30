@@ -166,7 +166,7 @@ describe("Gemini specialists", () => {
       description: "A labelled cell diagram.",
     });
     expect(generateContent.mock.calls[0][0]).toMatchObject({
-      model: "gemini-3.1-flash-lite-image",
+      model: "gemini-3.1-flash-image",
       config: {
         responseModalities: ["TEXT", "IMAGE"],
         imageConfig: { aspectRatio: "4:3", imageSize: "1K" },

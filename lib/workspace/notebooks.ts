@@ -111,7 +111,17 @@ export type NotebookTextBlock = {
   height: number;
   text: string;
   outlineVisible: boolean;
+  /**
+   * How the text is read. Absent for what a student types, which shows
+   * exactly as typed. "markdown" is a Tutor answer added to the page: its
+   * text is the answer's own Markdown and maths, and it is shown the way the
+   * Tutor showed it -- tables, headings, typeset maths -- rather than as the
+   * dollar signs and pipes a copy and paste leaves behind.
+   */
+  format?: NotebookTextBlockFormat;
 };
+
+export type NotebookTextBlockFormat = "markdown";
 
 export type Notebook = {
   id: string;
@@ -203,6 +213,17 @@ export const MAX_NOTEBOOK_PAGE_TYPED_CONTENT = 30_000;
 export const MAX_QUESTION_ANSWER_LENGTH = 12_500;
 export const MAX_NOTEBOOK_TEXT_BLOCKS = 80;
 export const MAX_NOTEBOOK_TEXT_BLOCK_TEXT = 4_000;
+/**
+ * A Tutor answer is one box however long it is, and its Markdown and maths
+ * take more characters than the words they show.
+ */
+export const MAX_NOTEBOOK_MARKDOWN_BLOCK_TEXT = 12_000;
+
+export function getNotebookTextBlockTextLimit(block: Pick<NotebookTextBlock, "format">) {
+  return block.format === "markdown"
+    ? MAX_NOTEBOOK_MARKDOWN_BLOCK_TEXT
+    : MAX_NOTEBOOK_TEXT_BLOCK_TEXT;
+}
 export const MAX_NOTEBOOK_INK_SVG_LENGTH = 850_000;
 // Firestore documents have a 1 MiB ceiling. Leave room for field names and
 // page metadata instead of relying on the backend to reject a nearly-full doc.
@@ -691,6 +712,8 @@ function normalizeTextBlock(value: unknown): NotebookTextBlock | null {
     text,
     outlineVisible:
       typeof block.outlineVisible === "boolean" ? block.outlineVisible : true,
+    // Set only when there is one: Firestore refuses an undefined field.
+    ...(block.format === "markdown" ? { format: "markdown" as const } : {}),
   };
 }
 
@@ -826,12 +849,14 @@ export function prepareNotebookPageSnapshotForPersistence(
     );
   }
   const oversizedTextBlock = input.textBlocks.find(
-    (block) => typeof block.text !== "string" || block.text.length > MAX_NOTEBOOK_TEXT_BLOCK_TEXT
+    (block) =>
+      typeof block.text !== "string" ||
+      block.text.length > getNotebookTextBlockTextLimit(block)
   );
   if (oversizedTextBlock) {
     throw new NotebookPagePersistenceError(
       "text-block-too-large",
-      `Each text box can sync up to ${MAX_NOTEBOOK_TEXT_BLOCK_TEXT.toLocaleString()} characters. Shorten that text box and try again.`
+      `Each text box can sync up to ${getNotebookTextBlockTextLimit(oversizedTextBlock).toLocaleString()} characters. Shorten that text box and try again.`
     );
   }
   if (input.typedContent.length > MAX_NOTEBOOK_PAGE_TYPED_CONTENT) {

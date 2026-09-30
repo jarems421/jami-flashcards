@@ -148,9 +148,11 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstRequestLimit: 3,
     burstWindowMs: 60_000,
     burstScope: "tutorIllustrations",
-    // The image model can also return a short caption/alt-text payload. Image
-    // bytes are billed separately by Gemini and are limited by the route.
-    tokenCap: 1_024,
+    // A visual is first asked of the text model as an SVG diagram, which with
+    // its labels, leader lines and the model's reasoning runs to several
+    // thousand tokens. Only a picture of what something looks like reaches the
+    // image model, whose bytes are billed separately and limited by the route.
+    tokenCap: 16_000,
     inputTokenCap: null,
   },
   practicePaperGeneration: {

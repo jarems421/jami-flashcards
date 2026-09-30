@@ -3,6 +3,7 @@ import {
   clampFloatingRect,
   cornerFloatingRect,
   floatingRectClearOf,
+  floatingRectClearOfAll,
   floatingRectsOverlap,
   maximisedFloatingRect,
   moveFloatingRect,
@@ -123,5 +124,46 @@ describe("floating panel geometry", () => {
       width: 340,
       height: 340,
     });
+  });
+
+  it("places a new pin clear of the card and of every pin still on screen", () => {
+    const pinLimits = { minWidth: 200, minHeight: 110, margin: 12 };
+    const card = cornerFloatingRect({ width: 360, height: 560 }, VIEWPORT, pinLimits);
+    const first = floatingRectClearOf(
+      cornerFloatingRect({ width: 300, height: 220 }, VIEWPORT, pinLimits),
+      card,
+      VIEWPORT,
+      pinLimits
+    );
+    const second = floatingRectClearOfAll(
+      cornerFloatingRect({ width: 300, height: 220 }, VIEWPORT, pinLimits),
+      [card, first],
+      VIEWPORT,
+      pinLimits
+    );
+    const third = floatingRectClearOfAll(
+      cornerFloatingRect({ width: 300, height: 220 }, VIEWPORT, pinLimits),
+      [card, first, second],
+      VIEWPORT,
+      pinLimits
+    );
+    for (const [a, b] of [
+      [first, card],
+      [second, card],
+      [second, first],
+      [third, card],
+      [third, first],
+      [third, second],
+    ]) {
+      expect(floatingRectsOverlap(a, b)).toBe(false);
+    }
+  });
+
+  it("never lands exactly on another pin when there is no clear room", () => {
+    const tiny = { width: 400, height: 300 };
+    const pinLimits = { minWidth: 200, minHeight: 110, margin: 12 };
+    const full = { x: 12, y: 12, width: 376, height: 276 };
+    const placed = floatingRectClearOfAll(full, [full], tiny, pinLimits);
+    expect(placed.x === full.x && placed.y === full.y).toBe(false);
   });
 });

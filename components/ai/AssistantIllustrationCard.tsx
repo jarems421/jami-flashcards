@@ -2,22 +2,51 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import type { AssistantIllustration } from "@/lib/ai/jami-assistant";
+import AiResponse from "@/components/ai/AiResponse";
+import type {
+  AssistantDiagramIllustration,
+  AssistantIllustration,
+  AssistantImageIllustration,
+} from "@/lib/ai/jami-assistant";
 import { loadAssistantIllustrationBlob } from "@/services/ai/assistant-illustrations";
 
-export default function AssistantIllustrationCard({
-  illustration,
-  canInsert,
-  inserted,
-  inserting,
-  onInsert,
-}: {
+type CardProps = {
   illustration: AssistantIllustration;
   canInsert: boolean;
   inserted: boolean;
   inserting: boolean;
   onInsert: () => void;
-}) {
+};
+
+export default function AssistantIllustrationCard(props: CardProps) {
+  return props.illustration.kind === "diagram" ? (
+    <DiagramCard illustration={props.illustration} />
+  ) : (
+    <ImageCard {...props} illustration={props.illustration} />
+  );
+}
+
+/**
+ * A diagram is drawn like the Tutor's own figures: handed to the answer
+ * renderer as a fenced svg block, so it passes the same allowlist, keeps a
+ * width it can be read at, and gets the same "Add to page" on a notebook page.
+ */
+function DiagramCard({ illustration }: { illustration: AssistantDiagramIllustration }) {
+  return (
+    <figure className="mt-3" aria-label={illustration.altText}>
+      <AiResponse content={"```svg\n" + illustration.svg + "\n```"} />
+      <figcaption className="px-1 text-xs leading-5 text-text-secondary">{illustration.caption}</figcaption>
+    </figure>
+  );
+}
+
+function ImageCard({
+  illustration,
+  canInsert,
+  inserted,
+  inserting,
+  onInsert,
+}: CardProps & { illustration: AssistantImageIllustration }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
 

@@ -50,7 +50,9 @@ import type { TutorPracticeOffer as TutorPracticeOfferData } from "@/lib/ai/tuto
 import type { JamiAssistantSuggestedQuestion } from "@/lib/ai/tutor-question-suggestions";
 import { drawnFigureToPng } from "@/components/ai/drawn-figure-image";
 import TutorReasoningMenu from "@/components/ai/TutorReasoningMenu";
+import AddAnswerToPageButton from "@/components/ai/AddAnswerToPageButton";
 import AssistantAnswerBody from "@/components/ai/AssistantAnswerBody";
+import { splitAssistantAnswerAtDiagram } from "@/lib/ai/assistant-answer-layout";
 import {
   AssistantGraphActionsContext,
   type AssistantGraphActions,
@@ -85,6 +87,7 @@ import {
   floatingRectStyle,
   floatingTutorPanelClass,
   isCompactFloatingCard,
+  MAX_PINNED_ANSWERS,
   useFloatingTutorFrames,
 } from "@/components/ai/JamiFloatingTutor";
 import { featureFlags } from "@/lib/app/feature-flags";
@@ -152,6 +155,12 @@ type JamiAssistantDrawerProps = {
    */
   onDrawingInsert?: (file: File) => Promise<boolean>;
   /**
+   * Adds a whole answer to the open notebook page, shown there exactly as it
+   * is here: tables, headings and typeset maths. True once it is on the page;
+   * the notebook reports its own failures.
+   */
+  onAnswerInsert?: (text: string) => boolean;
+  /**
    * The folders this conversation's material belongs to, when the surface
    * knows.
    *
@@ -214,6 +223,7 @@ export default function JamiAssistantDrawer({
   onBeforeIllustrationInsert,
   onGraphInsert,
   onDrawingInsert,
+  onAnswerInsert,
   settingsFolderIds,
   contextControls,
   initialMessage,
@@ -237,6 +247,8 @@ export default function JamiAssistantDrawer({
   /** Graphs already added from this conversation, keyed by their source. */
   const [insertedGraphKeys, setInsertedGraphKeys] = useState<Set<string>>(() => new Set());
   const [insertingGraphKey, setInsertingGraphKey] = useState<string | null>(null);
+  /** The answer just added to the page, confirmed beside it for a moment. */
+  const [addedAnswerKey, setAddedAnswerKey] = useState<string | null>(null);
   /*
    * Wide screens have room for the drawer to sit beside the work rather than
    * over it. Jami is meant to nudge you towards an answer you are looking at,
@@ -258,18 +270,41 @@ export default function JamiAssistantDrawer({
    * chat on top of the answer it was about. The pin now stays whether the card
    * is open, shrunk or closed, until it is unpinned.
    */
-  const [pinnedText, setPinnedText] = useState("");
-  const pinned = pinnedText !== "";
-  const { card, pin } = useFloatingTutorFrames(floating, pinned);
+  // Up to three, oldest first; each sits in its own frame slot.
+  const [pinnedAnswers, setPinnedAnswers] = useState<{ slot: number; text: string }[]>([]);
+  const pinned = pinnedAnswers.length > 0;
+  const occupiedSlots = Array.from({ length: MAX_PINNED_ANSWERS }, (_, slot) =>
+    pinnedAnswers.some((answer) => answer.slot === slot)
+  );
+  const { card, pins } = useFloatingTutorFrames(floating, occupiedSlots);
   const compact = floating && isCompactFloatingCard(card.rect);
   const minimise = () => {
     setMinimised(true);
     onOpenChange(false);
   };
   const pinAnswer = (text: string) => {
-    setPinnedText(text);
-    // Pinned beside the card rather than under it.
-    if (card.rect) pin.moveClearOf(card.rect);
+    if (pinnedAnswers.some((answer) => answer.text === text)) return;
+    // With every slot taken, the oldest pin makes way for the new one.
+    const kept =
+      pinnedAnswers.length >= MAX_PINNED_ANSWERS ? pinnedAnswers.slice(1) : pinnedAnswers;
+    const slot = occupiedSlots.findIndex((taken) => !taken);
+    const nextSlot = slot === -1 ? pinnedAnswers[0].slot : slot;
+    setPinnedAnswers([...kept, { slot: nextSlot, text }]);
+    // Placed clear of the card and of every pin still on screen, never over one.
+    const obstacles = [
+      ...(open && card.rect ? [card.rect] : []),
+      ...kept.flatMap((answer) => {
+        const rect = pins[answer.slot].rect;
+        return rect ? [rect] : [];
+      }),
+    ];
+    if (obstacles.length > 0) pins[nextSlot].moveClearOf(obstacles);
+  };
+  const unpinAnswer = (slot: number) => {
+    const remaining = pinnedAnswers.filter((answer) => answer.slot !== slot);
+    setPinnedAnswers(remaining);
+    // With the card put away, unpinning the last pin leaves the pill to bring it back.
+    if (!open && remaining.length === 0) setMinimised(true);
   };
   /**
    * Settings, shown over the conversation rather than beside it.
@@ -364,7 +399,7 @@ export default function JamiAssistantDrawer({
     setGeneratingIllustrationId(null);
     setInsertingIllustrationId(null);
     setMinimised(false);
-    setPinnedText("");
+    setPinnedAnswers([]);
     onOpenChange(false);
   }, [abandonActiveRequest, onOpenChange, resetKey]);
 
@@ -595,6 +630,32 @@ export default function JamiAssistantDrawer({
         .finally(() => setInsertingGraphKey(null));
     },
   };
+
+  const canInsertAnswer =
+    Boolean(onAnswerInsert) && contextKey.startsWith("notebook:") && !viewingForeignThread;
+
+  useEffect(() => {
+    if (!addedAnswerKey) return;
+    const timer = window.setTimeout(() => setAddedAnswerKey(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [addedAnswerKey]);
+
+  const addAnswerToPage = useCallback(
+    (message: DrawerMessage, key: string) => {
+      if (!onAnswerInsert) return;
+      setError(null);
+      // An answer with an illustration shows the picture in place of its own
+      // sketch, which has its own button; the page gets the words around it.
+      const text = message.illustrations?.length
+        ? (() => {
+            const layout = splitAssistantAnswerAtDiagram(message.text);
+            return [layout.before, layout.after].filter(Boolean).join("\n\n");
+          })()
+        : message.text;
+      if (onAnswerInsert(text)) setAddedAnswerKey(key);
+    },
+    [onAnswerInsert]
+  );
 
   const sendMessage = useCallback(
     async (rawMessage: string) => {
@@ -1052,6 +1113,14 @@ export default function JamiAssistantDrawer({
                               ? formatJamiAssistantUsedContext(message.used)
                               : "Used: General knowledge"}
                           </div>
+                          {canInsertAnswer && !(loading && index === messages.length - 1) ? (
+                            <AddAnswerToPageButton
+                              added={addedAnswerKey === (message.id ?? `index-${index}`)}
+                              onAdd={() =>
+                                addAnswerToPage(message, message.id ?? `index-${index}`)
+                              }
+                            />
+                          ) : null}
                           {floating && !(loading && index === messages.length - 1) ? (
                             <FloatingTutorPinButton onPin={() => pinAnswer(message.text)} />
                           ) : null}
@@ -1395,19 +1464,21 @@ export default function JamiAssistantDrawer({
     {floating && !open && minimised && !pinned ? (
       <FloatingTutorPill onOpen={() => onOpenChange(true)} />
     ) : null}
-    {floating && pinned ? (
-      <FloatingTutorPinnedAnswer
-        frame={pin}
-        onOpenChat={open ? undefined : () => onOpenChange(true)}
-        onUnpin={() => {
-          setPinnedText("");
-          // With the card put away, unpinning leaves the pill to bring it back.
-          if (!open) setMinimised(true);
-        }}
-      >
-        <AssistantAnswerBody text={pinnedText} illustrations={[]} renderIllustration={() => null} />
-      </FloatingTutorPinnedAnswer>
-    ) : null}
+    {floating
+      ? pinnedAnswers.map((answer, index) => (
+          <FloatingTutorPinnedAnswer
+            key={answer.slot}
+            frame={pins[answer.slot]}
+            // One way back to the chat is enough: only the newest pin carries it.
+            onOpenChat={
+              open || index !== pinnedAnswers.length - 1 ? undefined : () => onOpenChange(true)
+            }
+            onUnpin={() => unpinAnswer(answer.slot)}
+          >
+            <AssistantAnswerBody text={answer.text} illustrations={[]} renderIllustration={() => null} />
+          </FloatingTutorPinnedAnswer>
+        ))
+      : null}
     </>
   );
 }

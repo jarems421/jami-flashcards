@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import AiResponse from "@/components/ai/AiResponse";
 import NotebookGraphLayer from "@/components/workspace/NotebookGraphLayer";
 import NotebookImageLayer from "@/components/workspace/NotebookImageLayer";
 import NotebookPageBackground from "@/components/workspace/NotebookPageBackground";
@@ -19,8 +20,8 @@ import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette"
 import {
   NOTEBOOK_TEXT_LAYER_ATTRIBUTE,
   NOTEBOOK_TEXT_LAYER_STYLE,
-  NOTEBOOK_TEXT_STYLE,
   getNotebookTextBlockBodyHeight,
+  getNotebookTextBlockStyle,
 } from "@/lib/workspace/notebook-text-metrics";
 
 // Full-size, non-interactive render of a page's saved content (style, background
@@ -100,17 +101,31 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
               width: `${(block.width / NOTEBOOK_PAGE_COORDINATE_WIDTH) * 100}%`,
             }}
           >
-            <div
-              className={`w-full whitespace-pre-wrap break-words rounded-sm font-medium ${
-                isDarkPaper ? "text-[#f8fafc]" : "text-slate-950"
-              }`}
-              style={{
-                ...NOTEBOOK_TEXT_STYLE,
-                minHeight: getNotebookTextBlockBodyHeight(block),
-              }}
-            >
-              {block.text}
-            </div>
+            {block.format === "markdown" ? (
+              <div
+                className={`w-full break-words rounded-sm ${
+                  isDarkPaper ? "text-[#f8fafc]" : "text-slate-950"
+                }`}
+                style={{
+                  ...getNotebookTextBlockStyle(block),
+                  minHeight: getNotebookTextBlockBodyHeight(block),
+                }}
+              >
+                <AiResponse content={block.text} variant="page" />
+              </div>
+            ) : (
+              <div
+                className={`w-full whitespace-pre-wrap break-words rounded-sm font-medium ${
+                  isDarkPaper ? "text-[#f8fafc]" : "text-slate-950"
+                }`}
+                style={{
+                  ...getNotebookTextBlockStyle(block),
+                  minHeight: getNotebookTextBlockBodyHeight(block),
+                }}
+              >
+                {block.text}
+              </div>
+            )}
           </div>
         ))}
       </div>
