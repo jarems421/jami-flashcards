@@ -1055,7 +1055,18 @@
     isolation: isolate;
   }
 
-  .notebook-js-draw-host,
+  /*
+   * The host is sized by NotebookInkEditor, never here: the whole sheet at fit,
+   * and only the visible slice once zoomed (see notebook-ink-window.ts). A
+   * forced `height: 100%` on the host itself used to override that slice's
+   * height, so a zoomed page's ink canvases were always the full height of the
+   * sheet -- about 32 megapixels each at 4x on an iPad, not the 16 intended.
+   */
+  .notebook-js-draw-host {
+    background: transparent !important;
+    min-height: 0 !important;
+  }
+
   .notebook-js-draw-host > .imageEditorContainer,
   .notebook-js-draw-host .imageEditorRenderArea {
     background: transparent !important;

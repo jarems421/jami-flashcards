@@ -53,10 +53,18 @@ import {
 } from "@/lib/workspace/notebook-pen-preview";
 import { NOTEBOOK_INK_WARM_SNAPSHOT_IDLE_MS } from "@/lib/workspace/notebook-autosave";
 import {
+  paceNotebookInkWork,
+  setNotebookInkContact,
+} from "@/lib/workspace/notebook-ink-activity";
+import {
   dispatchPreciseNotebookPointerMove,
   getJsDrawPointerReferenceElement,
 } from "@/lib/workspace/notebook-direct-ink-input";
 import { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
+import {
+  installNotebookLiveInk,
+  type NotebookLiveInk,
+} from "@/lib/workspace/notebook-live-ink";
 import { shouldSuppressNotebookNativeInkPointer } from "@/lib/workspace/notebook-interaction-lock";
 import {
   getBoundedLivePointerSamples,
@@ -140,6 +148,9 @@ type Props = NotebookInkStyle & {
  */
 const MAX_SCRIBBLE_SAMPLES = 2048;
 
+/** How many strokes an export writes before letting the browser in. */
+const EXPORT_SLICE_COMPONENTS = 24;
+
 type ActivePrecisionEraserGesture = {
   cursorDiameter: number;
   gesture: NotebookPrecisionEraserGesture;
@@ -205,6 +216,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     );
     inkSmoothingOptionsRef.current =
       getNotebookInkSmoothingOptions(penSettings);
+    /** Whether the next stroke goes to the fast live canvas. Read at contact. */
+    const fastLiveInkRef = useRef(penSettings.fastLiveInk);
+    fastLiveInkRef.current = penSettings.fastLiveInk;
+    const liveInkCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const liveInkRef = useRef<NotebookLiveInk | null>(null);
     // Which way the highlighter flat edge is facing. One per editor rather than
     // one per stroke: grip carries across strokes, so the angle a stroke opens
     // at should be the one the hand was already holding.
@@ -254,6 +270,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const warmStaleRef = useRef(true);
     const warmTimerRef = useRef<number | null>(null);
     const warmVersionRef = useRef(0);
+    /** The export in progress, and which version of the ink it is of. */
+    const exportRef = useRef<{
+      version: number;
+      promise: Promise<string | null>;
+    } | null>(null);
+    /** This editor's identity in the app-wide pen signal. */
+    const inkActivityOwnerRef = useRef<object>({});
     const readOnlyRef = useRef(readOnly);
     const desiredStyleRef = useRef<NotebookInkStyle>({
       activeTool,
@@ -289,40 +312,88 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     ]);
 
     /**
-     * Prepares a snapshot once the page has been still for a moment.
+     * The page's ink as SVG, exported at most once per change.
      *
-     * `toSVGAsync` yields between components, so a large page is exported
-     * across several frames instead of one long block. Doing it while nothing
-     * is happening is what lets the swipe read a finished SVG rather than
-     * paying for one. Skipped entirely while a pointer is down: an export
-     * taken mid-stroke would be wrong, and the moment is the worst one to
-     * spend work in.
+     * Three callers want this after every pause: the recovery draft (350ms),
+     * the swipe snapshot (600ms) and the autosave (5s). Each used to run its
+     * own full export, so every pause between words cost three -- and on a
+     * dense page each one is real work on the main thread. Now the first
+     * caller starts it, the others join it or read its result, and nothing is
+     * exported again until the ink changes.
+     *
+     * An export whose ink changes underneath it is abandoned and answers null,
+     * which every caller already treats as "not now": a stroke-old SVG is no
+     * use to the save, which throws away anything older than the page anyway.
+     */
+    const exportCurrentInk = useCallback((): Promise<string | null> => {
+      const editor = editorRef.current;
+      if (!editor || !readyRef.current) return Promise.resolve(null);
+      if (!warmStaleRef.current && warmSvgRef.current !== null) {
+        return Promise.resolve(warmSvgRef.current);
+      }
+      const version = warmVersionRef.current;
+      const inFlight = exportRef.current;
+      if (inFlight && inFlight.version === version) return inFlight.promise;
+
+      let abandoned = false;
+      const promise = editor
+        .toSVGAsync({
+          // Never js-draw's frame-aligned pause; the pacing below replaces it.
+          pauseAfterCount: Number.MAX_SAFE_INTEGER,
+          onProgress: async (processed) => {
+            await paceNotebookInkWork(processed, EXPORT_SLICE_COMPONENTS);
+            if (version !== warmVersionRef.current || editorRef.current !== editor) {
+              abandoned = true;
+              return false;
+            }
+            return true;
+          },
+        })
+        .then((svg) => {
+          if (
+            abandoned ||
+            version !== warmVersionRef.current ||
+            editorRef.current !== editor
+          ) {
+            return null;
+          }
+          const html = svg.outerHTML;
+          warmSvgRef.current = html;
+          warmStaleRef.current = false;
+          return html;
+        })
+        .finally(() => {
+          if (exportRef.current?.promise === promise) exportRef.current = null;
+        });
+      exportRef.current = { version, promise };
+      return promise;
+    }, []);
+
+    /**
+     * Prepares a snapshot once the page has been still for a moment, so a
+     * swipe can read a finished SVG rather than paying for one on the
+     * pointermove that starts it. Put off while a pointer is down.
      */
     const scheduleWarmSnapshot = useCallback(() => {
       if (warmTimerRef.current !== null) window.clearTimeout(warmTimerRef.current);
       warmTimerRef.current = window.setTimeout(() => {
         warmTimerRef.current = null;
-        const editor = editorRef.current;
-        if (!editor || !readyRef.current) return;
+        if (!editorRef.current || !readyRef.current) return;
         if (pointerLifecycleRef.current?.isInteracting) {
           scheduleWarmSnapshot();
           return;
         }
-        const version = warmVersionRef.current;
-        void editor
-          .toSVGAsync({ pauseAfterCount: 24 })
-          .then((svg) => {
-            if (
-              pointerLifecycleRef.current?.isInteracting ||
-              version !== warmVersionRef.current
-            ) {
-              return;
-            }
-            warmSvgRef.current = svg.outerHTML;
-            warmStaleRef.current = false;
-          })
-          .catch(() => undefined);
+        void exportCurrentInk().catch(() => undefined);
       }, NOTEBOOK_INK_WARM_SNAPSHOT_IDLE_MS);
+    }, [exportCurrentInk]);
+
+    /**
+     * Tells the page and the rest of the app whether a pen is down. The
+     * app-wide signal is what holds the PDF render and the export back.
+     */
+    const reportInteraction = useCallback((active: boolean) => {
+      setNotebookInkContact(inkActivityOwnerRef.current, active);
+      callbacksRef.current.onInteractionChange(active);
     }, []);
 
     useImperativeHandle(
@@ -352,6 +423,16 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           void editorRef.current?.history.redo();
         },
         serialize() {
+          // An export already taken of exactly this ink saves blocking on
+          // another, which matters most here: this runs as a student leaves.
+          if (
+            !warmStaleRef.current &&
+            warmSvgRef.current !== null &&
+            readyRef.current &&
+            !pointerLifecycleRef.current?.isInteracting
+          ) {
+            return warmSvgRef.current;
+          }
           return serializeNotebookInkSynchronously(
             editorRef.current,
             readyRef.current,
@@ -372,13 +453,16 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           );
         },
         async serializeAsync() {
-          const editor = editorRef.current;
           const pointerLifecycle = pointerLifecycleRef.current;
-          if (!editor || pointerLifecycle?.isInteracting || !readyRef.current) {
+          if (
+            !editorRef.current ||
+            pointerLifecycle?.isInteracting ||
+            !readyRef.current
+          ) {
             return null;
           }
-          const svg = await editor.toSVGAsync({ pauseAfterCount: 24 });
-          return pointerLifecycle?.isInteracting ? null : svg.outerHTML;
+          const svg = await exportCurrentInk();
+          return pointerLifecycle?.isInteracting ? null : svg;
         },
         setEraserMode(mode) {
           desiredStyleRef.current = { ...desiredStyleRef.current, eraserMode: mode };
@@ -396,7 +480,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           void editorRef.current?.history.undo();
         },
       }),
-      []
+      [exportCurrentInk]
     );
 
     useEffect(() => {
@@ -406,6 +490,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       let editor: JsDrawEditor | null = null;
       let historyListener: { remove(): void } | null = null;
       let penPreviewBatch: NotebookPenPreviewBatch | null = null;
+      let liveInk: NotebookLiveInk | null = null;
       let viewportResizeObserver: ResizeObserver | null = null;
       let removeViewportResizeFallback: (() => void) | null = null;
       loadingRef.current = true;
@@ -416,6 +501,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       host.replaceChildren();
 
       const pointerLifecycle = pointerLifecycleRef.current;
+      const inkActivityOwner = inkActivityOwnerRef.current;
       const inkSmoothers = inkSmoothersRef.current;
       const lastForwardedPointerSamples =
         lastForwardedPointerSampleRef.current;
@@ -562,6 +648,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             );
             penPreviewBatchRef.current = penPreviewBatch;
           }
+          const liveInkCanvas = liveInkCanvasRef.current;
+          liveInk = liveInkCanvas
+            ? installNotebookLiveInk({ editor, jsDraw, canvas: liveInkCanvas })
+            : null;
+          liveInkRef.current = liveInk;
           editor.toolController
             .getMatchingTools(jsDraw.EraserTool)
             .forEach((eraser) => {
@@ -684,9 +775,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         if (penPreviewBatchRef.current === penPreviewBatch) {
           penPreviewBatchRef.current = null;
         }
+        liveInk?.dispose();
+        if (liveInkRef.current === liveInk) liveInkRef.current = null;
         precisionEraserGestureRef.current?.gesture.cancel();
         precisionEraserGestureRef.current = null;
         eraserOriginsRef.current = null;
+        exportRef.current = null;
+        setNotebookInkContact(inkActivityOwner, false);
         callbacksRef.current.onInteractionChange(false);
         historyListener?.remove();
         editor?.remove();
@@ -771,10 +866,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       }
       const editor = editorRef.current;
       const jsDraw = jsDrawRef.current;
-      if (!editor || !jsDraw) return;
-      editor.toolController.dispatchInputEvent({
-        kind: jsDraw.InputEvtType.GestureCancelEvt,
-      });
+      if (editor && jsDraw) {
+        editor.toolController.dispatchInputEvent({
+          kind: jsDraw.InputEvtType.GestureCancelEvt,
+        });
+      }
+      // After the cancel, which is what wipes the unfinished stroke.
+      liveInkRef.current?.end();
     }, []);
 
     useEffect(() => {
@@ -785,7 +883,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         const wasInteracting = pointerLifecycle?.isInteracting ?? false;
         pointerLifecycle?.reset();
         if (!wasInteracting) return;
-        callbacksRef.current.onInteractionChange(false);
+        reportInteraction(false);
         if (eraserCursorRef.current) {
           eraserCursorRef.current.style.opacity = "0";
         }
@@ -801,7 +899,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         window.removeEventListener("pagehide", cancelInteractions);
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       };
-    }, [cancelEditorGesture]);
+    }, [cancelEditorGesture, reportInteraction]);
 
     useEffect(() => {
       // Capturing scroll on the window hears every scroller on the page, not
@@ -834,7 +932,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           timeStamp: input.timeStamp,
         }) ?? false;
       if (!endedInteraction) return;
-      callbacksRef.current.onInteractionChange(false);
+      reportInteraction(false);
       if (pendingStyleRef.current && editorRef.current && jsDrawRef.current) {
         pendingStyleRef.current = false;
         applyNotebookInkStyle(
@@ -844,7 +942,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         );
         appliedStyleRef.current = { ...desiredStyleRef.current };
       }
-    }, []);
+    }, [reportInteraction]);
 
     // Every non-touch tool draws directly through js-draw, so the ink the user
     // sees while writing is the exact ink that is kept and saved. Touch always
@@ -1037,9 +1135,19 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         if (tool === "pen" || tool === "highlighter") {
           // js-draw has just measured the page for this contact itself, so the
           // layout is clean and this read costs nothing.
-          strokeRegionRectRef.current = inkRegion
-            ? { pointerId: event.pointerId, rect: inkRegion.getBoundingClientRect() }
+          const regionRect = inkRegion ? inkRegion.getBoundingClientRect() : null;
+          strokeRegionRectRef.current = regionRect
+            ? { pointerId: event.pointerId, rect: regionRect }
             : null;
+          if (regionRect && fastLiveInkRef.current) {
+            liveInkRef.current?.begin({
+              surfaceRect: surface.getBoundingClientRect(),
+              regionRect,
+              viewportWidth: window.innerWidth,
+              viewportHeight: window.innerHeight,
+              devicePixelRatio: window.devicePixelRatio || 1,
+            });
+          }
         }
         if (scribbleToErase && tool === "pen") {
           // Raw client coordinates. Recognising a scribble does not need to
@@ -1065,7 +1173,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         } catch {
           // Safari can reject capture on rapid stylus re-contact; keep drawing.
         }
-        callbacksRef.current.onInteractionChange(true);
+        reportInteraction(true);
       }
       const pointerJsDraw = jsDrawRef.current;
       const scribbleTrack = scribbleSamplesRef.current;
@@ -1263,6 +1371,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             // Show contact immediately instead of waiting for the first move.
             penPreviewBatchRef.current?.paintNow();
           }
+          if (type === "pointerup" || type === "pointercancel") {
+            // js-draw has committed the stroke and drawn it onto the page;
+            // hand its wet ink back.
+            liveInkRef.current?.end();
+          }
         }
       }
       if (type === "pointercancel") {
@@ -1327,6 +1440,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           aria-hidden="true"
           className="notebook-js-draw-host pointer-events-none absolute"
           style={inkHostStyle}
+        />
+        {/* Fast live ink: sized and placed at each contact, never by React. */}
+        <canvas
+          ref={liveInkCanvasRef}
+          aria-hidden="true"
+          data-notebook-live-ink-canvas="true"
+          className="pointer-events-none absolute left-0 top-0"
         />
         <div
           ref={inkSurfaceRef}

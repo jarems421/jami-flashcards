@@ -314,6 +314,28 @@ describe("advanced pen settings", () => {
     expect(reset.smoothingPercent).toBe(10);
   });
 
+  it("keeps fast live ink apart from how the pen shapes a line", () => {
+    // Off unless chosen, and only a real true turns it on.
+    expect(NOTEBOOK_PEN_SETTINGS_DEFAULT.fastLiveInk).toBe(false);
+    expect(clampNotebookPenSettings({}).fastLiveInk).toBe(false);
+    expect(
+      clampNotebookPenSettings({ fastLiveInk: "yes" as never }).fastLiveInk
+    ).toBe(false);
+
+    // It is about drawing speed, not the line, so it is not a customisation
+    // of the pen and a reset of the pen leaves it where it was.
+    const fast = settings({ fastLiveInk: true, trackingPercent: 90 });
+    expect(hasNotebookPenAdvancedChanges(settings({ fastLiveInk: true }))).toBe(
+      false
+    );
+    const reset = resetNotebookPenAdvancedSettings(fast);
+    expect(reset.trackingPercent).toBe(50);
+    expect(reset.fastLiveInk).toBe(true);
+
+    saveNotebookPenSettings(fast);
+    expect(readNotebookPenSettings().fastLiveInk).toBe(true);
+  });
+
   it("clamps anything storage or a caller could hand it", () => {
     const clamped = clampNotebookPenSettings({
       smoothingPercent: 140,

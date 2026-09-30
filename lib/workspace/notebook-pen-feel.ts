@@ -312,6 +312,15 @@ export type NotebookPenSettings = {
   /** How much pen pressure is allowed to vary the width of the line. */
   pressurePercent: number;
   straightenOnHold: NotebookStraightenOnHold;
+  /**
+   * Draw the stroke being written on its own screen-sized canvas instead of
+   * js-draw's page-sized one. See `notebook-live-ink.ts`.
+   *
+   * A rendering choice rather than part of how the pen shapes a line, so it is
+   * left alone by "Reset advanced settings" and does not count as customised.
+   * Off by default until it has been felt on enough iPads.
+   */
+  fastLiveInk: boolean;
 };
 
 /**
@@ -327,6 +336,7 @@ export const NOTEBOOK_PEN_SETTINGS_DEFAULT: NotebookPenSettings = {
   trackingPercent: 50,
   pressurePercent: 50,
   straightenOnHold: "guided",
+  fastLiveInk: false,
 };
 
 export const NOTEBOOK_PEN_SETTINGS_STORAGE_KEY = "jami:notebook-pen-settings";
@@ -400,6 +410,7 @@ export function clampNotebookPenSettings(
     straightenOnHold: isNotebookStraightenOnHold(settings?.straightenOnHold)
       ? settings.straightenOnHold
       : NOTEBOOK_PEN_SETTINGS_DEFAULT.straightenOnHold,
+    fastLiveInk: settings?.fastLiveInk === true,
   };
 }
 
@@ -413,13 +424,17 @@ export function hasNotebookPenAdvancedChanges(settings: NotebookPenSettings) {
   );
 }
 
-/** The advanced controls back to default, leaving Smoothing where it was set. */
+/**
+ * The advanced controls back to default, leaving Smoothing where it was set,
+ * and fast live ink, which is about drawing speed rather than the line.
+ */
 export function resetNotebookPenAdvancedSettings(
   settings: NotebookPenSettings
 ): NotebookPenSettings {
   return {
     ...NOTEBOOK_PEN_SETTINGS_DEFAULT,
     smoothingPercent: clampNotebookPenSmoothing(settings.smoothingPercent),
+    fastLiveInk: settings.fastLiveInk === true,
   };
 }
 
