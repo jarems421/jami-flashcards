@@ -32,6 +32,12 @@ vi.mock("@/services/ai/jami-assistant-history", () => ({
   loadJamiAssistantThread: vi.fn().mockResolvedValue(null),
 }));
 
+const requestTutorStudyMaterial = vi.fn();
+
+vi.mock("@/services/ai/tutor-study-material", () => ({
+  requestTutorStudyMaterial: (...args: unknown[]) => requestTutorStudyMaterial(...args),
+}));
+
 vi.mock("@/services/firebase/client", () => ({
   auth: { currentUser: { uid: "user-1" } },
 }));
@@ -224,5 +230,83 @@ describe("JamiAssistantDrawer", () => {
       release({ reply: "Because of the sign.", followUps: [], used: [] });
     });
     expect(document.body.textContent).toContain("Because of the sign.");
+  });
+});
+
+describe("JamiAssistantDrawer study material", () => {
+  beforeEach(() => {
+    requestTutorStudyMaterial.mockReset();
+  });
+
+  const savedThread = {
+    id: "thread-1",
+    title: "Separating variables",
+    surface: "notebook",
+    contextKey: CONTEXT_KEY,
+    contextLabel: "This page",
+    context: { surface: "notebook", notebookId: "notebook-1", pageId: "page-1" },
+    lastMessagePreview: "",
+    messageCount: 2,
+    createdAt: 1,
+    updatedAt: 1,
+    lastAssistantMessageId: "answer-1",
+  };
+
+  it("starts making flashcards the moment Tutor agrees, and says so", async () => {
+    requestTutorStudyMaterial.mockReturnValue(new Promise(() => undefined));
+    sendJamiAssistantMessage.mockResolvedValue({
+      reply: "Making you flashcards on separating variables now.",
+      used: [],
+      studyMaterialRequest: { kind: "flashcards", focus: "separating variables", count: 6 },
+      savedThread,
+    });
+    render();
+
+    typeMessage("can you make me flashcards on this?");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(document.body.textContent).toContain("Making your flashcards");
+    expect(requestTutorStudyMaterial).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "thread-1", messageId: "answer-1", kind: "flashcards", context: CONTEXT })
+    );
+  });
+
+  it("offers practice questions under a teaching answer, and makes them on a press", async () => {
+    requestTutorStudyMaterial.mockReturnValue(new Promise(() => undefined));
+    sendJamiAssistantMessage.mockResolvedValue({
+      reply: "Divide so every y term sits with dy.",
+      used: [],
+      followUps: [{ label: "Explain more", prompt: "Explain that in more detail." }],
+      studyMaterialOffers: ["flashcards", "practice"],
+      savedThread,
+    });
+    render();
+
+    typeMessage("when do I divide the x over?");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const offer = [...document.querySelectorAll("button")].find((candidate) =>
+      candidate.textContent?.includes("Practice questions")
+    );
+    expect(offer).toBeDefined();
+    expect(document.body.textContent).toContain("Make flashcards");
+    expect(requestTutorStudyMaterial).not.toHaveBeenCalled();
+
+    await act(async () => {
+      offer?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(document.body.textContent).toContain("Writing your practice set");
+    expect(requestTutorStudyMaterial).toHaveBeenCalledWith(expect.objectContaining({ kind: "practice" }));
   });
 });

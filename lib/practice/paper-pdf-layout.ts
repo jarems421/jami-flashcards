@@ -155,13 +155,3 @@ export function parseMarkdownTableRows(content: string): string[][] {
     .map((row) => row.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim()))
     .filter((row) => row.length > 1 && !row.every((cell) => /^:?-+:?$/.test(cell)));
 }
-
-/** The x,y points of a graph asset; fewer than two means it is not a graph. */
-export function parseGraphPoints(content: string): Array<{ x: number; y: number }> {
-  return content.split("\n").flatMap((row) => {
-    const numbers = row.split(/[,\s]+/).filter(Boolean).map(Number);
-    return numbers.length >= 2 && numbers.slice(0, 2).every(Number.isFinite)
-      ? [{ x: numbers[0], y: numbers[1] }]
-      : [];
-  });
-}

@@ -25,7 +25,10 @@ import {
   getGeneratedContentDrafts,
   updateGeneratedContentDraftStatus,
 } from "@/services/study/generated-content";
+import { createSourcePracticeSet } from "@/services/practice/practice-sets";
+import { featureFlags } from "@/lib/app/feature-flags";
 import SourceDraftsDrawer from "./SourceDraftsDrawer";
+import type { SourceMadePracticeSet } from "./SourceCreatePanel";
 
 type SourceDraftWorkflowProps = {
   open: boolean;
@@ -73,6 +76,11 @@ export default function SourceDraftWorkflow({
     Record<string, string>
   >({});
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
+  /** What the student settled on with Jami in the focus chat, by source. */
+  const [brief, setBrief] = useState<{ sourceId: string; text: string } | null>(null);
+  const [madePracticeSet, setMadePracticeSet] = useState<
+    (SourceMadePracticeSet & { sourceId: string }) | null
+  >(null);
 
   const sourceDrafts = useMemo(
     () => getPendingSourceDrafts(drafts, source?.id ?? null),
@@ -214,11 +222,31 @@ export default function SourceDraftWorkflow({
         useConversationFocus && sourceThreadId
           ? await buildConversationFocus()
           : "";
+      const instructions = brief?.sourceId === source.id ? brief.text : "";
+      if (kind === "practice-question" && featureFlags.enablePastPaperPractice) {
+        // Practice goes through Practice's own marked sessions, not onto a notebook page.
+        const session = await createSourcePracticeSet({
+          sourceId: source.id,
+          depth,
+          ...(instructions ? { focus: instructions } : {}),
+          ...(focus ? { conversation: focus } : {}),
+        });
+        setMadePracticeSet({
+          sourceId: source.id,
+          sessionId: session.id,
+          title: session.practiceSet?.title ?? source.title,
+          questionCount: session.questions.length,
+          totalMarks: session.maxTotal,
+        });
+        success("Practice set ready. It is waiting in Practice whenever you want it.");
+        return;
+      }
       const { drafts: created, removedDraftCount } = await generateSourceDrafts({
         sourceId: source.id,
         kind,
         depth,
         ...(focus ? { focus } : {}),
+        ...(instructions ? { instructions } : {}),
       });
       onDraftsChange(await getGeneratedContentDrafts(userId));
       setSelectedDraftId(created[0]?.id ?? null);
@@ -253,7 +281,12 @@ export default function SourceDraftWorkflow({
       userId={userId}
       feedback={feedback}
       generation={{
+        sourceId: source?.id ?? null,
         made: sourceMadeCounts,
+        onBriefChange: (text) =>
+          setBrief(source && text ? { sourceId: source.id, text } : null),
+        madePracticeSet:
+          madePracticeSet && madePracticeSet.sourceId === source?.id ? madePracticeSet : null,
         drafting: draftingKind,
         conversationFocusAvailable: Boolean(sourceThreadId),
         useConversationFocus,

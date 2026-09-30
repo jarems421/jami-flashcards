@@ -115,6 +115,18 @@ describe("choosing between a drawing and a photograph", () => {
     ).toContain("asset_not_described");
   });
 
+  it("refuses a graph that is not data, and accepts one that is", () => {
+    expect(
+      codes({ prompt: "Use Figure 1.", assets: [{ id: "g1", type: "graph", title: "Figure 1", content: "a rising line", ...described }] })
+    ).toContain("asset_graph_unreadable");
+    expect(
+      codes({
+        prompt: "Use Figure 1.",
+        assets: [{ id: "g1", type: "graph", title: "Figure 1", content: '{"series":[{"points":[[0,0],[1,2]]}]}', ...described }],
+      })
+    ).toEqual([]);
+  });
+
   it("says nothing about a question that needs no picture", () => {
     expect(codes({ prompt: "Define the term 'osmosis'.", assets: [] })).toEqual([]);
   });

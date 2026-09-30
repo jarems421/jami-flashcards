@@ -74,6 +74,13 @@ import {
   getAdminStorageBucket,
 } from "@/services/firebase/admin";
 import { retrieveSourceChunks } from "@/services/ai/source-index.server";
+import { featureFlags } from "@/lib/app/feature-flags";
+import {
+  buildTutorStudyMaterialInstruction,
+  detectTutorStudyMaterialRequest,
+  getTutorStudyMaterialOffers,
+  resolveTutorStudyMaterialRequest,
+} from "@/lib/ai/tutor-study-material";
 
 export const runtime = "nodejs";
 /**
@@ -102,6 +109,8 @@ const REQUEST_DEADLINE_MS = 50_000;
  */
 const ANSWER_RESERVE_MS = REQUEST_TIMEOUT_MS;
 const MAX_COMBINED_SOURCE_BYTES = 30 * 1024 * 1024;
+/** Sources the search found nothing in that are still read whole: the few a student chose, or the fallback when search is down. */
+const MAX_WHOLE_READ_SOURCES = 5;
 /**
  * Above this, a request is worth counting before it is sent. Below it, the
  * input is prose and the counting call would cost more than it could save.
@@ -242,6 +251,9 @@ export async function POST(request: NextRequest) {
     message: parsedRequest.message,
     context: parsedRequest.context,
   });
+  // Practice sets are exam sessions, so they exist only where those do.
+  const practiceSetsAvailable = featureFlags.enablePastPaperPractice;
+  const requestedStudyMaterial = detectTutorStudyMaterialRequest(parsedRequest.message);
 
   let resolved;
   try {
@@ -263,10 +275,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const declaredSourceBytes = resolved.sources.reduce(
-    (total, source) => total + (source.sizeBytes ?? 0),
-    0
-  );
+  /*
+   * Only what may be read whole counts against the size limit. The folder's
+   * other material is offered to the content search and read as matching
+   * passages at most, so a module's worth of files never trips it.
+   */
+  const pinnedSourceIds = new Set(resolved.pinnedSourceIds);
+  const declaredSourceBytes = resolved.sources
+    .filter((source) => pinnedSourceIds.has(source.id))
+    .reduce((total, source) => total + (source.sizeBytes ?? 0), 0);
   if (declaredSourceBytes > MAX_COMBINED_SOURCE_BYTES) {
     return failureResponse(
       "Choose fewer or smaller sources. Jami can read up to 30 MB at once.",
@@ -338,11 +355,29 @@ export async function POST(request: NextRequest) {
   });
 
   let storageBucket: ReturnType<typeof getAdminStorageBucket> | null = null;
+  /*
+   * Which sources are read, and how.
+   *
+   * Every attached source was searched above by its contents. A source whose
+   * passages fit the question is read as those passages. One that fits nothing
+   * is not read at all -- unless the student chose it or is looking at it and
+   * there are only a few such, in which case it is read whole as before (a
+   * "summarise this lecture" matches no particular passage). If the search is
+   * unavailable, the highest-ranked few are read whole, the old behaviour.
+   */
+  const searchWorked = indexedChunks.length > 0;
+  const readWholeWhenUnmatched = (source: (typeof resolved.sources)[number], index: number) =>
+    searchWorked
+      ? pinnedSourceIds.has(source.id) && pinnedSourceIds.size <= MAX_WHOLE_READ_SOURCES
+      : pinnedSourceIds.has(source.id) || index < MAX_WHOLE_READ_SOURCES;
   const preparedResults = await Promise.all(
     resolved.sources.map(async (source, index) => {
       const sourceRef = `S${index + 1}`;
       try {
         const chunks = indexedBySource.get(source.id) ?? [];
+        if (chunks.length === 0 && !readWholeWhenUnmatched(source, index)) {
+          return { source, sourceRef, prepared: null, error: null };
+        }
         const retrievedText = chunks.map((chunk) => {
           const location = chunk.pageStart
             ? chunk.pageStart === chunk.pageEnd
@@ -541,6 +576,18 @@ export async function POST(request: NextRequest) {
         description:
           "Graphs to plot exactly, each a JSON object written as a string. Use an empty array when there is no graph.",
       },
+      studyMaterial: {
+        type: Type.STRING,
+        format: "enum",
+        enum: practiceSetsAvailable ? ["none", "flashcards", "practice"] : ["none", "flashcards"],
+        description:
+          "Whether the current request asks Jami to make flashcards or a practice set. Use none otherwise.",
+      },
+      studyMaterialFocus: {
+        type: Type.STRING,
+        description:
+          "What this answer is about, as a short, specific topic phrase from the conversation, for flashcards or questions to cover.",
+      },
     },
     required: [
       "answer",
@@ -568,8 +615,12 @@ Graphs are the exception: never draw the graph of a function or of data as svg, 
 Choose a clean response structure without waiting to be asked: give the direct response first; use numbered working for calculations or sequences; use a concise list for several distinct points; use a compact comparison only when it genuinely clarifies; and for checked work state what is right, what needs fixing, and the next step. Do not over-format a short answer or add a generic closing question.
 For ordinary notebook Mark my work requests, provide indicative feedback. Give a numerical mark or formal grade only when the supplied evidence contains a defensible mark allocation, rubric, or mark scheme; otherwise explicitly label the result as feedback rather than an official mark. Never invoke or imitate the formal full-paper double-marker workflow for short work.
 Work in a notebook often runs across a page break. If the working you have been given starts mid-step, continues from a line you cannot see, or depends on setup that is not in front of you, say so and ask for the page it started on. Do not mark or correct the part you can see as though it were the whole answer: reporting errors that only look like errors because the first half is missing is worse than saying you cannot see it yet.
+${buildTutorStudyMaterialInstruction({
+  requested: requestedStudyMaterial === "practice" && !practiceSetsAvailable ? null : requestedStudyMaterial,
+  practiceAvailable: practiceSetsAvailable,
+})}
 ${resolved.learningContext ? `${resolved.learningContext}\n` : ""}${resolved.personalisationContext ? `${resolved.personalisationContext}\n` : ""}Return JSON only with exactly these fields:
-{"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[]}
+{"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[],"studyMaterial":"none","studyMaterialFocus":""}
 sourceRefs must contain only references that materially informed the response. It may be empty. Set each used boolean truthfully.
 Be specific, supportive, and focused on helping the student understand.
 
@@ -880,6 +931,21 @@ ${responseGuidance.instruction}`;
     const reply = placeTutorGraphs(cleanAiResponseText(parsedAnswer.answer), parsedAnswer.graphs);
     if (!reply) return null;
 
+    const studyMaterialRequest = resolveTutorStudyMaterialRequest({
+      detected: requestedStudyMaterial,
+      modelKind: parsedAnswer.studyMaterial,
+      modelFocus: parsedAnswer.studyMaterialFocus,
+      message: parsedRequest.message,
+      practiceAvailable: practiceSetsAvailable,
+    });
+    const studyMaterialOffers = getTutorStudyMaterialOffers({
+      message: parsedRequest.message,
+      answer: reply,
+      context: parsedRequest.context,
+      practiceAvailable: practiceSetsAvailable,
+      requested: studyMaterialRequest?.kind ?? null,
+    });
+
     return {
       reply,
       used,
@@ -897,6 +963,9 @@ ${responseGuidance.instruction}`;
       })
         ? { canIllustrate: true }
         : {}),
+      ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
+      ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
+      ...(parsedAnswer.studyMaterialFocus ? { studyMaterialFocus: parsedAnswer.studyMaterialFocus } : {}),
     };
   };
 
@@ -1135,6 +1204,14 @@ ${responseGuidance.instruction}`;
           citations: payload.citations ?? [],
           illustrations: [],
           canIllustrate: payload.canIllustrate === true,
+          // Recorded server-side, so the route that makes the material can
+          // check it was actually agreed or offered on this answer.
+          ...(payload.studyMaterialRequest
+            ? { studyMaterialRequest: payload.studyMaterialRequest }
+            : {}),
+          studyMaterialOffers: payload.studyMaterialOffers ?? [],
+          // What an offer would be made on, kept server-side for when it is taken up.
+          ...(payload.studyMaterialFocus ? { studyMaterialFocus: payload.studyMaterialFocus } : {}),
           createdAt: now + 1,
         });
         batch.set(userRef.collection("assistantRouteState").doc(threadRef.id), {

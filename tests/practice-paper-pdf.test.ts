@@ -103,4 +103,26 @@ describe("renderPracticePaperPdf", () => {
     expect(body).toContain("END OF QUESTIONS");
     expect(text[text.length - 1]).toContain("Physics equations sheet");
   }, 60_000);
+
+  it("prints a multiple-choice question's options one to a line and a graph on numbered axes", async () => {
+    const rendered = await renderPracticePaperPdf({
+      ...paper,
+      companionDocuments: [],
+      questions: [
+        question("m1", "01", "Which of these is a scalar quantity?\n\nTick (✓) one box.\n\nA  Speed\nB  Velocity\nC  Force", 1),
+        question("g1", "02", "Figure 1 shows the results.\n\nDetermine the gradient.", 2, {
+          assets: [{
+            id: "fig1", type: "graph", title: "Figure 1", altText: "Speed against time",
+            content: '{"xLabel":"Time in s","yLabel":"Speed in m/s","x":[0,5],"y":[0,10],"series":[{"points":[[0,0],[5,10]],"join":true}]}',
+          }],
+        }),
+      ],
+    });
+    const body = (await pdfText(rendered.bytes)).join(" ");
+    expect(body).toMatch(/A\s+Speed\s+B\s+Velocity\s+C\s+Force/);
+    expect(body).toContain("Time in s");
+    expect(body).toContain("Speed in m/s");
+    // Numbered between the ends, not only at them.
+    expect(body).toMatch(/ 2 4 6 8 10 /);
+  }, 60_000);
 });

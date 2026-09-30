@@ -41,6 +41,17 @@ export function filterSources(sources: Source[], filters: SourceFilters) {
   });
 }
 
+/**
+ * Whether a draft came from a source: made in its Create panel, or by Tutor in
+ * a chat about it. Either way it is that source's to review.
+ */
+function isFromSource(draft: GeneratedContentDraft, sourceId: string) {
+  return (
+    (draft.sourceType === "source" || draft.sourceType === "tutor") &&
+    draft.sourceId === sourceId
+  );
+}
+
 /** Drafts still waiting on review for one source. */
 export function getPendingSourceDrafts(
   drafts: GeneratedContentDraft[],
@@ -49,9 +60,7 @@ export function getPendingSourceDrafts(
   if (!sourceId) return [];
   return drafts.filter(
     (draft) =>
-      draft.contentStatus === "draft" &&
-      draft.sourceType === "source" &&
-      draft.sourceId === sourceId
+      draft.contentStatus === "draft" && isFromSource(draft, sourceId)
   );
 }
 
@@ -68,9 +77,7 @@ export function getSourceMadeCounts(
   const approved = sourceId
     ? drafts.filter(
         (draft) =>
-          draft.contentStatus === "approved" &&
-          draft.sourceType === "source" &&
-          draft.sourceId === sourceId
+          draft.contentStatus === "approved" && isFromSource(draft, sourceId)
       )
     : [];
 

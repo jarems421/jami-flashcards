@@ -5,7 +5,14 @@ import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
 import type { AiReasoningEffort } from "@/lib/ai/provider-policy";
 import type { Source } from "@/lib/material/sources";
 
-const MAX_RELATED_SOURCES = 15;
+/**
+ * How many of the student's files a question can draw on. It was fifteen,
+ * ranked by title and folder, and each was then read -- so a module's thirtieth
+ * lecture was never considered however relevant. Now all of them are offered
+ * to the content search and only the passages that fit are read, so this only
+ * bounds a runaway request.
+ */
+const MAX_RELATED_SOURCES = 100;
 
 export type SourceRelations = {
   currentSourceIds: string[];
@@ -19,6 +26,13 @@ export type ResolvedJamiAssistantContext = {
   currentLabel: string;
   currentParts: AiContentPart[];
   sources: Source[];
+  /**
+   * The sources the student is looking at or chose, or that the current item
+   * links to directly. These are read even when the search finds nothing in
+   * them; the rest of `sources` are the folder's material, read only where the
+   * search finds passages that fit the question.
+   */
+  pinnedSourceIds: string[];
   studyLevelContext?: string;
   /**
    * The student's saved teaching preferences and, where the material sits in
@@ -44,6 +58,10 @@ export type ResolvedJamiAssistantContext = {
    * costs no extra round trip.
    */
   reasoningEffort?: AiReasoningEffort;
+  /** The folders the current material sits in, for filing what Tutor makes from it. */
+  folderIds?: string[];
+  /** The deck being studied, on the flashcard surface. */
+  deckId?: string;
 };
 
 export class JamiAssistantContextError extends Error {

@@ -74,7 +74,7 @@ describe("writing Jami-created questions for a shortfall", () => {
     for (const call of calls) {
       expect(call.timeoutMs).toBe(120_000);
       expect(call.stallTimeoutMs).toBe(30_000);
-      expect(call.generationConfig.maxOutputTokens).toBe(16_000);
+      expect(call.generationConfig.maxOutputTokens).toBe(24_000);
       expect(call.deadlineAt).toBe(calls[0].deadlineAt);
     }
     // In request order, numbered across batches rather than restarting in each.
@@ -155,5 +155,80 @@ describe("writing Jami-created questions for a concept", () => {
       conceptIds: [QUADRATICS],
       topicIds: ["aqa-8300-algebra-solving-equations-and-inequalities"],
     });
+  });
+});
+
+/**
+ * A practice set in a folder with no exam course: a university module, say.
+ * Nothing about it may pretend to belong to a board.
+ */
+describe("writing a practice set with no exam course", () => {
+  beforeEach(() => {
+    generateAiText.mockReset();
+    saved.length = 0;
+  });
+
+  function respond(call: { request: { contents: Array<{ parts: Array<{ text: string }> }> } }, extra = {}) {
+    const text = call.request.contents[0]!.parts[0]!.text;
+    const requested = JSON.parse(text.match(/Requested sequence: (\[.*?\])\./)![1]!) as Requested[];
+    return JSON.stringify({
+      ...extra,
+      questions: requested.map((item, index) => ({
+        difficulty: item.difficulty,
+        prompt: `Explain point ${index + 1}.`,
+        answer: "A complete answer.",
+        points: Array.from({ length: item.marks }, (_unused, point) => `Point ${point + 1}`),
+      })),
+    });
+  }
+
+  it("pitches to the level and brief, and files under the set alone", async () => {
+    generateAiText.mockImplementation(async (call) => respond(call));
+
+    const questions = await generateExamGapQuestions({
+      uid: "student-1",
+      subject: "Contract law",
+      subjectKey: "contract-law",
+      studyLevel: "undergraduate",
+      missing: { easy: 1, medium: 1 },
+      topicIds: [],
+      brief: { focus: "past consideration", context: "Student: why is past consideration no good?" },
+      paperId: "jami-set-session-1",
+    });
+
+    const call = generateAiText.mock.calls[0]![0];
+    expect(call.request.systemInstruction).toContain("undergraduate university level");
+    expect(call.request.systemInstruction).not.toMatch(/school exam questions/);
+    const prompt = call.request.contents[0].parts[0].text as string;
+    expect(prompt).toContain("No exam course is set");
+    expect(prompt).toContain("never simpler school-exam questions for a university");
+    expect(prompt).toMatch(/BEGIN BRIEF [\w-]+>>>\nFocus: past consideration\nStudent: why is past consideration no good\?\n<<<END BRIEF/);
+    expect(questions).toHaveLength(2);
+    for (const question of questions) {
+      expect(question.paperId).toBe("jami-set-session-1");
+      expect(question.studyLevel).toBe("undergraduate");
+      expect(question.provenance).toMatchObject({ board: "jami", qualification: "general", specificationId: "" });
+      expect(question).not.toHaveProperty("tier");
+    }
+  });
+
+  it("files the questions at the level the writer judged when none was recorded", async () => {
+    const levels: string[] = [];
+    generateAiText.mockImplementation(async (call) => respond(call, { studyLevel: "postgraduate" }));
+
+    const questions = await generateExamGapQuestions({
+      uid: "student-1",
+      subject: "Statistics",
+      subjectKey: "statistics",
+      studyLevel: "post-16-equivalent",
+      missing: { medium: 1 },
+      topicIds: [],
+      inferLevel: true,
+      onLevelInferred: (level) => levels.push(level),
+    });
+
+    expect(generateAiText.mock.calls[0]![0].request.contents[0].parts[0].text).toContain("Level: not recorded");
+    expect(levels).toEqual(["postgraduate"]);
+    expect(questions[0]!.studyLevel).toBe("postgraduate");
   });
 });

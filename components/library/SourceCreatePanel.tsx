@@ -5,19 +5,33 @@ import type {
   SourceDraftDepth,
   SourceDraftKind,
 } from "@/lib/ai/source-draft-quality";
-import { Button } from "@/components/ui";
+import { Button, ButtonLink } from "@/components/ui";
+import { getQuestionPracticeSessionHref } from "@/lib/app/routes";
+import { featureFlags } from "@/lib/app/feature-flags";
+import StudyMaterialFocusChat from "./StudyMaterialFocusChat";
 
 export type SourceMadeCounts = {
   flashcards: number;
   questions: number;
 };
 
+/** A practice set this panel just made, to start from here. */
+export type SourceMadePracticeSet = {
+  sessionId: string;
+  title: string;
+  questionCount: number;
+  totalMarks: number;
+};
+
 type SourceCreatePanelProps = {
+  sourceId: string | null;
   made: SourceMadeCounts;
   drafting: SourceDraftKind | null;
   conversationFocusAvailable: boolean;
   useConversationFocus: boolean;
   onUseConversationFocusChange: (value: boolean) => void;
+  onBriefChange: (brief: string) => void;
+  madePracticeSet: SourceMadePracticeSet | null;
   onGenerate: (kind: SourceDraftKind, depth: SourceDraftDepth) => void;
 };
 
@@ -25,19 +39,21 @@ const KINDS: Array<{
   kind: SourceDraftKind;
   label: string;
   detail: string;
-  destination: string;
+  busyLabel: string;
 }> = [
   {
     kind: "flashcard",
     label: "Flashcards",
-    detail: "One concept each, for recall practice",
-    destination: "Learn",
+    detail: "One concept each, for recall · reviewed here, then go to Learn",
+    busyLabel: "Making…",
   },
   {
     kind: "practice-question",
     label: "Practice questions",
-    detail: "Longer questions with a worked answer",
-    destination: "a notebook",
+    detail: featureFlags.enablePastPaperPractice
+      ? "A marked set you answer and Jami marks · saved to Practice"
+      : "Longer questions with a worked answer · goes to a notebook",
+    busyLabel: "Writing…",
   },
 ];
 
@@ -56,11 +72,14 @@ const DEPTHS: Array<{ value: SourceDraftDepth; label: string; detail: string }> 
  * source has already produced, what it can produce, and how much.
  */
 export default function SourceCreatePanel({
+  sourceId,
   made,
   drafting,
   conversationFocusAvailable,
   useConversationFocus,
   onUseConversationFocusChange,
+  onBriefChange,
+  madePracticeSet,
   onGenerate,
 }: SourceCreatePanelProps) {
   const [depth, setDepth] = useState<SourceDraftDepth>("medium");
@@ -71,7 +90,7 @@ export default function SourceCreatePanel({
     <div className="space-y-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
       <p className="text-sm leading-6 text-text-muted">
         {madeTotal === 0
-          ? "Turn this source into things you can actually study. Everything is a draft until you approve it."
+          ? "Turn this source into things you can actually study. Flashcards wait for your review; practice sets wait in Practice until you start them."
           : `Made so far: ${made.flashcards} flashcard${made.flashcards === 1 ? "" : "s"} and ${made.questions} practice question${made.questions === 1 ? "" : "s"}.`}
       </p>
 
@@ -108,32 +127,70 @@ export default function SourceCreatePanel({
         </div>
       </div>
 
+      {sourceId ? (
+        <StudyMaterialFocusChat
+          key={sourceId}
+          sourceId={sourceId}
+          disabled={drafting !== null}
+          onBriefChange={onBriefChange}
+        />
+      ) : null}
+
       <div className="space-y-2.5">
         {KINDS.map((option) => {
           const busy = drafting === option.kind;
           const disabled = drafting !== null;
+          const setReady = option.kind === "practice-question" ? madePracticeSet : null;
 
           return (
             <div
               key={option.kind}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-3"
+              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-3"
             >
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-text-primary">{option.label}</div>
-                <div className="mt-0.5 text-xs leading-5 text-text-muted">
-                  {option.detail} · goes to {option.destination}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-text-primary">{option.label}</div>
+                  <div className="mt-0.5 text-xs leading-5 text-text-muted">{option.detail}</div>
                 </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="shrink-0"
+                  disabled={disabled}
+                  onClick={() => onGenerate(option.kind, depth)}
+                >
+                  {busy ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-r-transparent" />
+                      {option.busyLabel}
+                    </span>
+                  ) : (
+                    "Make"
+                  )}
+                </Button>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="shrink-0"
-                disabled={disabled}
-                onClick={() => onGenerate(option.kind, depth)}
-              >
-                {busy ? "Making…" : "Make"}
-              </Button>
+              {busy && option.kind === "practice-question" ? (
+                <p className="mt-2 text-xs leading-5 text-text-muted" role="status">
+                  Writing questions and their mark schemes. This usually takes under a minute.
+                </p>
+              ) : null}
+              {setReady && !busy ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent/20 bg-[var(--color-accent-muted)] px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-text-primary">
+                      {setReady.title}
+                    </div>
+                    <div className="mt-0.5 text-xs leading-5 text-text-muted">
+                      {setReady.questionCount} question{setReady.questionCount === 1 ? "" : "s"} ·{" "}
+                      {setReady.totalMarks} mark{setReady.totalMarks === 1 ? "" : "s"} · waiting in Practice
+                    </div>
+                  </div>
+                  <ButtonLink href={getQuestionPracticeSessionHref(setReady.sessionId)} size="sm" className="shrink-0">
+                    Start
+                  </ButtonLink>
+                </div>
+              ) : null}
             </div>
           );
         })}

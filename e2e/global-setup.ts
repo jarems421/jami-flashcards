@@ -34,6 +34,7 @@ import {
   E2E_IMAGE_PLACEMENT,
   E2E_SOURCE,
   E2E_TOPIC,
+  E2E_TUTOR_DRAFTS,
   E2E_NOTEBOOK_ID,
   E2E_PAGE_IDS,
   E2E_PROJECT_ID,
@@ -176,6 +177,24 @@ export default async function globalSetup() {
           createdAt: now,
           updatedAt: now,
         }),
+        // Flashcards Tutor drafted in a notebook chat: no source to review them
+        // in, so the Tutor page is where they are reviewed. Only ever opened by
+        // the suite, never accepted, so no deck changes under another test.
+        ...E2E_TUTOR_DRAFTS.map((draft) =>
+          setDoc(doc(db, "users", userId, "generatedContentDrafts", draft.id), {
+            kind: "flashcard",
+            title: draft.front,
+            front: draft.front,
+            back: draft.back,
+            topicIds: [],
+            origin: "ai-assisted",
+            contentStatus: "draft",
+            sourceType: "tutor",
+            folderId: E2E_FOLDER_ID,
+            createdAt: now,
+            updatedAt: now,
+          })
+        ),
         setDoc(doc(db, "users", userId, "goals", E2E_GOAL.id), {
           name: E2E_GOAL.name,
           scope: { type: "all" },

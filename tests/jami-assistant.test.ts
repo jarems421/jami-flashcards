@@ -105,7 +105,7 @@ describe("Jami assistant request contract", () => {
         ...base,
         context: {
           surface: "sources",
-          sourceIds: Array.from({ length: 16 }, (_, index) => String(index + 1)),
+          sourceIds: Array.from({ length: 101 }, (_, index) => String(index + 1)),
         },
       })
     ).toBeNull();
@@ -159,7 +159,34 @@ describe("Jami assistant model and receipt contract", () => {
       usedCurrentContext: true,
       usedGeneralKnowledge: true,
       usedWebResearch: false,
+      studyMaterial: null,
+      studyMaterialFocus: "",
     });
+    expect(
+      parseJamiAssistantModelAnswer(
+        JSON.stringify({
+          answer: "Making them now.",
+          sourceRefs: [],
+          usedCurrentContext: false,
+          usedGeneralKnowledge: true,
+          studyMaterial: "practice",
+          studyMaterialFocus: "  separating   variables ",
+        }),
+        []
+      )
+    ).toMatchObject({ studyMaterial: "practice", studyMaterialFocus: "separating variables" });
+    expect(
+      parseJamiAssistantModelAnswer(
+        JSON.stringify({
+          answer: "Sure.",
+          sourceRefs: [],
+          usedCurrentContext: false,
+          usedGeneralKnowledge: true,
+          studyMaterial: "essay",
+        }),
+        []
+      )
+    ).toMatchObject({ studyMaterial: null });
     expect(
       parseJamiAssistantModelAnswer(
         '{"answer":"Invented","sourceRefs":["S9"],"usedCurrentContext":false,"usedGeneralKnowledge":true}',
@@ -458,8 +485,8 @@ describe("Jami assistant related-source ranking", () => {
     ).toEqual(["direct", "topical"]);
   });
 
-  it("never selects more than fifteen related sources", () => {
-    const candidates = Array.from({ length: 18 }, (_, index) =>
+  it("offers at most a hundred related sources to the content search", () => {
+    const candidates = Array.from({ length: 105 }, (_, index) =>
       source(`source-${index}`, { folderIds: ["biology"], updatedAt: index })
     );
     expect(
@@ -468,7 +495,7 @@ describe("Jami assistant related-source ranking", () => {
         relations,
         message: "Help with biology",
       })
-    ).toHaveLength(15);
+    ).toHaveLength(100);
   });
 
 });

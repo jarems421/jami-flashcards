@@ -24,7 +24,20 @@ export { mapPracticePaperMarkingJobData } from "@/lib/practice/practice-paper-ma
 export { mapPracticePaperJobData } from "@/lib/practice/practice-paper-jobs";
 export type { PracticePaperEvidenceIssue, PracticePaperEvidenceManifest, PracticePaperEvidencePage, PracticePaperManualCorrectionAudit, PracticePaperMarkingJob, PracticePaperMarkingJobKind, PracticePaperMarkingJobStage, PracticePaperMarkingJobStatus, PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
 
-export const MAX_PRACTICE_PAPER_SOURCE_IDS = 15;
+/**
+ * How many files one paper may be built from. Not shown to students: it was 15,
+ * which a module's lecture notes alone could pass, and it bought nothing -- the
+ * real bound is the size cap when the files are read, which fits the material
+ * to it rather than refusing. This only stops a runaway request.
+ */
+export const MAX_PRACTICE_PAPER_SOURCE_IDS = 100;
+/**
+ * How much read text one paper's material may come to: the designer's context
+ * is what actually bounds a paper, and this is the worst case it was measured
+ * against -- fifteen sources at their 30,000-character reading cap. More files
+ * than that are read in priority order until it is full.
+ */
+export const MAX_PRACTICE_PAPER_SOURCE_TEXT = 15 * 30_000;
 export const MAX_PRACTICE_PAPER_QUESTIONS = 30;
 
 export type PracticePaperOrigin = "generated" | "uploaded";
@@ -577,7 +590,8 @@ export function normalizeQuestionAssets(value: unknown): PracticePaperQuestionAs
     if (!candidate || typeof candidate !== "object") return [];
     const asset = candidate as Record<string, unknown>;
     if (!isAssetType(asset.type)) return [];
-    const content = normalizeOptionalString(asset.content, 6_000) ?? "";
+    // Room for a drawn SVG figure, which a 6,000 cap cut off mid-path.
+    const content = normalizeOptionalString(asset.content, 12_000) ?? "";
     const storagePath = normalizeOptionalString(asset.storagePath, 1_000);
     if (!content && !storagePath) return [];
     const requestedId = normalizeOptionalString(asset.id, 80)

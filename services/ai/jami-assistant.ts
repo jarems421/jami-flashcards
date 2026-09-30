@@ -10,6 +10,10 @@ import {
 } from "@/lib/ai/jami-assistant-normalize";
 import { auth } from "@/services/firebase/client";
 import { mapJamiAssistantThread } from "@/lib/ai/jami-assistant-history";
+import {
+  normalizeTutorStudyMaterialOffers,
+  normalizeTutorStudyMaterialRequest,
+} from "@/lib/ai/tutor-study-material";
 
 function getFriendlyAssistantError(
   status: number,
@@ -190,6 +194,8 @@ export async function sendJamiAssistantMessage(
   const savedThread = savedThreadData
     ? mapJamiAssistantThread(String(savedThreadData.id ?? ""), savedThreadData)
     : null;
+  const studyMaterialRequest = normalizeTutorStudyMaterialRequest(data?.studyMaterialRequest);
+  const studyMaterialOffers = normalizeTutorStudyMaterialOffers(data?.studyMaterialOffers);
   return {
     reply,
     used,
@@ -197,6 +203,8 @@ export async function sendJamiAssistantMessage(
     ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
     ...(citations.length > 0 ? { citations } : {}),
     ...(data?.canIllustrate === true ? { canIllustrate: true } : {}),
+    ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
+    ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
     ...(savedThread ? { savedThread } : {}),
   };
 }

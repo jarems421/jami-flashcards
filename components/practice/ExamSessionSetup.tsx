@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
 import { Button, Card, EmptyState, FeedbackBanner, Select, Skeleton } from "@/components/ui";
 import OptionSwitch from "@/components/ui/OptionSwitch";
+import SettingSwitch from "@/components/ui/SettingSwitch";
+import { jamiShareOfMix } from "@/lib/practice/exam-exemplars";
 import {
   examCalculatorChoiceOffered,
   examPaperLabelWithin,
@@ -128,6 +130,8 @@ export default function ExamSessionSetup({
   const [conceptIds, setConceptIds] = useState<string[]>(() => initialConceptIds ?? []);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  /** Jami's own exam-style questions as a share of the session; on unless the student turns it off. */
+  const [includeJami, setIncludeJami] = useState(true);
   const [shortage, setShortage] = useState<ExamCoverageShortage | null>(null);
   /** Jami-created questions being written: how many, and since when. */
   const [generating, setGenerating] = useState<{ count: number; startedAt: number } | null>(null);
@@ -217,6 +221,7 @@ export default function ExamSessionSetup({
   const counts = availability?.folderId === folderId ? availability.counts : null;
   const hasMore = availability?.folderId === folderId ? availability.hasMore : null;
   const total = totalOf(mix);
+  const jamiCount = includeJami ? totalOf(jamiShareOfMix(mix)) : 0;
   const narrowedCount = topicIds.length + conceptIds.length;
   const selectedFolder = folders.find((folder) => folder.id === folderId);
   const ready = Boolean(folderId && selectedFolder?.examCourse && total > 0);
@@ -357,6 +362,8 @@ export default function ExamSessionSetup({
     setError("");
     if (requestOptions.allowGenerated) {
       setGenerating({ count: generatedCount ?? 0, startedAt: Date.now() });
+    } else if (jamiCount > 0) {
+      setGenerating({ count: jamiCount, startedAt: Date.now() });
     }
     try {
       const session = await createPastPaperPracticeSession({
@@ -367,6 +374,7 @@ export default function ExamSessionSetup({
         originNotebookId,
         calculator,
         paperIds: paperIdsAsked,
+        includeJami,
         ...requestOptions,
       });
       // The progress stays up until the session page replaces this one.
@@ -706,18 +714,39 @@ export default function ExamSessionSetup({
         </Card>
       ) : null}
 
-      <Card padding="md" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-text-primary">
-            {total} question{total === 1 ? "" : "s"}
-          </p>
-          <p className="mt-1 max-w-md text-sm leading-5 text-text-muted">
-            Your answer and your working are both saved and both sent to Jami for marking.
-          </p>
+      <Card padding="md" className="space-y-4">
+        <SettingSwitch
+          label="Include Jami's exam-style questions"
+          description={
+            total >= 2
+              ? `${jamiCount} of your ${total} questions will be new ones Jami writes, each modelled on a real question from this course with fresh numbers and wording. They are labelled Jami-created.`
+              : "Add a second question to include one Jami writes in the style of this course's papers."
+          }
+          checked={includeJami}
+          disabled={starting}
+          onChange={setIncludeJami}
+        />
+        {starting && generating && !shortage ? (
+          <div className="border-t border-[var(--color-border)] pt-4">
+            <p className="text-sm font-semibold text-text-primary">
+              Jami is writing {generating.count} question{generating.count === 1 ? "" : "s"} for you
+            </p>
+            <ExamGenerationProgress count={generating.count} startedAt={generating.startedAt} />
+          </div>
+        ) : null}
+        <div className="flex flex-col gap-4 border-t border-[var(--color-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-text-primary">
+              {total} question{total === 1 ? "" : "s"}
+            </p>
+            <p className="mt-1 max-w-md text-sm leading-5 text-text-muted">
+              Your answer and your working are both saved and both sent to Jami for marking.
+            </p>
+          </div>
+          <Button size="lg" disabled={!ready || starting} onClick={() => void start()} data-tutorial-target="start-exam">
+            {starting ? "Starting…" : "Start practice"}
+          </Button>
         </div>
-        <Button size="lg" disabled={!ready || starting} onClick={() => void start()} data-tutorial-target="start-exam">
-          {starting ? "Starting…" : "Start practice"}
-        </Button>
       </Card>
     </div>
   );

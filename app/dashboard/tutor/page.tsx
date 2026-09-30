@@ -29,10 +29,12 @@ import {
 } from "@/lib/app/tutor-views";
 import {
   describeDraftCounts,
+  draftGroupKey,
   getSourceTypeLabel,
   getSourceTypeMark,
   groupTutorDrafts,
 } from "@/lib/app/tutor-drafts";
+import TutorDraftReviewDialog from "@/components/ai/TutorDraftReviewDialog";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import type { Source } from "@/lib/material/sources";
 import { getPendingGeneratedContentDrafts } from "@/services/study/generated-content";
@@ -164,6 +166,9 @@ export default function TutorPage() {
     [sources],
   );
   const hasDrafts = draftGroups.length > 0;
+  const [reviewingGroupKey, setReviewingGroupKey] = useState<string | null>(null);
+  const reviewingGroup =
+    draftGroups.find((group) => draftGroupKey(group) === reviewingGroupKey) ?? null;
   /*
    * Which sources have drafts waiting, so a row can say so.
    *
@@ -380,7 +385,7 @@ export default function TutorPage() {
           ) : (
             draftGroups.map((group) => (
               <div
-                key={group.sourceId ?? "__unsourced__"}
+                key={draftGroupKey(group)}
                 className="app-subtle-panel flex flex-col rounded-lg p-3"
               >
                 <div className="flex items-start gap-3">
@@ -408,7 +413,7 @@ export default function TutorPage() {
                     <Chip key={part}>{part}</Chip>
                   ))}
                 </div>
-                {group.sourceId ? (
+                {group.reviewInSource && group.sourceId ? (
                   <ButtonLink
                     href={getSourcePanelHref(group.sourceId, "drafts")}
                     variant="secondary"
@@ -417,12 +422,36 @@ export default function TutorPage() {
                   >
                     Review drafts
                   </ButtonLink>
-                ) : null}
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => setReviewingGroupKey(draftGroupKey(group))}
+                  >
+                    Review drafts
+                  </Button>
+                )}
               </div>
             ))
           )}
         </div>
       </Card>
+
+      {reviewingGroup ? (
+        <TutorDraftReviewDialog
+          key={draftGroupKey(reviewingGroup)}
+          userId={user.uid}
+          title={reviewingGroup.title}
+          drafts={drafts.filter((draft) => reviewingGroup.draftIds.includes(draft.id))}
+          onClose={() => {
+            setReviewingGroupKey(null);
+            // What was kept or discarded leaves the queue.
+            void reload();
+          }}
+        />
+      ) : null}
     </AppPage>
   );
 }

@@ -37,7 +37,7 @@ export default async function main() {
     rightsRecordFound: questions.filter((question) =>
       Boolean(getExamQuestionRights(question.rights.key, question.rights.version))
     ).length,
-    boardSwitchedOn: official.filter((question) => isExamQuestionBoardEnabled(question.provenance.board)).length,
+    boardSwitchedOn: official.filter((question) => question.provenance.board !== "jami" && isExamQuestionBoardEnabled(question.provenance.board)).length,
     servable: questions.filter((question) => isExamQuestionServable(question)).length,
   };
 

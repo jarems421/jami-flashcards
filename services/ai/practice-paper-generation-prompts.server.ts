@@ -1,5 +1,5 @@
 import type { parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
-import { ASSET_ROUTING_INSTRUCTION } from "@/lib/practice/asset-routing";
+import { figureInstruction, QUESTION_FORMS_INSTRUCTION } from "@/lib/practice/asset-routing";
 import {
   getPracticePaperQuestionLimit,
   getPracticePaperTargetMarks,
@@ -46,22 +46,6 @@ export function generationPrompt(input: {
   const assetTypes = paperRasterEnabled()
     ? '"table" | "graph" | "diagram" | "formula_sheet" | "source_extract" | "image" | "illustration"'
     : '"table" | "graph" | "diagram" | "formula_sheet" | "source_extract"';
-  /**
-   * How a diagram is drawn.
-   *
-   * A labelled figure has to be exact -- angles that sum, plotted points that
-   * match the table beside them, a scale that is true -- and those are stated,
-   * not imagined. An image model returns something that looks right and
-   * measures wrong, which nothing downstream can catch and no student can
-   * either. SVG writes the coordinates down.
-   */
-  const svgInstruction =
-    "A diagram asset's content may be SVG, and should be where the figure carries measurements: " +
-    "start at <svg>, give it a viewBox, and draw with path, line, polyline, polygon, rect, circle, " +
-    "ellipse and text only. No script, foreignObject, image, use, style, external references or " +
-    "event handlers -- they are stripped and the diagram falls back to its text description. Label " +
-    "every value a candidate needs with a <text> element, and give altText that states the same " +
-    "figure in words for a reader who cannot see it.";
   const rasterInstruction = paperRasterEnabled()
     ? "Use image/illustration only for an original raster stimulus that cannot be expressed accurately as a table, graph or labelled text diagram, with no more than eight across the paper."
     : "Raster generation is unavailable. Every required visual must be represented completely as a table, graph or labelled text diagram.";
@@ -89,8 +73,9 @@ Use sources by authority, not equally:
 
 If the qualification/module, component, tier, or exam format is genuinely ambiguous and the ambiguity would materially change the paper, return status "needs_clarification" and ask exactly one concise question. Do not ask for information already supported by the sources or study-level default.
 
-Otherwise return status "ready". Generate original questions matching the inferred format; never copy a past-paper question. Add supporting material only when the assessment style calls for it: concise data tables, graph data, text-described diagrams, formula sheets, original source extracts, or genuinely necessary raster stimuli. ${rasterInstruction}
-${svgInstruction} ${ASSET_ROUTING_INSTRUCTION} Keep every asset self-contained and accessible. Keep wording concise and candidate-facing. Return an empty markScheme.items array because a separate pass builds the hidden marking guide after the paper is fixed.
+Otherwise return status "ready". Generate original questions matching the inferred format; never copy a past-paper question. ${QUESTION_FORMS_INSTRUCTION}
+
+${figureInstruction({ rasterEnabled: paperRasterEnabled() })} Formula sheets and original source extracts are plain-text assets. ${rasterInstruction} Keep every asset self-contained and accessible. Keep wording concise and candidate-facing. Return an empty markScheme.items array because a separate pass builds the hidden marking guide after the paper is fixed.
 
 Return JSON only in this shape:
 {
@@ -109,7 +94,7 @@ Return JSON only in this shape:
   "instructions":["..."],
   "companionDocuments":[{"id":"source-booklet","role":"formula_sheet" | "source_booklet" | "data_sheet" | "insert" | "reference","title":"...","instructions":"...","pages":[{"id":"page-1","title":"...","content":"original candidate-visible content","altText":"..."}]}],
   "durationMinutes":60,
-  "questions":[{"id":"q1","label":"Question 1","section":"A","prompt":"...","marks":5,"assets":[{"id":"a1","type":${assetTypes},"title":"...","content":"plain text, a Markdown table, comma-separated numeric x,y rows for a graph, a concise labelled diagram, or a precise raster-generation brief","altText":"accessible description"}]}],
+  "questions":[{"id":"q1","label":"Question 1","section":"A","prompt":"...","marks":5,"assets":[{"id":"a1","type":${assetTypes},"title":"...","content":"a Markdown table, a graph spec JSON object written as a string, an SVG diagram, plain text, or a precise raster-generation brief","altText":"accessible description"}]}],
   "choiceGroups":[{"id":"section-b-choice","label":"Answer two questions from Section B","requiredCount":2,"questionIds":["q5","q6","q7"],"selectionRule":"highest_scoring" | "first_answered"}],
   "markScheme":{
     "kind":"generated",

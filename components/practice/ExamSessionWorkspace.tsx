@@ -100,6 +100,8 @@ function tariffNote(question: SessionQuestion) {
 }
 
 function provenanceLine(question: SessionQuestion) {
+  // Jami's own questions have no sitting to name; a year there read as a real paper's date.
+  if (question.origin === "jami_generated") return "Jami-created · not from a past paper";
   const { boardLabel, series, year, paperReference, questionNumber } = question.provenance;
   return [boardLabel, `${series} ${year}`, paperReference, `Q${questionNumber}`]
     .filter(Boolean)
@@ -256,7 +258,15 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
    * that has no paper, and it is what every session already running is using.
    */
   const printedPages = usePrintedPages(question);
-  const hasSheet = printedPages.length > 0;
+  const hasPrintedPages = printedPages.length > 0;
+  /**
+   * Whether the question is answered on a sheet: its printed page with room to
+   * write under it, or -- for a question Jami wrote -- its text at the top of a
+   * blank page. Jami's questions used to keep the old column layout with a
+   * typed box as the answer, which made them feel like a form next to real
+   * papers; on a sheet they are written on the same way, typing optional.
+   */
+  const hasSheet = hasPrintedPages || question?.origin === "jami_generated";
   /**
    * The questions this session is made of, read back out of its parts.
    *
@@ -630,7 +640,8 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
 
   return (
     <AppPage
-      title={session.subject}
+      // A practice set is named for what it practises; a past-paper session for its subject.
+      title={session.practiceSet?.title ?? session.subject}
       backHref="/dashboard/practice"
       backLabel="Practice"
       width="study"
@@ -1075,6 +1086,16 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                   ) : null}
                 </header>
               ) : null}
+              {hasSheet && !hasPrintedPages ? (
+                <div className="border-b border-[var(--color-border)] px-4 py-5 sm:px-6">
+                  <StudyText
+                    as="div"
+                    text={question.prompt}
+                    className="whitespace-pre-wrap text-base leading-8 text-text-primary sm:text-lg"
+                  />
+                  <ExamQuestionAssets sessionId={sessionId} questionId={question.id} assets={question.assets} />
+                </div>
+              ) : null}
 
               {/*
                 * A dialog by hand, deliberately.
@@ -1307,7 +1328,9 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                     <p className={`text-xs text-text-muted ${hasSheet ? "" : "hidden md:block"}`}>
                       {nothingToSend
                         ? hasSheet
-                          ? "Write on the paper above, or type an answer, then mark it."
+                          ? hasPrintedPages
+                            ? "Write on the paper above, or type an answer, then mark it."
+                            : "Write on the page above, or type an answer, then mark it."
                           : "Type an answer, or show your working, then mark it."
                         : hasSheet
                           ? hasInk && hasTypedText

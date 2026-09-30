@@ -89,6 +89,19 @@ export function examCourseName(course: {
 }
 
 /**
+ * What a session is practice for: its exam course, or -- for a practice set
+ * written for a folder with no course -- the subject it was pitched at.
+ */
+export function examSessionCourseName(session: {
+  course?: { qualification: string; specificationTitle: string };
+  subject: string;
+  folderName: string;
+}) {
+  if (session.course) return examCourseName(session.course);
+  return session.subject.trim() || session.folderName.trim() || "Practice set";
+}
+
+/**
  * Every course's name, keyed by specification.
  *
  * The code comes back only where two courses would otherwise read the same,

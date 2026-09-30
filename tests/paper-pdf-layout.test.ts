@@ -6,7 +6,6 @@ import {
   inferPaperQuestionKind,
   normalizePracticePaperPdfLayout,
   paperSubjectGroup,
-  parseGraphPoints,
   parseMarkdownTableRows,
   questionIdsForPdfPage,
 } from "@/lib/practice/paper-pdf-layout";
@@ -120,9 +119,5 @@ describe("asset content parsing", () => {
       ["Mass", "Weight"],
       ["2", "19.6"],
     ]);
-  });
-
-  it("reads graph points and ignores rows that are not numbers", () => {
-    expect(parseGraphPoints("x,y\n0,1\n1, 3\nnot a point")).toEqual([{ x: 0, y: 1 }, { x: 1, y: 3 }]);
   });
 });

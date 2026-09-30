@@ -221,6 +221,8 @@ const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
     "Jami has arranged as many skies as it can today. You can still move stars yourself.",
   sourceFlashcardDrafts: "AI budget reached for source drafts today.",
   sourcePracticeDrafts: "AI budget reached for source drafts today.",
+  photoBackgroundRestore:
+    "Jami has sharpened as many photos as it can today. Your photo was still saved.",
 };
 
 export function createAiBudgetLimitResponse(

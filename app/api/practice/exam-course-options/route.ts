@@ -12,9 +12,30 @@ type Draft = {
   specificationTitle: string;
   qualification: string;
   qualificationLabel: string;
-  components: Array<{ code: string; title: string }>;
+  components: Array<{ code: string; title: string; tier?: string }>;
   namedTiers: Set<string>;
 };
+
+/**
+ * Each paper the course sets, once.
+ *
+ * The catalogue holds a row per time a component was researched, so Edexcel
+ * maths listed "1MA1/1H" twice -- as "Paper 1 Higher" and as "Paper 1
+ * (Non-Calculator) - Higher Tier". A paper is its code; of its names, the
+ * fuller one is kept, since it says whether a calculator is allowed.
+ */
+function coursePapers(components: Draft["components"]) {
+  const papers = new Map<string, { code: string; title: string; tier?: string }>();
+  for (const component of components) {
+    const title = (component.title || component.code).trim();
+    const key = component.code.trim().toUpperCase();
+    const existing = papers.get(key);
+    if (!existing || title.length > existing.title.length) {
+      papers.set(key, { code: component.code, title, ...(component.tier ? { tier: component.tier } : {}) });
+    }
+  }
+  return [...papers.values()].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
+}
 
 /**
  * Every course a board runs, as one list.
@@ -61,9 +82,11 @@ export async function GET(request: NextRequest) {
     if (typeof data.tier === "string" && data.tier.trim()) existing.namedTiers.add(data.tier.trim());
     const code = typeof data.componentCode === "string" ? data.componentCode.trim() : "";
     if (code) {
+      const tier = typeof data.tier === "string" ? data.tier.trim() : "";
       existing.components.push({
         code,
         title: typeof data.componentTitle === "string" ? data.componentTitle : "",
+        ...(tier ? { tier } : {}),
       });
     }
     grouped.set(specificationId, existing);
@@ -75,8 +98,10 @@ export async function GET(request: NextRequest) {
       specificationTitle: course.specificationTitle,
       qualification: course.qualification,
       qualificationLabel: course.qualificationLabel,
-      componentIds: course.components.map((component) => component.code).sort(),
+      componentIds: [...new Set(course.components.map((component) => component.code))].sort(),
       tiers: examCourseTiers(course.components, [...course.namedTiers]),
+      // Each paper the course sets, so a paper can be chosen by name.
+      papers: coursePapers(course.components),
     }))
     .sort((a, b) => a.specificationTitle.localeCompare(b.specificationTitle));
   return Response.json({ courses });

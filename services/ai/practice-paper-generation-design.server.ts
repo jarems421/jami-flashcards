@@ -101,7 +101,9 @@ export async function designPracticePaper(
     systemInstruction,
     contents,
     temperature: 0.25,
-    maxOutputTokens: 20_000,
+    // Raised from 20,000 once papers were asked for as many figures as the
+    // real ones carry: an SVG diagram can be longer than its question.
+    maxOutputTokens: 28_000,
     // Keyed on the sources the paper is built from, which is what makes two
     // runs the same piece of work. The most expensive single call in the
     // pipeline at 20,000 tokens on the supervisor, and until now it was paid
@@ -157,7 +159,37 @@ export async function designPracticePaper(
    * that cannot be answered from what is in front of them. Checked here,
    * before an image is paid for rather than after.
    */
-  const routing = paperFigureIssues(draft.questions, { rasterEnabled: paperRasterEnabled() });
+  let routing = paperFigureIssues(draft.questions, { rasterEnabled: paperRasterEnabled() });
+  /*
+   * Once more with the faults named, before giving up on the paper.
+   *
+   * Papers are now expected to carry as many figures as the real ones do, and
+   * one graph written as SVG or one diagram with no description used to cost
+   * the whole paper. The redesign keeps everything else and fixes the figures.
+   */
+  if (routing.length > 0) {
+    const figureRetry = await runPass({
+      name: "paper_design_figure_retry",
+      taskClass: "important",
+      role: "supervisor",
+      systemInstruction: `${systemInstruction}\nThe previous paper's figures had faults. Return the same complete paper as one JSON object with every fault fixed and nothing else changed: ${routing
+        .slice(0, 12)
+        .map((issue) => `${issue.questionId}: ${issue.detail}`)
+        .join(" ")}`,
+      contents: [...contents, { role: "user", parts: [{ text: `The previous paper, to correct:
+${paperPass.text}` }] }],
+      temperature: 0.1,
+      maxOutputTokens: 28_000,
+    });
+    const retried = parsePracticePaperModelAnswer(withProvisionalMarkScheme(figureRetry.text), {
+      allowedSourceRefs: sourceRefs,
+      length: parsedRequest.length,
+    });
+    if (retried?.status === "ready") {
+      draft = retried;
+      routing = paperFigureIssues(draft.questions, { rasterEnabled: paperRasterEnabled() });
+    }
+  }
   if (routing.length > 0) {
     log.warn("paper_design.asset_routing", {
       issueCount: routing.length,
@@ -249,7 +281,13 @@ export async function designPracticePaper(
       allowedSourceRefs: sourceRefs,
       length: parsedRequest.length,
     });
-    if (retried && retried.status === "ready" && retried.totalMarks === expectedTotalMarks) {
+    if (
+      retried &&
+      retried.status === "ready" &&
+      retried.totalMarks === expectedTotalMarks &&
+      // A rebuilt paper is held to the same figure checks as the first one.
+      paperFigureIssues(retried.questions, { rasterEnabled: paperRasterEnabled() }).length === 0
+    ) {
       log.info("paper_design.total_corrected", {
         from: draft.totalMarks,
         to: retried.totalMarks,

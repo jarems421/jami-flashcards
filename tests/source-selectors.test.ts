@@ -150,10 +150,12 @@ describe("getPendingSourceDrafts", () => {
     draft({ id: "approved", contentStatus: "approved" }),
     draft({ id: "other-source", sourceId: "s-2" }),
     draft({ id: "not-a-source", sourceType: "card" }),
+    draft({ id: "from-tutor-chat", sourceType: "tutor" }),
+    draft({ id: "tutor-elsewhere", sourceType: "tutor", sourceId: undefined }),
   ];
 
-  it("keeps only unreviewed drafts belonging to the source", () => {
-    expect(ids(getPendingSourceDrafts(drafts, "s-1"))).toEqual(["pending"]);
+  it("keeps only unreviewed drafts belonging to the source, Tutor chat ones included", () => {
+    expect(ids(getPendingSourceDrafts(drafts, "s-1"))).toEqual(["pending", "from-tutor-chat"]);
   });
 
   it("returns nothing when no source is selected", () => {

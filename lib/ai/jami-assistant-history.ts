@@ -13,6 +13,14 @@ import {
   normalizeUsedContext,
 } from "@/lib/ai/jami-assistant-normalize";
 import { normalizeAssistantIllustrations } from "@/lib/ai/jami-assistant";
+import {
+  normalizeTutorStudyMaterialOffers,
+  normalizeTutorStudyMaterialRequest,
+  normalizeTutorStudyMaterialResults,
+  type TutorStudyMaterialKind,
+  type TutorStudyMaterialRequest,
+  type TutorStudyMaterialResult,
+} from "@/lib/ai/tutor-study-material";
 
 export const JAMI_ASSISTANT_MAX_SAVED_THREADS = 50;
 export const JAMI_ASSISTANT_MAX_THREAD_TITLE_LENGTH = 80;
@@ -63,6 +71,9 @@ export type JamiAssistantStoredMessage = {
   citations?: JamiAssistantCitation[];
   illustrations?: AssistantIllustration[];
   canIllustrate?: boolean;
+  studyMaterialRequest?: TutorStudyMaterialRequest;
+  studyMaterialOffers?: TutorStudyMaterialKind[];
+  studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
   createdAt: number;
 };
 
@@ -235,6 +246,9 @@ export function mapJamiAssistantStoredMessage(
   const followUps = normalizeFollowUps(data.followUps);
   const citations = normalizeAssistantCitations(data.citations);
   const illustrations = normalizeAssistantIllustrations(data.illustrations);
+  const studyMaterialRequest = normalizeTutorStudyMaterialRequest(data.studyMaterialRequest);
+  const studyMaterialOffers = normalizeTutorStudyMaterialOffers(data.studyMaterialOffers);
+  const studyMaterialResults = normalizeTutorStudyMaterialResults(data.studyMaterialResults);
   return {
     id,
     threadId,
@@ -245,6 +259,9 @@ export function mapJamiAssistantStoredMessage(
     ...(citations.length > 0 ? { citations } : {}),
     ...(illustrations.length > 0 ? { illustrations } : {}),
     ...(data.canIllustrate === true ? { canIllustrate: true } : {}),
+    ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
+    ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
+    ...(Object.keys(studyMaterialResults).length > 0 ? { studyMaterialResults } : {}),
     createdAt:
       typeof data.createdAt === "number" && Number.isFinite(data.createdAt)
         ? data.createdAt

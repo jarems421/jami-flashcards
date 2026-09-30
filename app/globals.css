@@ -2462,6 +2462,28 @@ html.photo-background-enabled .backdrop-blur-2xl {
   -webkit-backdrop-filter: none !important;
 }
 
+/*
+ * Headings and labels that sit straight on the photo, not in a panel, get a
+ * soft halo in the panel colour -- dark around light text, light around dark
+ * text -- so a bright patch of sky or water cannot wash them out. Over a panel
+ * the halo matches what is already behind the text and does not show. Fields
+ * and filled buttons carry their own solid background and are left alone.
+ */
+html.photo-background-enabled body {
+  text-shadow:
+    0 0 2px rgb(var(--photo-surface-rgb) / 0.7),
+    0 1px 10px rgb(var(--photo-surface-rgb) / 0.6);
+}
+
+html.photo-background-enabled input,
+html.photo-background-enabled textarea,
+html.photo-background-enabled select,
+html.photo-background-enabled [contenteditable="true"],
+html.photo-background-enabled .app-button-primary,
+html.photo-background-enabled [class*="bg-accent"] {
+  text-shadow: none;
+}
+
 /* A printed paper is printed on paper, not on the student's photo. */
 @media print {
   html.photo-background-enabled body::after {

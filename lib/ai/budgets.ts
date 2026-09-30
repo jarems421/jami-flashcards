@@ -14,7 +14,8 @@ export type AiBudgetAction =
   | "sourceFlashcardDrafts"
   | "sourcePracticeDrafts"
   | "studyAssetGeneration"
-  | "studyAnswerCheck";
+  | "studyAnswerCheck"
+  | "photoBackgroundRestore";
 
 type AiBudgetConfig = {
   dailyRequestLimit: number;
@@ -26,7 +27,10 @@ type AiBudgetConfig = {
     | "sourceDrafts"
     // Its own scope so preparing a deck cannot use up the allowance the
     // tutor needs to answer a question mid-session.
-    | "studyModes";
+    | "studyModes"
+    // Restoring a background photo is paid image work, not text, and must not
+    // eat into what the tutor has left.
+    | "photoBackgrounds";
   tokenCap: number;
   /**
    * Ceiling on what one request may cost to *send*, or null where the input is
@@ -251,6 +255,19 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstScope: "studyModes",
     tokenCap: 600,
     inputTokenCap: 4_000,
+  },
+  // One image-model run per photo a student chooses, a fraction of a penny
+  // each. Nobody changes their background eight times in a day on purpose,
+  // so the limit only exists to stop the route being used as a free upscaler.
+  // No text model is involved; the token cap is never passed to one and is
+  // kept at the smallest value the budget table allows.
+  photoBackgroundRestore: {
+    dailyRequestLimit: 8,
+    burstRequestLimit: 3,
+    burstWindowMs: 60_000,
+    burstScope: "photoBackgrounds",
+    tokenCap: 1,
+    inputTokenCap: null,
   },
 };
 

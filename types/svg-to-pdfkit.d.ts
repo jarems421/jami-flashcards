@@ -4,6 +4,8 @@ declare module "svg-to-pdfkit" {
     height?: number;
     preserveAspectRatio?: string;
     assumePt?: boolean;
+    /** The registered PDFKit font to set SVG text in, given the family and style the SVG asks for. */
+    fontCallback?: (family: string, bold: boolean, italic: boolean) => string;
   };
 
   const SVGtoPDF: (

@@ -307,6 +307,79 @@ describe("universal Jami assistant route", () => {
     );
   });
 
+  it("agrees to make flashcards a student asks for, from any chat, and records it", async () => {
+    const answer = JSON.stringify({
+      answer: "Making you flashcards on the light reactions now.",
+      sourceRefs: [],
+      usedCurrentContext: true,
+      usedGeneralKnowledge: false,
+      usedWebResearch: false,
+      graphs: [],
+      studyMaterial: "flashcards",
+      studyMaterialFocus: "photosynthesis: the light reactions",
+    });
+    mocks.streamText.mockResolvedValueOnce(answer);
+
+    const response = await postAssistant(
+      request(
+        validBody({
+          message: "can you make me 8 flashcards on this please?",
+          context: { surface: "sources", sourceIds: ["source-1"] },
+        })
+      )
+    );
+    const { terminal } = await readStream(response);
+
+    expect(terminal).toMatchObject({
+      type: "done",
+      studyMaterialRequest: {
+        kind: "flashcards",
+        focus: "photosynthesis: the light reactions",
+        count: 8,
+      },
+    });
+    expect(mocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          systemInstruction: expect.stringMatching(
+            /never send them to Sources[\s\S]*The student has asked for flashcards\. Set studyMaterial to "flashcards"/
+          ),
+        }),
+      })
+    );
+    const savedAnswer = mocks.persisted.find(
+      (entry) =>
+        entry.kind === "create" &&
+        (entry.data as { role?: string }).role === "assistant"
+    );
+    expect(savedAnswer?.data).toMatchObject({
+      studyMaterialRequest: { kind: "flashcards", focus: "photosynthesis: the light reactions" },
+      studyMaterialFocus: "photosynthesis: the light reactions",
+    });
+  });
+
+  it("offers flashcards and practice questions after teaching", async () => {
+    const answer = JSON.stringify({
+      answer: `${"Light is absorbed by chlorophyll and drives the splitting of water. ".repeat(6)}`,
+      sourceRefs: [],
+      usedCurrentContext: false,
+      usedGeneralKnowledge: true,
+      usedWebResearch: false,
+      graphs: [],
+      studyMaterial: "none",
+      studyMaterialFocus: "why photosynthesis needs light",
+    });
+    mocks.streamText.mockResolvedValueOnce(answer);
+
+    const response = await postAssistant(
+      request(validBody({ message: "I'm struggling to see why plants need light, can you explain?" }))
+    );
+    const { terminal } = await readStream(response);
+
+    expect(terminal).toMatchObject({ studyMaterialOffers: ["flashcards", "practice"] });
+    expect(terminal).not.toHaveProperty("studyMaterialRequest");
+  });
+
   it("puts the learner profile in the system instruction when there is one", async () => {
     const resolved = await mocks.resolveContext.getMockImplementation()?.({});
     mocks.resolveContext.mockResolvedValueOnce({
@@ -394,6 +467,31 @@ describe("universal Jami assistant route", () => {
     expect(mocks.streamText).not.toHaveBeenCalled();
   });
 
+  it("reads a folder's material by what fits the question, not file by file", async () => {
+    const file = (id: string, title: string) => ({
+      id, title, type: "file", folderIds: ["module"], topicIds: [], status: "active",
+      createdBy: "user-1", createdAt: 1, updatedAt: 1, sizeBytes: 10 * 1024 * 1024,
+    });
+    mocks.resolveContext.mockResolvedValueOnce({
+      currentId: "card-1",
+      currentLabel: "Current card",
+      currentParts: [{ text: "Card front and answer" }],
+      // Thirty lectures, 300 MB between them: every one attached, none chosen.
+      sources: Array.from({ length: 30 }, (_, index) => file(`lecture-${index + 1}`, `Lecture ${index + 1}`)),
+      pinnedSourceIds: [],
+    });
+    mocks.retrieveChunks.mockResolvedValueOnce([
+      { id: "lecture-27-0003", sourceId: "lecture-27", chunkIndex: 3, text: "Compactness: every open cover has a finite subcover.", pageStart: 12, pageEnd: 12 },
+    ]);
+
+    const response = await postAssistant(request(validBody()));
+
+    expect(response.status).toBe(200);
+    // Searched across all thirty, and only the matching lecture read -- as its passage, not a download.
+    expect(mocks.retrieveChunks.mock.calls.at(-1)?.[0].sourceIds).toHaveLength(30);
+    expect(mocks.prepareSource).not.toHaveBeenCalled();
+  });
+
   it("rejects obviously oversized source selections before charging", async () => {
     mocks.resolveContext.mockResolvedValueOnce({
       currentId: "card-1",
@@ -413,6 +511,8 @@ describe("universal Jami assistant route", () => {
           sizeBytes: 31 * 1024 * 1024,
         },
       ],
+      // Chosen by the student, so it would be read whole.
+      pinnedSourceIds: ["source-large"],
     });
 
     const response = await postAssistant(request(validBody()));

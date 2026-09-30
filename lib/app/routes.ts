@@ -76,6 +76,11 @@ export function getQuestionPracticeSetupHref(input: {
   return `/dashboard/practice/questions/new?${searchParams.toString()}`;
 }
 
+/** One Past Paper Practice session, a practice set included. */
+export function getQuestionPracticeSessionHref(sessionId: string) {
+  return `/dashboard/practice/questions/${encodeURIComponent(sessionId)}`;
+}
+
 export function getDeckStudyHref(deckId: string, topicId?: string) {
   return getCustomStudyHref({
     mode: "custom",

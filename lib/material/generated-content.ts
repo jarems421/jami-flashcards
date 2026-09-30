@@ -27,6 +27,12 @@ export type GeneratedContentDraft = {
   reviewedBy?: string;
   sourceType?: "card" | "question" | "tutor" | "manual" | "source";
   sourceId?: string;
+  /**
+   * Where a Tutor draft was made: the folder its chat sat in, and the deck
+   * being studied. Only hints for choosing a deck when it is reviewed later.
+   */
+  folderId?: string;
+  deckId?: string;
   createdAt: number;
   updatedAt: number;
 };

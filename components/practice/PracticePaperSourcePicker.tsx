@@ -13,7 +13,7 @@ const MODE_OPTIONS = [
   {
     value: "manual" as const,
     label: "Choose sources",
-    detail: `Pick up to ${MAX_PRACTICE_PAPER_SOURCE_IDS} yourself.`,
+    detail: "Pick them yourself.",
   },
 ];
 
@@ -25,6 +25,7 @@ export default function PracticePaperSourcePicker({
   automatic,
   disabled,
   onAutomaticChange,
+  manualOnly = false,
   onConfirmAutomatic,
   onChange,
 }: {
@@ -35,6 +36,8 @@ export default function PracticePaperSourcePicker({
   automatic: boolean;
   disabled?: boolean;
   onAutomaticChange: (automatic: boolean) => void;
+  /** Only a list to pick from: for a school course, where material is an optional extra. */
+  manualOnly?: boolean;
   onConfirmAutomatic: () => void;
   onChange: (sourceIds: string[]) => void;
 }) {
@@ -58,7 +61,7 @@ export default function PracticePaperSourcePicker({
               ? automaticConfirmed
                 ? `Chosen automatically · ${proposedSources.length} confirmed`
                 : "Chosen automatically · not confirmed yet"
-              : `${selectedIds.length} of ${MAX_PRACTICE_PAPER_SOURCE_IDS} selected`}
+              : `${selectedIds.length} selected`}
           </span>
         </span>
         {/*
@@ -85,19 +88,19 @@ export default function PracticePaperSourcePicker({
       </summary>
 
       <div className="space-y-5 border-t border-[var(--color-border)] p-4">
-        <OptionSwitch
+        {manualOnly ? null : <OptionSwitch
           label="How sources get chosen"
           value={automatic ? "automatic" : "manual"}
           options={MODE_OPTIONS}
           disabled={disabled}
           onChange={(value) => onAutomaticChange(value === "automatic")}
-        />
+        />}
 
         {automatic ? (
           <div>
             <p className="text-sm leading-6 text-text-secondary">
-              Jami proposes up to {MAX_PRACTICE_PAPER_SOURCE_IDS} relevant
-              sources, prioritising current specifications, assessment briefs,
+              Jami proposes the most relevant sources, prioritising current
+              specifications, assessment briefs,
               rubrics, mark schemes and recent past papers.
             </p>
             {proposedSources.length > 0 ? (

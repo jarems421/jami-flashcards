@@ -1,9 +1,16 @@
 import type { Source } from "@/lib/material/sources";
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
-import { normalizePracticePaperCompanionDocuments } from "@/lib/practice/exam-formats";
+import { EXAM_BOARD_LABELS, normalizePracticePaperCompanionDocuments } from "@/lib/practice/exam-formats";
+import {
+  describePaperCourse,
+  describePaperTopicScope,
+  readPaperTopicScope,
+  type PaperTopicScope,
+} from "@/lib/practice/paper-topic-scope";
 import {
   getPracticePaperQuestionLimit,
   calculatePracticePaperTotalMarks,
+  MAX_PRACTICE_PAPER_SOURCE_IDS,
   normalizePracticePaperAssessmentProfile,
   normalizePracticePaperChoiceGroups,
   normalizePracticePaperMarkScheme,
@@ -285,6 +292,13 @@ export type PracticePaperGenerationRequest = {
   timingMode: PracticePaperTimingMode;
   tutorEnabled: boolean;
   sourceIds: string[];
+  /**
+   * The course, paper and topics the student picked, for a school course.
+   * With it, Jami knows exactly what to write and needs no description.
+   */
+  scope?: PaperTopicScope;
+  /** What the student added to a picked course, kept apart so re-reading a stored request is stable. */
+  note?: string;
 };
 
 export type ParsedPracticePaperModelAnswer =
@@ -452,15 +466,26 @@ export function parsePracticePaperGenerationRequest(
   if (!value || typeof value !== "object") return null;
   const request = value as Record<string, unknown>;
   const folderId = normalizeId(request.folderId);
-  const prompt = normalizeText(request.request, MAX_PRACTICE_PAPER_REQUEST_LENGTH);
-  const coverage = normalizeText(
-    request.coverage,
-    MAX_PRACTICE_PAPER_COVERAGE_LENGTH
-  );
+  const scope = readPaperTopicScope(request.scope);
+  const note = normalizeText(request.note, 1_000);
+  /*
+   * A picked course is the request. What the student typed, if anything, is a
+   * note on top of it -- and the coverage comes from the topics they ticked,
+   * in the catalogue's words rather than theirs.
+   */
+  const prompt = scope
+    ? normalizeText(
+        `A complete ${EXAM_BOARD_LABELS[scope.course.board]} ${describePaperCourse(scope)} paper in the current format.${note ? ` Student's note: ${note}` : ""}`,
+        MAX_PRACTICE_PAPER_REQUEST_LENGTH
+      )
+    : normalizeText(request.request, MAX_PRACTICE_PAPER_REQUEST_LENGTH);
+  const coverage = scope
+    ? normalizeText(describePaperTopicScope(scope) ?? "The whole paper, across the course.", MAX_PRACTICE_PAPER_COVERAGE_LENGTH)
+    : normalizeText(request.coverage, MAX_PRACTICE_PAPER_COVERAGE_LENGTH);
   const length = isLength(request.length) ? request.length : null;
   const focus = isFocus(request.focus) ? request.focus : null;
   const sourceIds = Array.isArray(request.sourceIds)
-    ? Array.from(new Set(request.sourceIds.map(normalizeId).filter(Boolean))).slice(0, 16)
+    ? Array.from(new Set(request.sourceIds.map(normalizeId).filter(Boolean))).slice(0, MAX_PRACTICE_PAPER_SOURCE_IDS + 1)
     : [];
   if (
     !folderId ||
@@ -468,7 +493,7 @@ export function parsePracticePaperGenerationRequest(
     !coverage ||
     !length ||
     !focus ||
-    sourceIds.length > 15
+    sourceIds.length > MAX_PRACTICE_PAPER_SOURCE_IDS
   ) {
     return null;
   }
@@ -482,6 +507,7 @@ export function parsePracticePaperGenerationRequest(
     timingMode: request.timingMode === "untimed" ? "untimed" : "timed",
     tutorEnabled: request.tutorEnabled === true,
     sourceIds,
+    ...(scope ? { scope, note } : {}),
   };
 }
 
@@ -624,7 +650,7 @@ export function parsePracticePaperModelAnswer(
    * Papers 2020-2024" -- and a sound paper was thrown away for it. Those are
    * dropped. With sources supplied, citing one that was not is still a fault.
    */
-  const sourceRefs = allowedRefs.size === 0 ? [] : normalizeTextList(payload.sourceRefs, 15);
+  const sourceRefs = allowedRefs.size === 0 ? [] : normalizeTextList(payload.sourceRefs, MAX_PRACTICE_PAPER_SOURCE_IDS);
   if (sourceRefs.some((reference) => !allowedRefs.has(reference))) return null;
 
   if (payload.status === "needs_clarification") {
@@ -711,4 +737,69 @@ export function buildPracticePaperGenerationResponse(input: {
     examinerInsights: input.parsed.examinerInsights,
     generationAudit: input.generationAudit,
   };
+}
+
+/**
+ * A request with something added to what the student asked -- a clarification
+ * or a corrected format. With a picked course the request is rebuilt from the
+ * course each time it is read, so the addition goes on the student's note.
+ */
+export function appendToPracticePaperRequest(
+  request: PracticePaperGenerationRequest,
+  addition: string
+): PracticePaperGenerationRequest {
+  if (request.scope) {
+    const note = request.note ?? "";
+    return { ...request, note: `${note.slice(0, Math.max(0, 1_000 - addition.length))}${addition}`.trim() };
+  }
+  return {
+    ...request,
+    request: `${request.request.slice(0, Math.max(0, MAX_PRACTICE_PAPER_REQUEST_LENGTH - addition.length))}${addition}`,
+  };
+}
+
+export type PracticePaperSourceRole = "paper" | "scheme" | "notes";
+
+/**
+ * What a source is to a paper: a past paper Jami copies the format of, a mark
+ * scheme it copies the marking of, or notes that say what is taught. Read
+ * from the title and file name, the same signals the source ranking uses.
+ */
+export function practicePaperSourceRole(source: Pick<Source, "title" | "fileName">): PracticePaperSourceRole {
+  const searchable = `${source.title} ${source.fileName ?? ""}`.toLowerCase();
+  if (/mark ?scheme|markscheme|marking (guide|scheme)|solutions?|answers?\b|\bms\b/.test(searchable)) return "scheme";
+  if (/past paper|exam paper|specimen|mock|sample (paper|exam)|practice (paper|exam)|\bexam\b|\bpaper\b|resit|midterm|mid-term|class test|final/.test(searchable)) return "paper";
+  return "notes";
+}
+
+/**
+ * Material fitted to what one paper can read, rather than refused for it.
+ *
+ * With the file count no longer the limit, a module's worth of lectures can
+ * pass the size cap. The past papers and mark schemes are what the paper is
+ * modelled on, so they go in first; notes follow in the student's order until
+ * the cap, and the rest are left out and reported.
+ */
+export function fitPracticePaperMaterial<T extends Pick<Source, "title" | "fileName">>(
+  items: readonly T[],
+  bytesOf: (item: T) => number,
+  maxBytes: number
+): { kept: T[]; dropped: T[] } {
+  const ordered = [
+    ...items.filter((item) => practicePaperSourceRole(item) !== "notes"),
+    ...items.filter((item) => practicePaperSourceRole(item) === "notes"),
+  ];
+  const kept: T[] = [];
+  const dropped: T[] = [];
+  let total = 0;
+  for (const item of ordered) {
+    const size = Math.max(0, bytesOf(item));
+    if (total + size <= maxBytes) {
+      kept.push(item);
+      total += size;
+    } else {
+      dropped.push(item);
+    }
+  }
+  return { kept, dropped };
 }

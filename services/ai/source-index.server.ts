@@ -15,11 +15,16 @@ import {
   type SourceTextPage,
 } from "@/lib/ai/source-chunking";
 import { prepareSourceForTutor } from "@/lib/ai/source-ingestion";
+import { rankRetrievedPassages } from "@/lib/ai/source-passage-rank";
 import { mapSourceData } from "@/lib/material/sources";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 
 const MAX_INDEX_CHUNKS = 120;
 const MAX_RETRIEVED_CHUNKS = 45;
+/** The most sources one search spans: a whole module's material, bounded against a runaway request. */
+const MAX_RETRIEVAL_SOURCES = 120;
+/** Values one `in` filter may name. */
+const SOURCE_FILTER_GROUP = 30;
 
 export type RetrievedSourceChunk = {
   id: string;
@@ -226,7 +231,10 @@ export async function retrieveSourceChunks(input: {
   includeNeighbors?: boolean;
 }) {
   const apiKey = getConfiguredGeminiEmbeddingApiKey(process.env);
-  const sourceIds = Array.from(new Set(input.sourceIds.map((id) => id.trim()).filter(Boolean))).slice(0, 15);
+  const sourceIds = Array.from(new Set(input.sourceIds.map((id) => id.trim()).filter(Boolean))).slice(
+    0,
+    MAX_RETRIEVAL_SOURCES
+  );
   if (
     !apiKey ||
     !resolveAiProviderPolicy(process.env).geminiReady ||
@@ -241,17 +249,40 @@ export async function retrieveSourceChunks(input: {
     .collection("users")
     .doc(input.uid)
     .collection("sourceChunks");
-  const nearest = await collection
-    .where("sourceId", "in", sourceIds)
-    .findNearest({
-      vectorField: "embedding",
-      queryVector,
-      limit: Math.max(1, Math.min(MAX_RETRIEVED_CHUNKS, input.limit ?? 12)),
-      distanceMeasure: "COSINE",
-      distanceResultField: "vectorDistance",
-    })
-    .get();
-  const primary = nearest.docs.map(mapRetrieved).filter((chunk) => chunk.sourceId);
+  /*
+   * Every attached source is searched, however many there are.
+   *
+   * This used to search only the first fifteen, so a student with thirty
+   * files in a module had half of them silently ignored, however relevant.
+   * A filter can name thirty values at most, so the sources are searched in
+   * groups of thirty and the closest passages kept across all of them: the
+   * student keeps everything attached, and only what fits the question is read.
+   */
+  const limit = Math.max(1, Math.min(MAX_RETRIEVED_CHUNKS, input.limit ?? 12));
+  const groups: string[][] = [];
+  for (let offset = 0; offset < sourceIds.length; offset += SOURCE_FILTER_GROUP) {
+    groups.push(sourceIds.slice(offset, offset + SOURCE_FILTER_GROUP));
+  }
+  const searched = await Promise.all(
+    groups.map((group) =>
+      collection
+        .where("sourceId", "in", group)
+        .findNearest({
+          vectorField: "embedding",
+          queryVector,
+          // A few spare candidates, so exact wording can lift a passage the meaning alone ranked lower.
+          limit: Math.min(MAX_RETRIEVED_CHUNKS, limit * 3),
+          distanceMeasure: "COSINE",
+          distanceResultField: "vectorDistance",
+        })
+        .get()
+    )
+  );
+  const primary = rankRetrievedPassages(
+    input.query,
+    searched.flatMap((snapshot) => snapshot.docs.map(mapRetrieved)).filter((chunk) => chunk.sourceId),
+    limit
+  );
   if (input.includeNeighbors === false || primary.length === 0) return primary;
 
   const neighborIds = new Set<string>();

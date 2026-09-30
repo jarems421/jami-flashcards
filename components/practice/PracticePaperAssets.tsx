@@ -2,6 +2,8 @@ import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers"
 import { looksLikeSvg, sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 import { useEffect, useState } from "react";
 import { getStorageFileDownloadUrl } from "@/services/firebase/storage-files";
+import NotebookGraphView from "@/components/workspace/NotebookGraphView";
+import { describePaperGraph, readPaperGraph } from "@/lib/practice/paper-graph";
 
 function PrivatePaperImage({ asset }: { asset: PracticePaperQuestionAsset }) {
   const [url, setUrl] = useState("");
@@ -28,104 +30,20 @@ function parseRows(content: string) {
     .filter((row) => row.length > 1 && !row.every((cell) => /^:?-+:?$/.test(cell)));
 }
 
-/** Trims a plotted value to something that fits an axis label. */
-function axisLabel(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
-}
-
 /**
- * A single series of points the question supplied, drawn so it can be read.
- *
- * It previously plotted with no axis labels at all, which made the shape
- * visible but every value a guess -- on a graph a student is meant to answer
- * questions about. The ends of both scales are now printed, which is the
- * smallest thing that turns the picture back into data.
- *
- * One series, so no legend: the caption above the figure already names it.
+ * A question's graph, drawn from its data by the same renderer as notebook and
+ * Tutor graphs: ruled axes at round steps, labelled quantities, and every point
+ * where its numbers put it. Content that is not a graph is shown as written.
  */
-function Graph({ content, altText }: { content: string; altText: string }) {
-  const points = content.split("\n").flatMap((row) => {
-    const numbers = row.split(/[,\s]+/).map(Number);
-    return numbers.length >= 2 && numbers.slice(0, 2).every(Number.isFinite)
-      ? [{ x: numbers[0], y: numbers[1] }]
-      : [];
-  });
-  if (points.length < 2) return <pre className="whitespace-pre-wrap text-xs leading-5">{content}</pre>;
-
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const spanX = maxX - minX || 1;
-  const spanY = maxY - minY || 1;
-
-  // Plot area, leaving a gutter wide enough for the scale labels.
-  const left = 42;
-  const right = 302;
-  const top = 16;
-  const bottom = 140;
-
-  /*
-   * Screen coordinates computed once. The old version joined every point into
-   * a `points` string and then split that same string back apart to place the
-   * markers, so the markers were parsed out of their own serialisation.
-   */
-  const plotted = points.map((point) => ({
-    x: left + ((point.x - minX) / spanX) * (right - left),
-    y: bottom - ((point.y - minY) / spanY) * (bottom - top),
-  }));
-
+function Graph({ content, altText, title }: { content: string; altText: string; title: string }) {
+  // A chart drawn as SVG -- a bar chart, say -- is drawn like any diagram.
+  if (looksLikeSvg(content)) return <DiagramAsset content={content} altText={altText} title={title} />;
+  const graph = readPaperGraph(content);
+  if (!graph) return <pre className="whitespace-pre-wrap text-xs leading-5">{content}</pre>;
   return (
-    <svg
-      viewBox="0 0 320 168"
-      role="img"
-      aria-label={altText || `Graph of ${points.length} plotted points`}
-      className="h-auto w-full max-w-sm"
-    >
-      {/* Axes stay recessive: they locate the data, they are not the data. */}
-      <path
-        d={`M${left} ${top}V${bottom}H${right}`}
-        fill="none"
-        stroke="var(--color-border-strong)"
-        strokeWidth="1"
-      />
-      <g className="fill-text-muted tabular-nums" fontSize="9">
-        <text x={left - 6} y={bottom} textAnchor="end" dominantBaseline="middle">
-          {axisLabel(minY)}
-        </text>
-        <text x={left - 6} y={top} textAnchor="end" dominantBaseline="middle">
-          {axisLabel(maxY)}
-        </text>
-        <text x={left} y={bottom + 14} textAnchor="start">
-          {axisLabel(minX)}
-        </text>
-        <text x={right} y={bottom + 14} textAnchor="end">
-          {axisLabel(maxX)}
-        </text>
-      </g>
-      <polyline
-        points={plotted.map((point) => `${point.x},${point.y}`).join(" ")}
-        fill="none"
-        stroke="var(--color-accent)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {plotted.map((point, index) => (
-        <circle
-          key={`${points[index].x}-${points[index].y}-${index}`}
-          cx={point.x}
-          cy={point.y}
-          r="4"
-          fill="var(--color-accent)"
-          /* A surface ring so markers stay countable where the line doubles back. */
-          stroke="var(--color-surface-panel)"
-          strokeWidth="1.5"
-        />
-      ))}
-    </svg>
+    <div className="mx-auto aspect-[440/320] w-full max-w-md overflow-hidden rounded-lg" role="img" aria-label={altText || describePaperGraph(graph)}>
+      <NotebookGraphView graph={graph} width={440} height={320} />
+    </div>
   );
 }
 
@@ -207,7 +125,7 @@ export default function PracticePaperAssets({ assets }: { assets: PracticePaperQ
                 </table>
               </div>
             ) : asset.type === "graph" ? (
-              <Graph content={asset.content} altText={asset.altText} />
+              <Graph content={asset.content} altText={asset.altText} title={asset.title} />
             ) : asset.type === "diagram" ? (
               <DiagramAsset content={asset.content} altText={asset.altText} title={asset.title} />
             ) : (asset.type === "image" || asset.type === "illustration") && asset.storagePath ? (

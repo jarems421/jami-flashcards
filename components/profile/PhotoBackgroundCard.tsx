@@ -153,7 +153,7 @@ export default function PhotoBackgroundCard() {
     : measuredImage && stretch > LOW_RESOLUTION_PHOTO_STRETCH
       ? `This image is only ${measuredImage.width} × ${measuredImage.height}, so it's stretched about ${Math.round(stretch)}× to fill your screen. A larger version will look sharper.`
       : isEnlargedPhotoBackground(background.storagePath)
-        ? "This photo was smaller than your screen, so Jami enlarged it and softened it a little. A larger photo will look sharper."
+        ? "This photo was smaller than your screen, so Jami enlarged and sharpened it. A larger photo will still look crisper."
         : isSoftPhotoBackground(background.storagePath)
           ? "Saved before backgrounds were sharpened. Replace it with the same photo for full quality."
           : null;
@@ -189,7 +189,7 @@ export default function PhotoBackgroundCard() {
           <h2 className="text-base font-semibold text-text-primary">Background photo</h2>
           <p className="mt-0.5 text-xs text-text-muted">
             {phase === "saving"
-              ? "Preparing your photo…"
+              ? "Preparing your photo. Sharpening a small one can take up to a minute…"
               : skyIsOn
                 ? "Your star sky is on here, so it shows instead."
                 : "Colours are picked from it. Follows you to every device."}
@@ -241,6 +241,14 @@ export default function PhotoBackgroundCard() {
       </div>
 
       {notice ? <p className="mt-3 text-xs leading-5 text-text-muted">{notice}</p> : null}
+
+      {/* Said before a photo is chosen, since choosing one is what sends it. */}
+      {!background || adjusting ? (
+        <p className="mt-3 text-xs leading-5 text-text-muted">
+          A photo smaller than your screen is sharpened by Replicate, an image service, which deletes its copy
+          within the hour.
+        </p>
+      ) : null}
 
       {background && adjusting ? (
         <div className="mt-4">

@@ -1,7 +1,7 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
 import { start } from "workflow/api";
-import { parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
+import { appendToPracticePaperRequest, parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { mapPracticePaperJobData } from "@/lib/practice/practice-papers";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
@@ -65,10 +65,7 @@ export async function POST(
       ? data.clarificationQuestion.slice(0, 600)
       : "Clarify the assessment format.";
     const clarification = `\n\nJami asked: ${clarificationQuestion}\nStudent clarified: ${answer}`;
-    const nextRequest = {
-      ...existingRequest,
-      request: `${existingRequest.request.slice(0, Math.max(0, 2_000 - clarification.length))}${clarification}`,
-    };
+    const nextRequest = appendToPracticePaperRequest(existingRequest, clarification);
     // Reuse completed research for ordinary content clarifications. Questions
     // that can change the authoritative assessment evidence invalidate it so
     // the resumed workflow researches the newly supplied format/course detail.

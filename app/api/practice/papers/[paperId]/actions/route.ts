@@ -67,7 +67,9 @@ export async function POST(
     }
     const attemptNumber = paper.attemptCount + 1;
     const attemptRef = userRef.collection("practicePaperAttempts").doc();
-    const deadlineAt = paper.timingMode === "timed" && paper.durationMinutes > 0
+    // Chosen as the attempt starts: how a paper is sat is not fixed when it is made.
+    const timingMode = body.timingMode === "timed" || body.timingMode === "untimed" ? body.timingMode : paper.timingMode;
+    const deadlineAt = timingMode === "timed" && paper.durationMinutes > 0
       ? now + paper.durationMinutes * 60_000
       : null;
     const attempt: Omit<PracticePaperAttempt, "id"> = {
@@ -77,10 +79,12 @@ export async function POST(
       attemptNumber,
       status: "in_progress",
       startedAt: now,
-      timingMode: paper.timingMode,
+      timingMode,
       timingState: "running",
       durationMinutes: paper.durationMinutes,
-      deadlineAt: deadlineAt ?? undefined,
+      // Left out rather than undefined: the Admin SDK refuses an undefined field, so an
+      // untimed paper, or one with no duration, could never be started.
+      ...(deadlineAt !== null ? { deadlineAt } : {}),
       totalPausedMs: 0,
       deadlineVersion: 1,
       tutorEnabled: paper.tutorEnabled,
@@ -116,6 +120,8 @@ export async function POST(
       activeAttemptId: attemptRef.id,
       attemptCount: attemptNumber,
       startedAt: now,
+      timingMode,
+      timerEnabled: timingMode === "timed",
       timingState: "running",
       deadlineAt,
       pausedAt: null,

@@ -781,10 +781,20 @@ export async function resolveJamiAssistantContext(input: {
     currentLabel: resolved.currentLabel,
     currentParts: resolved.currentParts,
     sources,
+    pinnedSourceIds: Array.from(
+      new Set([
+        ...resolved.relations.currentSourceIds,
+        ...(input.useRelatedSources ? resolved.relations.directSourceIds : []),
+      ])
+    ),
     studyLevelContext: preferences.studyLevelContext,
     personalisationContext: preferences.personalisationContext,
     ...(learningContext ? { learningContext } : {}),
     reasoningEffort: preferences.reasoningEffort,
+    folderIds: resolved.relations.folderIds,
+    ...("deckId" in resolved && typeof resolved.deckId === "string" && resolved.deckId
+      ? { deckId: resolved.deckId }
+      : {}),
   };
 }
 

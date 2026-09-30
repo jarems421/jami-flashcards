@@ -13,6 +13,7 @@ import {
   examAnswerUnlocksModelAnswer,
   examDocument,
   examResultForAttempt,
+  examSessionQualification,
   withCriterionTariffs,
   type ExamAttempt,
   type ExamSession,
@@ -251,7 +252,7 @@ export async function runExamQuestionMarking(uid: string, attemptId: string, tok
     const paper = buildSingleQuestionPaper({
       id: `exam-${attemptId}`, folderId: session.folderId, title: `${session.subject} ${question.label}`,
       question: { id: question.id, label: question.label, prompt: question.prompt, marks: question.marks, assets: question.assets },
-      markSchemeItem: secret.markSchemeItem, studyLevel: session.studyLevel, qualification: session.course.qualification,
+      markSchemeItem: secret.markSchemeItem, studyLevel: session.studyLevel, qualification: examSessionQualification(session),
       awardingBody: question.provenance.boardLabel, specification: question.provenance.specificationTitle,
       component: question.provenance.componentTitle, markSchemeKind: question.origin === "jami_generated" ? "generated" : "official",
     });

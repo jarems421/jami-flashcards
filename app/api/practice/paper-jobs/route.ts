@@ -4,7 +4,7 @@ import { start } from "workflow/api";
 import { parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
 import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
 import { getBearerToken } from "@/lib/auth/bearer";
-import { mapPracticePaperJobData } from "@/lib/practice/practice-papers";
+import { mapPracticePaperJobData, MAX_PRACTICE_PAPER_SOURCE_IDS } from "@/lib/practice/practice-papers";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
           typeof value === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(value.trim())
             ? [value.trim()]
             : []
-        ))).slice(0, 15)
+        ))).slice(0, MAX_PRACTICE_PAPER_SOURCE_IDS)
       : [];
   } catch {
     return failure("Invalid request body", 400, "invalid_request");

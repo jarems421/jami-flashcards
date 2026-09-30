@@ -129,10 +129,14 @@ export function photoBackgroundStoragePrefix(userId: string) {
  */
 export const SHARP_PHOTO_BACKGROUND_FILE_STEM = "background-sharp";
 /**
- * A photo that was smaller than the screen, cleaned up, softened a little and
- * enlarged on upload. Named apart so the card can say what happened to it.
+ * A photo that was smaller than the screen, enlarged and sharpened on upload.
+ * Named apart so the card can say what happened to it. Photos enlarged before
+ * this were blurred first and saved as `background-enlarged`; like the oldest
+ * uploads, those count as soft so the card asks for the photo again.
  */
-export const ENLARGED_PHOTO_BACKGROUND_FILE_STEM = "background-enlarged";
+export const ENLARGED_PHOTO_BACKGROUND_FILE_STEM = "background-upscaled";
+/** A photo that was smaller than the screen, restored by an image model and saved at full size. */
+export const RESTORED_PHOTO_BACKGROUND_FILE_STEM = "background-restored";
 
 function photoBackgroundFileName(storagePath: string) {
   return storagePath.split("/").pop() ?? "";
@@ -143,8 +147,10 @@ export function isEnlargedPhotoBackground(storagePath: string) {
 }
 
 export function isSoftPhotoBackground(storagePath: string) {
+  const name = photoBackgroundFileName(storagePath);
   return (
-    !photoBackgroundFileName(storagePath).startsWith(`${SHARP_PHOTO_BACKGROUND_FILE_STEM}.`) &&
+    !name.startsWith(`${SHARP_PHOTO_BACKGROUND_FILE_STEM}.`) &&
+    !name.startsWith(`${RESTORED_PHOTO_BACKGROUND_FILE_STEM}.`) &&
     !isEnlargedPhotoBackground(storagePath)
   );
 }

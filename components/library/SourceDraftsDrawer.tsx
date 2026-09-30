@@ -10,7 +10,10 @@ import type { Deck } from "@/lib/study/decks";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { FeedbackBanner } from "@/components/ui";
 import SourceDraftEditor from "./SourceDraftEditor";
-import SourceCreatePanel, { type SourceMadeCounts } from "./SourceCreatePanel";
+import SourceCreatePanel, {
+  type SourceMadeCounts,
+  type SourceMadePracticeSet,
+} from "./SourceCreatePanel";
 import { SourceWorkspaceDrawer } from "./SourceWorkspace";
 import type { SourceWorkspaceFeedback } from "./source-workspace-types";
 
@@ -20,7 +23,10 @@ type SourceDraftsDrawerProps = {
   userId: string;
   feedback: SourceWorkspaceFeedback | null;
   generation: {
+    sourceId: string | null;
     made: SourceMadeCounts;
+    onBriefChange: (brief: string) => void;
+    madePracticeSet: SourceMadePracticeSet | null;
     drafting: SourceDraftKind | null;
     conversationFocusAvailable: boolean;
     useConversationFocus: boolean;
@@ -62,7 +68,10 @@ export default function SourceDraftsDrawer({
   lifecycle,
 }: SourceDraftsDrawerProps) {
   const {
+    sourceId,
     made,
+    onBriefChange,
+    madePracticeSet,
     drafting,
     conversationFocusAvailable,
     useConversationFocus,
@@ -107,6 +116,9 @@ export default function SourceDraftsDrawer({
         ) : null}
 
         <SourceCreatePanel
+          sourceId={sourceId}
+          onBriefChange={onBriefChange}
+          madePracticeSet={madePracticeSet}
           made={made}
           drafting={drafting}
           conversationFocusAvailable={conversationFocusAvailable}
@@ -117,8 +129,9 @@ export default function SourceDraftsDrawer({
 
         {drafts.length === 0 ? (
           <p className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm leading-6 text-text-muted">
-            Nothing is waiting for review. Anything you make above lands here
-            first, so you can edit it before it reaches Learn or a notebook.
+            Nothing is waiting for review. Flashcards you make land here first,
+            so you can edit them before they reach Learn. Practice sets wait in
+            Practice until you start them.
           </p>
         ) : null}
 

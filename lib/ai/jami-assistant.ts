@@ -5,11 +5,18 @@ import { normalizeAssistantId as normalizeId } from "@/lib/ai/jami-assistant-nor
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 
 import { extractTutorGraphs, MAX_TUTOR_GRAPHS, readTutorGraphSpecs } from "@/lib/ai/assistant-graph";
+import {
+  isTutorStudyMaterialKind,
+  type TutorStudyMaterialKind,
+  type TutorStudyMaterialRequest,
+  type TutorStudyMaterialResult,
+} from "@/lib/ai/tutor-study-material";
 
 export const JAMI_ASSISTANT_MAX_HISTORY_MESSAGES = 12;
 export const JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH = 4_000;
 export const JAMI_ASSISTANT_MAX_MESSAGE_LENGTH = 2_000;
-export const JAMI_ASSISTANT_MAX_SOURCE_IDS = 15;
+/** Sources a student can hand the Tutor at once. Not shown: the content search, not a count, decides what is read. */
+export const JAMI_ASSISTANT_MAX_SOURCE_IDS = 100;
 export const JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES = 3 * 1024 * 1024;
 export const JAMI_ASSISTANT_MAX_SNAPSHOT_EDGE = 4_096;
 export const JAMI_ASSISTANT_MAX_TYPED_TEXT_LENGTH = 12_000;
@@ -104,6 +111,12 @@ export type JamiAssistantResponse = {
   sourceFailures?: JamiAssistantSourceFailure[];
   citations?: JamiAssistantCitation[];
   canIllustrate?: boolean;
+  /** Tutor agreed to make these; the drawer starts making them at once. */
+  studyMaterialRequest?: TutorStudyMaterialRequest;
+  /** Offered under the answer, made only if the student asks. */
+  studyMaterialOffers?: TutorStudyMaterialKind[];
+  /** Already made from this answer, keyed by kind. */
+  studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
   savedThread?: JamiAssistantThread;
 };
 
@@ -124,6 +137,9 @@ export type ParsedJamiAssistantModelAnswer = {
   usedCurrentContext: boolean;
   usedGeneralKnowledge: boolean;
   usedWebResearch: boolean;
+  /** Tutor's own reading of whether it was asked to make study material. */
+  studyMaterial: TutorStudyMaterialKind | null;
+  studyMaterialFocus: string;
 };
 
 export type TutorRoutingPreflight = {
@@ -139,6 +155,8 @@ type ModelAnswerPayload = {
   usedGeneralKnowledge?: unknown;
   usedWebResearch?: unknown;
   graphs?: unknown;
+  studyMaterial?: unknown;
+  studyMaterialFocus?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -831,6 +849,13 @@ export function parseJamiAssistantModelAnswer(
       options.webResearchAvailable === true
         ? payload.usedWebResearch === true
         : false,
+    // Optional in the schema and read leniently: an answer is never refused
+    // over the one field that only matters when the student asked for cards.
+    studyMaterial: isTutorStudyMaterialKind(payload.studyMaterial) ? payload.studyMaterial : null,
+    studyMaterialFocus:
+      typeof payload.studyMaterialFocus === "string"
+        ? payload.studyMaterialFocus.replace(/\s+/g, " ").trim().slice(0, 240)
+        : "",
   };
 }
 

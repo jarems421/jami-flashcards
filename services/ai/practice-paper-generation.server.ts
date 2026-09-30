@@ -7,6 +7,7 @@ import {
   buildPracticePaperGenerationResponse,
   parsePracticePaperGenerationRequest,
   type PracticePaperGenerationRequest,
+  fitPracticePaperMaterial,
 } from "@/lib/ai/practice-paper-generation";
 import { isCompletePracticePaperCandidate } from "@/lib/ai/practice-paper-quality";
 import { getAiInputTokenCap, type AiBudgetGrant } from "@/lib/ai/budgets";
@@ -17,6 +18,7 @@ import {
 } from "@/lib/ai/provider-router";
 import type { AiGenerationRole } from "@/lib/ai/provider-policy";
 import type { Source } from "@/lib/material/sources";
+import { MAX_PRACTICE_PAPER_SOURCE_TEXT } from "@/lib/practice/practice-papers";
 import { createLogger } from "@/lib/observability/logger";
 import {
   checkAiBudget,
@@ -134,12 +136,15 @@ export async function runPracticePaperGenerationRequest(
       studyContext = contextOverride.studyContext;
     } else {
       [sources, studyContext] = await Promise.all([
-        loadPaperSources({
-          uid,
-          folderId: parsedRequest.folderId,
-          sourceIds: parsedRequest.sourceIds,
-          request: `${parsedRequest.request} ${parsedRequest.coverage}`,
-        }),
+        // A picked school course with no material chosen reads none, rather than the folder's top few.
+        parsedRequest.scope && parsedRequest.sourceIds.length === 0
+          ? Promise.resolve([])
+          : loadPaperSources({
+              uid,
+              folderId: parsedRequest.folderId,
+              sourceIds: parsedRequest.sourceIds,
+              request: `${parsedRequest.request} ${parsedRequest.coverage}`,
+            }),
         loadStudyContext(uid, parsedRequest.folderId),
       ]);
     }
@@ -152,13 +157,13 @@ export async function runPracticePaperGenerationRequest(
     );
   }
   if (!studyContext) return failure("Folder not found", 404, "folder_not_found");
-  const declaredBytes = sources.reduce((total, source) => total + (source.sizeBytes ?? 0), 0);
-  if (declaredBytes > MAX_COMBINED_SOURCE_BYTES) {
-    return failure(
-      "Those sources are too large to analyse together. Remove one or two large files and try again.",
-      413,
-      "sources_too_large"
-    );
+  const declaredFit = fitPracticePaperMaterial(sources, (source) => source.sizeBytes ?? 0, MAX_COMBINED_SOURCE_BYTES);
+  if (declaredFit.dropped.length > 0) {
+    log.info("context.material_fitted", {
+      kept: declaredFit.kept.length,
+      droppedSourceIds: declaredFit.dropped.map((source) => source.id),
+    });
+    sources = declaredFit.kept;
   }
 
   let grant: AiBudgetGrant | undefined;
@@ -186,7 +191,7 @@ export async function runPracticePaperGenerationRequest(
 
   try {
     await updateInternalJobStage(uid, auth.internalJobId, "reading_sources");
-    const { failedSources, prepared } = await prepareGenerationSources({
+    const { failedSources, prepared: preparedAll } = await prepareGenerationSources({
       uid,
       sources,
       parsedRequest,
@@ -208,18 +213,20 @@ export async function runPracticePaperGenerationRequest(
         sourceIds: failedSources.map((source) => source.id),
       });
     }
-    const combinedBytes = prepared.reduce(
-      (total, item) => total + item.prepared.inputBytes,
-      0
+    // Read text can outgrow the files it came from; it is fitted the same way, papers first.
+    const preparedFit = fitPracticePaperMaterial(
+      preparedAll.map((item) => ({ item, title: item.source.title, fileName: item.source.fileName })),
+      (entry) => entry.item.prepared.inputBytes,
+      MAX_PRACTICE_PAPER_SOURCE_TEXT
     );
-    if (combinedBytes > MAX_COMBINED_SOURCE_BYTES) {
-      await refund("sources_too_large");
-      return failure(
-        "Those sources are too large to analyse together. Remove one or two large files and try again.",
-        413,
-        "sources_too_large"
-      );
+    if (preparedFit.dropped.length > 0) {
+      log.info("context.prepared_material_fitted", {
+        kept: preparedFit.kept.length,
+        droppedSourceIds: preparedFit.dropped.map((entry) => entry.item.source.id),
+      });
     }
+    const prepared = preparedFit.kept.map((entry) => entry.item);
+    const combinedBytes = prepared.reduce((total, item) => total + item.prepared.inputBytes, 0);
 
     const sourceRefs = prepared.map((item) => item.reference);
     await updateInternalJobStage(uid, auth.internalJobId, "researching");

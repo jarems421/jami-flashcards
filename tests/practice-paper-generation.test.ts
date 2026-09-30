@@ -88,7 +88,7 @@ const readyPayload = {
 };
 
 describe("practice-paper generation request", () => {
-  it("accepts up to fifteen sources and rejects a sixteenth", () => {
+  it("accepts up to a hundred sources and rejects more", () => {
     const base = {
       folderId: "folder-1",
       request: "Create a module exam",
@@ -102,13 +102,13 @@ describe("practice-paper generation request", () => {
     expect(
       parsePracticePaperGenerationRequest({
         ...base,
-        sourceIds: Array.from({ length: 15 }, (_, index) => `s${index}`),
+        sourceIds: Array.from({ length: 100 }, (_, index) => `s${index}`),
       })?.sourceIds
-    ).toHaveLength(15);
+    ).toHaveLength(100);
     expect(
       parsePracticePaperGenerationRequest({
         ...base,
-        sourceIds: Array.from({ length: 16 }, (_, index) => `s${index}`),
+        sourceIds: Array.from({ length: 101 }, (_, index) => `s${index}`),
       })
     ).toBeNull();
   });

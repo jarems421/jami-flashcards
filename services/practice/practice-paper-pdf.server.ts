@@ -20,7 +20,6 @@ import {
   answerSpacePoints,
   inferPaperQuestionKind,
   paperSubjectGroup,
-  parseGraphPoints,
   parseMarkdownTableRows,
   type PaperSubjectGroup,
 } from "@/lib/practice/paper-pdf-layout";
@@ -30,6 +29,13 @@ import type {
   PracticePaperQuestionAsset,
 } from "@/lib/practice/practice-papers";
 import { looksLikeSvg, sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
+import { readPaperGraph } from "@/lib/practice/paper-graph";
+import {
+  clipGraphPolyline,
+  compileGraphExpression,
+  sampleGraphFunction,
+} from "@/lib/math/graph-expression";
+import { formatGraphTick, graphTicks, type NotebookGraphDraft } from "@/lib/workspace/notebook-graphs";
 import { normalizeLegacyJamiMathText, splitMathRichText } from "@/lib/study/math-text";
 
 /**
@@ -82,7 +88,8 @@ type MathBox = { svg: string; width: number; height: number; depth: number };
 type Piece =
   | { kind: "text"; value: string; width: number }
   | { kind: "math"; box: MathBox; width: number }
-  | { kind: "tick"; width: number };
+  | { kind: "tick"; width: number }
+  | { kind: "check"; width: number };
 type Line = { pieces: Piece[]; ascent: number; descent: number; centred: boolean };
 
 type MathEngine = {
@@ -254,7 +261,12 @@ class BookletWriter {
             push({ kind: "tick", width: TICK_BOX + 5 });
             continue;
           }
-          push({ kind: "text", value: word.replace(/\t/g, " "), width: doc.widthOfString(word) });
+          // Nor a tick mark: "Tick (✓) one box" would print "Tick ( ) one box".
+          for (const part of word.split(/([✓✔])/)) {
+            if (!part) continue;
+            if (/^[✓✔]$/.test(part)) push({ kind: "check", width: 9 });
+            else push({ kind: "text", value: part.replace(/\t/g, " "), width: doc.widthOfString(part) });
+          }
         }
       });
     }
@@ -284,6 +296,10 @@ class BookletWriter {
         } else if (piece.kind === "tick") {
           doc.save().lineWidth(0.8).strokeColor("#111111")
             .rect(cursor + 1, baseline - TICK_BOX + 1, TICK_BOX, TICK_BOX).stroke().restore();
+        } else if (piece.kind === "check") {
+          doc.save().lineWidth(1.1).strokeColor("#111111")
+            .moveTo(cursor + 1, baseline - 4).lineTo(cursor + 3.5, baseline - 1).lineTo(cursor + 8, baseline - 8.5)
+            .stroke().restore();
         } else {
           SVGtoPDF(doc, piece.box.svg, cursor, baseline - (piece.box.height - piece.box.depth), {
             width: piece.width,
@@ -436,43 +452,115 @@ async function drawTable(writer: BookletWriter, rows: string[][], questionId: st
   doc.font("body").fontSize(BODY_SIZE);
 }
 
-function drawGraph(writer: BookletWriter, points: Array<{ x: number; y: number }>, questionId: string) {
+/**
+ * A graph printed the way a board prints one: on graph paper, with a faint
+ * minor grid inside each major square, ruled axes numbered at round steps,
+ * each axis titled with its quantity, and data points as crosses. Curves are
+ * computed from their functions, so a value read off the page is the value
+ * the question means.
+ */
+function drawGraph(writer: BookletWriter, graph: NotebookGraphDraft, questionId: string) {
   const { doc } = writer;
-  const width = 300;
-  const height = 180;
-  writer.ensure(height + 24, questionId);
-  const left = BODY_X + (BODY_WIDTH - width) / 2;
-  const top = writer.y;
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  const spanX = maxX - minX || 1;
-  const spanY = maxY - minY || 1;
-  const plot = (point: { x: number; y: number }) => ({
-    x: left + ((point.x - minX) / spanX) * width,
-    y: top + height - ((point.y - minY) / spanY) * height,
-  });
-  const label = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, ""));
-  doc.save().lineWidth(0.4).strokeColor("#bbbbbb");
-  for (let step = 1; step < 10; step += 1) {
-    doc.moveTo(left + (width * step) / 10, top).lineTo(left + (width * step) / 10, top + height).stroke();
-    doc.moveTo(left, top + (height * step) / 10).lineTo(left + width, top + (height * step) / 10).stroke();
+  const { view } = graph;
+  const width = 330;
+  const height = 230;
+  const labelled = graph.series.length > 1 || graph.series.some((entry) => entry.label);
+  const total = height + 44 + (labelled ? graph.series.length * 13 + 6 : 0);
+  writer.ensure(total, questionId);
+  const left = BODY_X + (BODY_WIDTH - width) / 2 + 16;
+  const top = writer.y + (graph.yLabel ? 16 : 4);
+  const right = left + width;
+  const bottom = top + height;
+  const toX = (x: number) => left + ((x - view.xMin) / (view.xMax - view.xMin)) * width;
+  const toY = (y: number) => bottom - ((y - view.yMin) / (view.yMax - view.yMin)) * height;
+  const xTicks = graphTicks(view.xMin, view.xMax, 10);
+  const yTicks = graphTicks(view.yMin, view.yMax, 8);
+
+  if (graph.showGrid) {
+    // Five minor squares to each major one, as on printed graph paper.
+    doc.save().lineWidth(0.25).strokeColor("#c8c8c8");
+    for (let x = Math.ceil(view.xMin / (xTicks.step / 5)) * (xTicks.step / 5); x <= view.xMax + 1e-9; x += xTicks.step / 5) {
+      doc.moveTo(toX(x), top).lineTo(toX(x), bottom).stroke();
+    }
+    for (let y = Math.ceil(view.yMin / (yTicks.step / 5)) * (yTicks.step / 5); y <= view.yMax + 1e-9; y += yTicks.step / 5) {
+      doc.moveTo(left, toY(y)).lineTo(right, toY(y)).stroke();
+    }
+    doc.restore();
+    doc.save().lineWidth(0.6).strokeColor("#8a8a8a");
+    for (const x of xTicks.values) doc.moveTo(toX(x), top).lineTo(toX(x), bottom).stroke();
+    for (const y of yTicks.values) doc.moveTo(left, toY(y)).lineTo(right, toY(y)).stroke();
+    doc.restore();
   }
-  doc.restore();
-  doc.save().lineWidth(1).strokeColor("#111111").moveTo(left, top).lineTo(left, top + height).lineTo(left + width, top + height).stroke().restore();
-  const plotted = points.map(plot);
-  doc.save().lineWidth(1.2).strokeColor("#111111");
-  plotted.forEach((point, index) => (index === 0 ? doc.moveTo(point.x, point.y) : doc.lineTo(point.x, point.y)));
-  doc.stroke();
-  for (const point of plotted) doc.circle(point.x, point.y, 2).fill("#111111");
-  doc.restore();
+  doc.save().lineWidth(0.8).strokeColor("#111111").rect(left, top, width, height).stroke().restore();
+
+  // Axes through the origin where it is on the graph, along the edges where it is not.
+  const axisY = view.yMin <= 0 && view.yMax >= 0 ? toY(0) : bottom;
+  const axisX = view.xMin <= 0 && view.xMax >= 0 ? toX(0) : left;
+  doc.save().lineWidth(1.1).strokeColor("#111111")
+    .moveTo(left, axisY).lineTo(right, axisY).stroke()
+    .moveTo(axisX, top).lineTo(axisX, bottom).stroke().restore();
+
   doc.font("body").fontSize(8).fillColor("#111111");
-  doc.text(label(minY), left - 34, top + height - 4, { width: 30, align: "right", lineBreak: false });
-  doc.text(label(maxY), left - 34, top - 4, { width: 30, align: "right", lineBreak: false });
-  doc.text(label(minX), left - 10, top + height + 6, { width: 20, align: "center", lineBreak: false });
-  doc.text(label(maxX), left + width - 10, top + height + 6, { width: 20, align: "center", lineBreak: false });
+  for (const x of xTicks.values) {
+    if (x === 0 && axisX !== left && axisY !== bottom) continue;
+    doc.text(formatGraphTick(x, xTicks.step), toX(x) - 15, axisY + 4, { width: 30, align: "center", lineBreak: false });
+  }
+  for (const y of yTicks.values) {
+    doc.text(formatGraphTick(y, yTicks.step), axisX - 34, toY(y) - 3.5, { width: 30, align: "right", lineBreak: false });
+  }
+  doc.fontSize(9.5);
+  if (graph.xLabel) doc.text(graph.xLabel, left, bottom + 17, { width, align: "center", lineBreak: false });
+  if (graph.yLabel) doc.text(graph.yLabel, left - 40, top - 15, { width: 200, lineBreak: false });
+
+  const dashes = [undefined, [4, 2], [1.2, 2], [6, 2, 1.2, 2]] as const;
+  graph.series.forEach((entry, index) => {
+    const dash = dashes[index % dashes.length];
+    const stroke = (pieces: Array<Array<{ x: number; y: number }>>) => {
+      doc.save().lineWidth(1.2).strokeColor("#111111");
+      if (dash) doc.dash(dash[0], { space: dash[1] });
+      for (const piece of pieces) {
+        piece.forEach((point, pointIndex) =>
+          pointIndex === 0 ? doc.moveTo(toX(point.x), toY(point.y)) : doc.lineTo(toX(point.x), toY(point.y))
+        );
+        doc.stroke();
+      }
+      doc.undash().restore();
+    };
+    if (entry.kind === "function") {
+      const compiled = compileGraphExpression(entry.expression, entry.angleUnit);
+      if (compiled.ok) {
+        stroke(sampleGraphFunction(compiled.evaluate, view, 600).flatMap((segment) => clipGraphPolyline(segment, view)));
+      }
+      return;
+    }
+    if (entry.connect) stroke(clipGraphPolyline(entry.points, view));
+    doc.save().lineWidth(0.9).strokeColor("#111111");
+    for (const point of entry.points) {
+      if (point.x < view.xMin || point.x > view.xMax || point.y < view.yMin || point.y > view.yMax) continue;
+      const [x, y] = [toX(point.x), toY(point.y)];
+      doc.moveTo(x - 2.6, y - 2.6).lineTo(x + 2.6, y + 2.6).moveTo(x - 2.6, y + 2.6).lineTo(x + 2.6, y - 2.6).stroke();
+    }
+    doc.restore();
+  });
+
+  writer.y = bottom + (graph.xLabel ? 32 : 20);
+  if (labelled) {
+    doc.font("body").fontSize(9).fillColor("#111111");
+    graph.series.forEach((entry, index) => {
+      const dash = dashes[index % dashes.length];
+      const y = writer.y + 5;
+      doc.save().lineWidth(1.2).strokeColor("#111111");
+      if (dash) doc.dash(dash[0], { space: dash[1] });
+      doc.moveTo(left, y).lineTo(left + 26, y).stroke().undash().restore();
+      doc.text(entry.label || (entry.kind === "function" ? `y = ${entry.expression}` : "Data"), left + 32, y - 4, {
+        width: width - 32,
+        lineBreak: false,
+      });
+      writer.y += 13;
+    });
+    writer.y += 6;
+  }
   doc.font("body").fontSize(BODY_SIZE);
-  writer.y = top + height + 24;
 }
 
 async function drawAsset(
@@ -519,7 +607,13 @@ async function drawAsset(
       const box = fitFigure(svgAspect(drawn.svg), DIAGRAM_MAX_WIDTH, DIAGRAM_MAX_HEIGHT);
       await drawHeading(box.height + 8);
       writer.ensure(box.height + 8, questionId);
-      SVGtoPDF(writer.doc, drawn.svg, box.x, writer.y, { width: box.width, height: box.height, preserveAspectRatio: "xMidYMid meet" });
+      SVGtoPDF(writer.doc, drawn.svg, box.x, writer.y, {
+        width: box.width,
+        height: box.height,
+        preserveAspectRatio: "xMidYMid meet",
+        // The booklet's own face, which has Ω, μ and the rest; the default Helvetica drops them.
+        fontCallback: (_family: string, bold: boolean, italic: boolean) => (bold ? "bold" : italic ? "italic" : "body"),
+      });
       writer.y += box.height + 8;
       return;
     }
@@ -534,10 +628,10 @@ async function drawAsset(
     }
   }
   if (asset.type === "graph") {
-    const points = parseGraphPoints(content);
-    if (points.length >= 2) {
-      await drawHeading(204);
-      drawGraph(writer, points, questionId);
+    const graph = readPaperGraph(content);
+    if (graph) {
+      await drawHeading(280);
+      drawGraph(writer, graph, questionId);
       return;
     }
   }
@@ -555,6 +649,28 @@ async function drawAsset(
   await writer.write(text, { x: BODY_X + 12, width: BODY_WIDTH - 24, questionId });
   writer.doc.save().lineWidth(0.7).strokeColor("#111111").rect(BODY_X, top, BODY_WIDTH, Math.min(writer.y + 10 - top, BOTTOM - top)).stroke().restore();
   writer.y += 18;
+}
+
+/**
+ * A multiple-choice prompt's stem and its lettered options, or null when the
+ * options are not written one to a line ("A  Speed", "B) Mass", "C. Time").
+ * A box the writer typed itself is dropped, since the column of boxes replaces it.
+ */
+function splitChoiceOptions(prompt: string) {
+  const lines = prompt.split("\n");
+  const options: Array<{ letter: string; text: string }> = [];
+  let first = lines.length;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]!.replace(/[☐□]/g, "").trim();
+    if (!line && options.length === 0) continue;
+    const match = /^\(?([A-F])[).:]?\s+(.+)$/.exec(line);
+    if (!match) break;
+    options.unshift({ letter: match[1]!, text: match[2]!.trim() });
+    first = index;
+  }
+  const inOrder = options.every((option, index) => option.letter === String.fromCharCode(65 + index));
+  if (options.length < 2 || !inOrder) return null;
+  return { stem: lines.slice(0, first).join("\n").trim(), options };
 }
 
 function drawDottedLine(writer: BookletWriter, y: number) {
@@ -620,7 +736,23 @@ async function drawQuestion(
   doc.font("bold").fontSize(BODY_SIZE).fillColor("#111111");
   const label = question.label.replace(/^question\s+/i, "").trim() || question.label;
   doc.text(label, LEFT, labelY, { width: BODY_X - LEFT - 6, lineBreak: false });
-  await writer.write(question.prompt, { questionId: question.id });
+  const choice = inferPaperQuestionKind(question) === "choice" ? splitChoiceOptions(question.prompt) : null;
+  if (choice) {
+    await writer.write(choice.stem, { questionId: question.id });
+    writer.gap(8);
+    for (const option of choice.options) {
+      const lines = await writer.layout(option.text, BODY_WIDTH - 110);
+      const height = Math.max(TICK_BOX + 14, lines.reduce((sum, line) => sum + line.ascent + line.descent, 0) + 8);
+      writer.ensure(height, question.id);
+      const top = writer.y;
+      doc.font("bold").fontSize(BODY_SIZE).fillColor("#111111").text(option.letter, BODY_X, top + 2, { lineBreak: false });
+      await writer.write(option.text, { x: BODY_X + 22, width: BODY_WIDTH - 110, questionId: question.id });
+      doc.save().lineWidth(0.9).strokeColor("#111111").rect(RIGHT - 60, top, TICK_BOX + 6, TICK_BOX + 6).stroke().restore();
+      writer.y = Math.max(writer.y, top + height);
+    }
+  } else {
+    await writer.write(question.prompt, { questionId: question.id });
+  }
 
   for (const asset of question.assets) await drawAsset(writer, asset, question.id, loadImage);
 
