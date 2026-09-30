@@ -12,7 +12,8 @@ const screenshotDirectory = "test-results/notebook-tutor-card";
 /**
  * The floating Tutor card over a notebook, walked through once at tablet size.
  *
- * Proves the card is non-modal, can be dragged, resized from a corner, made full
+ * Proves the card is non-modal, can be dragged by its header or any bare part,
+ * resized from a corner or an edge, made full
  * size and restored, shrunk to a pill, and reduced to one pinned answer; and that
  * a phone still gets the full-screen sheet.
  */
@@ -104,7 +105,7 @@ test("the Tutor floats over a notebook and goes where the student puts it", asyn
   // Escape closed the menu, not Jami behind it.
   await expect(card(page)).toBeVisible();
 
-  // Drag by the header's bare space, over the grab bar.
+  // Drag by the header's bare space.
   await dragBy(page, opened.x + opened.width / 2, opened.y + 10, -500, -150);
   const moved = await box(page);
   console.log("card dragged to", moved);
@@ -161,6 +162,25 @@ test("the Tutor floats over a notebook and goes where the student puts it", asyn
   await page.getByRole("button", { name: "Send message to Jami" }).click();
   await expect(card(page).getByText("swap the signs")).toBeVisible();
   await page.screenshot({ path: `${screenshotDirectory}/4-card-answer.png` });
+
+  // Any bare part of the card picks it up, not only the header: here the
+  // conversation's own padding, beside the answer.
+  const beforeBodyDrag = await box(page);
+  const answerBox = (await card(page).getByText("swap the signs").boundingBox())!;
+  await dragBy(page, beforeBodyDrag.x + 14, answerBox.y + answerBox.height / 2, -80, -60);
+  const bodyMoved = await box(page);
+  console.log("card dragged by its body", bodyMoved);
+  expect(bodyMoved.x).toBeCloseTo(beforeBodyDrag.x - 80, 0);
+  expect(bodyMoved.y).toBeCloseTo(beforeBodyDrag.y - 60, 0);
+  expect(bodyMoved.width).toBe(beforeBodyDrag.width);
+
+  // The edge still resizes rather than moves.
+  await dragBy(page, bodyMoved.x + bodyMoved.width + 4, bodyMoved.y + bodyMoved.height / 2, 60, 0);
+  const edgeResized = await box(page);
+  expect(edgeResized.x).toBe(bodyMoved.x);
+  expect(edgeResized.width).toBe(bodyMoved.width + 60);
+  await dragBy(page, edgeResized.x + edgeResized.width + 4, edgeResized.y + edgeResized.height / 2, -60, 0);
+  expect((await box(page)).width).toBe(pinnedToEdge.width);
 
   // Pinning keeps the chat open for the next question, with the pin beside it.
   await page.getByRole("button", { name: "Keep beside page" }).click();

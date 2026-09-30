@@ -193,6 +193,52 @@ describe("notebook page persistence contract", () => {
     });
   });
 
+  it("resizes a visual from anywhere along a side, keeping its shape and centre", () => {
+    const centred = createCenteredNotebookImageRef({
+      id: "image-1",
+      storagePath: "users/user-1/notebookFiles/notebook-1/asset.png",
+      width: 1600,
+      height: 900,
+      altText: "A labelled cell",
+    });
+    const ratio = centred.displayWidth! / centred.displayHeight!;
+    const centreX = centred.x! + centred.displayWidth! / 2;
+    const centreY = centred.y! + centred.displayHeight! / 2;
+
+    const fromRight = resizeNotebookImageRef(centred, 100, 400, "right");
+    expect(fromRight.displayWidth).toBeCloseTo(centred.displayWidth! + 100, 0);
+    expect(fromRight.x).toBeCloseTo(centred.x!, 0);
+    // Placement is stored in whole units, so a centre can land half a unit out.
+    expect(Math.abs(fromRight.y! + fromRight.displayHeight! / 2 - centreY)).toBeLessThanOrEqual(1);
+    expect(fromRight.displayWidth! / fromRight.displayHeight!).toBeCloseTo(ratio, 1);
+
+    const fromLeft = resizeNotebookImageRef(centred, 80, 0, "left");
+    expect(fromLeft.displayWidth).toBeCloseTo(centred.displayWidth! - 80, 0);
+    expect(fromLeft.x! + fromLeft.displayWidth!).toBeCloseTo(centred.x! + centred.displayWidth!, 0);
+
+    const fromBottom = resizeNotebookImageRef(centred, 999, 50, "bottom");
+    expect(fromBottom.displayHeight).toBeCloseTo(centred.displayHeight! + 50, 0);
+    expect(fromBottom.y).toBeCloseTo(centred.y!, 0);
+    expect(Math.abs(fromBottom.x! + fromBottom.displayWidth! / 2 - centreX)).toBeLessThanOrEqual(1);
+
+    const fromTop = resizeNotebookImageRef(centred, 0, -40, "top");
+    expect(fromTop.displayHeight).toBeCloseTo(centred.displayHeight! + 40, 0);
+    expect(fromTop.y! + fromTop.displayHeight!).toBeCloseTo(centred.y! + centred.displayHeight!, 0);
+
+    // A side never pushes the image off the page, and never below its smallest size.
+    for (const edge of ["top", "right", "bottom", "left"] as const) {
+      const stretched = resizeNotebookImageRef(centred, 5_000, 5_000, edge);
+      const pulled = resizeNotebookImageRef(centred, -5_000, -5_000, edge);
+      for (const image of [stretched, pulled]) {
+        expect(image.x).toBeGreaterThanOrEqual(0);
+        expect(image.y).toBeGreaterThanOrEqual(0);
+        expect(image.x! + image.displayWidth!).toBeLessThanOrEqual(900.5);
+        expect(image.y! + image.displayHeight!).toBeLessThanOrEqual(1240.5);
+        expect(Math.min(image.displayWidth!, image.displayHeight!)).toBeGreaterThanOrEqual(119.5);
+      }
+    }
+  });
+
   it("resizes a visual from any corner and pins the opposite one", () => {
     const centred = createCenteredNotebookImageRef({
       id: "image-1",

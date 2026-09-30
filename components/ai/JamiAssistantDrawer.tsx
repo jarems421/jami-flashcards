@@ -900,6 +900,7 @@ export default function JamiAssistantDrawer({
               }
             : undefined
         }
+        {...(floating ? card.bodyDragProps : {})}
       >
         {floating ? (
           <FloatingTutorHeader

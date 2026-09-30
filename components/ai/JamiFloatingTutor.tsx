@@ -93,16 +93,6 @@ export function floatingRectStyle(rect: FloatingRect) {
 export const FLOATING_ICON_BUTTON_CLASS =
   "inline-grid h-9 w-9 shrink-0 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45";
 
-/** The short bar that says a panel can be picked up and moved. */
-export function FloatingGrabBar() {
-  return (
-    <span
-      aria-hidden="true"
-      className="pointer-events-none absolute left-1/2 top-1.5 h-1 w-10 -translate-x-1/2 rounded-full bg-[var(--color-border-strong)]"
-    />
-  );
-}
-
 /** Resize handles laid over the panel they resize; gone at full size. */
 export function FloatingTutorResizeFrame({ frame }: { frame: FloatingFrame }) {
   if (!frame.rect || frame.maximised) return null;
@@ -211,12 +201,12 @@ export function FloatingTutorPinnedAnswer({
           frame.activeGesture ? "border-accent/70 ring-2 ring-accent/25" : "border-accent/35"
         }`}
         style={{ ...floatingRectStyle(frame.rect), ...OPAQUE_PANEL_STYLE }}
+        {...frame.bodyDragProps}
       >
         <div
-          className="relative flex shrink-0 cursor-grab touch-none select-none items-center gap-2 pb-0.5 pl-3.5 pr-1.5 pt-3 active:cursor-grabbing"
+          className="relative flex shrink-0 cursor-grab touch-none select-none items-center gap-2 pb-0.5 pl-3.5 pr-1.5 pt-2 active:cursor-grabbing"
           {...frame.dragHandleProps}
         >
-          <FloatingGrabBar />
           <span className="text-accent">
             <PinIcon />
           </span>
