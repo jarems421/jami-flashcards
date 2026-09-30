@@ -16,7 +16,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { parseCardImportText, type ImportedCardDraft } from "@/lib/study/cards";
-import type { AnkiPackageResult } from "@/lib/study/import/anki-package";
+import type { AnkiPackageDiagram, AnkiPackageResult } from "@/lib/study/import/anki-package";
 import { MAX_DECK_IMPORT_CARDS } from "@/lib/study/import/anki-text";
 import { useAnkiReader } from "@/lib/study/import/useAnkiImport";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
@@ -27,6 +27,8 @@ export type DeckImportInput = {
   name: string;
   folderId: string;
   cards: ImportedCardDraft[];
+  /** Anki image occlusion notes, each becoming a diagram with a card per label. */
+  diagrams: AnkiPackageDiagram[];
 };
 
 type Props = {
@@ -63,7 +65,17 @@ function skippedNotes(result: AnkiPackageResult) {
   if (duplicate) notes.push(`${plural(duplicate, "card")} repeated another card and ${duplicate === 1 ? "was" : "were"} left out.`);
   if (empty) notes.push(`${plural(empty, "card")} had nothing left once images and sound were removed.`);
   if (tooLong) notes.push(`${plural(tooLong, "card")} ${tooLong === 1 ? "was" : "were"} longer than a card allows.`);
-  if (result.mediaRemoved && !empty) notes.push("Images and sound are not imported, only the text.");
+  if (result.mediaRemoved && !empty) notes.push("Images and sound on text cards are not imported, only the text.");
+  if (result.diagrams.length) {
+    notes.push(
+      `${plural(result.diagrams.length, "image occlusion note")} ${result.diagrams.length === 1 ? "comes" : "come"} in as ${result.diagrams.length === 1 ? "a diagram" : "diagrams"}, one card per covered label. Review schedules start fresh.`
+    );
+  }
+  if (result.diagramsWithoutPicture) {
+    notes.push(
+      `${plural(result.diagramsWithoutPicture, "image occlusion note")} had no picture in the file. Export from Anki again with "Include media" ticked to bring ${result.diagramsWithoutPicture === 1 ? "it" : "them"} in.`
+    );
+  }
   return notes;
 }
 
@@ -94,6 +106,7 @@ function ImportDeckForm({ folders, defaultFolderId = "", progress, onDismiss, on
 
   const parsedText = useMemo(() => parseCardImportText(text), [text]);
   const cards = source === "anki" ? (ankiResult?.cards ?? []) : parsedText.cards.slice(0, MAX_DECK_IMPORT_CARDS);
+  const diagrams = source === "anki" ? (ankiResult?.diagrams ?? []) : [];
   const busy = reading || importing;
 
   const chooseFile = (next: File | null) => {
@@ -122,7 +135,9 @@ function ImportDeckForm({ folders, defaultFolderId = "", progress, onDismiss, on
         if (readRequest.current !== request) return;
         setAnkiResult(result);
         setName(result.deckName);
-        if (result.cards.length === 0) setReadError("No cards with text could be found in this deck.");
+        if (result.cards.length === 0 && result.diagrams.length === 0) {
+          setReadError("No cards with text or image occlusion could be found in this deck.");
+        }
       })
       .catch((error: unknown) => {
         if (readRequest.current !== request) return;
@@ -134,12 +149,12 @@ function ImportDeckForm({ folders, defaultFolderId = "", progress, onDismiss, on
   };
 
   const submit = async () => {
-    if (importStarted.current || busy || cards.length === 0 || !name.trim()) return;
+    if (importStarted.current || busy || (cards.length === 0 && diagrams.length === 0) || !name.trim()) return;
     importStarted.current = true;
     setImporting(true);
     setImportError("");
     try {
-      await onImport({ name: name.trim(), folderId, cards });
+      await onImport({ name: name.trim(), folderId, cards, diagrams });
     } catch (error) {
       setImportError(error instanceof Error ? error.message : "The cards could not be imported. Try again.");
       importStarted.current = false;
@@ -150,7 +165,13 @@ function ImportDeckForm({ folders, defaultFolderId = "", progress, onDismiss, on
   const notes = source === "anki" && ankiResult ? skippedNotes(ankiResult) : [];
   const textProblems = source === "text" ? parsedText.errors : [];
   const overTextLimit = source === "text" && parsedText.cards.length > MAX_DECK_IMPORT_CARDS;
-  const ready = cards.length > 0;
+  const ready = cards.length > 0 || diagrams.length > 0;
+  const summary = [
+    cards.length ? plural(cards.length, "card") : "",
+    diagrams.length ? plural(diagrams.length, "diagram") : "",
+  ]
+    .filter(Boolean)
+    .join(" and ");
 
   return (
     <Dialog
@@ -234,7 +255,7 @@ function ImportDeckForm({ folders, defaultFolderId = "", progress, onDismiss, on
           {ready ? (
             <section aria-label="What will be imported" className="space-y-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
               <p className="text-sm font-semibold text-text-primary">
-                {plural(cards.length, "card")} ready to import
+                {summary} ready to import
               </p>
               {overTextLimit ? (
                 <p className="text-xs leading-5 text-text-muted">
@@ -305,7 +326,7 @@ function ImportDeckForm({ folders, defaultFolderId = "", progress, onDismiss, on
             Cancel
           </Button>
           <Button type="button" disabled={busy || !ready || !name.trim()} onClick={() => void submit()}>
-            {importing ? "Importing…" : ready ? `Import ${plural(cards.length, "card")}` : "Import"}
+            {importing ? "Importing…" : ready ? `Import ${summary}` : "Import"}
           </Button>
         </footer>
       </DialogPanel>

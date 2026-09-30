@@ -5,6 +5,8 @@ import type { StudySessionKind } from "@/lib/study/session";
 export type StudyCommitIntent = {
   commitId: string; cardId: string; rating: CardRating; answeredAt: number;
   sessionKind: StudySessionKind; responseTimeMs?: number; requeueOnMiss?: boolean;
+  /** On a diagram card: the other label given instead. An id, never the student's words. */
+  confusedWithLabelId?: string;
   context: { deckId: string; topicIds: string[]; folderIds: string[] };
   schedule: ReturnType<typeof updateCardSchedule> | null;
 };

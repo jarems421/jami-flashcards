@@ -190,6 +190,20 @@
       ]
     },
     {
+      "collectionGroup": "flashcardReviewEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "cardId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "confusedWithLabelId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "notebooks",
       "queryScope": "COLLECTION",
       "fields": [

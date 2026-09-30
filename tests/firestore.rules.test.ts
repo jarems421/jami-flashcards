@@ -188,6 +188,14 @@ describe("Firestore security rules", () => {
       Object.entries(valid).filter(([key]) => key !== "rating")
     );
     await assertSucceeds(setDoc(event("commit-2"), { ...withoutRating, correct: false }));
+    // A diagram mix-up rides along as a label id, and only on a wrong answer.
+    await assertSucceeds(
+      setDoc(event("commit-mixup"), { ...valid, correct: false, rating: "again", confusedWithLabelId: "label-7" })
+    );
+    await assertFails(setDoc(event("commit-mixup-right"), { ...valid, confusedWithLabelId: "label-7" }));
+    await assertFails(
+      setDoc(event("commit-mixup-long"), { ...valid, correct: false, rating: "again", confusedWithLabelId: "x".repeat(65) })
+    );
 
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "flashcardReviewEvents", "commit-1")));
     await assertFails(setDoc(doc(bobDb, "users", ALICE, "flashcardReviewEvents", "commit-3"), valid));
@@ -1404,6 +1412,38 @@ describe("Firestore security rules", () => {
             storagePath: `users/${ALICE}/cardImages/file-1/heart.png`,
             width: 640,
             height: 480,
+          },
+          tags: ["biology"],
+          createdAt: 1,
+          dueDate: 200,
+          stability: 3,
+          difficulty: 5,
+          fsrsState: 2,
+          lapses: 1,
+          reps: 3,
+        },
+        { merge: false }
+      )
+    );
+
+    // So is a diagram and its boxes.
+    await assertFails(
+      setDoc(
+        doc(demoDb, "cards", "alice-card"),
+        {
+          deckId: ALICE_DECK_ID,
+          userId: ALICE,
+          front: "Question",
+          back: "Answer",
+          occlusion: {
+            labelId: "a",
+            diagram: {
+              id: "diagram-1",
+              image: { storagePath: `users/${ALICE}/cardImages/file-1/heart.png`, width: 640, height: 480 },
+              labelMode: "cover",
+              hideOthers: true,
+              labels: [{ id: "a", answer: "Answer", shapes: [{ kind: "rect", x: 0.1, y: 0.1, width: 0.2, height: 0.1 }] }],
+            },
           },
           tags: ["biology"],
           createdAt: 1,

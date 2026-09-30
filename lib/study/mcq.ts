@@ -1,5 +1,6 @@
-import type { Card } from "@/lib/study/cards";
+import { getCardAcceptedAnswers, type Card } from "@/lib/study/cards";
 import { markTypedAnswer, normalizeAnswerText, parseNumericAnswer } from "@/lib/study/answer-marking";
+import { getDiagramDistractorPool } from "@/lib/study/image-occlusion";
 import { getCardContentHash } from "@/lib/study/study-modes";
 import {
   condensesAnswer,
@@ -162,7 +163,7 @@ export function buildMultipleChoiceQuestion(input: {
   const correctAnswer = preparedCorrect && (
     equivalentOption(preparedCorrect, answerText) ||
     condensesAnswer(preparedCorrect, answerText) ||
-    (card.studySettings?.acceptedAnswers ?? []).some((alias) => equivalentOption(preparedCorrect, alias))
+    getCardAcceptedAnswers(card).some((alias) => equivalentOption(preparedCorrect, alias))
   ) ? preparedCorrect : answerText;
 
   /*
@@ -185,13 +186,21 @@ export function buildMultipleChoiceQuestion(input: {
     if (!trimmed || trimmed.length > MAX_OPTION_LENGTH) return;
     const key = normalizeAnswerText(trimmed);
     if (!key || seen.has(key) || equivalentOption(trimmed, correctAnswer) ||
-      (card.studySettings?.acceptedAnswers ?? []).some((alias) => equivalentOption(trimmed, alias))) return;
+      getCardAcceptedAnswers(card).some((alias) => equivalentOption(trimmed, alias))) return;
     seen.add(key);
     distractors.push(trimmed);
   };
 
-  for (const written of variant?.distractors ?? card.studySettings?.mcqDistractors ?? []) {
-    push(written);
+  /*
+   * A diagram label's wrong options are the diagram's other labels -- the one
+   * place borrowing answers is right, for the reason `getDiagramDistractorPool`
+   * gives. Nothing is prepared for a diagram card, so there is no variant here.
+   */
+  const written = card.occlusion
+    ? getDiagramDistractorPool(card.occlusion)
+    : variant?.distractors ?? card.studySettings?.mcqDistractors ?? [];
+  for (const text of written) {
+    push(text);
   }
 
   if (distractors.length < REQUIRED_DISTRACTORS) return null;
@@ -235,15 +244,17 @@ export function buildMultipleChoiceQuestion(input: {
   // preparation. Keyed by the distractor's text rather than its option id,
   // because the ids are assigned here and the misconceptions were written
   // before the shuffle.
-  const written = variant?.explanations ?? card.studySettings?.mcqExplanations ?? {};
+  const reasons = variant?.explanations ?? card.studySettings?.mcqExplanations ?? {};
   const explanations: Record<string, string> = {
-    [correctOptionId]:
-      written[correctAnswer] ?? written[shownAnswer] ?? "This matches the idea the question is testing.",
+    [correctOptionId]: card.occlusion
+      ? "This is the label under the box."
+      : reasons[correctAnswer] ?? reasons[shownAnswer] ?? "This matches the idea the question is testing.",
   };
   for (const option of options) {
     if (option.id === correctOptionId) continue;
-    explanations[option.id] =
-      written[option.text] ?? "Close, but not what this card asks for.";
+    explanations[option.id] = card.occlusion
+      ? "That is another label on this diagram."
+      : reasons[option.text] ?? "Close, but not what this card asks for.";
   }
 
   return { options, correctOptionId, explanations, ...(variant ? { variantId: variant.id } : {}) };

@@ -37,6 +37,11 @@ export type OfflineQueuedReview = {
    * evidence belongs to which intervention is guesswork dressed as a window.
    */
   interventionId?: string;
+  /**
+   * On a diagram card answered wrongly: the other label of the same diagram
+   * the student gave instead. An id, never the words.
+   */
+  confusedWithLabelId?: string;
   cardUpdates: CardReviewValueUpdates;
   clearMemoryRiskOverrideDayKey?: boolean;
 };

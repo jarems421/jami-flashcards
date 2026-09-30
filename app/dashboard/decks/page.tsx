@@ -13,6 +13,7 @@ import { getDeckColorPreset } from "@/lib/study/deck-style";
 import DeckEditorDialog, { type DeckDraft } from "@/components/decks/DeckEditorDialog";
 import ImportDeckDialog, { type DeckImportInput } from "@/components/study/ImportDeckDialog";
 import { CardBatchCreateError, createCardsInBatches, loadUserCards } from "@/services/study/cards";
+import { importAnkiDiagrams } from "@/services/study/image-occlusion";
 import { getDeckCardCounts, type DeckCounts } from "@/lib/study/deck-counts";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import AppPage from "@/components/layout/AppPage";
@@ -181,18 +182,36 @@ export default function DecksPage() {
    * after the deck exists, the message says how many cards made it in, so a
    * student is not left guessing whether to import again.
    */
-  const handleImport = async ({ name: deckName, folderId, cards }: DeckImportInput) => {
+  const handleImport = async ({ name: deckName, folderId, cards, diagrams }: DeckImportInput) => {
     clearFeedback();
-    setImportProgress({ completed: 0, total: cards.length });
+    const total = cards.length + diagrams.length;
+    setImportProgress({ completed: 0, total });
     let deckCreated = false;
     try {
       const deck = await createDeck(user.uid, deckName, { folderIds: folderId ? [folderId] : [] });
       deckCreated = true;
-      await createCardsInBatches({ userId: user.uid, deckId: deck.id, drafts: cards }, (completed, total) =>
-        setImportProgress({ completed, total })
-      );
+      if (cards.length > 0) {
+        await createCardsInBatches({ userId: user.uid, deckId: deck.id, drafts: cards }, (completed) =>
+          setImportProgress({ completed, total })
+        );
+      }
+      // Diagrams after the text cards: each uploads a picture, so they are the slow part.
+      const diagramResult =
+        diagrams.length > 0
+          ? await importAnkiDiagrams(user.uid, deck.id, diagrams, (completed) =>
+              setImportProgress({ completed: cards.length + completed, total })
+            )
+          : { imported: 0, failed: 0 };
       setIsImportDialogOpen(false);
-      success(`Imported ${cards.length.toLocaleString()} card${cards.length === 1 ? "" : "s"} into ${deckName}.`);
+      const parts = [
+        cards.length ? `${cards.length.toLocaleString()} card${cards.length === 1 ? "" : "s"}` : "",
+        diagramResult.imported ? `${diagramResult.imported} diagram${diagramResult.imported === 1 ? "" : "s"}` : "",
+      ].filter(Boolean);
+      success(
+        `Imported ${parts.join(" and ") || "nothing"} into ${deckName}.${
+          diagramResult.failed ? ` ${diagramResult.failed} diagram${diagramResult.failed === 1 ? "" : "s"} could not be imported.` : ""
+        }`
+      );
     } catch (error) {
       console.error("Failed to import cards.", error);
       if (!deckCreated) {

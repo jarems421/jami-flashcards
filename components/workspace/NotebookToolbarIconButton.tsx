@@ -25,7 +25,15 @@ export type NotebookIconName =
   | "expand"
   | "minus"
   | "move"
-  | "graph";
+  | "graph"
+  | "box"
+  | "oval"
+  | "crop"
+  | "eye"
+  | "zoom-in"
+  | "zoom-out"
+  | "pointer"
+  | "lasso";
 
 // Hand-drawn on a consistent 24px grid with a uniform 1.8 stroke, rounded
 // caps/joins, and shared optical margins, so the set reads as one family.
@@ -178,7 +186,39 @@ export function NotebookIcon({ name }: { name: NotebookIconName }) {
           <path {...common} d="M7.6 16.4c1.9-6.9 4.1-8.6 5.8-5.6 1.3 2.3 2.8 2.2 4.4-2.6" />
         </>
       ) : null}
-
+      {name === "box" ? (
+        <rect {...common} x="4.6" y="6.6" width="14.8" height="10.8" rx="1.8" />
+      ) : null}
+      {name === "oval" ? <ellipse {...common} cx="12" cy="12" rx="7.6" ry="5.8" /> : null}
+      {name === "crop" ? (
+        <path {...common} d="M7 3.8V17h13.2M3.8 7H17v13.2" />
+      ) : null}
+      {name === "eye" ? (
+        <>
+          <path {...common} d="M3.6 12s3-5.6 8.4-5.6 8.4 5.6 8.4 5.6-3 5.6-8.4 5.6S3.6 12 3.6 12Z" />
+          <circle {...common} cx="12" cy="12" r="2.4" />
+        </>
+      ) : null}
+      {name === "lasso" ? (
+        <>
+          <path {...common} d="M6.2 15.4C3.9 13.6 3.8 9.4 7 6.9c3.3-2.6 9.1-2.4 11.2.6 2 2.9-.3 6.8-4.6 7.8-2.4.6-4.9.4-6.8-.4" strokeDasharray="2.6 2.4" />
+          <path {...common} d="M7.2 14.9c-.7 1.9.4 3.6 2.2 3.6" />
+        </>
+      ) : null}
+      {name === "pointer" ? (
+        <>
+          <rect {...common} x="3.6" y="4.4" width="9" height="5.8" rx="1.5" />
+          <path {...common} d="m12.6 9.6 5.2 6.2" />
+          <circle cx="18.6" cy="16.8" r="2" fill="currentColor" />
+        </>
+      ) : null}
+      {name === "zoom-in" || name === "zoom-out" ? (
+        <>
+          <circle {...common} cx="10.6" cy="10.6" r="6" />
+          <path {...common} d="m15 15 4.6 4.6M8 10.6h5.2" />
+          {name === "zoom-in" ? <path {...common} d="M10.6 8v5.2" /> : null}
+        </>
+      ) : null}
     </svg>
   );
 }
@@ -187,6 +227,7 @@ export default function ToolbarIconButton({
   label,
   icon,
   active = false,
+  pressed,
   disabled = false,
   expanded,
   controls,
@@ -197,6 +238,8 @@ export default function ToolbarIconButton({
   label: string;
   icon: NotebookIconName;
   active?: boolean;
+  /** For a button that toggles or picks a tool: announced as pressed. */
+  pressed?: boolean;
   disabled?: boolean;
   expanded?: boolean;
   controls?: string;
@@ -209,6 +252,7 @@ export default function ToolbarIconButton({
       type="button"
       aria-label={label}
       aria-expanded={expanded}
+      aria-pressed={pressed}
       aria-controls={controls}
       title={label}
       disabled={disabled}

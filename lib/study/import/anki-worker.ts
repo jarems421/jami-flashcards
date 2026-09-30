@@ -36,5 +36,9 @@ self.onmessage = async (event: MessageEvent<AnkiWorkerRequest>) => {
           : "This Anki deck could not be read. Try exporting it from Anki again.",
     };
   }
-  postMessage(response);
+  // Diagram pictures are handed over rather than copied: a deck of them can be large.
+  const transfer = response.ok
+    ? response.result.diagrams.map((diagram) => diagram.image.bytes.buffer as ArrayBuffer)
+    : [];
+  postMessage(response, { transfer: [...new Set(transfer)] });
 };

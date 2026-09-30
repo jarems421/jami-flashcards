@@ -1,3 +1,4 @@
+import type { CardOcclusion } from "@/lib/study/image-occlusion";
 import { getCardContentHash, type CardStudySettings } from "@/lib/study/study-modes";
 
 export function hasCurrentStudySource(
@@ -8,6 +9,7 @@ export function hasCurrentStudySource(
     studySettings?: CardStudySettings;
     frontImage?: { storagePath: string };
     backImage?: { storagePath: string };
+    occlusion?: CardOcclusion;
   },
 ) {
   return typeof asset?.sourceFingerprint === "string" && asset.sourceFingerprint === getCardContentHash(card);

@@ -2232,6 +2232,316 @@
   }
 
   /*
+   * Diagram cards (image occlusion).
+   *
+   * Everything here sits on the student's own picture rather than on a Jami
+   * surface, so none of it follows the light or dark theme: a textbook diagram
+   * is white in both. The colours are fixed and only the accent comes from the
+   * theme. A covered label is a pale sticky label; the one being asked is the
+   * accent, so the eye finds it first.
+   */
+  .occlusion-figure {
+    container-type: inline-size;
+  }
+
+  .occlusion-mask {
+    background: color-mix(in srgb, var(--color-accent) 16%, #fbf9ff);
+    border: 1.5px solid color-mix(in srgb, var(--color-accent) 40%, #3b3355);
+    box-shadow: 0 1px 2px rgba(20, 12, 40, 0.25);
+  }
+
+  .occlusion-mask--target {
+    background: var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 65%, #1a1230);
+    color: var(--color-on-accent);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--color-accent) 32%, transparent),
+      0 2px 6px rgba(20, 12, 40, 0.35);
+  }
+
+  .occlusion-outline {
+    border: 1.5px solid rgba(40, 32, 64, 0.55);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
+  }
+
+  .occlusion-outline--target {
+    border: 2.5px solid var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.75),
+      0 0 0 5px color-mix(in srgb, var(--color-accent) 28%, transparent);
+  }
+
+  .occlusion-chip {
+    max-width: 45cqw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 999px;
+    background: #1d1733;
+    color: #ffffff;
+    padding: 0.15em 0.65em;
+    font-size: clamp(9px, 2.3cqw, 15px);
+    font-weight: 600;
+    line-height: 1.35;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+
+  .occlusion-chip--target {
+    border-color: rgba(255, 255, 255, 0.6);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+  }
+
+  /* A label slot in the margin: a blank label with a line to its part. */
+  .occlusion-slot {
+    border: 1.5px solid rgba(40, 32, 64, 0.6);
+    background: #ffffff;
+    color: #1d1733;
+    box-shadow: 0 1px 2px rgba(20, 12, 40, 0.25);
+  }
+
+  .occlusion-slot--target {
+    border: 2.5px solid var(--color-accent);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--color-accent) 28%, transparent),
+      0 1px 3px rgba(20, 12, 40, 0.3);
+  }
+
+  .occlusion-slot-text {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 0.35em;
+    font-size: clamp(8px, 2.1cqw, 15px);
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .occlusion-pointer,
+  .occlusion-pointer-halo {
+    fill: none;
+    stroke-linecap: round;
+  }
+
+  .occlusion-pointer {
+    stroke: #2a2140;
+    stroke-width: 2px;
+  }
+
+  .occlusion-pointer-halo {
+    stroke: rgba(255, 255, 255, 0.85);
+    stroke-width: 5px;
+  }
+
+  .occlusion-pointer--asked {
+    stroke: var(--color-accent);
+    stroke-width: 2.5px;
+  }
+
+  .occlusion-pointer-dot {
+    fill: #2a2140;
+  }
+
+  .occlusion-pointer-dot.occlusion-pointer--asked {
+    fill: var(--color-accent);
+    stroke: none;
+  }
+
+  .occlusion-pointer-dot-halo {
+    fill: rgba(255, 255, 255, 0.9);
+  }
+
+  /* The label the student gave instead: amber, so the pair reads as "this, not that". */
+  .occlusion-outline--confused {
+    border: 2.5px dashed #d98313;
+    background: rgba(217, 131, 19, 0.1);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.75);
+  }
+
+  .occlusion-slot--confused {
+    border: 2.5px dashed #d98313;
+  }
+
+  .occlusion-chip--confused {
+    border-color: rgba(255, 255, 255, 0.6);
+    background: #b86a08;
+    color: #ffffff;
+  }
+
+  .occlusion-pointer--confused {
+    stroke: #d98313;
+    stroke-width: 2.5px;
+  }
+
+  .occlusion-pointer-dot.occlusion-pointer--confused {
+    fill: #d98313;
+    stroke: none;
+  }
+
+  /*
+   * Drawn outlines. The box is only a frame for positioning; the shape is the
+   * SVG inside it, so each look below restates the box's colours as fill and
+   * stroke.
+   */
+  .occlusion-shape-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .is-polygon.occlusion-mask,
+  .is-polygon.occlusion-outline,
+  .is-polygon.occlusion-slot,
+  .is-polygon.occlusion-edit-shape {
+    border: none;
+    background: none;
+    box-shadow: none;
+  }
+
+  .is-polygon.occlusion-mask polygon {
+    fill: color-mix(in srgb, var(--color-accent) 16%, #fbf9ff);
+    stroke: color-mix(in srgb, var(--color-accent) 40%, #3b3355);
+    stroke-width: 1.5px;
+  }
+
+  .is-polygon.occlusion-mask--target polygon {
+    fill: var(--color-accent);
+    stroke: color-mix(in srgb, var(--color-accent) 65%, #1a1230);
+  }
+
+  .is-polygon.occlusion-outline polygon {
+    fill: none;
+    stroke: rgba(40, 32, 64, 0.55);
+    stroke-width: 1.5px;
+  }
+
+  .is-polygon.occlusion-outline--target polygon {
+    fill: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    stroke: var(--color-accent);
+    stroke-width: 2.5px;
+  }
+
+  .is-polygon.occlusion-outline--confused polygon {
+    fill: rgba(217, 131, 19, 0.1);
+    stroke: #d98313;
+    stroke-width: 2.5px;
+    stroke-dasharray: 6 4;
+  }
+
+  .is-polygon.occlusion-slot polygon {
+    fill: #ffffff;
+    stroke: rgba(40, 32, 64, 0.6);
+    stroke-width: 1.5px;
+  }
+
+  .is-polygon.occlusion-edit-shape polygon {
+    fill: color-mix(in srgb, var(--color-accent) 26%, transparent);
+    stroke: var(--color-accent);
+    stroke-width: 2px;
+  }
+
+  .is-polygon.occlusion-edit-shape--selected polygon {
+    fill: color-mix(in srgb, var(--color-accent) 38%, transparent);
+    stroke-width: 2.5px;
+  }
+
+  /*
+   * How well each label is known, over the picture. Fixed colours for the same
+   * reason as the masks: they sit on the student's picture, not on Jami.
+   */
+  .occlusion-confused-text {
+    color: #d98313;
+  }
+
+  .occlusion-trace {
+    fill: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    stroke: var(--color-accent);
+    stroke-width: 2.5px;
+    stroke-dasharray: 5 4;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+
+  .occlusion-tint--strong { --occlusion-tint: #2f9e6b; }
+  .occlusion-tint--building { --occlusion-tint: #e0a132; }
+  .occlusion-tint--needs-focus { --occlusion-tint: #d9534f; }
+  .occlusion-tint--new { --occlusion-tint: #9aa3b5; }
+
+  .occlusion-tint.occlusion-mask,
+  .occlusion-tint.occlusion-mask--target {
+    background: var(--occlusion-tint);
+    border-color: color-mix(in srgb, var(--occlusion-tint) 70%, #1a1230);
+    color: #ffffff;
+    box-shadow: 0 1px 2px rgba(20, 12, 40, 0.3);
+  }
+
+  .occlusion-tint.occlusion-outline,
+  .occlusion-tint.occlusion-outline--target {
+    border-color: var(--occlusion-tint);
+    background: color-mix(in srgb, var(--occlusion-tint) 18%, transparent);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.75);
+  }
+
+  .occlusion-tint.is-polygon polygon {
+    fill: color-mix(in srgb, var(--occlusion-tint) 80%, transparent);
+    stroke: color-mix(in srgb, var(--occlusion-tint) 70%, #1a1230);
+  }
+
+  .occlusion-tint-swatch {
+    background: var(--occlusion-tint);
+  }
+
+  .occlusion-zoom-button {
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    background: rgba(29, 23, 51, 0.72);
+    color: #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .occlusion-question-mark {
+    font-size: clamp(10px, 3.2cqw, 26px);
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  /* The editor's boxes: see-through, so the word under them stays readable while it is typed. */
+  .occlusion-edit-shape {
+    border: 2px solid var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 26%, transparent);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
+  }
+
+  .occlusion-edit-shape--selected {
+    border-width: 2.5px;
+    background: color-mix(in srgb, var(--color-accent) 38%, transparent);
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.85),
+      0 0 0 5px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+
+  .occlusion-edit-shape .occlusion-slot-text {
+    color: #1d1733;
+  }
+
+  .occlusion-edit-badge {
+    border: 1.5px solid rgba(255, 255, 255, 0.85);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+
+  .occlusion-handle {
+    border: 2px solid var(--color-accent);
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+
+  /*
    * A light photo palette needs every one of these for the same reason a light
    * theme does: hard-coded white text over light glass. Keyed on the root so
    * they apply from the first paint, before the shell has stamped the body.

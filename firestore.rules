@@ -103,6 +103,7 @@ service cloud.firestore {
             request.resource.data.back == resource.data.back &&
             request.resource.data.get('frontImage', null) == resource.data.get('frontImage', null) &&
             request.resource.data.get('backImage', null) == resource.data.get('backImage', null) &&
+            request.resource.data.get('occlusion', null) == resource.data.get('occlusion', null) &&
             request.resource.data.tags == resource.data.tags &&
             request.resource.data.createdAt == resource.data.createdAt &&
             request.resource.data.userId == resource.data.userId
@@ -276,7 +277,7 @@ service cloud.firestore {
         allow delete: if isSelf(userId) && !isDemoAccount();
 
         function isFlashcardReviewEvent(data) {
-          return data.keys().hasOnly(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'rating', 'interventionId', 'createdAt']) &&
+          return data.keys().hasOnly(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'rating', 'interventionId', 'confusedWithLabelId', 'createdAt']) &&
             data.keys().hasAll(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'createdAt']) &&
             data.schemaVersion == 1 &&
             data.cardId is string && data.cardId.size() > 0 && data.cardId.size() <= 160 &&
@@ -287,7 +288,9 @@ service cloud.firestore {
             data.correct is bool &&
             (!('rating' in data) || data.rating in ['again', 'hard', 'good', 'easy']) &&
             // Which recommendation opened the session this answer was given in.
-            (!('interventionId' in data) || (data.interventionId is string && data.interventionId.size() > 0 && data.interventionId.size() <= 400));
+            (!('interventionId' in data) || (data.interventionId is string && data.interventionId.size() > 0 && data.interventionId.size() <= 400)) &&
+            // Which other diagram label was given instead: an id, only on a wrong answer.
+            (!('confusedWithLabelId' in data) || (data.correct == false && data.confusedWithLabelId is string && data.confusedWithLabelId.size() > 0 && data.confusedWithLabelId.size() <= 64));
         }
       }
 
