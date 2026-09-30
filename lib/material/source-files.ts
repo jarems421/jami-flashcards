@@ -25,6 +25,25 @@ const SOURCE_FILE_EXTENSION_TYPES: Record<string, SourceFileMimeType> = {
   txt: "text/plain",
 };
 
+/** Throws unless the path is one of this user's own uploaded source files. */
+export function validateOwnedSourceFileStoragePath(storagePath: string, userId: string) {
+  const normalizedPath = storagePath.trim();
+  const normalizedUserId = userId.trim();
+  const prefix = `users/${normalizedUserId}/sourceFiles/`;
+  const pathSegments = normalizedPath.split("/");
+
+  if (
+    !normalizedUserId ||
+    !normalizedPath.startsWith(prefix) ||
+    pathSegments.length !== 5 ||
+    pathSegments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new Error("Invalid source file path.");
+  }
+
+  return normalizedPath;
+}
+
 export function isSourceFileMimeType(value: string): value is SourceFileMimeType {
   return SOURCE_FILE_MIME_TYPE_SET.has(value);
 }

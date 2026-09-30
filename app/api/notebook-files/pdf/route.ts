@@ -8,6 +8,7 @@ import {
   getAdminAuth,
   getAdminStorageBucket,
 } from "@/services/firebase/admin";
+import { validateOwnedSourceFileStoragePath } from "@/lib/material/source-files";
 import { createLogger } from "@/lib/observability/logger";
 import { createRateLimiter } from "@/lib/http/rate-limit";
 
@@ -26,6 +27,7 @@ const NOTEBOOK_FILE_CONTENT_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+const SOURCE_FILE_CONTENT_TYPES = new Set(["application/pdf"]);
 
 export async function GET(request: NextRequest) {
   const token = getBearerToken(request.headers.get("authorization"));
@@ -50,17 +52,24 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const requestedPath = request.nextUrl.searchParams.get("path") ?? "";
   let storagePath: string;
+  let allowedContentTypes: ReadonlySet<string>;
   try {
-    storagePath = validateOwnedNotebookPdfStoragePath(
-      request.nextUrl.searchParams.get("path") ?? "",
-      userId
-    );
+    storagePath = validateOwnedNotebookPdfStoragePath(requestedPath, userId);
+    allowedContentTypes = NOTEBOOK_FILE_CONTENT_TYPES;
   } catch {
-    // The validator throws on any path that is not this user's own notebook
-    // PDF. Echoing why would describe the ownership rule to a caller probing
-    // for someone else's file, so the rejection stays uniform.
-    return Response.json({ error: "Invalid notebook PDF path." }, { status: 400 });
+    try {
+      // The Library reader draws a source PDF page by page, which needs its
+      // bytes same-origin just as a notebook's do. PDFs only.
+      storagePath = validateOwnedSourceFileStoragePath(requestedPath, userId);
+      allowedContentTypes = SOURCE_FILE_CONTENT_TYPES;
+    } catch {
+      // The validators throw on any path that is not this user's own file.
+      // Echoing why would describe the ownership rule to a caller probing
+      // for someone else's file, so the rejection stays uniform.
+      return Response.json({ error: "Invalid notebook PDF path." }, { status: 400 });
+    }
   }
 
   try {
@@ -69,7 +78,7 @@ export async function GET(request: NextRequest) {
     const size = Number(metadata.size ?? 0);
 
     const contentType = metadata.contentType ?? "";
-    if (!NOTEBOOK_FILE_CONTENT_TYPES.has(contentType)) {
+    if (!allowedContentTypes.has(contentType)) {
       return Response.json(
         { error: "This notebook file type is not supported." },
         { status: 415 }

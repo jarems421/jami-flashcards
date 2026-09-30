@@ -7,6 +7,7 @@ import {
   getSourceFileKind,
   getSourceFileTypeLabel,
 } from "@/lib/material/source-files";
+import SourcePdfReader from "./SourcePdfReader";
 
 type SourcePreviewProps = {
   source: Source;
@@ -119,11 +120,29 @@ export default function SourcePreview({ source, fileUrl }: SourcePreviewProps) {
     );
   }
 
-  if (
-    (fileKind === "image" || fileKind === "pdf") &&
-    source.storagePath &&
-    fileUrl === undefined
-  ) {
+  if (fileKind === "pdf" && source.storagePath) {
+    return (
+      <SourcePdfReader
+        key={source.storagePath}
+        storagePath={source.storagePath}
+        title={source.title}
+        fallback={
+          <div
+            className={`${readerCanvasClass} ${readerMinHeightClass} flex items-center justify-center`}
+          >
+            <PreviewState
+              title="Preview unavailable"
+              description="The PDF could not be opened here. Try again in a moment, or open the original."
+              fileName={source.fileName}
+              fileType={getSourceFileTypeLabel(source.fileType)}
+            />
+          </div>
+        }
+      />
+    );
+  }
+
+  if (fileKind === "image" && source.storagePath && fileUrl === undefined) {
     return (
       <div
         role="status"

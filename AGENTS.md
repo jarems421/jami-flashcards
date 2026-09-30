@@ -28,6 +28,12 @@ During the current Phase 6 notebook-first Practice phase:
 - Optimise notebook creation/editing for desktop and iPad/tablet. Phone should support viewing and light typed notes, not serious pen/page editing.
 - AI should be planned into notebooks/papers/practice sets, but the Phase 6 focus is workflow structure, not new AI depth.
 - Exception: Revision Sessions (`docs/revision-sessions.md`). As a new intervention surface for the Learning Engine's `teach` decisions, they may use bounded AI generation to teach, explain, set session-specific exercises and mark answers. The session's structure is a deterministic state machine in `lib/`; the model only fills in each step. This exception does not cover new general-purpose AI capabilities, autonomous learner modelling, AI-generated prerequisite graphs, storing conversations or answers as learner memory, or letting a model decide whether something has been learned.
+- Exception: University practice (agreed 30 Sep 2026). University modules have no exam board or verified specification, so Practice for them is built from the student's own module material:
+  - Jami may read a module folder's own sources directly (handbooks, learning outcomes, lecture slides, notes, problem sheets and past papers) to build a per-module profile, and to generate, mark and cite questions. No separate privacy-review design is required for this.
+  - The module profile is built from at least two to three past papers where the student has them, so it reflects patterns across years (recurring topics, mark split, structure, question styles). It may be stored and reused, and rebuilt when new past papers are added.
+  - Questions from the student's own uploaded past papers and problem sheets may be kept and reused for that student's practice. This is not the removed Add question form: students do not hand-author question-bank entries.
+  - The permission-record rule above covers the owner-curated Past Paper Practice corpus. It does not apply to a student's own uploads used only for that student.
+  - Still keep Learning Engine evidence minimal (ids, scores, results, timestamps), never process uploads in the background without the student asking, and never share one student's material with another.
 - Preserve existing functionality, routes, Firebase logic, AI logic, data models, and tests.
 - Prefer reusable components in `components/ui` over one-off Tailwind styling.
 - Keep the app responsive across mobile, tablet, and desktop.

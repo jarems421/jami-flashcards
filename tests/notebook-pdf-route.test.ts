@@ -89,6 +89,26 @@ describe("notebook file proxy route", () => {
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 
+  it("serves the user's own source PDFs to the Library reader, and nothing else of theirs", async () => {
+    const sourcePath = "users/user-1/sourceFiles/source-1/file-1-slides.pdf";
+    expect((await getNotebookFile(request(sourcePath, "token"))).status).toBe(200);
+    expect(mocks.file).toHaveBeenCalledWith(sourcePath);
+
+    mocks.getMetadata.mockResolvedValueOnce([{ size: "4", contentType: "image/png" }]);
+    expect((await getNotebookFile(request(sourcePath, "token"))).status).toBe(415);
+
+    mocks.file.mockClear();
+    const otherUser = await getNotebookFile(
+      request("users/user-2/sourceFiles/source-1/file.pdf", "token")
+    );
+    const otherFolder = await getNotebookFile(
+      request("users/user-1/decks/deck-1/file.pdf", "token")
+    );
+    expect(otherUser.status).toBe(400);
+    expect(otherFolder.status).toBe(400);
+    expect(mocks.file).not.toHaveBeenCalled();
+  });
+
   it("refuses unsupported types and invalid sizes before downloading", async () => {
     mocks.getMetadata.mockResolvedValueOnce([
       { size: "4", contentType: "text/html" },
