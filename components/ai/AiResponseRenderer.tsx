@@ -5,17 +5,26 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import { repairModelLatex } from "@/lib/ai/model-json";
 import {
   normalizeLegacyJamiMathText,
-  preprocessMathDelimiters,
+  prepareAiMarkdown,
 } from "@/lib/study/math-text";
 import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 import AssistantGraphFigure from "@/components/ai/AssistantGraphFigure";
 import { useAssistantGraphActions } from "@/components/ai/AssistantGraphActions";
 
+/**
+ * Where the reply is read. "chat" is the Tutor's own card. "page" is an
+ * answer added to a notebook page, where it takes the page's type size and
+ * ink colour and grows to fit rather than scrolling inside itself.
+ */
+export type AiResponseVariant = "chat" | "page";
+
 export type AiResponseRendererProps = {
   content: string;
   className?: string;
+  variant?: AiResponseVariant;
 };
 
 /**
@@ -172,24 +181,50 @@ function DrawnFigure({ source }: { source: string }) {
  * disabled. The component preserves Jami's existing \( ... \), \[ ... \],
  * $...$ and $$...$$ math delimiters.
  */
+/**
+ * A table on a notebook page. The box it sits in is as wide as the student
+ * made it, and the page is not a place to scroll sideways, so it wraps.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function PageTable({ node, ...props }: ComponentPropsWithoutRef<"table"> & { node?: TableNode }) {
+  return (
+    <div className="ai-response-table">
+      <table {...props} />
+    </div>
+  );
+}
+
 export default function AiResponseRenderer({
   content,
   className = "",
+  variant = "chat",
 }: AiResponseRendererProps) {
-  const normalizedContent = preprocessMathDelimiters(
-    normalizeLegacyJamiMathText(content)
+  const normalizedContent = prepareAiMarkdown(
+    normalizeLegacyJamiMathText(content),
+    repairModelLatex
   );
 
   return (
-    <div className={`ai-response ${className}`}>
+    <div className={`ai-response ${variant === "page" ? "ai-response--page" : ""} ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
-          [rehypeKatex, { trust: false, strict: "ignore", throwOnError: false }],
+          [
+            rehypeKatex,
+            {
+              trust: false,
+              strict: "ignore",
+              throwOnError: false,
+              // Maths KaTeX cannot read is shown as written, in the colour of
+              // the words around it. Its default is a loud red, which read as
+              // an error the student had made.
+              errorColor: "currentColor",
+            },
+          ],
         ]}
         components={{
           a: SafeLink,
-          table: ScrollingTable,
+          table: variant === "page" ? PageTable : ScrollingTable,
           /*
            * Intercepted at the pre, not the code inside it: a figure returned
            * from the code component would be nested in the pre markdown puts
