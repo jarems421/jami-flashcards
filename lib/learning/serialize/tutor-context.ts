@@ -246,7 +246,14 @@ export function serializeLearnerProfileForTutor(
   if (priorities.length > 0) {
     lines.push(
       "Suggested priorities:",
-      ...priorities.map((recommendation, index) => `${index + 1}. ${describeRecommendation(recommendation)}`)
+      ...priorities.map(
+        (recommendation, index) =>
+          `${index + 1}. ${describeRecommendation(recommendation)}${
+            recommendation.evidence.studentConcernAt !== undefined
+              ? " The student has also told you they find this hard."
+              : ""
+          }`
+      )
     );
   }
   const focus = options.practiceFocus;

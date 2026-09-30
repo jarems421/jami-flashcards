@@ -134,6 +134,11 @@ export type LearnerEvidence = {
   exposureItems?: readonly LearnerExposureItem[];
   /** Concepts the folder itself lists, which exist for it whatever the evidence. */
   declaredTopicKeys?: readonly string[];
+  /**
+   * Topics the student has told Tutor they find hard, and when. Neither
+   * evidence nor exposure: see `LearningTopicState.studentConcernAt`.
+   */
+  studentConcerns?: readonly { topicKey: string; at: number }[];
   specification?: LearnerSpecification;
   limitsReached?: readonly LearnerEvidenceLimit[];
   unavailableSources?: readonly LearnerEvidenceSource[];
@@ -414,6 +419,13 @@ export function buildLearnerProfile(input: {
   const signals = buildLearningSignals(observations, registry, evidence.cards, now);
 
   const specificationTopicKeys = (evidence.specification?.topics ?? []).map((topic) => `spec:${topic.id}`);
+  const concernAt = new Map<string, number>();
+  for (const concern of evidence.studentConcerns ?? []) {
+    const key = resolveConceptKey(registry, concern.topicKey);
+    if (key && Number.isFinite(concern.at)) {
+      concernAt.set(key, Math.max(concernAt.get(key) ?? 0, concern.at));
+    }
+  }
   const topics = buildTopicStates({
     signals,
     exposure: buildExposureByTopic({
@@ -429,6 +441,9 @@ export function buildLearnerProfile(input: {
       }),
       ...specificationTopicKeys,
     ],
+  }).map((topic) => {
+    const at = concernAt.get(topic.topicKey);
+    return at ? { ...topic, studentConcernAt: at } : topic;
   });
   const deferred = new Set(topics.filter((topic) => topic.deferredTo).map((topic) => topic.topicKey));
 

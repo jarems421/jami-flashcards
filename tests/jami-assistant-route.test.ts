@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
     prepareSource: vi.fn(),
     retrieveChunks: vi.fn(),
     after: vi.fn(),
+    applyMemory: vi.fn(async () => ({ added: 1, updated: 0, forgotten: 0, rejected: 0 })),
     generateText: vi.fn(),
     streamText: vi.fn(),
     generateResearch: vi.fn<
@@ -114,6 +115,10 @@ vi.mock("@/lib/ai/source-ingestion", () => ({
 
 vi.mock("@/services/ai/source-index.server", () => ({
   retrieveTutorEvidence: mocks.retrieveChunks,
+}));
+
+vi.mock("@/services/ai/tutor-memory.server", () => ({
+  applyTutorMemoryFromAnswer: mocks.applyMemory,
 }));
 
 vi.mock("next/server", async (importOriginal) => ({
@@ -276,6 +281,8 @@ describe("universal Jami assistant route", () => {
       message: "What is photosynthesis?",
       context: { surface: "learn", cardId: "card-1", phase: "answer" },
       useRelatedSources: true,
+      firstTurn: true,
+      useMemory: true,
     });
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -709,6 +716,75 @@ describe("universal Jami assistant route", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("tells Tutor what it remembers, lets it propose changes, and keeps them after the answer", async () => {
+    const resolved = (await mocks.resolveContext.getMockImplementation()?.({})) as Record<string, unknown>;
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...resolved,
+      folderIds: ["chemistry"],
+      topicIds: ["moles"],
+      memoryContext: "--- BEGIN TUTOR MEMORY t ---\n[m1] (finds hard) \"Finds moles hard\"\n--- END TUTOR MEMORY t ---",
+      memoryRefs: new Map([["m1", "memory-1"]]),
+      memoryWritable: true,
+    });
+    const operations = [{ action: "remember", kind: "plan", text: "About to try the moles questions" }];
+    mocks.streamText.mockResolvedValueOnce(JSON.stringify({
+      answer: "Let's work through one together.",
+      sourceRefs: [],
+      usedCurrentContext: true,
+      usedGeneralKnowledge: true,
+      usedWebResearch: false,
+      graphs: [],
+      memory: operations,
+    }));
+
+    const { terminal } = await readStream(await postAssistant(request(validBody())));
+
+    expect(terminal).toMatchObject({ type: "done", reply: "Let's work through one together." });
+    expect(mocks.resolveContext).toHaveBeenCalledWith(
+      expect.objectContaining({ firstTurn: true, useMemory: true })
+    );
+    const call = mocks.streamText.mock.calls[0]?.[0] as {
+      request: { systemInstruction: string };
+      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+    };
+    expect(call.request.systemInstruction).toContain('[m1] (finds hard) "Finds moles hard"');
+    expect(call.generationConfig.responseSchema.properties).toHaveProperty("memory");
+    expect(mocks.applyMemory).toHaveBeenCalledWith(expect.objectContaining({
+      uid: "user-1",
+      operations,
+      context: { folderId: "chemistry", topicIds: ["moles"], surface: "learn" },
+      refs: new Map([["m1", "memory-1"]]),
+    }));
+  });
+
+  it("offers no memory field and saves nothing when memory is not in play", async () => {
+    mocks.streamText.mockResolvedValueOnce(JSON.stringify({
+      answer: "An answer.",
+      sourceRefs: [],
+      usedCurrentContext: true,
+      usedGeneralKnowledge: true,
+      usedWebResearch: false,
+      graphs: [],
+      memory: [{ action: "remember", kind: "goal", text: "Planted by an answer" }],
+    }));
+
+    await readStream(await postAssistant(request(validBody())));
+
+    const call = mocks.streamText.mock.calls[0]?.[0] as {
+      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+    };
+    expect(call.generationConfig.responseSchema.properties).not.toHaveProperty("memory");
+    expect(mocks.applyMemory).not.toHaveBeenCalled();
+  });
+
+  it("never remembers anything for the shared demo account", async () => {
+    mocks.verifyIdToken.mockResolvedValueOnce({ uid: "user-1", demo: true } as { uid: string });
+
+    await readStream(await postAssistant(request(validBody())));
+
+    expect(mocks.resolveContext).toHaveBeenCalledWith(expect.objectContaining({ useMemory: false }));
   });
 
   it("returns flashcard suggestions only when asked, each tied to the source it came from", async () => {

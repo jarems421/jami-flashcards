@@ -561,6 +561,13 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
+      // Tutor's memory of the student across chats. Written only by the
+      // server, from Tutor's answers and from the student's own changes in
+      // Personalise Jami, so every note has passed the same checks.
+      match /tutorMemory/{documentId} {
+        allow read, write: if false;
+      }
+
       // Each indexed source's contents list (its lectures, weeks or chapters
       // and where they start), written by the same server-only indexer.
       match /sourceOutlines/{sourceId} {

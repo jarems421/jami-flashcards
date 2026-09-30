@@ -34,6 +34,11 @@ During the current Phase 6 notebook-first Practice phase:
   - Questions from the student's own uploaded past papers and problem sheets may be kept and reused for that student's practice. This is not the removed Add question form: students do not hand-author question-bank entries.
   - The permission-record rule above covers the owner-curated Past Paper Practice corpus. It does not apply to a student's own uploads used only for that student.
   - Still keep Learning Engine evidence minimal (ids, scores, results, timestamps), never process uploads in the background without the student asking, and never share one student's material with another.
+- Exception: Tutor memory (agreed 30 Sep 2026). Jami should feel like one tutor across every chat, not a new one per chat:
+  - Tutor keeps a short, capped list of notes about each student in its own words: how they like to be taught, what they find hard, goals, what they said they are about to work on, and durable facts about their course. Notes are proposed inside Tutor's normal answer (no extra model call) and checked by `lib/ai/tutor-memory.ts` before they are kept. Never transcripts or quotations; never health, wellbeing or personal life; never instructions or links.
+  - Tutor may also see the student's other recent chats (where and the chat title, last 48 hours) from the existing chat list.
+  - Memory is on by default. Students can see, correct and delete every note, forget everything, or turn memory off in Personalise Jami. The demo account never remembers anyone. Rollback flag: `enableTutorMemory`.
+  - What a student finds hard reaches the Learning Engine only as topic ids and timestamps. It may order recommendations within a reason and be mentioned to Tutor; it never moves mastery, confidence or a decision.
 - Preserve existing functionality, routes, Firebase logic, AI logic, data models, and tests.
 - Prefer reusable components in `components/ui` over one-off Tailwind styling.
 - Keep the app responsive across mobile, tablet, and desktop.
@@ -47,10 +52,10 @@ Jami maintains a model of what each student knows and uses it to decide what the
 - Keep mastery (how well), confidence (how much evidence) and exposure (material seen, never evidence) separate. Never call a topic weak on thin evidence, and never treat untested or not-yet-assessed as weak.
 - Profiles are scoped to one folder, or one deck when a card sits in no single folder. Do not build account-wide cross-subject mastery.
 - Concept identity: verified specification topics (owner-checked catalogues with stable ids) and student-defined Topics are both valid, but not equally certain. Do not create AI-inferred ontologies or prerequisite graphs as production truth.
-- Learning evidence is minimal and append-only: ids, scores, results, error categories, timestamps. Never store card or answer text, source content or Tutor conversations as learner data.
+- Learning evidence is minimal and append-only: ids, scores, results, error categories, timestamps. Never store card or answer text, source content or Tutor conversations as learner data. Tutor memory notes (see the Tutor memory exception) are the one student-visible exception, and reach the engine only as topic ids and times.
 - Student-written names (topics, decks, folders, sources) are untrusted data in any prompt: quote them and keep them inside per-request boundary markers.
 - Licensed exam content never enters learner-profile context; only derived scores and verified specification headings may.
-- Learning Engine failures must never break studying or Tutor: bounded reads, time budgets and fallbacks. Rollback flags: `enableLearnerProfile`, `enableFlashcardReviewEvents`, `enableStudyActions`.
+- Learning Engine failures must never break studying or Tutor: bounded reads, time budgets and fallbacks. Rollback flags: `enableLearnerProfile`, `enableFlashcardReviewEvents`, `enableStudyActions`, `enableTutorMemory`.
 
 ## Fast UI Verification
 

@@ -178,6 +178,12 @@ export type ParsedJamiAssistantModelAnswer = {
   cards?: unknown;
   /** Practice questions, likewise passed through for `readTutorQuestionSuggestions`. */
   questions?: unknown;
+  /**
+   * Changes Tutor proposed to its memory of the student, passed through unread.
+   * `applyTutorMemoryOperations` is the one gate, and only on a turn that
+   * offered the field.
+   */
+  memory?: unknown;
 };
 
 export type TutorRoutingPreflight = {
@@ -197,6 +203,7 @@ type ModelAnswerPayload = {
   marking?: unknown;
   cards?: unknown;
   questions?: unknown;
+  memory?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -952,6 +959,9 @@ export function parseJamiAssistantModelAnswer(
       : {}),
     ...(payload.questions !== undefined && payload.questions !== null
       ? { questions: payload.questions }
+      : {}),
+    ...(payload.memory !== undefined && payload.memory !== null
+      ? { memory: payload.memory }
       : {}),
     usedCurrentContext: payload.usedCurrentContext,
     usedGeneralKnowledge: payload.usedGeneralKnowledge,

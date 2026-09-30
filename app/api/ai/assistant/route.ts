@@ -44,6 +44,7 @@ import {
 import { getAiInputTokenCap } from "@/lib/ai/budgets";
 import { buildAssistantResponseSchema } from "./response-schema";
 import { recordNotebookMarking } from "@/services/learning/notebook-markings.server";
+import { applyTutorMemoryFromAnswer } from "@/services/ai/tutor-memory.server";
 import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
 import { TUTOR_VOICE_INSTRUCTION } from "@/lib/ai/tutor-voice";
 import { cleanAiResponseText } from "@/lib/ai/response-text";
@@ -162,11 +163,12 @@ function failureResponse(error: string, status: number, code: string) {
   return Response.json({ error, code }, { status });
 }
 
-async function getAuthenticatedUserId(request: NextRequest) {
+async function getAuthenticatedUser(request: NextRequest) {
   const token = getBearerToken(request.headers.get("authorization"));
   if (!token) return null;
   try {
-    return (await getAdminAuth().verifyIdToken(token)).uid;
+    const claims = await getAdminAuth().verifyIdToken(token);
+    return { uid: claims.uid, isDemo: claims.demo === true };
   } catch {
     // An expired, malformed and forged token must all read as "not signed in";
     // the caller learns nothing about which it was.
@@ -199,8 +201,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const uid = await getAuthenticatedUserId(request);
-  if (!uid) return failureResponse("Unauthorized", 401, "unauthorized");
+  const caller = await getAuthenticatedUser(request);
+  if (!caller) return failureResponse("Unauthorized", 401, "unauthorized");
+  const uid = caller.uid;
 
   const startedAt = Date.now();
   const log = createLogger({
@@ -300,6 +303,10 @@ export async function POST(request: NextRequest) {
       message: parsedRequest.message,
       context: parsedRequest.context,
       useRelatedSources: parsedRequest.useRelatedSources,
+      ...(existingThread ? { threadId: existingThread.id } : {}),
+      firstTurn: conversationHistory.length === 0,
+      // The demo account is shared, so it must remember nobody.
+      useMemory: !caller.isDemo,
     });
   } catch (error) {
     if (error instanceof JamiAssistantContextError) {
@@ -687,7 +694,8 @@ export async function POST(request: NextRequest) {
     allowedSourceRefs,
     markingInvited,
     cardsInvited,
-    questionsInvited
+    questionsInvited,
+    resolved.memoryWritable === true
   );
   const systemInstruction = `${TUTOR_VOICE_INSTRUCTION}
 ${resolved.studyLevelContext ? `${resolved.studyLevelContext}\n` : ""}${resolved.courseContext ? `${resolved.courseContext}\n` : ""}${resolved.personalisationContext ? `${resolved.personalisationContext}\n` : ""}Treat the student's latest explicit request as the strongest signal for the depth and kind of help they want.
@@ -709,7 +717,7 @@ Choose a clean response structure without waiting to be asked: give the direct r
 The answer is final text the student watches arrive, not a draft. Never think aloud, correct yourself, apologise for a false start or offer a second version inside it. When you set the student a question, choose and check it before you write anything: work it through yourself, make sure every value it asks for is clean and answerable at their level, and then state it once.
 For ordinary notebook Mark my work requests, provide indicative feedback. Give a numerical mark or formal grade only when the supplied evidence contains a defensible mark allocation, rubric, or mark scheme; otherwise explicitly label the result as feedback rather than an official mark. Never invoke or imitate the formal full-paper double-marker workflow for short work.
 Work in a notebook often runs across a page break. If the working you have been given starts mid-step, continues from a line you cannot see, or depends on setup that is not in front of you, say so and ask for the page it started on. Do not mark or correct the part you can see as though it were the whole answer: reporting errors that only look like errors because the first half is missing is worse than saying you cannot see it yet.
-${resolved.learningContext ? `${resolved.learningContext}\n` : ""}Return JSON only with exactly these fields:
+${resolved.learningContext ? `${resolved.learningContext}\n` : ""}${resolved.memoryContext ? `${resolved.memoryContext}\n` : ""}Return JSON only with exactly these fields:
 {"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[],"diagrams":[]}
 sourceRefs must contain only references that materially informed the response. It may be empty. Set each used boolean truthfully.
 
@@ -1419,6 +1427,31 @@ ${responseGuidance.instruction}`;
             },
           })
         );
+
+        /*
+         * Keep what Tutor proposed remembering, once the student has the
+         * answer and outside its batch: a memory that fails to save costs the
+         * student nothing, and the answer never waits on it. Counts only in
+         * the log.
+         */
+        if (resolved.memoryWritable && parsedAnswer.memory !== undefined) {
+          try {
+            const memoryOutcome = await applyTutorMemoryFromAnswer({
+              uid,
+              operations: parsedAnswer.memory,
+              context: {
+                ...(resolved.folderIds?.length === 1 ? { folderId: resolved.folderIds[0] } : {}),
+                topicIds: resolved.topicIds ?? [],
+                surface: savedContext.surface,
+              },
+              refs: resolved.memoryRefs ?? new Map(),
+              now,
+            });
+            log.info("tutor_memory.updated", memoryOutcome);
+          } catch (error) {
+            log.warn("tutor_memory.write_failed", { error });
+          }
+        }
 
         // The token counts were already collected for the failure paths and
         // then discarded on success, which left the usual questions — what a

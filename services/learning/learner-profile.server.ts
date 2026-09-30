@@ -1,5 +1,7 @@
 import "server-only";
 
+import { tutorMemoryConcerns } from "@/lib/ai/tutor-memory";
+import { loadTutorMemory } from "@/services/ai/tutor-memory.server";
 import {
   FLASHCARD_REVIEW_EVENTS_COLLECTION,
   decodeFlashcardReviewEvent,
@@ -747,7 +749,7 @@ export async function loadLearnerEvidence(
    * and revision sessions need only what is already loaded, and waiting for the
    * card chain added a round trip per folder to Today for no reason.
    */
-  const [{ cards, studentTopics }, [notebookMarkings, revisionSessions]] = await Promise.all([
+  const [{ cards, studentTopics }, [notebookMarkings, revisionSessions, studentConcerns]] = await Promise.all([
     (async () => {
       const cards = [
         ...pagedCards,
@@ -780,6 +782,7 @@ export async function loadLearnerEvidence(
             ...(folderId ? { folderId } : deckId ? { deckId } : {}),
           })
         : Promise.resolve([]),
+      loadStudentConcerns(uid),
     ]),
   ]);
   const specification = folder ? folderSpecification(folder) : undefined;
@@ -804,6 +807,7 @@ export async function loadLearnerEvidence(
       ? { topicRelations: studentTopics.relations }
       : {}),
     exposureItems,
+    ...(studentConcerns.length > 0 ? { studentConcerns } : {}),
     declaredTopicKeys: [
       ...declaredTopicIds.map((topicId) => `topic:${topicId}`),
       ...specificationConcepts.map((concept) => concept.key),
@@ -817,6 +821,20 @@ export async function loadLearnerEvidence(
     scope: folderId ? { folderId, deckIds } : { deckId },
     evidence,
   };
+}
+
+/**
+ * The Topics the student has told Tutor they find hard, from Tutor's memory,
+ * as keys and times only. Memory switched off, or unreadable, gives none: it
+ * orders advice and nothing else, so its absence costs nothing but the order.
+ */
+async function loadStudentConcerns(uid: string) {
+  if (!featureFlags.enableTutorMemory) return [];
+  try {
+    return tutorMemoryConcerns(await loadTutorMemory(uid), Date.now());
+  } catch {
+    return [];
+  }
 }
 
 /** What Jami currently believes about a student, for one folder or one deck. */

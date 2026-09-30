@@ -152,6 +152,47 @@ function questionsSchema(allowedSourceRefs: string[]): Schema {
   };
 }
 
+/**
+ * Changes to Tutor's memory of the student, offered only when memory is on.
+ *
+ * Optional and usually absent: most turns teach something and remember
+ * nothing. Whatever arrives is checked by `applyTutorMemoryOperations`, which
+ * refuses anything it would not have written itself.
+ */
+function memorySchema(): Schema {
+  return {
+    type: Type.ARRAY,
+    description:
+      "Changes to what you remember about the student across chats. Leave it out unless the student said something that will matter in later chats.",
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        action: {
+          type: Type.STRING,
+          format: "enum",
+          enum: ["remember", "forget"],
+          description: "remember to add or update a memory; forget to drop one that is no longer true.",
+        },
+        kind: {
+          type: Type.STRING,
+          format: "enum",
+          enum: ["preference", "struggle", "goal", "plan", "context"],
+          description: "What sort of memory this is.",
+        },
+        text: {
+          type: Type.STRING,
+          description: "One short line about the student in your own words, at most 160 characters. Never a quotation.",
+        },
+        ref: {
+          type: Type.STRING,
+          description: "The reference (m1, m2...) of the memory to update or forget, when there is one.",
+        },
+      },
+      required: ["action"],
+    },
+  };
+}
+
 export function buildAssistantResponseSchema(
   allowedSourceRefs: string[],
   /** Whether this turn may carry a marking at all. Off for every non-marking turn. */
@@ -159,7 +200,9 @@ export function buildAssistantResponseSchema(
   /** Whether this turn may carry flashcard suggestions. Needs at least one source. */
   cardsInvited = false,
   /** Whether this turn may carry practice question suggestions. Needs at least one source. */
-  questionsInvited = false
+  questionsInvited = false,
+  /** Whether Tutor may propose changes to its memory of the student. */
+  memoryWritable = false
 ) {
   const sourceRefItems: Schema =
     allowedSourceRefs.length > 0
@@ -183,6 +226,7 @@ export function buildAssistantResponseSchema(
       ...(questionsInvited && allowedSourceRefs.length > 0
         ? { questions: questionsSchema(allowedSourceRefs) }
         : {}),
+      ...(memoryWritable ? { memory: memorySchema() } : {}),
       answer: {
         type: Type.STRING,
         description:

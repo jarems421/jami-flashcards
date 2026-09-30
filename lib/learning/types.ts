@@ -20,7 +20,7 @@
  * That is "seen", not "known", and the engine keeps the two apart.
  */
 
-export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v7-2026-09-22";
+export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v8-2026-09-30";
 
 /**
  * Where a piece of evidence came from.
@@ -383,6 +383,15 @@ export type LearningTopicState = {
    * a recommendation goes to them rather than to this broader concept.
    */
   coveredBy?: string[];
+  /**
+   * When the student last told Tutor this feels hard, while it still counts.
+   *
+   * What the student says, not what they did: like exposure it never moves
+   * mastery, confidence or a decision. It only moves a topic the engine
+   * already recommends ahead of others recommended for the same reason, and
+   * lets Tutor know the student raised it.
+   */
+  studentConcernAt?: number;
 };
 
 export type LearningRecommendationTarget =
@@ -402,6 +411,8 @@ export type LearningRecommendationEvidence = {
   exposure?: LearningExposure;
   lastEvidenceAt?: number;
   sources: LearningEvidenceKind[];
+  /** The student has said they find this hard; see `LearningTopicState.studentConcernAt`. */
+  studentConcernAt?: number;
 };
 
 export type LearningRecommendation = {

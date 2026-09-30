@@ -24,6 +24,22 @@ const serviceMocks = vi.hoisted(() => ({
 
 vi.mock("@/services/ai/tutor-personalisation", () => serviceMocks);
 
+const memoryMocks = vi.hoisted(() => ({
+  loadTutorMemoryView: vi.fn(),
+  changeTutorMemory: vi.fn(),
+}));
+
+vi.mock("@/services/ai/tutor-memory", () => memoryMocks);
+
+const NOW = Date.now();
+const MEMORY = {
+  enabled: true,
+  items: [
+    { id: "hard", kind: "struggle", text: "Finds limiting reagents hard", createdAt: NOW, updatedAt: NOW - 60 * 60 * 1000 },
+    { id: "likes", kind: "preference", text: "Likes a worked example first", createdAt: NOW, updatedAt: NOW },
+  ],
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -94,6 +110,8 @@ beforeEach(() => {
   serviceMocks.saveTutorPreferences.mockReset();
   serviceMocks.saveTutorStudyProfile.mockReset();
   serviceMocks.saveFolderTutorNotes.mockReset();
+  memoryMocks.loadTutorMemoryView.mockReset().mockResolvedValue(MEMORY);
+  memoryMocks.changeTutorMemory.mockReset();
 });
 
 afterEach(async () => {
@@ -293,5 +311,39 @@ describe("the Tutor settings panel", () => {
     expect(container.textContent).toContain("Your subjects");
     expect(container.textContent).toContain("Biology");
     expect(container.textContent).toContain("Chemistry");
+  });
+
+  it("shows what Jami remembers, and lets the student correct, forget or switch it off", async () => {
+    serviceMocks.loadTutorPersonalisation.mockResolvedValue(personalisation());
+    memoryMocks.changeTutorMemory.mockImplementation(async (change: { target: string; id?: string; enabled?: boolean }) =>
+      change.target === "forget"
+        ? { ...MEMORY, items: MEMORY.items.filter((item) => item.id !== change.id) }
+        : change.target === "enabled"
+          ? { ...MEMORY, enabled: change.enabled }
+          : MEMORY
+    );
+
+    await render(<TutorSettingsPanel />);
+    expect(tabDescription("Memory")).toBe("2 memories across chats");
+    await openTab("Memory");
+
+    expect(container.textContent).toContain("Finds hard");
+    expect(container.textContent).toContain("Finds limiting reagents hard");
+    expect(container.textContent).toContain("How you like to learn");
+
+    const forget = container.querySelector(
+      '[aria-label="Forget: Finds limiting reagents hard"]'
+    ) as HTMLButtonElement;
+    await act(async () => forget.click());
+    expect(memoryMocks.changeTutorMemory).toHaveBeenCalledWith({ target: "forget", id: "hard" });
+    expect(container.textContent).not.toContain("Finds limiting reagents hard");
+
+    const toggle = container.querySelector('[role="switch"][aria-label="Remember across chats"]') as HTMLButtonElement;
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    await act(async () => toggle.click());
+    expect(memoryMocks.changeTutorMemory).toHaveBeenLastCalledWith({ target: "enabled", enabled: false });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(container.textContent).toContain("Memory is off.");
+    expect(tabDescription("Memory")).toBe("Memory off");
   });
 });

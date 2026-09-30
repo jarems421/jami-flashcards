@@ -10,7 +10,8 @@ export type FeatureFlagKey =
   | "enableStudyActions"
   | "enableRevisionPlans"
   | "enableRevisionSessions"
-  | "enableConceptRelations";
+  | "enableConceptRelations"
+  | "enableTutorMemory";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
@@ -76,6 +77,14 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    * difference for any folder. Only relations recorded on a Topic are used.
    */
   enableConceptRelations: true,
+  /*
+   * Tutor's memory across chats: what a student likes, finds hard, is aiming
+   * for and said they would do next, plus their other recent chats. On by the
+   * owner's decision on 30 September 2026, and on for every student until they
+   * turn it off in Personalise Jami. Off here removes it from every prompt and
+   * stops every write, without deleting what is stored.
+   */
+  enableTutorMemory: true,
 };
 
 /**
@@ -98,6 +107,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableRevisionPlans: process.env.NEXT_PUBLIC_ENABLE_REVISION_PLANS,
   enableRevisionSessions: process.env.NEXT_PUBLIC_ENABLE_REVISION_SESSIONS,
   enableConceptRelations: process.env.NEXT_PUBLIC_ENABLE_CONCEPT_RELATIONS,
+  enableTutorMemory: process.env.NEXT_PUBLIC_ENABLE_TUTOR_MEMORY,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -125,4 +135,5 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableRevisionPlans: isFeatureEnabled("enableRevisionPlans"),
   enableRevisionSessions: isFeatureEnabled("enableRevisionSessions"),
   enableConceptRelations: isFeatureEnabled("enableConceptRelations"),
+  enableTutorMemory: isFeatureEnabled("enableTutorMemory"),
 };

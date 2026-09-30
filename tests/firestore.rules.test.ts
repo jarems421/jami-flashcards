@@ -1095,6 +1095,10 @@ describe("Firestore security rules", () => {
     const outlineRef = doc(aliceDb, "users", ALICE, "sourceOutlines", "source-1");
     await assertFails(getDoc(outlineRef));
     await assertFails(setDoc(outlineRef, { sourceId: "source-1", sections: [] }));
+
+    const memoryRef = doc(aliceDb, "users", ALICE, "tutorMemory", "state");
+    await assertFails(getDoc(memoryRef));
+    await assertFails(setDoc(memoryRef, { enabled: true, items: [{ id: "m", kind: "goal", text: "planted" }] }));
   });
 
   it("blocks demo accounts from mutating decks and notification setup", async () => {

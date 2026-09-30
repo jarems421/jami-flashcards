@@ -1,11 +1,12 @@
 import { useId } from "react";
+import { featureFlags } from "@/lib/app/feature-flags";
 import type { TutorFolderSummary } from "@/services/ai/tutor-personalisation";
 import {
   getStudyLevelShortLabel,
   type StudyLevel,
 } from "@/lib/profile/study-level";
 
-export type TutorSettingsView = "course" | "style" | "notes";
+export type TutorSettingsView = "course" | "style" | "notes" | "memory";
 
 /**
  * Whether folder notes apply here, said as one sentence for assistive tech.
@@ -49,6 +50,7 @@ function summarise({
   accountStudyLevel,
   accountStudySubjects,
   changedStyleCount,
+  memory,
 }: TutorSettingsTabsProps): Record<TutorSettingsView, Summary> {
   const level = activeFolder?.studyLevel ?? accountStudyLevel;
   const levelLabel = level ? getStudyLevelShortLabel(level) : null;
@@ -106,14 +108,35 @@ function summarise({
       active: changedStyleCount > 0,
     },
     notes,
+    memory: !memory
+      ? { value: "Across chats", detail: null, spoken: "Across chats", active: false }
+      : !memory.enabled
+        ? { value: "Off", detail: "Each chat fresh", spoken: "Memory off", active: false }
+        : {
+            value:
+              memory.count > 0
+                ? `${memory.count} ${memory.count === 1 ? "memory" : "memories"}`
+                : "None yet",
+            detail: "Across chats",
+            spoken:
+              memory.count > 0
+                ? `${memory.count} ${memory.count === 1 ? "memory" : "memories"} across chats`
+                : "Memory on, nothing yet",
+            active: memory.count > 0,
+          },
   };
 }
 
-const VIEWS: { id: TutorSettingsView; label: string }[] = [
+const ALL_VIEWS: { id: TutorSettingsView; label: string }[] = [
   { id: "course", label: "Course" },
   { id: "style", label: "Style" },
   { id: "notes", label: "Notes" },
+  { id: "memory", label: "Memory" },
 ];
+
+const VIEWS = ALL_VIEWS.filter(
+  (entry) => entry.id !== "memory" || featureFlags.enableTutorMemory
+);
 
 type TutorSettingsTabsProps = {
   activeFolderIds?: readonly string[];
@@ -121,10 +144,12 @@ type TutorSettingsTabsProps = {
   accountStudyLevel: StudyLevel | null;
   accountStudySubjects: readonly string[];
   changedStyleCount: number;
+  /** What Jami remembers, once loaded: whether memory is on and how much there is. */
+  memory?: { enabled: boolean; count: number } | null;
 };
 
 /**
- * The drawer's three views, each showing what it is currently set to.
+ * The drawer's views, each showing what it is currently set to.
  *
  * This used to be two rows: a strip of three chips saying what Jami was using,
  * then a row of three tabs for changing it. They named the same three things,
@@ -150,7 +175,8 @@ export default function TutorSettingsTabs({
     <div
       role="tablist"
       aria-label="Personalise Jami"
-      className="grid grid-cols-3 gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1"
+      // Two by two for four: four tiles in a row left each too narrow to say anything.
+      className={`grid ${VIEWS.length === 4 ? "grid-cols-2" : "grid-cols-3"} gap-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1`}
     >
       {VIEWS.map((entry) => {
         const selected = entry.id === view;

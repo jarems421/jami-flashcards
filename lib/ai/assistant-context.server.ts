@@ -48,6 +48,17 @@ export type ResolvedJamiAssistantContext = {
    */
   learningContext?: string;
   /**
+   * What Tutor remembers about the student from earlier chats, and their other
+   * recent chats. Undefined when memory is off or could not load in time.
+   */
+  memoryContext?: string;
+  /** Short references in `memoryContext` (`m1`...) to memory ids, for updates. */
+  memoryRefs?: ReadonlyMap<string, string>;
+  /** Whether Tutor may propose memory changes on this turn. */
+  memoryWritable?: boolean;
+  /** The folders this material belongs to, which scope a remembered difficulty. */
+  folderIds?: readonly string[];
+  /**
    * The engine's advice to practise the topic in front of the student, when
    * that is its decision for it. Only ever present with `learningContext`,
    * which tells the model the offer is there. See `practiceActionForMaterial`.

@@ -57,6 +57,12 @@ import { loadStudyActionHistory } from "@/services/learning/study-action-history
 import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
 import { createLogger } from "@/lib/observability/logger";
 import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
+import {
+  buildTutorMemoryInstruction,
+  selectRecentTutorActivity,
+  selectTutorMemoriesForPrompt,
+} from "@/lib/ai/tutor-memory";
+import { loadRecentTutorActivity, loadTutorMemory } from "@/services/ai/tutor-memory.server";
 import { loadNotebookNeighbourPageParts } from "@/services/ai/notebook-neighbour-pages.server";
 import {
   buildTutorCourseContextFor,
@@ -77,6 +83,8 @@ const NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT = 12_000;
  * The profile improves an answer; it must never be the reason one is slow.
  */
 const LEARNER_PROFILE_BUDGET_MS = 2_500;
+/** Memory is two small reads; past this the answer goes ahead without it. */
+const TUTOR_MEMORY_BUDGET_MS = 1_500;
 
 const log = createLogger({ module: "ai.assistant.context" });
 
@@ -187,6 +195,86 @@ async function loadTutorPreferences(input: {
     personalisationContext,
     reasoningEffort,
   };
+}
+
+/**
+ * What Tutor remembers about the student, and their other recent chats, as the
+ * block Tutor reads.
+ *
+ * Like the learner profile, an enrichment that never costs an answer: memory
+ * switched off, a failed read or a slow one all leave the request exactly as
+ * it was before memory existed.
+ */
+async function loadTutorMemoryContext(input: {
+  uid: string;
+  folderIds: readonly string[];
+  topicIds: readonly string[];
+  currentThreadId?: string;
+  firstTurn: boolean;
+}): Promise<
+  | { memoryContext: string; memoryRefs: ReadonlyMap<string, string>; memoryWritable: boolean }
+  | undefined
+> {
+  if (!featureFlags.enableTutorMemory) return undefined;
+  const startedAt = Date.now();
+  const loading = Promise.all([
+    loadTutorMemory(input.uid),
+    loadRecentTutorActivity(input.uid, startedAt).catch((error: unknown) => {
+      // The chat list is a nicety; the memory itself is still worth having.
+      log.warn("tutor_memory.recent_unavailable", { error });
+      return [];
+    }),
+  ]);
+  loading.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const settled = await Promise.race([
+      loading,
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), TUTOR_MEMORY_BUDGET_MS);
+      }),
+    ]);
+    if (settled === "timeout") {
+      log.warn("tutor_memory.timed_out", { budgetMs: TUTOR_MEMORY_BUDGET_MS });
+      return undefined;
+    }
+    const [state, threads] = settled;
+    if (!state.enabled) return undefined;
+    const now = Date.now();
+    const memories = selectTutorMemoriesForPrompt({
+      state,
+      folderIds: input.folderIds,
+      topicIds: input.topicIds,
+      now,
+    });
+    const recent = selectRecentTutorActivity(threads, {
+      ...(input.currentThreadId ? { currentThreadId: input.currentThreadId } : {}),
+      now,
+    });
+    const { instruction, refs } = buildTutorMemoryInstruction({
+      memories,
+      recent,
+      now,
+      boundaryToken: randomUUID(),
+      firstTurn: input.firstTurn,
+      canWrite: true,
+    });
+    log.info("tutor_memory.loaded", {
+      // Counts only, never the notes themselves.
+      stored: state.items.length,
+      included: memories.length,
+      recentChats: recent.length,
+      latencyMs: now - startedAt,
+    });
+    return instruction
+      ? { memoryContext: instruction, memoryRefs: refs, memoryWritable: true }
+      : undefined;
+  } catch (error) {
+    log.warn("tutor_memory.failed", { error, latencyMs: Date.now() - startedAt });
+    return undefined;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -843,6 +931,12 @@ export async function resolveJamiAssistantContext(input: {
   message: string;
   context: JamiAssistantContext;
   useRelatedSources: boolean;
+  /** The chat this question belongs to, left out of "recent chats". */
+  threadId?: string;
+  /** Whether this is the chat's first message. */
+  firstTurn?: boolean;
+  /** False for an account that must not remember anyone, such as the shared demo. */
+  useMemory?: boolean;
 }): Promise<ResolvedJamiAssistantContext> {
   const uid = input.uid.trim();
   if (!uid) {
@@ -867,7 +961,7 @@ export async function resolveJamiAssistantContext(input: {
     ...(deckId ? { deckId } : {}),
     ...("specificationIds" in resolved ? { specificationIds: resolved.specificationIds } : {}),
   });
-  const [sources, preferences, learning, course, neighbourParts] = await Promise.all([
+  const [sources, preferences, learning, course, neighbourParts, memory] = await Promise.all([
     selectSources({
       db,
       uid,
@@ -888,6 +982,15 @@ export async function resolveJamiAssistantContext(input: {
     }),
     loadTutorCourse({ uid, folderIds: resolved.relations.folderIds }),
     "neighbourParts" in resolved ? resolved.neighbourParts : Promise.resolve([]),
+    input.useMemory === false
+      ? Promise.resolve(undefined)
+      : loadTutorMemoryContext({
+          uid,
+          folderIds: resolved.relations.folderIds,
+          topicIds: resolved.relations.topicIds,
+          ...(input.threadId ? { currentThreadId: input.threadId } : {}),
+          firstTurn: input.firstTurn ?? true,
+        }),
   ]);
   // After the current page's own parts, so the page asked about is read first.
   const currentParts = [...resolved.currentParts, ...neighbourParts];
@@ -930,6 +1033,14 @@ export async function resolveJamiAssistantContext(input: {
      * untagged notebook produces none. Already loaded for source selection.
      */
     topicIds: resolved.relations.topicIds,
+    folderIds: resolved.relations.folderIds,
+    ...(memory
+      ? {
+          memoryContext: memory.memoryContext,
+          memoryRefs: memory.memoryRefs,
+          memoryWritable: memory.memoryWritable,
+        }
+      : {}),
     reasoningEffort: preferences.reasoningEffort,
   };
 }
