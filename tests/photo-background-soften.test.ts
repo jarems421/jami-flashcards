@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  photoSoftenSigma,
+  enlargedPhotoSharpening,
   reduceCompressionArtifacts,
+  sharpenPhoto,
   softenPhoto,
 } from "@/lib/app/photo-background-soften";
 import {
@@ -27,12 +28,19 @@ function spread(values: number[]) {
 
 describe("cleaning up compression before a photo is enlarged", () => {
   it("smooths speckle out of a flat area", () => {
-    // A mid grey with JPEG-like wobble of a few levels.
-    const noisy = greyImage(12, 12, (x, y) => 128 + (((x * 7 + y * 13) % 9) - 4));
+    // A mid grey with JPEG-like wobble of a couple of levels.
+    const noisy = greyImage(12, 12, (x, y) => 128 + (((x * 7 + y * 13) % 5) - 2));
     const before = Array.from({ length: 144 }, (_, pixel) => noisy[pixel * 4]);
     reduceCompressionArtifacts(noisy, 12, 12);
     const after = Array.from({ length: 144 }, (_, pixel) => noisy[pixel * 4]);
     expect(spread(after)).toBeLessThan(spread(before) / 2);
+  });
+
+  it("keeps fine texture like leaves and grass", () => {
+    const texture = greyImage(12, 12, (x, y) => ((x + y) % 2 === 0 ? 100 : 130));
+    const before = texture.slice();
+    reduceCompressionArtifacts(texture, 12, 12);
+    expect(Array.from(texture)).toEqual(Array.from(before));
   });
 
   it("leaves a real edge where it is", () => {
@@ -45,11 +53,22 @@ describe("cleaning up compression before a photo is enlarged", () => {
   });
 });
 
-describe("softening a small photo", () => {
-  it("scales with how far the photo will be stretched, within gentle bounds", () => {
-    expect(photoSoftenSigma(1.6)).toBe(0.4);
-    expect(photoSoftenSigma(3.2)).toBeCloseTo(0.8, 5);
-    expect(photoSoftenSigma(10)).toBe(1);
+describe("sharpening an enlarged photo", () => {
+  it("widens the mask with how far the photo was stretched, within bounds", () => {
+    expect(enlargedPhotoSharpening(1.2).sigma).toBe(0.8);
+    expect(enlargedPhotoSharpening(3.5).sigma).toBeCloseTo(1.4, 5);
+    expect(enlargedPhotoSharpening(10).sigma).toBe(2);
+  });
+
+  it("steepens a soft edge and leaves flat areas alone", () => {
+    const ramp = [40, 40, 40, 40, 100, 160, 160, 160, 160];
+    const edge = greyImage(9, 5, (x) => ramp[x]);
+    sharpenPhoto(edge, 9, 5, { sigma: 1, amount: 0.8, threshold: 3 });
+    const row = (x: number) => edge[(2 * 9 + x) * 4];
+    expect(row(0)).toBe(40);
+    expect(row(8)).toBe(160);
+    expect(row(3)).toBeLessThan(40);
+    expect(row(5)).toBeGreaterThan(160);
   });
 
   it("spreads a hard point without changing a flat area's colour", () => {
@@ -67,8 +86,11 @@ describe("softening a small photo", () => {
 
 describe("naming a background by how it was prepared", () => {
   it("tells an enlarged photo from a sharp upload and from one saved before either", () => {
-    expect(isEnlargedPhotoBackground("users/a/appBackgrounds/f1/background-enlarged.webp")).toBe(true);
-    expect(isSoftPhotoBackground("users/a/appBackgrounds/f1/background-enlarged.webp")).toBe(false);
+    expect(isEnlargedPhotoBackground("users/a/appBackgrounds/f1/background-upscaled.webp")).toBe(true);
+    expect(isSoftPhotoBackground("users/a/appBackgrounds/f1/background-upscaled.webp")).toBe(false);
+    // Enlarged by the old pipeline, which blurred it first: asked for again.
+    expect(isEnlargedPhotoBackground("users/a/appBackgrounds/f1/background-enlarged.webp")).toBe(false);
+    expect(isSoftPhotoBackground("users/a/appBackgrounds/f1/background-enlarged.webp")).toBe(true);
     expect(isEnlargedPhotoBackground("users/a/appBackgrounds/f1/background-sharp.png")).toBe(false);
     expect(isSoftPhotoBackground("users/a/appBackgrounds/f1/background.jpg")).toBe(true);
   });

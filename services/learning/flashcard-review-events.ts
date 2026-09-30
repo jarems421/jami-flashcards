@@ -1,4 +1,5 @@
-import { doc, setDoc } from "firebase/firestore";
+import { collection, doc, getDocs, limit, query, setDoc, where } from "firebase/firestore";
+import type { DiagramConfusionEvent } from "@/lib/study/diagram-confusion";
 import { featureFlags } from "@/lib/app/feature-flags";
 import {
   FLASHCARD_REVIEW_EVENTS_COLLECTION,
@@ -44,5 +45,53 @@ export async function recordFlashcardReviewEvent(
     // Refused as an update: this answer's event already exists.
     if ((error as { code?: unknown } | null)?.code === "permission-denied") return "already-recorded";
     throw error;
+  }
+}
+
+/** Firestore takes at most thirty values in an `in` filter. */
+const IN_FILTER_LIMIT = 30;
+const CONFUSIONS_PER_CHUNK = 200;
+
+/**
+ * The recorded mix-ups on some diagram cards: which card was asked, which
+ * other label was given instead. Ids only; nothing a student wrote.
+ *
+ * Best effort, like everything the Learning Engine reads for display: an
+ * empty list is what a failure looks like, and nothing about studying waits
+ * on it.
+ */
+export async function loadDiagramConfusionEvents(
+  userId: string,
+  cardIds: readonly string[]
+): Promise<DiagramConfusionEvent[]> {
+  if (!featureFlags.enableFlashcardReviewEvents || !userId.trim() || cardIds.length === 0) return [];
+  const events = collection(db, "users", userId, FLASHCARD_REVIEW_EVENTS_COLLECTION);
+  const chunks: string[][] = [];
+  for (let start = 0; start < cardIds.length; start += IN_FILTER_LIMIT) {
+    chunks.push(cardIds.slice(start, start + IN_FILTER_LIMIT));
+  }
+  try {
+    const snapshots = await Promise.all(
+      chunks.map((chunk) =>
+        withTimeout(
+          getDocs(
+            query(events, where("cardId", "in", chunk), where("confusedWithLabelId", ">", ""), limit(CONFUSIONS_PER_CHUNK))
+          ),
+          RECORD_MS,
+          "Load diagram mix-ups"
+        )
+      )
+    );
+    return snapshots.flatMap((snapshot) =>
+      snapshot.docs.flatMap((eventDoc) => {
+        const data = eventDoc.data() as { cardId?: unknown; confusedWithLabelId?: unknown };
+        return typeof data.cardId === "string" && typeof data.confusedWithLabelId === "string"
+          ? [{ cardId: data.cardId, confusedWithLabelId: data.confusedWithLabelId }]
+          : [];
+      })
+    );
+  } catch (error) {
+    console.warn("Diagram mix-ups could not be loaded.", error);
+    return [];
   }
 }

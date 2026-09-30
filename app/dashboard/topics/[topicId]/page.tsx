@@ -25,7 +25,7 @@ import { useFeedback } from "@/hooks/useFeedback";
 import { buildTopicSummaries } from "@/lib/material/topic-management";
 import type { Source } from "@/lib/material/sources";
 import { MAX_LINKED_TOPICS, type Topic } from "@/lib/material/topics";
-import type { Card as StudyCard } from "@/lib/study/cards";
+import { getCardListTitle, type Card as StudyCard } from "@/lib/study/cards";
 import type { Deck } from "@/lib/study/decks";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import { loadUserCards, updateCardTopics } from "@/services/study/cards";
@@ -508,7 +508,7 @@ export default function TopicDetailPage() {
     if (section === "cards") {
       return cards.map((item) => ({
         id: item.id,
-        title: item.front,
+        title: getCardListTitle(item),
         detail: deckNames[item.deckId] ?? "Card",
         href: `/dashboard/decks/${encodeURIComponent(item.deckId)}`,
         linked: item.topicIds?.includes(topicId) ?? false,

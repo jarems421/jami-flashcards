@@ -5,6 +5,10 @@ import type {
 } from "@/lib/ai/source-draft-quality";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
+import {
+  normalizeStudyMaterialBrief,
+  type StudyMaterialBriefMessage,
+} from "@/lib/ai/study-material-brief";
 
 function friendlyError(status: number, message?: string, code?: string) {
   if (status === 429) {
@@ -37,6 +41,8 @@ export async function generateSourceDrafts(input: {
   depth: SourceDraftDepth;
   /** Recent tutor conversation about this source, to steer what gets drafted. */
   focus?: string;
+  /** What the student told Jami to focus on in the Create panel. */
+  instructions?: string;
 }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
@@ -69,4 +75,39 @@ export async function generateSourceDrafts(input: {
     requestedCount:
       typeof data?.requestedCount === "number" ? data.requestedCount : undefined,
   };
+}
+
+/**
+ * One turn of the Create panel's conversation about what to make.
+ *
+ * Returns Jami's reply and the brief so far, which the Make buttons send on.
+ */
+export async function askStudyMaterialBrief(input: {
+  sourceId: string;
+  messages: StudyMaterialBriefMessage[];
+  signal?: AbortSignal;
+}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not signed in");
+  const response = await fetch("/api/ai/study-material-brief", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${await user.getIdToken()}`,
+    },
+    body: JSON.stringify({ sourceId: input.sourceId, messages: input.messages }),
+    ...(input.signal ? { signal: input.signal } : {}),
+  });
+  const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!response.ok) {
+    throw new Error(
+      response.status === 429
+        ? typeof data?.error === "string" ? data.error : "Jami has reached today's limit. Try again later."
+        : typeof data?.error === "string" ? data.error : "Jami could not reply just now."
+    );
+  }
+  const reply = typeof data?.reply === "string" ? data.reply : "";
+  const brief = normalizeStudyMaterialBrief(data?.brief);
+  if (!reply || !brief) throw new Error("Jami could not reply just now.");
+  return { reply, brief };
 }

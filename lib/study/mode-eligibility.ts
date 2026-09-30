@@ -1,4 +1,4 @@
-import { cardHasImages, type Card } from "@/lib/study/cards";
+import { cardHasImages, getCardMarkingSettings, type Card } from "@/lib/study/cards";
 import { selectClozeGaps } from "@/lib/study/gap-fill";
 import { buildMultipleChoiceQuestion } from "@/lib/study/mcq";
 import { hasMathDelimiters, splitMathRichText } from "@/lib/study/math-text";
@@ -32,7 +32,13 @@ export type ModeIneligibilityReason =
   /** The answer is a picture, which only flipping the card can show. */
   | "image-answer"
   /** The question is a picture, and this mode needs material Jami cannot write without seeing it. */
-  | "image-prompt";
+  | "image-prompt"
+  /** A diagram label is a word or two: there is nothing in it to leave a gap in. */
+  | "diagram-label"
+  /** Its diagram has too few other named labels to make three wrong options from. */
+  | "too-few-labels"
+  /** It asks several labels of a diagram together, which only flipping can show. */
+  | "diagram-group";
 
 export type ModeEligibility =
   | { eligible: true }
@@ -80,7 +86,7 @@ function authorDisabled(card: Card, mode: StudyMode) {
  * that is what every mode here marks.
  */
 function hasContent(card: Card) {
-  return Boolean((card.front?.trim() || card.frontImage) && card.back?.trim());
+  return Boolean((card.front?.trim() || card.frontImage || card.occlusion) && card.back?.trim());
 }
 
 /**
@@ -91,7 +97,10 @@ function hasContent(card: Card) {
  * student marked correct for typing the caption has not recalled the diagram.
  */
 function imageAnswerRefusal(card: Card): ModeEligibility | null {
-  return card.backImage ? { eligible: false, reason: "image-answer" } : null;
+  if (card.backImage) return { eligible: false, reason: "image-answer" };
+  // Several labels at once is recalled by looking, not by typing a list in the right order.
+  if (card.occlusion?.groupId) return { eligible: false, reason: "diagram-group" };
+  return null;
 }
 
 export function getTypeAnswerEligibility(card: Card): ModeEligibility {
@@ -117,6 +126,7 @@ export function getGapFillEligibility(card: Card): ModeEligibility {
   if (authorDisabled(card, "gap-fill")) {
     return { eligible: false, reason: "disabled-by-author" };
   }
+  if (card.occlusion) return { eligible: false, reason: "diagram-label" };
   const gaps = selectClozeGaps({
     front: card.front,
     back: card.back,
@@ -143,10 +153,15 @@ export function getGapFillEligibility(card: Card): ModeEligibility {
     : { eligible: false, reason: "needs-preparation" };
 }
 
-/** A flip card needs each side to show something: text, an image or both. */
+/**
+ * A flip card needs each side to show something: text, an image or both.
+ *
+ * A diagram shows something on both: the covered label, then the uncovered
+ * one -- even when the label has no words, because the picture prints it.
+ */
 export function getClassicEligibility(card: Card): ModeEligibility {
-  const front = card.front?.trim() || card.frontImage;
-  const back = card.back?.trim() || card.backImage;
+  const front = card.front?.trim() || card.frontImage || card.occlusion;
+  const back = card.back?.trim() || card.backImage || card.occlusion;
   return front && back ? ELIGIBLE : { eligible: false, reason: "empty-card" };
 }
 
@@ -185,6 +200,8 @@ export function getMultipleChoiceEligibility(
   // Three believable wrong answers or nothing. Padding the list would make a
   // question answerable by elimination, which teaches the wrong skill.
   if (question) return ELIGIBLE;
+  // A diagram's options are its other labels, which nothing prepares later.
+  if (card.occlusion) return { eligible: false, reason: "too-few-labels" };
   if (card.studySettings?.mcqDistractors !== undefined) {
     return { eligible: false, reason: "disabled-by-author" };
   }
@@ -465,7 +482,7 @@ export function buildDeterministicExercise(
       : card.studySettings
         ? ("author" as const)
         : ("deterministic" as const),
-    markingSettings: card.studySettings,
+    markingSettings: getCardMarkingSettings(card),
   };
 
   if (mode === "gap-fill") {

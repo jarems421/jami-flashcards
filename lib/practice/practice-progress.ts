@@ -1,4 +1,4 @@
-import { examCourseName } from "@/lib/practice/exam-course-names";
+import { examSessionCourseName } from "@/lib/practice/exam-course-names";
 import type { ExamSession } from "@/lib/practice/exam-questions";
 import type { PracticePaperAttempt } from "@/lib/practice/practice-papers";
 import { getStudyDayKey } from "@/lib/study/day";
@@ -68,7 +68,7 @@ export function summarisePastPaperSessions(sessions: readonly ExamSession[]): Pa
     marksAwarded += session.awardedTotal;
     marksAvailable += available;
 
-    const name = examCourseName(session.course);
+    const name = examSessionCourseName(session);
     const course = courses.get(name) ?? { questionsMarked: 0, awarded: 0, available: 0 };
     course.questionsMarked += session.answeredCount;
     course.awarded += session.awardedTotal;
@@ -118,7 +118,7 @@ export function summariseSessionTrend(sessions: readonly ExamSession[]): Session
     .filter((session) => session.answeredCount > 0 && sessionMarksAvailable(session) > 0)
     .map((session) => ({
       id: session.id,
-      courseName: examCourseName(session.course),
+      courseName: examSessionCourseName(session),
       percent: Math.round((session.awardedTotal / sessionMarksAvailable(session)) * 100),
       at: session.completedAt ?? session.updatedAt,
     }))

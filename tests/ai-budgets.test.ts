@@ -67,6 +67,7 @@ describe("AI budget configuration", () => {
       [
         "assistant",
         "autocompleteCard",
+        "diagramLabelDetection",
         "constellationPattern",
         "tutorIllustration",
         "practicePaperGeneration",
@@ -80,6 +81,7 @@ describe("AI budget configuration", () => {
         "videoCardImport",
         "studyAssetGeneration",
         "studyAnswerCheck",
+        "photoBackgroundRestore",
         "revisionLesson",
         "revisionMarking",
       ].sort()

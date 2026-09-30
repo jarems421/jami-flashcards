@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { MAX_PRACTICE_PAPER_SOURCE_IDS } from "@/lib/practice/practice-papers";
+import { MAX_PRACTICE_PAPER_SOURCE_TEXT } from "@/lib/practice/practice-papers";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -444,8 +444,8 @@ describe("reasoning effort scales with the work", () => {
  *
  * It was 1,000,000 -- what the role would need if raw sources reached it. They
  * do not: every source is read by Gemini's documentVision first and arrives as
- * extracted text capped at 30,000 characters, and a paper takes at most
- * MAX_PRACTICE_PAPER_SOURCE_IDS of them. Measured against assessment-shaped
+ * extracted text capped at 30,000 characters, and a paper reads no more than
+ * MAX_PRACTICE_PAPER_SOURCE_TEXT of it however many files it is given. Measured against assessment-shaped
  * prose at 4.67 characters per token, the worst case a supervisor can be handed
  * is around 118,000 tokens including its own output.
  *
@@ -462,7 +462,7 @@ describe("the supervisor context floor matches what a paper can actually contain
   /** The measured worst case, rebuilt from the caps that produce it. */
   const CHARS_PER_TOKEN = 4.67;
   const worstCaseTokens =
-    (MAX_PRACTICE_PAPER_SOURCE_IDS * 30_000 + 12_000 + 15_000) /
+    (MAX_PRACTICE_PAPER_SOURCE_TEXT + 12_000 + 15_000) /
       CHARS_PER_TOKEN +
     16_000;
 

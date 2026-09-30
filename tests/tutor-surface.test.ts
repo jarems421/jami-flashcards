@@ -224,12 +224,32 @@ describe("the queue says what is in it", () => {
     expect(groups.map((group) => group.title)).toEqual([
       "Two",
       "One",
-      "Written without a source",
+      "From your Tutor chats",
     ]);
   });
 
   it("still names a group whose source has since been removed", () => {
     const [group] = groupTutorDrafts([draft({ sourceId: "gone" })], []);
     expect(group.title).toMatch(/removed/i);
+  });
+
+  it("reviews a group in its source only while that source exists", () => {
+    const groups = groupTutorDrafts(
+      [
+        draft({ id: "a", sourceId: "s1" }),
+        draft({ id: "b", sourceId: "gone" }),
+        draft({ id: "c", sourceType: "tutor" }),
+        draft({ id: "d", sourceType: "tutor" }),
+      ],
+      [source("s1", "Notes")]
+    );
+
+    expect(
+      groups.map(({ title, reviewInSource, draftIds }) => ({ title, reviewInSource, draftIds }))
+    ).toEqual([
+      { title: "From your Tutor chats", reviewInSource: false, draftIds: ["c", "d"] },
+      { title: "Notes", reviewInSource: true, draftIds: ["a"] },
+      { title: "A source you have removed", reviewInSource: false, draftIds: ["b"] },
+    ]);
   });
 });

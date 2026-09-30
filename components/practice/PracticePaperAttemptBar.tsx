@@ -17,7 +17,7 @@ import { noteMissionFinished } from "@/lib/learning/mission-handoff";
 import { getStudyDayKey } from "@/lib/study/day";
 import { noteStudyActionOutcomeById } from "@/services/learning/study-action-events";
 import { PRACTICE_PAPER_MARKING_STAGE_LABELS } from "@/lib/practice/practice-paper-marking-jobs";
-import type { PracticePaper, PracticePaperMarkingJob, PracticePaperStatus } from "@/lib/practice/practice-papers";
+import type { PracticePaper, PracticePaperMarkingJob, PracticePaperStatus, PracticePaperTimingMode } from "@/lib/practice/practice-papers";
 import {
   cancelPracticePaperMarkingJob,
   getPracticePaperMarkingJob,
@@ -98,6 +98,8 @@ export default function PracticePaperAttemptBar({
   const [reportOpen, setReportOpen] = useState(false);
   const [markingJob, setMarkingJob] = useState<PracticePaperMarkingJob | null>(null);
   const [clock, setClock] = useState(Date.now());
+  /** How the next attempt is sat; the paper's own choice until the student changes it here. */
+  const [timingChoice, setTimingChoice] = useState<PracticePaperTimingMode | null>(null);
   const captureVersionRef = useRef<string | null>(null);
   const { feedback, showThrownError, showError, clear } = useFeedback();
   const replacePaper = useCallback((next: PracticePaper) => {
@@ -234,6 +236,9 @@ export default function PracticePaperAttemptBar({
       .finally(() => setBusy(null));
   }, [busy, onBeforeSubmit, paper, remaining, replacePaper, showThrownError, userId]);
 
+  const canTime = Boolean(paper && paper.durationMinutes > 0);
+  const nextTiming: PracticePaperTimingMode = canTime ? (timingChoice ?? paper?.timingMode ?? "timed") : "untimed";
+
   const start = async () => {
     if (!paper) return;
     setBusy(paper.origin === "uploaded" && paper.questions.length === 0 ? "prepare" : "start");
@@ -245,7 +250,7 @@ export default function PracticePaperAttemptBar({
         setDetailsOpen(true);
         return;
       }
-      const started = await startPracticePaperAttempt(userId, paper);
+      const started = await startPracticePaperAttempt(userId, paper, { timingMode: nextTiming });
       replacePaper(started);
       setClock(started.startedAt ?? Date.now());
     } catch (error) {
@@ -339,7 +344,7 @@ export default function PracticePaperAttemptBar({
     setBusy("retake");
     clear();
     try {
-      const started = await startPracticePaperAttempt(userId, paper, { clearPreviousWork: true });
+      const started = await startPracticePaperAttempt(userId, paper, { clearPreviousWork: true, timingMode: nextTiming });
       onRetake();
       replacePaper(started);
       setClock(started.startedAt ?? Date.now());
@@ -545,6 +550,35 @@ export default function PracticePaperAttemptBar({
               <Button type="button" size="sm" variant="ghost" onClick={() => setDetailsOpen(true)}>
                 Paper details
               </Button>
+            ) : null}
+            {(paper.status === "ready" || paper.status === "marked") && paper.questions.length > 0 && canTime ? (
+              /*
+               * Timed or not is decided as the attempt starts. It was fixed when
+               * the paper was made, and the choice there was locked until the
+               * sources were confirmed -- so it read as "always timed".
+               */
+              <div role="radiogroup" aria-label="How to sit it" className="flex rounded-full border border-[var(--color-border)] p-0.5 text-xs font-semibold">
+                {([
+                  ["timed", `Timed · ${paper.durationMinutes} min`],
+                  ["untimed", "Untimed"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={nextTiming === value}
+                    disabled={busy !== null}
+                    onClick={() => setTimingChoice(value)}
+                    className={`rounded-full px-3 py-1.5 transition ${
+                      nextTiming === value
+                        ? "bg-[var(--color-selected-bg)] text-text-primary shadow-e1"
+                        : "text-text-secondary hover:text-text-primary"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             ) : null}
             {paper.status === "ready" ? (
               <Button type="button" size="sm" disabled={busy !== null} onClick={() => void start()}>

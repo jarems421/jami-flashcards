@@ -155,10 +155,12 @@ function createPromptMatcher(existingPromptKeys: readonly string[]) {
 export function filterSourceFlashcardDrafts(
   drafts: GeneratedCardDraft[],
   maxCount: number,
-  existingPromptKeys: readonly string[] = []
+  existingPromptKeys: readonly string[] = [],
+  /** A source drafts at most eight; a Tutor request for more may ask for up to fifteen. */
+  limit = SOURCE_FLASHCARD_DRAFT_LIMIT
 ) {
   const matcher = createPromptMatcher(existingPromptKeys);
-  const safeCount = Math.max(1, Math.min(SOURCE_FLASHCARD_DRAFT_LIMIT, maxCount));
+  const safeCount = Math.max(1, Math.min(limit, maxCount));
 
   return drafts
     .filter((draft) => {

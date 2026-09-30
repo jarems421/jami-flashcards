@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 import AppPage from "@/components/layout/AppPage";
 import TutorBrief from "@/components/ai/TutorBrief";
 import TutorFolderNotes from "@/components/ai/TutorFolderNotes";
+import TutorMemoryPanel from "@/components/ai/TutorMemoryPanel";
 import TutorNotesList from "@/components/ai/TutorNotesList";
 import TutorStudyProfileForm from "@/components/ai/TutorStudyProfileForm";
 import TutorStyleChoices from "@/components/ai/TutorStyleChoices";
@@ -15,7 +16,9 @@ import {
   SectionHeader,
   Skeleton,
 } from "@/components/ui";
+import { useTutorMemory } from "@/hooks/useTutorMemory";
 import { useTutorPersonalisation } from "@/hooks/useTutorPersonalisation";
+import { featureFlags } from "@/lib/app/feature-flags";
 import {
   GENERAL_NOTE_SUGGESTIONS,
   MAX_TUTOR_GENERAL_NOTES,
@@ -65,7 +68,8 @@ function Step({
  * Personalising Jami, as one account of how you like to be taught.
  *
  * Four steps from the broadest to the most specific -- who you are, how Jami
- * teaches, what it should always keep in mind, what one subject needs -- with
+ * teaches, what it should always keep in mind, what one subject needs -- then
+ * what Jami has remembered from your chats, with
  * a running read-back beside them of what that adds up to. Everything but the
  * study level saves as it changes, so the page has no Save buttons to find and
  * nothing to lose by leaving.
@@ -96,6 +100,7 @@ export default function TutorPersonaliseWorkspace() {
     saveFolderNotes,
     saveStudyProfile,
   } = useTutorPersonalisation();
+  const memory = useTutorMemory();
 
   const selectedFolder =
     data?.folder && data.folder.id === selectedFolderId ? data.folder : null;
@@ -208,6 +213,17 @@ export default function TutorPersonaliseWorkspace() {
                   onChange={saveFolderNotes}
                 />
               </Step>
+
+              {featureFlags.enableTutorMemory ? (
+                <Step
+                  number={5}
+                  eyebrow="Memory"
+                  title="What Jami remembers"
+                  description="Jami carries a few short notes from one chat to the next, so it knows what you found hard and what you're working on. Tap a line to correct it, or remove it."
+                >
+                  <TutorMemoryPanel memory={memory} />
+                </Step>
+              ) : null}
             </div>
 
             <aside className="tutor-personalise-aside min-w-0">

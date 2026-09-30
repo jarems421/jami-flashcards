@@ -44,6 +44,7 @@ import {
 import { getAiInputTokenCap } from "@/lib/ai/budgets";
 import { buildAssistantResponseSchema } from "./response-schema";
 import { recordNotebookMarking } from "@/services/learning/notebook-markings.server";
+import { applyTutorMemoryFromAnswer } from "@/services/ai/tutor-memory.server";
 import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
 import { TUTOR_VOICE_INSTRUCTION } from "@/lib/ai/tutor-voice";
 import { cleanAiResponseText } from "@/lib/ai/response-text";
@@ -74,6 +75,14 @@ import {
   getAdminDb,
   getAdminStorageBucket,
 } from "@/services/firebase/admin";
+import { featureFlags } from "@/lib/app/feature-flags";
+import {
+  buildTutorStudyMaterialInstruction,
+  detectTutorStudyMaterialRequest,
+  getTutorStudyMaterialOffers,
+  resolveTutorStudyMaterialRequest,
+  type TutorStudyMaterialKind,
+} from "@/lib/ai/tutor-study-material";
 import {
   retrieveTutorEvidence,
   type TutorEvidence,
@@ -93,18 +102,6 @@ import {
   formatSourceOutline,
   sourceTitleMatchesReferences,
 } from "@/lib/ai/source-outline";
-import {
-  invitesTutorCardSuggestions,
-  readTutorCardSuggestions,
-  TUTOR_CARD_INSTRUCTION,
-  type JamiAssistantSuggestedCard,
-} from "@/lib/ai/tutor-card-suggestions";
-import {
-  invitesTutorQuestionSuggestions,
-  readTutorQuestionSuggestions,
-  TUTOR_QUESTION_INSTRUCTION,
-  type JamiAssistantSuggestedQuestion,
-} from "@/lib/ai/tutor-question-suggestions";
 
 export const runtime = "nodejs";
 /**
@@ -162,11 +159,12 @@ function failureResponse(error: string, status: number, code: string) {
   return Response.json({ error, code }, { status });
 }
 
-async function getAuthenticatedUserId(request: NextRequest) {
+async function getAuthenticatedUser(request: NextRequest) {
   const token = getBearerToken(request.headers.get("authorization"));
   if (!token) return null;
   try {
-    return (await getAdminAuth().verifyIdToken(token)).uid;
+    const claims = await getAdminAuth().verifyIdToken(token);
+    return { uid: claims.uid, isDemo: claims.demo === true };
   } catch {
     // An expired, malformed and forged token must all read as "not signed in";
     // the caller learns nothing about which it was.
@@ -199,8 +197,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const uid = await getAuthenticatedUserId(request);
-  if (!uid) return failureResponse("Unauthorized", 401, "unauthorized");
+  const caller = await getAuthenticatedUser(request);
+  if (!caller) return failureResponse("Unauthorized", 401, "unauthorized");
+  const uid = caller.uid;
 
   const startedAt = Date.now();
   const log = createLogger({
@@ -292,6 +291,9 @@ export async function POST(request: NextRequest) {
     message: parsedRequest.message,
     context: parsedRequest.context,
   });
+  // Practice sets are exam sessions, so they exist only where those do.
+  const practiceSetsAvailable = featureFlags.enablePastPaperPractice;
+  const requestedStudyMaterial = detectTutorStudyMaterialRequest(parsedRequest.message);
 
   let resolved;
   try {
@@ -300,6 +302,10 @@ export async function POST(request: NextRequest) {
       message: parsedRequest.message,
       context: parsedRequest.context,
       useRelatedSources: parsedRequest.useRelatedSources,
+      ...(existingThread ? { threadId: existingThread.id } : {}),
+      firstTurn: conversationHistory.length === 0,
+      // The demo account is shared, so it must remember nobody.
+      useMemory: !caller.isDemo,
     });
   } catch (error) {
     if (error instanceof JamiAssistantContextError) {
@@ -313,10 +319,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const declaredSourceBytes = resolved.sources.reduce(
-    (total, source) => total + (source.sizeBytes ?? 0),
-    0
-  );
+  /*
+   * Only what may be read whole counts against the size limit. The folder's
+   * other material is offered to the content search and read as matching
+   * passages at most, so a module's worth of files never trips it.
+   */
+  const chosenSourceIds = new Set(resolved.pinnedSourceIds ?? []);
+  const declaredSourceBytes = resolved.sources
+    .filter((source) => chosenSourceIds.has(source.id))
+    .reduce((total, source) => total + (source.sizeBytes ?? 0), 0);
   if (declaredSourceBytes > MAX_COMBINED_SOURCE_BYTES) {
     return failureResponse(
       "Choose fewer or smaller sources. Jami can read up to 30 MB at once.",
@@ -673,21 +684,23 @@ export async function POST(request: NextRequest) {
     message: parsedRequest.message,
     context: parsedRequest.context,
   });
-  /** Whether this turn may carry flashcard suggestions; decided before asking, like marking. */
-  const cardsInvited = invitesTutorCardSuggestions({
-    message: parsedRequest.message,
-    readableSourceCount: readable.length,
-  });
-  /** And practice questions, on the same terms. */
-  const questionsInvited = invitesTutorQuestionSuggestions({
-    message: parsedRequest.message,
-    readableSourceCount: readable.length,
-  });
+  /*
+   * Flashcards and practice questions asked for in a chat are made in one place:
+   * the study-material panel under the answer, which drafts them from the
+   * conversation for the student to review -- flashcards into their review
+   * queue, questions as a marked practice set they can sit. Tutor used to also
+   * write a few inline, which meant two ways to ask for the same thing; now it
+   * only says what it is making and names the focus. Older answers that carry
+   * inline suggestions still show them.
+   */
+  const studyMaterialKinds: TutorStudyMaterialKind[] = practiceSetsAvailable ? ["flashcards", "practice"] : ["flashcards"];
   const responseSchema = buildAssistantResponseSchema(
     allowedSourceRefs,
     markingInvited,
-    cardsInvited,
-    questionsInvited
+    false,
+    false,
+    resolved.memoryWritable === true,
+    studyMaterialKinds
   );
   const systemInstruction = `${TUTOR_VOICE_INSTRUCTION}
 ${resolved.studyLevelContext ? `${resolved.studyLevelContext}\n` : ""}${resolved.courseContext ? `${resolved.courseContext}\n` : ""}${resolved.personalisationContext ? `${resolved.personalisationContext}\n` : ""}Treat the student's latest explicit request as the strongest signal for the depth and kind of help they want.
@@ -709,13 +722,15 @@ Choose a clean response structure without waiting to be asked: give the direct r
 The answer is final text the student watches arrive, not a draft. Never think aloud, correct yourself, apologise for a false start or offer a second version inside it. When you set the student a question, choose and check it before you write anything: work it through yourself, make sure every value it asks for is clean and answerable at their level, and then state it once.
 For ordinary notebook Mark my work requests, provide indicative feedback. Give a numerical mark or formal grade only when the supplied evidence contains a defensible mark allocation, rubric, or mark scheme; otherwise explicitly label the result as feedback rather than an official mark. Never invoke or imitate the formal full-paper double-marker workflow for short work.
 Work in a notebook often runs across a page break. If the working you have been given starts mid-step, continues from a line you cannot see, or depends on setup that is not in front of you, say so and ask for the page it started on. Do not mark or correct the part you can see as though it were the whole answer: reporting errors that only look like errors because the first half is missing is worse than saying you cannot see it yet.
-${resolved.learningContext ? `${resolved.learningContext}\n` : ""}Return JSON only with exactly these fields:
-{"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[],"diagrams":[]}
+${resolved.learningContext ? `${resolved.learningContext}\n` : ""}${resolved.memoryContext ? `${resolved.memoryContext}\n` : ""}Return JSON only with exactly these fields:
+{"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[],"diagrams":[],"studyMaterial":"none","studyMaterialFocus":""}
 sourceRefs must contain only references that materially informed the response. It may be empty. Set each used boolean truthfully.
 
 ${markingInvited ? MARKING_INSTRUCTION : ""}
-${cardsInvited ? TUTOR_CARD_INSTRUCTION : ""}
-${questionsInvited ? TUTOR_QUESTION_INSTRUCTION : ""}
+${buildTutorStudyMaterialInstruction({
+  requested: requestedStudyMaterial === "practice" && !practiceSetsAvailable ? null : requestedStudyMaterial,
+  practiceAvailable: practiceSetsAvailable,
+})}
 ${getJsonAnswerFormatPrompt("answer")}
 
 ${responseGuidance.instruction}`;
@@ -1026,72 +1041,38 @@ ${responseGuidance.instruction}`;
     );
     if (!reply) return null;
 
-    const suggestedCards: JamiAssistantSuggestedCard[] = cardsInvited
-      ? readTutorCardSuggestions(parsedAnswer.cards, {
-          allowedSourceRefs,
-          evidenceBySourceRef,
-        }).flatMap((card) => {
-          const source = sourcesByRef.get(card.sourceRef);
-          return source
-            ? [
-                {
-                  front: card.front,
-                  back: card.back,
-                  sourceId: source.id,
-                  sourceTitle: source.title,
-                  topicIds: source.topicIds,
-                },
-              ]
-            : [];
-        })
-      : [];
-    const suggestedQuestions: JamiAssistantSuggestedQuestion[] = questionsInvited
-      ? readTutorQuestionSuggestions(parsedAnswer.questions, {
-          allowedSourceRefs,
-          evidenceBySourceRef,
-        }).flatMap((question) => {
-          const source = sourcesByRef.get(question.sourceRef);
-          return source
-            ? [
-                {
-                  prompt: question.prompt,
-                  marks: question.marks,
-                  answer: question.answer,
-                  points: question.points,
-                  sourceId: source.id,
-                  sourceTitle: source.title,
-                  topicIds: source.topicIds,
-                },
-              ]
-            : [];
-        })
-      : [];
+    const studyMaterialRequest = resolveTutorStudyMaterialRequest({
+      detected: requestedStudyMaterial,
+      modelKind: parsedAnswer.studyMaterial,
+      modelFocus: parsedAnswer.studyMaterialFocus,
+      message: parsedRequest.message,
+      practiceAvailable: practiceSetsAvailable,
+    });
+    const studyMaterialOffers = getTutorStudyMaterialOffers({
+      message: parsedRequest.message,
+      answer: reply,
+      context: parsedRequest.context,
+      practiceAvailable: practiceSetsAvailable,
+      requested: studyMaterialRequest?.kind ?? null,
+    });
     /*
-     * Offering cards and questions, once an answer has actually drawn on a
-     * source. Tutor suggests rather than writes them unasked: the offer costs a
-     * tap, and a stack of material after every answer would be noise. Not
-     * while revising a card, where the student is already studying one.
+     * Offered after teaching worth revising from, and after any answer that drew
+     * on the student's own material in Sources or a notebook -- the two rules
+     * the two older versions of this used, now one set of buttons.
      */
-    const offersMaterial =
+    const drewOnMaterial =
       parsedAnswer.sourceRefs.length > 0 &&
-      (parsedRequest.context.surface === "sources" ||
-        parsedRequest.context.surface === "notebook");
-    const followUps = [
-      ...responseGuidance.followUps,
-      ...(offersMaterial && !cardsInvited
-        ? [{ label: "Make flashcards", prompt: "Make flashcards from this." }]
-        : []),
-      ...(offersMaterial && !questionsInvited
-        ? [{ label: "Practice questions", prompt: "Write practice questions on this." }]
-        : []),
-    ];
+      (parsedRequest.context.surface === "sources" || parsedRequest.context.surface === "notebook");
+    const materialOffers =
+      studyMaterialOffers.length > 0 || !drewOnMaterial
+        ? studyMaterialOffers
+        : studyMaterialKinds.filter((kind) => kind !== studyMaterialRequest?.kind);
+    const followUps = responseGuidance.followUps;
 
     return {
       reply,
       used,
       ...(followUps.length > 0 ? { followUps } : {}),
-      ...(suggestedCards.length > 0 ? { suggestedCards } : {}),
-      ...(suggestedQuestions.length > 0 ? { suggestedQuestions } : {}),
       ...(resolved.practiceOffer ? { practiceOffer: resolved.practiceOffer } : {}),
       ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
       ...(parsedAnswer.usedWebResearch && webResearch.ok
@@ -1104,6 +1085,9 @@ ${responseGuidance.instruction}`;
       })
         ? { canIllustrate: true }
         : {}),
+      ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
+      ...(materialOffers.length > 0 ? { studyMaterialOffers: materialOffers } : {}),
+      ...(parsedAnswer.studyMaterialFocus ? { studyMaterialFocus: parsedAnswer.studyMaterialFocus } : {}),
     };
   };
 
@@ -1340,10 +1324,16 @@ ${responseGuidance.instruction}`;
           used: payload.used,
           followUps: payload.followUps ?? [],
           citations: payload.citations ?? [],
-          suggestedCards: payload.suggestedCards ?? [],
-          suggestedQuestions: payload.suggestedQuestions ?? [],
           illustrations: [],
           canIllustrate: payload.canIllustrate === true,
+          // Recorded server-side, so the route that makes the material can
+          // check it was actually agreed or offered on this answer.
+          ...(payload.studyMaterialRequest
+            ? { studyMaterialRequest: payload.studyMaterialRequest }
+            : {}),
+          studyMaterialOffers: payload.studyMaterialOffers ?? [],
+          // What an offer would be made on, kept server-side for when it is taken up.
+          ...(payload.studyMaterialFocus ? { studyMaterialFocus: payload.studyMaterialFocus } : {}),
           createdAt: now + 1,
         });
         batch.set(userRef.collection("assistantRouteState").doc(threadRef.id), {
@@ -1420,6 +1410,31 @@ ${responseGuidance.instruction}`;
           })
         );
 
+        /*
+         * Keep what Tutor proposed remembering, once the student has the
+         * answer and outside its batch: a memory that fails to save costs the
+         * student nothing, and the answer never waits on it. Counts only in
+         * the log.
+         */
+        if (resolved.memoryWritable && parsedAnswer.memory !== undefined) {
+          try {
+            const memoryOutcome = await applyTutorMemoryFromAnswer({
+              uid,
+              operations: parsedAnswer.memory,
+              context: {
+                ...(resolved.folderIds?.length === 1 ? { folderId: resolved.folderIds[0] } : {}),
+                topicIds: resolved.topicIds ?? [],
+                surface: savedContext.surface,
+              },
+              refs: resolved.memoryRefs ?? new Map(),
+              now,
+            });
+            log.info("tutor_memory.updated", memoryOutcome);
+          } catch (error) {
+            log.warn("tutor_memory.write_failed", { error });
+          }
+        }
+
         // The token counts were already collected for the failure paths and
         // then discarded on success, which left the usual questions — what a
         // request costs, how long it takes, whether fallbacks are routine —
@@ -1443,8 +1458,8 @@ ${responseGuidance.instruction}`;
             payload.reply,
             [...evidenceBySourceRef.values()].flat()
           ),
-          suggestedCardCount: payload.suggestedCards?.length ?? 0,
-          suggestedQuestionCount: payload.suggestedQuestions?.length ?? 0,
+          studyMaterialRequested: payload.studyMaterialRequest?.kind ?? null,
+          studyMaterialOffered: payload.studyMaterialOffers?.length ?? 0,
           practiceOffered: Boolean(payload.practiceOffer),
           // Alongside the token counts, so what a big attachment actually costs
           // can be read off the logs rather than guessed at.

@@ -26,6 +26,7 @@ import {
   type ImportedCardDraft,
 } from "@/lib/study/cards";
 import type { CardImage } from "@/lib/study/card-images";
+import type { CardOcclusion } from "@/lib/study/image-occlusion";
 import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const LOAD_MS = 30_000;
@@ -40,6 +41,7 @@ type CreateCardInput = {
   back: string;
   frontImage?: CardImage;
   backImage?: CardImage;
+  occlusion?: CardOcclusion;
   topicIds?: readonly string[];
   createdAt?: number;
   /** The recommendation that asked for this card, when Jami wrote it. */
@@ -60,7 +62,7 @@ type CardWrite = Pick<
   Card,
   "deckId" | "userId" | "front" | "back" | "tags" | "topicIds" | "createdAt"
 > &
-  Partial<Pick<Card, "frontImage" | "backImage" | "createdByInterventionId">>;
+  Partial<Pick<Card, "frontImage" | "backImage" | "occlusion" | "createdByInterventionId">>;
 
 export class CardBatchCreateError extends Error {
   readonly createdCards: Card[];
@@ -74,7 +76,7 @@ export class CardBatchCreateError extends Error {
   }
 }
 
-function buildNewCard(
+export function buildNewCard(
   input: Omit<CreateCardInput, "createdAt">,
   id: string,
   createdAt: number
@@ -88,6 +90,7 @@ function buildNewCard(
     // Left off entirely when absent: Firestore refuses an explicit undefined.
     ...(input.frontImage ? { frontImage: input.frontImage } : {}),
     ...(input.backImage ? { backImage: input.backImage } : {}),
+    ...(input.occlusion ? { occlusion: input.occlusion } : {}),
     /*
      * Provenance, attached at creation.
      *
@@ -106,7 +109,7 @@ function buildNewCard(
   };
 }
 
-function getCardWrite(card: Card): CardWrite {
+export function getCardWrite(card: Card): CardWrite {
   return {
     deckId: card.deckId,
     userId: card.userId,
@@ -114,6 +117,7 @@ function getCardWrite(card: Card): CardWrite {
     back: card.back,
     ...(card.frontImage ? { frontImage: card.frontImage } : {}),
     ...(card.backImage ? { backImage: card.backImage } : {}),
+    ...(card.occlusion ? { occlusion: card.occlusion } : {}),
     ...(card.createdByInterventionId
       ? { createdByInterventionId: card.createdByInterventionId }
       : {}),

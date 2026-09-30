@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, Card, EmptyState, FeedbackBanner, Skeleton } from "@/components/ui";
-import { examCourseName } from "@/lib/practice/exam-course-names";
+import { examSessionCourseName } from "@/lib/practice/exam-course-names";
+import { belongsInPracticeHistory } from "@/lib/practice/practice-sets";
 import { EXAM_BOARD_LABELS } from "@/lib/practice/exam-formats";
 import type { ExamSession } from "@/lib/practice/exam-questions";
 import { examSessionQuestionRuns } from "@/lib/practice/exam-question-groups";
@@ -66,6 +67,8 @@ export default function ExamPracticeHistory({
     folderId ? `?folderId=${encodeURIComponent(folderId)}` : ""
   }`;
 
+  const visibleSessions = (sessions ?? []).filter(belongsInPracticeHistory);
+
   let content;
   if (error) {
     content = <FeedbackBanner type="error" message={error} onDismiss={() => setError("")} />;
@@ -77,7 +80,7 @@ export default function ExamPracticeHistory({
         ))}
       </div>
     );
-  } else if (sessions.length === 0) {
+  } else if (visibleSessions.length === 0) {
     content = (
       <EmptyState
         emoji="📄"
@@ -89,7 +92,7 @@ export default function ExamPracticeHistory({
   } else {
     content = (
       <div className="app-rise grid gap-3 md:grid-cols-2">
-        {sessions.map((session) => {
+        {visibleSessions.map((session) => {
           const complete = session.status === "completed";
           /*
            * An unfinished session is scored against what has actually been
@@ -112,12 +115,14 @@ export default function ExamPracticeHistory({
                     {session.folderName} · {dateLabel(session.updatedAt)}
                   </p>
                   <h2 className="mt-2 truncate text-lg font-semibold text-text-primary">
-                    {examCourseName(session.course)}
+                    {examSessionCourseName(session)}
                   </h2>
                   <p className="mt-1 truncate text-sm text-text-secondary">
-                    {[EXAM_BOARD_LABELS[session.course.board] ?? session.course.board, session.course.tier]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    {session.course
+                      ? [EXAM_BOARD_LABELS[session.course.board] ?? session.course.board, session.course.tier]
+                          .filter(Boolean)
+                          .join(" · ")
+                      : session.practiceSet?.title ?? "Jami practice set"}
                   </p>
                 </div>
                 <span

@@ -33,6 +33,7 @@ import NotebookEditorDialog from "./NotebookEditorDialog";
 import { NotebookObjectCard } from "./NotebookObjectCard";
 import PastPaperPracticeSection from "@/components/practice/PastPaperPracticeSection";
 import PracticePaperProgress from "@/components/practice/PracticePaperProgress";
+import ReadyToPractise from "@/components/practice/ReadyToPractise";
 import { featureFlags } from "@/lib/app/feature-flags";
 
 function notebookTypeLabel(type: Notebook["type"]) {
@@ -307,6 +308,7 @@ export default function PracticeWorkspace() {
           <PastPaperPracticeSection
             pastPapersEnabled={featureFlags.enablePastPaperPractice}
           />
+          {featureFlags.enablePastPaperPractice ? <ReadyToPractise userId={user.uid} /> : null}
           <PracticePaperProgress userId={user.uid} />
           <section className="space-y-4">
             <SectionHeader eyebrow="Continue working" title="Recent notebooks" />

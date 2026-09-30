@@ -176,7 +176,7 @@ export function buildPaperCorpusCalibration(input: {
     commands.length ? `Command words opening questions, by share of items: ${commands.join(", ")}.` : "",
     topics.length ? `Topic balance by marks: ${topics.join(", ")}.` : "",
     `Difficulty mix: ${difficulty.join(", ")}.`,
-    "Use this only to match the real papers' style, tariff spread, part structure and balance. A supplied format profile still controls the exact duration, marks and sections. Write entirely original questions: never reuse, adapt or paraphrase a real past-paper question, its context, data or diagram.",
+    "Use this only to match the real papers' style, tariff spread, part structure and balance. A supplied format profile still controls the exact duration, marks and sections. Every question is Jami's own: one modelled on a real question keeps its skill, form and tariff but takes new context, numbers, data and wording -- never a real question's sentences, data or diagram.",
   ].filter(Boolean).join("\n");
 
   return { record, context };

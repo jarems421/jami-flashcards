@@ -31,7 +31,7 @@ import {
   type PracticePaperBrief,
 } from "@/lib/practice/exam-formats";
 import { getPracticePaperJobProgress } from "@/lib/practice/practice-paper-jobs";
-import { buildNotebookPagePayload, buildNotebookPayload } from "@/lib/workspace/notebooks";
+import { buildNotebookPayload } from "@/lib/workspace/notebooks";
 import { createLogger } from "@/lib/observability/logger";
 import type { PracticePaperCorpusCalibration } from "@/lib/practice/paper-corpus-calibration";
 import { loadPaperCorpusCalibration } from "@/services/ai/paper-corpus-calibration.server";
@@ -170,7 +170,15 @@ async function buildResearchContext(uid: string, request: PracticePaperGeneratio
       ? Promise.all(request.sourceIds.map((sourceId) =>
           userRef.collection("sources").doc(sourceId).get()
         ))
-      : userRef.collection("sources")
+      /*
+       * A picked school course needs no sources to be right: its format, its
+       * checked topics and its real questions say what the paper is. So only
+       * the sources the student chose are read, and choosing none is a
+       * complete answer rather than "read everything".
+       */
+      : request.scope
+        ? Promise.resolve([])
+        : userRef.collection("sources")
           .where("folderIds", "array-contains", request.folderId)
           .limit(15)
           .get()
@@ -183,7 +191,8 @@ async function buildResearchContext(uid: string, request: PracticePaperGeneratio
   const folderData = folder.data() ?? {};
   // Folder names are user-authored and may contain names or private prose.
   // Only the dedicated, sanitised subject field may enter a public query.
-  const subject = typeof folderData.subject === "string" ? folderData.subject : "";
+  const subject = request.scope?.course.specificationTitle
+    ?? (typeof folderData.subject === "string" ? folderData.subject : "");
   const studyLevel = typeof folderData.studyLevel === "string"
     ? folderData.studyLevel
     : typeof user.data()?.defaultStudyLevel === "string"
@@ -502,6 +511,7 @@ async function prepareQueuedPracticePaperResearchMetered(
     uid,
     folderId: state.job.request.folderId,
     profile: format?.profile,
+    ...(state.job.request.scope ? { scope: state.job.request.scope } : {}),
   }).catch((error: unknown) => {
     createLogger({ route: "ai.practice-paper-workflow", uid }).warn("practice_paper_calibration_failed", {
       error: error instanceof Error ? error.message.slice(0, 500) : "unknown",
@@ -800,9 +810,14 @@ async function finalizeQueuedPracticePaperMetered(
   const notebookRef = userRef.collection("notebooks").doc(state.job.paperId);
   const db = getAdminDb();
   /*
-   * The paper as a printed booklet when it typesets, and the older page per
-   * question when it does not: a paper that will not typeset is still a paper
-   * the student can sit, so typesetting never fails the job.
+   * The paper is always a printed booklet: an exam-style PDF, figures and all,
+   * written on in a notebook like an uploaded paper.
+   *
+   * A paper that would not typeset used to open instead as one notebook page
+   * per question with the question laid over it -- an older layout that showed
+   * no figures and looked nothing like an exam. It is gone. A booklet that
+   * fails now fails this step, which the workflow retries, so a transient
+   * fault costs a retry rather than a paper in the wrong shape.
    */
   const booklet = await createPracticePaperBooklet({
     uid,
@@ -811,13 +826,11 @@ async function finalizeQueuedPracticePaperMetered(
     paper: generated,
     now,
   }).catch((error: unknown) => {
-    // Logged, because the fallback is otherwise silent: a paper that should
-    // have been a booklet would just quietly open as question pages.
     createLogger({ route: "ai.practice-paper-workflow", uid, jobId }).warn("practice_paper_booklet_failed", {
       paperId: state.job.paperId,
       error: error instanceof Error ? error.message.slice(0, 500) : "unknown",
     });
-    return null;
+    throw error;
   });
   const batch = db.batch();
   batch.set(notebookRef, buildNotebookPayload({
@@ -832,36 +845,13 @@ async function finalizeQueuedPracticePaperMetered(
     pageStyle: "plain",
     now,
   }));
-  if (booklet) {
-    batch.set(userRef.collection("notebookFiles").doc(booklet.fileId), booklet.file);
-    for (const page of booklet.pages) {
-      batch.set(userRef.collection("notebookPages").doc(page.id), page.payload);
-    }
-  } else {
-    generated.questions.forEach((question, index) => {
-      const safeQuestionId = question.id.replace(/[^A-Za-z0-9_-]/g, "-");
-      const pageRef = userRef.collection("notebookPages")
-        .doc(`${state.job.paperId}_${safeQuestionId}`.slice(0, 1_400));
-      batch.set(pageRef, buildNotebookPagePayload({
-        notebookId: state.job.paperId,
-        folderId: state.job.request.folderId,
-        pageNumber: index + 1,
-        title: question.label,
-        pageType: "question",
-        pageColor: "white",
-        pageStyle: "plain",
-        status: "blank",
-        questionPrompt: `${question.prompt}\n\n[${question.marks} ${question.marks === 1 ? "mark" : "marks"}]`,
-        questionAssets: question.assets,
-        linkedQuestionId: question.id,
-        linkedPastPaperId: state.job.paperId,
-        now,
-      }));
-    });
+  batch.set(userRef.collection("notebookFiles").doc(booklet.fileId), booklet.file);
+  for (const page of booklet.pages) {
+    batch.set(userRef.collection("notebookPages").doc(page.id), page.payload);
   }
   batch.set(paperRef, buildPracticePaperPayload({
     notebookId: state.job.paperId,
-    ...(booklet ? { pdfLayout: booklet.layout } : {}),
+    pdfLayout: booklet.layout,
     // Only when the calibrated context was actually used; a custom format drops it.
     ...(state.artifact.format?.calibration && state.jobData.customFormatAllowed !== true
       ? { corpusCalibration: state.artifact.format.calibration }

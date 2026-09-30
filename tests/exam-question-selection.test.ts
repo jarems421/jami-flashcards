@@ -277,6 +277,48 @@ describe("serving a question whole", () => {
     expect(writes.filter((write) => write.data.status === "draft")).toHaveLength(4);
   });
 
+  it("gives Jami a share modelled on the real questions, placed among them by difficulty", async () => {
+    const { generateExamGapQuestions } = await import("@/services/practice/exam-gap-generation.server");
+    const generate = vi.mocked(generateExamGapQuestions);
+    generate.mockResolvedValueOnce([
+      { ...question(99).data, id: "jami_1", label: "Jami-created 1", origin: "jami_generated", difficulty: "medium", assets: [] } as never,
+    ]);
+    let written = 0;
+    const session = await createExamSession({
+      uid: "student-1",
+      folderId: "folder-1",
+      mix: { easy: 0, medium: 3, hard: 0 },
+      includeJami: true,
+      onJamiWritten: (count) => { written = count; },
+    });
+
+    const call = generate.mock.calls.at(-1)![0];
+    expect(call.missing).toEqual({ medium: 1 });
+    // Modelled on real questions from the course.
+    expect(call.exemplars?.medium?.length).toBeGreaterThan(0);
+    expect(written).toBe(1);
+    expect(session.questions.map((item) => item.label)).toEqual([
+      "Question 5(a)", "Question 5(b)", "Question 5(c)", "Jami-created 1", "Question 6",
+    ]);
+  });
+
+  it("falls back to the bank when Jami cannot write its share", async () => {
+    collections.set("examQuestions", [
+      ...(collections.get("examQuestions") ?? []),
+      partOf(5, "7", { difficulty: "medium" }),
+    ]);
+    const { generateExamGapQuestions } = await import("@/services/practice/exam-gap-generation.server");
+    vi.mocked(generateExamGapQuestions).mockRejectedValueOnce(new Error("provider down"));
+    const session = await createExamSession({
+      uid: "student-1",
+      folderId: "folder-1",
+      mix: { easy: 0, medium: 3, hard: 0 },
+      includeJami: true,
+    });
+    expect(session.questions.every((item) => item.origin !== "jami_generated")).toBe(true);
+    expect(session.questions.map((item) => item.label)).toContain("Question 7");
+  });
+
   it("counts a short session in whole questions", async () => {
     await expect(
       createExamSession({ uid: "student-1", folderId: "folder-1", mix: { easy: 0, medium: 3, hard: 0 } })

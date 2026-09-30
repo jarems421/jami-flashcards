@@ -3,6 +3,15 @@ import "server-only";
 import { isExamBoardId, type ExamFormatProfileVersion } from "@/lib/practice/exam-formats";
 import { isExamQuestionServable } from "@/lib/practice/exam-question-rights";
 import type { ExamQuestion } from "@/lib/practice/exam-questions";
+import { groupExamQuestions } from "@/lib/practice/exam-question-groups";
+import {
+  exemplarBlock,
+  examExemplarFromGroup,
+  MODELLED_QUESTION_INSTRUCTION,
+  type ExamExemplar,
+} from "@/lib/practice/exam-exemplars";
+import { conceptParentTopicIds } from "@/lib/practice/exam-specification-concepts";
+import { paperScopeIsWholeCourse, type PaperTopicScope } from "@/lib/practice/paper-topic-scope";
 import {
   buildPaperCorpusCalibration,
   MIN_CALIBRATION_QUESTIONS,
@@ -61,10 +70,20 @@ export async function loadPaperCorpusCalibration(input: {
   uid: string;
   folderId: string;
   profile?: ExamFormatProfileVersion;
+  /** The course, paper and topics the student picked, which outrank the folder's course. */
+  scope?: PaperTopicScope;
 }) {
   const db = getAdminDb();
-  const folder = await db.collection("users").doc(input.uid).collection("studyFolders").doc(input.folderId).get();
-  const course = courseFromFolder(folder.data()) ?? courseFromProfile(input.profile);
+  const course = input.scope
+    ? {
+        board: input.scope.course.board,
+        specificationId: input.scope.course.specificationId,
+        specificationTitle: input.scope.course.specificationTitle,
+        componentIds: input.scope.paper?.code ? [input.scope.paper.code] : input.scope.course.componentIds,
+      }
+    : courseFromFolder(
+        (await db.collection("users").doc(input.uid).collection("studyFolders").doc(input.folderId).get()).data()
+      ) ?? courseFromProfile(input.profile);
   if (!course) return null;
 
   const snapshot = await db
@@ -87,7 +106,7 @@ export async function loadPaperCorpusCalibration(input: {
     : [];
   const pool = narrowed.length >= MIN_CALIBRATION_QUESTIONS ? narrowed : servable;
 
-  return buildPaperCorpusCalibration({
+  const calibration = buildPaperCorpusCalibration({
     board: course.board,
     specificationId: course.specificationId,
     specificationTitle: course.specificationTitle,
@@ -101,4 +120,48 @@ export async function loadPaperCorpusCalibration(input: {
       difficulty: question.difficulty,
     })),
   });
+  if (!calibration) return null;
+  const exemplars = paperExemplars(pool, input.scope);
+  if (exemplars.length === 0) return calibration;
+  return {
+    ...calibration,
+    context: [
+      calibration.context,
+      "MODEL QUESTIONS. Build most of the paper's questions on these real questions from this course, choosing the ones that fit each part of the paper and the topics asked for, so the paper reads like the board's own. " +
+        MODELLED_QUESTION_INSTRUCTION,
+      exemplarBlock(exemplars, "MODEL QUESTION"),
+    ].join("\n\n"),
+  };
+}
+
+/** How many real questions a paper is shown to model on: enough for a paper's variety, not a paper's worth of text. */
+const MAX_PAPER_EXEMPLARS = 16;
+
+/**
+ * Real questions to model a paper on: whole questions, in the chosen topics
+ * when the student narrowed them, spread across difficulty and taken at random
+ * so two papers on one course are not built on the same few.
+ */
+function paperExemplars(pool: ExamQuestion[], scope: PaperTopicScope | undefined): ExamExemplar[] {
+  const narrowed = scope && !paperScopeIsWholeCourse(scope) ? scope : null;
+  // A whole topic chosen, or the topic above a chosen concept: its questions show the style either way.
+  const topics = narrowed
+    ? new Set([...narrowed.topicIds, ...conceptParentTopicIds(narrowed.course.specificationId, narrowed.conceptIds)])
+    : null;
+  const groups = groupExamQuestions(pool).filter(
+    (group) => !topics || group.parts.some((part) => (part.topicIds ?? []).some((id) => topics.has(id)))
+  );
+  const shuffled = groups
+    .map((group) => ({ group, key: Math.random() }))
+    .sort((left, right) => left.key - right.key)
+    .map((entry) => entry.group);
+  const chosen: ExamExemplar[] = [];
+  for (const difficulty of ["easy", "medium", "hard"] as const) {
+    for (const group of shuffled.filter((item) => item.difficulty === difficulty)) {
+      if (chosen.filter((item) => item.difficulty === difficulty).length >= Math.ceil(MAX_PAPER_EXEMPLARS / 3)) break;
+      const exemplar = examExemplarFromGroup(group);
+      if (exemplar) chosen.push(exemplar);
+    }
+  }
+  return chosen.slice(0, MAX_PAPER_EXEMPLARS);
 }

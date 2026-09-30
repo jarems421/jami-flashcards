@@ -6,7 +6,14 @@ import type { AiReasoningEffort } from "@/lib/ai/provider-policy";
 import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
 import type { Source } from "@/lib/material/sources";
 
-const MAX_RELATED_SOURCES = 15;
+/**
+ * How many of the student's files a question can draw on. It was fifteen,
+ * ranked by title and folder, and each was then read -- so a module's thirtieth
+ * lecture was never considered however relevant. Now all of them are offered
+ * to the content search and only the passages that fit are read, so this only
+ * bounds a runaway request.
+ */
+const MAX_RELATED_SOURCES = 100;
 
 export type SourceRelations = {
   currentSourceIds: string[];
@@ -48,6 +55,17 @@ export type ResolvedJamiAssistantContext = {
    */
   learningContext?: string;
   /**
+   * What Tutor remembers about the student from earlier chats, and their other
+   * recent chats. Undefined when memory is off or could not load in time.
+   */
+  memoryContext?: string;
+  /** Short references in `memoryContext` (`m1`...) to memory ids, for updates. */
+  memoryRefs?: ReadonlyMap<string, string>;
+  /** Whether Tutor may propose memory changes on this turn. */
+  memoryWritable?: boolean;
+  /** The folders this material belongs to, which scope a remembered difficulty. */
+  folderIds?: readonly string[];
+  /**
    * The engine's advice to practise the topic in front of the student, when
    * that is its decision for it. Only ever present with `learningContext`,
    * which tells the model the offer is there. See `practiceActionForMaterial`.
@@ -69,6 +87,8 @@ export type ResolvedJamiAssistantContext = {
    * costs no extra round trip.
    */
   reasoningEffort?: AiReasoningEffort;
+  /** The deck being studied, on the flashcard surface. */
+  deckId?: string;
 };
 
 export class JamiAssistantContextError extends Error {

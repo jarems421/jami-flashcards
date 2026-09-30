@@ -237,11 +237,12 @@ export async function getRecentPracticePaperAttempts(
 export async function startPracticePaperAttempt(
   userId: string,
   paper: PracticePaper,
-  options: { clearPreviousWork?: boolean } = {}
+  options: { clearPreviousWork?: boolean; timingMode?: PracticePaperTimingMode } = {}
 ) {
   return runPracticePaperAction(userId, paper.notebookId, {
     action: "start",
     clearPreviousWork: options.clearPreviousWork === true,
+    ...(options.timingMode ? { timingMode: options.timingMode } : {}),
   });
 }
 

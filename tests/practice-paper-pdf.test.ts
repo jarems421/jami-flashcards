@@ -162,4 +162,29 @@ describe("renderPracticePaperPdf", () => {
     expect(text[1]).toContain("1.");
     expect(text[1]).toContain("DO NOT WRITE IN THIS MARGIN");
   }, 60_000);
+
+  it("prints a multiple-choice question's options one to a line, and draws its graph from the chart", async () => {
+    const rendered = await renderPracticePaperPdf({
+      ...paper,
+      companionDocuments: [],
+      questions: [
+        question("m1", "01", "Which of these is a scalar quantity?\n\nTick (✓) one box.\n\nA  Speed\nB  Velocity\nC  Force", 1),
+        question("g1", "02", "Figure 1 shows the results.\n\nDetermine the gradient.", 2, {
+          assets: [{
+            id: "fig1", type: "graph", title: "Figure 1", altText: "Speed against time",
+            content: JSON.stringify({
+              kind: "graph",
+              x: { label: "Time", unit: "s", min: 0, max: 5, step: 1 },
+              y: { label: "Speed", unit: "m/s", min: 0, max: 10, step: 2 },
+              series: [{ points: [[0, 0], [5, 10]], join: "line" }],
+            }),
+          }],
+        }),
+      ],
+    });
+    const body = (await pdfText(rendered.bytes)).join(" ");
+    expect(body).toMatch(/A\s+Speed\s+B\s+Velocity\s+C\s+Force/);
+    expect(body).toContain("Time");
+    expect(body).toContain("m/s");
+  }, 60_000);
 });

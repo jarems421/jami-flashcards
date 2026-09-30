@@ -1,11 +1,11 @@
 import type { NextRequest } from "next/server";
-import { rankPracticePaperSources } from "@/lib/ai/practice-paper-generation";
+import { practicePaperSourceRole, rankPracticePaperSources } from "@/lib/ai/practice-paper-generation";
 import { generateAiText } from "@/lib/ai/provider-router";
 import { prepareSourceForTutor } from "@/lib/ai/source-ingestion";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { mapSourceData, type Source } from "@/lib/material/sources";
 import type { Logger } from "@/lib/observability/logger";
-import type { PracticePaperJobStage } from "@/lib/practice/practice-papers";
+import { MAX_PRACTICE_PAPER_SOURCE_TEXT, type PracticePaperJobStage } from "@/lib/practice/practice-papers";
 import { getPracticePaperJobProgress } from "@/lib/practice/practice-paper-jobs";
 import {
   getStudyLevelTutorLabel,
@@ -253,9 +253,36 @@ export async function prepareGenerationSources(input: {
     indexedBySource.set(chunk.sourceId, current);
   });
   let bucket: ReturnType<typeof getAdminStorageBucket> | null = null;
-  const preparationResults = await Promise.allSettled(
-    sources.map(async (source, index) => {
-      const chunks = indexedBySource.get(source.id) ?? [];
+  /*
+   * Read in priority order, a few at a time, until the text budget is full.
+   *
+   * Every unindexed file costs a vision read, and a module can bring dozens.
+   * Past papers and mark schemes are what the paper is modelled on, so they are
+   * read first; notes follow in the student's order, and once the designer's
+   * budget is full the rest are not read at all.
+   */
+  const ordered = [
+    ...sources.filter((source) => practicePaperSourceRole(source) !== "notes"),
+    ...sources.filter((source) => practicePaperSourceRole(source) === "notes"),
+  ];
+  /*
+   * Each kind of material is read for what it is for.
+   *
+   * A past paper or mark scheme is read whole, because its whole shape -- the
+   * sections, the tariffs, the run of questions -- is what the new paper is
+   * modelled on; a few matching passages would lose it. Notes give only the
+   * passages that match the paper being built, and a note the search found
+   * nothing in is not read at all, rather than read in full just in case: with
+   * a module's worth attached, that was most of them.
+   */
+  const searchWorked = indexedChunks.length > 0;
+  const chunkIndex = getAdminDb().collection("users").doc(uid).collection("sourceChunks");
+  const isIndexed = async (sourceId: string) =>
+    !(await chunkIndex.where("sourceId", "==", sourceId).limit(1).get()).empty;
+  const prepareOne = async (source: Source) => {
+      const notes = practicePaperSourceRole(source) === "notes";
+      const chunks = notes ? indexedBySource.get(source.id) ?? [] : [];
+      if (notes && chunks.length === 0 && searchWorked && (await isIndexed(source.id))) return null;
       const retrievedText = chunks.map((chunk) => {
         const location = chunk.pageStart
           ? chunk.pageStart === chunk.pageEnd
@@ -266,7 +293,8 @@ export async function prepareGenerationSources(input: {
       }).join("\n\n");
       return {
         source,
-        reference: `S${index + 1}`,
+        // Numbered as the student listed them, whatever order they are read in.
+        reference: `S${sources.indexOf(source) + 1}`,
         prepared: retrievedText
           ? {
               sourceId: source.id,
@@ -307,13 +335,42 @@ export async function prepareGenerationSources(input: {
               );
             })(),
       };
-    })
-  );
-  const failedSources = preparationResults.flatMap((result, index) =>
-    result.status === "rejected" ? [sources[index]] : []
-  );
-  const prepared = preparationResults.flatMap((result) =>
-    result.status === "fulfilled" ? [result.value] : []
-  );
-  return { failedSources, prepared };
+  };
+  const failedSources: Source[] = [];
+  const prepared: Array<NonNullable<Awaited<ReturnType<typeof prepareOne>>>> = [];
+  const skippedSources: Source[] = [];
+  /** Notes the search found nothing relevant in: left out, not failed. */
+  const irrelevantSources: Source[] = [];
+  let readBytes = 0;
+  for (let start = 0; start < ordered.length; start += PREPARATION_BATCH) {
+    const batch = ordered.slice(start, start + PREPARATION_BATCH);
+    if (readBytes >= MAX_PRACTICE_PAPER_SOURCE_TEXT) {
+      skippedSources.push(...batch);
+      continue;
+    }
+    const results = await Promise.allSettled(batch.map((source) => prepareOne(source)));
+    results.forEach((result, offset) => {
+      if (result.status === "rejected") {
+        failedSources.push(batch[offset]!);
+        return;
+      }
+      if (!result.value) {
+        irrelevantSources.push(batch[offset]!);
+        return;
+      }
+      prepared.push(result.value);
+      readBytes += result.value.prepared.inputBytes;
+    });
+  }
+  if (skippedSources.length > 0 || irrelevantSources.length > 0) {
+    log.info("source.selection", {
+      read: prepared.length,
+      notRelevant: irrelevantSources.length,
+      overBudget: skippedSources.length,
+    });
+  }
+  return { failedSources, prepared, skippedSources, irrelevantSources };
 }
+
+/** Files read at once: enough to keep a module's material quick, few enough not to flood the reader. */
+const PREPARATION_BATCH = 6;

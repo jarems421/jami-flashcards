@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CardFaceImage from "@/components/cards/CardFaceImage";
+import DiagramZoomDialog from "@/components/cards/DiagramZoomDialog";
+import OcclusionFigure from "@/components/cards/OcclusionFigure";
 import { Button, Input, StudyText } from "@/components/ui";
 import StudyAnswerEntry, {
   StudyPromptText,
@@ -17,6 +19,8 @@ import { markClozeAnswers, renderClozePrompt, renderMultiClozePrompt } from "@/l
 import type { PresentationViewState } from "@/lib/study/presentation-state";
 import { mergeGapOutcomes } from "@/lib/study/semantic-validation";
 import type { Card } from "@/lib/study/cards";
+import { findConfusedLabel } from "@/lib/study/diagram-confusion";
+import { getOcclusionLabel, getOcclusionPrompt } from "@/lib/study/image-occlusion";
 import type { CardRating } from "@/lib/study/scheduler";
 import {
   resolveAttemptOutcome,
@@ -42,7 +46,7 @@ type StudyExerciseStageProps = {
    * A missed card is sent to the back of the session, not dropped: getting it
    * wrong and never seeing it again is the one outcome that teaches nothing.
    */
-  onCommit: (rating: CardRating, options?: { requeueOnMiss?: boolean }) => void | Promise<void>;
+  onCommit: (rating: CardRating, options?: StudyCommitOptions) => void | Promise<void>;
   onModeAnswered: (mode: StudyMode, verdict: "correct" | "partial" | "incorrect" | "uncertain", assisted: boolean) => void;
   onRevisitAfterHint?: () => void;
   /**
@@ -64,6 +68,16 @@ type StudyExerciseStageProps = {
   onViewStateChange?: (state: PresentationViewState) => void;
 };
 
+export type StudyCommitOptions = {
+  requeueOnMiss?: boolean;
+  /**
+   * On a diagram card: the other label the student gave instead of this one.
+   * Recorded as an id only, so the pairs a student mixes up can be shown
+   * back to them.
+   */
+  confusedWithLabelId?: string;
+};
+
 type RevealState = {
   result: MarkedAnswer;
   response: string;
@@ -81,9 +95,56 @@ const BLANK = "_____";
  * The picture a card asks about, above whatever words go with it.
  *
  * Only a front image reaches an exercise: a card answered by a picture is
- * always flipped, so nothing here has a picture answer to reveal.
+ * always flipped, so nothing here has a picture answer to reveal. A diagram is
+ * the exception that is not one -- its answer is words, and `revealed`
+ * uncovers the box once they have been marked. Multiple choice hides every
+ * other label whatever the diagram says, because they are its options.
  */
-function PromptImage({ card }: { card: Card }) {
+function PromptImage({
+  card,
+  revealed = false,
+  hideOthers,
+  confusedLabelId,
+}: {
+  card: Card;
+  revealed?: boolean;
+  hideOthers?: boolean;
+  confusedLabelId?: string | null;
+}) {
+  const [zoomed, setZoomed] = useState(false);
+  if (card.occlusion) {
+    const phase = revealed ? "answer" : "question";
+    const confused = confusedLabelId
+      ? card.occlusion.diagram.labels.find((label) => label.id === confusedLabelId)
+      : undefined;
+    return (
+      <div className="w-full space-y-2">
+        <OcclusionFigure
+          occlusion={card.occlusion}
+          phase={phase}
+          hideOthers={hideOthers}
+          confusedLabelId={confusedLabelId}
+          maxHeight="min(52vh, 30rem)"
+          className="shadow-card"
+          onZoom={() => setZoomed(true)}
+        />
+        {revealed && confused ? (
+          <p role="status" className="text-center text-sm text-text-secondary">
+            <span className="occlusion-confused-text font-semibold">{confused.answer}</span> is the label outlined in amber. The one asked is outlined in purple.
+          </p>
+        ) : null}
+        <DiagramZoomDialog open={zoomed} title={card.front.trim() || "Diagram"} onClose={() => setZoomed(false)}>
+          <OcclusionFigure
+            occlusion={card.occlusion}
+            phase={phase}
+            hideOthers={hideOthers}
+            confusedLabelId={confusedLabelId}
+            fit="contain"
+          />
+        </DiagramZoomDialog>
+      </div>
+    );
+  }
   if (!card.frontImage) return null;
   return (
     <CardFaceImage
@@ -135,6 +196,30 @@ export default function StudyExerciseStage({
   );
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  // Only a diagram's picture changes once a choice is made: the box uncovers.
+  const [chosenId, setChosenId] = useState<string | null>(viewState.chosenId ?? null);
+  // A diagram card's words: its header, or what to do when it has none.
+  const promptText = card.occlusion ? getOcclusionPrompt(card.occlusion, exercise.prompt) : exercise.prompt;
+  const diagramNote = card.occlusion ? getOcclusionLabel(card.occlusion).label?.note : undefined;
+  /*
+   * On a diagram, which neighbour a wrong answer named: the picked option, or
+   * the typed words. Shown in amber beside the right label, and sent with the
+   * rating so the pairs a student mixes up can be shown back to them.
+   */
+  const confusedLabelId = useMemo(() => {
+    if (!card.occlusion) return null;
+    if (exercise.mode === "multiple-choice") {
+      if (!chosenId || chosenId === exercise.mcq?.correctOptionId) return null;
+      const option = exercise.mcq?.options.find((entry) => entry.id === chosenId);
+      return option ? findConfusedLabel(card.occlusion, option.text) : null;
+    }
+    if (!reveal || reveal.result.verdict === "correct") return null;
+    return findConfusedLabel(card.occlusion, reveal.response);
+  }, [card.occlusion, chosenId, exercise.mcq, exercise.mode, reveal]);
+  const commitOptions: StudyCommitOptions = {
+    requeueOnMiss: true,
+    ...(confusedLabelId ? { confusedWithLabelId: confusedLabelId } : {}),
+  };
 
   // Nothing resets state here. The page keys this component on the card and the
   // mode, so a new question arrives as a new component: no cascade of clearing
@@ -163,7 +248,7 @@ export default function StudyExerciseStage({
       if (submittingRef.current) return;
       submittingRef.current = true;
       const gap = exercise.mode === "gap-fill" ? exercise.gaps?.[0] : undefined;
-      const result =
+      const marked =
         gap
           ? markClozeAnswers({ [gap.id]: response }, [gap]).outcomes[0]
           : markTypedAnswer({
@@ -171,6 +256,18 @@ export default function StudyExerciseStage({
               expectedAnswer: exercise.expectedAnswer,
               settings: exercise.markingSettings,
             });
+      /*
+       * On a diagram, an answer that is exactly another label's name is wrong,
+       * however many words it shares with the right one: "right atrium" for
+       * the left atrium, or "ilium" for the ileum. Local marking alone would be
+       * unsure of the first and pass the second as a spelling slip; knowing
+       * the diagram, neither is in doubt.
+       */
+      const namedNeighbour =
+        card.occlusion && marked.verdict !== "correct" ? findConfusedLabel(card.occlusion, response) : null;
+      const result: MarkedAnswer = namedNeighbour
+        ? { ...marked, verdict: "incorrect", feedback: "That is another label on this diagram." }
+        : marked;
 
       // Local marking first, always. The semantic check is only reached for
       // prose it could not call either way, which is why a budget running out
@@ -203,6 +300,7 @@ export default function StudyExerciseStage({
       });
     },
     [
+      card.occlusion,
       exercise.markingSettings,
       exercise.gaps,
       exercise.expectedAnswer,
@@ -254,18 +352,22 @@ export default function StudyExerciseStage({
         className="mx-auto w-full max-w-[62rem]"
       >
         <StudyMultipleChoice
-          prompt={exercise.prompt}
-          promptMedia={<PromptImage card={card} />}
+          prompt={promptText}
+          promptMedia={<PromptImage card={card} revealed={chosenId !== null} hideOthers confusedLabelId={confusedLabelId} />}
           question={exercise.mcq}
           initialChosenId={viewState.chosenId}
-          onSelectionChange={(chosenId) => onViewStateChange?.({ chosenId })}
+          onSelectionChange={(chosenId) => {
+            // Choosing is the answer, so the box uncovers while the options explain themselves.
+            setChosenId(chosenId);
+            onViewStateChange?.({ chosenId });
+          }}
           onAnswered={(correct) => onModeAnswered("multiple-choice", correct ? "correct" : "incorrect", false)}
           // Picking the answer is the attempt; reading why the others were
           // wrong is not part of it. The rating is settled the moment they
           // choose and committed when they move on, so the explanation can be
           // read for as long as they like without it counting as hesitation.
           onContinue={(correct) =>
-            onCommit(correct ? "good" : "again", { requeueOnMiss: true })
+            onCommit(correct ? "good" : "again", commitOptions)
           }
           busy={savingRating !== null}
           onReport={onReportExercise}
@@ -300,9 +402,9 @@ export default function StudyExerciseStage({
         {reveal.revisit && onRevisitAfterHint ? (
           <Button type="button" size="lg" onClick={onRevisitAfterHint}>Continue</Button>
         ) : reveal.rating ? (
-          <Button type="button" size="lg" disabled={savingRating !== null} onClick={() => onCommit(reveal.rating!, { requeueOnMiss: true })}>Next card</Button>
+          <Button type="button" size="lg" disabled={savingRating !== null} onClick={() => onCommit(reveal.rating!, commitOptions)}>Next card</Button>
         ) : (
-          <StudyRatingControls scale={ratingScale} savingRating={savingRating} onRate={(rating) => onCommit(rating, { requeueOnMiss: true })} />
+          <StudyRatingControls scale={ratingScale} savingRating={savingRating} onRate={(rating) => onCommit(rating, commitOptions)} />
         )}
       </div>
     );
@@ -367,8 +469,8 @@ export default function StudyExerciseStage({
     </div>
   ) : (
     <div className="flex w-full flex-col items-center gap-4">
-      <PromptImage card={card} />
-      {exercise.prompt.trim() ? <StudyPromptText text={exercise.prompt} /> : null}
+      <PromptImage card={card} revealed={Boolean(reveal)} confusedLabelId={confusedLabelId} />
+      {promptText.trim() ? <StudyPromptText text={promptText} /> : null}
     </div>
   );
 
@@ -413,6 +515,7 @@ export default function StudyExerciseStage({
               text={isGapFill ? gaps[0].answer : card.back}
               className="whitespace-pre-wrap text-base leading-relaxed text-text-primary sm:text-lg"
             />
+            {diagramNote ? <StudyText as="p" text={diagramNote} className="text-sm text-text-secondary" /> : null}
             {reveal.result.feedback ? <p className="text-sm text-text-secondary">{reveal.result.feedback}</p> : null}
             {reveal.result.missingItems?.length ? <p className="text-sm text-text-secondary">Missing: {reveal.result.missingItems.join(", ")}</p> : null}
 
@@ -425,7 +528,7 @@ export default function StudyExerciseStage({
               type="button"
               size="lg"
               disabled={savingRating !== null}
-              onClick={() => onCommit(reveal.rating!, { requeueOnMiss: true })}
+              onClick={() => onCommit(reveal.rating!, commitOptions)}
             >
               Next card
             </Button>
@@ -439,7 +542,7 @@ export default function StudyExerciseStage({
               <StudyRatingControls
                 scale={ratingScale}
                 savingRating={savingRating}
-                onRate={(rating) => onCommit(rating, { requeueOnMiss: true })}
+                onRate={(rating) => onCommit(rating, commitOptions)}
               />
             </div>
           )}

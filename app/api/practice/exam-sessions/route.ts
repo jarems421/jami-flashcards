@@ -45,9 +45,13 @@ export async function POST(request: NextRequest) {
   const folderId = typeof body.folderId === "string" ? body.folderId.trim() : "";
   if (!mix || !folderId) return apiFailure(`Choose a folder and 1 to ${EXAM_SESSION_MAX_QUESTIONS} questions.`, 400, "invalid_request");
   const allowGenerated = body.allowGenerated === true;
-  const generationBudget = allowGenerated ? await checkAiBudget({ uid, action: "practicePaperGeneration" }) : null;
-  if (generationBudget && !generationBudget.allowed) return createAiBudgetLimitResponse("practicePaperGeneration", generationBudget);
+  const includeJami = body.includeJami === true;
+  // Charged up front, because writing may take minutes; given back below if nothing new was written.
+  const generationBudget = allowGenerated || includeJami ? await checkAiBudget({ uid, action: "practicePaperGeneration" }) : null;
+  // Out of allowance, Jami's share quietly gives way to the bank; a shortfall the student asked Jami to fill cannot.
+  if (generationBudget && !generationBudget.allowed && allowGenerated) return createAiBudgetLimitResponse("practicePaperGeneration", generationBudget);
   if (generationBudget?.allowed) enterAiSpendContext(aiSpendContextFor(uid, "practicePaperGeneration"));
+  let written = 0;
   try {
     const session = await createExamSession({
       uid,
@@ -57,10 +61,13 @@ export async function POST(request: NextRequest) {
       conceptIds: Array.isArray(body.conceptIds) ? body.conceptIds.filter((item): item is string => typeof item === "string").slice(0, 20) : [],
       originNotebookId: typeof body.originNotebookId === "string" ? body.originNotebookId.trim() : undefined,
       allowGenerated,
+      includeJami: includeJami && Boolean(generationBudget?.allowed),
+      onJamiWritten: (count) => { written = count; },
       useAvailableOnly: body.useAvailableOnly === true,
       paperIds: Array.isArray(body.paperIds) ? body.paperIds.filter((item): item is string => typeof item === "string").slice(0, 10) : [],
       ...(isExamCalculatorChoice(body.calculator) ? { calculator: body.calculator } : {}),
     });
+    if (generationBudget?.allowed && written === 0) await refundAiBudget(generationBudget.grant).catch(() => undefined);
     return Response.json({ session }, { status: 201 });
   } catch (error) {
     if (generationBudget?.allowed) await refundAiBudget(generationBudget.grant).catch(() => undefined);

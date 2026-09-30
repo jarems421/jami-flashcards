@@ -225,10 +225,14 @@ const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
   videoCardImport:
     "Jami has reached today's video import limit. Try again tomorrow.",
   autocompleteCard: "Jami has reached today's AI limit. Try again tomorrow.",
+  diagramLabelDetection:
+    "Jami has found labels on as many pictures as it can today. You can still draw the boxes yourself.",
   constellationPattern:
     "Jami has arranged as many skies as it can today. You can still move stars yourself.",
   sourceFlashcardDrafts: "AI budget reached for source drafts today.",
   sourcePracticeDrafts: "AI budget reached for source drafts today.",
+  photoBackgroundRestore:
+    "Jami has sharpened as many photos as it can today. Your photo was still saved.",
   // Says what is still possible, because the recommendation itself has not
   // gone away -- only Jami's offer to write the material for it.
   interventionMaterial:

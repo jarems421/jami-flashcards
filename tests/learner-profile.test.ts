@@ -8,6 +8,7 @@ import type { FlashcardEvidenceCard } from "@/lib/learning/profile/flashcard-sig
 import type { PastPaperEvidenceAttempt } from "@/lib/learning/profile/past-paper-signals";
 import type { PracticePaperEvidenceAttempt } from "@/lib/learning/profile/practice-signals";
 import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
+import { serializeLearnerProfileForTutor } from "@/lib/learning/serialize/tutor-context";
 import type { LearnerProfile, LearningConcept } from "@/lib/learning/types";
 import { getStudyDayKey } from "@/lib/study/day";
 
@@ -413,6 +414,42 @@ describe("topic states", () => {
     });
     expect([...profile.weaknesses, ...profile.uncertain, ...profile.strengths]).toEqual([]);
     expect(profile.recommendedFocus.map((item) => item.reason)).toEqual(["untested_exposure", "untested_exposure"]);
+  });
+
+  it("puts a topic the student says is hard first among equals, and changes nothing else", () => {
+    const exposureItems = [
+      { kind: "notebook" as const, id: "nb-1", topicIds: ["eigen"], at: NOW - 3 * DAY },
+      { kind: "source" as const, id: "src-1", topicIds: ["eigen", "vectors"], at: NOW - DAY },
+    ];
+    const without = profileOf({ exposureItems });
+    const flagged = profileOf({
+      exposureItems,
+      studentConcerns: [
+        { topicKey: "topic:vectors", at: NOW - DAY },
+        // A topic the profile does not have is ignored rather than invented.
+        { topicKey: "topic:unknown", at: NOW },
+      ],
+    });
+
+    expect(without.recommendedFocus.map((item) => item.target)).toEqual([
+      expect.objectContaining({ topicKey: "topic:eigen" }),
+      expect.objectContaining({ topicKey: "topic:vectors" }),
+    ]);
+    expect(flagged.recommendedFocus.map((item) => item.target)).toEqual([
+      expect.objectContaining({ topicKey: "topic:vectors" }),
+      expect.objectContaining({ topicKey: "topic:eigen" }),
+    ]);
+    expect(flagged.recommendedFocus[0].evidence.studentConcernAt).toBe(NOW - DAY);
+    const vectors = stateOf(flagged, "topic:vectors");
+    const { studentConcernAt, ...unchanged } = vectors ?? { studentConcernAt: undefined };
+    expect(studentConcernAt).toBe(NOW - DAY);
+    // Saying it is hard is not evidence: no mastery, no new decision, no weakness.
+    expect(unchanged).toEqual(stateOf(without, "topic:vectors"));
+    expect(flagged.weaknesses).toEqual([]);
+    expect(flagged.topics.some((topic) => topic.topicKey === "topic:unknown")).toBe(false);
+    expect(
+      serializeLearnerProfileForTutor(flagged, { boundaryToken: "t" })
+    ).toContain("The student has also told you they find this hard.");
   });
 
   it("counts cards that have never been reviewed as exposure, not evidence", () => {

@@ -35,7 +35,7 @@ export type TutorPersonalisation = {
   folder: TutorFolderNotes | null;
 };
 
-async function headers(json = false) {
+export async function tutorSettingsHeaders(json = false) {
   const user = auth.currentUser;
   if (!user) throw new Error("Sign in again to change Jami settings.");
   return {
@@ -51,7 +51,7 @@ async function headers(json = false) {
  * deleted in another tab -- both explain themselves, and repeating "something
  * went wrong" over them would throw that away.
  */
-async function failureMessage(response: Response, fallback: string) {
+export async function tutorSettingsFailureMessage(response: Response, fallback: string) {
   try {
     const body = (await response.json()) as { error?: unknown };
     return typeof body.error === "string" && body.error ? body.error : fallback;
@@ -68,12 +68,12 @@ export async function loadTutorPersonalisation(input: {
     ? `?folderId=${encodeURIComponent(input.folderId)}`
     : "";
   const response = await fetch(`/api/ai/assistant/personalisation${query}`, {
-    headers: await headers(),
+    headers: await tutorSettingsHeaders(),
     ...(input.signal ? { signal: input.signal } : {}),
   });
   if (!response.ok) {
     throw new Error(
-      await failureMessage(response, "Jami could not load your Jami settings.")
+      await tutorSettingsFailureMessage(response, "Jami could not load your Jami settings.")
     );
   }
   return (await response.json()) as TutorPersonalisation;
@@ -84,12 +84,12 @@ export async function saveTutorPreferences(
 ) {
   const response = await fetch("/api/ai/assistant/personalisation", {
     method: "PATCH",
-    headers: await headers(true),
+    headers: await tutorSettingsHeaders(true),
     body: JSON.stringify({ target: "preferences", ...input }),
   });
   if (!response.ok) {
     throw new Error(
-      await failureMessage(response, "Jami could not save your preferences.")
+      await tutorSettingsFailureMessage(response, "Jami could not save your preferences.")
     );
   }
   const result = (await response.json()) as { preferences: TutorPreferences };
@@ -109,7 +109,7 @@ export async function saveTutorStudyProfile(input: {
 }) {
   const response = await fetch("/api/ai/assistant/personalisation", {
     method: "PATCH",
-    headers: await headers(true),
+    headers: await tutorSettingsHeaders(true),
     body: JSON.stringify({
       target: "study-profile",
       studyLevel: input.studyLevel,
@@ -118,7 +118,7 @@ export async function saveTutorStudyProfile(input: {
   });
   if (!response.ok) {
     throw new Error(
-      await failureMessage(response, "Jami could not save your study level.")
+      await tutorSettingsFailureMessage(response, "Jami could not save your study level.")
     );
   }
   /*
@@ -140,12 +140,12 @@ export async function saveFolderTutorNotes(input: {
 }) {
   const response = await fetch("/api/ai/assistant/personalisation", {
     method: "PATCH",
-    headers: await headers(true),
+    headers: await tutorSettingsHeaders(true),
     body: JSON.stringify({ target: "folder-notes", ...input }),
   });
   if (!response.ok) {
     throw new Error(
-      await failureMessage(response, "Jami could not save these notes.")
+      await tutorSettingsFailureMessage(response, "Jami could not save these notes.")
     );
   }
   const result = (await response.json()) as {

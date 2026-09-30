@@ -9,6 +9,8 @@ import type { Source } from "@/lib/material/sources";
 const mocks = vi.hoisted(() => ({
   getThreads: vi.fn(),
   getMessages: vi.fn(),
+  generateSourceDrafts: vi.fn(),
+  createSourcePracticeSet: vi.fn(),
 }));
 
 vi.mock("@/services/ai/jami-assistant-history", () => ({
@@ -18,7 +20,11 @@ vi.mock("@/services/ai/jami-assistant-history", () => ({
 }));
 
 vi.mock("@/services/ai/source-drafts", () => ({
-  generateSourceDrafts: vi.fn(),
+  generateSourceDrafts: (...args: unknown[]) => mocks.generateSourceDrafts(...args),
+}));
+
+vi.mock("@/services/practice/practice-sets", () => ({
+  createSourcePracticeSet: (...args: unknown[]) => mocks.createSourcePracticeSet(...args),
 }));
 
 vi.mock("@/services/study/generated-content", () => ({
@@ -30,10 +36,27 @@ vi.mock("@/components/library/SourceDraftsDrawer", () => ({
   default: ({
     generation,
   }: {
-    generation: { conversationFocusAvailable: boolean };
+    generation: {
+      conversationFocusAvailable: boolean;
+      onBriefChange: (brief: string) => void;
+      onGenerate: (kind: string, depth: string) => void;
+      madePracticeSet: { title: string; sessionId: string } | null;
+    };
   }) => (
-    <div data-testid="conversation-focus">
-      {generation.conversationFocusAvailable ? "available" : "unavailable"}
+    <div>
+      <div data-testid="conversation-focus">
+        {generation.conversationFocusAvailable ? "available" : "unavailable"}
+      </div>
+      <button type="button" onClick={() => generation.onBriefChange("Only section 3, skip history")}>
+        brief
+      </button>
+      <button type="button" onClick={() => generation.onGenerate("practice-question", "low")}>
+        practice
+      </button>
+      <button type="button" onClick={() => generation.onGenerate("flashcard", "medium")}>
+        flashcards
+      </button>
+      <div data-testid="made-set">{generation.madePracticeSet?.title ?? ""}</div>
     </div>
   ),
 }));
@@ -85,6 +108,8 @@ beforeEach(() => {
     true;
   mocks.getThreads.mockReset();
   mocks.getMessages.mockReset().mockResolvedValue([]);
+  mocks.generateSourceDrafts.mockReset().mockResolvedValue({ drafts: [], removedDraftCount: 0 });
+  mocks.createSourcePracticeSet.mockReset();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -136,5 +161,42 @@ describe("SourceDraftWorkflow", () => {
       await Promise.resolve();
     });
     expect(focusAvailability()).toBe("available");
+  });
+
+  it("makes practice questions as a marked set in Practice, following the agreed brief", async () => {
+    mocks.getThreads.mockResolvedValue([]);
+    mocks.createSourcePracticeSet.mockResolvedValue({
+      id: "session-1",
+      questions: [{}, {}, {}],
+      maxTotal: 9,
+      practiceSet: { title: "Only section 3" },
+    });
+    await act(async () => {
+      render(sourceA);
+      await Promise.resolve();
+    });
+
+    const click = async (label: string) =>
+      act(async () => {
+        [...container.querySelectorAll("button")]
+          .find((candidate) => candidate.textContent?.trim() === label)
+          ?.click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    await click("brief");
+    await click("practice");
+
+    expect(mocks.createSourcePracticeSet).toHaveBeenCalledWith({
+      sourceId: "source-a",
+      depth: "low",
+      focus: "Only section 3, skip history",
+    });
+    expect(mocks.generateSourceDrafts).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="made-set"]')?.textContent).toBe("Only section 3");
+
+    await click("flashcards");
+    expect(mocks.generateSourceDrafts).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "flashcard", instructions: "Only section 3, skip history" })
+    );
   });
 });

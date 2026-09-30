@@ -1,7 +1,7 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
 import { start } from "workflow/api";
-import { parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
+import { appendToPracticePaperRequest, parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
 import { normalizePracticePaperBrief } from "@/lib/practice/exam-formats";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { mapPracticePaperJobData } from "@/lib/practice/practice-papers";
@@ -70,10 +70,7 @@ export async function POST(
     let nextRequest = requestValue;
     if (action === "correct") {
       const detail = `\n\nStudent correction to the inferred exam format: ${correction}`;
-      nextRequest = {
-        ...requestValue,
-        request: `${requestValue.request.slice(0, Math.max(0, 2_000 - detail.length))}${detail}`,
-      };
+      nextRequest = appendToPracticePaperRequest(requestValue, detail);
     }
     const currentBrief = normalizePracticePaperBrief(data.paperBrief);
     const nextBrief = action === "use_custom" && currentBrief

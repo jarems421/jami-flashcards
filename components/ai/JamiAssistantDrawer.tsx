@@ -78,6 +78,7 @@ import {
   StopDictationIcon,
 } from "@/components/ai/JamiAssistantIcons";
 import TutorSettingsPanel from "@/components/ai/TutorSettingsPanel";
+import TutorStudyMaterialPanel from "@/components/ai/TutorStudyMaterialPanel";
 import FloatingTutorHeader from "@/components/ai/JamiFloatingTutorHeader";
 import {
   FloatingTutorPill,
@@ -91,6 +92,12 @@ import {
   useFloatingTutorFrames,
 } from "@/components/ai/JamiFloatingTutor";
 import { featureFlags } from "@/lib/app/feature-flags";
+import {
+  TUTOR_STUDY_MATERIAL_KINDS,
+  type TutorStudyMaterialKind,
+  type TutorStudyMaterialRequest,
+  type TutorStudyMaterialResult,
+} from "@/lib/ai/tutor-study-material";
 
 /**
  * A chip offered before the conversation starts. Most send a prompt, but a
@@ -206,7 +213,27 @@ type DrawerMessage = {
   practiceOffer?: TutorPracticeOfferData;
   illustrations?: AssistantIllustration[];
   canIllustrate?: boolean;
+  studyMaterialRequest?: TutorStudyMaterialRequest;
+  studyMaterialOffers?: TutorStudyMaterialKind[];
+  studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
+  /** Answered in this sitting, so material Tutor agreed to is made straight away. */
+  fresh?: boolean;
 };
+
+const STUDY_MATERIAL_OFFER_LABELS: Record<TutorStudyMaterialKind, string> = {
+  flashcards: "Make flashcards",
+  practice: "Practice questions",
+};
+
+/** The material an answer carries: asked for, started from an offer, or already made. */
+function studyMaterialKindsFor(message: DrawerMessage, started: readonly TutorStudyMaterialKind[]) {
+  return TUTOR_STUDY_MATERIAL_KINDS.filter(
+    (kind) =>
+      message.studyMaterialRequest?.kind === kind ||
+      started.includes(kind) ||
+      Boolean(message.studyMaterialResults?.[kind])
+  );
+}
 
 export default function JamiAssistantDrawer({
   userId,
@@ -247,6 +274,10 @@ export default function JamiAssistantDrawer({
   /** Graphs already added from this conversation, keyed by their source. */
   const [insertedGraphKeys, setInsertedGraphKeys] = useState<Set<string>>(() => new Set());
   const [insertingGraphKey, setInsertingGraphKey] = useState<string | null>(null);
+  /** Material the student asked for from an offer under an answer, by answer. */
+  const [startedMaterial, setStartedMaterial] = useState<
+    Record<string, TutorStudyMaterialKind[]>
+  >({});
   /** The answer just added to the page, confirmed beside it for a moment. */
   const [addedAnswerKey, setAddedAnswerKey] = useState<string | null>(null);
   /*
@@ -396,6 +427,7 @@ export default function JamiAssistantDrawer({
     setActiveThread(null);
     setInsertedIllustrationIds(new Set());
     setInsertedGraphKeys(new Set());
+    setStartedMaterial({});
     setGeneratingIllustrationId(null);
     setInsertingIllustrationId(null);
     setMinimised(false);
@@ -438,6 +470,7 @@ export default function JamiAssistantDrawer({
     setActiveThread(null);
     setInsertedIllustrationIds(new Set());
     setInsertedGraphKeys(new Set());
+    setStartedMaterial({});
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }, [abandonActiveRequest]);
 
@@ -596,6 +629,44 @@ export default function JamiAssistantDrawer({
     ]
   );
 
+  /**
+   * The context material is made from, checked against the chat it belongs
+   * to: a student who has turned the page since must not have flashcards for
+   * the new page filed against the old conversation.
+   */
+  const getStudyMaterialContext = useCallback(async () => {
+    const context = await getContext();
+    if (getJamiAssistantContextKey(getJamiAssistantSavedContext(context)) !== contextKey) {
+      throw new Error("The study context changed. Open Jami again and retry.");
+    }
+    return context;
+  }, [contextKey, getContext]);
+
+  const recordStudyMaterialResult = useCallback(
+    (messageId: string, result: TutorStudyMaterialResult) => {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                studyMaterialResults: {
+                  ...message.studyMaterialResults,
+                  [result.kind]: result,
+                },
+              }
+            : message
+        )
+      );
+    },
+    []
+  );
+
+  const startStudyMaterial = (messageId: string, kind: TutorStudyMaterialKind) =>
+    setStartedMaterial((current) => ({
+      ...current,
+      [messageId]: Array.from(new Set([...(current[messageId] ?? []), kind])),
+    }));
+
   const graphActions: AssistantGraphActions = {
     canInsert: Boolean(onGraphInsert) && contextKey.startsWith("notebook:") && !viewingForeignThread,
     insertingKey: insertingGraphKey,
@@ -734,6 +805,9 @@ export default function JamiAssistantDrawer({
           suggestedQuestions: response.suggestedQuestions,
           practiceOffer: response.practiceOffer,
           canIllustrate: response.canIllustrate,
+          studyMaterialRequest: response.studyMaterialRequest,
+          studyMaterialOffers: response.studyMaterialOffers,
+          fresh: true,
         };
         // Settle on the validated reply, replacing the streamed placeholder
         // rather than trusting the deltas that produced it.
@@ -1184,22 +1258,73 @@ export default function JamiAssistantDrawer({
                             </button>
                           </div>
                         ) : null}
-                        {index === messages.length - 1 &&
-                        !loading &&
-                        message.followUps?.length ? (
-                          <div className="mt-2 flex flex-wrap gap-1.5 px-1">
-                            {message.followUps.map((followUp) => (
-                              <button
-                                key={`${followUp.label}:${followUp.prompt}`}
-                                type="button"
-                                className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-2xs font-medium text-text-muted transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-                                onClick={() => void sendMessage(followUp.prompt)}
-                              >
-                                {followUp.label}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
+                        {message.id && activeThread
+                          ? studyMaterialKindsFor(message, startedMaterial[message.id] ?? []).map((kind) => (
+                              <TutorStudyMaterialPanel
+                                key={`${message.id}:${kind}`}
+                                userId={userId}
+                                kind={kind}
+                                threadId={activeThread.id}
+                                messageId={message.id!}
+                                focus={
+                                  message.studyMaterialRequest?.kind === kind
+                                    ? message.studyMaterialRequest.focus
+                                    : undefined
+                                }
+                                result={message.studyMaterialResults?.[kind]}
+                                readOnly={viewingForeignThread}
+                                // Offers always start on the press; a request only in the sitting it was made.
+                                autoStart={Boolean(message.fresh) || (startedMaterial[message.id!] ?? []).includes(kind)}
+                                getContext={getStudyMaterialContext}
+                                onResult={(result) => recordStudyMaterialResult(message.id!, result)}
+                              />
+                            ))
+                          : null}
+                        {index === messages.length - 1 && !loading
+                          ? (() => {
+                              const offers =
+                                message.id && activeThread && !viewingForeignThread
+                                  ? (message.studyMaterialOffers ?? []).filter(
+                                      (kind) =>
+                                        !studyMaterialKindsFor(
+                                          message,
+                                          startedMaterial[message.id!] ?? []
+                                        ).includes(kind)
+                                    )
+                                  : [];
+                              if (!message.followUps?.length && offers.length === 0) return null;
+                              return (
+                                <div className="mt-2 flex flex-wrap gap-1.5 px-1">
+                                  {message.followUps?.map((followUp) => (
+                                    <button
+                                      key={`${followUp.label}:${followUp.prompt}`}
+                                      type="button"
+                                      className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-2xs font-medium text-text-muted transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                                      onClick={() => void sendMessage(followUp.prompt)}
+                                    >
+                                      {followUp.label}
+                                    </button>
+                                  ))}
+                                  {/*
+                                    Offers to make something, set apart from the
+                                    prompts beside them: those ask Tutor a
+                                    question, these make material to keep.
+                                  */}
+                                  {offers.map((kind) => (
+                                    <button
+                                      key={`offer:${kind}`}
+                                      type="button"
+                                      className="inline-flex items-center gap-1 rounded-full border border-accent/25 bg-accent/8 px-2.5 py-1 text-2xs font-semibold text-accent transition duration-fast hover:border-accent/40 hover:bg-accent/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                                      onClick={() => startStudyMaterial(message.id!, kind)}
+                                    >
+                                      <JamiTutorIcon className="h-3 w-3" />
+                                      {STUDY_MATERIAL_OFFER_LABELS[kind]}
+                                    </button>
+                                  ))}
+                                </div>
+                              );
+                            })()
+                          : null}
                       </>
                     ) : null}
                   </div>
@@ -1417,7 +1542,7 @@ export default function JamiAssistantDrawer({
                     Use folder sources
                   </span>
                   <span className="mt-0.5 block text-2xs leading-relaxed text-text-muted">
-                    Jami may choose up to 15 relevant sources when you ask.
+                    Jami searches everything in this folder and reads the parts that fit your question.
                   </span>
                 </span>
                 <button

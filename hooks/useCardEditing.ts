@@ -24,6 +24,8 @@ import {
   releaseCardImageDraft,
 } from "@/services/study/card-images";
 import { deleteCard, updateCardContent } from "@/services/study/cards";
+import { applyOcclusionUpdates } from "@/lib/study/image-occlusion";
+import { releaseDiagramLabels } from "@/services/study/image-occlusion";
 
 export type CardDraft = {
   front: string;
@@ -50,6 +52,8 @@ type UseCardEditingOptions = {
   setCards: Dispatch<SetStateAction<Card[]>>;
   onCardDeleted: (cardId: string) => void;
   feedback: CardEditingFeedback;
+  /** A diagram label is edited with its whole diagram, not as text. */
+  onEditDiagram?: (card: Card) => void;
 };
 
 export type CardEditingController = {
@@ -86,6 +90,7 @@ export function useCardEditing({
   setCards,
   onCardDeleted,
   feedback,
+  onEditDiagram,
 }: UseCardEditingOptions): CardEditingController {
   const rows = useInlineRowEditing<CardDraft>();
   const draft = rows.draft ?? EMPTY_CARD_DRAFT;
@@ -111,6 +116,11 @@ export function useCardEditing({
 
   const start = useCallback(
     (card: Card) => {
+      if (card.occlusion && onEditDiagram) {
+        feedback.clear();
+        onEditDiagram(card);
+        return;
+      }
       rows.startEditing(card.id, {
         front: card.front,
         back: card.back,
@@ -121,7 +131,7 @@ export function useCardEditing({
       setError(null);
       feedback.clear();
     },
-    [feedback, rows]
+    [feedback, onEditDiagram, rows]
   );
 
   const save = useCallback(
@@ -194,8 +204,15 @@ export function useCardEditing({
       if (deleted?.frontImage || deleted?.backImage) {
         await deleteCardImageFiles([deleted.frontImage, deleted.backImage]);
       }
+      const diagramCleanup = deleted
+        ? await releaseDiagramLabels(deleted.userId, [deleted])
+        : { updates: [], deletedCardIds: [] };
       setCards((current) =>
-        current.filter((card) => card.id !== cardId)
+        applyOcclusionUpdates(
+          current.filter((card) => card.id !== cardId),
+          diagramCleanup.updates,
+          diagramCleanup.deletedCardIds
+        )
       );
       onCardDeleted(cardId);
       if (rows.isEditing(cardId)) cancel();

@@ -152,6 +152,48 @@ function questionsSchema(allowedSourceRefs: string[]): Schema {
   };
 }
 
+/**
+ * Changes to Tutor's memory of the student, offered only when memory is on.
+ *
+ * Optional and usually absent: most turns teach something and remember
+ * nothing. Whatever arrives is checked by `applyTutorMemoryOperations`, which
+ * refuses anything it would not have written itself.
+ */
+function memorySchema(): Schema {
+  return {
+    type: Type.ARRAY,
+    description:
+      "Changes to what you remember about the student across chats. Leave it out unless the student said something that will matter in later chats.",
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        action: {
+          type: Type.STRING,
+          format: "enum",
+          enum: ["remember", "keep", "forget"],
+          description:
+            "remember to add or rewrite a memory; keep when a listed memory came up again, so it lasts longer; forget to drop one that is no longer true.",
+        },
+        kind: {
+          type: Type.STRING,
+          format: "enum",
+          enum: ["mistake", "struggle", "plan", "goal", "preference", "context", "strength"],
+          description: "What sort of memory this is.",
+        },
+        text: {
+          type: Type.STRING,
+          description: "One short line about the student in your own words, at most 160 characters. Never a quotation.",
+        },
+        ref: {
+          type: Type.STRING,
+          description: "The reference (m1, m2...) of the memory to rewrite, keep or forget.",
+        },
+      },
+      required: ["action"],
+    },
+  };
+}
+
 export function buildAssistantResponseSchema(
   allowedSourceRefs: string[],
   /** Whether this turn may carry a marking at all. Off for every non-marking turn. */
@@ -159,7 +201,15 @@ export function buildAssistantResponseSchema(
   /** Whether this turn may carry flashcard suggestions. Needs at least one source. */
   cardsInvited = false,
   /** Whether this turn may carry practice question suggestions. Needs at least one source. */
-  questionsInvited = false
+  questionsInvited = false,
+  /** Whether Tutor may propose changes to its memory of the student. */
+  memoryWritable = false,
+  /**
+   * The study material Tutor may say it was asked to make, flashcards and, where
+   * practice is on, a practice set. Its reading of the request, not the
+   * material: that is made afterwards, and reviewed, in the answer's panel.
+   */
+  studyMaterialKinds: readonly string[] = []
 ) {
   const sourceRefItems: Schema =
     allowedSourceRefs.length > 0
@@ -182,6 +232,23 @@ export function buildAssistantResponseSchema(
         : {}),
       ...(questionsInvited && allowedSourceRefs.length > 0
         ? { questions: questionsSchema(allowedSourceRefs) }
+        : {}),
+      ...(memoryWritable ? { memory: memorySchema() } : {}),
+      ...(studyMaterialKinds.length > 0
+        ? {
+            studyMaterial: {
+              type: Type.STRING,
+              format: "enum",
+              enum: ["none", ...studyMaterialKinds],
+              description:
+                "Whether the current request asks Jami to make flashcards or a practice set. Use none otherwise.",
+            },
+            studyMaterialFocus: {
+              type: Type.STRING,
+              description:
+                "What this answer is about, as a short, specific topic phrase from the conversation, for flashcards or questions to cover.",
+            },
+          }
         : {}),
       answer: {
         type: Type.STRING,

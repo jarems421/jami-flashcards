@@ -29,7 +29,7 @@ const wordCount = (value: string) => value.trim().split(/\s+/).filter(Boolean).l
 
 /** Conservative local profile used when no reviewed preparation is available. */
 export function classifyStudyTask(
-  card: Pick<Card, "front" | "back"> & Partial<Pick<Card, "frontImage">>
+  card: Pick<Card, "front" | "back"> & Partial<Pick<Card, "frontImage" | "occlusion">>
 ): StudyTaskProfile {
   const front = card.front.trim();
   const back = card.back.trim();
@@ -42,6 +42,17 @@ export function classifyStudyTask(
     reasons: [reason], source: "deterministic",
   });
 
+  /*
+   * A diagram label is a name for a part: typed from memory at best, picked
+   * from its neighbours while it is still being learned. An unnamed label is
+   * printed on the picture and can only be uncovered.
+   */
+  if (card.occlusion) {
+    if (card.occlusion.groupId) return profile("list", ["classic"], [], "diagram-group");
+    return back
+      ? profile("term", ["type-answer"], ["multiple-choice"], "diagram-label")
+      : profile("ambiguous", ["classic"], [], "diagram-label-unnamed");
+  }
   // A picture is a question. Without this every flag and diagram card read as
   // empty, and Smart Mix never typed one however short its answer.
   if ((!front && !card.frontImage) || !back) return profile("ambiguous", ["classic"], [], "missing-content");

@@ -494,11 +494,15 @@ describe("practice paper generation", () => {
       body: { error: "Invalid practice paper request", code: "invalid_request" },
     });
 
-    const huge = { ...CONTEXT, sources: [{ ...SOURCE, sizeBytes: 46 * 1024 * 1024 }] as unknown as Source[] };
-    expect(await generate({ context: huge })).toMatchObject({ status: 413, body: { code: "sources_too_large" } });
-
     expect(mocks.events.calls).toEqual([]);
     expect(mocks.events.budgetChecks).toBe(0);
+  });
+
+  it("leaves out material too large to read rather than refusing the paper", async () => {
+    const huge = { ...CONTEXT, sources: [{ ...SOURCE, sizeBytes: 46 * 1024 * 1024 }] as unknown as Source[] };
+    const { status, body } = await generate({ context: huge });
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ status: "ready", sourceRefs: [] });
   });
 
   it("designs, marks and audits a paper through a fixed sequence of passes", async () => {
@@ -653,12 +657,11 @@ describe("practice paper generation", () => {
     expect(callsOf("design")[0]?.parts.slice(0, 3)).toEqual(["BEGIN S1", "Prepared source text", "END S1"]);
   });
 
-  it("refuses more material than the model can take in at once", async () => {
-    mocks.state.inputTokenCap = 10;
+  it("leaves out read text beyond what the designer can take, rather than sending it", async () => {
     mocks.state.chunks = [{ sourceId: "source-1", text: "x".repeat(1_100_000) }];
-    expect(await generate()).toMatchObject({ status: 413, body: { code: "input_too_large" } });
-    expect(mocks.events.calls).toEqual([]);
-    expect(mocks.events.refunds).toBe(1);
+    expect((await generate()).status).toBe(200);
+    expect(logged("context.prepared_material_fitted")[0]?.fields).toMatchObject({ kept: 0, droppedSourceIds: ["source-1"] });
+    expect(callsOf("design")[0]?.parts.join("")).not.toContain("x".repeat(1_000));
   });
 
   it("asks the student one question when the sources leave the paper ambiguous", async () => {

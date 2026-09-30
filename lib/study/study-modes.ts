@@ -1,3 +1,4 @@
+import { occlusionTargetKey, type CardOcclusion } from "@/lib/study/image-occlusion";
 import type { CardRating } from "@/lib/study/scheduler";
 
 /**
@@ -210,6 +211,7 @@ export function getCardContentHash(input: {
   studySettings?: CardStudySettings;
   frontImage?: { storagePath: string };
   backImage?: { storagePath: string };
+  occlusion?: CardOcclusion;
 }) {
   /*
    * A picture changes what a card asks as much as its words do, so a saved
@@ -222,11 +224,20 @@ export function getCardContentHash(input: {
     input.frontImage || input.backImage
       ? [`image:${input.frontImage?.storagePath ?? ""}`, input.backImage?.storagePath ?? ""]
       : [];
+  /*
+   * A diagram card is asked from the whole diagram: its box, the boxes around
+   * it, and the other labels its wrong options come from. Any of those
+   * changing makes a saved exercise stale.
+   */
+  const diagram = input.occlusion
+    ? [`occlusion:${occlusionTargetKey(input.occlusion)}`, JSON.stringify(input.occlusion.diagram)]
+    : [];
   const material = [
     (input.front ?? "").trim(),
     (input.back ?? "").trim(),
     input.studySettings ? JSON.stringify(input.studySettings) : "",
     ...images,
+    ...diagram,
   ].join("\0");
 
   let hash = 0x811c9dc5;

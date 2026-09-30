@@ -1,5 +1,5 @@
 import { deleteField, doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "@/services/firebase/client";
+import { auth, db } from "@/services/firebase/client";
 import {
   createStorageFileId,
   deleteStorageFile,
@@ -9,15 +9,21 @@ import {
 } from "@/services/firebase/storage-files";
 import { derivePhotoBackgroundPaletteForView } from "@/lib/app/photo-background-palette";
 import {
+  RESTORE_MAX_INPUT_BYTES,
+  RESTORE_MIN_STRETCH,
+  restoreInputSize,
+  type PhotoRestoreSize,
+} from "@/lib/app/photo-background-restore";
+import {
   findFlatPalette,
   isFaithfulSharpening,
   photoBackgroundUpscaleFactor,
   sharpenFlatGraphic,
 } from "@/lib/app/photo-background-upscale";
 import {
-  photoSoftenSigma,
+  enlargedPhotoSharpening,
   reduceCompressionArtifacts,
-  softenPhoto,
+  sharpenPhoto,
 } from "@/lib/app/photo-background-soften";
 import {
   DEFAULT_PHOTO_BACKGROUND_VIEW,
@@ -146,9 +152,9 @@ function enlargeFlatGraphic(bitmap: ImageBitmap, factor: number) {
 }
 
 /**
- * A photo smaller than the screen: compression noise smoothed and the picture
- * softened a little at its own size, then enlarged, so the screen shows a
- * smooth photo rather than magnified JPEG blocks.
+ * A photo smaller than the screen: the faintest compression speckle smoothed,
+ * enlarged in steps of at most double, then sharpened at the final size so the
+ * edges the stretch spread out come back together.
  */
 function enlargeSmallPhoto(bitmap: ImageBitmap, factor: number) {
   const nativeWidth = bitmap.width;
@@ -156,18 +162,48 @@ function enlargeSmallPhoto(bitmap: ImageBitmap, factor: number) {
   const native = drawScaled(bitmap, nativeWidth, nativeHeight);
   const image = native.context.getImageData(0, 0, nativeWidth, nativeHeight);
   reduceCompressionArtifacts(image.data, nativeWidth, nativeHeight);
-  softenPhoto(image.data, nativeWidth, nativeHeight, photoSoftenSigma(factor));
   native.context.putImageData(image, 0, 0);
-  return drawScaled(
-    native.canvas,
-    Math.max(1, Math.round(nativeWidth * factor)),
-    Math.max(1, Math.round(nativeHeight * factor))
-  );
+
+  const width = Math.max(1, Math.round(nativeWidth * factor));
+  const height = Math.max(1, Math.round(nativeHeight * factor));
+  let step = native;
+  let stepWidth = nativeWidth;
+  let stepHeight = nativeHeight;
+  while (stepWidth * 2 < width && stepHeight * 2 < height) {
+    stepWidth *= 2;
+    stepHeight *= 2;
+    step = drawScaled(step.canvas, stepWidth, stepHeight);
+  }
+  const enlarged = drawScaled(step.canvas, width, height);
+  const result = enlarged.context.getImageData(0, 0, width, height);
+  sharpenPhoto(result.data, width, height, enlargedPhotoSharpening(factor));
+  enlarged.context.putImageData(result, 0, 0);
+  return enlarged;
+}
+
+/**
+ * The photo as it goes to be restored: at its own size, or shrunk to what the
+ * model takes, as a JPEG small enough for the request.
+ */
+async function restoreInput(bitmap: ImageBitmap, factor: number) {
+  const input = restoreInputSize(bitmap.width, bitmap.height);
+  const size: PhotoRestoreSize = {
+    ...input,
+    targetWidth: Math.max(1, Math.round(bitmap.width * factor)),
+    targetHeight: Math.max(1, Math.round(bitmap.height * factor)),
+  };
+  const { canvas } = resizeSmoothly(bitmap, bitmap.width, bitmap.height, input.width, input.height);
+  for (const quality of [0.95, 0.88, 0.8]) {
+    const blob = await canvasBlob(canvas, "image/jpeg", quality);
+    if (blob && blob.size <= RESTORE_MAX_INPUT_BYTES) return { blob, size };
+  }
+  return null;
 }
 
 /**
  * The photo resized and re-encoded, a small sample of it, and the colours read
- * from that sample.
+ * from that sample -- and, for a photo that has to be enlarged, a copy to have
+ * restored by the server, with the enlargement made here kept as the fallback.
  *
  * Re-encoding also means whatever the camera produced -- including an iPhone's
  * HEIC, where the browser can decode it -- is stored as an ordinary JPEG with
@@ -189,7 +225,7 @@ export async function preparePhotoBackground(file: File) {
     /*
      * A flat graphic smaller than the screen is enlarged here and its edges
      * redrawn crisp, rather than left for the browser to stretch into blur.
-     * Photos are never enlarged: that would only move the blur into the file.
+     * A photo stretched far enough to blur is enlarged here too, and sharpened.
      */
     const upscaleFactor = shrink === 1 ? photoBackgroundUpscaleFactor(bitmap.width, bitmap.height) : 1;
     const graphic = upscaleFactor > 1 ? enlargeFlatGraphic(bitmap, upscaleFactor) : null;
@@ -224,6 +260,8 @@ export async function preparePhotoBackground(file: File) {
       sample,
       palette: derivePhotoBackgroundPaletteForView(sample, DEFAULT_PHOTO_BACKGROUND_VIEW),
       enlargedPhoto: Boolean(photo),
+      restore:
+        !graphic && upscaleFactor > RESTORE_MIN_STRETCH ? await restoreInput(bitmap, upscaleFactor) : null,
     };
   } finally {
     bitmap.close();
@@ -267,6 +305,40 @@ async function deleteOwnPhotos(userId: string, paths: Array<string | undefined>,
   await Promise.all(stale.map((path) => deleteStorageFile(path).catch(() => undefined)));
 }
 
+/** Longer than the server's own deadline, so its fallback answer arrives first. */
+const RESTORE_REQUEST_TIMEOUT_MS = 85_000;
+
+/**
+ * Has the server restore the photo and save it, returning where it was saved,
+ * or null for any failure -- the photo enlarged here is used instead.
+ */
+async function restoreOnServer(restore: { blob: Blob; size: PhotoRestoreSize }) {
+  const user = auth.currentUser;
+  if (!user) return null;
+  try {
+    const query = new URLSearchParams(
+      Object.entries(restore.size).map(([key, value]) => [key, String(value)])
+    );
+    const response = await fetch(`/api/account/photo-background/restore?${query}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${await user.getIdToken()}`,
+        "Content-Type": restore.blob.type,
+      },
+      body: restore.blob,
+      signal: AbortSignal.timeout(RESTORE_REQUEST_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const result = (await response.json()) as { storagePath?: unknown };
+    return typeof result.storagePath === "string" &&
+      result.storagePath.startsWith(photoBackgroundStoragePrefix(user.uid))
+      ? result.storagePath
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Upload a photo, make it the account's background, and paint it here now.
  *
@@ -277,19 +349,22 @@ async function deleteOwnPhotos(userId: string, paths: Array<string | undefined>,
 export async function savePhotoBackground(userId: string, file: File): Promise<CachedPhotoBackground> {
   const prepared = await preparePhotoBackground(file);
   const previous = await loadRemotePhotoBackground(userId).catch(() => null);
-  const extension = photoBackgroundFileExtension(prepared.blob.type);
-  const contentType = extension ? prepared.blob.type : "image/jpeg";
-  const stem = prepared.enlargedPhoto
-    ? ENLARGED_PHOTO_BACKGROUND_FILE_STEM
-    : SHARP_PHOTO_BACKGROUND_FILE_STEM;
-  const fileName = `${stem}.${extension ?? "jpg"}`;
-  const storagePath = `${photoBackgroundStoragePrefix(userId)}${createStorageFileId()}/${fileName}`;
+  let storagePath = prepared.restore ? await restoreOnServer(prepared.restore) : null;
 
-  await uploadStorageFile({
-    storagePath,
-    file: new File([prepared.blob], fileName, { type: contentType }),
-    contentType,
-  });
+  if (!storagePath) {
+    const extension = photoBackgroundFileExtension(prepared.blob.type);
+    const contentType = extension ? prepared.blob.type : "image/jpeg";
+    const stem = prepared.enlargedPhoto
+      ? ENLARGED_PHOTO_BACKGROUND_FILE_STEM
+      : SHARP_PHOTO_BACKGROUND_FILE_STEM;
+    const fileName = `${stem}.${extension ?? "jpg"}`;
+    storagePath = `${photoBackgroundStoragePrefix(userId)}${createStorageFileId()}/${fileName}`;
+    await uploadStorageFile({
+      storagePath,
+      file: new File([prepared.blob], fileName, { type: contentType }),
+      contentType,
+    });
+  }
 
   const record: PhotoBackgroundRecord = {
     storagePath,

@@ -14,6 +14,14 @@ import {
 } from "@/lib/ai/jami-assistant-normalize";
 import { normalizeAssistantIllustrations } from "@/lib/ai/jami-assistant";
 import {
+  normalizeTutorStudyMaterialOffers,
+  normalizeTutorStudyMaterialRequest,
+  normalizeTutorStudyMaterialResults,
+  type TutorStudyMaterialKind,
+  type TutorStudyMaterialRequest,
+  type TutorStudyMaterialResult,
+} from "@/lib/ai/tutor-study-material";
+import {
   normalizeSuggestedCards,
   type JamiAssistantSuggestedCard,
 } from "@/lib/ai/tutor-card-suggestions";
@@ -73,6 +81,9 @@ export type JamiAssistantStoredMessage = {
   suggestedQuestions?: JamiAssistantSuggestedQuestion[];
   illustrations?: AssistantIllustration[];
   canIllustrate?: boolean;
+  studyMaterialRequest?: TutorStudyMaterialRequest;
+  studyMaterialOffers?: TutorStudyMaterialKind[];
+  studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
   createdAt: number;
 };
 
@@ -247,6 +258,9 @@ export function mapJamiAssistantStoredMessage(
   const suggestedCards = normalizeSuggestedCards(data.suggestedCards);
   const suggestedQuestions = normalizeSuggestedQuestions(data.suggestedQuestions);
   const illustrations = normalizeAssistantIllustrations(data.illustrations);
+  const studyMaterialRequest = normalizeTutorStudyMaterialRequest(data.studyMaterialRequest);
+  const studyMaterialOffers = normalizeTutorStudyMaterialOffers(data.studyMaterialOffers);
+  const studyMaterialResults = normalizeTutorStudyMaterialResults(data.studyMaterialResults);
   return {
     id,
     threadId,
@@ -259,6 +273,9 @@ export function mapJamiAssistantStoredMessage(
     ...(suggestedQuestions.length > 0 ? { suggestedQuestions } : {}),
     ...(illustrations.length > 0 ? { illustrations } : {}),
     ...(data.canIllustrate === true ? { canIllustrate: true } : {}),
+    ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
+    ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
+    ...(Object.keys(studyMaterialResults).length > 0 ? { studyMaterialResults } : {}),
     createdAt:
       typeof data.createdAt === "number" && Number.isFinite(data.createdAt)
         ? data.createdAt

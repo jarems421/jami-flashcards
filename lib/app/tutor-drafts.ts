@@ -9,6 +9,14 @@ export type TutorDraftGroup = {
   flashcards: number;
   questions: number;
   total: number;
+  /** The drafts themselves, for reviewing a group that has no source to open. */
+  draftIds: string[];
+  /**
+   * Whether the group's source still exists to review it in. A draft Tutor
+   * made in a notebook or flashcard chat has no source, and a source can be
+   * removed after its drafts were made; both are reviewed on the Tutor page.
+   */
+  reviewInSource: boolean;
 };
 
 const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
@@ -47,7 +55,8 @@ export function getDraftPreview(draft: GeneratedContentDraft) {
  *
  * Reviewing happens one source at a time, because the workflow that edits
  * drafts belongs to a source -- so a row is only useful if it names the source
- * to open. Drafts with no source still get a row, or they would be invisible.
+ * to open. Drafts with no source -- Tutor's, from a notebook or flashcard chat
+ * -- still get a row, and are reviewed on the Tutor page itself.
  */
 export function groupTutorDrafts(
   drafts: readonly GeneratedContentDraft[],
@@ -63,21 +72,29 @@ export function groupTutorDrafts(
       sourceId,
       title: sourceId
         ? titleById.get(sourceId) ?? "A source you have removed"
-        : "Written without a source",
+        : "From your Tutor chats",
       preview: "",
       flashcards: 0,
       questions: 0,
       total: 0,
+      draftIds: [],
+      reviewInSource: Boolean(sourceId && titleById.has(sourceId)),
     };
 
     if (draft.kind === "practice-question") group.questions += 1;
     else group.flashcards += 1;
     group.total += 1;
+    group.draftIds.push(draft.id);
     if (!group.preview) group.preview = getDraftPreview(draft);
     groups.set(key, group);
   }
 
   return [...groups.values()].sort((left, right) => right.total - left.total);
+}
+
+/** A group's identity on the page, stable across reloads of the queue. */
+export function draftGroupKey(group: Pick<TutorDraftGroup, "sourceId">) {
+  return group.sourceId ?? "__unsourced__";
 }
 
 /** "4 cards" / "2 questions", or nothing when there are none of that kind. */

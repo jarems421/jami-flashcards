@@ -4,6 +4,7 @@ import {
   type Dispatch,
   type SetStateAction,
   useMemo,
+  useState,
 } from "react";
 import Link from "next/link";
 import CardBrowserControls from "@/components/cards/CardBrowserControls";
@@ -11,6 +12,8 @@ import CardBulkActions from "@/components/cards/CardBulkActions";
 import CardGrid from "@/components/cards/CardGrid";
 import CardEditorDialog from "@/components/decks/CardEditorDialog";
 import CardPreviewDialog from "@/components/decks/CardPreviewDialog";
+import DiagramEditorDialog from "@/components/decks/diagram/DiagramEditorDialog";
+import DiagramWalkthroughDialog from "@/components/decks/diagram/DiagramWalkthroughDialog";
 import { Button, EmptyState, Skeleton } from "@/components/ui";
 import { useCardBrowser } from "@/hooks/useCardBrowser";
 import { useCardBulkActions } from "@/hooks/useCardBulkActions";
@@ -19,6 +22,7 @@ import type { Topic } from "@/lib/material/topics";
 import type { Source } from "@/lib/material/sources";
 import { getCardContentDuplicateCounts } from "@/lib/study/card-quality";
 import { getCardDuplicateKey, type Card } from "@/lib/study/cards";
+import { mergeSavedDiagramCards, type OcclusionDiagram } from "@/lib/study/image-occlusion";
 import type { Deck } from "@/lib/study/decks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 
@@ -71,11 +75,14 @@ export default function CardBrowserWorkspace({
     topicSelectionResetKey: bulkTopicResetKey,
     feedback,
   });
+  const [diagramCard, setDiagramCard] = useState<Card | null>(null);
+  const [walkthrough, setWalkthrough] = useState<{ diagram: OcclusionDiagram; title: string; cards: Card[] } | null>(null);
   const editing = useCardEditing({
     cards,
     setCards,
     onCardDeleted: bulk.selection.remove,
     feedback,
+    onEditDiagram: setDiagramCard,
   });
 
   const deckNamesById = useMemo(
@@ -198,6 +205,48 @@ export default function CardBrowserWorkspace({
         )}
         onClose={editing.preview.close}
         onEdit={editing.preview.edit}
+        onWalkthrough={(card) => {
+          if (!card.occlusion) return;
+          editing.preview.close();
+          const diagramId = card.occlusion.diagram.id;
+          setWalkthrough({
+            diagram: card.occlusion.diagram,
+            title: card.front.trim() || "Diagram",
+            cards: cards.filter((entry) => entry.occlusion?.diagram.id === diagramId),
+          });
+        }}
+      />
+
+      <DiagramEditorDialog
+        start={diagramCard ? { kind: "edit", card: diagramCard } : null}
+        userId={userId}
+        deckId={diagramCard?.deckId ?? ""}
+        deckName={diagramCard ? deckNamesById[diagramCard.deckId] ?? "Deck" : "Deck"}
+        topics={topics}
+        onTopicsChange={setTopics}
+        onClose={() => setDiagramCard(null)}
+        onSaved={(result) => {
+          setDiagramCard(null);
+          setCards((current) => mergeSavedDiagramCards(current, result.cards, result.removedCardIds));
+          result.removedCardIds.forEach(bulk.selection.remove);
+          feedback.success(
+            `Diagram saved: ${result.cards.length} label card${result.cards.length === 1 ? "" : "s"}.`
+          );
+        }}
+        onDeleted={(removedIds) => {
+          setDiagramCard(null);
+          const removed = new Set(removedIds);
+          setCards((current) => current.filter((card) => !removed.has(card.id)));
+          removedIds.forEach(bulk.selection.remove);
+          feedback.success("Diagram deleted.");
+        }}
+      />
+      <DiagramWalkthroughDialog
+        diagram={walkthrough?.diagram ?? null}
+        title={walkthrough?.title ?? "Diagram"}
+        cards={walkthrough?.cards}
+        userId={userId}
+        onClose={() => setWalkthrough(null)}
       />
 
       <CardEditorDialog

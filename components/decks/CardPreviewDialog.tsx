@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import CardFaceImage from "@/components/cards/CardFaceImage";
+import OcclusionFigure from "@/components/cards/OcclusionFigure";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import {
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui";
 import { getCardQualityWarnings } from "@/lib/study/card-quality";
 import type { Card } from "@/lib/study/cards";
+import { getOcclusionPrompt, getOcclusionTargets } from "@/lib/study/image-occlusion";
 
 type CardPreviewDialogProps = {
   card: Card | null;
@@ -24,6 +26,8 @@ type CardPreviewDialogProps = {
   topicNames?: string[];
   onClose: () => void;
   onEdit: (card: Card) => void;
+  /** For a diagram label: go over the whole diagram by hand. */
+  onWalkthrough?: (card: Card) => void;
 };
 
 export default function CardPreviewDialog({
@@ -34,6 +38,7 @@ export default function CardPreviewDialog({
   topicNames = [],
   onClose,
   onEdit,
+  onWalkthrough,
 }: CardPreviewDialogProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -72,6 +77,14 @@ export default function CardPreviewDialog({
                 <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">
                   Front
                 </div>
+                {card.occlusion ? (
+                  <div className="mt-3 space-y-2">
+                    <OcclusionFigure occlusion={card.occlusion} phase="question" maxHeight="18rem" />
+                    <p className="text-center text-sm text-text-secondary">
+                      {getOcclusionPrompt(card.occlusion, card.front)}
+                    </p>
+                  </div>
+                ) : null}
                 {card.frontImage ? (
                   <CardFaceImage
                     source={card.frontImage}
@@ -79,7 +92,7 @@ export default function CardPreviewDialog({
                     className="mt-3 max-h-72 w-full rounded-md object-contain"
                   />
                 ) : null}
-                {card.front.trim() ? (
+                {card.front.trim() && !card.occlusion ? (
                   <StudyText
                     as="div"
                     text={card.front}
@@ -91,6 +104,11 @@ export default function CardPreviewDialog({
                 <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">
                   Back
                 </div>
+                {card.occlusion ? (
+                  <div className="mt-3">
+                    <OcclusionFigure occlusion={card.occlusion} phase="answer" maxHeight="18rem" />
+                  </div>
+                ) : null}
                 {card.backImage ? (
                   <CardFaceImage
                     source={card.backImage}
@@ -104,7 +122,16 @@ export default function CardPreviewDialog({
                     text={card.back}
                     className="mt-3 whitespace-pre-wrap text-base leading-7 text-text-secondary"
                   />
+                ) : card.occlusion ? (
+                  <p className="mt-3 text-sm text-text-muted">The answer is the label printed on the picture.</p>
                 ) : null}
+                {card.occlusion
+                  ? getOcclusionTargets(card.occlusion).labels.flatMap((label) =>
+                      label.note ? [
+                        <StudyText key={label.id} as="p" text={label.note} className="mt-2 text-sm text-text-muted" />,
+                      ] : []
+                    )
+                  : null}
               </div>
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -129,13 +156,18 @@ export default function CardPreviewDialog({
                 </span>
               ))}
             </div>
-            <div className="mt-5 flex justify-end">
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              {card.occlusion && onWalkthrough ? (
+                <Button type="button" variant="ghost" onClick={() => onWalkthrough(card)}>
+                  Go over the diagram
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="secondary"
                 onClick={() => onEdit(card)}
               >
-                Edit card
+                {card.occlusion ? "Edit diagram" : "Edit card"}
               </Button>
             </div>
           </>

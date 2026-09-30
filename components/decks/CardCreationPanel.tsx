@@ -31,9 +31,14 @@ import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import VideoCardCreator from "@/components/decks/VideoCardCreator";
 import SourceCardCreator from "@/components/decks/SourceCardCreator";
+import DiagramEditorDialog, {
+  type DiagramEditorStart,
+} from "@/components/decks/diagram/DiagramEditorDialog";
+import DiagramPictureSource from "@/components/decks/diagram/DiagramPictureSource";
+import type { DiagramPicture } from "@/lib/study/diagram-image";
 import { Button, Input, SectionHeader, StudyText } from "@/components/ui";
 
-type CreationMode = "single" | "source" | "video";
+type CreationMode = "single" | "diagram" | "source" | "video";
 
 type CardCreationPanelProps = {
   userId: string;
@@ -100,6 +105,9 @@ export default function CardCreationPanel({
   const [singleBackImage, setSingleBackImage] = useState<CardImageDraft>();
   const [singleTopicIds, setSingleTopicIds] = useState<string[]>([]);
   const [addingSingleCard, setAddingSingleCard] = useState(false);
+  const [diagramStart, setDiagramStart] = useState<DiagramEditorStart | null>(null);
+  /** The page the last diagram was cut from, to cut another from it straight away. */
+  const [lastDiagramSource, setLastDiagramSource] = useState<DiagramPicture | null>(null);
 
   useEffect(() => {
     if (!fallbackDeckId) {
@@ -221,6 +229,7 @@ export default function CardCreationPanel({
         action={
           <div className="flex flex-wrap gap-2">
             <ModeButton active={mode === "single"} onClick={() => setMode("single")}>Single card</ModeButton>
+            <ModeButton active={mode === "diagram"} onClick={() => setMode("diagram")}>Diagram</ModeButton>
             <ModeButton active={mode === "source"} onClick={() => setMode("source")}>From notes or file</ModeButton>
             <ModeButton active={mode === "video"} onClick={() => setMode("video")}>From video</ModeButton>
           </div>
@@ -378,6 +387,73 @@ export default function CardCreationPanel({
           </Button>
         </div>
       ) : null}
+
+      {mode === "diagram" ? (
+        <div className="mt-5 space-y-4 animate-fade-in">
+          {!deckIsFixed ? (
+            <div>
+              <div className="mb-2 text-sm font-medium tracking-[0.01em] text-text-secondary">
+                Deck
+              </div>
+              {renderDeckSelect(singleDeckId, setSingleDeckId, diagramStart !== null)}
+            </div>
+          ) : null}
+          <p className="max-w-2xl text-sm leading-6 text-text-secondary">
+            Cover the labels on a picture, like a heart or a cell, and each label becomes its own
+            card. You name what is under the box, and Jami schedules every label separately.
+          </p>
+          {lastDiagramSource ? (
+            <div className="flex flex-col gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-text-secondary">
+                Diagram saved. Is there another diagram on the same page?
+              </p>
+              <div className="flex shrink-0 gap-2">
+                <Button type="button" size="sm" variant="ghost" onClick={() => setLastDiagramSource(null)}>
+                  No
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!singleDeckId || diagramStart !== null}
+                  onClick={() => setDiagramStart({ kind: "new", picture: lastDiagramSource, next: "crop" })}
+                >
+                  Crop another from it
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          <DiagramPictureSource
+            userId={userId}
+            disabled={!singleDeckId || diagramStart !== null}
+            onPicture={(picture, next) => {
+              setLastDiagramSource(null);
+              setDiagramStart({ kind: "new", picture, next });
+            }}
+          />
+          {!singleDeckId && decks.length > 0 ? (
+            <p className="text-sm text-text-muted">Choose a deck first.</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <DiagramEditorDialog
+        start={diagramStart}
+        userId={userId}
+        deckId={singleDeckId}
+        deckName={deckNamesById[singleDeckId] ?? "Deck"}
+        topics={topics}
+        onTopicsChange={onTopicsChange}
+        onClose={() => setDiagramStart(null)}
+        onSaved={(result, { sourcePicture }) => {
+          setDiagramStart(null);
+          setLastDiagramSource(sourcePicture);
+          onCardsCreated(result.cards, { source: "diagram", selectCreated: false });
+          onFeedback({
+            type: "success",
+            message: `Diagram saved: ${result.cards.length} label card${result.cards.length === 1 ? "" : "s"}. Each one joins review on its own schedule.`,
+          });
+        }}
+      />
 
       {mode === "video" ? (
         <VideoCardCreator

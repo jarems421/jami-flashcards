@@ -91,6 +91,8 @@ export async function createPastPaperPracticeSession(input: {
   conceptIds?: string[];
   originNotebookId?: string;
   allowGenerated?: boolean;
+  /** About a third of the session as Jami's own exam-style questions. */
+  includeJami?: boolean;
   useAvailableOnly?: boolean;
   calculator?: ExamCalculatorChoice;
   paperIds?: string[];

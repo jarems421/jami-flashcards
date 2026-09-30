@@ -60,7 +60,8 @@ describe("buildPaperCorpusCalibration", () => {
     expect(context).toContain("2 reviewed");
     expect(context).toMatch(/Marks per question or part: 1 mark \d+%/);
     expect(context).toMatch(/Command words opening questions.*Explain \d+%.*Work out \d+%/);
-    expect(context).toContain("never reuse, adapt or paraphrase");
+    // Modelling on a real question is allowed; carrying its words, data or diagram over is not.
+    expect(context).toContain("never a real question's sentences, data or diagram");
     expect(context).not.toContain("Sam's triangle");
   });
 

@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
     prepareSource: vi.fn(),
     retrieveChunks: vi.fn(),
     after: vi.fn(),
+    applyMemory: vi.fn(async () => ({ added: 1, updated: 0, forgotten: 0, rejected: 0 })),
     generateText: vi.fn(),
     streamText: vi.fn(),
     generateResearch: vi.fn<
@@ -114,6 +115,10 @@ vi.mock("@/lib/ai/source-ingestion", () => ({
 
 vi.mock("@/services/ai/source-index.server", () => ({
   retrieveTutorEvidence: mocks.retrieveChunks,
+}));
+
+vi.mock("@/services/ai/tutor-memory.server", () => ({
+  applyTutorMemoryFromAnswer: mocks.applyMemory,
 }));
 
 vi.mock("next/server", async (importOriginal) => ({
@@ -276,6 +281,8 @@ describe("universal Jami assistant route", () => {
       message: "What is photosynthesis?",
       context: { surface: "learn", cardId: "card-1", phase: "answer" },
       useRelatedSources: true,
+      firstTurn: true,
+      useMemory: true,
     });
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -316,6 +323,79 @@ describe("universal Jami assistant route", () => {
     expect(referenceOrder).toContain(
       "ignore it completely when it is about something else"
     );
+  });
+
+  it("agrees to make flashcards a student asks for, from any chat, and records it", async () => {
+    const answer = JSON.stringify({
+      answer: "Making you flashcards on the light reactions now.",
+      sourceRefs: [],
+      usedCurrentContext: true,
+      usedGeneralKnowledge: false,
+      usedWebResearch: false,
+      graphs: [],
+      studyMaterial: "flashcards",
+      studyMaterialFocus: "photosynthesis: the light reactions",
+    });
+    mocks.streamText.mockResolvedValueOnce(answer);
+
+    const response = await postAssistant(
+      request(
+        validBody({
+          message: "can you make me 8 flashcards on this please?",
+          context: { surface: "sources", sourceIds: ["source-1"] },
+        })
+      )
+    );
+    const { terminal } = await readStream(response);
+
+    expect(terminal).toMatchObject({
+      type: "done",
+      studyMaterialRequest: {
+        kind: "flashcards",
+        focus: "photosynthesis: the light reactions",
+        count: 8,
+      },
+    });
+    expect(mocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          systemInstruction: expect.stringMatching(
+            /never send them to Sources[\s\S]*The student has asked for flashcards\. Set studyMaterial to "flashcards"/
+          ),
+        }),
+      })
+    );
+    const savedAnswer = mocks.persisted.find(
+      (entry) =>
+        entry.kind === "create" &&
+        (entry.data as { role?: string }).role === "assistant"
+    );
+    expect(savedAnswer?.data).toMatchObject({
+      studyMaterialRequest: { kind: "flashcards", focus: "photosynthesis: the light reactions" },
+      studyMaterialFocus: "photosynthesis: the light reactions",
+    });
+  });
+
+  it("offers flashcards and practice questions after teaching", async () => {
+    const answer = JSON.stringify({
+      answer: `${"Light is absorbed by chlorophyll and drives the splitting of water. ".repeat(6)}`,
+      sourceRefs: [],
+      usedCurrentContext: false,
+      usedGeneralKnowledge: true,
+      usedWebResearch: false,
+      graphs: [],
+      studyMaterial: "none",
+      studyMaterialFocus: "why photosynthesis needs light",
+    });
+    mocks.streamText.mockResolvedValueOnce(answer);
+
+    const response = await postAssistant(
+      request(validBody({ message: "I'm struggling to see why plants need light, can you explain?" }))
+    );
+    const { terminal } = await readStream(response);
+
+    expect(terminal).toMatchObject({ studyMaterialOffers: ["flashcards", "practice"] });
+    expect(terminal).not.toHaveProperty("studyMaterialRequest");
   });
 
   it("puts the learner profile in the system instruction when there is one", async () => {
@@ -424,6 +504,8 @@ describe("universal Jami assistant route", () => {
           sizeBytes: 31 * 1024 * 1024,
         },
       ],
+      // Chosen by the student, so it would be read whole.
+      pinnedSourceIds: ["source-large"],
     });
 
     const response = await postAssistant(request(validBody()));
@@ -711,17 +793,84 @@ describe("universal Jami assistant route", () => {
     }
   });
 
-  it("returns flashcard suggestions only when asked, each tied to the source it came from", async () => {
-    const withCards = JSON.stringify({
-      answer: "These cover how light energy is captured.",
+  it("tells Tutor what it remembers, lets it propose changes, and keeps them after the answer", async () => {
+    const resolved = (await mocks.resolveContext.getMockImplementation()?.({})) as Record<string, unknown>;
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...resolved,
+      folderIds: ["chemistry"],
+      topicIds: ["moles"],
+      memoryContext: "--- BEGIN TUTOR MEMORY t ---\n[m1] (finds hard) \"Finds moles hard\"\n--- END TUTOR MEMORY t ---",
+      memoryRefs: new Map([["m1", "memory-1"]]),
+      memoryWritable: true,
+    });
+    const operations = [{ action: "remember", kind: "plan", text: "About to try the moles questions" }];
+    mocks.streamText.mockResolvedValueOnce(JSON.stringify({
+      answer: "Let's work through one together.",
+      sourceRefs: [],
+      usedCurrentContext: true,
+      usedGeneralKnowledge: true,
+      usedWebResearch: false,
+      graphs: [],
+      memory: operations,
+    }));
+
+    const { terminal } = await readStream(await postAssistant(request(validBody())));
+
+    expect(terminal).toMatchObject({ type: "done", reply: "Let's work through one together." });
+    expect(mocks.resolveContext).toHaveBeenCalledWith(
+      expect.objectContaining({ firstTurn: true, useMemory: true })
+    );
+    const call = mocks.streamText.mock.calls[0]?.[0] as {
+      request: { systemInstruction: string };
+      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+    };
+    expect(call.request.systemInstruction).toContain('[m1] (finds hard) "Finds moles hard"');
+    expect(call.generationConfig.responseSchema.properties).toHaveProperty("memory");
+    expect(mocks.applyMemory).toHaveBeenCalledWith(expect.objectContaining({
+      uid: "user-1",
+      operations,
+      context: { folderId: "chemistry", topicIds: ["moles"], surface: "learn" },
+      refs: new Map([["m1", "memory-1"]]),
+    }));
+  });
+
+  it("offers no memory field and saves nothing when memory is not in play", async () => {
+    mocks.streamText.mockResolvedValueOnce(JSON.stringify({
+      answer: "An answer.",
+      sourceRefs: [],
+      usedCurrentContext: true,
+      usedGeneralKnowledge: true,
+      usedWebResearch: false,
+      graphs: [],
+      memory: [{ action: "remember", kind: "goal", text: "Planted by an answer" }],
+    }));
+
+    await readStream(await postAssistant(request(validBody())));
+
+    const call = mocks.streamText.mock.calls[0]?.[0] as {
+      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+    };
+    expect(call.generationConfig.responseSchema.properties).not.toHaveProperty("memory");
+    expect(mocks.applyMemory).not.toHaveBeenCalled();
+  });
+
+  it("never remembers anything for the shared demo account", async () => {
+    mocks.verifyIdToken.mockResolvedValueOnce({ uid: "user-1", demo: true } as { uid: string });
+
+    await readStream(await postAssistant(request(validBody())));
+
+    expect(mocks.resolveContext).toHaveBeenCalledWith(expect.objectContaining({ useMemory: false }));
+  });
+
+  it("hands a request for flashcards to the study-material panel instead of writing cards inline", async () => {
+    mocks.streamText.mockResolvedValueOnce(JSON.stringify({
+      answer: "I'll make flashcards on how light energy is captured.",
       sourceRefs: ["S1"],
       usedCurrentContext: false,
       usedGeneralKnowledge: true,
-      cards: [
-        { front: "What does chlorophyll do in a leaf?", back: "It absorbs light energy.", sourceRef: "S1" },
-      ],
-    });
-    mocks.streamText.mockResolvedValueOnce(withCards);
+      studyMaterial: "flashcards",
+      studyMaterialFocus: "how chlorophyll captures light energy",
+    }));
 
     const { terminal } = await readStream(
       await postAssistant(request(validBody({ message: "Make flashcards from this." })))
@@ -729,39 +878,15 @@ describe("universal Jami assistant route", () => {
 
     expect(terminal).toMatchObject({
       type: "done",
-      suggestedCards: [
-        {
-          front: "What does chlorophyll do in a leaf?",
-          back: "It absorbs light energy.",
-          sourceId: "source-1",
-          sourceTitle: "Biology notes",
-          topicIds: [],
-        },
-      ],
+      studyMaterialRequest: { kind: "flashcards", focus: "how chlorophyll captures light energy" },
     });
-    expect(mocks.streamText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        generationConfig: expect.objectContaining({
-          responseSchema: expect.objectContaining({
-            properties: expect.objectContaining({ cards: expect.anything() }),
-          }),
-        }),
-      })
-    );
-    const savedAnswer = mocks.persisted.find(
-      (entry) => entry.kind === "create" && (entry.data as { role?: string }).role === "assistant"
-    );
-    expect(savedAnswer?.data).toMatchObject({
-      suggestedCards: [expect.objectContaining({ sourceId: "source-1" })],
-    });
-
-    // An ordinary question is never offered the field.
-    mocks.streamText.mockClear();
-    await readStream(await postAssistant(request(validBody())));
-    const ordinary = mocks.streamText.mock.calls[0]?.[0] as {
+    expect(terminal).not.toHaveProperty("suggestedCards");
+    const schema = (mocks.streamText.mock.calls.at(-1)?.[0] as {
       generationConfig: { responseSchema: { properties: Record<string, unknown> } };
-    };
-    expect(ordinary.generationConfig.responseSchema.properties).not.toHaveProperty("cards");
+    }).generationConfig.responseSchema.properties;
+    // One way to make cards: the panel. The inline field is never offered.
+    expect(schema).not.toHaveProperty("cards");
+    expect(schema).toHaveProperty("studyMaterial");
   });
 
   it("offers to make flashcards after an answer drawn from sources", async () => {
@@ -772,9 +897,7 @@ describe("universal Jami assistant route", () => {
     );
 
     expect(terminal).toMatchObject({
-      followUps: expect.arrayContaining([
-        { label: "Make flashcards", prompt: "Make flashcards from this." },
-      ]),
+      studyMaterialOffers: expect.arrayContaining(["flashcards"]),
     });
   });
 

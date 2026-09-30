@@ -81,6 +81,8 @@ export function mapGeneratedContentDraftData(
         ? data.sourceType
         : undefined,
     sourceId: normalizeOptionalString(data.sourceId, 160),
+    folderId: normalizeOptionalString(data.folderId, 160),
+    deckId: normalizeOptionalString(data.deckId, 160),
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
   };

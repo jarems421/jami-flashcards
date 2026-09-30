@@ -115,6 +115,19 @@ describe("choosing between a drawing and a photograph", () => {
     ).toContain("asset_not_described");
   });
 
+  it("refuses a graph that is not a chart, and accepts one that is", () => {
+    expect(
+      codes({ prompt: "Use Figure 1.", assets: [{ id: "g1", type: "graph", title: "Figure 1", content: "a rising line", ...described }] })
+    ).toContain("asset_chart_unreadable");
+    const chart = JSON.stringify({
+      kind: "graph",
+      x: { label: "Time", unit: "s", min: 0, max: 10, step: 2 },
+      y: { label: "Speed", unit: "m/s", min: 0, max: 20, step: 5 },
+      series: [{ points: [[0, 0], [10, 20]], join: "line" }],
+    });
+    expect(codes({ prompt: "Use Figure 1.", assets: [{ id: "g1", type: "graph", title: "Figure 1", content: chart, ...described }] })).toEqual([]);
+  });
+
   it("says nothing about a question that needs no picture", () => {
     expect(codes({ prompt: "Define the term 'osmosis'.", assets: [] })).toEqual([]);
   });

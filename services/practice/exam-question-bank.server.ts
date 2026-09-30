@@ -35,6 +35,8 @@ import {
 } from "@/lib/practice/exam-specification-topics";
 import { normalizeQuestionAssets } from "@/lib/practice/practice-papers";
 import { generateExamGapQuestions } from "@/services/practice/exam-gap-generation.server";
+import { examGeneratedQuestionRefs } from "@/services/practice/exam-evidence.server";
+import { examExemplarFromGroup, jamiShareOfMix, type ExamExemplar } from "@/lib/practice/exam-exemplars";
 import { recoverExamDifficultyContributions } from "@/services/practice/exam-difficulty.server";
 import { projectExamAttempt, projectExamSession, projectExamSessionQuestion } from "@/lib/practice/exam-projections";
 
@@ -268,6 +270,42 @@ async function loadContext(uid: string, folderId: string) {
   };
 }
 
+/**
+ * A folder's exam course, checked exactly as a session checks it, or null
+ * where the folder has none a session could use.
+ *
+ * A practice set does not need a course -- without one it is written to the
+ * folder's level and material -- so "no usable course" is an answer here, not
+ * a failure. Anything else, a missing folder included, still is.
+ */
+export async function loadPracticeSetCourse(input: {
+  uid: string;
+  folderId: string;
+  topicIds?: readonly string[];
+  conceptIds?: readonly string[];
+}) {
+  try {
+    const { folder, subject, subjectKey } = await loadContext(input.uid, input.folderId);
+    const course = folder.examCourse!;
+    return {
+      folder,
+      course,
+      subject,
+      subjectKey,
+      topicIds: canonicalTopicIds(course.specificationId, input.topicIds ?? []),
+      conceptIds: canonicalConceptIds(course.specificationId, input.conceptIds ?? []),
+    };
+  } catch (error) {
+    if (
+      error instanceof ExamQuestionBankError &&
+      (error.code === "unsupported_level" || error.code === "course_required")
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export class ExamQuestionBankError extends Error {
   constructor(
     message: string,
@@ -462,6 +500,40 @@ export async function getExamQuestionAvailability(input: {
 }
 
 /**
+ * Questions Jami wrote for this student and course earlier that they have not
+ * yet attempted, matching the difficulty and any topic or concept asked for.
+ * Read by the course's own paper id, which needs no extra index.
+ */
+async function reusableJamiQuestions(input: {
+  uid: string;
+  specificationId: string;
+  wanted: Partial<Record<ExamDifficulty, number>>;
+  topicIds: string[];
+  conceptIds: string[];
+  seenIds: ReadonlySet<string>;
+}) {
+  const snapshot = await examGeneratedQuestionRefs(input.uid).questions
+    .where("paperId", "==", `jami-gap-${input.specificationId}`)
+    .limit(300)
+    .get();
+  const narrowed = input.topicIds.length > 0 || input.conceptIds.length > 0;
+  const pool = snapshot.docs
+    .map((doc) => mapQuestion(doc.id, doc.data()))
+    .filter((question): question is ExamQuestion =>
+      Boolean(question) &&
+      isExamQuestionServable(question!) &&
+      !input.seenIds.has(question!.id) &&
+      (!narrowed ||
+        input.topicIds.some((topicId) => question!.topicIds.includes(topicId)) ||
+        input.conceptIds.some((conceptId) => (question!.conceptIds ?? []).includes(conceptId)))
+    )
+    .sort((left, right) => left.selectionKey - right.selectionKey);
+  return (["easy", "medium", "hard"] as const).flatMap((difficulty) =>
+    pool.filter((question) => question.difficulty === difficulty).slice(0, input.wanted[difficulty] ?? 0)
+  );
+}
+
+/**
  * How many whole questions the corpus can serve for each concept.
  *
  * Lives here, beside the eligibility rules, because that is the only place
@@ -527,6 +599,13 @@ export async function createExamSession(input: {
   conceptIds?: string[];
   originNotebookId?: string;
   allowGenerated?: boolean;
+  /**
+   * Give about a third of the session to Jami's own exam-style questions,
+   * each modelled on a real question from the course.
+   */
+  includeJami?: boolean;
+  /** Told how many questions Jami wrote for this session, so an unused budget can be given back. */
+  onJamiWritten?: (count: number) => void;
   useAvailableOnly?: boolean;
   calculator?: ExamCalculatorChoice;
   paperIds?: string[];
@@ -544,13 +623,27 @@ export async function createExamSession(input: {
   const recent = await getAdminDb().collection("users").doc(input.uid)
     .collection("examAttempts").orderBy("updatedAt", "desc").limit(500).get();
   const recentIds = new Set(recent.docs.map((doc) => doc.data().questionId).filter((id): id is string => typeof id === "string"));
+  /*
+   * Jami's share is set aside first, and the bank fills the rest.
+   *
+   * The bank is still searched for the whole mix, because its questions are
+   * what Jami's are modelled on: the ones this session does not use become the
+   * exemplars, so a student never meets a real question and its twin together.
+   */
+  const jamiMix = input.includeJami ? jamiShareOfMix(input.mix) : { easy: 0, medium: 0, hard: 0 };
+  const bankMix = {
+    easy: input.mix.easy - jamiMix.easy,
+    medium: input.mix.medium - jamiMix.medium,
+    hard: input.mix.hard - jamiMix.hard,
+  };
   const chosenGroups: ExamQuestionGroup<ExamQuestion>[] = [];
+  const spareGroups: ExamQuestionGroup<ExamQuestion>[] = [];
   const missing: Partial<Record<ExamDifficulty, number>> = {};
   let requestedMix = input.mix;
   const paperParts = new Map<string, Promise<ExamQuestion[]>>();
   for (const difficulty of ["easy", "medium", "hard"] as const) {
-    const wanted = input.mix[difficulty];
-    if (!wanted) continue;
+    const wanted = bankMix[difficulty];
+    if (!input.mix[difficulty]) continue;
     const { groups: candidates } = await loadEligibleQuestions({
       subjectKey,
       studyLevel: folder.studyLevel!,
@@ -559,30 +652,34 @@ export async function createExamSession(input: {
       difficulty,
       topicIds,
       conceptIds,
-      need: wanted,
+      need: input.mix[difficulty],
       seenIds: recentIds,
       paperIds,
       paperParts,
       ...(input.calculator ? { calculator: input.calculator } : {}),
     });
-    const chosen = chooseExamQuestionGroups(candidates, wanted, recentIds);
+    const chosen = wanted > 0 ? chooseExamQuestionGroups(candidates, wanted, recentIds) : [];
     chosenGroups.push(...chosen);
+    const chosenKeys = new Set(chosen.map((group) => group.key));
+    spareGroups.push(...candidates.filter((group) => !chosenKeys.has(group.key)));
     if (chosen.length < wanted) missing[difficulty] = wanted - chosen.length;
   }
-  // The mix counts whole questions; the session lists their parts together, in order.
-  const selected: ExamQuestion[] = chosenGroups.flatMap((group) => group.parts);
   const chosenOf = (difficulty: ExamDifficulty) =>
     chosenGroups.filter((group) => group.difficulty === difficulty).length;
-  if (Object.keys(missing).length > 0) {
-    if (input.allowGenerated) {
-      selected.push(...await generateExamGapQuestions({ uid: input.uid, subject, subjectKey, studyLevel: folder.studyLevel!, course: folder.examCourse!, missing, topicIds, conceptIds }));
-    } else if (input.useAvailableOnly && selected.length > 0) {
+  /** What Jami writes: its share, and any shortfall the student agreed to fill. */
+  const toWrite: Partial<Record<ExamDifficulty, number>> = {};
+  for (const difficulty of ["easy", "medium", "hard"] as const) {
+    const count = jamiMix[difficulty] + (input.allowGenerated ? missing[difficulty] ?? 0 : 0);
+    if (count > 0) toWrite[difficulty] = count;
+  }
+  if (Object.keys(missing).length > 0 && !input.allowGenerated) {
+    if (input.useAvailableOnly && chosenGroups.length > 0) {
       // Starting short is a choice the student made, so the session records the
       // mix it actually holds rather than the one that was asked for.
       requestedMix = {
-        easy: chosenOf("easy"),
-        medium: chosenOf("medium"),
-        hard: chosenOf("hard"),
+        easy: chosenOf("easy") + jamiMix.easy,
+        medium: chosenOf("medium") + jamiMix.medium,
+        hard: chosenOf("hard") + jamiMix.hard,
       };
     } else {
       throw new ExamQuestionBankError(
@@ -590,6 +687,7 @@ export async function createExamSession(input: {
         409,
         "coverage_gap",
         folder.examCourse!,
+        // Real questions only: the card offering to start with what there is counts those.
         {
           easy: Math.min(input.mix.easy, chosenOf("easy")),
           medium: Math.min(input.mix.medium, chosenOf("medium")),
@@ -599,6 +697,72 @@ export async function createExamSession(input: {
       );
     }
   }
+
+  const jamiQuestions: ExamQuestion[] = [];
+  if (Object.keys(toWrite).length > 0) {
+    // Questions Jami already wrote for this student and course, not yet attempted, come first: no wait, no cost.
+    const reused = await reusableJamiQuestions({
+      uid: input.uid,
+      specificationId: folder.examCourse!.specificationId,
+      wanted: toWrite,
+      topicIds,
+      conceptIds,
+      seenIds: recentIds,
+    }).catch(() => []);
+    jamiQuestions.push(...reused);
+    const stillToWrite: Partial<Record<ExamDifficulty, number>> = {};
+    for (const difficulty of ["easy", "medium", "hard"] as const) {
+      const count = (toWrite[difficulty] ?? 0) - reused.filter((question) => question.difficulty === difficulty).length;
+      if (count > 0) stillToWrite[difficulty] = count;
+    }
+    if (Object.keys(stillToWrite).length > 0) {
+      const exemplars: Partial<Record<ExamDifficulty, ExamExemplar[]>> = {};
+      const models = [...spareGroups.filter((group) => !group.parts.some((part) => recentIds.has(part.id))), ...spareGroups, ...chosenGroups];
+      for (const group of models) {
+        const exemplar = examExemplarFromGroup(group);
+        if (!exemplar) continue;
+        const list = (exemplars[exemplar.difficulty] ??= []);
+        if (list.length < 10 && !list.some((item) => item.text === exemplar.text)) list.push(exemplar);
+      }
+      try {
+        const written = await generateExamGapQuestions({
+          uid: input.uid, subject, subjectKey, studyLevel: folder.studyLevel!, course: folder.examCourse!,
+          missing: stillToWrite, topicIds, conceptIds, exemplars,
+        });
+        jamiQuestions.push(...written);
+        input.onJamiWritten?.(written.length);
+      } catch (error) {
+        // A shortfall the student asked Jami to fill cannot be met any other way.
+        if (input.allowGenerated && Object.keys(missing).length > 0) throw error;
+        /*
+         * Jami's share is an extra, not the session. If it cannot be written
+         * just now, the bank's own spare questions take its place, and the
+         * session starts as a past-paper session.
+         */
+        for (const difficulty of ["easy", "medium", "hard"] as const) {
+          const short = stillToWrite[difficulty] ?? 0;
+          if (!short) continue;
+          const spare = spareGroups.filter((group) => group.difficulty === difficulty);
+          const extra = chooseExamQuestionGroups(spare, short, recentIds);
+          if (extra.length < short) throw error;
+          chosenGroups.push(...extra);
+        }
+      }
+    }
+  }
+
+  /*
+   * Easy to hard, as a paper runs, with Jami's questions among the real ones
+   * rather than gathered at the end. A question's parts stay together.
+   */
+  const rank: Record<ExamDifficulty, number> = { easy: 0, medium: 1, hard: 2 };
+  const units: Array<{ difficulty: ExamDifficulty; parts: ExamQuestion[]; order: number }> = [
+    ...chosenGroups.map((group, index) => ({ difficulty: group.difficulty, parts: group.parts, order: index * 2 })),
+    ...jamiQuestions.map((question, index) => ({ difficulty: question.difficulty, parts: [question], order: index * 3 + 1 })),
+  ];
+  const selected: ExamQuestion[] = units
+    .sort((left, right) => rank[left.difficulty] - rank[right.difficulty] || left.order - right.order)
+    .flatMap((unit) => unit.parts);
 
   const db = getAdminDb();
   const sessionRef = db.collection("users").doc(input.uid).collection("examSessions").doc();

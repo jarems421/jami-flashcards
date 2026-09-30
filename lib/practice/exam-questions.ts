@@ -10,7 +10,8 @@ import {
 } from "@/lib/practice/marker-stages";
 import type { ExamBoardId, ExamQualification } from "@/lib/practice/exam-formats";
 import { sameExamTier } from "@/lib/practice/exam-course-tiers";
-import type { StudyLevel } from "@/lib/profile/study-level";
+import { getStudyLevelTutorLabel, type StudyLevel } from "@/lib/profile/study-level";
+import type { PracticeSetInfo } from "@/lib/practice/practice-sets";
 
 export type ExamDifficulty = "easy" | "medium" | "hard";
 export type ExamQuestionOrigin = "official_past_paper" | "jami_generated";
@@ -107,10 +108,19 @@ export type ExamIngestionVerification = {
   issues: string[];
 };
 
+/**
+ * Who a question is aligned to. "jami" is a practice-set question written for
+ * a folder with no exam course -- a university module, say -- where naming a
+ * board would be claiming an alignment nobody asked for.
+ */
+export type ExamProvenanceBoard = ExamBoardId | "jami";
+/** "general" is the qualification of a question aligned to no exam course. */
+export type ExamProvenanceQualification = ExamQualification | "general";
+
 export type ExamQuestionProvenance = {
-  board: ExamBoardId;
+  board: ExamProvenanceBoard;
   boardLabel: string;
-  qualification: ExamQualification;
+  qualification: ExamProvenanceQualification;
   specificationId: string;
   specificationTitle: string;
   componentCode: string;
@@ -305,7 +315,12 @@ export type ExamSession = {
   folderName: string;
   subject: string;
   studyLevel: StudyLevel;
-  course: ExamCourseSelection;
+  /**
+   * The exam course the questions were drawn for. Absent only on a practice
+   * set written for a folder with no course, which Jami pitched from the
+   * folder's level, subject and material instead.
+   */
+  course?: ExamCourseSelection;
   requestedMix: Record<ExamDifficulty, number>;
   topicIds: string[];
   /** Concepts the session was narrowed to; absent on sessions from before concepts. */
@@ -326,6 +341,8 @@ export type ExamSession = {
   assessedTotal?: number;
   maxTotal: number;
   originNotebookId?: string;
+  /** Set when Jami built this session as a suggestion rather than on request. */
+  practiceSet?: PracticeSetInfo;
   createdAt: number;
   updatedAt: number;
   completedAt?: number;
@@ -536,6 +553,15 @@ export function examOperationIsLive(
 
 export function examBoardAppliesTo(level: StudyLevel | null | undefined) {
   return level === "early-secondary" || level === "gcse-equivalent" || level === "post-16-equivalent";
+}
+
+/**
+ * The qualification a marker is told a session is for: the course's, or --
+ * for a practice set with no course -- the level it was written at, so a
+ * university answer is not marked as though it were a GCSE one.
+ */
+export function examSessionQualification(session: Pick<ExamSession, "course" | "studyLevel">) {
+  return session.course?.qualification ?? getStudyLevelTutorLabel(session.studyLevel);
 }
 
 /**

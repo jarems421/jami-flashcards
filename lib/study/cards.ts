@@ -1,4 +1,13 @@
 import { normalizeCardImage, type CardImage } from "@/lib/study/card-images";
+import {
+  getGroupDisplayName,
+  getOcclusionAcceptedAnswers,
+  getOcclusionGroup,
+  getOcclusionLabel,
+  normalizeCardOcclusion,
+  occlusionTargetKey,
+  type CardOcclusion,
+} from "@/lib/study/image-occlusion";
 import { normalizeStudyTextInput } from "@/lib/study/display-text";
 import { normalizeOptionalString, normalizeStringArray } from "@/lib/material/content";
 import type { CardStudySettings } from "@/lib/study/study-modes";
@@ -22,6 +31,12 @@ export type Card = {
    */
   frontImage?: CardImage;
   backImage?: CardImage;
+  /**
+   * A diagram label card (image occlusion). The diagram is the question and
+   * `back` is the label's words, which may be empty when the picture prints
+   * them. `front` is the diagram's optional header, shared by every label.
+   */
+  occlusion?: CardOcclusion;
   createdAt: number;
   tags: string[];
   topicIds?: string[];
@@ -190,8 +205,48 @@ export function getCardFacesError(input: {
   return null;
 }
 
-export function cardHasImages(card: Partial<Pick<Card, "frontImage" | "backImage">>) {
-  return Boolean(card.frontImage || card.backImage);
+/**
+ * A card's name in a list: its front, or what it is when the front is a
+ * picture. A diagram label is named by its diagram and number, never by its
+ * answer, so a list does not give the answer away.
+ */
+export function getCardListTitle(
+  card: Pick<Card, "front"> & Partial<Pick<Card, "frontImage" | "occlusion">>
+) {
+  const front = card.front.trim();
+  if (card.occlusion) {
+    const group = getOcclusionGroup(card.occlusion);
+    if (group) return `${front || "Diagram"} · ${getGroupDisplayName(group)}`;
+    return `${front || "Diagram"} · label ${getOcclusionLabel(card.occlusion).index + 1}`;
+  }
+  return front || (card.frontImage ? "Image card" : "");
+}
+
+/**
+ * Everything a typed answer to this card is also marked right against: what
+ * the author set on the card, and a diagram label's own alternatives.
+ */
+export function getCardAcceptedAnswers(card: Partial<Pick<Card, "studySettings" | "occlusion">>) {
+  return [
+    ...(card.studySettings?.acceptedAnswers ?? []),
+    ...(card.occlusion ? getOcclusionAcceptedAnswers(card.occlusion) : []),
+  ];
+}
+
+/** The card's marking settings, with a diagram label's alternatives folded in. */
+export function getCardMarkingSettings(
+  card: Partial<Pick<Card, "studySettings" | "occlusion">>
+): CardStudySettings | undefined {
+  const labelAccepts = card.occlusion ? getOcclusionAcceptedAnswers(card.occlusion) : [];
+  if (labelAccepts.length === 0) return card.studySettings;
+  return { ...card.studySettings, acceptedAnswers: getCardAcceptedAnswers(card) };
+}
+
+/** Whether the card shows a picture anywhere: an image on a side, or a diagram. */
+export function cardHasImages(
+  card: Partial<Pick<Card, "frontImage" | "backImage" | "occlusion">>
+) {
+  return Boolean(card.frontImage || card.backImage || card.occlusion);
 }
 
 /**
@@ -199,12 +254,18 @@ export function cardHasImages(card: Partial<Pick<Card, "frontImage" | "backImage
  *
  * Text alone called every image-only card a duplicate of every other, since
  * they all have the same empty text. Image paths are added only where there
- * are images, so a text-only card keys exactly as it always did.
+ * are images, so a text-only card keys exactly as it always did. A diagram
+ * label is its own card by construction -- two labels of one diagram may even
+ * share words, "left" and "right" aside -- so it keys on the label.
  */
 export function getCardDuplicateKey(
-  card: Pick<Card, "front" | "back"> & Partial<Pick<Card, "frontImage" | "backImage">>
+  card: Pick<Card, "front" | "back"> &
+    Partial<Pick<Card, "frontImage" | "backImage" | "occlusion">>
 ) {
   const textKey = getCardContentKey(card.front, card.back);
+  if (card.occlusion) {
+    return `${textKey}\u001fdiagram:${card.occlusion.diagram.id}:${occlusionTargetKey(card.occlusion)}`;
+  }
   if (!cardHasImages(card)) return textKey;
   return `${textKey}${card.frontImage?.storagePath ?? ""}${card.backImage?.storagePath ?? ""}`;
 }
@@ -493,6 +554,7 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
         : "";
   const frontImage = normalizeCardImage(data.frontImage, userId);
   const backImage = normalizeCardImage(data.backImage, userId);
+  const occlusion = normalizeCardOcclusion(data.occlusion, userId);
   return {
     id,
     deckId: typeof data.deckId === "string" ? data.deckId : "",
@@ -501,6 +563,7 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
     back: typeof data.back === "string" ? data.back : "",
     ...(frontImage ? { frontImage } : {}),
     ...(backImage ? { backImage } : {}),
+    ...(occlusion ? { occlusion } : {}),
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     tags: normalizeCardTags(data.tags),
     topicIds: normalizeStringArray(data.topicIds, MAX_CARD_LEGACY_TOPIC_IDS, 120),

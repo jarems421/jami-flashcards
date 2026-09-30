@@ -1,17 +1,24 @@
 /**
  * Preparing a photo that is smaller than the screen it covers.
  *
- * A small photo cannot be given real detail, but it can be made to look
- * deliberate instead of broken. Stretched as it is, the browser magnifies the
- * JPEG's blocks and speckle along with the picture. So before it is enlarged,
- * the compression noise is smoothed away and the photo is softened a little --
- * the look of a wallpaper that is meant to sit behind things -- and only then
- * scaled up. Both steps run once, on upload, at the photo's own size, so
- * nothing is blurred on screen while the student works.
+ * A small photo cannot be given real detail, but it can keep all the detail it
+ * has. Stretched as it is, the browser magnifies the JPEG's blocks and speckle
+ * along with the picture and spreads every edge across several screen pixels.
+ * So on upload only the faintest compression speckle is smoothed away, the
+ * photo is enlarged in gentle steps, and the edges the stretch spread out are
+ * drawn back together with an unsharp mask at the final size.
+ *
+ * An earlier version blurred the photo before enlarging it, on the idea that a
+ * soft wallpaper looks deliberate. Stretched three or four times, it just
+ * looked out of focus.
  */
 
-/** Neighbours closer than this are the same surface with compression noise in it, not an edge. */
-const ARTIFACT_DISTANCE = 20;
+/**
+ * Neighbours closer than this are the same surface with compression noise in
+ * it. Kept low: leaves, grass and water are texture only a few levels apart,
+ * and a wider limit averaged them into smears.
+ */
+const ARTIFACT_DISTANCE = 8;
 
 /**
  * Smooths JPEG blocking and ringing, in place, without softening real edges.
@@ -53,17 +60,6 @@ export function reduceCompressionArtifacts(data: Uint8ClampedArray, width: numbe
       data[index + 2] = b / count;
     }
   }
-}
-
-/**
- * How soft to make a photo, at its own size, for how far it will be enlarged.
- *
- * The enlargement multiplies the blur, so a photo stretched four times is
- * softened by about a pixel -- a few pixels once it fills the screen, which is
- * smooth without looking out of focus.
- */
-export function photoSoftenSigma(factor: number) {
-  return Math.min(1, Math.max(0.4, factor * 0.25));
 }
 
 /** A gentle Gaussian blur, in place, in two passes (across, then down). */
@@ -116,6 +112,44 @@ export function softenPhoto(data: Uint8ClampedArray, width: number, height: numb
       data[target] = r;
       data[target + 1] = g;
       data[target + 2] = b;
+    }
+  }
+}
+
+/**
+ * How far to sharpen a photo after enlarging it by this factor.
+ *
+ * The enlargement spreads each original edge across about `factor` screen
+ * pixels, so the mask's radius follows it; the strength stays moderate so
+ * skies and skin do not grow halos and JPEG grain is not
+ * picked out with the edges.
+ */
+export function enlargedPhotoSharpening(factor: number) {
+  return {
+    sigma: Math.min(2, Math.max(0.8, factor * 0.4)),
+    amount: 0.5,
+    threshold: 6,
+  };
+}
+
+/**
+ * An unsharp mask, in place: each pixel pushed away from its blurred
+ * surroundings by `amount`. Differences of `threshold` levels or less are left
+ * alone, so flat areas and leftover noise are not roughened.
+ */
+export function sharpenPhoto(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  { sigma, amount, threshold }: { sigma: number; amount: number; threshold: number }
+) {
+  const blurred = data.slice();
+  softenPhoto(blurred, width, height, sigma);
+  for (let index = 0; index < data.length; index += 4) {
+    for (let channel = 0; channel < 3; channel += 1) {
+      const difference = data[index + channel] - blurred[index + channel];
+      if (Math.abs(difference) <= threshold) continue;
+      data[index + channel] = data[index + channel] + difference * amount;
     }
   }
 }

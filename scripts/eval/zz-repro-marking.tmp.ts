@@ -23,7 +23,7 @@ export default async function main() {
   const paper = buildSingleQuestionPaper({
     id: `exam-repro`, folderId: session.folderId, title: `${session.subject} ${question.label}`,
     question: { id: question.id, label: question.label, prompt: question.prompt, marks: question.marks, assets: question.assets },
-    markSchemeItem: secret.markSchemeItem, studyLevel: session.studyLevel, qualification: session.course.qualification,
+    markSchemeItem: secret.markSchemeItem, studyLevel: session.studyLevel, qualification: session.course?.qualification ?? "",
     awardingBody: question.provenance.boardLabel, specification: question.provenance.specificationTitle,
     component: question.provenance.componentTitle, markSchemeKind: question.origin === "jami_generated" ? "generated" : "official",
   });

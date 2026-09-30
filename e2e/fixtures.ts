@@ -137,6 +137,11 @@ export const E2E_SOURCE = {
   id: "e2e-source",
   title: "Browser smoke source",
 };
+/** Flashcards Tutor drafted in a chat with no source, awaiting review. */
+export const E2E_TUTOR_DRAFTS = [
+  { id: "e2e-tutor-draft-1", front: "What does an ester's name end in?", back: "-oate" },
+  { id: "e2e-tutor-draft-2", front: "Which catalyst is used to make an ester?", back: "Concentrated sulfuric acid" },
+] as const;
 export const E2E_GOAL = {
   id: "e2e-goal",
   name: "Browser smoke goal",

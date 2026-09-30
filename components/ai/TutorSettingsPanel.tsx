@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { TutorSaveIndicator } from "@/components/ai/TutorBrief";
 import TutorFolderNotes from "@/components/ai/TutorFolderNotes";
+import TutorMemoryPanel from "@/components/ai/TutorMemoryPanel";
 import TutorNotesList from "@/components/ai/TutorNotesList";
 import TutorSettingsTabs, {
   type TutorSettingsView,
@@ -11,6 +12,7 @@ import TutorSettingsTabs, {
 import TutorStudyProfileForm from "@/components/ai/TutorStudyProfileForm";
 import TutorStyleChoices from "@/components/ai/TutorStyleChoices";
 import { Button, FeedbackBanner, Skeleton } from "@/components/ui";
+import { useTutorMemory } from "@/hooks/useTutorMemory";
 import { useTutorPersonalisation } from "@/hooks/useTutorPersonalisation";
 import {
   GENERAL_NOTE_SUGGESTIONS,
@@ -100,6 +102,7 @@ export default function TutorSettingsPanel({
     saveFolderNotes,
     saveStudyProfile,
   } = useTutorPersonalisation(activeFolderIds);
+  const memory = useTutorMemory();
 
   return (
     <div
@@ -141,6 +144,11 @@ export default function TutorSettingsPanel({
           accountStudyLevel={studyLevel}
           accountStudySubjects={studySubjects}
           changedStyleCount={changedStyleCount}
+          memory={
+            memory.view
+              ? { enabled: memory.view.enabled, count: memory.view.items.length }
+              : null
+          }
         />
       </div>
 
@@ -185,6 +193,13 @@ export default function TutorSettingsPanel({
               saving={savingProfile}
               onSave={saveStudyProfile}
             />
+          </PanelSection>
+        ) : view === "memory" ? (
+          <PanelSection
+            title="What Jami remembers"
+            description="Carried from one chat to the next. Tap a line to correct it."
+          >
+            <TutorMemoryPanel memory={memory} density="compact" />
           </PanelSection>
         ) : view === "style" ? (
           <div className="flex flex-col gap-5">

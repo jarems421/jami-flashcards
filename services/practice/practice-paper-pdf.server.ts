@@ -100,7 +100,8 @@ type MathBox = { svg: string; width: number; height: number; depth: number };
 type Piece =
   | { kind: "text"; value: string; width: number }
   | { kind: "math"; box: MathBox; width: number }
-  | { kind: "tick"; width: number };
+  | { kind: "tick"; width: number }
+  | { kind: "check"; width: number };
 type Line = { pieces: Piece[]; ascent: number; descent: number; centred: boolean };
 
 type MathEngine = {
@@ -290,7 +291,12 @@ class BookletWriter {
             push({ kind: "tick", width: TICK_BOX + 5 });
             continue;
           }
-          push({ kind: "text", value: word.replace(/\t/g, " "), width: doc.widthOfString(word) });
+          // Nor a tick mark: "Tick (✓) one box" would print "Tick ( ) one box".
+          for (const part of word.split(/([✓✔])/)) {
+            if (!part) continue;
+            if (/^[✓✔]$/.test(part)) push({ kind: "check", width: 9 });
+            else push({ kind: "text", value: part.replace(/\t/g, " "), width: doc.widthOfString(part) });
+          }
         }
       });
     }
@@ -320,6 +326,10 @@ class BookletWriter {
         } else if (piece.kind === "tick") {
           doc.save().lineWidth(0.8).strokeColor(INK)
             .rect(cursor + 1, baseline - TICK_BOX + 1, TICK_BOX, TICK_BOX).stroke().restore();
+        } else if (piece.kind === "check") {
+          doc.save().lineWidth(1.1).strokeColor("#111111")
+            .moveTo(cursor + 1, baseline - 4).lineTo(cursor + 3.5, baseline - 1).lineTo(cursor + 8, baseline - 8.5)
+            .stroke().restore();
         } else {
           SVGtoPDF(doc, piece.box.svg, cursor, baseline - (piece.box.height - piece.box.depth), {
             width: piece.width,
@@ -860,7 +870,13 @@ function drawChart(writer: BookletWriter, chart: ExamChartSpec, questionId: stri
   const height = width * (340 / 480);
   writer.ensure(height + 10, questionId);
   const x = frame.bodyX + (frame.bodyWidth - width) / 2;
-  SVGtoPDF(writer.doc, svg, x, writer.y, { width, height, preserveAspectRatio: "xMidYMid meet" });
+  SVGtoPDF(writer.doc, svg, x, writer.y, {
+    width,
+    height,
+    preserveAspectRatio: "xMidYMid meet",
+    // The booklet's own face, which has Ω, μ and the rest; the default Helvetica drops them.
+    fontCallback: (_family: string, bold: boolean, italic: boolean) => (bold ? "bold" : italic ? "italic" : "body"),
+  });
   writer.doc.font("body").fontSize(BODY_SIZE).fillColor(INK);
   writer.y += height + 10;
 }
@@ -910,7 +926,13 @@ async function drawAsset(
       const box = fitFigure(frame, svgAspect(drawn.svg), DIAGRAM_MAX_WIDTH, DIAGRAM_MAX_HEIGHT);
       await drawHeading(box.height + 8);
       writer.ensure(box.height + 8, questionId);
-      SVGtoPDF(writer.doc, drawn.svg, box.x, writer.y, { width: box.width, height: box.height, preserveAspectRatio: "xMidYMid meet" });
+      SVGtoPDF(writer.doc, drawn.svg, box.x, writer.y, {
+        width: box.width,
+        height: box.height,
+        preserveAspectRatio: "xMidYMid meet",
+        // The booklet's own face, which has Ω, μ and the rest; the default Helvetica drops them.
+        fontCallback: (_family: string, bold: boolean, italic: boolean) => (bold ? "bold" : italic ? "italic" : "body"),
+      });
       writer.y += box.height + 8;
       return;
     }
@@ -951,6 +973,28 @@ async function drawAsset(
 /* ------------------------------------------------------------------------ */
 /* Questions.                                                                 */
 /* ------------------------------------------------------------------------ */
+
+/**
+ * A multiple-choice prompt's stem and its lettered options, or null when the
+ * options are not written one to a line ("A  Speed", "B) Mass", "C. Time").
+ * A box the writer typed itself is dropped, since the column of boxes replaces it.
+ */
+function splitChoiceOptions(prompt: string) {
+  const lines = prompt.split("\n");
+  const options: Array<{ letter: string; text: string }> = [];
+  let first = lines.length;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]!.replace(/[☐□]/g, "").trim();
+    if (!line && options.length === 0) continue;
+    const match = /^\(?([A-F])[).:]?\s+(.+)$/.exec(line);
+    if (!match) break;
+    options.unshift({ letter: match[1]!, text: match[2]!.trim() });
+    first = index;
+  }
+  const inOrder = options.every((option, index) => option.letter === String.fromCharCode(65 + index));
+  if (options.length < 2 || !inOrder) return null;
+  return { stem: lines.slice(0, first).join("\n").trim(), options };
+}
 
 type QuestionContext = {
   style: PaperHouseStyle;
@@ -1113,7 +1157,25 @@ async function drawQuestion(writer: BookletWriter, question: PracticePaperQuesti
   const together = promptHeight + figureHeight + LINE_HEIGHT;
   writer.ensure(together <= BOTTOM - TOP ? together : LINE_HEIGHT * 4 + (first ? 150 : 0), question.id);
   drawQuestionNumber(writer, style, printedQuestionNumber(style, context.number, context.firstOfQuestion), writer.y);
-  await writer.write(prompt, { questionId: question.id });
+  const choice = inferPaperQuestionKind(question) === "choice" ? splitChoiceOptions(prompt) : null;
+  if (choice) {
+    // Options one to a line, each with its box in a column at the right, as the boards print them.
+    await writer.write(choice.stem, { questionId: question.id });
+    writer.gap(8);
+    const textWidth = frame.right - frame.bodyX - 110;
+    for (const option of choice.options) {
+      const lines = await writer.layout(option.text, textWidth);
+      const height = Math.max(TICK_BOX + 14, lines.reduce((sum, line) => sum + line.ascent + line.descent, 0) + 8);
+      writer.ensure(height, question.id);
+      const top = writer.y;
+      doc.font("bold").fontSize(BODY_SIZE).fillColor(INK).text(option.letter, frame.bodyX, top + 2, { lineBreak: false });
+      await writer.write(option.text, { x: frame.bodyX + 22, width: textWidth, questionId: question.id });
+      doc.save().lineWidth(0.9).strokeColor(INK).rect(frame.right - 60, top, TICK_BOX + 6, TICK_BOX + 6).stroke().restore();
+      writer.y = Math.max(writer.y, top + height);
+    }
+  } else {
+    await writer.write(prompt, { questionId: question.id });
+  }
 
   if (style.tariff === "column" && frame.column) {
     // Level with the question's last line, in the margin's marks column.

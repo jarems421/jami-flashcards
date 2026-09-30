@@ -20,6 +20,8 @@ export type ExamCourseOption = {
   qualificationLabel: string;
   componentIds: string[];
   tiers: Array<{ name: string; componentIds: string[] }>;
+  /** The papers the course sets, where the catalogue lists them. */
+  papers?: Array<{ code: string; title: string; tier?: string }>;
 };
 
 /**

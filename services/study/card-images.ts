@@ -12,6 +12,12 @@ import {
   type CardImage,
   type CardImageDraft,
 } from "@/lib/study/card-images";
+import type { Card } from "@/lib/study/cards";
+import {
+  cacheCardPicturesForOffline,
+  getRememberedCardImageUrl,
+  rememberCardImageUrl,
+} from "@/services/study/offline-card-images";
 
 async function readImageSize(file: File) {
   try {
@@ -129,14 +135,30 @@ const downloadUrls = new Map<string, Promise<string>>();
  *
  * A study session shows the same cards repeatedly, so the lookup is kept for
  * the page's lifetime. A failed lookup is forgotten, so going back online can
- * still load it.
+ * still load it. Offline, the URL remembered from an earlier lookup is used,
+ * and the service worker answers it from the pictures kept on the device.
  */
 export function getCardImageUrl(storagePath: string) {
   let pending = downloadUrls.get(storagePath);
   if (!pending) {
-    pending = getStorageFileDownloadUrl(storagePath);
+    pending = getStorageFileDownloadUrl(storagePath).then(
+      (url) => {
+        rememberCardImageUrl(storagePath, url);
+        return url;
+      },
+      (error: unknown) => {
+        const remembered = getRememberedCardImageUrl(storagePath);
+        if (remembered) return remembered;
+        throw error;
+      }
+    );
     downloadUrls.set(storagePath, pending);
     pending.catch(() => downloadUrls.delete(storagePath));
   }
   return pending;
+}
+
+/** Keep the soonest cards' pictures on the device for offline study. Best effort. */
+export function keepCardPicturesForOffline(cards: readonly Card[]) {
+  void cacheCardPicturesForOffline(cards, getCardImageUrl);
 }

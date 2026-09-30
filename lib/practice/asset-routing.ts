@@ -1,5 +1,5 @@
 import { drawnFigureIssues } from "@/lib/practice/drawn-figure";
-import { examChartIssues, parseExamChart } from "@/lib/practice/exam-chart";
+import { EXAM_CHART_INSTRUCTION, examChartIssues, parseExamChart } from "@/lib/practice/exam-chart";
 import { looksLikeSvg, sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 
 /**
@@ -30,6 +30,65 @@ export const ASSET_ROUTING_INSTRUCTION =
   "describe it in content for the generator. Never use an image asset for a figure carrying " +
   "measurements, and never use a diagram asset for something photographic. Tables belong in a " +
   "table asset. If the question reads perfectly well without a picture, do not add one.";
+
+/**
+ * How a diagram is drawn.
+ *
+ * A labelled figure has to be exact -- angles that sum, plotted points that
+ * match the table beside them, a scale that is true -- and those are stated,
+ * not imagined. An image model returns something that looks right and
+ * measures wrong, which nothing downstream can catch and no student can
+ * either. SVG writes the coordinates down.
+ */
+export const SVG_DIAGRAM_INSTRUCTION =
+  "A diagram asset's content may be SVG, and should be where the figure carries measurements: " +
+  "start at <svg>, give it a viewBox, and draw with path, line, polyline, polygon, rect, circle, " +
+  "ellipse and text only. No script, foreignObject, image, use, style, external references or " +
+  "event handlers -- they are stripped and the diagram falls back to its text description. Label " +
+  "every value a candidate needs with a <text> element, and give altText that states the same " +
+  "figure in words for a reader who cannot see it.";
+
+/**
+ * Everything a question writer is told about figures, for both generators.
+ *
+ * Generated papers used to carry no figures at all: across the stored papers,
+ * not one question had a table, graph or diagram, because the writer was told
+ * only to add one when it could not be avoided. Real papers in the sciences,
+ * maths, geography and economics put one on a large share of their questions,
+ * so the writer is now told to match the real paper -- and exactly how to
+ * write each kind so it is printed accurately.
+ */
+export function figureInstruction(options: { rasterEnabled: boolean }) {
+  return [
+    "Give questions the figures, tables and graphs the real paper would: in the sciences, maths, geography, " +
+      "psychology and economics a large share of questions are built on one -- a results table, a graph to read " +
+      "or complete, a circuit or apparatus diagram, a geometric figure, a map, a data extract. Match how often the " +
+      'real paper for this qualification uses them, refer to each by its title ("Figure 1", "Table 2") in the ' +
+      "prompt, and number them in order through the paper.",
+    "Table assets are Markdown tables, header row first; leave a cell empty where the candidate completes it.",
+    EXAM_CHART_INSTRUCTION,
+    SVG_DIAGRAM_INSTRUCTION,
+    options.rasterEnabled
+      ? ""
+      : "No image generator is available: never use an image or illustration asset. Draw, plot or tabulate the " +
+        "figure, or write the question so it needs none.",
+    ASSET_ROUTING_INSTRUCTION,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * How the forms real papers mix are to be written, so the booklet can print
+ * them as a board does: a multiple-choice question's options one to a line,
+ * lettered, so each gets its box in a column; a blank as underscores.
+ */
+export const QUESTION_FORMS_INSTRUCTION =
+  "Use the same mix of question forms the real paper uses, in its proportions: multiple choice, completing a " +
+  "sentence, table or equation, labelling a diagram, drawing or completing a graph, calculations, short answers " +
+  "and extended responses. Write a multiple-choice question as its stem, the board's instruction (for example " +
+  '"Tick (✓) one box."), then each option on its own line as "A  option", "B  option" and so on -- no ' +
+  "boxes, the paper draws them. Write a blank to fill in as a run of underscores.";
 
 /** Words that mean a candidate is expected to read a quantity off the figure. */
 const MEASURED = /\b(angle|degrees?|°|cm|mm|metres?|meters?|km|axis|axes|scale|coordinates?|plot|plotted|gradient|length|width|height|radius|diameter|perimeter|area|volume|vector|bearing|graph|scattergram|histogram|frequency|readings?|values?|measurements?)\b/i;

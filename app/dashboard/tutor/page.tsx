@@ -34,7 +34,12 @@ import {
   TUTOR_TITLE,
   TUTOR_VIEWS,
 } from "@/lib/app/tutor-views";
-import { describeDraftCounts, groupTutorDrafts } from "@/lib/app/tutor-drafts";
+import {
+  describeDraftCounts,
+  draftGroupKey,
+  groupTutorDrafts,
+} from "@/lib/app/tutor-drafts";
+import TutorDraftReviewDialog from "@/components/ai/TutorDraftReviewDialog";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import type { Source } from "@/lib/material/sources";
 import { getPendingGeneratedContentDrafts } from "@/services/study/generated-content";
@@ -139,6 +144,9 @@ export default function TutorPage() {
     [drafts, sources],
   );
   const hasDrafts = draftGroups.length > 0;
+  const [reviewingGroupKey, setReviewingGroupKey] = useState<string | null>(null);
+  const reviewingGroup =
+    draftGroups.find((group) => draftGroupKey(group) === reviewingGroupKey) ?? null;
   const draftTotal = draftGroups.reduce((sum, group) => sum + group.total, 0);
 
   /*
@@ -303,17 +311,38 @@ export default function TutorPage() {
                   {body}
                 </Link>
               ) : (
-                <div
+                /*
+                 * Flashcards Tutor made from a conversation belong to no source,
+                 * so there is no source page to review them on: they open here.
+                 */
+                <button
                   key="__unsourced__"
-                  className="flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3.5"
+                  type="button"
+                  onClick={() => setReviewingGroupKey(draftGroupKey(group))}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3.5 text-left transition duration-fast hover:border-[var(--color-border-strong)]"
                 >
                   {body}
-                </div>
+                  <span className="shrink-0 text-sm font-semibold text-[var(--color-accent)]">Check them</span>
+                </button>
               );
             })
           )}
         </div>
       </section>
+
+      {reviewingGroup ? (
+        <TutorDraftReviewDialog
+          key={draftGroupKey(reviewingGroup)}
+          userId={user.uid}
+          title={reviewingGroup.title}
+          drafts={drafts.filter((draft) => reviewingGroup.draftIds.includes(draft.id))}
+          onClose={() => {
+            setReviewingGroupKey(null);
+            // What was kept or discarded leaves the queue.
+            void reload();
+          }}
+        />
+      ) : null}
 
       {featureFlags.enableRevisionSessions ? <RevisionTutorShelf variant="shelf" /> : null}
 
