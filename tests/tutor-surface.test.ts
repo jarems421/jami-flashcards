@@ -142,7 +142,9 @@ describe("it does not promise Jami a memory it does not have", () => {
     // wall of prose about what Jami does not retain is skipped exactly when it
     // matters, which is the first visit.
     expect(tutorSurface).toMatch(/Reads only what you hand it/i);
-    expect(tutorSurface).toMatch(/Keeps nothing between conversations/i);
+    // Tutor memory keeps a few notes between chats, so the line says so and where to change them.
+    expect(tutorSurface).toMatch(/Remembers a few notes about you/i);
+    expect(tutorSurface).not.toMatch(/Keeps nothing between conversations/i);
     expect(tutorSurface).toMatch(/for that conversation only/i);
   });
 
