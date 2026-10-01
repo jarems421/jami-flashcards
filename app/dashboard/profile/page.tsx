@@ -6,6 +6,7 @@ import { useUser } from "@/components/providers/UserProvider";
 import AppPage from "@/components/layout/AppPage";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import NotificationSettingsCard from "@/components/notifications/NotificationSettingsCard";
+import PlanAllowancesCard from "@/components/account/PlanAllowancesCard";
 import { Button, Card, Input, SectionHeader } from "@/components/ui";
 import {
   deleteAccount,
@@ -252,6 +253,8 @@ export default function ProfilePage() {
           ) : null}
         </div>
       </Card>
+
+      <PlanAllowancesCard />
 
       <section id="reminders" aria-label="Study reminders">
         <NotificationSettingsCard userId={user.uid} />

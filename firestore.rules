@@ -182,6 +182,19 @@ service cloud.firestore {
         allow delete: if isSelf(userId) && !isDemoAccount();
       }
 
+      // Plans, allowances and stardust (docs/plans-and-stardust.md §6). The
+      // student may read their own; only the server ever writes them, so no
+      // client can give itself a plan or reset what it has used.
+      match /billing/{documentId} {
+        allow read: if isSelf(userId);
+        allow write: if false;
+      }
+
+      match /allowanceUsage/{periodKey} {
+        allow read: if isSelf(userId);
+        allow write: if false;
+      }
+
       match /goals/{goalId} {
         allow read: if isSelf(userId);
         allow create, delete: if isSelf(userId) && !isDemoAccount();

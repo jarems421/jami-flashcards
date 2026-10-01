@@ -182,7 +182,7 @@ export const ALLOWANCE_LABELS: Record<AllowanceKey, string> = {
   papers: "Jami papers",
   paperMarkings: "paper markings",
   revisionSessions: "Revision Sessions",
-  pages: "pages the Tutor can search",
+  pages: "searchable pages",
   diagramLabels: "label finds",
   videos: "video imports",
   fileCards: "flashcard batches",

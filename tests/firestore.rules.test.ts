@@ -166,6 +166,26 @@ describe("Firestore security rules", () => {
     await assertSucceeds(deleteDoc(aliceProgress));
   });
 
+  it("lets a student read their plan and allowance use but never write them", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users", ALICE, "billing", "plan"), { plan: "plus" });
+      await setDoc(doc(db, "users", ALICE, "allowanceUsage", "2026-10-01"), { used: { papers: 2 } });
+    });
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+
+    await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "billing", "plan")));
+    await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "allowanceUsage", "2026-10-01")));
+    // No client can give itself a plan or wipe what it has used.
+    await assertFails(setDoc(doc(aliceDb, "users", ALICE, "billing", "plan"), { plan: "pro" }));
+    await assertFails(
+      updateDoc(doc(aliceDb, "users", ALICE, "allowanceUsage", "2026-10-01"), { used: {} })
+    );
+    await assertFails(deleteDoc(doc(aliceDb, "users", ALICE, "allowanceUsage", "2026-10-01")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "billing", "plan")));
+  });
+
   it("keeps flashcard review history private, append-only and free of card text", async () => {
     const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
     const bobDb = testEnv.authenticatedContext(BOB).firestore();
