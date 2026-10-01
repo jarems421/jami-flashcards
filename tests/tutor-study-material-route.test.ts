@@ -193,7 +193,7 @@ describe("Tutor study material route", () => {
     const data = (await response.json()) as Record<string, unknown>;
 
     expect(response.status).toBe(200);
-    expect(mocks.checkBudget).toHaveBeenCalledWith({ uid: "user-1", action: "practicePaperGeneration" });
+    expect(mocks.checkBudget).toHaveBeenCalledWith({ uid: "user-1", action: "sourcePracticeDrafts" });
     expect(mocks.createPracticeSet).toHaveBeenCalledWith(
       expect.objectContaining({
         uid: "user-1",

@@ -84,6 +84,7 @@ describe("AI budget configuration", () => {
         "photoBackgroundRestore",
         "revisionLesson",
         "revisionMarking",
+        "sourceIndexing",
       ].sort()
     );
   });
@@ -113,8 +114,15 @@ describe("AI budget configuration", () => {
     expect(AI_BUDGETS.autocompleteCard.burstScope).toBe(
       AI_BUDGETS.assistant.burstScope
     );
+    // Raised 1 Oct 2026 with the plans: a draft costs hundredths of a penny,
+    // and every way of asking for flashcards shares the source-drafts limit.
+    expect(AI_BUDGETS.autocompleteCard.dailyRequestLimit).toBe(150);
+    expect(AI_BUDGETS.sourceIndexing).toMatchObject({
+      dailyRequestLimit: 60,
+      burstScope: "sourceIndexing",
+    });
     expect(AI_BUDGETS.sourceFlashcardDrafts).toMatchObject({
-      dailyRequestLimit: 10,
+      dailyRequestLimit: 20,
       burstRequestLimit: 2,
       burstScope: "sourceDrafts",
     });

@@ -230,6 +230,8 @@ const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
   constellationPattern:
     "Jami has arranged as many skies as it can today. You can still move stars yourself.",
   sourceFlashcardDrafts: "AI budget reached for source drafts today.",
+  sourceIndexing:
+    "Jami has prepared as many sources for searching as it can today. The Tutor can still read them.",
   sourcePracticeDrafts: "AI budget reached for source drafts today.",
   photoBackgroundRestore:
     "Jami has sharpened as many photos as it can today. Your photo was still saved.",

@@ -109,12 +109,14 @@ export async function POST(request: NextRequest) {
     return apiFailure("That practice set could not be prepared.", 503, "practice_set_failed");
   }
 
-  const budget = await checkAiBudget({ uid, action: "practicePaperGeneration" }).catch(() => null);
+  // A practice set is a handful of questions, not a paper, so it is charged as
+  // practice drafts and never spends one of the student's monthly papers.
+  const budget = await checkAiBudget({ uid, action: "sourcePracticeDrafts" }).catch(() => null);
   if (!budget) {
     return apiFailure("AI usage limits are temporarily unavailable. Try again shortly.", 503, "budget_unavailable");
   }
-  if (!budget.allowed) return createAiBudgetLimitResponse("practicePaperGeneration", budget);
-  enterAiSpendContext(aiSpendContextFor(uid, "practicePaperGeneration"));
+  if (!budget.allowed) return createAiBudgetLimitResponse("sourcePracticeDrafts", budget);
+  enterAiSpendContext(aiSpendContextFor(uid, "sourcePracticeDrafts"));
 
   const log = createLogger({ route: "practice.practice-sets", requestId: randomUUID(), uid });
   try {

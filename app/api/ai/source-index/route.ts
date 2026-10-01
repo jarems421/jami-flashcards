@@ -3,6 +3,11 @@ import type { NextRequest } from "next/server";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { createLogger } from "@/lib/observability/logger";
 import {
+  checkAiBudget,
+  createAiBudgetLimitResponse,
+  refundAiBudget,
+} from "@/services/ai/budgets";
+import {
   deleteSourceIndex,
   rebuildSourceIndex,
 } from "@/services/ai/source-index.server";
@@ -39,12 +44,27 @@ export async function POST(request: NextRequest) {
   const sourceId = await sourceIdFrom(request);
   if (!sourceId) return Response.json({ error: "Source is required" }, { status: 400 });
   const log = createLogger({ route: "ai.source-index", uid, sourceId });
+  // Charged before any work, like every other AI route. A refusal is quiet on
+  // purpose: indexing is never something a student pressed, and without an
+  // index the Tutor still reads the source whole.
+  const budget = await checkAiBudget({ uid, action: "sourceIndexing" }).catch(
+    (error: unknown) => {
+      log.error("budget.check_failed", { error });
+      return null;
+    }
+  );
+  if (!budget) {
+    return Response.json({ error: "Indexing is unavailable right now." }, { status: 503 });
+  }
+  if (!budget.allowed) return createAiBudgetLimitResponse("sourceIndexing", budget);
+  const grant = budget.grant;
   after(async () => {
     try {
       const result = await rebuildSourceIndex(uid, sourceId);
       log.info("source.indexed", result);
     } catch (error) {
       log.error("source.index_failed", { error });
+      await refundAiBudget(grant).catch(() => undefined);
     }
   });
   return Response.json({ status: "queued" }, { status: 202 });

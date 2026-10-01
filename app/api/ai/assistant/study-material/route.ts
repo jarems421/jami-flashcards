@@ -114,7 +114,10 @@ export async function POST(request: NextRequest) {
   const sourceIds =
     parsedContext.context.surface === "sources" ? parsedContext.context.sourceIds : [];
 
-  const budgetAction = kind === "flashcards" ? "sourceFlashcardDrafts" : "practicePaperGeneration";
+  // A Tutor practice set is a handful of questions, not a paper: charged as
+  // practice drafts, so asking for five quick questions cannot spend one of the
+  // student's monthly papers. See docs/plans-and-stardust.md.
+  const budgetAction = kind === "flashcards" ? "sourceFlashcardDrafts" : "sourcePracticeDrafts";
   const budget = await checkAiBudget({ uid, action: budgetAction }).catch(() => null);
   if (!budget) {
     return apiFailure("AI usage limits are temporarily unavailable. Try again shortly.", 503, "budget_unavailable");

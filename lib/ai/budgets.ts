@@ -19,7 +19,8 @@ export type AiBudgetAction =
   | "studyAnswerCheck"
   | "photoBackgroundRestore"
   | "revisionLesson"
-  | "revisionMarking";
+  | "revisionMarking"
+  | "sourceIndexing";
 
 type AiBudgetConfig = {
   dailyRequestLimit: number;
@@ -37,7 +38,10 @@ type AiBudgetConfig = {
     | "photoBackgrounds"
     // A Revision Session marks every answer, so it gets its own window rather
     // than spending the tutor's while a student works through one.
-    | "revisionSessions";
+    | "revisionSessions"
+    // Indexing runs on its own when a source is added or changed, so it must
+    // never use up a window a student is actively spending.
+    | "sourceIndexing";
   tokenCap: number;
   /**
    * Ceiling on what one request may cost to *send*, or null where the input is
@@ -98,8 +102,11 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
   // retries an incomplete draft, so the daily limit is not a call count.
   // Built from one card front and a handful of nearby cards, all length-capped,
   // so the input cannot run away.
+  // 150 rather than 40: typing up a hundred-card deck in one sitting is a
+  // normal evening, and at a few hundredths of a penny a draft the daily limit
+  // only has to stop a loop. See docs/plans-and-stardust.md.
   autocompleteCard: {
-    dailyRequestLimit: 40,
+    dailyRequestLimit: 150,
     burstRequestLimit: 6,
     burstWindowMs: 60_000,
     burstScope: "assistantInteractive",
@@ -236,9 +243,12 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     tokenCap: 16_000,
     inputTokenCap: null,
   },
-  // The source text is sliced to a fixed length before it is sent.
+  // The source text is sliced to a fixed length before it is sent. Every way of
+  // asking Jami for flashcards counts here -- from a file, and from the Tutor
+  // out of the student's sources or the chat -- so twenty a day, about 480
+  // cards, is what an exam-week student turning a folder into cards needs.
   sourceFlashcardDrafts: {
-    dailyRequestLimit: 10,
+    dailyRequestLimit: 20,
     burstRequestLimit: 2,
     burstWindowMs: 60_000,
     burstScope: "sourceDrafts",
@@ -342,6 +352,25 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     burstScope: "revisionSessions",
     tokenCap: 2_000,
     inputTokenCap: 6_000,
+  },
+  /*
+   * Indexing a source so the Tutor can search it: cut into passages and
+   * embedded, no text model at all. Until 1 Oct 2026 this was the one AI route
+   * with no limit. It is cheap -- about 0.01p a page, 6p for the largest pack
+   * -- but it runs by itself whenever a source is added or changed, and again
+   * when the Tutor finds a stale index, so a loop could run it without anyone
+   * pressing anything. Sixty a day is a whole term's handouts at once.
+   *
+   * No text model is involved; the token cap is never passed to one and is
+   * kept at the smallest value the budget table allows.
+   */
+  sourceIndexing: {
+    dailyRequestLimit: 60,
+    burstRequestLimit: 20,
+    burstWindowMs: 60_000,
+    burstScope: "sourceIndexing",
+    tokenCap: 1,
+    inputTokenCap: null,
   },
 };
 
