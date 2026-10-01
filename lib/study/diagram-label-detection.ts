@@ -97,7 +97,15 @@ export function parseDetectedLabels(raw: string): DetectedLabel[] {
   const labels: DetectedLabel[] = [];
   for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
-    const { text: rawText, box_2d: box } = entry as { text?: unknown; box_2d?: unknown };
+    const { text: rawText, box_2d: rawBox } = entry as { text?: unknown; box_2d?: unknown };
+    /*
+     * Gemini writes a box as [ymin, xmin, ymax, xmax] -- or, as often, wrapped
+     * once more, [[ymin, xmin, ymax, xmax]], its format for several boxes. Only
+     * the flat form was read, so every label came back unread and "Find the
+     * labels for me" always reported none.
+     */
+    const box =
+      Array.isArray(rawBox) && rawBox.length === 1 && Array.isArray(rawBox[0]) ? (rawBox[0] as unknown[]) : rawBox;
     const text = cleanText(rawText);
     if (!text || text.split(" ").length > MAX_LABEL_WORDS) continue;
     if (!Array.isArray(box) || box.length !== 4 || !box.every((value) => typeof value === "number" && Number.isFinite(value))) {

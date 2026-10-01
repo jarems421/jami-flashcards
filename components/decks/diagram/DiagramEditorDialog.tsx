@@ -16,6 +16,7 @@ import {
   DialogDescription,
   DialogPanel,
   DialogTitle,
+  JamiTutorIcon,
   StudyText,
 } from "@/components/ui";
 import { useDiagramEditor, type DiagramEditorController } from "@/hooks/useDiagramEditor";
@@ -28,6 +29,7 @@ import { cropDiagramPicture, type DiagramPicture } from "@/lib/study/diagram-ima
 import {
   getDiagramTargets,
   getGroupAnswerText,
+  groupsForCardStyle,
   getOcclusionMasks,
   getOcclusionPrompt,
   getOcclusionTargets,
@@ -37,7 +39,7 @@ import {
 } from "@/lib/study/image-occlusion";
 import type { DiagramSaveResult } from "@/services/study/image-occlusion";
 
-type Step = "picture" | "crop" | "label";
+type Step = "picture" | "crop" | "kind" | "label";
 
 export type DiagramEditorStart =
   | { kind: "new"; picture?: DiagramPicture; next?: "label" | "crop" }
@@ -108,11 +110,15 @@ function DiagramEditorSession({
     reuseImage: start.kind === "reuse" ? start.image : null,
   });
   const [step, setStep] = useState<Step>(
-    editing || start.kind === "reuse"
+    editing
       ? "label"
-      : start.kind === "new" && start.picture
-        ? start.next ?? "label"
-        : "picture"
+      : start.kind === "reuse"
+        ? "kind"
+        : start.kind === "new" && start.picture
+          ? start.next === "crop"
+            ? "crop"
+            : "kind"
+          : "picture"
   );
   const [crop, setCrop] = useState<OcclusionCrop>(FULL_CROP);
   const [cropping, setCropping] = useState(false);
@@ -120,6 +126,21 @@ function DiagramEditorSession({
   const [confirming, setConfirming] = useState<"discard" | "delete" | null>(null);
   const pictureUrl = useDiagramPictureUrl(editor.picture);
   const busy = editor.saving || editor.deleting || cropping;
+  const aiEnabled = featureFlags.enableFlashcardAi;
+  /** Where a picture leads: the one question about it, unless the diagram already has boxes. */
+  const afterPicture = (): Step => (editing || editor.labels.length > 0 ? "label" : "kind");
+
+  /*
+   * The one decision a diagram needs. Labels printed on the picture are
+   * covered -- by Jami, on this tap, when it can -- and a picture without
+   * them is boxed and named by hand.
+   */
+  const chooseKind = (mode: "cover" | "name") => {
+    editor.setLabelMode(mode);
+    editor.setTool("rect");
+    setStep("label");
+    if (mode === "cover" && aiEnabled) void editor.detectLabels();
+  };
 
   const close = () => {
     editor.releasePicture();
@@ -163,13 +184,13 @@ function DiagramEditorSession({
       setCropping(false);
     }
     setCrop(FULL_CROP);
-    setStep("label");
+    setStep(afterPicture());
   };
 
   const takePicture = (picture: DiagramPicture, next: "label" | "crop") => {
     editor.setPicture(picture, { asSource: true });
     setCrop(FULL_CROP);
-    setStep(next);
+    setStep(next === "crop" ? "crop" : afterPicture());
   };
 
   /*
@@ -229,7 +250,6 @@ function DiagramEditorSession({
         b: () => current.setTool("rect"),
         o: () => current.setTool("ellipse"),
         f: () => current.setTool("outline"),
-        l: () => current.setTool("pointer"),
         v: () => current.setTool("select"),
         "+": () => current.setZoom(current.zoom + 0.5),
         "=": () => current.setZoom(current.zoom + 0.5),
@@ -252,7 +272,9 @@ function DiagramEditorSession({
       ? "Add a picture"
       : step === "crop"
         ? "Crop to the diagram"
-        : editor.labelMode === "name"
+        : step === "kind"
+          ? "One question"
+          : editor.labelMode === "name"
           ? "Name the parts"
           : "Cover the labels";
 
@@ -280,11 +302,7 @@ function DiagramEditorSession({
           </div>
           {step === "label" ? (
             <Button type="button" size="sm" disabled={busy || !editor.picture} onClick={() => void save()}>
-              {editor.saving
-                ? "Saving…"
-                : labelCount === 0
-                  ? "Save"
-                  : `Save ${labelCount} card${labelCount === 1 ? "" : "s"}`}
+              {editor.saving ? "Saving…" : labelCount === 0 ? "Save" : "Save card"}
             </Button>
           ) : (
             <span aria-hidden="true" className="w-16" />
@@ -297,7 +315,7 @@ function DiagramEditorSession({
               <DiagramPictureSource userId={userId} disabled={busy} onPicture={takePicture} />
               {editor.picture ? (
                 <div className="text-center">
-                  <Button type="button" variant="ghost" onClick={() => setStep("label")}>
+                  <Button type="button" variant="ghost" onClick={() => setStep(afterPicture())}>
                     Keep the current picture
                   </Button>
                 </div>
@@ -330,7 +348,7 @@ function DiagramEditorSession({
                   disabled={cropping}
                   onClick={() => {
                     setCrop(FULL_CROP);
-                    setStep("label");
+                    setStep(afterPicture());
                   }}
                   className="flex-1 sm:flex-none"
                 >
@@ -342,6 +360,17 @@ function DiagramEditorSession({
               </div>
             </footer>
           </>
+        ) : null}
+
+        {step === "kind" && editor.picture ? (
+          <DiagramKindStep
+            imageUrl={pictureUrl.url}
+            aiEnabled={aiEnabled}
+            canCrop={editor.picture.kind === "new"}
+            onChoose={chooseKind}
+            onCrop={() => setStep("crop")}
+            onReplace={() => setStep("picture")}
+          />
         ) : null}
 
         {step === "label" && editor.picture ? (
@@ -376,9 +405,9 @@ function DiagramEditorSession({
                       selection={editor.selection}
                       onSelect={editor.setSelection}
                       onDrawShape={(shape, pointerType) => {
-                        // A mouse user types next, so their field is there and focused before the
-                        // first key; a finger or pen usually draws the next box instead.
-                        if (pointerType !== "mouse") {
+                        // Naming a part means typing its name next, so its field is focused before
+                        // the first key. Covering, a finger or pen usually draws the next box instead.
+                        if (pointerType !== "mouse" && editor.labelMode !== "name") {
                           editor.drawShape(shape);
                           return;
                         }
@@ -392,28 +421,6 @@ function DiagramEditorSession({
                       onSetPointer={editor.setPointer}
                       pointerEnd={editor.pointerEnd}
                     />
-                    {editor.tool === "pointer" && !editor.addingToLabelId ? (
-                      <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center px-3">
-                        <p role="status" className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-4 py-1.5 text-center text-sm text-text-primary shadow-card">
-                          {editor.selection
-                            ? `Tap or drag to the part label ${
-                                editor.labels.findIndex((label) => label.id === editor.selection?.labelId) + 1
-                              } points to`
-                            : "Drag from a box to the part it names"}
-                        </p>
-                      </div>
-                    ) : null}
-                    {editor.addingToLabelId ? (
-                      <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center px-3">
-                        <p role="status" className="pointer-events-auto flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] py-1.5 pl-4 pr-1.5 text-sm text-text-primary shadow-card">
-                          Draw another box for label{" "}
-                          {editor.labels.findIndex((label) => label.id === editor.addingToLabelId) + 1}
-                          <Button type="button" size="sm" variant="ghost" onClick={editor.cancelAddingBox}>
-                            Cancel
-                          </Button>
-                        </p>
-                      </div>
-                    ) : null}
                   </>
                 )}
               </div>
@@ -428,7 +435,7 @@ function DiagramEditorSession({
                   userId={userId}
                   topics={topics}
                   onTopicsChange={onTopicsChange}
-                  aiEnabled={featureFlags.enableFlashcardAi}
+                  aiEnabled={aiEnabled}
                 />
                 {editing ? (
                   <div className="mt-6 border-t border-[var(--color-border)] pt-4">
@@ -468,7 +475,11 @@ function DiagramEditorSession({
         <ConfirmDialog
           open={confirming === "delete"}
           title="Delete this diagram?"
-          description={`This deletes all ${editing?.occlusion?.diagram.labels.length ?? 0} of its cards and their review history. This cannot be undone.`}
+          description={
+            editing?.occlusion && getDiagramTargets(editing.occlusion.diagram).length > 1
+              ? `This deletes all ${getDiagramTargets(editing.occlusion.diagram).length} of its cards and their review history. This cannot be undone.`
+              : "This deletes the diagram and its review history. This cannot be undone."
+          }
           confirmLabel="Delete diagram"
           busy={editor.deleting}
           onClose={() => setConfirming(null)}
@@ -483,8 +494,8 @@ function DiagramEditorSession({
 function DiagramSteps() {
   const steps = [
     ["Add a picture", "A diagram, a slide, or a photo of a textbook page."],
-    ["Cover the labels", "Draw a box over each one. Type what it says if you like."],
-    ["Study each label", "Every box becomes its own card, reviewed on its own schedule."],
+    ["Cover the labels", "Jami covers printed labels for you, or box and name the parts."],
+    ["Study it as one card", "Every label covered; uncover each to check, then reveal them all."],
   ];
   return (
     <ol aria-label="How diagram cards work" className="grid gap-2 sm:grid-cols-3">
@@ -503,6 +514,101 @@ function DiagramSteps() {
         </li>
       ))}
     </ol>
+  );
+}
+
+/**
+ * The one question a picture is asked, before any drawing: are its labels
+ * printed on it? That decides everything after -- covering what is there, or
+ * boxing and naming the parts -- so it is asked once, big, with the picture in
+ * view, instead of as a setting a student has to find.
+ */
+function DiagramKindStep({
+  imageUrl,
+  aiEnabled,
+  canCrop,
+  onChoose,
+  onCrop,
+  onReplace,
+}: {
+  imageUrl: string | null;
+  aiEnabled: boolean;
+  canCrop: boolean;
+  onChoose: (mode: "cover" | "name") => void;
+  onCrop: () => void;
+  onReplace: () => void;
+}) {
+  const choices = [
+    {
+      mode: "cover" as const,
+      title: "It has labels",
+      detail: aiEnabled
+        ? "Jami covers every label for you. You just check the boxes."
+        : "Draw a box over each label. One tap drops a box.",
+      icon: <JamiTutorIcon className="h-6 w-6" />,
+      badge: aiEnabled ? "Fastest" : null,
+    },
+    {
+      mode: "name" as const,
+      title: "It has no labels",
+      detail: "Box each part you want to learn and type its name. Enter moves to the next.",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-6 w-6">
+          <rect x="3.5" y="5" width="9" height="7" rx="1.5" />
+          <path d="M15 8.5h5.5M15 15.5h5.5M3.5 15.5h8" />
+        </svg>
+      ),
+      badge: null,
+    },
+  ];
+  return (
+    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div className="relative min-h-[34dvh] flex-1 bg-[var(--color-glass-subtle)] p-4 sm:p-6">
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- a local preview or a signed URL, shown as it is
+          <img src={imageUrl} alt="The diagram" className="absolute inset-0 m-auto max-h-[calc(100%-2rem)] max-w-[calc(100%-2rem)] rounded-xl object-contain shadow-card sm:max-h-[calc(100%-3rem)] sm:max-w-[calc(100%-3rem)]" />
+        ) : null}
+      </div>
+      <div className="flex shrink-0 flex-col justify-center gap-3 border-t border-[var(--color-border)] p-4 sm:p-6 lg:w-[26rem] lg:border-l lg:border-t-0">
+        <h3 className="text-lg font-semibold text-text-primary">Are the labels written on the picture?</h3>
+        {choices.map((choice) => (
+          <button
+            key={choice.mode}
+            type="button"
+            onClick={() => onChoose(choice.mode)}
+            className="group flex w-full items-start gap-3.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-left transition duration-fast hover:border-accent hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-selected-border)]"
+          >
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--color-glass-medium)] text-accent transition group-hover:scale-105">
+              {choice.icon}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2">
+                <span className="text-base font-semibold text-text-primary">{choice.title}</span>
+                {choice.badge ? (
+                  <span className="rounded-full bg-[var(--color-glass-medium)] px-2 py-0.5 text-2xs font-semibold text-accent">
+                    {choice.badge}
+                  </span>
+                ) : null}
+              </span>
+              <span className="mt-1 block text-sm leading-5 text-text-secondary">{choice.detail}</span>
+            </span>
+            <span aria-hidden="true" className="self-center text-lg text-text-muted transition group-hover:translate-x-0.5 group-hover:text-text-primary">
+              ›
+            </span>
+          </button>
+        ))}
+        <div className="flex flex-wrap justify-center gap-1 pt-1">
+          {canCrop ? (
+            <Button type="button" size="sm" variant="ghost" onClick={onCrop}>
+              Crop first
+            </Button>
+          ) : null}
+          <Button type="button" size="sm" variant="ghost" onClick={onReplace}>
+            Use another picture
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -555,14 +661,6 @@ function DiagramToolbar({
         pressed={editor.tool === "outline"}
         disabled={drawingDisabled}
         onClick={() => editor.setTool("outline")}
-      />
-      <ToolbarIconButton
-        label="Line to the part (L)"
-        icon="pointer"
-        active={editor.tool === "pointer"}
-        pressed={editor.tool === "pointer"}
-        disabled={drawingDisabled}
-        onClick={() => editor.setTool("pointer")}
       />
       <ToolbarIconButton
         label="Move and resize (V)"
@@ -637,11 +735,16 @@ function DiagramPreview({
         labelMode: editor.labelMode,
         hideOthers: editor.hideOthers,
         labels: editor.labels,
-        groups: editor.groups.filter((group) => group.labelIds.length >= 2),
+        groups: groupsForCardStyle({
+          labels: editor.labels,
+          groups: editor.groups.filter((group) => group.labelIds.length >= 2),
+          cardStyle: editor.cardStyle,
+        }),
+        cardStyle: editor.cardStyle,
         ...(editor.pointerEnd === "arrow" ? { pointerEnd: "arrow" as const } : {}),
       }
     : null;
-  // Every card the diagram will make: each label, then each group.
+  // Every card the diagram will make: the one whole-diagram card, or each label then each group.
   const cards: CardOcclusion[] = diagram
     ? getDiagramTargets(diagram).map((target) =>
         "groupId" in target ? { diagram, groupId: target.groupId } : { diagram, labelId: target.labelId }

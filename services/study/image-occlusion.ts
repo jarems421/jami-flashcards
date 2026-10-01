@@ -24,10 +24,12 @@ import {
   getDiagramDraftError,
   getDiagramTargets,
   getGroupAnswerText,
+  groupsForCardStyle,
   occlusionOrder,
   planDiagramCleanup,
   planDiagramSave,
   type CardOcclusion,
+  type OcclusionCardStyle,
   type OcclusionDiagram,
   type OcclusionGroup,
   type OcclusionLabel,
@@ -125,6 +127,8 @@ export type DiagramSaveInput = {
   labelMode: OcclusionLabelMode;
   hideOthers: boolean;
   pointerEnd?: "dot" | "arrow";
+  /** One card for the whole diagram, or one per label. Absent keeps a card per label. */
+  cardStyle?: OcclusionCardStyle;
   labels: OcclusionLabel[];
   groups?: OcclusionGroup[];
 };
@@ -186,14 +190,18 @@ export async function saveDiagram(input: DiagramSaveInput): Promise<DiagramSaveR
     image = input.picture.image;
   }
 
+  const cardStyle = input.cardStyle ?? "each";
+  // Switching style replaces the cards: the plan below removes the old ones and makes the new.
+  const styledGroups = groupsForCardStyle({ labels, groups, cardStyle });
   const diagram: OcclusionDiagram = {
     id: input.diagramId ?? createStorageFileId(),
     image,
     labelMode: input.labelMode,
     hideOthers: input.hideOthers,
     labels,
-    ...(groups.length > 0 ? { groups } : {}),
+    ...(styledGroups.length > 0 ? { groups: styledGroups } : {}),
     ...(input.pointerEnd === "arrow" ? { pointerEnd: "arrow" as const } : {}),
+    ...(cardStyle === "whole" ? { cardStyle } : {}),
   };
   const plan = planDiagramSave(siblings, getDiagramTargets(diagram));
   const siblingById = new Map(siblings.map((card) => [card.id, card]));

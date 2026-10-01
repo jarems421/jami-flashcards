@@ -89,6 +89,30 @@ export type OcclusionGroup = {
  */
 export type OcclusionLabelMode = "cover" | "name";
 
+/**
+ * How a diagram is studied.
+ *
+ * `whole`: one card for the whole diagram. Every label is covered and the
+ * student works through them, uncovering each to check, then rates the diagram
+ * once. It is the default for a new diagram, because a diagram is one thing
+ * to a student, and thirteen cards of the same picture read as clutter.
+ * `each`: a card for every label, each on its own schedule -- Anki's "hide
+ * all, guess one" -- for a diagram with one or two labels that never stick.
+ * Diagrams saved before the choice existed are `each`.
+ */
+export type OcclusionCardStyle = "whole" | "each";
+
+/**
+ * The group a whole-diagram card asks: every label. Kept as an ordinary group
+ * so the study pipeline, which already asks groups as one card, needs nothing
+ * new; the editor never shows it.
+ */
+export const WHOLE_DIAGRAM_GROUP_ID = "whole-diagram";
+
+export function isWholeDiagramGroupId(groupId: string | undefined) {
+  return groupId === WHOLE_DIAGRAM_GROUP_ID;
+}
+
 export type OcclusionDiagram = {
   id: string;
   image: CardImage;
@@ -103,6 +127,8 @@ export type OcclusionDiagram = {
   groups?: OcclusionGroup[];
   /** How lines end at the part: a dot, the default, or an arrowhead. */
   pointerEnd?: "dot" | "arrow";
+  /** Absent on diagrams saved before there was a choice, which are `each`. */
+  cardStyle?: OcclusionCardStyle;
 };
 
 /**
@@ -311,6 +337,7 @@ export function normalizeOcclusionDiagram(
     labels,
     ...(groups.length > 0 ? { groups } : {}),
     ...(input.pointerEnd === "arrow" ? { pointerEnd: "arrow" as const } : {}),
+    ...(input.cardStyle === "whole" ? { cardStyle: "whole" as const } : {}),
   };
 }
 
@@ -385,6 +412,7 @@ export function getGroupAnswerText(diagram: OcclusionDiagram, group: OcclusionGr
 
 /** A group's name as a list shows it. */
 export function getGroupDisplayName(group: OcclusionGroup) {
+  if (isWholeDiagramGroupId(group.id)) return "Whole diagram";
   return group.name.trim() || `${group.labelIds.length} labels together`;
 }
 
@@ -396,6 +424,10 @@ export function getGroupDisplayName(group: OcclusionGroup) {
  */
 export function getOcclusionPrompt(occlusion: CardOcclusion, header: string) {
   const group = getOcclusionGroup(occlusion);
+  if (group && isWholeDiagramGroupId(group.id)) {
+    const ask = occlusion.diagram.labelMode === "cover" ? "Name every covered label" : "Name every marked part";
+    return header.trim() ? `${header.trim()}: ${ask.charAt(0).toLowerCase()}${ask.slice(1)}.` : `${ask}.`;
+  }
   if (group) {
     const count = group.labelIds.length;
     const ask = occlusion.diagram.labelMode === "cover" ? `Name the ${count} highlighted labels` : `Name the ${count} marked parts`;
@@ -1037,8 +1069,33 @@ export function planDiagramSave(existing: readonly DiagramCardRef[], targets: re
   };
 }
 
-/** Every card a diagram has: one per label, then one per group. */
-export function getDiagramTargets(diagram: Pick<OcclusionDiagram, "labels" | "groups">): OcclusionTarget[] {
+/**
+ * A diagram's groups for its card style: a whole-diagram diagram asks one
+ * group of every label and nothing else; a label-by-label one never carries
+ * that group. Applied when a diagram is saved, so what is stored always
+ * matches the cards it has.
+ */
+export function groupsForCardStyle(
+  diagram: Pick<OcclusionDiagram, "labels" | "groups" | "cardStyle">
+): OcclusionGroup[] {
+  if (diagram.cardStyle === "whole") {
+    return diagram.labels.length >= 2
+      ? [{ id: WHOLE_DIAGRAM_GROUP_ID, name: "", labelIds: diagram.labels.map((label) => label.id) }]
+      : [];
+  }
+  return (diagram.groups ?? []).filter((group) => !isWholeDiagramGroupId(group.id));
+}
+
+/**
+ * Every card a diagram has: one for the whole diagram, or one per label and
+ * then one per group. A whole diagram of a single label is that label's card.
+ */
+export function getDiagramTargets(
+  diagram: Pick<OcclusionDiagram, "labels" | "groups" | "cardStyle">
+): OcclusionTarget[] {
+  if (diagram.cardStyle === "whole" && diagram.labels.length >= 2) {
+    return [{ groupId: WHOLE_DIAGRAM_GROUP_ID }];
+  }
   return [
     ...diagram.labels.map((label) => ({ labelId: label.id })),
     ...(diagram.groups ?? []).map((group) => ({ groupId: group.id })),
@@ -1072,7 +1129,16 @@ export function planDiagramCleanup(
     const remaining = survivors.filter(
       (card) => !deletedIds.has(card.id) && card.occlusion?.diagram.id === diagramId
     );
-    const liveLabelIds = new Set(remaining.flatMap((card) => (card.occlusion?.labelId ? [card.occlusion.labelId] : [])));
+    // A whole-diagram card keeps every label of its diagram alive: its labels have no cards of their own.
+    const liveLabelIds = new Set(
+      remaining.flatMap((card) =>
+        card.occlusion?.labelId
+          ? [card.occlusion.labelId]
+          : card.occlusion?.groupId && isWholeDiagramGroupId(card.occlusion.groupId)
+            ? card.occlusion.diagram.labels.map((label) => label.id)
+            : []
+      )
+    );
     const liveGroupIds = new Set(remaining.flatMap((card) => (card.occlusion?.groupId ? [card.occlusion.groupId] : [])));
     const emptied = new Set<string>();
     const pruned = (diagram: OcclusionDiagram): OcclusionDiagram => {

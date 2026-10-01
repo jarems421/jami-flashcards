@@ -11,7 +11,9 @@ import {
   MAX_SHAPES_PER_LABEL,
   cropLabels,
   getDiagramDraftError,
+  isWholeDiagramGroupId,
   moveShape,
+  type OcclusionCardStyle,
   type OcclusionCrop,
   type OcclusionLabel,
   type OcclusionLabelMode,
@@ -98,13 +100,24 @@ export function useDiagramEditor({
   const [wasCropped, setWasCropped] = useState(false);
   const [history, dispatch] = useReducer(
     diagramEditorReducer,
-    { labels: initialDiagram?.labels ?? [], groups: initialDiagram?.groups ?? [] },
+    {
+      labels: initialDiagram?.labels ?? [],
+      // The whole-diagram group follows the card style; it is never edited as a group.
+      groups: (initialDiagram?.groups ?? []).filter((group) => !isWholeDiagramGroupId(group.id)),
+    },
     createDiagramEditorState
   );
   const [header, setHeader] = useState(editing?.front ?? "");
   const [labelMode, setLabelMode] = useState<OcclusionLabelMode>(initialDiagram?.labelMode ?? "cover");
   const [hideOthers, setHideOthers] = useState(initialDiagram?.hideOthers ?? true);
   const [pointerEnd, setPointerEnd] = useState<"dot" | "arrow">(initialDiagram?.pointerEnd ?? "dot");
+  /*
+   * A diagram is always one card. One saved as a card per label, before that
+   * was settled, becomes one card when it is next saved. Several diagrams of
+   * one picture are how a student gets more than one card from it.
+   */
+  const initialCardStyle: OcclusionCardStyle = initialDiagram ? initialDiagram.cardStyle ?? "each" : "whole";
+  const cardStyle: OcclusionCardStyle = "whole";
   const [topicIds, setTopicIdsState] = useState<string[]>(editing?.topicIds ?? []);
   const [topicsChanged, setTopicsChanged] = useState(false);
   const [rawSelection, setSelection] = useState<DiagramSelection>(null);
@@ -316,7 +329,7 @@ export function useDiagramEditor({
       dispatch({ type: "add-labels", labels: found });
       setSelection(null);
       setNotice(
-        `Jami boxed ${found.length} label${found.length === 1 ? "" : "s"}. Check each one: fix a box that is off, and remove any that should not be a card.`
+        `Jami covered ${found.length} label${found.length === 1 ? "" : "s"}. Fix any box that is off, then save.`
       );
     } catch (detectError) {
       console.error("Failed to find diagram labels.", detectError);
@@ -332,6 +345,7 @@ export function useDiagramEditor({
     labelMode !== (initialDiagram?.labelMode ?? "cover") ||
     hideOthers !== (initialDiagram?.hideOthers ?? true) ||
     pointerEnd !== (initialDiagram?.pointerEnd ?? "dot") ||
+    cardStyle !== initialCardStyle ||
     topicsChanged;
   const dirty = history.past.length > 0 || settingsChanged || pictureChanged || (!initialDiagram && Boolean(picture));
   const draftError = getDiagramDraftError({ labelMode, labels, groups });
@@ -356,6 +370,7 @@ export function useDiagramEditor({
         labelMode,
         hideOthers,
         pointerEnd,
+        cardStyle,
         labels,
         groups,
       });
@@ -373,6 +388,7 @@ export function useDiagramEditor({
     }
   }, [
     deckId,
+    cardStyle,
     draftError,
     editing?.deckId,
     groups,
@@ -421,6 +437,9 @@ export function useDiagramEditor({
     setHideOthers,
     pointerEnd,
     setPointerEnd,
+    cardStyle,
+    /** Whether saving will replace this diagram's cards, and with them their review history. */
+    cardStyleChanged: Boolean(initialDiagram) && cardStyle !== initialCardStyle,
     topicIds,
     setTopicIds,
     selection,

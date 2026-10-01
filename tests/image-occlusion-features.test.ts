@@ -316,6 +316,21 @@ describe("finding printed labels", () => {
     expect(labels[0].width).toBeCloseTo(0.112, 3);
   });
 
+  it("reads the model's boxes when it wraps each one in a second list", () => {
+    // Gemini's actual reply for a drawn cell, which used to come back as no labels at all.
+    const labels = parseDetectedLabels(`{
+      "labels": [
+        { "text": "Nucleus", "box_2d": [[151, 35, 185, 153]] },
+        { "text": "Cytoplasm", "box_2d": [[912, 68, 951, 226]] },
+        { "text": "Mitochondrion", "box_2d": [[835, 786, 882, 996]] },
+        { "text": "Cell membrane", "box_2d": [[203, 786, 237, 1000]] }
+      ]
+    }`);
+    expect(labels.map((entry) => entry.text)).toEqual(["Nucleus", "Cytoplasm", "Mitochondrion", "Cell membrane"]);
+    expect(labels[0].x).toBeCloseTo(0.029, 3);
+    expect(labels[0].y).toBeCloseTo(0.145, 3);
+  });
+
   it("ignores what is not a label: bad boxes, captions and repeats", () => {
     const labels = parseDetectedLabels(`Here you go: {"labels": [
       {"text": "Aorta", "box_2d": [100, 600, 150, 700]},

@@ -9,6 +9,9 @@ import {
   findShapeAt,
   getDiagramDistractorPool,
   getDiagramDraftError,
+  getDiagramTargets,
+  groupsForCardStyle,
+  WHOLE_DIAGRAM_GROUP_ID,
   getOcclusionMasks,
   getOcclusionPrompt,
   getWalkthroughMasks,
@@ -298,5 +301,61 @@ describe("lists", () => {
   it("offers the other named labels, once each, as wrong options", () => {
     const withBlanks = diagram([label("a", "Aorta"), label("b", ""), label("c", "aorta"), label("d", "Vena cava")]);
     expect(getDiagramDistractorPool({ diagram: withBlanks, labelId: "a" })).toEqual(["Vena cava"]);
+  });
+});
+
+describe("one card for the whole diagram", () => {
+  const WHOLE = diagram(HEART.labels, {
+    cardStyle: "whole",
+    groups: [{ id: WHOLE_DIAGRAM_GROUP_ID, name: "", labelIds: HEART.labels.map((entry) => entry.id) }],
+  });
+
+  it("asks every label on one card, and a card per label when split", () => {
+    expect(getDiagramTargets(WHOLE)).toEqual([{ groupId: WHOLE_DIAGRAM_GROUP_ID }]);
+    expect(getDiagramTargets({ ...WHOLE, cardStyle: "each", groups: [] })).toHaveLength(4);
+    // A single label is its own card either way.
+    expect(getDiagramTargets(diagram([label("a", "Aorta")], { cardStyle: "whole" }))).toEqual([{ labelId: "a" }]);
+  });
+
+  it("stores the whole-diagram group only for a whole diagram, and drops other groups with it", () => {
+    const valves = { id: "valves", name: "Valves", labelIds: ["a", "b"] };
+    expect(groupsForCardStyle({ labels: HEART.labels, groups: [valves], cardStyle: "whole" })).toEqual([
+      { id: WHOLE_DIAGRAM_GROUP_ID, name: "", labelIds: ["a", "b", "c", "d"] },
+    ]);
+    expect(
+      groupsForCardStyle({ labels: HEART.labels, groups: [valves, ...(WHOLE.groups ?? [])], cardStyle: "each" })
+    ).toEqual([valves]);
+  });
+
+  it("switching style replaces the cards", () => {
+    const perLabel = HEART.labels.map((entry) => diagramCard(`card-${entry.id}`, entry.id, HEART));
+    const plan = planDiagramSave(perLabel, getDiagramTargets(WHOLE));
+    expect(plan.keep).toEqual([]);
+    expect(plan.create).toEqual([{ groupId: WHOLE_DIAGRAM_GROUP_ID }]);
+    expect(plan.remove).toEqual(["card-a", "card-b", "card-c", "card-d"]);
+  });
+
+  it("asks for every label, without counting them into a highlighted set", () => {
+    const occlusion: CardOcclusion = { diagram: WHOLE, groupId: WHOLE_DIAGRAM_GROUP_ID };
+    expect(getOcclusionPrompt(occlusion, "")).toBe("Name every covered label.");
+    expect(getOcclusionPrompt(occlusion, "The heart")).toBe("The heart: name every covered label.");
+    expect(normalizeCardOcclusion({ diagram: WHOLE, groupId: WHOLE_DIAGRAM_GROUP_ID }, USER)?.diagram.cardStyle).toBe("whole");
+  });
+
+  it("keeps its labels when an unrelated card of the same diagram is deleted", () => {
+    const wholeCard: Card = { ...diagramCard("card-whole", "a", WHOLE), occlusion: { diagram: WHOLE, groupId: WHOLE_DIAGRAM_GROUP_ID } };
+    const stray = diagramCard("card-stray", "a", WHOLE);
+    const plan = planDiagramCleanup([stray], [wholeCard]);
+    expect(plan.deletes).toEqual([]);
+    expect(plan.orphanedImages).toEqual([]);
+    expect(plan.updates).toEqual([]);
+  });
+
+  it("colours every box by the one card's strength", async () => {
+    const { getDiagramStrengths } = await import("@/lib/study/diagram-strength");
+    const wholeCard: Card = { ...diagramCard("card-whole", "a", WHOLE), occlusion: { diagram: WHOLE, groupId: WHOLE_DIAGRAM_GROUP_ID } };
+    const strengths = getDiagramStrengths([wholeCard]);
+    expect([...strengths.keys()]).toEqual(["a", "b", "c", "d"]);
+    expect(new Set(strengths.values()).size).toBe(1);
   });
 });

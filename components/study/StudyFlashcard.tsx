@@ -3,13 +3,15 @@
 import { useState, type CSSProperties } from "react";
 import CardFaceImage from "@/components/cards/CardFaceImage";
 import DiagramZoomDialog from "@/components/cards/DiagramZoomDialog";
-import OcclusionFigure from "@/components/cards/OcclusionFigure";
+import OcclusionFigure, { OcclusionPicture } from "@/components/cards/OcclusionFigure";
 import { StudyText } from "@/components/ui";
 import type { CardImage } from "@/lib/study/card-images";
 import type { Card } from "@/lib/study/cards";
 import {
   getOcclusionPrompt,
   getOcclusionTargets,
+  getWalkthroughMasks,
+  isWholeDiagramGroupId,
   type CardOcclusion,
 } from "@/lib/study/image-occlusion";
 
@@ -80,14 +82,31 @@ function DiagramFaceContent({
   occlusion,
   header,
   side,
+  onReveal,
 }: {
   occlusion: CardOcclusion;
   header: string;
   side: "front" | "back";
+  onReveal?: () => void;
 }) {
   const [unmasked, setUnmasked] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  /** On a whole-diagram card's front: the labels the student has uncovered to check. */
+  const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
   const { labels } = getOcclusionTargets(occlusion);
+  /*
+   * A whole-diagram card is worked through, not answered in one go: every
+   * label starts covered, the student uncovers each to check their recall,
+   * and flipping the card shows them all to rate it once.
+   */
+  const checking = side === "front" && isWholeDiagramGroupId(occlusion.groupId);
+  const toggleChecked = (labelId: string) =>
+    setChecked((current) => {
+      const next = new Set(current);
+      if (next.has(labelId)) next.delete(labelId);
+      else next.add(labelId);
+      return next;
+    });
   const answers = labels.map((label) => label.answer.trim()).filter(Boolean);
   const notes = labels.map((label) => label.note?.trim()).filter((note): note is string => Boolean(note));
   const canUnmask = side === "back" && occlusion.diagram.labels.length > labels.length;
@@ -96,12 +115,36 @@ function DiagramFaceContent({
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 py-4">
       <div className="flex min-h-0 w-full flex-1 items-center justify-center">
-        <OcclusionFigure occlusion={occlusion} phase={phase} fit="contain" onZoom={() => setZoomed(true)} />
+        {checking ? (
+          <OcclusionPicture
+            diagram={occlusion.diagram}
+            masks={getWalkthroughMasks(occlusion.diagram, checked)}
+            label="Diagram with every label covered. Tap a label to uncover it."
+            fit="contain"
+            onMaskActivate={toggleChecked}
+            onZoom={() => setZoomed(true)}
+          />
+        ) : (
+          <OcclusionFigure occlusion={occlusion} phase={phase} fit="contain" onZoom={() => setZoomed(true)} />
+        )}
       </div>
+      {checking && onReveal ? (
+        <button
+          type="button"
+          onClick={onReveal}
+          className="shrink-0 rounded-full border border-current/25 px-4 py-1.5 text-sm font-semibold transition hover:bg-current/[0.06]"
+        >
+          Show all labels
+        </button>
+      ) : null}
       {side === "front" ? (
         <StudyText
           as="p"
-          text={getOcclusionPrompt(occlusion, header)}
+          text={
+            checking
+              ? `${getOcclusionPrompt(occlusion, header)} Tap a label to check it (${checked.size} of ${occlusion.diagram.labels.length}), then show them all.`
+              : getOcclusionPrompt(occlusion, header)
+          }
           className="max-w-4xl shrink-0 text-center text-sm font-medium opacity-80 sm:text-base"
         />
       ) : (
@@ -161,9 +204,19 @@ export default function StudyFlashcard({
       data-study-current-card-id={card.id}
       data-tutorial-target="flashcard"
       className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-2xl"
-      onClick={!flipped ? onReveal : undefined}
+      onClick={
+        !flipped
+          ? (event) => {
+              // A tap on a control inside the card -- a label being checked, the zoom -- is for that control.
+              if ((event.target as Element).closest("button")) return;
+              // A whole diagram is turned only by its own button: a stray tap while checking labels would end it.
+              if (isWholeDiagramGroupId(card.occlusion?.groupId)) return;
+              onReveal();
+            }
+          : undefined
+      }
       onKeyDown={(event) => {
-        if (flipped) return;
+        if (flipped || event.target !== event.currentTarget) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onReveal();
@@ -217,12 +270,13 @@ export default function StudyFlashcard({
               occlusion={card.occlusion}
               header={card.front}
               side="front"
+              onReveal={onReveal}
             />
           ) : (
             <FlashcardFaceContent text={card.front} image={card.frontImage} side="front" />
           )}
           <div className="text-center text-xs font-medium opacity-60">
-            Tap anywhere on the card or press Space to reveal
+            {isWholeDiagramGroupId(card.occlusion?.groupId) ? "Press Space to show every label" : "Tap anywhere on the card or press Space to reveal"}
           </div>
         </div>
         {/*

@@ -39,7 +39,8 @@ function strengthSummary(strengths: ReadonlyMap<string, CardStrength>) {
 /**
  * The deck's diagrams, one tile each.
  *
- * Each label is a card and is listed with the cards below; this is where a
+ * A diagram's cards -- one for the whole picture, or one per label -- are
+ * listed with the cards below; this is where a
  * diagram is handled as the one picture it is -- to go over by hand, to edit
  * its boxes, or to label the same picture again. The thumbnail colours each
  * label by how well it is known, so the weak spots show at a glance.
@@ -84,8 +85,8 @@ export default function DeckDiagramsSection({ cards, onEdit, onWalkthrough, onRe
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-text-primary">{title}</p>
                   <p className="text-xs text-text-muted">
-                    {count} label{count === 1 ? "" : "s"}
-                    {diagram.groups?.length ? ` · ${diagram.groups.length} asked together` : ""}
+                    {count} label{count === 1 ? "" : "s"} ·{" "}
+                    {diagramCards.length === 1 ? "one card" : `${diagramCards.length} cards`}
                   </p>
                   <p className="mt-0.5 text-xs text-text-secondary">{strengthSummary(strengths)}</p>
                 </div>

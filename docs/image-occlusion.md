@@ -1,8 +1,10 @@
 # Diagram cards (image occlusion)
 
 A student adds a picture, such as a heart, a cell, a map or a lecture slide, and
-covers its labels. Each label becomes its own flashcard with its own schedule.
-Anki calls this image occlusion, "Hide all, guess one". Jami follows it loosely.
+covers its labels. By default the diagram is **one card**: every label covered,
+uncovered one at a time to check, then rated once. A student can instead choose
+**a card for each label**, each on its own schedule (Anki's "Hide all, guess
+one"), and switch either way later.
 
 ## How a student uses it
 
@@ -20,34 +22,30 @@ Anki calls this image occlusion, "Hide all, guess one". Jami follows it loosely.
    - **Trace an outline**: draw round an irregular part (a lobe, a bone) with a
      finger, pen or mouse. The path is simplified to at most 64 points and
      becomes a polygon, which moves and resizes like a box.
-   - **Line to the part**: see step 5.
    - **Move**: drag a box to move it. Dragging empty picture pans when zoomed.
    - The selected box has corner handles in every tool.
    - Undo and redo cover boxes, label text, groups and found labels. A drag
      undoes in one step, and so does typing one label.
-   - Keyboard: B, O, F, L and V switch tools. Arrows nudge the selected box
+   - Keyboard: B, O, F and V switch tools. Arrows nudge the selected box
      (hold Shift to move further). Delete removes it. Esc deselects.
      Ctrl/Cmd+Z undoes, and Shift+Ctrl/Cmd+Z or Ctrl+Y redoes. +, - and 0 zoom.
    - **Find the labels for me** (cover mode, when flashcard AI is on) asks the
      AI to box every printed label and fill in its words. See *Finding printed
      labels* below.
-4. **Name the labels** in the list. Each row is one card. A label can have:
-   - a note, shown with the answer;
-   - other accepted answers (*Also accept*, comma separated: `LV, ventriculus
-     sinister`), up to 8;
-   - more than one box, for a structure that appears twice, or a label and its
-     leader line.
-5. **Point at the part** (optional). With the **Line** tool (L), drag from a
-   box to the exact spot it names. On a phone, choose *+ Line to the part* on a
-   label, then tap the spot. The tip has a handle; the middle has a bend handle
-   that curves the line round other structures (double-click or *Straighten
-   line* removes the bend). *Lines end in* a dot or an arrowhead, one setting
-   per diagram.
-6. **Ask together** (optional). A group asks several labels as one card, such
-   as "Name the four valves". It needs at least two labels; a diagram has up to
-   12 groups. The labels keep their own cards too.
-7. **Preview** steps through every card, groups included, as it will be
-   studied. Then **Save**.
+4. **The label list** is one row per box: its number, its name, and remove.
+   In *name the parts* each row asks for the part's name. In *cover them* a row
+   shows a name only when it has one (found by Jami, or from before), so it can
+   be corrected; otherwise the picture says it, and nothing is asked.
+5. **How do you want to study it?** (two or more labels): *One card* (the
+   default) or *A card for each label*. Changing it on a saved diagram replaces
+   its cards, and the editor says their review history starts again.
+6. **Preview** steps through every card as it will be studied. Then **Save**.
+
+The editor used to offer, per label, other accepted answers, a note, a line to
+the part and extra boxes, and per diagram, groups asked together, a question,
+"hide all / hide just that one" and line ends. They made a two-minute job feel
+like a form and are no longer shown. A diagram saved with any of them keeps
+them, and they still work in study.
 
 *Label again* on the deck page reuses a saved diagram's picture for a second,
 separate set of labels, such as the same heart for blood flow instead of
@@ -77,14 +75,21 @@ what each label draws in each state (box style, words inside or beside, line,
 and the amber *confused* look). The study card, the walkthrough and the tests
 all use it.
 
-There is one setting per diagram: "Hide all labels" (the default and harder
-option) or "Hide just that one". Multiple choice always hides every other label,
-because those labels are its options.
+A diagram hides every other label while one is asked. Older diagrams may have
+been saved with "Hide just that one", which still applies to them. Multiple
+choice always hides every other label, because those labels are its options.
 
 ## Studying
 
-Every label card goes through the ordinary study pipeline (FSRS, Learning Engine
-evidence, offline queue). No special path exists.
+Every diagram card goes through the ordinary study pipeline (FSRS, Learning
+Engine evidence, offline queue). No special path exists.
+
+- **One card for the whole diagram** is a group of every label (the reserved
+  group `whole-diagram`, never shown as a group in the editor). The front has
+  every label covered and each box can be tapped to uncover it, "Tap a label to
+  check it (2 of 13)"; tapping anywhere else turns the card, which shows every
+  label, and it is rated once. Flip only. Its strength colours every box on the
+  deck page.
 
 - **Flip:** the box is highlighted as the question, then uncovered. The back has
   *Show every label*, which works like Anki's *Toggle masks*.
@@ -173,6 +178,11 @@ its picture is useless.
 
 `Card.occlusion = { diagram, labelId }` or `{ diagram, groupId }`
 (`lib/study/image-occlusion.ts`).
+
+- `diagram.cardStyle` is `"whole"` for one card, or absent for a card per label
+  (every diagram saved before the choice). `groupsForCardStyle` and
+  `getDiagramTargets` derive the cards from it on every save, so what is stored
+  always matches the cards that exist.
 
 - Each card carries a copy of the whole diagram, not a reference to it. Anything
   that already handles cards (offline study, saved sessions, moving decks, the

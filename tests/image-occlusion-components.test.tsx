@@ -156,6 +156,42 @@ describe("a diagram label in study", () => {
     expect(front.textContent).toContain("Atria: name the 2 highlighted labels.");
   });
 
+  it("lets a whole-diagram card be checked label by label before it is turned", async () => {
+    const onReveal = vi.fn();
+    const whole: Card = {
+      ...card,
+      id: "card-whole",
+      back: HEART.labels.map((entry) => entry.answer).join("; "),
+      occlusion: {
+        diagram: {
+          ...HEART,
+          cardStyle: "whole",
+          groups: [{ id: "whole-diagram", name: "", labelIds: HEART.labels.map((entry) => entry.id) }],
+        },
+        groupId: "whole-diagram",
+      },
+    };
+    await act(async () =>
+      root.render(<StudyFlashcard card={whole} flipped={false} onReveal={onReveal} deckName="Anatomy" deckColor="#8f7de8" topicNames={[]} />)
+    );
+    const front = host.querySelector(".study-flashcard-face-front")!;
+    expect(front.textContent).toContain("Name every covered label. Tap a label to check it (0 of 5), then show them all.");
+
+    const uncover = front.querySelector<HTMLButtonElement>('button[aria-label="Uncover label 2"]')!;
+    await act(async () => uncover.click());
+    // The box opened; the card did not turn.
+    expect(onReveal).not.toHaveBeenCalled();
+    expect(front.textContent).toContain("(1 of 5)");
+    expect(front.querySelector('button[aria-label^="Cover label 2"]')).not.toBeNull();
+
+    // A stray tap elsewhere never ends it; only its own button does.
+    await act(async () => (front as HTMLElement).click());
+    expect(onReveal).not.toHaveBeenCalled();
+    const showAll = [...front.querySelectorAll("button")].find((button) => button.textContent === "Show all labels")!;
+    await act(async () => showAll.click());
+    expect(onReveal).toHaveBeenCalledTimes(1);
+  });
+
   it("hides every other label in multiple choice even when the diagram hides only one", async () => {
     const hideOne: Card = { ...card, occlusion: { diagram: { ...HEART, hideOthers: false }, labelId: "b" } };
     const exercise = buildDeterministicExercise(hideOne, "multiple-choice", "hash", { seed: 3 })!;
