@@ -64,6 +64,24 @@ describe("what Jami remembers, as the student sees it", () => {
     expect(body.items[1]).not.toHaveProperty("topicIds");
   });
 
+  it("shows how often each note came up and which notes it is linked to", async () => {
+    const current = mocks.stored.current as TutorMemoryState;
+    mocks.stored.current = {
+      ...current,
+      items: [
+        { ...current.items[0], reinforced: 2, links: ["c"] },
+        { id: "c", kind: "mistake", text: "Rearranges n = m / Mr wrongly", folderId: "chemistry", topicIds: [], createdAt: NOW - 3_000, updatedAt: NOW - 3_000, reinforced: 0 },
+      ],
+    };
+    const body = await (await GET(new NextRequest("https://jami.test/api/ai/assistant/memory"))).json();
+    const struggle = body.items.find((entry: { id: string }) => entry.id === "a");
+    expect(struggle).toMatchObject({ reinforced: 2, links: ["c"] });
+
+    // Forgetting the other note takes the link with it.
+    const after = await (await PATCH(patch({ target: "forget", id: "c" }))).json();
+    expect(after.items.find((entry: { id: string }) => entry.id === "a")).not.toHaveProperty("links");
+  });
+
   it("refuses anyone not signed in", async () => {
     mocks.reader.mockResolvedValue(null);
     expect((await GET(new NextRequest("https://jami.test/api/ai/assistant/memory"))).status).toBe(401);

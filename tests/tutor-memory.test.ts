@@ -209,6 +209,74 @@ describe("what Tutor may remember", () => {
   });
 });
 
+describe("linking the same mistake across subjects", () => {
+  const shown = state([
+    item({ id: "maths-rearrange", kind: "mistake", text: "Rearranges formulas by changing one side only", folderId: "maths" }),
+    item({ id: "maths-plan", kind: "plan", text: "About to do the calculator paper", folderId: "maths" }),
+    item({ id: "pref", kind: "preference", text: "Likes a worked example first" }),
+  ]);
+  const refs = new Map([["m1", "maths-rearrange"], ["m2", "maths-plan"], ["m3", "pref"]]);
+
+  it("links a new note to the same mistake Tutor was shown, and only to notes tied to a subject", () => {
+    const result = apply(shown, [
+      { action: "remember", kind: "mistake", text: "Rearranges n = m / Mr wrongly when finding mass", links: ["m1", "m3", "m9"] },
+    ], refs);
+    expect(result.outcome).toMatchObject({ added: 1, linked: 1 });
+    const added = result.state.items.find((entry) => entry.folderId === "chemistry");
+    // The preference follows them everywhere already, and m9 was never shown.
+    expect(added?.links).toEqual(["maths-rearrange"]);
+  });
+
+  it("links from a confirmed note too, never to itself, at most two per change and four per note", () => {
+    const kept = apply(shown, [{ action: "keep", ref: "m1", links: ["m1", "m2"] }], refs);
+    expect(kept.outcome).toMatchObject({ kept: 1, linked: 1 });
+    expect(kept.state.items.find((entry) => entry.id === "maths-rearrange")?.links).toEqual(["maths-plan"]);
+
+    const many = state([
+      item({ id: "a", kind: "mistake", text: "Drops minus signs when expanding", folderId: "maths" }),
+      ...["b", "c", "d", "e", "f", "g"].map((id) => item({ id, kind: "struggle", text: `Finds topic ${id} hard`, folderId: "physics" })),
+    ]);
+    const manyRefs = new Map(["a", "b", "c", "d", "e", "f", "g"].map((id, index) => [`m${index + 1}`, id]));
+    const twice = apply(many, [{ action: "keep", ref: "m1", links: ["m2", "m3", "m4"] }], manyRefs);
+    expect(twice.state.items[0].links).toEqual(["b", "c"]);
+    const full = apply(
+      { ...many, items: [{ ...many.items[0], links: ["b", "c", "d"] }, ...many.items.slice(1)] },
+      [{ action: "keep", ref: "m1", links: ["m6", "m7"] }],
+      manyRefs
+    );
+    expect(full.state.items[0].links).toHaveLength(4);
+  });
+
+  it("drops a link as soon as either note is gone", () => {
+    const linked = state([
+      item({ id: "a", kind: "mistake", text: "Rounds too early in trigonometry", folderId: "maths", links: ["b"] }),
+      item({ id: "b", kind: "mistake", text: "Rounds chlorine's relative atomic mass to 35", folderId: "chemistry" }),
+    ]);
+    const result = apply(linked, [{ action: "forget", ref: "m2" }], new Map([["m2", "b"]]));
+    expect(result.state.items).toHaveLength(1);
+    expect(result.state.items[0].links).toBeUndefined();
+    // A stored link to a note that no longer exists is read as no link.
+    const read = normalizeTutorMemory({ items: [{ id: "a", kind: "mistake", text: "Rounds too early", links: ["gone"] }] });
+    expect(read.items[0].links).toBeUndefined();
+  });
+
+  it("brings a linked mistake from another subject to Tutor, after this subject's own notes", () => {
+    const memory = state([
+      item({ id: "chem", kind: "mistake", text: "Rearranges n = m / Mr wrongly", folderId: "chemistry", links: ["maths"] }),
+      item({ id: "maths", kind: "mistake", text: "Rearranges formulas by changing one side only", folderId: "maths" }),
+      item({ id: "maths-other", kind: "mistake", text: "Mixes up sin and cos", folderId: "maths" }),
+      item({ id: "chem-hard", kind: "struggle", text: "Finds titrations hard", folderId: "chemistry" }),
+    ]);
+    const inChemistry = selectTutorMemoriesForPrompt({ state: memory, folderIds: ["chemistry"], topicIds: [], now: NOW });
+    expect(inChemistry.map((entry) => entry.id)).toEqual(["chem", "chem-hard", "maths"]);
+    const { instruction } = buildTutorMemoryInstruction({
+      memories: inChemistry, recent: [], now: NOW, boundaryToken: "t", firstTurn: false, canWrite: true,
+    });
+    expect(instruction).toContain("linked to m3");
+    expect(instruction).toContain('"links"');
+  });
+});
+
 describe("what Tutor is shown", () => {
   const memory = state([
     item({ id: "pref", kind: "preference", text: "Likes a worked example first" }),

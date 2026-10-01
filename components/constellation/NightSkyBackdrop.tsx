@@ -15,8 +15,8 @@ function seeded(seed: number) {
 }
 
 /**
- * The night Jami opens on: one glow breathing slowly across the sky, faint
- * twinkling dust, and the occasional shooting star.
+ * The night Jami opens on: faint twinkling dust and the occasional shooting
+ * star. No pooled glow behind it; the sky stays clean and dark.
  *
  * The same sky sits behind signing in and behind the first-night welcome, so
  * the walkthrough reads as arriving somewhere rather than as a new screen.
@@ -37,7 +37,6 @@ export default function NightSkyBackdrop({ fixed = false }: { fixed?: boolean })
 
   return (
     <div className={fixed ? "night-backdrop-fixed" : "fn-night"} aria-hidden="true">
-      <div className="fn-glow" />
       {dust.map((speck, index) => (
         <span
           key={index}

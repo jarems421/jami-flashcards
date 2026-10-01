@@ -24,8 +24,6 @@ export default function AuthShell({ children, back, footnote }: AuthShellProps) 
       data-app-surface="true"
       className="relative flex min-h-[100dvh] flex-col overflow-x-hidden px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] text-text-primary sm:px-8"
     >
-      <div className="signed-out-glow signed-out-glow-centred" aria-hidden="true" />
-
       <header className="relative mx-auto flex w-full max-w-6xl items-center justify-between gap-4">
         <Link
           href="/"

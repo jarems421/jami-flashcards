@@ -8,6 +8,7 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { createLogger } from "@/lib/observability/logger";
 import {
   activeTutorMemories,
+  dropDanglingTutorMemoryLinks,
   isRememberableText,
   tutorMemoryFadesAt,
   MAX_TUTOR_MEMORY_TEXT_LENGTH,
@@ -19,11 +20,15 @@ export const runtime = "nodejs";
 
 const log = createLogger({ route: "ai.assistant.memory" });
 
-/** What the student sees: the memories still in force, newest first. */
+/**
+ * What the student sees: the memories still in force, newest first, with how
+ * often each came up and which others it is linked to. Never the Topics.
+ */
 function view(state: TutorMemoryState, now = Date.now()) {
+  const items = dropDanglingTutorMemoryLinks(activeTutorMemories(state, now));
   return {
     enabled: state.enabled,
-    items: activeTutorMemories(state, now)
+    items: items
       .sort((left, right) => right.updatedAt - left.updatedAt)
       .map((item) => ({
         id: item.id,
@@ -33,6 +38,8 @@ function view(state: TutorMemoryState, now = Date.now()) {
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
         fadesAt: tutorMemoryFadesAt(item),
+        reinforced: item.reinforced,
+        ...(item.links?.length ? { links: item.links } : {}),
       })),
   };
 }
@@ -120,7 +127,12 @@ export async function PATCH(request: NextRequest) {
     if (!id) return assistantAssetError("Choose a memory to forget.", 400, "invalid_request");
     const saved = await updateTutorMemory(writer.uid, (state) =>
       state.items.some((item) => item.id === id)
-        ? { ...state, items: state.items.filter((item) => item.id !== id), updatedAt: now }
+        ? {
+            ...state,
+            // Its links go with it.
+            items: dropDanglingTutorMemoryLinks(state.items.filter((item) => item.id !== id)),
+            updatedAt: now,
+          }
         : null
     );
     log.info("memory.forgotten");

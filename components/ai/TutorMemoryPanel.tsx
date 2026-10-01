@@ -1,15 +1,18 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
+import TutorMemoryMap, { canDrawMemoryMap } from "@/components/ai/memory-map/TutorMemoryMap";
 import {
   Button,
   ConfirmDialog,
   FeedbackBanner,
   Input,
+  OptionSwitch,
   SettingSwitch,
   Skeleton,
 } from "@/components/ui";
 import type { useTutorMemory } from "@/hooks/useTutorMemory";
+import type { MemoryMapFolderInput } from "@/lib/ai/memory-map";
 import {
   describeTimeAgo,
   MAX_TUTOR_MEMORY_TEXT_LENGTH,
@@ -127,20 +130,37 @@ function MemoryRow({
 
 type TutorMemoryPanelProps = {
   memory: ReturnType<typeof useTutorMemory>;
+  /** The student's folders, so the map can name each subject's galaxy. */
+  folders: readonly MemoryMapFolderInput[];
   /** `compact` inside the settings drawer, `comfortable` on the full page. */
   density?: "comfortable" | "compact";
 };
 
+type MemoryView = "map" | "list";
+
+/** Whether the map can be drawn never changes while the page is open. */
+const subscribeToNothing = () => () => {};
+
+const VIEW_OPTIONS = [
+  { value: "map", label: "Map" },
+  { value: "list", label: "List" },
+] as const;
+
 /**
  * What Jami remembers across chats, and the student's say over it.
  *
- * Everything Tutor carries from one chat to the next is on this list, in the
- * words Tutor will read it in. A student can correct a line by tapping it,
- * forget one, forget all of it, or switch memory off -- which stops it being
- * used or added to straight away.
+ * Everything Tutor carries from one chat to the next is here, in the words
+ * Tutor will read it in: as a map of the student's subjects by default, or as
+ * a plain list. A student can correct or forget any note from either, forget
+ * all of it, or switch memory off -- which stops it being used or added to
+ * straight away.
  */
-export default function TutorMemoryPanel({ memory, density = "comfortable" }: TutorMemoryPanelProps) {
+export default function TutorMemoryPanel({ memory, folders, density = "comfortable" }: TutorMemoryPanelProps) {
   const [confirmingForgetAll, setConfirmingForgetAll] = useState(false);
+  const [shown, setShown] = useState<MemoryView>("map");
+  // Known only in the browser; until then nothing is drawn rather than the
+  // wrong view, and where the map cannot be drawn the list is all there is.
+  const mapSupported = useSyncExternalStore<boolean | null>(subscribeToNothing, canDrawMemoryMap, () => null);
   // Captured once per render for the "3 days ago" labels; nothing here ticks.
   const [now] = useState(() => Date.now());
   const { view, loading, loadFailed, busy, feedback, clearFeedback, reload } = memory;
@@ -191,7 +211,27 @@ export default function TutorMemoryPanel({ memory, density = "comfortable" }: Tu
         </p>
       ) : null}
 
-      {groups.length === 0 ? (
+      {mapSupported ? (
+        <OptionSwitch
+          label="Show memory as"
+          hideLabel
+          value={shown}
+          options={VIEW_OPTIONS}
+          onChange={setShown}
+        />
+      ) : null}
+
+      {mapSupported === null ? (
+        <Skeleton className={`w-full rounded-3xl ${compact ? "h-[440px]" : "h-[420px]"}`} />
+      ) : mapSupported && shown === "map" ? (
+        <TutorMemoryMap
+          items={view.items}
+          folders={folders}
+          compact={compact}
+          onEdit={(id, text) => void memory.edit(id, text)}
+          onForget={(id) => void memory.forget(id)}
+        />
+      ) : groups.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-[var(--color-border)] px-4 py-3 text-sm leading-6 text-text-muted">
           Nothing yet. When something from a chat is worth carrying into the next one, it appears here, and you can change or remove it.
         </p>

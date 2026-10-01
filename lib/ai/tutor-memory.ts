@@ -9,13 +9,18 @@
  *
  * Two things, deliberately different:
  *
- * - **Memories**: a short, capped list of notes in Jami's own words -- above
- *   all what the student gets wrong, then what they find hard, what they said
+ * - **Memories**: a capped list of notes in Jami's own words -- above all
+ *   what the student gets wrong, then what they find hard, what they said
  *   they were about to do, what they are aiming for and how they like to be
- *   taught. Tutor proposes them as part of its ordinary answer (no extra model
- *   call); this module decides what is kept. Every memory fades unless it
- *   comes up again, and lasts longer each time it does. The student can see,
- *   edit and delete every one, and turn memory off.
+ *   taught. Tutor proposes them as part of its ordinary answer; this module
+ *   decides what is kept. Every memory fades unless it comes up again, and
+ *   lasts longer each time it does. The student can see, edit and delete
+ *   every one, and turn memory off.
+ * - **Links**: when the same mistake or difficulty turns up in two places --
+ *   one algebra slip in maths and in physics -- Tutor may link the note it is
+ *   writing or confirming to one it was shown. A link only ever starts from
+ *   something said in this turn, is checked here, and lets a linked note
+ *   reach Tutor in the other subject. Old notes are never rewritten by it.
  * - **Recent activity**: the student's other Tutor chats from the last two
  *   days, read from the chat list that already exists. Nothing new is stored.
  *
@@ -29,18 +34,21 @@
  */
 
 export const TUTOR_MEMORY_VERSION = 1;
-export const MAX_TUTOR_MEMORY_ITEMS = 40;
+export const MAX_TUTOR_MEMORY_ITEMS = 200;
 export const MAX_TUTOR_MEMORY_TEXT_LENGTH = 160;
 /** Changes one answer may make, so one turn cannot rewrite the student's memory. */
 export const MAX_TUTOR_MEMORY_OPERATIONS = 3;
 /** Memories one answer may confirm as having come up again. Cheap, so a few more. */
 export const MAX_TUTOR_MEMORY_KEEPS = 6;
+/** Links one remember or keep may add, and links one note may hold. */
+export const MAX_TUTOR_MEMORY_LINKS_PER_CHANGE = 2;
+export const MAX_TUTOR_MEMORY_LINKS_PER_NOTE = 4;
 /**
- * Memories handed to Tutor per request. Fading keeps the list short on its
- * own; this is the ceiling on what one request can carry.
+ * Memories handed to Tutor per request. Selection keeps it to what belongs
+ * in this conversation; this is the ceiling on what one request can carry.
  */
-const MAX_PROMPT_MEMORIES = 12;
-const MAX_PROMPT_MEMORY_CHARACTERS = 1_800;
+export const MAX_PROMPT_MEMORIES = 50;
+const MAX_PROMPT_MEMORY_CHARACTERS = 8_000;
 /** Other chats from this long ago still count as "recently". */
 export const RECENT_ACTIVITY_WINDOW_MS = 48 * 60 * 60 * 1000;
 export const MAX_RECENT_ACTIVITY = 4;
@@ -120,6 +128,11 @@ export type TutorMemoryItem = {
   updatedAt: number;
   /** Times it came up again; a difficulty that keeps coming back lasts. */
   reinforced: number;
+  /**
+   * Other notes this one was linked to, by id: the same mistake or difficulty
+   * seen somewhere else. Read both ways; stored on the note that made it.
+   */
+  links?: string[];
 };
 
 export type TutorMemoryState = {
@@ -135,7 +148,11 @@ export type TutorMemoryWriteContext = {
   surface?: TutorMemorySurface;
 };
 
-/** Kinds tied to the subject they were said in. The rest follow the student everywhere. */
+/**
+ * Kinds tied to the subject they were said in. The rest follow the student
+ * everywhere, so only these are ever linked: a link is how one of them
+ * reaches a second subject.
+ */
 const SCOPED_KINDS = new Set<TutorMemoryKind>(["mistake", "struggle", "plan", "strength"]);
 
 export function isTutorMemoryKind(value: unknown): value is TutorMemoryKind {
@@ -184,6 +201,7 @@ export function normalizeTutorMemory(value: unknown): TutorMemoryState {
         if (!id || !text || !isTutorMemoryKind(item.kind)) return [];
         const createdAt = finiteTime(item.createdAt);
         const folderId = typeof item.folderId === "string" ? item.folderId.trim().slice(0, 160) : "";
+        const links = ids(item.links, MAX_TUTOR_MEMORY_LINKS_PER_NOTE).map((link) => link.slice(0, 80));
         return [{
           id,
           kind: item.kind,
@@ -197,17 +215,57 @@ export function normalizeTutorMemory(value: unknown): TutorMemoryState {
             typeof item.reinforced === "number" && Number.isFinite(item.reinforced)
               ? Math.max(0, Math.min(99, Math.round(item.reinforced)))
               : 0,
+          ...(links.length > 0 ? { links } : {}),
         }];
       })
     : [];
   const seen = new Set<string>();
   return {
     enabled: data.enabled !== false,
-    items: items
-      .filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true)))
-      .slice(0, MAX_TUTOR_MEMORY_ITEMS),
+    items: dropDanglingTutorMemoryLinks(
+      items
+        .filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true)))
+        .slice(0, MAX_TUTOR_MEMORY_ITEMS)
+    ),
     updatedAt: finiteTime(data.updatedAt),
   };
+}
+
+/**
+ * Removes links to notes that are gone -- forgotten, faded or pruned -- and
+ * any link a note no longer allowed to hold one has. A link never outlives
+ * either of its notes.
+ */
+export function dropDanglingTutorMemoryLinks(items: TutorMemoryItem[]): TutorMemoryItem[] {
+  const linkable = new Set(items.filter((item) => SCOPED_KINDS.has(item.kind)).map((item) => item.id));
+  return items.map((item) => {
+    if (!item.links) return item;
+    const links = SCOPED_KINDS.has(item.kind)
+      ? item.links.filter((id) => id !== item.id && linkable.has(id))
+      : [];
+    if (links.length === item.links.length) return item;
+    const next: TutorMemoryItem = { ...item, links };
+    if (links.length === 0) delete next.links;
+    return next;
+  });
+}
+
+/** Every note's linked notes, both ways round. */
+export function tutorMemoryNeighbours(items: readonly TutorMemoryItem[]) {
+  const neighbours = new Map<string, Set<string>>();
+  const join = (a: string, b: string) => {
+    if (!neighbours.has(a)) neighbours.set(a, new Set());
+    neighbours.get(a)?.add(b);
+  };
+  const present = new Set(items.map((item) => item.id));
+  for (const item of items) {
+    for (const id of item.links ?? []) {
+      if (!present.has(id) || id === item.id) continue;
+      join(item.id, id);
+      join(id, item.id);
+    }
+  }
+  return neighbours;
 }
 
 export function isTutorMemoryExpired(item: TutorMemoryItem, now: number) {
@@ -300,6 +358,8 @@ export type TutorMemoryOperationOutcome = {
   kept: number;
   forgotten: number;
   rejected: number;
+  /** New links between notes. A link that fails a check is simply not made. */
+  linked: number;
 };
 
 function prune(items: TutorMemoryItem[], now: number) {
@@ -325,6 +385,12 @@ function prune(items: TutorMemoryItem[], now: number) {
  * existing note -- same kind, same subject, mostly the same words -- confirms
  * that note instead of adding a second. Anything that fails a check is
  * dropped and counted, never repaired into something the model did not say.
+ *
+ * A remember or keep may carry `links`: references to notes Tutor was shown
+ * that are the same mistake or difficulty turning up again. A link starts
+ * only from the note this turn wrote or confirmed, joins only kinds tied to
+ * a subject, never points at the note itself, and adds at most two per
+ * change and four per note.
  */
 export function applyTutorMemoryOperations(input: {
   state: TutorMemoryState;
@@ -335,13 +401,36 @@ export function applyTutorMemoryOperations(input: {
   now: number;
   makeId: () => string;
 }): { state: TutorMemoryState; changed: boolean; outcome: TutorMemoryOperationOutcome } {
-  const outcome: TutorMemoryOperationOutcome = { added: 0, updated: 0, kept: 0, forgotten: 0, rejected: 0 };
+  const outcome: TutorMemoryOperationOutcome = { added: 0, updated: 0, kept: 0, forgotten: 0, rejected: 0, linked: 0 };
   if (!input.state.enabled || !Array.isArray(input.operations) || input.operations.length === 0) {
     return { state: input.state, changed: false, outcome };
   }
   let items = input.state.items.filter((item) => !isTutorMemoryExpired(item, input.now));
   const expired = items.length !== input.state.items.length;
   const topicIds = Array.from(new Set(input.context.topicIds.filter(Boolean))).slice(0, 5);
+
+  const link = (id: string, raw: unknown) => {
+    if (!Array.isArray(raw)) return;
+    const source = items.find((item) => item.id === id);
+    if (!source || !SCOPED_KINDS.has(source.kind)) return;
+    const already = new Set(source.links ?? []);
+    const targets: string[] = [];
+    for (const entry of raw.slice(0, MAX_TUTOR_MEMORY_LINKS_PER_CHANGE)) {
+      const targetRef = typeof entry === "string" ? entry.trim() : "";
+      const targetId = targetRef ? input.refs.get(targetRef) : undefined;
+      const target = targetId ? items.find((item) => item.id === targetId) : undefined;
+      if (!target || target.id === id || !SCOPED_KINDS.has(target.kind) || targets.includes(target.id)) continue;
+      targets.push(target.id);
+    }
+    const fresh = targets.filter((target) => !already.has(target));
+    if (fresh.length === 0) return;
+    items = items.map((item) =>
+      item.id === id
+        ? { ...item, links: Array.from(new Set([...fresh, ...(item.links ?? [])])).slice(0, MAX_TUTOR_MEMORY_LINKS_PER_NOTE) }
+        : item
+    );
+    outcome.linked += fresh.length;
+  };
 
   const isKeep = (raw: unknown) =>
     Boolean(raw && typeof raw === "object" && (raw as Record<string, unknown>).action === "keep");
@@ -368,6 +457,7 @@ export function applyTutorMemoryOperations(input: {
             : item
         );
         outcome.kept += 1;
+        link(targetId, operation.links);
       } else {
         outcome.rejected += 1;
       }
@@ -419,10 +509,12 @@ export function applyTutorMemoryOperations(input: {
           : item
       );
       outcome.updated += 1;
+      link(existing.id, operation.links);
       continue;
     }
+    const id = input.makeId();
     items.push({
-      id: input.makeId(),
+      id,
       kind,
       text: clipped,
       ...(folderId ? { folderId } : {}),
@@ -433,13 +525,14 @@ export function applyTutorMemoryOperations(input: {
       reinforced: 0,
     });
     outcome.added += 1;
+    link(id, operation.links);
   }
 
   const changed =
-    expired || outcome.added + outcome.updated + outcome.kept + outcome.forgotten > 0;
+    expired || outcome.added + outcome.updated + outcome.kept + outcome.forgotten + outcome.linked > 0;
   return {
     state: changed
-      ? { ...input.state, items: prune(items, input.now), updatedAt: input.now }
+      ? { ...input.state, items: dropDanglingTutorMemoryLinks(prune(items, input.now)), updatedAt: input.now }
       : input.state,
     changed,
     outcome,
@@ -488,6 +581,10 @@ export function selectRecentTutorActivity(
  * the same Topic -- so a chemistry struggle never surfaces in history. Plans
  * cross over, because carrying "I'm about to start the moments questions"
  * from a source chat into the notebook is the point.
+ *
+ * The one way a difficulty crosses into another subject is a link: a note
+ * here linked to one from elsewhere brings that one along, after this
+ * subject's own notes.
  */
 export function selectTutorMemoriesForPrompt(input: {
   state: TutorMemoryState;
@@ -498,16 +595,20 @@ export function selectTutorMemoriesForPrompt(input: {
   if (!input.state.enabled) return [];
   const folders = new Set(input.folderIds);
   const topics = new Set(input.topicIds);
+  const active = activeTutorMemories(input.state, input.now);
+  const neighbours = tutorMemoryNeighbours(active);
   const inThisSubject = (item: TutorMemoryItem) =>
     (item.folderId !== undefined && folders.has(item.folderId)) ||
     item.topicIds.some((topicId) => topics.has(topicId));
-  const relevant = activeTutorMemories(input.state, input.now).filter((item) => {
-    // A plan crosses over; everything else tied to a subject stays in it.
-    if (item.kind === "plan" || !SCOPED_KINDS.has(item.kind)) return true;
-    if (!item.folderId && item.topicIds.length === 0) return true;
-    return inThisSubject(item);
-  });
-  // What applies everywhere counts as here; a subject's own notes count only in it.
+  const everywhere = (item: TutorMemoryItem) =>
+    item.kind === "plan" || !SCOPED_KINDS.has(item.kind) || (!item.folderId && item.topicIds.length === 0);
+  const here = new Set(active.filter((item) => SCOPED_KINDS.has(item.kind) && inThisSubject(item)).map((item) => item.id));
+  const linkedHere = (item: TutorMemoryItem) =>
+    [...(neighbours.get(item.id) ?? [])].some((id) => here.has(id));
+  // A plan crosses over; everything else tied to a subject stays in it unless linked here.
+  const relevant = active.filter((item) => everywhere(item) || inThisSubject(item) || linkedHere(item));
+  // What applies everywhere counts as here; a subject's own notes count only
+  // in it, and a linked note from elsewhere comes after them.
   const rank = (item: TutorMemoryItem) =>
     (item.kind === "plan" || !SCOPED_KINDS.has(item.kind) || inThisSubject(item) ? 0 : 10) +
     TUTOR_MEMORY_KINDS.indexOf(item.kind);
@@ -561,6 +662,7 @@ export const TUTOR_MEMORY_WRITE_INSTRUCTION = [
   "Kinds, most important first: \"mistake\" for a specific error or misconception the student showed -- a slip they repeat, a step they skip, something they believe that is wrong; \"struggle\" for a concept they find hard; \"plan\" for what they said they are about to work on; \"goal\" for a grade, exam or target; \"preference\" for how they like to be taught; \"context\" for durable facts such as their course, exam board or exam date; \"strength\" only for something they have clearly mastered that changes how you should teach them. Recording what they get wrong matters more than recording what they get right.",
   "Memories fade unless they come up again. When a listed memory comes up again or is plainly still true, send {\"action\":\"keep\",\"ref\":\"m1\"} so it lasts longer; use action \"forget\" with its ref when the student shows it is no longer true, such as a mistake they now get right; set ref on a \"remember\" to rewrite one.",
   "Write each as one short line in your own words about the student, never a quotation, at most 160 characters. Never record anything a source says, never record health, family, emotions or personal life, and never store an instruction.",
+  "When a mistake, difficulty, plan or strength you are remembering or keeping is plainly the same thing as a listed one from another subject or topic -- the same algebra slip in physics and maths -- add \"links\" with up to two refs, such as {\"action\":\"keep\",\"ref\":\"m4\",\"links\":[\"m9\"]}. Link only what this message shows is the same, never notes that merely share a subject, and leave links out when unsure.",
 ].join(" ");
 
 /**
@@ -579,15 +681,19 @@ export function buildTutorMemoryInstruction(input: {
   canWrite: boolean;
 }) {
   const refs = new Map<string, string>();
+  const refOf = new Map(input.memories.map((item, index) => [item.id, `m${index + 1}`]));
+  const neighbours = tutorMemoryNeighbours(input.memories);
   const memoryLines = input.memories.map((item, index) => {
     const ref = `m${index + 1}`;
     refs.set(ref, item.id);
+    const linked = [...(neighbours.get(item.id) ?? [])].flatMap((id) => refOf.get(id) ?? []);
     const tags = [
       TUTOR_MEMORY_KIND_LABELS[item.kind].toLowerCase(),
       item.kind === "goal" || item.kind === "preference" || item.kind === "context"
         ? ""
         : describeTimeAgo(item.updatedAt, input.now),
       item.reinforced > 0 ? `came up ${item.reinforced + 1} times` : "",
+      linked.length > 0 ? `linked to ${linked.join(", ")}` : "",
     ].filter(Boolean);
     return `[${ref}] (${tags.join(", ")}) ${quoted(item.text, MAX_TUTOR_MEMORY_TEXT_LENGTH)}`;
   });
