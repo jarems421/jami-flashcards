@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppPage from "@/components/layout/AppPage";
+import AllowanceHint from "@/components/billing/AllowanceHint";
+import { notifyAllowanceSpent } from "@/services/billing/plan-summary-store";
 import { useUser } from "@/components/providers/UserProvider";
 import {
   Button,
@@ -586,6 +588,7 @@ export default function PracticePaperCreator() {
       }, crypto.randomUUID(), temporarySources.map((source) => source.id));
       queued = true;
       setActiveJob(job);
+      notifyAllowanceSpent();
     } catch (error) {
       await Promise.all(temporarySources.flatMap((source) => [
         deleteSourceFile(source.storagePath).catch(() => undefined),
@@ -1283,6 +1286,7 @@ export default function PracticePaperCreator() {
             Your paper opens in a notebook when it&apos;s ready, and you can leave this page while it&apos;s built. The marking guide is fixed
             before your attempt begins.
           </p>
+          <div className="flex flex-col items-stretch gap-1.5 sm:items-end">
           <Button
             type="button"
             size="lg"
@@ -1304,6 +1308,13 @@ export default function PracticePaperCreator() {
                   ? "Generate practice paper"
                   : "Create uploaded paper"}
           </Button>
+          {/* A paper is the scarcest thing a plan includes, so its count is always beside the button. */}
+          {path === "generate" ? (
+            <AllowanceHint allowance="papers" mode="always" className="text-center sm:text-right" />
+          ) : (
+            <AllowanceHint allowance="paperMarkings" mode="low" className="text-center sm:text-right" />
+          )}
+          </div>
         </div>
       </Card>
     </AppPage>

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AllowanceHint from "@/components/billing/AllowanceHint";
+import { notifyAllowanceSpent } from "@/services/billing/plan-summary-store";
 import TopicPicker from "@/components/topics/TopicPicker";
 import { Button, Card as Panel, ElapsedTime, FileField, Input, OptionSwitch, ProgressBar, Select, Textarea } from "@/components/ui";
 import {
@@ -257,6 +259,7 @@ export default function VideoCardCreator({
         ...(maxCards.trim() ? { maxCards: Number(maxCards) } : {}),
         focus: focus.trim() || undefined,
       });
+      notifyAllowanceSpent();
       setJob(created);
       onMessage("Video import started.");
     } catch (error) {
@@ -548,6 +551,7 @@ export default function VideoCardCreator({
       <Button size="lg" disabled={busy || !deckId} onClick={() => void start()}>
         {busy ? (uploadProgress ? `Uploading ${uploadProgress}%` : "Preparing…") : "Create cards"}
       </Button>
+      <AllowanceHint allowance="videos" mode="low" />
     </div>
   );
 }

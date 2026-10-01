@@ -1,6 +1,8 @@
 "use client";
 
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import AllowanceHint from "@/components/billing/AllowanceHint";
+import { notifyAllowanceSpent } from "@/services/billing/plan-summary-store";
 import AppPage from "@/components/layout/AppPage";
 import {
   Button,
@@ -490,6 +492,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
           : current
       );
       if (response.attempt.status === "marked") reportTutorialAction("mark-exam-answer");
+      notifyAllowanceSpent();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Jami couldn't mark this one — your answer is saved.");
       await refresh();
@@ -1269,6 +1272,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                             : "Mark answer"}
                     </Button>
                   </div>
+                  <AllowanceHint allowance="answers" mode="low" className="mt-2 text-right" />
                 </div>
               ) : null}
             </section>

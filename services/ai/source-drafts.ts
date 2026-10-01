@@ -12,6 +12,7 @@ import {
 
 function friendlyError(status: number, message?: string, code?: string) {
   if (status === 429) {
+    if (code === "allowance_used" && message) return message;
     return code === "burst_limit"
       ? message || "Jami is drafting too quickly. Try again in a moment."
       : "Jami has reached today's draft limit. Try again tomorrow.";

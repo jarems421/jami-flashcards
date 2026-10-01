@@ -9,6 +9,7 @@ import {
   normalizeUsedContext,
 } from "@/lib/ai/jami-assistant-normalize";
 import { auth } from "@/services/firebase/client";
+import { notifyAllowanceSpent } from "@/services/billing/plan-summary-store";
 import { mapJamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import {
   normalizeTutorStudyMaterialOffers,
@@ -27,6 +28,9 @@ function getFriendlyAssistantError(
   if (status === 404) return message || "Jami could not find the current study item.";
   if (status === 413) return message || "That context is too large for Jami to read at once.";
   if (status === 429) {
+    // This month's plan allowance: the server's message says what ran out and
+    // when it resets.
+    if (code === "allowance_used" && message) return message;
     return code === "burst_limit"
       ? message || "Jami is receiving requests too quickly. Try again in a moment."
       : "Jami has reached today's AI limit. Try again tomorrow.";
@@ -178,6 +182,8 @@ export async function sendJamiAssistantMessage(
   }
 
   const data = await readAssistantStream(response, onChunk);
+  // A question was spent; a "few left" line under the composer can catch up.
+  notifyAllowanceSpent();
 
   const reply = typeof data?.reply === "string" ? data.reply.trim() : "";
   const used = normalizeUsedContext(data?.used);

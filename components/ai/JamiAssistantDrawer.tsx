@@ -40,6 +40,7 @@ import {
   acknowledgeAiPrivacyNotice,
   hasAcknowledgedAiPrivacyNotice,
 } from "@/services/ai/ai-privacy-notice";
+import AllowanceHint from "@/components/billing/AllowanceHint";
 import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
 import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard";
 import TutorCardSuggestions from "@/components/ai/TutorCardSuggestions";
@@ -1508,6 +1509,8 @@ export default function JamiAssistantDrawer({
               </div>
             </div>
           </div>
+          {/* Silent until the month's questions are nearly gone, as ChatGPT does it. */}
+          <AllowanceHint allowance="tutor" mode="low" className="mt-2 px-1" />
           {dictation.listening ? (
             <p
               className="mt-2 flex items-center gap-2 px-1 text-xs text-text-secondary"
