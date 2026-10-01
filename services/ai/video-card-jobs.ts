@@ -1,12 +1,16 @@
 import { mapVideoCardJobData, type CardImportSourceKind, type VideoCardDraft, type VideoCardJob, type VideoCoverage } from "@/lib/ai/video-card-jobs";
 import { mapCardData, type Card } from "@/lib/study/cards";
 import { auth } from "@/services/firebase/client";
+import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 
 async function request(path: string, init?: RequestInit) {
   const user = auth.currentUser; if (!user) throw new Error("Sign in again to create cards from a source.");
   const response = await fetch(path, { ...init, headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), Authorization: `Bearer ${await user.getIdToken()}`, ...init?.headers } });
   const data = await response.json().catch(() => null) as Record<string, unknown> | null;
-  if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "Jami could not process that source.");
+  if (!response.ok) {
+    reportAllowanceRefusal(data);
+    throw new Error(typeof data?.error === "string" ? data.error : "Jami could not process that source.");
+  }
   return data ?? {};
 }
 

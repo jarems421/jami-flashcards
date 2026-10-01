@@ -55,12 +55,20 @@ export default function PlanSummaryRow() {
           </div>
         </div>
         {lifetime ? null : (
-          <Link
-            href="/dashboard/profile/usage"
-            className="shrink-0 text-xs font-semibold text-text-secondary underline decoration-current/30 underline-offset-4 transition hover:text-text-primary"
-          >
-            View usage
-          </Link>
+          <div className="flex shrink-0 items-center gap-4 text-xs font-semibold">
+            <Link
+              href="/dashboard/profile/usage"
+              className="text-text-secondary underline decoration-current/30 underline-offset-4 transition hover:text-text-primary"
+            >
+              View usage
+            </Link>
+            <Link
+              href="/dashboard/plans"
+              className="text-text-secondary underline decoration-current/30 underline-offset-4 transition hover:text-text-primary"
+            >
+              {summary.plan === "pro" ? "Plans" : "See plans"}
+            </Link>
+          </div>
         )}
       </div>
     </Card>

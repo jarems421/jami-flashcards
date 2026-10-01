@@ -6,6 +6,7 @@ import type {
 import { parseAssistantIllustration } from "@/lib/ai/jami-assistant";
 import type { NotebookImageRef } from "@/lib/workspace/notebooks";
 import { auth } from "@/services/firebase/client";
+import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 
 async function authenticatedHeaders() {
   const user = auth.currentUser;
@@ -20,6 +21,8 @@ async function responseFailure(response: Response, fallback: string) {
   const result = (await response.json().catch(() => null)) as {
     error?: unknown;
   } | null;
+  // A photo the plan does not include, or this month's photos used up.
+  reportAllowanceRefusal(result);
   return typeof result?.error === "string" ? result.error : fallback;
 }
 

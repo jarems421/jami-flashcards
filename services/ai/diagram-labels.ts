@@ -1,6 +1,7 @@
 import { auth } from "@/services/firebase/client";
 import { encodeForLabelDetection } from "@/lib/study/diagram-image";
 import type { DetectedLabel } from "@/lib/study/diagram-label-detection";
+import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 
 export type LabelDetectionSource =
   | { kind: "file"; file: Blob }
@@ -44,6 +45,9 @@ export async function detectDiagramLabels(source: LabelDetectionSource): Promise
     body: JSON.stringify(body),
   });
   const data = (await response.json().catch(() => null)) as { labels?: unknown; error?: unknown } | null;
-  if (!response.ok) throw new Error(friendlyError(response.status, data?.error));
+  if (!response.ok) {
+    reportAllowanceRefusal(data);
+    throw new Error(friendlyError(response.status, data?.error));
+  }
   return Array.isArray(data?.labels) ? data.labels.filter(isDetectedLabel) : [];
 }

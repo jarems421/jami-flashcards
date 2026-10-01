@@ -100,6 +100,8 @@ export type AiBudgetDecision =
       retryAfterSeconds: number;
       /** For `allowance_used`: what ran out and when it resets, for the student. */
       message?: string;
+      /** For `allowance_used`: which allowance, so the app can offer what includes more. */
+      allowanceKey?: AllowanceKey;
     };
 
 /**

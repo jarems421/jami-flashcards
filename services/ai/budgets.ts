@@ -130,6 +130,7 @@ export async function checkAiBudget(input: {
         reason: "allowance_used",
         retryAfterSeconds: allowanceCheck.refusal.retryAfterSeconds,
         message: allowanceCheck.refusal.message,
+        ...(allowance ? { allowanceKey: allowance.key } : {}),
       };
     }
 
@@ -318,6 +319,7 @@ export function createAiBudgetLimitResponse(
       {
         error: decision.message ?? "You've used this month's allowance for this.",
         code: decision.reason,
+        ...(decision.allowanceKey ? { allowance: decision.allowanceKey } : {}),
         retryAfterSeconds: decision.retryAfterSeconds,
       },
       { status: 429, headers: { "Retry-After": String(decision.retryAfterSeconds) } }

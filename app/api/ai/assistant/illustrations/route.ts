@@ -188,7 +188,10 @@ export async function POST(request: NextRequest) {
     if (!photoCharge.allowed) {
       await refundAiBudget(budget.grant).catch(() => undefined);
       log.info("request.photo_allowance_used");
-      return assistantAssetError(photoCharge.message, 429, "allowance_used");
+      return Response.json(
+        { error: photoCharge.message, code: "allowance_used", allowance: photoCharge.key },
+        { status: 429 }
+      );
     }
     refundPhoto = photoCharge.refund;
     const generated = await generateGeminiImage({

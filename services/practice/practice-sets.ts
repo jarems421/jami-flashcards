@@ -2,6 +2,7 @@ import { auth } from "@/services/firebase/client";
 import type { ExamSession } from "@/lib/practice/exam-questions";
 import type { SourceDraftDepth } from "@/lib/ai/source-draft-quality";
 import type { PracticeSetAction } from "@/lib/practice/practice-sets";
+import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 
 function friendlyError(status: number, message?: string) {
   if (status === 401) return "Sign in again to use practice sets.";
@@ -23,6 +24,7 @@ async function request(path: string, init?: RequestInit) {
   });
   const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
   if (!response.ok) {
+    reportAllowanceRefusal(data);
     throw new Error(friendlyError(response.status, typeof data?.error === "string" ? data.error : undefined));
   }
   return data ?? {};

@@ -5,6 +5,7 @@
 // marketing and auth route.
 import "katex/dist/katex.min.css";
 import RouteAnalytics from "@/components/analytics/RouteAnalytics";
+import AllowanceRefusalSheet from "@/components/billing/AllowanceRefusalSheet";
 import DashboardAccessGate from "@/components/layout/DashboardAccessGate";
 import PhotoBackgroundSync from "@/components/layout/PhotoBackgroundSync";
 import PracticePaperReadyNotice from "@/components/practice/PracticePaperReadyNotice";
@@ -19,6 +20,7 @@ export default function DashboardLayout({
       <RouteAnalytics />
       <PhotoBackgroundSync />
       <PracticePaperReadyNotice />
+      <AllowanceRefusalSheet />
       {children}
     </DashboardAccessGate>
   );

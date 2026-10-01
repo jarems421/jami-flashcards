@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card, ProgressBar, SectionHeader } from "@/components/ui";
 import Skeleton from "@/components/ui/Skeleton";
@@ -95,6 +96,16 @@ export default function PlanUsageDetails() {
         preparation, answer checks, planner chats and Tutor diagrams — is unlimited for normal
         studying.
       </p>
+      {summary.plan !== "pro" ? (
+        <p className="mt-3 text-xs">
+          <Link
+            href="/dashboard/plans"
+            className="font-semibold text-text-secondary underline decoration-current/30 underline-offset-4 transition hover:text-text-primary"
+          >
+            See plans
+          </Link>
+        </p>
+      ) : null}
     </Card>
   );
 }

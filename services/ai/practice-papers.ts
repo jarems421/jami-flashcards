@@ -10,6 +10,7 @@ import {
   type PracticePaperMarkingJob,
 } from "@/lib/practice/practice-papers";
 import { auth } from "@/services/firebase/client";
+import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 
 function friendlyError(status: number, message?: string) {
   if (status === 401) return "Sign in again to create a practice paper.";
@@ -36,6 +37,7 @@ async function authenticatedPaperJobRequest(
   });
   const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
   if (!response.ok) {
+    reportAllowanceRefusal(data);
     throw new Error(
       friendlyError(
         response.status,
@@ -144,6 +146,7 @@ async function runPracticePaperAction(
   });
   const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
   if (!response.ok) {
+    reportAllowanceRefusal(data);
     throw new Error(
       friendlyError(
         response.status,

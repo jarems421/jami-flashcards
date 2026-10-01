@@ -9,6 +9,7 @@ import {
   normalizeStudyMaterialBrief,
   type StudyMaterialBriefMessage,
 } from "@/lib/ai/study-material-brief";
+import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 
 function friendlyError(status: number, message?: string, code?: string) {
   if (status === 429) {
@@ -64,6 +65,7 @@ export async function generateSourceDrafts(input: {
     return null;
   });
   if (!response.ok) {
+    reportAllowanceRefusal(data);
     throw new Error(friendlyError(response.status, data?.error, data?.code));
   }
 
@@ -101,6 +103,7 @@ export async function askStudyMaterialBrief(input: {
   });
   const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
   if (!response.ok) {
+    reportAllowanceRefusal(data);
     throw new Error(
       response.status === 429
         ? typeof data?.error === "string" ? data.error : "Jami has reached today's limit. Try again later."

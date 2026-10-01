@@ -18,6 +18,7 @@ import {
 import { normalizeSuggestedCards } from "@/lib/ai/tutor-card-suggestions";
 import { normalizeTutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
 import { normalizeSuggestedQuestions } from "@/lib/ai/tutor-question-suggestions";
+import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 
 function getFriendlyAssistantError(
   status: number,
@@ -172,6 +173,7 @@ export async function sendJamiAssistantMessage(
       string,
       unknown
     > | null;
+    reportAllowanceRefusal(failure);
     throw new Error(
       getFriendlyAssistantError(
         response.status,

@@ -1,4 +1,5 @@
 import { auth } from "@/services/firebase/client";
+import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 
 export type CardBackAutocompleteInput = {
   front: string;
@@ -60,6 +61,7 @@ export async function autocompleteCardBack(input: CardBackAutocompleteInput) {
       // still maps to a safe user-facing fallback.
       return null;
     });
+    reportAllowanceRefusal(data);
     throw new Error(
       getFriendlyAutocompleteError(res.status, data?.error, data?.code)
     );

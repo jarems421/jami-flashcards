@@ -8,6 +8,7 @@ import type { PublicExamAttempt } from "@/lib/practice/exam-projections";
 import { EXAM_SHEET_MAX_PAGES } from "@/lib/practice/exam-question-sheet";
 import { examWorkingHasInk } from "@/lib/practice/exam-working";
 import { MAX_NOTEBOOK_INK_SVG_LENGTH } from "@/lib/workspace/notebooks";
+import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 
 /** What the server sends back when a course cannot fill the requested mix. */
 export type ExamCoverageShortage = {
@@ -40,6 +41,7 @@ async function request(path: string, init?: RequestInit) {
   });
   const data = await response.json().catch(() => null) as Record<string, unknown> | null;
   if (!response.ok) {
+    reportAllowanceRefusal(data);
     const error = new Error(typeof data?.error === "string" ? data.error : "Past Paper Practice is unavailable.");
     Object.assign(error, { code: data?.code, detail: data });
     throw error;

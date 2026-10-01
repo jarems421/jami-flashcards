@@ -146,7 +146,7 @@ export async function refundAllowanceInTransaction(input: {
 
 export type AllowanceCharge =
   | { allowed: true; refund: () => Promise<void> }
-  | ({ allowed: false } & AllowanceRefusal);
+  | ({ allowed: false; key: AllowanceKey } & AllowanceRefusal);
 
 /**
  * Charges one allowance on its own, for spending that happens part-way
@@ -168,7 +168,7 @@ export async function chargeAllowance(input: {
     checked.write();
     return null;
   });
-  if (result) return { allowed: false, ...result };
+  if (result) return { allowed: false, key: input.key, ...result };
   const allowance = { periodKey: context.period.key, key: context.key, amount: context.amount };
   return {
     allowed: true,

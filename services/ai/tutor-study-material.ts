@@ -5,6 +5,7 @@ import {
   type TutorStudyMaterialKind,
   type TutorStudyMaterialResult,
 } from "@/lib/ai/tutor-study-material";
+import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 
 export type TutorFlashcardDraftPreview = {
   id: string;
@@ -52,6 +53,7 @@ export async function requestTutorStudyMaterial(input: {
   });
   const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
   if (!response.ok) {
+    reportAllowanceRefusal(data);
     throw new Error(
       friendlyError(response.status, input.kind, typeof data?.error === "string" ? data.error : undefined)
     );
