@@ -183,7 +183,9 @@ beforeEach(async () => {
   });
 });
 
-describe("indexing a fourteen-lecture pack", () => {
+// Loads the PDF and Office readers inside the first test, which on a busy
+// machine runs past the default five seconds without anything being wrong.
+describe("indexing a fourteen-lecture pack", { timeout: 20_000 }, () => {
   it("indexes every lecture, labels every passage, and stores the pack's contents", async () => {
     const { rebuildSourceIndex } = await import("@/services/ai/source-index.server");
     const result = await rebuildSourceIndex(UID, "pack");

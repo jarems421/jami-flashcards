@@ -209,7 +209,9 @@ export async function POST(
     const dropRetry = () => steps.filter((_step, index) => index !== transition.position);
     const claim = await claimRevisionWork(uid, record.id, now);
     if (claim.kind !== "claimed") return revisionSessionResponse(record, {}, 409);
-    const budget = await checkAiBudget({ uid, action: "revisionLesson" });
+    // The second explanation is part of a session already counted when it
+    // started, so it spends no Revision Session allowance of its own.
+    const budget = await checkAiBudget({ uid, action: "revisionLesson", allowance: null });
     if (!budget.allowed) {
       steps = dropRetry();
     } else {

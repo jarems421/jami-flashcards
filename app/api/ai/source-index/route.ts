@@ -7,6 +7,7 @@ import {
   createAiBudgetLimitResponse,
   refundAiBudget,
 } from "@/services/ai/budgets";
+import { recordAllowanceUsage } from "@/services/billing/allowances.server";
 import {
   deleteSourceIndex,
   rebuildSourceIndex,
@@ -47,7 +48,13 @@ export async function POST(request: NextRequest) {
   // Charged before any work, like every other AI route. A refusal is quiet on
   // purpose: indexing is never something a student pressed, and without an
   // index the Tutor still reads the source whole.
-  const budget = await checkAiBudget({ uid, action: "sourceIndexing" }).catch(
+  // Pages are counted once the source has been read; here it only has to have
+  // some of the month's pages left.
+  const budget = await checkAiBudget({
+    uid,
+    action: "sourceIndexing",
+    allowance: { key: "pages", amount: 0 },
+  }).catch(
     (error: unknown) => {
       log.error("budget.check_failed", { error });
       return null;
@@ -62,6 +69,12 @@ export async function POST(request: NextRequest) {
     try {
       const result = await rebuildSourceIndex(uid, sourceId);
       log.info("source.indexed", result);
+      const newPages = "newPages" in result ? (result.newPages ?? 0) : 0;
+      if (newPages > 0) {
+        await recordAllowanceUsage({ uid, key: "pages", amount: newPages }).catch(
+          (error: unknown) => log.warn("allowance.record_failed", { error })
+        );
+      }
     } catch (error) {
       log.error("source.index_failed", { error });
       await refundAiBudget(grant).catch(() => undefined);

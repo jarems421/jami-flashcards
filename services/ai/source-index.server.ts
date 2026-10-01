@@ -142,6 +142,12 @@ export async function rebuildSourceIndex(uid: string, sourceId: string) {
     return { chunkCount: 0 };
   }
   const source = mapSourceData(sourceId, snapshot.data() ?? {});
+  // Pages already charged to the student's allowance for this source, so
+  // re-indexing it -- an edit, an index upgrade -- only charges what is new.
+  const pagesAlreadyCharged = Math.max(
+    0,
+    Number((snapshot.data() ?? {}).indexPagesCharged) || 0
+  );
   await sourceRef.update({
     indexStatus: "processing",
     indexError: null,
@@ -237,16 +243,29 @@ export async function rebuildSourceIndex(uid: string, sourceId: string) {
         updatedAt: Date.now(),
       });
     }
+    // Pages for the monthly allowance: the last page the index reaches, or for
+    // text with no pages, about 3,000 characters to a page.
+    const lastPage = chunks.reduce((last, chunk) => Math.max(last, chunk.pageEnd ?? 0), 0);
+    const characters = chunks.reduce((total, chunk) => total + chunk.text.length, 0);
+    const pagesIndexed =
+      records.length === 0 ? 0 : Math.max(1, lastPage || Math.ceil(characters / 3_000));
     await sourceRef.update({
       indexStatus: records.length > 0 ? "ready" : "empty",
       indexVersion: SOURCE_INDEX_VERSION,
       indexChunkCount: records.length,
       indexSectionCount: detected.sections.length,
       indexTruncated: truncated,
+      indexPagesCharged: Math.max(pagesAlreadyCharged, pagesIndexed),
       indexUpdatedAt: Date.now(),
       indexError: null,
     });
-    return { chunkCount: records.length, sectionCount: detected.sections.length, truncated };
+    return {
+      chunkCount: records.length,
+      sectionCount: detected.sections.length,
+      truncated,
+      pagesIndexed,
+      newPages: Math.max(0, pagesIndexed - pagesAlreadyCharged),
+    };
   } catch (error) {
     await sourceRef.update({
       indexStatus: "failed",

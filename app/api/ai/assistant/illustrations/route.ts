@@ -21,6 +21,7 @@ import {
   mapJamiAssistantThread,
 } from "@/lib/ai/jami-assistant-history";
 import { generateGeminiImage } from "@/lib/ai/gemini";
+import { chargeAllowance } from "@/services/billing/allowances.server";
 import { createLogger } from "@/lib/observability/logger";
 import {
   assistantAssetError,
@@ -156,6 +157,7 @@ export async function POST(request: NextRequest) {
         illustrations: [...existing, illustration],
       });
     });
+  let refundPhoto: (() => Promise<void>) | null = null;
   try {
     /*
      * A diagram first. Anything with labels, stages or components is drawn by
@@ -177,6 +179,18 @@ export async function POST(request: NextRequest) {
       return Response.json({ illustration });
     }
 
+    /*
+     * A generated photo is a plan allowance of its own, charged only here,
+     * where the image model is actually about to run: most visuals are drawn
+     * diagrams and spend nothing from it.
+     */
+    const photoCharge = await chargeAllowance({ uid, key: "photos" });
+    if (!photoCharge.allowed) {
+      await refundAiBudget(budget.grant).catch(() => undefined);
+      log.info("request.photo_allowance_used");
+      return assistantAssetError(photoCharge.message, 429, "allowance_used");
+    }
+    refundPhoto = photoCharge.refund;
     const generated = await generateGeminiImage({
       role: "tutorImage",
       prompt: buildTutorIllustrationPrompt({ ...trustedPromptContext, pictureWanted: drawn.altText }),
@@ -246,6 +260,7 @@ export async function POST(request: NextRequest) {
       await getAdminStorageBucket().file(storagePath).delete({ ignoreNotFound: true }).catch(() => undefined);
     }
     await refundAiBudget(budget.grant).catch(() => undefined);
+    await refundPhoto?.().catch(() => undefined);
     log.error("request.failed", { error });
     return assistantAssetError(
       error instanceof TutorDiagramUnavailableError

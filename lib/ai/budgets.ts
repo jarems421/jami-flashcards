@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { AllowanceKey } from "@/lib/billing/plans";
+
 export type AiBudgetAction =
   | "autocompleteCard"
   | "diagramLabelDetection"
@@ -59,7 +61,12 @@ type AiBudgetConfig = {
  * reached: an account made around Jami's sign-up, with an address nobody has
  * proved, has no allowance at all.
  */
-export type AiBudgetLimitReason = "daily_limit" | "burst_limit" | "email_unconfirmed";
+export type AiBudgetLimitReason =
+  | "daily_limit"
+  | "burst_limit"
+  | "email_unconfirmed"
+  /** This month's plan allowance is used up (docs/plans-and-stardust.md). */
+  | "allowance_used";
 
 /**
  * A receipt for one charged request, so it can be given back.
@@ -76,6 +83,8 @@ export type AiBudgetGrant = {
   burstWindowStartedAt: number;
   /** False for durable jobs intentionally excluded from short-window limits. */
   burstCharged?: boolean;
+  /** The monthly allowance this request was charged to, so a refund returns it too. */
+  allowance?: { periodKey: string; key: AllowanceKey; amount: number };
 };
 
 export type AiBudgetDecision =
@@ -89,6 +98,8 @@ export type AiBudgetDecision =
       allowed: false;
       reason: AiBudgetLimitReason;
       retryAfterSeconds: number;
+      /** For `allowance_used`: what ran out and when it resets, for the student. */
+      message?: string;
     };
 
 /**

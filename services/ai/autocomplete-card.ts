@@ -18,6 +18,9 @@ function getFriendlyAutocompleteError(
     if (code === "daily_limit") {
       return "Jami has reached today's AI limit. Try again tomorrow.";
     }
+    // The month's plan allowance: the server's message names what ran out
+    // and when it resets.
+    if (code === "allowance_used" && message) return message;
     return "AI drafting is taking a short break. Keep writing, or come back in a little while.";
   }
 

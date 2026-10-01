@@ -307,6 +307,10 @@ export function describeAllowanceRefusal(input: {
     timeZone: "UTC",
   });
   const what = ALLOWANCE_LABELS[input.key];
+  // Nothing included at all on this plan (Free's photos): there was nothing to use up.
+  if (getAllowance(input.plan, input.key)?.limit === 0) {
+    return `${what[0].toUpperCase()}${what.slice(1)} come with Plus and Pro.`;
+  }
   const upgrade =
     input.plan === "free"
       ? " Plus and Pro include far more."

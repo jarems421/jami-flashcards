@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   refundAiBudget: vi.fn(),
   rebuildSourceIndex: vi.fn(),
   deleteSourceIndex: vi.fn(),
+  recordAllowanceUsage: vi.fn(),
   afterTasks: [] as Array<() => Promise<void>>,
 }));
 
@@ -29,6 +30,10 @@ vi.mock("@/services/ai/budgets", () => ({
   refundAiBudget: mocks.refundAiBudget,
   createAiBudgetLimitResponse: (action: string, decision: { reason: string }) =>
     Response.json({ code: decision.reason, action }, { status: 429 }),
+}));
+
+vi.mock("@/services/billing/allowances.server", () => ({
+  recordAllowanceUsage: mocks.recordAllowanceUsage,
 }));
 
 vi.mock("@/services/ai/source-index.server", () => ({
@@ -71,10 +76,27 @@ describe("source index route", () => {
   it("charges the indexing budget before it indexes", async () => {
     const response = await POST(request());
     expect(response.status).toBe(202);
-    expect(mocks.checkAiBudget).toHaveBeenCalledWith({ uid: "user-1", action: "sourceIndexing" });
+    expect(mocks.checkAiBudget).toHaveBeenCalledWith({
+      uid: "user-1",
+      action: "sourceIndexing",
+      allowance: { key: "pages", amount: 0 },
+    });
     await runAfterTasks();
     expect(mocks.rebuildSourceIndex).toHaveBeenCalledWith("user-1", "source-1");
     expect(mocks.refundAiBudget).not.toHaveBeenCalled();
+  });
+
+  it("counts only the pages it has not counted for this source before", async () => {
+    mocks.rebuildSourceIndex.mockResolvedValue({ chunkCount: 40, pagesIndexed: 120, newPages: 20 });
+    await POST(request());
+    await runAfterTasks();
+    expect(mocks.recordAllowanceUsage).toHaveBeenCalledWith({ uid: "user-1", key: "pages", amount: 20 });
+
+    mocks.recordAllowanceUsage.mockClear();
+    mocks.rebuildSourceIndex.mockResolvedValue({ chunkCount: 40, pagesIndexed: 120, newPages: 0 });
+    await POST(request());
+    await runAfterTasks();
+    expect(mocks.recordAllowanceUsage).not.toHaveBeenCalled();
   });
 
   it("does no work once the day's indexing is used up", async () => {

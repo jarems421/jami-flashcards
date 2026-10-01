@@ -104,6 +104,12 @@ describe("deciding an allowance", () => {
     ).toBe(false);
   });
 
+  it("tells Free that photos come with a paid plan rather than that they ran out", () => {
+    expect(
+      describeAllowanceRefusal({ plan: "free", key: "photos", periodEnd: at("2026-11-14T09:00:00Z") })
+    ).toBe("Tutor photos come with Plus and Pro.");
+  });
+
   it("says what ran out, when it resets and what includes more", () => {
     const message = describeAllowanceRefusal({
       plan: "plus",

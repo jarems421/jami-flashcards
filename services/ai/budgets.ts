@@ -6,7 +6,13 @@ import {
   type AiBudgetDecision,
   type AiBudgetGrant,
 } from "@/lib/ai/budgets";
+import { ACTION_ALLOWANCE, type AllowanceKey } from "@/lib/billing/plans";
 import { emailAllowsAi } from "@/services/auth/email-confirmation.server";
+import {
+  checkAllowanceInTransaction,
+  refundAllowanceInTransaction,
+  resolveAllowanceContext,
+} from "@/services/billing/allowances.server";
 import { getAdminDb } from "@/services/firebase/admin";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -31,6 +37,13 @@ export async function checkAiBudget(input: {
   now?: number;
   /** Durable jobs may queue the remaining daily allowance in one interaction. */
   skipBurstLimit?: boolean;
+  /**
+   * The monthly plan allowance this request spends. Left out, it is the one
+   * `ACTION_ALLOWANCE` names for the action; null spends none (a Jami paper's
+   * first marking, which came with the paper). An amount of 0 only checks that
+   * something is left -- for pages, which are counted once a source is read.
+   */
+  allowance?: { key: AllowanceKey; amount?: number } | null;
 }): Promise<AiBudgetDecision> {
   const now = input.now ?? Date.now();
 
@@ -41,6 +54,14 @@ export async function checkAiBudget(input: {
   }
 
   const config = AI_BUDGETS[input.action];
+  // Null unless billing is on and this plan limits this allowance, so with
+  // billing off nothing below changes from before plans existed.
+  const allowance = await resolveAllowanceContext({
+    uid: input.uid,
+    key: input.allowance === null ? null : input.allowance?.key ?? ACTION_ALLOWANCE[input.action],
+    amount: input.allowance?.amount,
+    now,
+  });
   const db = getAdminDb();
   const dayKey = getBudgetDayKey(now);
   const budgets = db.collection("aiBudgets");
@@ -98,6 +119,20 @@ export async function checkAiBudget(input: {
       };
     }
 
+    // The month's allowance, read in this same transaction so the last one
+    // cannot be taken twice. Read before any write, written after every check.
+    const allowanceCheck = allowance
+      ? await checkAllowanceInTransaction({ transaction, db, uid: input.uid, context: allowance, now })
+      : null;
+    if (allowanceCheck?.refusal) {
+      return {
+        allowed: false,
+        reason: "allowance_used",
+        retryAfterSeconds: allowanceCheck.refusal.retryAfterSeconds,
+        message: allowanceCheck.refusal.message,
+      };
+    }
+
     const dailyUpdate = {
       uid: input.uid,
       action: input.action,
@@ -129,6 +164,8 @@ export async function checkAiBudget(input: {
       );
     }
 
+    allowanceCheck?.write();
+
     return {
       allowed: true,
       reason: null,
@@ -139,6 +176,15 @@ export async function checkAiBudget(input: {
         dayKey,
         burstWindowStartedAt,
         burstCharged: !input.skipBurstLimit,
+        ...(allowance && allowance.amount > 0
+          ? {
+              allowance: {
+                periodKey: allowance.period.key,
+                key: allowance.key,
+                amount: allowance.amount,
+              },
+            }
+          : {}),
       },
     };
   });
@@ -170,6 +216,14 @@ export async function refundAiBudget(grant: AiBudgetGrant) {
         : await transaction.get(burstRef);
     const dailyData = dailySnapshot.data();
     const burstData = burstSnapshot.data();
+    const applyAllowanceRefund = grant.allowance
+      ? await refundAllowanceInTransaction({
+          transaction,
+          db,
+          uid: grant.uid,
+          allowance: grant.allowance,
+        })
+      : null;
 
     const count = getNonNegativeInteger(dailyData?.count);
     const burstCount = getNonNegativeInteger(burstData?.burstCount);
@@ -199,6 +253,7 @@ export async function refundAiBudget(grant: AiBudgetGrant) {
         { merge: true }
       );
     }
+    applyAllowanceRefund?.();
   });
 }
 
@@ -258,6 +313,17 @@ export function createAiBudgetLimitResponse(
   action: AiBudgetAction,
   decision: Extract<AiBudgetDecision, { allowed: false }>
 ) {
+  if (decision.reason === "allowance_used") {
+    return Response.json(
+      {
+        error: decision.message ?? "You've used this month's allowance for this.",
+        code: decision.reason,
+        retryAfterSeconds: decision.retryAfterSeconds,
+      },
+      { status: 429, headers: { "Retry-After": String(decision.retryAfterSeconds) } }
+    );
+  }
+
   if (decision.reason === "email_unconfirmed") {
     return Response.json(
       {

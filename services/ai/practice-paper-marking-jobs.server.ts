@@ -28,6 +28,7 @@ export class PracticePaperMarkingQueueError extends Error {
       | "question_not_found"
       | "allowance_unavailable"
       | "daily_limit"
+      | "allowance_used"
       | "email_unconfirmed"
       | "workflow_start_failed",
     message: string,
@@ -163,12 +164,18 @@ export async function enqueuePracticePaperMarking(input: {
     return mapPracticePaperMarkingJobData(jobId, data);
   }
 
+  // A Jami paper's first full marking came with the paper (docs/plans-and-
+  // stardust.md): it spends no paper-marking allowance. Marking it again, and
+  // marking a paper the student brought, do.
+  const includedMarking =
+    kind === "full" && paper.origin === "generated" && !paper.includedMarkingUsedAt;
   let budget;
   try {
     budget = await checkAiBudget({
       uid: input.uid,
       action: "practicePaperMarking",
       skipBurstLimit: true,
+      ...(includedMarking ? { allowance: null } : {}),
     });
   } catch {
     throw new PracticePaperMarkingQueueError(
@@ -184,6 +191,14 @@ export async function enqueuePracticePaperMarking(input: {
       403
     );
   }
+  if (!budget.allowed && budget.reason === "allowance_used") {
+    throw new PracticePaperMarkingQueueError(
+      "allowance_used",
+      budget.message ?? "You've used this month's paper markings.",
+      429,
+      budget.retryAfterSeconds
+    );
+  }
   if (!budget.allowed) {
     throw new PracticePaperMarkingQueueError(
       "daily_limit",
@@ -191,6 +206,9 @@ export async function enqueuePracticePaperMarking(input: {
       429,
       budget.retryAfterSeconds
     );
+  }
+  if (includedMarking) {
+    await paperRef.update({ includedMarkingUsedAt: Date.now() });
   }
 
   const now = Date.now();

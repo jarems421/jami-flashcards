@@ -208,7 +208,9 @@ export function useStudyPreparation(input: {
               console.warn("Study preparation was cut short.", error);
               if (
                 error instanceof StudyAssetPreparationError &&
-                (error.code === "daily_limit" || error.code === "email_unconfirmed")
+                (error.code === "daily_limit" ||
+                  error.code === "allowance_used" ||
+                  error.code === "email_unconfirmed")
               ) {
                 exhaustedRef.current = true;
               }

@@ -11,7 +11,8 @@ export type FeatureFlagKey =
   | "enableRevisionPlans"
   | "enableRevisionSessions"
   | "enableConceptRelations"
-  | "enableTutorMemory";
+  | "enableTutorMemory"
+  | "enableBilling";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
@@ -85,6 +86,13 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    * stops every write, without deleting what is stored.
    */
   enableTutorMemory: true,
+  /*
+   * Plans and monthly allowances (docs/plans-and-stardust.md). Off until
+   * launch: off, every student keeps today's daily limits and nothing else,
+   * exactly as before plans existed. On, new accounts get Free's monthly
+   * allowances, and every account made before BILLING_LAUNCH_AT is Lifetime.
+   */
+  enableBilling: false,
 };
 
 /**
@@ -108,6 +116,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableRevisionSessions: process.env.NEXT_PUBLIC_ENABLE_REVISION_SESSIONS,
   enableConceptRelations: process.env.NEXT_PUBLIC_ENABLE_CONCEPT_RELATIONS,
   enableTutorMemory: process.env.NEXT_PUBLIC_ENABLE_TUTOR_MEMORY,
+  enableBilling: process.env.NEXT_PUBLIC_ENABLE_BILLING,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -136,4 +145,5 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableRevisionSessions: isFeatureEnabled("enableRevisionSessions"),
   enableConceptRelations: isFeatureEnabled("enableConceptRelations"),
   enableTutorMemory: isFeatureEnabled("enableTutorMemory"),
+  enableBilling: isFeatureEnabled("enableBilling"),
 };
