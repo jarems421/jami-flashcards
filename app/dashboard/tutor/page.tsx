@@ -348,6 +348,8 @@ export default function TutorPage() {
 
       <JamiAssistantDrawer
         key={chat.key}
+        // The ask box is the page's main thing, so its chat takes the screen rather than a side panel.
+        layout="page"
         userId={user.uid}
         open={chat.open && selectedIds.length > 0}
         onOpenChange={(open) => setChat((current) => ({ ...current, open }))}

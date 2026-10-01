@@ -2,7 +2,7 @@
 
 import { type ReactNode } from "react";
 import AppPage from "@/components/layout/AppPage";
-import TutorBrief from "@/components/ai/TutorBrief";
+import { TutorSaveIndicator } from "@/components/ai/TutorSaveIndicator";
 import TutorFolderNotes from "@/components/ai/TutorFolderNotes";
 import TutorMemoryPanel from "@/components/ai/TutorMemoryPanel";
 import TutorNotesList from "@/components/ai/TutorNotesList";
@@ -102,9 +102,6 @@ export default function TutorPersonaliseWorkspace() {
   } = useTutorPersonalisation();
   const memory = useTutorMemory();
 
-  const selectedFolder =
-    data?.folder && data.folder.id === selectedFolderId ? data.folder : null;
-
   return (
     <AppPage
       title="Personalise Jami"
@@ -150,8 +147,12 @@ export default function TutorPersonaliseWorkspace() {
           </div>
         </Card>
       ) : (
-        <div className="tutor-personalise">
-          <div className="tutor-personalise-grid">
+        <div className="space-y-4">
+          {/* A summary of what was just filled in told the student nothing new; the save state is all it needs. */}
+          <div className="flex justify-end">
+            <TutorSaveIndicator status={saveStatus} />
+          </div>
+          <div>
             <div className="min-w-0 space-y-4">
               <Step
                 number={1}
@@ -226,15 +227,6 @@ export default function TutorPersonaliseWorkspace() {
               ) : null}
             </div>
 
-            <aside className="tutor-personalise-aside min-w-0">
-              <TutorBrief
-                studyLevel={studyLevel}
-                studySubjects={studySubjects}
-                preferences={preferences}
-                folder={selectedFolder}
-                saveStatus={saveStatus}
-              />
-            </aside>
           </div>
         </div>
       )}

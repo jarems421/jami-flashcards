@@ -196,8 +196,12 @@ type JamiAssistantDrawerProps = {
    * student moves and resizes over a surface they are writing on, which can
    * also shrink to a pill or leave one answer pinned beside the page. Phones
    * get the full-screen sheet either way: there is no room to float.
+   *
+   * `page` is the whole screen at every size, for a chat started from a page
+   * whose point is the chat -- the Tutor page -- where opening a side panel
+   * beside a big "ask" box read as being sent somewhere else.
    */
-  layout?: "sidebar" | "floating";
+  layout?: "sidebar" | "floating" | "page";
 };
 
 type DrawerMessage = {
@@ -291,6 +295,7 @@ export default function JamiAssistantDrawer({
   */
   const [sidePanel, setSidePanel] = useState(false);
   const floating = layout === "floating" && sidePanel;
+  const fullPage = layout === "page";
   // Shrunk to a pill rather than closed, so the pill stays to bring it back.
   const [minimised, setMinimised] = useState(false);
   /*
@@ -943,20 +948,26 @@ export default function JamiAssistantDrawer({
     <>
     <Dialog
       open={open && (!floating || card.rect !== null)}
-      modal={!sidePanel}
+      modal={fullPage || !sidePanel}
       initialFocusRef={inputRef}
-      className={`fixed inset-0 flex justify-end ${
-        sidePanel ? "pointer-events-none" : ""
+      className={`fixed inset-0 flex ${fullPage ? "justify-center" : "justify-end"} ${
+        sidePanel && !fullPage ? "pointer-events-none" : ""
       }`}
       onDismiss={() => onOpenChange(false)}
     >
-      <DialogBackdrop className="absolute inset-0 bg-black/55 backdrop-blur-[1px]" />
+      <DialogBackdrop
+        className={
+          fullPage ? "absolute inset-0 bg-[var(--color-surface-base)]" : "absolute inset-0 bg-black/55 backdrop-blur-[1px]"
+        }
+      />
       <DialogPanel
         data-notebook-text-editor="true"
         className={
           floating
             ? floatingTutorPanelClass(card)
-            : "pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-shell"
+            : fullPage
+              ? "pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-4xl flex-col overflow-hidden bg-[var(--color-surface-panel-strong)] md:border-x md:border-[var(--color-border)]"
+              : "pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-shell"
         }
         /*
           The panel colour is a few percent translucent, which reads as depth
@@ -965,7 +976,7 @@ export default function JamiAssistantDrawer({
           and the work behind it does not bleed into the conversation.
         */
         style={
-          sidePanel
+          sidePanel || fullPage
             ? {
                 ...(floating && card.rect ? floatingRectStyle(card.rect) : null),
                 backgroundColor: "var(--color-surface-base)",

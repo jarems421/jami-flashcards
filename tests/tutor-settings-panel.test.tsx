@@ -271,7 +271,7 @@ describe("the Tutor settings panel", () => {
     await render(<TutorSettingsPanel />);
     await openTab("Notes");
 
-    expect(container.textContent).toContain("Jami already knows");
+    expect(container.textContent).toContain("Jami knows:");
     expect(container.textContent).toContain("AQA · A level Biology");
     expect(container.textContent).not.toContain("Which course is this for?");
   });

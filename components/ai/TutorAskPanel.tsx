@@ -13,7 +13,7 @@ import type { Source } from "@/lib/material/sources";
  * It used to say "Ask from your own material" and send the student to the
  * Library to find some first. Now the question and the material are chosen
  * together, here: type, pick one source or several, send -- and the chat
- * opens beside the page with the answer on its way. The three starting
+ * opens full screen with the answer on its way, and closes back to here. The three starting
  * points are the same ones the chat itself offers.
  */
 export default function TutorAskPanel({
@@ -121,13 +121,18 @@ export default function TutorAskPanel({
       )}
 
       {/*
-        * The one promise that matters, said once and quietly, in two short
-        * lines rather than a paragraph: Jami reads what it is handed, for that
-        * conversation only.
+        * The promises that matter, said once and quietly. Jami does remember
+        * a few short notes between chats now, so this says that -- and where
+        * the student can see and change them.
         */}
       <p className="relative mt-5 flex flex-wrap justify-center gap-x-4 gap-y-1 text-2xs leading-5 text-text-muted">
         <span>Reads only what you hand it</span>
-        <span>Keeps nothing between conversations</span>
+        <span>
+          Remembers a few notes about you —{" "}
+          <a href="/dashboard/tutor/personalise" className="underline underline-offset-2 hover:text-text-secondary">
+            see or change them
+          </a>
+        </span>
       </p>
     </section>
   );

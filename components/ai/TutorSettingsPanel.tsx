@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { TutorSaveIndicator } from "@/components/ai/TutorBrief";
+import { TutorSaveIndicator } from "@/components/ai/TutorSaveIndicator";
 import TutorFolderNotes from "@/components/ai/TutorFolderNotes";
 import TutorMemoryPanel from "@/components/ai/TutorMemoryPanel";
 import TutorNotesList from "@/components/ai/TutorNotesList";
