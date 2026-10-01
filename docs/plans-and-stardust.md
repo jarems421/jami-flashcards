@@ -1,9 +1,9 @@
 # Plans, payments and stardust — design
 
-Status: pricing agreed 28 Sep 2026. Not built. Costs were measured and priced
-on 26 Sep 2026; re-read the prices in §9 before launch, because model prices
-drift (the worker's output price doubled in the fortnight before this was
-written).
+Status: pricing agreed 28 Sep 2026, **revised 1 Oct 2026** (allowances, Exam
+Pass discounts, two new allowances, costs re-measured). Not built. Re-read the
+prices in §9 before launch, because model prices drift (the worker's output
+price doubled in the fortnight before the first draft).
 
 Jami becomes paid for new accounts. There is a free tier, two paid tiers, a
 one-off Exam Pass, and **stardust**: a currency bought with money or earned by
@@ -29,22 +29,94 @@ answering real questions, spent in a Store in Account.
 
 ## 2. Plans
 
+Limits follow cost × how often it is used (agreed direction 1 Oct 2026):
+generous on what is cheap and used constantly, strict on what is expensive and
+rare, a little strict on what is expensive and frequent.
+
 | | Free | Plus | Pro |
 |---|---|---|---|
 | Price | £0 | **£7.99 / month** | **£14.99 / month** |
-| Jami papers (written for you, then marked) | 1 | 7 | 16 |
-| Marked past-paper answers (a guided retry counts as one) | 10 | 100 | 250 |
-| Tutor questions | 30 | 300 | 900 |
-| Tutor web searches | 5 | 20 | 40 |
-| Tutor pictures | — | 10 | 20 |
-| Video imports | 1 | 3 | 8 |
-| Revision Sessions | 4 | 30 | fair use |
-| Everyday AI (flashcard prep, answer checks, planner chats, card autocomplete, cards from sources) | small monthly caps | fair use | fair use |
-| Flashcards, notebooks, folders, planner, Today | unlimited | unlimited | unlimited |
+| *Cheap and frequent: generous* | | | |
+| Tutor questions (0.28p each) | 60 | 500 | 1,000 |
+| Tutor diagrams it draws (0.05p) | fair use | fair use | fair use |
+| Marked past-paper answers (0.11p; a guided retry counts as one) | 25 | 250 | 600 |
+| Revision Sessions (0.3p) | 8 | 60 | 120 |
+| Pages the Tutor can search (0.011p a page) | 500 | unlimited (10,000 a month ceiling) | unlimited (20,000 a month ceiling) |
+| Diagram cards: "find the labels for me" (0.6p) | 10 | 60 | 150 |
+| Video imports (1–5p by length) | 3 | 30 | 60 |
+| Everyday AI: "Draft this answer" on a card (≈0.03p), flashcards or practice questions from a file, the Tutor or a chat (≈0.5p a batch), deck study prep, answer checks, planner chats | small monthly caps (50 drafts, 10 batches each) | unlimited | unlimited |
+| *Expensive and frequent: a little strict* | | | |
+| Jami papers, written and marked (25p) | 1 | 6 | 12 |
+| Tutor web searches (1.5p) | 5 | 30 | 60 |
+| *Expensive and rare: strict* | | | |
+| Generated photos in the Tutor (≈4.5p) | — | 10 | 24 |
+| Re-marking a paper (8p) | stardust | stardust | stardust |
+| Flashcards, notebooks, folders, uploads, planner, Today | unlimited | unlimited | unlimited |
 | Stardust you can earn a month | 40 ✦ | 60 ✦ | 100 ✦ |
-| **Cost to Jami if every allowance is used and all earnable ✦ is spent on papers** | £0.90 | £4.44 | £10.15 |
-| Stripe's cut | — | £0.38 | £0.53 |
-| **Jami keeps, even then** | — | **£3.17** | **£4.31** |
+| **Jami keeps from a typical student** | — | **£6.12** | **£11.79** |
+| Jami keeps at about half use | — | £3.65 | £6.14 |
+| Jami keeps from a student maxing every allowance | — | −£1.93 | −£4.68 |
+
+"Unlimited" pages means a monthly ceiling only an exploiter meets: 10,000 on
+Plus, 20,000 on Pro (twenty and forty textbooks; at most £1.10 and £2.20). Re-indexing a source the
+student already has is not counted again. Free keeps 10 file-to-cards batches
+a month; on paid plans they are everyday fair use (about 0.5p a batch).
+
+**Hidden ceilings on everything "unlimited"** (paid plans). Daily limits
+alone let one account spend about £25 a month on the "unlimited" features, so
+each also has a monthly ceiling set near a genuinely heavy student's use:
+
+| Feature | Daily | Monthly | Cost at the ceiling |
+|---|---|---|---|
+| AI flashcard batches (up to 24 cards) | 20 | 300 | £1.50 |
+| Practice question batches | 10 | 300 | £1.50 |
+| "Draft this answer" presses | 150 | 1,500 | 45p (£1.80 if every press retries twice) |
+| Typed-answer checks | 150 | 2,000 | 40p |
+| Deck study preparation | 60 | 600 | 30p |
+| Planner chats | 40 | 300 | 15p |
+| Material for a weak topic (Today) | 20 | 120 | 48p |
+| Tutor diagrams | 10 | 300 | 15p |
+| Photo background restore | 8 | 20 | 10p |
+
+**Full breakdown (1 Oct 2026).** Typical / moderate / maxed students, every
+cost included (fair-use features, stardust, hosting, Stripe):
+
+| | Cost: typical | moderate | maxed | Profit: typical | moderate | maxed |
+|---|---|---|---|---|---|---|
+| Free | £0.22 | £0.77 | £1.26 | — | — | — |
+| Plus £7.99 | £1.49 | £3.96 | £9.54 | £6.12 (77%) | £3.65 (46%) | −£1.93 |
+| Pro £14.99 | £2.67 | £8.32 | £19.15 | £11.79 (79%) | £6.14 (41%) | −£4.68 |
+
+A maxed student uses every allowance in full every month. Fixed costs (Vercel
+Pro £15 and the ICO fee £4.33, about £19 a month in total) are covered by four
+typical Plus subscribers.
+
+**Where each card-making path is counted.** One "cards from sources" limit
+(today 10 batches a day, up to 24 cards a batch) covers every way of asking
+Jami to write flashcards: from a file in Library, and from the Tutor -- out of
+the student's sources or out of the chat itself. Practice questions from a
+file have their own matching limit. Video imports are separate and counted
+monthly (videos up to 90 minutes and 500 MB). Importing existing cards (Anki)
+and uploading PDFs to notebooks use no AI and are unlimited.
+
+**Fix while building:** the Tutor's "make me practice questions" is charged
+to `practicePaperGeneration` today (`app/api/ai/assistant/study-material`), so
+a quick set of questions would spend one of the student's monthly papers. It
+must count as `sourcePracticeDrafts` instead.
+
+**The guarantee changed on 1 Oct 2026.** The first draft promised a profit
+even if a student maxed every allowance at once. Being generous on the cheap,
+constant things makes that impossible without starving them, and nobody uses
+1,000 Tutor questions, 600 marked answers and ten papers in one month. The
+guarantee is now: a heavy student (60% of everything) is comfortably
+profitable on every plan and pass, and the theoretical max-everything student
+costs a little more than they pay (about £2.30 a month on either plan). The expensive items -- papers,
+web searches, photos -- carry the strict limits, so that is where a loss could
+come from, and it cannot.
+
+Uploading a file uses no AI: its text is extracted on the server without a
+model. What costs is what is done with it -- indexing it for the Tutor
+(pages), making cards from it, or the Tutor reading it inside a question.
 
 A student who uses about half their Plus allowance costs about £2, so most
 subscriptions keep well above the floor shown.
@@ -72,24 +144,30 @@ keeps the plan for 7 days while Stripe retries, then drops to Free.
 
 ## 3. Exam Pass
 
-One payment, lasting until **31 July** of the current exam year, at **30% off**
-paying monthly for the months left:
+One payment, lasting until **31 July** of the current exam year, at **25% off
+Plus or 15% off Pro** against paying monthly for the months left:
 
 ```
-pass price = ceil(monthly price × min(months left, 10) × 0.7) − 0.01
+pass price = ceil(monthly price × min(months left, 10) × (1 − discount)) − 0.01
+discount   = 0.25 for Plus, 0.15 for Pro
 ```
 
 | Bought in | Plus pass | Pro pass |
 |---|---|---|
-| September or October | £55.99 | £104.99 |
-| January | £39.99 | £73.99 |
-| March | £27.99 | £52.99 |
-| May | £16.99 | £31.99 |
+| September or October | £59.99 | £127.99 |
+| January | £41.99 | £89.99 |
+| March | £29.99 | £63.99 |
+| May | £17.99 | £38.99 |
+
+The first draft gave both 30% off. At 1 Oct costs that loses money on a Pro
+student who uses everything (£2 a month on a two-month pass), and Pro still
+lost at 20% off. Pro's discount is smaller because Pro is already the better
+value per allowance.
 
 Months are counted from the purchase month to July inclusive. A pass bought in
 August or September runs to the following 31 July and is priced at ten months.
-Both passes stay profitable even if every allowance is used every month (Pro's
-thinnest month is June, at +£0.18). A pass is not a subscription: it never
+For a heavy student (60% of everything) the passes keep at least £1.19 a month
+(Plus) and £2.80 (Pro). A pass is not a subscription: it never
 renews and needs no cancelling. Its allowances reset monthly from the purchase
 date, exactly like a subscription's.
 
@@ -263,29 +341,32 @@ Lifetime means today's daily limits with no monthly allowances. It can earn
 ## 9. Costs behind the numbers
 
 Per unit, all-in, including OpenRouter's 5.5% top-up fee. $1 = £0.75.
+Re-measured 1 Oct 2026.
 
-| Unit | Cost |
-|---|---|
-| A Jami paper, written and marked | 23p |
-| Marking a paper | 8p |
-| A marked answer | 0.4p |
-| A Tutor question | 0.16p |
-| A Tutor web search | 2p (after 5,000 free a month) |
-| A Tutor picture | 2.5p |
-| A 60-minute video import | 6p |
-| A Revision Session | 0.16p |
+| Unit | Priced at | Measured / basis |
+|---|---|---|
+| A Jami paper, written and marked | 25p | 14 Sep run ≈ $0.30; ceilings cap a runaway at £1.12 |
+| A marked answer | 0.4p | 0.11p average (11 answers); supervisor tail to 1.2p |
+| A Tutor question | 0.5p | 0.28p average over 126 questions, 0.37p on the worst day |
+| A Tutor web search | 1.5p | Gemini grounding $14 per 1,000 after 5,000 free a month |
+| A Tutor diagram / generated photo | 0.05p / 4.5p | drawn from a spec / 3.1 Flash Image |
+| A page indexed for the Tutor | 0.011p | Gemini embeddings $0.20/M, ~750 tokens a page |
+| Diagram label detection | 0.6p | one scaled picture, up to sixty labels out |
+| A video import | 1–5p | 2.5 Flash-Lite; frames capped at 120k tokens whatever the length, so an hour is mostly audio |
+| Cards from a file | 0.5p | worker, source sliced to a fixed length |
+| A Revision Session | 0.3p | lesson plus up to five markings |
+| Flashcard preparation (a deck) | 0.05p | 0.07p measured over 41 jobs |
 
-Where they came from:
+Model prices read 1 Oct 2026, per million tokens in / out: worker
+`z-ai/glm-5.3-flash` $0.15 / $0.50; supervisor `qwen/qwen3.6-35b-a3b` $0.15 /
+$1.00; standby `moonshotai/kimi-k3` $0.69 / $10.00; juror
+`moonshotai/kimi-k2.6` $0.43 / $1.83; `minimax/minimax-m3` $0.30 / $1.20;
+Gemini 3.5 Flash-Lite $0.30 / $2.50; 2.5 Flash-Lite $0.10 / $0.40; 3.1 Flash
+Image $0.50 in, $60 per million image tokens; embeddings $0.20.
 
-- **Measured** from `aiSpend`: Tutor, marking, Revision Session and flashcard
-  preparation costs.
-- **Built** from the design, mark-scheme and audit passes at current prices:
-  paper writing.
-- **Price list** for everything on Gemini.
-
-The biggest assumption is images: 0.5 generated images per paper. The seven
-real papers had none, because measurable figures are drawn as SVG
-(`lib/practice/asset-routing.ts`).
+Real usage so far is small: $1.69 over 30 days across nine accounts (Sept
+2026), the heaviest $0.72. The prices above are deliberately 2–4× the measured
+averages for Tutor and marking, so the floors in §2 are floors.
 
 A student making three papers a day and using everything else heavily costs
 about £41 a month. That is more than Pro includes. What they use beyond it
@@ -300,6 +381,11 @@ comes from stardust at about twice its cost, so heavy use pays for itself.
 That comes to about £20 a month, which four typical Plus subscribers cover.
 
 ## 10. Before launch
+
+**Found 1 Oct 2026:** `POST /api/ai/source-index` runs no `checkAiBudget` at
+all, so source indexing is unmetered and unlimited. It is cheap (6p for the
+largest pack) but must get the `pages` allowance and a daily fair-use limit
+before launch, like every other AI route.
 
 **Cost safety — status 28 Sep 2026.** Items 1, 3 and 4 are built. For
 item 2:
@@ -382,7 +468,24 @@ Launch is phases 0–3 with both flags on. The Store and plan screens follow
 `docs/ui-design-system.md`. They are a new surface, so they get a full design
 pass and a browser check.
 
-## 12. Revisit after the first exam season (August 2027)
+## 12. The market (UK, read 1 Oct 2026)
+
+| Product | Price | What it covers |
+|---|---|---|
+| Quizlet Plus | £3.99 / month, £31.99 / year | flashcards |
+| Save My Exams | £12 or £25 / month rolling; £48 or £96 / year | notes and exam questions; AI marking on Premium |
+| Seneca | £9.99, £12.99 (exam questions), £19.99 (AI assistant) / month | courses, exam questions, AI feedback |
+| StudyFetch | $7.99 or $11.99 / month | AI study sets and tutor |
+| ChatGPT | Go ≈ £6, Plus ≈ £20 / month | general AI, not exam-specific |
+| Goodnotes | $35.99 / year Pro | notebooks |
+
+Plus at £7.99 sits under Seneca's exam-question tier and Save My Exams'
+rolling Essential while also replacing a flashcard app and a notebook app. Pro
+at £14.99 undercuts every tier that includes AI marking or a course-aware
+tutor. Save My Exams' annual price (£48) is the one to watch: the Plus Exam
+Pass bought in September (£59.99, ten months) is the closest answer to it.
+
+## 13. Revisit after the first exam season (August 2027)
 
 - Real per-plan spend against §9. Allowances can grow as costs fall.
 - How many students hit each allowance, and which Store items sell.
