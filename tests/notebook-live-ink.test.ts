@@ -157,7 +157,17 @@ describe("fast live ink dirty region", () => {
 });
 
 function fakeEditor(options: { withCommitHook?: boolean } = {}) {
-  const originalCtx = fakeContext({ width: 3000, height: 4000 });
+  const wetCanvas = {
+    width: 3000,
+    height: 4000,
+    style: {
+      display: "",
+      removeProperty(name: string) {
+        if (name === "display") this.display = "";
+      },
+    },
+  };
+  const originalCtx = fakeContext(wetCanvas);
   const originalClear = vi.fn();
   const wet = {
     ctx: asContext(originalCtx),
@@ -183,6 +193,7 @@ function fakeEditor(options: { withCommitHook?: boolean } = {}) {
     image,
     viewport,
     queueRerender: vi.fn(),
+    rerender: vi.fn(),
   } as unknown as JsDrawEditor;
   const jsDraw = {
     Vec2: { of: (x: number, y: number) => ({ x, y }) },
@@ -215,6 +226,7 @@ function fakeEditor(options: { withCommitHook?: boolean } = {}) {
     originalFlatten,
     viewport,
     wet,
+    wetCanvas,
   };
 }
 
@@ -339,4 +351,61 @@ describe("installNotebookLiveInk", () => {
     ).toBeNull();
     expect(fake.wet.clear).toBe(fake.originalClear);
   });
+
+  it("puts js-draw's idle wet canvas away while fast ink is on", () => {
+    const fake = fakeEditor();
+    const liveInk = installNotebookLiveInk({
+      editor: fake.editor,
+      jsDraw: fake.jsDraw,
+      canvas: fake.liveCanvas,
+    });
+    liveInk?.setParked(true);
+    expect(fake.wetCanvas.width).toBe(1);
+    expect(fake.wetCanvas.height).toBe(1);
+    expect(fake.wetCanvas.style.display).toBe("none");
+
+    // A stroke that could not go live still reaches the page, by a repaint.
+    fake.display.flatten();
+    expect(fake.originalFlatten).not.toHaveBeenCalled();
+    expect(fake.editor.queueRerender).toHaveBeenCalledTimes(1);
+
+    // Turned off, js-draw is asked to size it again.
+    liveInk?.setParked(false);
+    expect(fake.wetCanvas.style.display).toBe("");
+    expect(fake.editor.rerender).toHaveBeenCalledTimes(1);
+    fake.display.flatten();
+    expect(fake.originalFlatten).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not repaint a parked canvas back while the editor is torn down", () => {
+    const fake = fakeEditor();
+    const liveInk = installNotebookLiveInk({
+      editor: fake.editor,
+      jsDraw: fake.jsDraw,
+      canvas: fake.liveCanvas,
+    });
+    liveInk?.setParked(true);
+    liveInk?.dispose();
+    expect(fake.wetCanvas.style.display).toBe("");
+    expect(fake.editor.rerender).not.toHaveBeenCalled();
+  });
+
+  it("sizes the live canvas ahead of the stroke, so the pointerdown does not", () => {
+    const fake = fakeEditor();
+    const liveInk = installNotebookLiveInk({
+      editor: fake.editor,
+      jsDraw: fake.jsDraw,
+      canvas: fake.liveCanvas,
+    });
+    liveInk?.prepare(strokeInput);
+    expect(fake.liveCanvas.width).toBe(1792);
+    expect(liveInk?.active).toBe(false);
+    expect(fake.wet.ctx).toBe(asContext(fake.originalCtx));
+
+    fake.liveSpies.setTransform.mockClear();
+    liveInk?.begin(strokeInput);
+    expect(fake.liveSpies.setTransform).not.toHaveBeenCalled();
+    expect(liveInk?.active).toBe(true);
+  });
 });
+

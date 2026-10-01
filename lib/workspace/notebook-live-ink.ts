@@ -362,20 +362,43 @@ function isRenderableComponent(value: unknown): value is RenderableComponent {
   );
 }
 
+/** Where the page sits on screen, which is all the live canvas is sized from. */
+export type NotebookLiveInkPlacement = {
+  /** The ink surface's rect; the live canvas is positioned inside it. */
+  surfaceRect: DOMRectReadOnly;
+  viewportWidth: number;
+  viewportHeight: number;
+  devicePixelRatio: number;
+};
+
 export type NotebookLiveInk = {
   /**
    * Sends the stroke about to begin to the live canvas. Call before js-draw
    * sees the pointerdown. False if there is nowhere on screen to draw.
    */
-  begin(input: {
-    /** The ink surface's rect; the live canvas is positioned inside it. */
-    surfaceRect: DOMRectReadOnly;
-    /** js-draw's render region's rect, which its screen coordinates are from. */
-    regionRect: DOMRectReadOnly;
-    viewportWidth: number;
-    viewportHeight: number;
-    devicePixelRatio: number;
-  }): boolean;
+  begin(
+    input: NotebookLiveInkPlacement & {
+      /** js-draw's render region's rect, which its screen coordinates are from. */
+      regionRect: DOMRectReadOnly;
+    }
+  ): boolean;
+  /**
+   * Sizes the live canvas for where the page now sits, without drawing.
+   *
+   * Allocating a canvas the size of the screen is not free, and doing it in
+   * `begin` put that cost on the pointerdown -- the first stroke on a page,
+   * and the first after every pan. Called whenever the page settles instead,
+   * so a stroke normally finds its canvas already there.
+   */
+  prepare(input: NotebookLiveInkPlacement): void;
+  /**
+   * Whether js-draw's own wet-ink canvas is put away while fast ink is on.
+   *
+   * It is as large as the page canvas -- tens of megabytes on an iPad once
+   * zoomed -- and with fast ink nothing draws on it. Parked, it is shrunk to a
+   * single pixel; unparked, js-draw sizes it again on its next repaint.
+   */
+  setParked(parked: boolean): void;
   /** Gives js-draw its own wet ink back. Safe to call when nothing is live. */
   end(): void;
   readonly active: boolean;
@@ -407,9 +430,11 @@ export function installNotebookLiveInk(input: {
 
   const dirtyRegion = new NotebookLiveInkDirtyRegion(liveCtx);
   const originalCtx = wet.ctx;
+  const wetCanvas = originalCtx.canvas;
   const originalClear = wet.clear;
   const originalFlatten = display.flatten;
   let live = false;
+  let parked = false;
   let region: NotebookLiveInkRegion | null = null;
   let pixelRatio = 1;
   let committed: RenderableComponent | null = null;
@@ -433,6 +458,13 @@ export function installNotebookLiveInk(input: {
 
   display.flatten = function flattenLiveOrWet() {
     if (!live) {
+      // A parked wet canvas has nothing on it to copy. Only reached if a
+      // stroke could not go live -- the page entirely off screen -- and then
+      // a repaint puts the stroke on the page instead.
+      if (parked) {
+        editor.queueRerender();
+        return;
+      }
       originalFlatten.call(display);
       return;
     }
@@ -447,6 +479,40 @@ export function installNotebookLiveInk(input: {
     }
   };
 
+  /** Sizes and places the live canvas; the region, or null if off screen. */
+  const place = (placement: NotebookLiveInkPlacement) => {
+    const next = getNotebookLiveInkRegion({
+      surfaceLeft: placement.surfaceRect.left,
+      surfaceTop: placement.surfaceRect.top,
+      surfaceWidth: placement.surfaceRect.width,
+      surfaceHeight: placement.surfaceRect.height,
+      viewportWidth: placement.viewportWidth,
+      viewportHeight: placement.viewportHeight,
+    });
+    if (!next) return null;
+    const nextRatio = getNotebookLiveInkPixelRatio({
+      width: next.width,
+      height: next.height,
+      devicePixelRatio: placement.devicePixelRatio,
+    });
+    if (!sameNotebookLiveInkRegion(region, next) || nextRatio !== pixelRatio) {
+      region = next;
+      pixelRatio = nextRatio;
+      canvas.style.left = `${next.left}px`;
+      canvas.style.top = `${next.top}px`;
+      canvas.style.width = `${next.width}px`;
+      canvas.style.height = `${next.height}px`;
+      // Resizing clears the canvas and resets its transform.
+      canvas.width = Math.max(1, Math.round(next.width * nextRatio));
+      canvas.height = Math.max(1, Math.round(next.height * nextRatio));
+      dirtyRegion.forget();
+      dirtyRegion.setScale(nextRatio);
+    } else {
+      dirtyRegion.wipe(pixelRatio);
+    }
+    return next;
+  };
+
   const end = () => {
     if (!live) return;
     dirtyRegion.wipe(pixelRatio);
@@ -456,41 +522,22 @@ export function installNotebookLiveInk(input: {
     committed = null;
   };
 
+  const unpark = (repaint: boolean) => {
+    if (!parked) return;
+    parked = false;
+    wetCanvas.style.removeProperty("display");
+    // js-draw sizes its canvases from their laid-out size at each repaint.
+    if (repaint) editor.rerender();
+  };
+
   return {
     get active() {
       return live;
     },
     begin(stroke) {
       end();
-      const next = getNotebookLiveInkRegion({
-        surfaceLeft: stroke.surfaceRect.left,
-        surfaceTop: stroke.surfaceRect.top,
-        surfaceWidth: stroke.surfaceRect.width,
-        surfaceHeight: stroke.surfaceRect.height,
-        viewportWidth: stroke.viewportWidth,
-        viewportHeight: stroke.viewportHeight,
-      });
+      const next = place(stroke);
       if (!next) return false;
-      const nextRatio = getNotebookLiveInkPixelRatio({
-        width: next.width,
-        height: next.height,
-        devicePixelRatio: stroke.devicePixelRatio,
-      });
-      if (!sameNotebookLiveInkRegion(region, next) || nextRatio !== pixelRatio) {
-        region = next;
-        pixelRatio = nextRatio;
-        canvas.style.left = `${next.left}px`;
-        canvas.style.top = `${next.top}px`;
-        canvas.style.width = `${next.width}px`;
-        canvas.style.height = `${next.height}px`;
-        // Resizing clears the canvas and resets its transform.
-        canvas.width = Math.max(1, Math.round(next.width * nextRatio));
-        canvas.height = Math.max(1, Math.round(next.height * nextRatio));
-        dirtyRegion.forget();
-        dirtyRegion.setScale(nextRatio);
-      } else {
-        dirtyRegion.wipe(pixelRatio);
-      }
 
       // js-draw's screen coordinates are measured from its render region;
       // ours from the live canvas. The difference is a plain offset.
@@ -508,9 +555,28 @@ export function installNotebookLiveInk(input: {
       committed = null;
       return true;
     },
+    prepare(placement) {
+      if (live) return;
+      place(placement);
+    },
+    setParked(next) {
+      if (next === parked) return;
+      if (!next) {
+        unpark(true);
+        return;
+      }
+      parked = true;
+      // Hidden, js-draw measures it as zero and keeps whatever size it has,
+      // so a one-pixel canvas stays one pixel through its later resizes.
+      wetCanvas.style.display = "none";
+      wetCanvas.width = 1;
+      wetCanvas.height = 1;
+    },
     end,
     dispose() {
       end();
+      // The editor is being taken down; there is nothing left to repaint.
+      unpark(false);
       wet.clear = originalClear;
       display.flatten = originalFlatten;
       image.addComponentDirectly = originalAddComponentDirectly;

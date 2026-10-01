@@ -217,10 +217,38 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     inkSmoothingOptionsRef.current =
       getNotebookInkSmoothingOptions(penSettings);
     /** Whether the next stroke goes to the fast live canvas. Read at contact. */
-    const fastLiveInkRef = useRef(penSettings.fastLiveInk);
-    fastLiveInkRef.current = penSettings.fastLiveInk;
+    const fastLiveInk = penSettings.liveInk === "fast";
+    const fastLiveInkRef = useRef(fastLiveInk);
+    fastLiveInkRef.current = fastLiveInk;
     const liveInkCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const liveInkRef = useRef<NotebookLiveInk | null>(null);
+    /**
+     * Sizes the live canvas once the page has settled, coalesced to one frame.
+     * A ref so the editor's setup effect and later effects share one function.
+     */
+    const prepareLiveInkFrameRef = useRef(0);
+    const prepareLiveInkRef = useRef(() => {
+      if (prepareLiveInkFrameRef.current) return;
+      prepareLiveInkFrameRef.current = window.requestAnimationFrame(() => {
+        prepareLiveInkFrameRef.current = 0;
+        const surface = inkSurfaceRef.current;
+        const liveInk = liveInkRef.current;
+        if (
+          !surface ||
+          !liveInk ||
+          !fastLiveInkRef.current ||
+          pointerLifecycleRef.current?.isInteracting
+        ) {
+          return;
+        }
+        liveInk.prepare({
+          surfaceRect: surface.getBoundingClientRect(),
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          devicePixelRatio: window.devicePixelRatio || 1,
+        });
+      });
+    });
     // Which way the highlighter flat edge is facing. One per editor rather than
     // one per stroke: grip carries across strokes, so the angle a stroke opens
     // at should be the one the hand was already holding.
@@ -653,6 +681,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             ? installNotebookLiveInk({ editor, jsDraw, canvas: liveInkCanvas })
             : null;
           liveInkRef.current = liveInk;
+          liveInk?.setParked(fastLiveInkRef.current);
           editor.toolController
             .getMatchingTools(jsDraw.EraserTool)
             .forEach((eraser) => {
@@ -743,6 +772,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               editor.history.undoStackSize,
               editor.history.redoStackSize
             );
+            prepareLiveInkRef.current();
             // Signal that the page's ink has loaded and painted, so the page can
             // drop the static ink underlay it shows during the swap (avoids the
             // brief blank flash while js-draw deserializes the SVG).
@@ -777,6 +807,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         }
         liveInk?.dispose();
         if (liveInkRef.current === liveInk) liveInkRef.current = null;
+        if (prepareLiveInkFrameRef.current) {
+          window.cancelAnimationFrame(prepareLiveInkFrameRef.current);
+          prepareLiveInkFrameRef.current = 0;
+        }
         precisionEraserGestureRef.current?.gesture.cancel();
         precisionEraserGestureRef.current = null;
         eraserOriginsRef.current = null;
@@ -919,6 +953,27 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     useEffect(() => {
       strokeRegionRectRef.current = null;
     }, [inkWindow]);
+
+    useEffect(() => {
+      liveInkRef.current?.setParked(fastLiveInk);
+      if (fastLiveInk) prepareLiveInkRef.current();
+    }, [fastLiveInk]);
+
+    // A pan or zoom moves which part of the page is on screen, so the live
+    // canvas is resized for it now rather than on the next pointerdown.
+    const windowLeft = inkWindow?.left ?? 0;
+    const windowTop = inkWindow?.top ?? 0;
+    const windowWidth = inkWindow?.width ?? 0;
+    const windowHeight = inkWindow?.height ?? 0;
+    useEffect(() => {
+      prepareLiveInkRef.current();
+    }, [windowHeight, windowLeft, windowTop, windowWidth]);
+
+    useEffect(() => {
+      const handleResize = () => prepareLiveInkRef.current();
+      window.addEventListener("resize", handleResize);
+      return () => window.removeEventListener("resize", handleResize);
+    }, []);
 
     const finishPointerInteraction = useCallback((input: {
       pointerId: number;

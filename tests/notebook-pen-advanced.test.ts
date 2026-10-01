@@ -314,26 +314,30 @@ describe("advanced pen settings", () => {
     expect(reset.smoothingPercent).toBe(10);
   });
 
-  it("keeps fast live ink apart from how the pen shapes a line", () => {
-    // Off unless chosen, and only a real true turns it on.
-    expect(NOTEBOOK_PEN_SETTINGS_DEFAULT.fastLiveInk).toBe(false);
-    expect(clampNotebookPenSettings({}).fastLiveInk).toBe(false);
+  it("draws live ink fast by default, kept apart from how the pen shapes a line", () => {
+    expect(NOTEBOOK_PEN_SETTINGS_DEFAULT.liveInk).toBe("fast");
+    expect(clampNotebookPenSettings({}).liveInk).toBe("fast");
     expect(
-      clampNotebookPenSettings({ fastLiveInk: "yes" as never }).fastLiveInk
-    ).toBe(false);
+      clampNotebookPenSettings({ liveInk: "sideways" as never }).liveInk
+    ).toBe("fast");
+    // The opt-in boolean it replaced was stored as false on every device that
+    // saved pen settings before fast became the default. It must not count.
+    expect(
+      clampNotebookPenSettings({ fastLiveInk: false } as never).liveInk
+    ).toBe("fast");
 
     // It is about drawing speed, not the line, so it is not a customisation
     // of the pen and a reset of the pen leaves it where it was.
-    const fast = settings({ fastLiveInk: true, trackingPercent: 90 });
-    expect(hasNotebookPenAdvancedChanges(settings({ fastLiveInk: true }))).toBe(
+    const classic = settings({ liveInk: "classic", trackingPercent: 90 });
+    expect(hasNotebookPenAdvancedChanges(settings({ liveInk: "classic" }))).toBe(
       false
     );
-    const reset = resetNotebookPenAdvancedSettings(fast);
+    const reset = resetNotebookPenAdvancedSettings(classic);
     expect(reset.trackingPercent).toBe(50);
-    expect(reset.fastLiveInk).toBe(true);
+    expect(reset.liveInk).toBe("classic");
 
-    saveNotebookPenSettings(fast);
-    expect(readNotebookPenSettings().fastLiveInk).toBe(true);
+    saveNotebookPenSettings(classic);
+    expect(readNotebookPenSettings().liveInk).toBe("classic");
   });
 
   it("clamps anything storage or a caller could hand it", () => {

@@ -117,10 +117,10 @@ export default function NotebookPenAdvancedSettings({
         </div>
 
         <SettingSwitch
-          label="Fast live ink (beta)"
-          description="Draws the line you are writing on a lighter layer. Try it if writing lags on an iPad."
-          checked={settings.fastLiveInk}
-          onChange={(fastLiveInk) => set({ fastLiveInk })}
+          label="Fast live ink"
+          description="Draws the line you are writing on a lighter layer, so it keeps up with the pen. Turn off only if ink looks wrong while you write."
+          checked={settings.liveInk === "fast"}
+          onChange={(fast) => set({ liveInk: fast ? "fast" : "classic" })}
           density="compact"
         />
 
