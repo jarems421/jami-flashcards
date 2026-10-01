@@ -194,6 +194,29 @@ function memorySchema(): Schema {
   };
 }
 
+function appActionsSchema(types: readonly string[], destinationKeys: readonly string[]): Schema {
+  return {
+    type: Type.ARRAY,
+    description:
+      "Things to do in Jami for the student: open a place, add notebook pages, make a deck or notebook. An empty array when none.",
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: [...types], description: "Which action." },
+        destination: {
+          type: Type.STRING,
+          format: "enum",
+          enum: [...destinationKeys],
+          description: "For open: the place key.",
+        },
+        count: { type: Type.INTEGER, description: "For add_pages: how many pages, 1 to 20." },
+        name: { type: Type.STRING, description: "For create_deck or create_notebook: its name, at most 80 characters." },
+      },
+      required: ["type"],
+    },
+  };
+}
+
 export function buildAssistantResponseSchema(
   allowedSourceRefs: string[],
   /** Whether this turn may carry a marking at all. Off for every non-marking turn. */
@@ -209,7 +232,13 @@ export function buildAssistantResponseSchema(
    * practice is on, a practice set. Its reading of the request, not the
    * material: that is made afterwards, and reviewed, in the answer's panel.
    */
-  studyMaterialKinds: readonly string[] = []
+  studyMaterialKinds: readonly string[] = [],
+  /**
+   * What Tutor may do in the app this turn, and the places it may open. Only
+   * these are offered, so the model cannot propose an action or a page that is
+   * not there.
+   */
+  appActions: { types: readonly string[]; destinationKeys: readonly string[] } | null = null
 ) {
   const sourceRefItems: Schema =
     allowedSourceRefs.length > 0
@@ -249,6 +278,9 @@ export function buildAssistantResponseSchema(
                 "What this answer is about, as a short, specific topic phrase from the conversation, for flashcards or questions to cover.",
             },
           }
+        : {}),
+      ...(appActions && appActions.types.length > 0
+        ? { appActions: appActionsSchema(appActions.types, appActions.destinationKeys) }
         : {}),
       answer: {
         type: Type.STRING,

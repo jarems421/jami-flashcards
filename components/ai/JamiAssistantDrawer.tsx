@@ -79,6 +79,8 @@ import {
 } from "@/components/ai/JamiAssistantIcons";
 import TutorSettingsPanel from "@/components/ai/TutorSettingsPanel";
 import TutorStudyMaterialPanel from "@/components/ai/TutorStudyMaterialPanel";
+import TutorAppActions from "@/components/ai/TutorAppActions";
+import type { JamiAppScope, TutorAppActionProposal } from "@/lib/ai/jami-app-guide";
 import FloatingTutorHeader from "@/components/ai/JamiFloatingTutorHeader";
 import {
   FloatingTutorPill,
@@ -168,6 +170,12 @@ type JamiAssistantDrawerProps = {
    */
   onAnswerInsert?: (text: string) => boolean;
   /**
+   * Adds blank pages to the end of the open notebook when Tutor is asked to,
+   * and resolves to how many it added. Only a notebook supplies it, so only
+   * there can Tutor add pages.
+   */
+  onAddNotebookPages?: (count: number) => Promise<number>;
+  /**
    * The folders this conversation's material belongs to, when the surface
    * knows.
    *
@@ -220,6 +228,9 @@ type DrawerMessage = {
   studyMaterialRequest?: TutorStudyMaterialRequest;
   studyMaterialOffers?: TutorStudyMaterialKind[];
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
+  /** Things Tutor offered to do, or was asked to do, in the app. */
+  appActions?: TutorAppActionProposal[];
+  appScope?: JamiAppScope;
   /** Answered in this sitting, so material Tutor agreed to is made straight away. */
   fresh?: boolean;
 };
@@ -255,6 +266,7 @@ export default function JamiAssistantDrawer({
   onGraphInsert,
   onDrawingInsert,
   onAnswerInsert,
+  onAddNotebookPages,
   settingsFolderIds,
   contextControls,
   initialMessage,
@@ -811,6 +823,8 @@ export default function JamiAssistantDrawer({
           practiceOffer: response.practiceOffer,
           canIllustrate: response.canIllustrate,
           studyMaterialRequest: response.studyMaterialRequest,
+          appActions: response.appActions,
+          appScope: response.appScope,
           studyMaterialOffers: response.studyMaterialOffers,
           fresh: true,
         };
@@ -1291,6 +1305,19 @@ export default function JamiAssistantDrawer({
                               />
                             ))
                           : null}
+                        {message.id && message.appActions?.length ? (
+                          <TutorAppActions
+                            userId={userId}
+                            messageKey={message.id}
+                            actions={message.appActions}
+                            scope={message.appScope ?? {}}
+                            fresh={Boolean(message.fresh)}
+                            readOnly={viewingForeignThread}
+                            onAddNotebookPages={
+                              contextKey.startsWith("notebook:") ? onAddNotebookPages : undefined
+                            }
+                          />
+                        ) : null}
                         {index === messages.length - 1 && !loading
                           ? (() => {
                               const offers =

@@ -376,6 +376,62 @@ describe("universal Jami assistant route", () => {
     });
   });
 
+  it("knows the app: links to real places, and adds the pages a student asks for", async () => {
+    const resolved = await mocks.resolveContext.getMockImplementation()?.({});
+    mocks.resolveContext.mockResolvedValueOnce({
+      ...(resolved as Record<string, unknown>),
+      folderIds: ["bio"],
+    });
+    mocks.streamText.mockResolvedValueOnce(
+      JSON.stringify({
+        answer: "Adding ten pages to this notebook. Your decks live in [Flashcards](jami:flashcards), not [here](jami:made_up).",
+        sourceRefs: [],
+        usedCurrentContext: true,
+        usedGeneralKnowledge: false,
+        usedWebResearch: false,
+        graphs: [],
+        appActions: [
+          { type: "add_pages", count: 10 },
+          { type: "open", destination: "this_folder" },
+          { type: "open", destination: "admin_panel" },
+        ],
+      })
+    );
+
+    const response = await postAssistant(
+      request(
+        validBody({
+          message: "can you add 10 pages to this notebook?",
+          context: { surface: "notebook", notebookId: "nb1", pageId: "p1" },
+        })
+      )
+    );
+    const { terminal } = await readStream(response);
+
+    expect(terminal).toMatchObject({
+      type: "done",
+      reply: "Adding ten pages to this notebook. Your decks live in [Flashcards](/dashboard/decks), not here.",
+      appActions: [
+        { type: "add_pages", count: 10, autoRun: true },
+        { type: "open", destination: "this_folder", href: "/dashboard/folders/bio", autoRun: false },
+      ],
+      appScope: { folderId: "bio", notebookId: "nb1" },
+    });
+    const call = mocks.streamText.mock.calls[0]?.[0] as {
+      request: { systemInstruction: string };
+      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+    };
+    expect(call.request.systemInstruction).toContain("HOW JAMI WORKS");
+    expect(call.request.systemInstruction).toContain("add_pages: add blank pages");
+    expect(call.generationConfig.responseSchema.properties).toHaveProperty("appActions");
+    const savedAnswer = mocks.persisted.find(
+      (entry) => entry.kind === "create" && (entry.data as { role?: string }).role === "assistant"
+    );
+    expect(savedAnswer?.data).toMatchObject({
+      appActions: [{ type: "add_pages", count: 10 }, { type: "open", destination: "this_folder" }],
+    });
+  });
+
   it("offers flashcards and practice questions after teaching", async () => {
     const answer = JSON.stringify({
       answer: `${"Light is absorbed by chlorophyll and drives the splitting of water. ".repeat(6)}`,

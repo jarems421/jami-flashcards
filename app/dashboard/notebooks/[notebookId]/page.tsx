@@ -2758,6 +2758,75 @@ export default function NotebookEditorPage() {
     ]
   );
 
+  /**
+   * Blank pages at the end of the notebook, when the student asks Tutor for
+   * them. Made like the "New page" button's, in the same colour and ruling,
+   * but the student stays on the page they are writing on.
+   */
+  const handleTutorAddPages = useCallback(
+    async (count: number) => {
+      if (!user?.uid || !notebook) return 0;
+      if (!fullNotebookEditingEnabled || practicePaperEditingLocked) {
+        showError("Pages can't be added to this notebook here.");
+        return 0;
+      }
+      if (pageCreationInFlightRef.current) {
+        showError("A page is already being added. Try again in a moment.");
+        return 0;
+      }
+      pageCreationInFlightRef.current = true;
+      const lastPage = pages[pages.length - 1];
+      const basePage = selectedPage ?? lastPage;
+      const pageColorValue = basePage?.pageColor ?? notebook.pageColor ?? "white";
+      const pageStyleValue = basePage?.pageStyle ?? notebook.pageStyle ?? "plain";
+      const firstNumber = (lastPage?.pageNumber ?? pages.length) + 1;
+      const created: Awaited<ReturnType<typeof createNotebookPage>>[] = [];
+      try {
+        // One at a time, so the pages are numbered in order however the writes land.
+        for (let index = 0; index < Math.max(1, Math.min(20, Math.round(count))); index += 1) {
+          created.push(
+            await createNotebookPage(user.uid, {
+              notebookId: notebook.id,
+              folderId: notebook.folderId,
+              pageNumber: firstNumber + index,
+              pageType: "blank",
+              pageColor: pageColorValue,
+              pageStyle: pageStyleValue,
+              status: "blank",
+            })
+          );
+        }
+      } catch (error) {
+        console.error("Could not add notebook pages for Tutor.", error);
+        showThrownError(error, created.length > 0 ? "Not every page could be added." : "Could not add pages.");
+      } finally {
+        pageCreationInFlightRef.current = false;
+      }
+      if (created.length > 0) {
+        const createdIds = new Set(created.map((page) => page.id));
+        setPages((current) =>
+          [...current.filter((page) => !createdIds.has(page.id)), ...created].sort(
+            (a, b) => a.pageNumber - b.pageNumber
+          )
+        );
+        success(`${created.length === 1 ? "A page" : `${created.length} pages`} added to the end of this notebook.`);
+      }
+      return created.length;
+    },
+    [
+      fullNotebookEditingEnabled,
+      notebook,
+      pages,
+      practicePaperEditingLocked,
+      selectedPage,
+      setPages,
+      showError,
+      showThrownError,
+      success,
+      user?.uid,
+    ]
+  );
+
   useEffect(() => {
     setSelectedGraphId(null);
     setGraphEditorTarget(null);
@@ -3128,6 +3197,7 @@ export default function NotebookEditorPage() {
             onGraphInsert={handleTutorGraphInsert}
             onDrawingInsert={handleAddImage}
             onAnswerInsert={handleTutorAnswerInsert}
+            onAddNotebookPages={handleTutorAddPages}
           />
         ) : null}
         <NotebookGraphEditorDialog

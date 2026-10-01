@@ -14,6 +14,7 @@ import {
   type TutorStudyMaterialRequest,
   type TutorStudyMaterialResult,
 } from "@/lib/ai/tutor-study-material";
+import type { JamiAppScope, TutorAppActionProposal } from "@/lib/ai/jami-app-guide";
 import { extractTutorDiagrams, MAX_TUTOR_DIAGRAMS, readTutorDiagramSpecs } from "@/lib/ai/tutor-diagram";
 import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 
@@ -150,6 +151,10 @@ export type JamiAssistantResponse = {
   studyMaterialOffers?: TutorStudyMaterialKind[];
   /** Already made from this answer, keyed by kind. */
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
+  /** Things Tutor offered to do, or was asked to do, in the app. */
+  appActions?: TutorAppActionProposal[];
+  /** The folder and deck the conversation sits in, for actions that need one. */
+  appScope?: JamiAppScope;
   savedThread?: JamiAssistantThread;
 };
 
@@ -200,6 +205,11 @@ export type ParsedJamiAssistantModelAnswer = {
    * offered the field.
    */
   memory?: unknown;
+  /**
+   * Things Tutor proposed doing in the app, passed through unread for
+   * `readTutorAppActions`, the one gate, on a turn that offered the field.
+   */
+  appActions?: unknown;
 };
 
 export type TutorRoutingPreflight = {
@@ -222,6 +232,7 @@ type ModelAnswerPayload = {
   cards?: unknown;
   questions?: unknown;
   memory?: unknown;
+  appActions?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -981,6 +992,7 @@ export function parseJamiAssistantModelAnswer(
     ...(payload.memory !== undefined && payload.memory !== null
       ? { memory: payload.memory }
       : {}),
+    ...(Array.isArray(payload.appActions) ? { appActions: payload.appActions } : {}),
     usedCurrentContext: payload.usedCurrentContext,
     usedGeneralKnowledge: payload.usedGeneralKnowledge,
     usedWebResearch:

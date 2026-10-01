@@ -84,6 +84,14 @@ import {
   type TutorStudyMaterialKind,
 } from "@/lib/ai/tutor-study-material";
 import {
+  availableTutorAppActions,
+  buildTutorAppInstruction,
+  jamiDestinations,
+  readTutorAppActions,
+  resolveTutorAppLinks,
+  type JamiAppScope,
+} from "@/lib/ai/jami-app-guide";
+import {
   retrieveTutorEvidence,
   type TutorEvidence,
 } from "@/services/ai/source-index.server";
@@ -694,13 +702,25 @@ export async function POST(request: NextRequest) {
    * inline suggestions still show them.
    */
   const studyMaterialKinds: TutorStudyMaterialKind[] = practiceSetsAvailable ? ["flashcards", "practice"] : ["flashcards"];
+  /*
+   * Where this conversation sits in the app, for the places Tutor can link to
+   * and the things it can do there: a notebook's pages, a folder's notebooks.
+   */
+  const appScope: JamiAppScope = {
+    ...(resolved.folderIds?.length === 1 ? { folderId: resolved.folderIds[0] } : {}),
+    ...(resolved.deckId ? { deckId: resolved.deckId } : {}),
+    ...(savedContext.surface === "notebook" ? { notebookId: savedContext.notebookId } : {}),
+  };
+  const appDestinations = jamiDestinations(appScope);
+  const appActionTypes = availableTutorAppActions({ context: parsedRequest.context, scope: appScope });
   const responseSchema = buildAssistantResponseSchema(
     allowedSourceRefs,
     markingInvited,
     false,
     false,
     resolved.memoryWritable === true,
-    studyMaterialKinds
+    studyMaterialKinds,
+    { types: appActionTypes, destinationKeys: appDestinations.map((destination) => destination.key) }
   );
   const systemInstruction = `${TUTOR_VOICE_INSTRUCTION}
 ${resolved.studyLevelContext ? `${resolved.studyLevelContext}\n` : ""}${resolved.courseContext ? `${resolved.courseContext}\n` : ""}${resolved.personalisationContext ? `${resolved.personalisationContext}\n` : ""}Treat the student's latest explicit request as the strongest signal for the depth and kind of help they want.
@@ -731,6 +751,7 @@ ${buildTutorStudyMaterialInstruction({
   requested: requestedStudyMaterial === "practice" && !practiceSetsAvailable ? null : requestedStudyMaterial,
   practiceAvailable: practiceSetsAvailable,
 })}
+${buildTutorAppInstruction({ destinations: appDestinations, available: appActionTypes })}
 ${getJsonAnswerFormatPrompt("answer")}
 
 ${responseGuidance.instruction}`;
@@ -1035,11 +1056,20 @@ ${responseGuidance.instruction}`;
 
     // Graphs and diagrams go in after cleaning, so a reply that is only a figure
     // is not taken for a wrapped code block and unwrapped into raw JSON.
+    // In-app links resolved from their place keys, and any that point nowhere dropped.
     const reply = placeTutorDiagrams(
-      placeTutorGraphs(cleanAiResponseText(parsedAnswer.answer), parsedAnswer.graphs),
+      placeTutorGraphs(
+        resolveTutorAppLinks(cleanAiResponseText(parsedAnswer.answer), appDestinations),
+        parsedAnswer.graphs
+      ),
       parsedAnswer.diagrams
     );
     if (!reply) return null;
+    const appActions = readTutorAppActions(parsedAnswer.appActions, {
+      available: appActionTypes,
+      destinations: appDestinations,
+      message: parsedRequest.message,
+    });
 
     const studyMaterialRequest = resolveTutorStudyMaterialRequest({
       detected: requestedStudyMaterial,
@@ -1088,6 +1118,7 @@ ${responseGuidance.instruction}`;
       ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
       ...(materialOffers.length > 0 ? { studyMaterialOffers: materialOffers } : {}),
       ...(parsedAnswer.studyMaterialFocus ? { studyMaterialFocus: parsedAnswer.studyMaterialFocus } : {}),
+      ...(appActions.length > 0 ? { appActions, appScope } : {}),
     };
   };
 
@@ -1334,6 +1365,8 @@ ${responseGuidance.instruction}`;
           studyMaterialOffers: payload.studyMaterialOffers ?? [],
           // What an offer would be made on, kept server-side for when it is taken up.
           ...(payload.studyMaterialFocus ? { studyMaterialFocus: payload.studyMaterialFocus } : {}),
+          // Kept so a reopened chat still shows them; they run again only on a press.
+          ...(payload.appActions ? { appActions: payload.appActions, appScope: payload.appScope } : {}),
           createdAt: now + 1,
         });
         batch.set(userRef.collection("assistantRouteState").doc(threadRef.id), {

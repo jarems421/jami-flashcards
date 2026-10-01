@@ -143,6 +143,8 @@ export function toDrawerMessages(messages: JamiAssistantStoredMessage[]) {
     studyMaterialRequest: message.studyMaterialRequest,
     studyMaterialOffers: message.studyMaterialOffers,
     studyMaterialResults: message.studyMaterialResults,
+    appActions: message.appActions,
+    appScope: message.appScope,
     id: message.id,
   }));
 }

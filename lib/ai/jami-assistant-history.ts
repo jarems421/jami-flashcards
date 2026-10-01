@@ -22,6 +22,13 @@ import {
   type TutorStudyMaterialResult,
 } from "@/lib/ai/tutor-study-material";
 import {
+  jamiDestinations,
+  normalizeJamiAppScope,
+  normalizeTutorAppActions,
+  type JamiAppScope,
+  type TutorAppActionProposal,
+} from "@/lib/ai/jami-app-guide";
+import {
   normalizeSuggestedCards,
   type JamiAssistantSuggestedCard,
 } from "@/lib/ai/tutor-card-suggestions";
@@ -84,6 +91,8 @@ export type JamiAssistantStoredMessage = {
   studyMaterialRequest?: TutorStudyMaterialRequest;
   studyMaterialOffers?: TutorStudyMaterialKind[];
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
+  appActions?: TutorAppActionProposal[];
+  appScope?: JamiAppScope;
   createdAt: number;
 };
 
@@ -261,6 +270,8 @@ export function mapJamiAssistantStoredMessage(
   const studyMaterialRequest = normalizeTutorStudyMaterialRequest(data.studyMaterialRequest);
   const studyMaterialOffers = normalizeTutorStudyMaterialOffers(data.studyMaterialOffers);
   const studyMaterialResults = normalizeTutorStudyMaterialResults(data.studyMaterialResults);
+  const appScope = normalizeJamiAppScope(data.appScope);
+  const appActions = normalizeTutorAppActions(data.appActions, jamiDestinations(appScope));
   return {
     id,
     threadId,
@@ -276,6 +287,7 @@ export function mapJamiAssistantStoredMessage(
     ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
     ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
     ...(Object.keys(studyMaterialResults).length > 0 ? { studyMaterialResults } : {}),
+    ...(appActions.length > 0 ? { appActions, appScope } : {}),
     createdAt:
       typeof data.createdAt === "number" && Number.isFinite(data.createdAt)
         ? data.createdAt
