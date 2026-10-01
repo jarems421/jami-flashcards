@@ -1,7 +1,11 @@
 import {
   ALLOWANCE_KEYS,
   ALLOWANCE_LABELS,
+  EXAM_PASS_DISCOUNT,
   PLAN_ALLOWANCES,
+  PLAN_PRICES_PENCE,
+  getExamPassMonths,
+  getExamPassPricePence,
   type AllowanceKey,
   type PaidPlanId,
   type PlanId,
@@ -98,4 +102,49 @@ export function describeUpgradeFor(plan: PlanId, key: AllowanceKey | null) {
   return amount === "Unlimited"
     ? `${name} includes unlimited ${label}.`
     : `${name} includes ${amount.replace(" a month", "")} ${label} a month.`;
+}
+
+/**
+ * An Exam Pass in the terms a student weighs it up in: what it works out at
+ * each month, and what it saves against paying monthly for the same months.
+ * The pass is sold as the cheaper way to pay, so the page leads with the
+ * monthly figure rather than one large number that looks dearer than monthly.
+ */
+export type ExamPassQuote = {
+  pricePence: number;
+  months: number;
+  perMonthPence: number;
+  savingPence: number;
+  discountPercent: number;
+};
+
+export function getExamPassQuote(plan: PaidPlanId, now: number): ExamPassQuote {
+  const months = getExamPassMonths(now);
+  const pricePence = getExamPassPricePence(plan, now);
+  return {
+    pricePence,
+    months,
+    perMonthPence: Math.round(pricePence / months),
+    savingPence: PLAN_PRICES_PENCE[plan] * months - pricePence,
+    discountPercent: Math.round(EXAM_PASS_DISCOUNT[plan] * 100),
+  };
+}
+
+/**
+ * One allowance across a whole pass: "60" with "6 a month" beside it. Pass
+ * allowances still reset monthly, so the monthly figure always goes with the
+ * total; the total alone would read as a pot to spend in one week.
+ */
+export function describePassAllowance(
+  plan: Exclude<PlanId, "lifetime">,
+  key: AllowanceKey,
+  months: number
+): { total: string; perMonth: string | null } {
+  const allowance = PLAN_ALLOWANCES[plan][key];
+  if (allowance.shown === "unlimited") return { total: "Unlimited", perMonth: null };
+  if (allowance.limit === 0) return { total: "Not included", perMonth: null };
+  return {
+    total: (allowance.limit * months).toLocaleString("en-GB"),
+    perMonth: `${allowance.limit.toLocaleString("en-GB")} a month`,
+  };
 }

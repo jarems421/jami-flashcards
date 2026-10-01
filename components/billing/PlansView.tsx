@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, Card, OptionSwitch } from "@/components/ui";
+import { Button, Card, IconBubble, OptionSwitch } from "@/components/ui";
 import {
   Dialog,
   DialogBackdrop,
@@ -12,7 +12,7 @@ import {
 import { CHECKOUT_WAIVER_TEXT, type CheckoutKind } from "@/lib/billing/checkout";
 import {
   ALLOWANCE_KEYS,
-  EXAM_PASS_DISCOUNT,
+  ALLOWANCE_LABELS,
   PLAN_LABELS,
   PLAN_PRICES_PENCE,
   getExamPassExpiry,
@@ -24,8 +24,10 @@ import {
 } from "@/lib/billing/plans";
 import type { PlanSummary } from "@/lib/billing/summary";
 import {
+  describePassAllowance,
   describePlanAllowance,
   describeUpgradeFor,
+  getExamPassQuote,
   getPlanComparisonRows,
 } from "@/lib/billing/upsell";
 import { CheckoutError, startCheckout } from "@/services/billing/checkout";
@@ -39,22 +41,66 @@ import { loadPlanSummary } from "@/services/billing/plan-summary-store";
  * nothing is "limited time", and "Free" is shown as a real plan rather than a
  * trap. Buying asks once, in plain words, for the 14-day waiver; a student can
  * also make a link for a parent to pay on their own device.
+ *
+ * The Exam Pass is the cheaper way to pay, so it leads with what it works out
+ * at each month and shows each allowance across the whole pass, rather than
+ * one large price beside the same monthly numbers.
  */
 
-const CARD_ROWS: AllowanceKey[] = ["papers", "answers", "tutor", "searches", "photos", "videos"];
+type ShownPlan = Exclude<PlanId, "lifetime">;
 
-const TAGLINES: Record<Exclude<PlanId, "lifetime">, string> = {
+/** The two things a plan is mostly chosen for, shown large on each card. */
+const HEADLINE_ROWS: AllowanceKey[] = ["papers", "tutor"];
+const CARD_ROWS: AllowanceKey[] = ["answers", "searches", "photos", "videos"];
+
+const TAGLINES: Record<ShownPlan, string> = {
   free: "Try everything, with small monthly amounts.",
   plus: "For steady revision across your subjects.",
   pro: "For heavy exam prep and lots of papers.",
 };
 
-function pounds(pence: number) {
-  return `£${(pence / 100).toFixed(2)}`;
+const ALWAYS_FREE = ["Flashcards and decks", "Notebooks", "Folders and sources", "Your planner", "Constellations"];
+
+// Full class strings so Tailwind keeps them. Each plan has its own light: the
+// same washes the Tutor door uses, from the theme's own tokens.
+const PLAN_STYLE: Record<ShownPlan, { card: string; wash: string; glyph: string }> = {
+  free: {
+    card: "border-[var(--color-border-strong)]",
+    wash: "bg-[radial-gradient(120%_90%_at_0%_0%,var(--color-glass-medium)_0%,transparent_62%)]",
+    glyph: "bg-[var(--color-glass-medium)] text-text-secondary",
+  },
+  plus: {
+    card: "border-accent shadow-accent",
+    wash: "bg-[radial-gradient(120%_90%_at_0%_0%,var(--color-accent-muted)_0%,transparent_62%)]",
+    glyph: "bg-accent-muted text-accent",
+  },
+  pro: {
+    card: "border-warm-border",
+    wash: "bg-[radial-gradient(120%_90%_at_0%_0%,var(--color-warm-glow)_0%,transparent_62%)]",
+    glyph: "border border-warm-border bg-warm-glow text-warm-accent",
+  },
+};
+
+const ROW_LABELS: Partial<Record<AllowanceKey, string>> = {
+  papers: "Jami papers",
+  answers: "Marked answers",
+  tutor: "Tutor questions",
+  searches: "Web searches",
+  photos: "Tutor photos",
+  videos: "Video imports",
+  revisionSessions: "Revision Sessions",
+  paperMarkings: "Paper markings",
+  diagramLabels: "Label finds",
+  pages: "Searchable pages",
+};
+
+function rowLabel(key: AllowanceKey) {
+  const label = ROW_LABELS[key] ?? ALLOWANCE_LABELS[key];
+  return `${label[0].toUpperCase()}${label.slice(1)}`;
 }
 
-function capitalise(text: string) {
-  return text.length ? `${text[0].toUpperCase()}${text.slice(1)}` : text;
+function pounds(pence: number) {
+  return `£${(pence / 100).toFixed(2)}`;
 }
 
 export default function PlansView({
@@ -94,12 +140,16 @@ export default function PlansView({
     timeZone: "UTC",
   });
   const passMonths = getExamPassMonths(now);
-  const reason = highlight && current ? describeUpgradeFor(current, highlight) : null;
-  const highlightLabel =
+  const highlightKey =
     highlight && (ALLOWANCE_KEYS as readonly string[]).includes(highlight) ? highlight : null;
+  const reason = highlightKey && current ? describeUpgradeFor(current, highlightKey) : null;
+  const bestSaving = Math.max(
+    getExamPassQuote("plus", now).discountPercent,
+    getExamPassQuote("pro", now).discountPercent
+  );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 sm:space-y-8">
       {checkoutSucceeded ? (
         <div role="status" className="app-subtle-panel rounded-xl px-4 py-3 text-sm text-text-primary">
           Thank you. Your plan is being set up and will show here in a moment.
@@ -116,53 +166,94 @@ export default function PlansView({
         </Card>
       ) : null}
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <p className={`max-w-xl text-sm leading-6 ${reason ? "text-text-primary" : "text-text-muted"}`}>
-          {reason ?? "Pick what fits your revision. You can change plan or cancel any time in Account."}
-        </p>
-        <OptionSwitch
-          label="How to pay"
-          hideLabel
-          value={kind}
-          onChange={setKind}
-          options={[
-            { value: "subscription", label: "Monthly" },
-            { value: "pass", label: "Exam Pass" },
-          ]}
-          columns={2}
-          className="w-full md:w-[30rem]"
+      <Card tone="warm" padding="lg">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_120%_at_100%_0%,var(--color-accent-muted)_0%,transparent_55%)]"
         />
-      </div>
-      {kind === "pass" ? (
-        <p className="-mt-3 text-xs leading-5 text-text-muted">
-          One payment, lasting until {passUntil} ({passMonths} {passMonths === 1 ? "month" : "months"}).
-          It never renews and needs no cancelling.
-        </p>
-      ) : null}
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0 max-w-xl">
+            <h2 className="text-2xl font-medium leading-tight tracking-tight text-text-primary [text-wrap:balance] sm:text-3xl">
+              {reason && highlightKey
+                ? `Want more ${ROW_LABELS[highlightKey] ?? ALLOWANCE_LABELS[highlightKey]}?`
+                : "Choose how much Jami you need"}
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-text-muted sm:text-base sm:leading-7">
+              {reason
+                ? `${reason} Free keeps working, and your allowances come back every month.`
+                : "Flashcards, notebooks and your planner are free on every plan. Plans add more of what Jami writes and marks for you."}
+            </p>
+          </div>
+          <div className="w-full min-w-0 lg:w-[30rem] lg:shrink-0">
+            <OptionSwitch
+              label="How to pay"
+              hideLabel
+              value={kind}
+              onChange={setKind}
+              options={[
+                { value: "subscription", label: "Monthly", detail: "Cancel any time" },
+                {
+                  value: "pass",
+                  label: "Exam Pass",
+                  detail: `Pay once to July · up to ${bestSaving}% off`,
+                },
+              ]}
+              columns={2}
+              className="w-full"
+            />
+          </div>
+        </div>
+      </Card>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid items-stretch gap-4 lg:grid-cols-3">
         {(["free", "plus", "pro"] as const).map((plan) => (
           <PlanCard
             key={plan}
             plan={plan}
             kind={kind}
             now={now}
+            passUntil={passUntil}
+            passMonths={passMonths}
             current={current === plan}
             disabled={lifetime}
-            highlight={highlightLabel}
+            highlight={highlightKey}
             onChoose={(paid) => setBuying({ plan: paid, forParent: false })}
           />
         ))}
       </div>
 
+      <section
+        aria-label="Free on every plan"
+        className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
+      >
+        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary">
+          Free on every plan
+        </span>
+        <ul className="flex flex-wrap gap-2">
+          {ALWAYS_FREE.map((item) => (
+            <li key={item} className="app-chip rounded-full px-3 py-1 text-xs font-medium">
+              {item}
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <Card padding="lg">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="max-w-xl">
-            <h2 className="text-base font-medium text-text-primary">Ask a parent to pay</h2>
-            <p className="mt-1.5 text-sm leading-6 text-text-muted">
-              Make a payment link and send it. They pay on their own phone or computer, and the plan
-              lands on your account. They only see the plan and the price.
-            </p>
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 max-w-xl gap-4">
+            <IconBubble size="lg" shape="circle" className="border border-warm-border bg-warm-glow text-warm-accent" aria-hidden>
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1" />
+                <path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1" />
+              </svg>
+            </IconBubble>
+            <div className="min-w-0">
+              <h2 className="text-base font-medium text-text-primary">Ask a parent to pay</h2>
+              <p className="mt-1.5 text-sm leading-6 text-text-muted">
+                Make a payment link and send it. They pay on their own phone or computer, and the
+                plan lands on your account. They only see the plan and the price.
+              </p>
+            </div>
           </div>
           <div className="flex shrink-0 gap-2">
             <Button
@@ -184,8 +275,11 @@ export default function PlansView({
       </Card>
 
       <details className="app-subtle-panel group rounded-xl">
-        <summary className="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-text-primary">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-semibold text-text-primary">
           Compare everything
+          <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 text-text-muted transition group-open:rotate-180" fill="currentColor">
+            <path d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z" />
+          </svg>
         </summary>
         <div className="overflow-x-auto px-5 pb-5">
           <table className="w-full min-w-[32rem] text-left text-sm">
@@ -214,6 +308,7 @@ export default function PlansView({
               </tr>
             </tbody>
           </table>
+          <p className="mt-3 text-xs text-text-muted">An Exam Pass gives the same each month, until {passUntil}.</p>
         </div>
       </details>
 
@@ -238,18 +333,36 @@ export default function PlansView({
   );
 }
 
+/** A small planet: a moon for Free, one ring for Plus, two for Pro. */
+function PlanGlyph({ plan }: { plan: ShownPlan }) {
+  return (
+    <IconBubble size="md" shape="circle" className={PLAN_STYLE[plan].glyph} aria-hidden>
+      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.4">
+        <circle cx="12" cy="12" r="3.6" fill="currentColor" stroke="none" />
+        {plan === "free" ? <circle cx="18.5" cy="7" r="1.4" fill="currentColor" stroke="none" /> : null}
+        {plan !== "free" ? <ellipse cx="12" cy="12" rx="8.6" ry="3.2" transform="rotate(-22 12 12)" /> : null}
+        {plan === "pro" ? <ellipse cx="12" cy="12" rx="10.4" ry="4.6" transform="rotate(28 12 12)" opacity="0.6" /> : null}
+      </svg>
+    </IconBubble>
+  );
+}
+
 function PlanCard({
   plan,
   kind,
   now,
+  passUntil,
+  passMonths,
   current,
   disabled,
   highlight,
   onChoose,
 }: {
-  plan: Exclude<PlanId, "lifetime">;
+  plan: ShownPlan;
   kind: CheckoutKind;
   now: number;
+  passUntil: string;
+  passMonths: number;
   current: boolean;
   disabled: boolean;
   highlight: AllowanceKey | null;
@@ -257,124 +370,151 @@ function PlanCard({
 }) {
   const paid = plan === "free" ? null : plan;
   const featured = plan === "plus";
-  const passPrice = paid ? getExamPassPricePence(paid, now) : 0;
-  const passMonthly = paid ? passPrice / getExamPassMonths(now) : 0;
-  const rows = highlight && !CARD_ROWS.includes(highlight) ? [highlight, ...CARD_ROWS] : CARD_ROWS;
+  const pass = kind === "pass";
+  const quote = paid ? getExamPassQuote(paid, now) : null;
+  const style = PLAN_STYLE[plan];
+  const rows =
+    highlight && !CARD_ROWS.includes(highlight) && !HEADLINE_ROWS.includes(highlight)
+      ? [highlight, ...CARD_ROWS]
+      : CARD_ROWS;
+
+  const amount = (key: AllowanceKey) => {
+    // Free has no pass, so it keeps its monthly numbers either way.
+    if (!pass || !paid) {
+      const value = describePlanAllowance(plan, key);
+      return { main: value.replace(" a month", ""), aside: null as string | null };
+    }
+    const value = describePassAllowance(plan, key, passMonths);
+    return { main: value.total, aside: value.perMonth };
+  };
 
   return (
     <section
       aria-label={`${PLAN_LABELS[plan]} plan`}
-      className={`relative flex min-w-0 flex-col rounded-2xl border p-5 sm:p-6 ${
-        featured
-          ? "border-accent bg-[var(--color-surface-panel-strong)] shadow-accent"
-          : "border-[var(--color-border)] bg-[var(--color-surface-panel)]"
-      }`}
+      className={`relative flex min-w-0 flex-col overflow-hidden rounded-3xl border-[1.5px] bg-[var(--color-surface-panel)] p-5 shadow-bubble backdrop-blur-md sm:p-6 ${style.card}`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-medium text-text-primary">{PLAN_LABELS[plan]}</h2>
-        {current ? (
-          <span className="app-chip rounded-full px-2.5 py-0.5 text-2xs font-semibold">Your plan</span>
-        ) : featured ? (
-          <span className="rounded-full bg-accent-muted px-2.5 py-0.5 text-2xs font-semibold text-accent">
-            Most students
-          </span>
-        ) : null}
-      </div>
-      <p className="mt-1 text-sm text-text-muted">{TAGLINES[plan]}</p>
-
-      <div className="mt-5">
-        {!paid ? (
-          <div className="text-3xl font-semibold tracking-tight text-text-primary">£0</div>
-        ) : kind === "subscription" ? (
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-3xl font-semibold tracking-tight text-text-primary">
-              {pounds(PLAN_PRICES_PENCE[paid])}
+      <div aria-hidden="true" className={`pointer-events-none absolute inset-0 ${style.wash}`} />
+      <div className="relative flex flex-1 flex-col">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <PlanGlyph plan={plan} />
+            <h2 className="text-xl font-medium tracking-tight text-text-primary">{PLAN_LABELS[plan]}</h2>
+          </div>
+          {current ? (
+            <span className="app-chip rounded-full px-2.5 py-0.5 text-2xs font-semibold">Your plan</span>
+          ) : featured ? (
+            <span className="rounded-full bg-accent-muted px-2.5 py-0.5 text-2xs font-semibold text-accent">
+              Most students
             </span>
-            <span className="text-sm text-text-muted">a month</span>
-          </div>
-        ) : (
-          <div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-3xl font-semibold tracking-tight text-text-primary">
-                {pounds(passPrice)}
-              </span>
-              <span className="text-sm text-text-muted">once</span>
-            </div>
-            <div className="mt-1 text-xs text-text-muted">
-              About {pounds(Math.round(passMonthly))} a month · {Math.round(EXAM_PASS_DISCOUNT[paid] * 100)}% off monthly
-            </div>
-          </div>
-        )}
-      </div>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm text-text-muted">{TAGLINES[plan]}</p>
 
-      <ul className="mt-5 space-y-2.5 text-sm">
-        {rows.map((key) => {
-          const value = describePlanAllowance(plan, key);
-          const label = PLAN_LABEL_FOR_ROW[key] ?? capitalise(key);
-          const emphasised = key === highlight;
-          return (
-            <li
-              key={key}
-              className={`flex min-w-0 items-baseline justify-between gap-3 ${
-                emphasised ? "-mx-2 rounded-lg bg-accent-muted px-2 py-1" : ""
-              }`}
-            >
-              <span className={`min-w-0 ${emphasised ? "font-semibold text-text-primary" : "text-text-secondary"}`}>
-                {label}
+        <div className="mt-5 min-h-[4.75rem]">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-4xl font-semibold tracking-tight text-text-primary tabular-nums">
+              {!paid ? "£0" : pass && quote ? pounds(quote.perMonthPence) : pounds(PLAN_PRICES_PENCE[paid])}
+            </span>
+            <span className="text-sm text-text-muted">{paid ? "a month" : "for good"}</span>
+          </div>
+          {paid && pass && quote ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
+              <span>
+                {pounds(quote.pricePence)} once · {quote.months} {quote.months === 1 ? "month" : "months"}
               </span>
-              <span
-                className={`shrink-0 tabular-nums ${
-                  value === "Not included" ? "text-text-muted" : "text-text-primary"
+              <span className="rounded-full bg-[var(--color-success-muted)] px-2 py-0.5 font-semibold text-text-primary">
+                Save {pounds(quote.savingPence)}
+              </span>
+            </div>
+          ) : paid ? (
+            <div className="mt-1.5 text-xs text-text-muted">Renews monthly. Cancel any time.</div>
+          ) : (
+            <div className="mt-1.5 text-xs text-text-muted">No card needed.</div>
+          )}
+        </div>
+
+        <div className="mt-5 text-2xs font-semibold uppercase tracking-[0.16em] text-text-secondary">
+          {pass && paid ? `Until ${passUntil}` : "Each month"}
+        </div>
+
+        <div className="mt-2.5 grid grid-cols-2 gap-2">
+          {HEADLINE_ROWS.map((key) => {
+            const { main, aside } = amount(key);
+            const emphasised = key === highlight;
+            return (
+              <div
+                key={key}
+                className={`min-w-0 rounded-2xl border px-3 py-2.5 ${
+                  emphasised
+                    ? "border-accent bg-accent-muted"
+                    : "border-[var(--color-border)] bg-[var(--color-glass-subtle)]"
                 }`}
               >
-                {value.replace(" a month", "")}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="mt-3 text-xs text-text-muted">
-        {plan === "free"
-          ? "Flashcards, notebooks and the planner are unlimited."
-          : "Everything else is unlimited for normal studying."}
-      </p>
+                <div className="text-2xl font-semibold tracking-tight text-text-primary tabular-nums">
+                  {main}
+                </div>
+                <div className="text-xs text-text-secondary">{rowLabel(key)}</div>
+                {pass && paid && aside ? <div className="text-2xs text-text-muted">{aside}</div> : null}
+              </div>
+            );
+          })}
+        </div>
 
-      <div className="mt-auto pt-6">
-        {!paid ? (
-          <Button variant="ghost" disabled className="w-full justify-center">
-            {current ? "Your plan" : "Free forever"}
-          </Button>
-        ) : (
-          <Button
-            variant={featured ? "primary" : "secondary"}
-            disabled={disabled || (current && kind === "subscription")}
-            className="w-full justify-center"
-            onClick={() => onChoose(paid)}
-          >
-            {current && kind === "subscription"
-              ? "Your plan"
-              : kind === "pass"
-                ? `Get ${PLAN_LABELS[paid]} Exam Pass`
-                : `Choose ${PLAN_LABELS[paid]}`}
-          </Button>
-        )}
+        <ul className="mt-4 space-y-2.5 text-sm">
+          {rows.map((key) => {
+            const { main, aside } = amount(key);
+            const emphasised = key === highlight;
+            const muted = main === "Not included";
+            return (
+              <li
+                key={key}
+                className={`flex min-w-0 items-baseline justify-between gap-3 ${
+                  emphasised ? "-mx-2 rounded-lg bg-accent-muted px-2 py-1" : ""
+                }`}
+              >
+                <span className={`min-w-0 ${emphasised ? "font-semibold text-text-primary" : "text-text-secondary"}`}>
+                  {rowLabel(key)}
+                </span>
+                <span className="shrink-0 text-right tabular-nums">
+                  <span className={muted ? "text-text-muted" : "text-text-primary"}>{main}</span>
+                  {pass && paid && aside ? (
+                    <span className="text-2xs text-text-muted"> · {aside}</span>
+                  ) : null}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="mt-3 text-xs text-text-muted">
+          {plan === "free"
+            ? "Flashcards, notebooks and the planner are unlimited."
+            : "Everything else is unlimited for normal studying."}
+        </p>
+
+        <div className="mt-auto pt-6">
+          {!paid ? (
+            <Button variant="ghost" disabled className="w-full justify-center">
+              {current ? "Your plan" : "Free forever"}
+            </Button>
+          ) : (
+            <Button
+              variant={featured ? "primary" : "secondary"}
+              disabled={disabled || (current && !pass)}
+              className="w-full justify-center"
+              onClick={() => onChoose(paid)}
+            >
+              {current && !pass
+                ? "Your plan"
+                : pass
+                  ? `Get ${PLAN_LABELS[paid]} to July`
+                  : `Choose ${PLAN_LABELS[paid]}`}
+            </Button>
+          )}
+        </div>
       </div>
     </section>
   );
 }
-
-const PLAN_LABEL_FOR_ROW: Partial<Record<AllowanceKey, string>> = {
-  papers: "Jami papers",
-  answers: "Marked answers",
-  tutor: "Tutor questions",
-  searches: "Web searches",
-  photos: "Tutor photos",
-  videos: "Video imports",
-  revisionSessions: "Revision Sessions",
-  paperMarkings: "Paper markings",
-  diagramLabels: "Label finds",
-  pages: "Searchable pages",
-};
 
 function CheckoutDialog({
   buying,

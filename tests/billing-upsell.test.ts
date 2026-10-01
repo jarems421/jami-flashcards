@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  describePassAllowance,
   describeUpgradeFor,
+  getExamPassQuote,
   getPlanComparisonRows,
   shouldOfferPlans,
   suggestedUpgrade,
@@ -39,6 +41,30 @@ describe("when plans are offered", () => {
     expect(papers).toEqual({ key: "papers", label: "Jami papers", free: "1 a month", plus: "6 a month", pro: "12 a month" });
     const photos = getPlanComparisonRows().find((row) => row.key === "photos");
     expect(photos?.free).toBe("Not included");
+  });
+});
+
+describe("the Exam Pass as students weigh it up", () => {
+  const october = Date.parse("2026-10-15T10:00:00Z");
+
+  it("leads with what it works out at each month and what it saves", () => {
+    expect(getExamPassQuote("plus", october)).toEqual({
+      pricePence: 5999,
+      months: 10,
+      perMonthPence: 600,
+      savingPence: 1991,
+      discountPercent: 25,
+    });
+    const pro = getExamPassQuote("pro", october);
+    expect(pro.perMonthPence).toBeLessThan(1499);
+    expect(pro.savingPence).toBe(1499 * 10 - 12799);
+  });
+
+  it("totals each allowance across the pass, with the monthly reset beside it", () => {
+    expect(describePassAllowance("plus", "papers", 10)).toEqual({ total: "60", perMonth: "6 a month" });
+    expect(describePassAllowance("pro", "tutor", 10)).toEqual({ total: "10,000", perMonth: "1,000 a month" });
+    expect(describePassAllowance("plus", "pages", 10)).toEqual({ total: "Unlimited", perMonth: null });
+    expect(describePassAllowance("free", "photos", 10)).toEqual({ total: "Not included", perMonth: null });
   });
 });
 
