@@ -136,6 +136,66 @@ export function getNotebookPdfRenderMetrics(input: {
   };
 }
 
+/**
+ * Whether a PDF page already on screen needs drawing again for a new size.
+ *
+ * Every zoom used to redraw the page from scratch, and on an iPad a heavy page
+ * takes seconds of main-thread work to draw. Most of those redraws bought
+ * nothing: past about 1.3x zoom the canvas is already at its pixel ceiling, so
+ * the "new" canvas came out exactly the size of the old one.
+ *
+ * So a page is only redrawn when it needs more pixels than it has, or when it
+ * has so many more than it needs that scaling it down would shimmer (over
+ * twice the size on a side). Everything in between is scaled by the
+ * compositor, which is free.
+ */
+export function shouldRerenderNotebookPdfCanvas(input: {
+  current: { width: number; height: number } | null;
+  next: { canvasWidth: number; canvasHeight: number };
+}) {
+  const current = input.current;
+  if (!current || current.width <= 1 || current.height <= 1) return true;
+  // A pixel or two either way is layout rounding, not a size change.
+  const tolerance = 2;
+  const { canvasWidth, canvasHeight } = input.next;
+  const needsMore =
+    canvasWidth > current.width + tolerance ||
+    canvasHeight > current.height + tolerance;
+  const farTooMany =
+    current.width > canvasWidth * 2 + tolerance ||
+    current.height > canvasHeight * 2 + tolerance;
+  return needsMore || farTooMany;
+}
+
+/**
+ * Where a PDF page canvas sits inside its host, as percentages of the host.
+ *
+ * Percentages rather than pixels so that when the host grows -- a zoom -- the
+ * canvas already on screen grows with it at once, slightly soft until the
+ * sharper redraw lands, instead of staying small or going blank.
+ */
+export function getNotebookPdfCanvasPlacement(input: {
+  cssWidth: number;
+  cssHeight: number;
+  hostWidth: number;
+  hostHeight: number;
+}) {
+  const width = Math.min(
+    100,
+    (Math.max(0, input.cssWidth) / Math.max(1, input.hostWidth)) * 100
+  );
+  const height = Math.min(
+    100,
+    (Math.max(0, input.cssHeight) / Math.max(1, input.hostHeight)) * 100
+  );
+  return {
+    width,
+    height,
+    left: (100 - width) / 2,
+    top: (100 - height) / 2,
+  };
+}
+
 export function resolveNotebookPageBackgroundFileId(input: {
   pageBackgroundFileId?: string;
   notebookUploadedFileId?: string;

@@ -31,8 +31,10 @@ type FloatingResizeHandlesProps = {
  *
  * Every hit area reaches 24px outside the panel, where there is nothing else
  * to hit, and only a little way in, clear of the panel's own controls. The top
- * strip reaches in least: just inside it is the header's grab bar, which moves
- * the panel rather than resizing it.
+ * strip reaches in least: just inside it is the header, which moves the panel
+ * rather than resizing it. The rest of the panel moves it too, so the strips
+ * are the only place a press resizes -- they sit in their own layer over the
+ * edge, and a press there never reaches the panel underneath.
  *
  * Nothing is drawn. The panel's outline is the handle, and it lights up while
  * a resize is under way -- that is the panel's job, not this one's. Corner arcs

@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   assertImportedNotebookPageCount,
   buildUploadedNotebookPageMappings,
+  getNotebookPdfCanvasPlacement,
   getNotebookPdfRenderMetrics,
   resolveNotebookPageBackgroundFileId,
+  shouldRerenderNotebookPdfCanvas,
   validateOwnedNotebookPdfStoragePath,
   validateNotebookPdfPageIndex,
   validateNotebookPdfPageCount,
@@ -150,5 +152,86 @@ describe("notebook PDF helpers", () => {
         hasMappedPages: true,
       })
     ).toBeUndefined();
+  });
+
+  it("only redraws a PDF page on screen when it needs more pixels", () => {
+    const fit = getNotebookPdfRenderMetrics({
+      pageWidth: 595,
+      pageHeight: 842,
+      hostWidth: 816,
+      hostHeight: 1124,
+      pixelRatio: 2,
+    });
+    const zoomedTwice = getNotebookPdfRenderMetrics({
+      pageWidth: 595,
+      pageHeight: 842,
+      hostWidth: 816 * 2,
+      hostHeight: 1124 * 2,
+      pixelRatio: 2,
+    });
+    const zoomedFourTimes = getNotebookPdfRenderMetrics({
+      pageWidth: 595,
+      pageHeight: 842,
+      hostWidth: 816 * 4,
+      hostHeight: 1124 * 4,
+      pixelRatio: 2,
+    });
+    const shownAt = (metrics: typeof fit) => ({
+      width: metrics.canvasWidth,
+      height: metrics.canvasHeight,
+    });
+
+    // Nothing on screen yet: draw.
+    expect(shouldRerenderNotebookPdfCanvas({ current: null, next: fit })).toBe(true);
+    // The first zoom past fit needs more pixels.
+    expect(
+      shouldRerenderNotebookPdfCanvas({ current: shownAt(fit), next: zoomedTwice })
+    ).toBe(true);
+    // Past the pixel ceiling a deeper zoom asks for the same canvas again,
+    // which used to be redrawn from scratch every time.
+    expect(
+      shouldRerenderNotebookPdfCanvas({
+        current: shownAt(zoomedTwice),
+        next: zoomedFourTimes,
+      })
+    ).toBe(false);
+    // Zooming back out is scaled down, not redrawn...
+    expect(
+      shouldRerenderNotebookPdfCanvas({ current: shownAt(zoomedTwice), next: fit })
+    ).toBe(false);
+    // ...unless the canvas is over twice the size needed, where it shimmers.
+    expect(
+      shouldRerenderNotebookPdfCanvas({
+        current: { width: fit.canvasWidth * 3, height: fit.canvasHeight * 3 },
+        next: fit,
+      })
+    ).toBe(true);
+    // Rounding is not a size change.
+    expect(
+      shouldRerenderNotebookPdfCanvas({
+        current: { width: fit.canvasWidth - 1, height: fit.canvasHeight - 2 },
+        next: fit,
+      })
+    ).toBe(false);
+  });
+
+  it("places a PDF canvas by percentage so it stretches with its host", () => {
+    expect(
+      getNotebookPdfCanvasPlacement({
+        cssWidth: 400,
+        cssHeight: 500,
+        hostWidth: 500,
+        hostHeight: 500,
+      })
+    ).toEqual({ width: 80, height: 100, left: 10, top: 0 });
+    // Never larger than the host, even with a stale measurement.
+    expect(
+      getNotebookPdfCanvasPlacement({
+        cssWidth: 900,
+        cssHeight: 300,
+        hostWidth: 600,
+        hostHeight: 600,
+      })
+    ).toEqual({ width: 100, height: 50, left: 0, top: 25 });
   });
 });

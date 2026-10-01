@@ -17,7 +17,6 @@ import {
 } from "@/components/ai/JamiAssistantIcons";
 import {
   FLOATING_ICON_BUTTON_CLASS,
-  FloatingGrabBar,
   type FloatingFrame,
 } from "@/components/ai/JamiFloatingTutor";
 
@@ -81,11 +80,10 @@ export default function FloatingTutorHeader({
 
   return (
     <header
-      className="relative shrink-0 cursor-grab touch-none select-none border-b border-[var(--color-border)] px-3 pb-2.5 pt-4 active:cursor-grabbing"
+      className="relative shrink-0 cursor-grab touch-none select-none border-b border-[var(--color-border)] px-3 py-2.5 active:cursor-grabbing"
       title="Drag to move · double-click for full size"
       {...frame.dragHandleProps}
     >
-      <FloatingGrabBar />
       <div className="flex items-center gap-2">
         {showIcon ? (
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-accent/20 bg-accent/10 text-accent">

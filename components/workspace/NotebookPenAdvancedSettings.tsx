@@ -1,6 +1,7 @@
 "use client";
 
 import FormDisclosure from "@/components/ui/FormDisclosure";
+import SettingSwitch from "@/components/ui/SettingSwitch";
 import NotebookPenSettingSlider from "@/components/workspace/NotebookPenSettingSlider";
 import {
   getNotebookCornerSharpnessLabel,
@@ -114,6 +115,14 @@ export default function NotebookPenAdvancedSettings({
             {getNotebookStraightenLabel(settings.straightenOnHold).description}
           </p>
         </div>
+
+        <SettingSwitch
+          label="Fast live ink"
+          description="Draws the line you are writing on a lighter layer, so it keeps up with the pen. Turn off only if ink looks wrong while you write."
+          checked={settings.liveInk === "fast"}
+          onChange={(fast) => set({ liveInk: fast ? "fast" : "classic" })}
+          density="compact"
+        />
 
         <div className="border-t border-[var(--color-border)] pt-2.5">
           <button

@@ -92,6 +92,35 @@ const MAXIMUM_SPAN_RATIO = 24;
 const TANGENT_SCALE = 1 / 3;
 
 /**
+ * How much longer a control arm may be than the arm meeting it at the same
+ * point, on the next piece of the curve.
+ *
+ * Thinning keeps the ends of a straight run and drops its middle, so the long
+ * leg of an 'n' arrives at the round top as one 23px piece meeting a 4px one.
+ * Both arms at that join point along the turn's bisector -- that is what keeps
+ * the join smooth -- but the long piece's arm, a third of 23px, swung its whole
+ * straight leg out the other way first: 1.3px of ink on the wrong side of the
+ * line just before every fast turn, which read as the turn poking out.
+ *
+ * Capping the long arm keeps the direction, so the join is as smooth as
+ * before, and lets the leg stay straight until the turn actually starts. Arms
+ * on evenly spaced points are never touched.
+ *
+ * Measured in `notebook-smooth-turn-poke.test.ts`: 2 halved the worst poke on
+ * a fast 'n', 1.5 halved it again (0.9px to 0.48px at 8px between samples)
+ * for a few hundredths of a pixel on densely sampled turns; 1.25 bought
+ * nothing more.
+ */
+const ARM_NEIGHBOUR_RATIO = 1.5;
+
+/** One control arm's length: a share of its own piece, capped by the neighbour's. */
+function armReach(piece: number, neighbouringPiece: number | null) {
+  const own = piece * TANGENT_SCALE;
+  if (neighbouringPiece === null) return own;
+  return Math.min(own, neighbouringPiece * TANGENT_SCALE * ARM_NEIGHBOUR_RATIO);
+}
+
+/**
  * Easing is deliberately spatial rather than temporal. Smoothing the input
  * harder would ease curves too, but by holding the ink back in time -- which is
  * felt immediately as the pen being dragged, and was the magnetic complaint.
@@ -105,6 +134,16 @@ const TANGENT_SCALE = 1 / 3;
  * before it counts as one of those corners, are the reader's to set --
  * see `getNotebookPenFeel`.
  */
+
+/**
+ * The furthest easing may move a point, in screen pixels.
+ *
+ * About the size of the digitiser's own wobble, which is what easing is for.
+ * Without a ceiling, easing moved points in proportion to how far they sat
+ * from their neighbours' line -- and on a fast turn sampled a few pixels apart
+ * that is far, so it was flattening turns rather than steadying them.
+ */
+const MAXIMUM_EASE_RATIO = 0.4;
 
 /**
  * How far a stroke may wander from the straight line between its ends and
@@ -382,17 +421,25 @@ export function createNotebookSmoothPenStrokeFactory(
     for (let index = 0; index < pts.length - 1; index += 1) {
       const from = at(index);
       const to = at(index + 1);
-      const reach = to.distanceTo(from) * TANGENT_SCALE;
+      const length = to.distanceTo(from);
+      const reachOut = armReach(
+        length,
+        index > 0 ? from.distanceTo(at(index - 1)) : null
+      );
+      const reachIn = armReach(
+        length,
+        index + 2 < pts.length ? at(index + 2).distanceTo(to) : null
+      );
       const armOut = direction(index);
       const armIn = direction(index + 1);
       commands.push({
         kind: PathCommandType.CubicBezierTo,
         controlPoint1:
           armOut.magnitude() > 0
-            ? from.plus(armOut.normalized().times(reach))
+            ? from.plus(armOut.normalized().times(reachOut))
             : from,
         controlPoint2:
-          armIn.magnitude() > 0 ? to.minus(armIn.normalized().times(reach)) : to,
+          armIn.magnitude() > 0 ? to.minus(armIn.normalized().times(reachIn)) : to,
         endPoint: to,
       });
     }
@@ -532,6 +579,7 @@ export function createNotebookSmoothPenStrokeFactory(
     const minimumCornerArm =
       viewport.getSizeOfPixelOnCanvas() * MINIMUM_CORNER_ARM_RATIO;
     const turnArm = viewport.getSizeOfPixelOnCanvas() * TURN_ARM_RATIO;
+    const maximumEase = viewport.getSizeOfPixelOnCanvas() * MAXIMUM_EASE_RATIO;
     /** Below this, the line has turned far enough to count as a corner. */
     const cornerCosine = Math.cos((cornerDegrees * Math.PI) / 180);
     const cornerRadians = (cornerDegrees * Math.PI) / 180;
@@ -727,17 +775,36 @@ export function createNotebookSmoothPenStrokeFactory(
         const previous = shape[index - 1];
         const here = shape[index];
         const next = shape[index + 1];
+        if (corners[index]) {
+          eased.push(here);
+          continue;
+        }
 
+        /*
+         * Towards the point on the line between the neighbours that sits as
+         * far along it as this point sits along the stroke -- not towards
+         * that line's middle.
+         *
+         * They are the same when the neighbours are evenly spaced. Pencil
+         * packets are not: one lands a pixel away and the next eleven, and the
+         * middle of that long line is deep inside a fast turn. Eased towards
+         * it, the point was pulled in by a whole pixel, the turn came out
+         * dented, and the sample beside the dent read as a little point
+         * poking out of a curve -- at every corner setting, since none of
+         * them reaches easing.
+         */
+        const before = here.distanceTo(previous);
+        const after = next.distanceTo(here);
+        const share = before + after > 0 ? before / (before + after) : 0.5;
+        const target = previous.plus(next.minus(previous).times(share));
+        const shift = target.minus(here).times(easeTowardsNeighbours);
+        // Easing is for the hand's wobble, which is a fraction of a pixel. A
+        // larger move is not taking wobble out, it is reshaping the turn.
+        const length = shift.magnitude();
         eased.push(
-          corners[index]
-            ? here
-            : here.plus(
-                previous
-                  .plus(next)
-                  .times(0.5)
-                  .minus(here)
-                  .times(easeTowardsNeighbours)
-              )
+          length > maximumEase
+            ? here.plus(shift.times(maximumEase / length))
+            : here.plus(shift)
         );
       }
       eased.push(shape[shape.length - 1]);
@@ -995,10 +1062,31 @@ export function createNotebookSmoothPenStrokeFactory(
       if (widthVaries(sampledWidths)) {
         const halfWidths = halfWidthsAlong(sampledWidths, shape.length);
         const last = shape.length - 1;
+        /*
+         * Which way each edge point is pushed out from the centreline: square
+         * to the same direction the centreline itself is drawn in.
+         *
+         * This used the chord between the two immediate neighbours, which is
+         * exactly what the centreline stopped using, for two reasons it
+         * documents in `tangentAt`: a fast Pencil packet can land two samples
+         * a pixel apart, so the chord across them points wherever that pixel
+         * of noise did; and with thinning's uneven spacing the chord leans
+         * towards the longer side of a turn. Either way one edge point was
+         * pushed off sideways and the outline poked out at a smooth turn --
+         * by up to 1.6px on a tight u-turn, at every corner setting, because
+         * this never consulted the corners at all. At a real corner the push
+         * is along the bisector of the two strokes that meet there.
+         */
         const normalAt = (index: number) => {
-          const along = at(Math.min(index + 1, last)).minus(
-            at(Math.max(index - 1, 0))
-          );
+          const arriving = tangentAt(index, false);
+          const leaving = tangentAt(index, true);
+          let along = leaving;
+          if (arriving.magnitude() > 0 && leaving.magnitude() > 0) {
+            const bisector = arriving.normalized().plus(leaving.normalized());
+            along = bisector.magnitude() < REVERSAL_BISECTOR_FLOOR ? leaving : bisector;
+          } else if (leaving.magnitude() === 0) {
+            along = arriving;
+          }
           if (along.magnitude() === 0) return Vec2.of(0, 1);
           const unit = along.normalized();
           return Vec2.of(-unit.y, unit.x);
@@ -1041,19 +1129,28 @@ export function createNotebookSmoothPenStrokeFactory(
       for (let index = 0; index < shape.length - 1; index += 1) {
         const from = at(index);
         const to = at(index + 1);
-        // Direction from the neighbours, length from this segment alone.
-        const reach = to.distanceTo(from) * TANGENT_SCALE;
+        // Direction from the neighbours, length from this segment -- capped
+        // by the piece it meets, see `ARM_NEIGHBOUR_RATIO`.
+        const length = to.distanceTo(from);
+        const reachOut = armReach(
+          length,
+          index > 0 ? from.distanceTo(at(index - 1)) : null
+        );
+        const reachIn = armReach(
+          length,
+          index + 2 < shape.length ? at(index + 2).distanceTo(to) : null
+        );
         const armOut = tangentAt(index, true);
         const armIn = tangentAt(index + 1, false);
         commands.push({
           kind: PathCommandType.CubicBezierTo,
           controlPoint1:
             armOut.magnitude() > 0
-              ? from.plus(armOut.normalized().times(reach))
+              ? from.plus(armOut.normalized().times(reachOut))
               : from,
           controlPoint2:
             armIn.magnitude() > 0
-              ? to.minus(armIn.normalized().times(reach))
+              ? to.minus(armIn.normalized().times(reachIn))
               : to,
           endPoint: to,
         });

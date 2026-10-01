@@ -249,6 +249,15 @@ export type NotebookImageResizeCorner =
   | "bottom-left"
   | "bottom-right";
 
+/** Where a box on the page is pulled from to resize it: a corner, or anywhere along a side. */
+export type NotebookResizeHandle = NotebookImageResizeCorner | NotebookTextBlockResizeEdge;
+
+export function isNotebookResizeEdge(
+  handle: NotebookResizeHandle
+): handle is NotebookTextBlockResizeEdge {
+  return handle === "top" || handle === "right" || handle === "bottom" || handle === "left";
+}
+
 export function isNotebookType(value: unknown): value is NotebookType {
   return (
     value === "blank" ||
@@ -566,8 +575,11 @@ export function resizeNotebookImageRef(
   image: NotebookImageRef,
   deltaX: number,
   deltaY: number,
-  corner: NotebookImageResizeCorner = "bottom-right"
+  corner: NotebookResizeHandle = "bottom-right"
 ) {
+  if (isNotebookResizeEdge(corner)) {
+    return resizeNotebookImageRefFromEdge(image, deltaX, deltaY, corner);
+  }
   const placement = notebookImagePlacement(image);
   const aspectRatio = placement.displayWidth / placement.displayHeight;
   const growsRight = corner === "top-right" || corner === "bottom-right";
@@ -612,6 +624,71 @@ export function resizeNotebookImageRef(
     {
       ...image,
       x: growsRight ? anchorX : anchorX - displayWidth,
+      y: growsDown ? anchorY : anchorY - displayHeight,
+      displayWidth,
+      displayHeight,
+    },
+  ])[0]!;
+}
+
+/**
+ * Resize an image by pulling one side, keeping the opposite side pinned.
+ *
+ * The shape stays locked, so the other axis grows with it -- evenly about its
+ * centre, which is where a side handle sits. Only the pull across the side
+ * counts: sliding along it does nothing, as on any other editor's side grip.
+ */
+function resizeNotebookImageRefFromEdge(
+  image: NotebookImageRef,
+  deltaX: number,
+  deltaY: number,
+  edge: NotebookTextBlockResizeEdge
+) {
+  const placement = notebookImagePlacement(image);
+  const aspectRatio = placement.displayWidth / placement.displayHeight;
+  const horizontal = edge === "left" || edge === "right";
+  const centreX = placement.x + placement.displayWidth / 2;
+  const centreY = placement.y + placement.displayHeight / 2;
+  const minWidth = Math.max(
+    MIN_NOTEBOOK_IMAGE_DISPLAY_SIZE,
+    MIN_NOTEBOOK_IMAGE_DISPLAY_SIZE * aspectRatio
+  );
+
+  let requestedWidth: number;
+  let maxWidth: number;
+  if (horizontal) {
+    const growsRight = edge === "right";
+    const anchorX = growsRight ? placement.x : placement.x + placement.displayWidth;
+    requestedWidth = placement.displayWidth + (growsRight ? deltaX : -deltaX);
+    const roomForWidth = growsRight ? NOTEBOOK_PAGE_COORDINATE_WIDTH - anchorX : anchorX;
+    // Centred vertically, so the height may only grow as far as the nearer page edge allows twice over.
+    const roomForHeight = 2 * Math.min(centreY, NOTEBOOK_PAGE_COORDINATE_HEIGHT - centreY);
+    maxWidth = Math.max(minWidth, Math.min(roomForWidth, roomForHeight * aspectRatio));
+    const displayWidth = Math.min(Math.max(requestedWidth, minWidth), maxWidth);
+    const displayHeight = displayWidth / aspectRatio;
+    return normalizeNotebookImageRefs([
+      {
+        ...image,
+        x: growsRight ? anchorX : anchorX - displayWidth,
+        y: centreY - displayHeight / 2,
+        displayWidth,
+        displayHeight,
+      },
+    ])[0]!;
+  }
+
+  const growsDown = edge === "bottom";
+  const anchorY = growsDown ? placement.y : placement.y + placement.displayHeight;
+  requestedWidth = (placement.displayHeight + (growsDown ? deltaY : -deltaY)) * aspectRatio;
+  const roomForHeight = growsDown ? NOTEBOOK_PAGE_COORDINATE_HEIGHT - anchorY : anchorY;
+  const roomForWidth = 2 * Math.min(centreX, NOTEBOOK_PAGE_COORDINATE_WIDTH - centreX);
+  maxWidth = Math.max(minWidth, Math.min(roomForWidth, roomForHeight * aspectRatio));
+  const displayWidth = Math.min(Math.max(requestedWidth, minWidth), maxWidth);
+  const displayHeight = displayWidth / aspectRatio;
+  return normalizeNotebookImageRefs([
+    {
+      ...image,
+      x: centreX - displayWidth / 2,
       y: growsDown ? anchorY : anchorY - displayHeight,
       displayWidth,
       displayHeight,

@@ -290,6 +290,15 @@ export const NOTEBOOK_STRAIGHTEN_MODES = ["off", "lines", "guided"] as const;
 export type NotebookStraightenOnHold =
   (typeof NOTEBOOK_STRAIGHTEN_MODES)[number];
 
+/**
+ * How the stroke being written is drawn. See `notebook-live-ink.ts`.
+ *
+ * `fast` draws it on its own screen-sized canvas; `classic` is js-draw's
+ * page-sized wet ink, kept as a way back.
+ */
+export const NOTEBOOK_LIVE_INK_MODES = ["fast", "classic"] as const;
+export type NotebookLiveInkMode = (typeof NOTEBOOK_LIVE_INK_MODES)[number];
+
 export type NotebookPenSettings = {
   /**
    * How much wobble is taken out of the line: the tremor filter on the input,
@@ -312,6 +321,19 @@ export type NotebookPenSettings = {
   /** How much pen pressure is allowed to vary the width of the line. */
   pressurePercent: number;
   straightenOnHold: NotebookStraightenOnHold;
+  /**
+   * How the stroke being written is drawn -- see `NotebookLiveInkMode`.
+   *
+   * A rendering choice rather than part of how the pen shapes a line, so it is
+   * left alone by "Reset advanced settings" and does not count as customised.
+   *
+   * Fast by default since 1 Oct 2026. It shipped the day before as an opt-in
+   * boolean, `fastLiveInk`, and every device that saved pen settings since
+   * then stored `false` without anyone choosing it -- which is why this is a
+   * new field rather than a new default for the old one. The old field is
+   * ignored.
+   */
+  liveInk: NotebookLiveInkMode;
 };
 
 /**
@@ -327,6 +349,7 @@ export const NOTEBOOK_PEN_SETTINGS_DEFAULT: NotebookPenSettings = {
   trackingPercent: 50,
   pressurePercent: 50,
   straightenOnHold: "guided",
+  liveInk: "fast",
 };
 
 export const NOTEBOOK_PEN_SETTINGS_STORAGE_KEY = "jami:notebook-pen-settings";
@@ -351,6 +374,15 @@ function throughTheDefault(
     : at.atDefault +
         (at.hundred - at.atDefault) *
           ((towards - defaultPercent) / (100 - defaultPercent));
+}
+
+export function isNotebookLiveInkMode(
+  value: unknown
+): value is NotebookLiveInkMode {
+  return (
+    typeof value === "string" &&
+    NOTEBOOK_LIVE_INK_MODES.includes(value as NotebookLiveInkMode)
+  );
 }
 
 export function isNotebookStraightenOnHold(
@@ -400,6 +432,9 @@ export function clampNotebookPenSettings(
     straightenOnHold: isNotebookStraightenOnHold(settings?.straightenOnHold)
       ? settings.straightenOnHold
       : NOTEBOOK_PEN_SETTINGS_DEFAULT.straightenOnHold,
+    liveInk: isNotebookLiveInkMode(settings?.liveInk)
+      ? settings.liveInk
+      : NOTEBOOK_PEN_SETTINGS_DEFAULT.liveInk,
   };
 }
 
@@ -413,13 +448,19 @@ export function hasNotebookPenAdvancedChanges(settings: NotebookPenSettings) {
   );
 }
 
-/** The advanced controls back to default, leaving Smoothing where it was set. */
+/**
+ * The advanced controls back to default, leaving Smoothing where it was set,
+ * and fast live ink, which is about drawing speed rather than the line.
+ */
 export function resetNotebookPenAdvancedSettings(
   settings: NotebookPenSettings
 ): NotebookPenSettings {
   return {
     ...NOTEBOOK_PEN_SETTINGS_DEFAULT,
     smoothingPercent: clampNotebookPenSmoothing(settings.smoothingPercent),
+    liveInk: isNotebookLiveInkMode(settings.liveInk)
+      ? settings.liveInk
+      : NOTEBOOK_PEN_SETTINGS_DEFAULT.liveInk,
   };
 }
 

@@ -200,4 +200,21 @@ describe("placing a graph", () => {
     const fromTopLeft = resizeNotebookGraphBlock(block, -40, -30, "top-left");
     expect(fromTopLeft.x + fromTopLeft.width).toBe(block.x + block.width);
   });
+
+  it("resizes from anywhere along a side, changing only that side's dimension", () => {
+    const block = createNotebookGraphBlock("g1");
+    const wider = resizeNotebookGraphBlock(block, 60, 999, "right");
+    expect([wider.x, wider.y, wider.width, wider.height]).toEqual([block.x, block.y, 580, 420]);
+
+    const fromLeft = resizeNotebookGraphBlock(block, -30, 0, "left");
+    expect(fromLeft.width).toBe(550);
+    expect(fromLeft.x + fromLeft.width).toBe(block.x + block.width);
+
+    const taller = resizeNotebookGraphBlock(block, 999, 40, "bottom");
+    expect([taller.x, taller.y, taller.width, taller.height]).toEqual([block.x, block.y, 520, 460]);
+
+    const fromTop = resizeNotebookGraphBlock(block, 0, 25, "top");
+    expect(fromTop.height).toBe(395);
+    expect(fromTop.y + fromTop.height).toBe(block.y + block.height);
+  });
 });

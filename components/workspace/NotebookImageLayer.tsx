@@ -17,46 +17,10 @@ import {
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
   resizeNotebookImageRef,
   type NotebookImageRef,
-  type NotebookImageResizeCorner,
+  type NotebookResizeHandle,
 } from "@/lib/workspace/notebooks";
+import NotebookResizeHandles from "@/components/workspace/NotebookResizeHandles";
 import { getNotebookFileBytes } from "@/services/study/notebook-files";
-
-/*
- * Every corner drags, the way an image behaves in any other editor. The grip is
- * a small dot inside a much larger invisible hit box, so a fingertip or a Pencil
- * can find it on an iPad without the dot itself covering the artwork.
- */
-const RESIZE_CORNERS: Array<{
-  corner: NotebookImageResizeCorner;
-  label: string;
-  positionClass: string;
-  cursorClass: string;
-}> = [
-  {
-    corner: "top-left",
-    label: "Resize from the top left corner",
-    positionClass: "left-0 top-0 -translate-x-1/2 -translate-y-1/2",
-    cursorClass: "cursor-nwse-resize",
-  },
-  {
-    corner: "top-right",
-    label: "Resize from the top right corner",
-    positionClass: "right-0 top-0 translate-x-1/2 -translate-y-1/2",
-    cursorClass: "cursor-nesw-resize",
-  },
-  {
-    corner: "bottom-right",
-    label: "Resize from the bottom right corner",
-    positionClass: "bottom-0 right-0 translate-x-1/2 translate-y-1/2",
-    cursorClass: "cursor-nwse-resize",
-  },
-  {
-    corner: "bottom-left",
-    label: "Resize from the bottom left corner",
-    positionClass: "bottom-0 left-0 -translate-x-1/2 translate-y-1/2",
-    cursorClass: "cursor-nesw-resize",
-  },
-];
 
 /**
  * Screen pixels a pointer has to travel before a press counts as a drag.
@@ -132,7 +96,7 @@ function NotebookPlacedImage({ image }: { image: NotebookImageRef }) {
 
 type Gesture = {
   kind: "move" | "resize";
-  corner?: NotebookImageResizeCorner;
+  corner?: NotebookResizeHandle;
   pointerId: number;
   startClientX: number;
   startClientY: number;
@@ -240,7 +204,7 @@ function NotebookImageLayer({
     (
       image: NotebookImageRef,
       event: ReactPointerEvent<HTMLElement>,
-      corner?: NotebookImageResizeCorner
+      corner?: NotebookResizeHandle
     ) => {
       event.stopPropagation();
       const bounds = layerRef.current?.getBoundingClientRect();
@@ -390,27 +354,14 @@ function NotebookImageLayer({
                     Delete
                   </button>
                 ) : null}
-                {selected
-                  ? RESIZE_CORNERS.map((handle) => (
-                      <button
-                        key={handle.corner}
-                        type="button"
-                        data-image-resize-handle={handle.corner}
-                        aria-label={`${handle.label} of ${name}`}
-                        title={handle.label}
-                        className={`group pointer-events-auto absolute z-10 inline-grid h-8 w-8 touch-none place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/55 ${handle.positionClass} ${handle.cursorClass}`}
-                        onPointerDown={(event) => startGesture(image, event, handle.corner)}
-                        onPointerMove={moveGesture}
-                        onPointerUp={finishGesture}
-                        onPointerCancel={finishGesture}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="h-4 w-4 rounded-full border-2 border-white bg-accent shadow-e1 transition group-hover:scale-110"
-                        />
-                      </button>
-                    ))
-                  : null}
+                {selected ? (
+                  <NotebookResizeHandles
+                    name={name}
+                    onStart={(handle, event) => startGesture(image, event, handle)}
+                    onMove={moveGesture}
+                    onEnd={finishGesture}
+                  />
+                ) : null}
               </div>
             );
           })}

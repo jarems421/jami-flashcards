@@ -19,44 +19,13 @@ import {
   type GraphScreenFrame,
   type GraphScreenPoint,
   type NotebookGraphBlock,
-  type NotebookGraphResizeCorner,
+  type NotebookGraphResizeHandle,
 } from "@/lib/workspace/notebook-graphs";
+import NotebookResizeHandles from "@/components/workspace/NotebookResizeHandles";
 import {
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
 } from "@/lib/workspace/notebooks";
-
-const RESIZE_CORNERS: Array<{
-  corner: NotebookGraphResizeCorner;
-  label: string;
-  positionClass: string;
-  cursorClass: string;
-}> = [
-  {
-    corner: "top-left",
-    label: "Resize from the top left corner",
-    positionClass: "left-0 top-0 -translate-x-1/2 -translate-y-1/2",
-    cursorClass: "cursor-nwse-resize",
-  },
-  {
-    corner: "top-right",
-    label: "Resize from the top right corner",
-    positionClass: "right-0 top-0 translate-x-1/2 -translate-y-1/2",
-    cursorClass: "cursor-nesw-resize",
-  },
-  {
-    corner: "bottom-right",
-    label: "Resize from the bottom right corner",
-    positionClass: "bottom-0 right-0 translate-x-1/2 translate-y-1/2",
-    cursorClass: "cursor-nwse-resize",
-  },
-  {
-    corner: "bottom-left",
-    label: "Resize from the bottom left corner",
-    positionClass: "bottom-0 left-0 -translate-x-1/2 translate-y-1/2",
-    cursorClass: "cursor-nesw-resize",
-  },
-];
 
 /** Screen pixels a press has to travel before it counts as a drag; see NotebookImageLayer. */
 const DRAG_THRESHOLD_PX = 3;
@@ -82,7 +51,7 @@ function styleFor(graph: NotebookGraphBlock) {
 
 type Gesture = {
   kind: "move" | "resize";
-  corner?: NotebookGraphResizeCorner;
+  corner?: NotebookGraphResizeHandle;
   pointerId: number;
   startClientX: number;
   startClientY: number;
@@ -201,7 +170,7 @@ function NotebookGraphLayer({
   );
 
   const startGesture = useCallback(
-    (graph: NotebookGraphBlock, event: ReactPointerEvent<HTMLElement>, corner?: NotebookGraphResizeCorner) => {
+    (graph: NotebookGraphBlock, event: ReactPointerEvent<HTMLElement>, corner?: NotebookGraphResizeHandle) => {
       event.stopPropagation();
       const bounds = layerRef.current?.getBoundingClientRect();
       if (!bounds?.width || !bounds.height) return;
@@ -491,26 +460,14 @@ function NotebookGraphLayer({
                     ) : null}
                   </div>
                 ) : null}
-                {selected
-                  ? RESIZE_CORNERS.map((handle) => (
-                      <button
-                        key={handle.corner}
-                        type="button"
-                        aria-label={`${handle.label} of ${name}`}
-                        title={handle.label}
-                        className={`group pointer-events-auto absolute z-10 inline-grid h-8 w-8 touch-none place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/55 ${handle.positionClass} ${handle.cursorClass}`}
-                        onPointerDown={(event) => startGesture(graph, event, handle.corner)}
-                        onPointerMove={moveGesture}
-                        onPointerUp={finishGesture}
-                        onPointerCancel={finishGesture}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="h-4 w-4 rounded-full border-2 border-white bg-accent shadow-e1 transition group-hover:scale-110"
-                        />
-                      </button>
-                    ))
-                  : null}
+                {selected ? (
+                  <NotebookResizeHandles
+                    name={name}
+                    onStart={(handle, event) => startGesture(graph, event, handle)}
+                    onMove={moveGesture}
+                    onEnd={finishGesture}
+                  />
+                ) : null}
               </div>
             );
           })}

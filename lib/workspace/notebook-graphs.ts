@@ -68,6 +68,8 @@ export type NotebookGraphBlock = NotebookGraphDraft & {
 };
 
 export type NotebookGraphResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+/** A corner, or anywhere along one side. */
+export type NotebookGraphResizeHandle = NotebookGraphResizeCorner | "top" | "right" | "bottom" | "left";
 
 const text = (value: unknown, maximum: number) =>
   typeof value === "string" ? value.trim().slice(0, maximum) : "";
@@ -203,29 +205,36 @@ export function moveNotebookGraphBlock(block: NotebookGraphBlock, deltaX: number
 }
 
 /**
- * Resize by one corner, keeping the opposite corner pinned. Unlike an image a
- * graph has no fixed shape, so width and height follow the pointer freely.
+ * Resize by one corner or one side, keeping the opposite one pinned. Unlike an
+ * image a graph has no fixed shape, so width and height follow the pointer
+ * freely -- and a side changes only its own dimension.
  */
 export function resizeNotebookGraphBlock(
   block: NotebookGraphBlock,
   deltaX: number,
   deltaY: number,
-  corner: NotebookGraphResizeCorner = "bottom-right"
+  corner: NotebookGraphResizeHandle = "bottom-right"
 ) {
-  const growsRight = corner === "top-right" || corner === "bottom-right";
-  const growsDown = corner === "bottom-left" || corner === "bottom-right";
+  const changesWidth = corner !== "top" && corner !== "bottom";
+  const changesHeight = corner !== "left" && corner !== "right";
+  const growsRight = corner.endsWith("right");
+  const growsDown = corner.startsWith("bottom");
   const right = block.x + block.width;
   const bottom = block.y + block.height;
-  const width = clamp(
-    block.width + (growsRight ? deltaX : -deltaX),
-    MIN_NOTEBOOK_GRAPH_WIDTH,
-    growsRight ? PAGE_WIDTH - block.x : right
-  );
-  const height = clamp(
-    block.height + (growsDown ? deltaY : -deltaY),
-    MIN_NOTEBOOK_GRAPH_HEIGHT,
-    growsDown ? PAGE_HEIGHT - block.y : bottom
-  );
+  const width = changesWidth
+    ? clamp(
+        block.width + (growsRight ? deltaX : -deltaX),
+        MIN_NOTEBOOK_GRAPH_WIDTH,
+        growsRight ? PAGE_WIDTH - block.x : right
+      )
+    : block.width;
+  const height = changesHeight
+    ? clamp(
+        block.height + (growsDown ? deltaY : -deltaY),
+        MIN_NOTEBOOK_GRAPH_HEIGHT,
+        growsDown ? PAGE_HEIGHT - block.y : bottom
+      )
+    : block.height;
   return normalizeNotebookGraphBlocks([
     {
       ...block,
