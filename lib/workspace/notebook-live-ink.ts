@@ -48,11 +48,14 @@ export const NOTEBOOK_LIVE_INK_GRID = 64;
 /**
  * The most pixels the live canvas may hold.
  *
- * An iPad screen at 2x is at most about six million, so this never bites
- * there; it stops a large desktop monitor asking for a canvas that serves no
- * purpose at that density.
+ * It was twelve million, which a 5K or Studio Display at 2x passes with the
+ * page fully on screen. The live canvas then drew at a lower density than the
+ * page beneath it, so every stroke was soft while it was written and sharpened
+ * at the lift, when it moved to the page canvas. The canvas only ever covers
+ * what is on screen, so the screen's own pixel count bounds it already; this
+ * is a guard against a nonsensical measurement, not a budget.
  */
-export const NOTEBOOK_LIVE_INK_MAX_PIXELS = 12_000_000;
+export const NOTEBOOK_LIVE_INK_MAX_PIXELS = 64_000_000;
 
 /** Antialiasing reaches a little past the geometry; wipe that too. */
 const DIRTY_MARGIN_CSS_PX = 2;
@@ -116,6 +119,23 @@ export function getNotebookLiveInkPixelRatio(input: {
   return pixels > maxPixels
     ? Math.sqrt(maxPixels / area)
     : devicePixelRatio;
+}
+
+/**
+ * How far to move a canvas, in CSS pixels, so its corner lands on a device
+ * pixel.
+ *
+ * A canvas whose corner falls between device pixels is resampled by the
+ * browser every frame, which smears thin ink across two pixels. The live
+ * canvas's corner is the page's position plus a grid offset, and the page is
+ * often centred on a half pixel; the page's own canvases are drawn once and
+ * then look right, but a stroke redrawn every frame shows the smear the whole
+ * time it is being written.
+ */
+export function getNotebookLiveInkPixelSnap(screenOrigin: number, pixelRatio: number) {
+  if (!Number.isFinite(screenOrigin) || !Number.isFinite(pixelRatio) || pixelRatio <= 0) return 0;
+  const device = screenOrigin * pixelRatio;
+  return (Math.round(device) - device) / pixelRatio;
 }
 
 export function sameNotebookLiveInkRegion(
@@ -437,6 +457,9 @@ export function installNotebookLiveInk(input: {
   let parked = false;
   let region: NotebookLiveInkRegion | null = null;
   let pixelRatio = 1;
+  /** Where the canvas actually sits in the surface: the region, snapped to device pixels. */
+  let placedLeft = Number.NaN;
+  let placedTop = Number.NaN;
   let committed: RenderableComponent | null = null;
 
   wet.clear = function clearLiveOrWet(this: unknown) {
@@ -498,17 +521,31 @@ export function installNotebookLiveInk(input: {
     if (!sameNotebookLiveInkRegion(region, next) || nextRatio !== pixelRatio) {
       region = next;
       pixelRatio = nextRatio;
-      canvas.style.left = `${next.left}px`;
-      canvas.style.top = `${next.top}px`;
-      canvas.style.width = `${next.width}px`;
-      canvas.style.height = `${next.height}px`;
       // Resizing clears the canvas and resets its transform.
       canvas.width = Math.max(1, Math.round(next.width * nextRatio));
       canvas.height = Math.max(1, Math.round(next.height * nextRatio));
+      // Exactly the backing size over the ratio, so one canvas pixel is one
+      // device pixel and nothing is stretched by a rounding remainder.
+      canvas.style.width = `${canvas.width / nextRatio}px`;
+      canvas.style.height = `${canvas.height / nextRatio}px`;
       dirtyRegion.forget();
       dirtyRegion.setScale(nextRatio);
     } else {
       dirtyRegion.wipe(pixelRatio);
+    }
+    // Moved onto the device-pixel grid wherever the page now sits. Only a
+    // style change, so a pan between strokes still costs no reallocation.
+    const left =
+      next.left + getNotebookLiveInkPixelSnap(placement.surfaceRect.left + next.left, nextRatio);
+    const top =
+      next.top + getNotebookLiveInkPixelSnap(placement.surfaceRect.top + next.top, nextRatio);
+    if (left !== placedLeft) {
+      placedLeft = left;
+      canvas.style.left = `${left}px`;
+    }
+    if (top !== placedTop) {
+      placedTop = top;
+      canvas.style.top = `${top}px`;
     }
     return next;
   };
@@ -542,9 +579,9 @@ export function installNotebookLiveInk(input: {
       // js-draw's screen coordinates are measured from its render region;
       // ours from the live canvas. The difference is a plain offset.
       const offsetX =
-        stroke.regionRect.left - (stroke.surfaceRect.left + next.left);
+        stroke.regionRect.left - (stroke.surfaceRect.left + placedLeft);
       const offsetY =
-        stroke.regionRect.top - (stroke.surfaceRect.top + next.top);
+        stroke.regionRect.top - (stroke.surfaceRect.top + placedTop);
       wet.ctx = liveCtx;
       wet.setTransform(
         jsDraw.Mat33.translation(jsDraw.Vec2.of(offsetX, offsetY)).rightMul(

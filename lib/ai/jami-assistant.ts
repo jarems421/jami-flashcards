@@ -16,6 +16,12 @@ import {
 } from "@/lib/ai/tutor-study-material";
 import { extractTutorDiagrams, MAX_TUTOR_DIAGRAMS, readTutorDiagramSpecs } from "@/lib/ai/tutor-diagram";
 import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
+import {
+  MAX_TUTOR_ATTACHMENTS_PER_MESSAGE,
+  normalizeTutorAttachments,
+  type TutorAttachment,
+  type TutorSourceSaveOffer,
+} from "@/lib/ai/tutor-attachments";
 
 export const JAMI_ASSISTANT_MAX_HISTORY_MESSAGES = 12;
 export const JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH = 4_000;
@@ -74,6 +80,13 @@ export type JamiAssistantRequest = {
   useRelatedSources: boolean;
   threadId?: string;
   contextLabel?: string;
+  /**
+   * Files the student attached in this chat: this message's first, then the
+   * chat's earlier ones. The route keeps only the student's own.
+   */
+  attachments?: TutorAttachment[];
+  /** How many of `attachments` belong to this message; saved with it. */
+  newAttachmentCount?: number;
 };
 
 export type JamiAssistantUsedContext = {
@@ -150,6 +163,8 @@ export type JamiAssistantResponse = {
   studyMaterialOffers?: TutorStudyMaterialKind[];
   /** Already made from this answer, keyed by kind. */
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
+  /** Tutor's suggestion to save an attached file as a source; saved only once the student confirms. */
+  sourceSaveOffer?: TutorSourceSaveOffer;
   savedThread?: JamiAssistantThread;
 };
 
@@ -200,6 +215,8 @@ export type ParsedJamiAssistantModelAnswer = {
    * offered the field.
    */
   memory?: unknown;
+  /** A suggestion to save an attached file as a source, read by `readTutorSourceSaveOffer`. */
+  saveSource?: unknown;
 };
 
 export type TutorRoutingPreflight = {
@@ -222,6 +239,7 @@ type ModelAnswerPayload = {
   cards?: unknown;
   questions?: unknown;
   memory?: unknown;
+  saveSource?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -662,9 +680,9 @@ export function getJamiAssistantResponseGuidance(input: {
 
   const modeInstruction =
     depth === "brief"
-      ? "BRIEF mode: answer in 1-3 sentences, normally under 70 words."
+      ? "BRIEF mode: answer in 1-3 sentences, short and plain, normally under 60 words."
       : depth === "standard"
-        ? "STANDARD mode: answer directly in roughly 80-150 words. Use a short list only when it makes the answer easier to scan."
+        ? "STANDARD mode: answer directly in roughly 40-120 words, working excluded. Use a short list only when it makes the answer easier to scan."
         : "DETAILED mode: provide the requested depth, but keep every paragraph necessary and focused.";
 
   const followUps: JamiAssistantFollowUp[] = [];
@@ -684,7 +702,7 @@ export function getJamiAssistantResponseGuidance(input: {
     depth,
     maxOutputTokens:
       depth === "brief" ? 1_500 : depth === "standard" ? 3_000 : 6_000,
-    instruction: `${modeInstruction} ${surfaceInstruction} Start with the answer. Do not restate the question, add a generic introduction, repeat the conclusion, or use unnecessary headings.`.trim(),
+    instruction: `${modeInstruction} ${surfaceInstruction} Start with the answer. Answer only the part of the question the student asked about -- if they name (a)(i), do not solve (a)(ii), (a)(iii) or (b). Do not restate the question, add a generic introduction, repeat the conclusion, or use unnecessary headings.`.trim(),
     followUps: followUps.slice(0, 2),
   };
 }
@@ -874,6 +892,7 @@ export function parseJamiAssistantRequest(
   if (!message || !context || typeof request.useRelatedSources !== "boolean") {
     return null;
   }
+  const attachments = normalizeTutorAttachments(request.attachments);
 
   return {
     message,
@@ -882,6 +901,18 @@ export function parseJamiAssistantRequest(
     useRelatedSources: request.useRelatedSources,
     threadId: normalizeId(request.threadId) || undefined,
     contextLabel: normalizeOptionalText(request.contextLabel, 120),
+    ...(attachments.length > 0
+      ? {
+          attachments,
+          newAttachmentCount: Math.min(
+            MAX_TUTOR_ATTACHMENTS_PER_MESSAGE,
+            attachments.length,
+            typeof request.newAttachmentCount === "number" && Number.isInteger(request.newAttachmentCount)
+              ? Math.max(0, request.newAttachmentCount)
+              : 0
+          ),
+        }
+      : {}),
   };
 }
 
@@ -980,6 +1011,9 @@ export function parseJamiAssistantModelAnswer(
       : {}),
     ...(payload.memory !== undefined && payload.memory !== null
       ? { memory: payload.memory }
+      : {}),
+    ...(payload.saveSource !== undefined && payload.saveSource !== null
+      ? { saveSource: payload.saveSource }
       : {}),
     usedCurrentContext: payload.usedCurrentContext,
     usedGeneralKnowledge: payload.usedGeneralKnowledge,

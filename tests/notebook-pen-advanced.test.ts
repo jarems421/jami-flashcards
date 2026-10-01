@@ -314,30 +314,12 @@ describe("advanced pen settings", () => {
     expect(reset.smoothingPercent).toBe(10);
   });
 
-  it("draws live ink fast by default, kept apart from how the pen shapes a line", () => {
-    expect(NOTEBOOK_PEN_SETTINGS_DEFAULT.liveInk).toBe("fast");
-    expect(clampNotebookPenSettings({}).liveInk).toBe("fast");
-    expect(
-      clampNotebookPenSettings({ liveInk: "sideways" as never }).liveInk
-    ).toBe("fast");
-    // The opt-in boolean it replaced was stored as false on every device that
-    // saved pen settings before fast became the default. It must not count.
-    expect(
-      clampNotebookPenSettings({ fastLiveInk: false } as never).liveInk
-    ).toBe("fast");
-
-    // It is about drawing speed, not the line, so it is not a customisation
-    // of the pen and a reset of the pen leaves it where it was.
-    const classic = settings({ liveInk: "classic", trackingPercent: 90 });
-    expect(hasNotebookPenAdvancedChanges(settings({ liveInk: "classic" }))).toBe(
-      false
-    );
-    const reset = resetNotebookPenAdvancedSettings(classic);
-    expect(reset.trackingPercent).toBe(50);
-    expect(reset.liveInk).toBe("classic");
-
-    saveNotebookPenSettings(classic);
-    expect(readNotebookPenSettings().liveInk).toBe("classic");
+  it("has no live-ink setting: older devices' saved choice is ignored", () => {
+    expect("liveInk" in NOTEBOOK_PEN_SETTINGS_DEFAULT).toBe(false);
+    // What earlier builds saved -- the opt-in boolean, then the mode -- is dropped on read.
+    const read = clampNotebookPenSettings({ fastLiveInk: false, liveInk: "classic" } as never);
+    expect("liveInk" in read).toBe(false);
+    expect("fastLiveInk" in read).toBe(false);
   });
 
   it("clamps anything storage or a caller could hand it", () => {

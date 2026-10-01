@@ -28,6 +28,16 @@ function TrashIcon() {
   );
 }
 
+function LineIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4">
+      <rect x="2.5" y="3" width="7" height="4.5" rx="1" />
+      <path d="M9.5 7.5 15 14" />
+      <circle cx="15.5" cy="14.5" r="1.6" fill="currentColor" />
+    </svg>
+  );
+}
+
 /**
  * The words side of the diagram editor, kept to what a student needs to be
  * done in a minute: how far along they are, the labels, and topics if they
@@ -35,7 +45,9 @@ function TrashIcon() {
  *
  * Naming is typed straight through: Enter in one name moves to the next part
  * still without one, and when every part is named it hands the picture back
- * for the next box. Choosing a row selects its box on the picture, and
+ * for the next box. A named part can also have a line: its box goes beside the
+ * picture, the way a textbook labels it, and the line points at the part.
+ * Choosing a row selects its box on the picture, and
  * drawing a box puts its row here. On a phone this sits under the picture;
  * on a larger screen, beside it.
  */
@@ -85,7 +97,7 @@ export default function DiagramLabelPanel({ editor, userId, topics, onTopicsChan
               ? "Jami is reading the picture. This takes a few seconds."
               : count === 0
                 ? naming
-                  ? "Drag a box round a part, then type its name."
+                  ? "Box a part and type its name, or box a space beside it and draw a line to the part."
                   : "Tap a label to drop a box, or drag to size one."
                 : unnamed > 0
                   ? `${unnamed} still need${unnamed === 1 ? "s" : ""} a name`
@@ -209,6 +221,26 @@ export default function DiagramLabelPanel({ editor, userId, topics, onTopicsChan
                       Covered label
                     </button>
                   )}
+                  {naming ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        label.pointer ? editor.setPointer(label.id, null) : editor.startPointing(label.id)
+                      }
+                      aria-label={
+                        label.pointer
+                          ? `Remove the line from label ${index + 1}`
+                          : `Draw a line from label ${index + 1} to its part`
+                      }
+                      title={label.pointer ? "Remove the line" : "Draw a line to the part"}
+                      className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-selected-border)] disabled:opacity-50 ${
+                        label.pointer ? "text-accent" : "text-text-muted hover:text-text-primary"
+                      }`}
+                    >
+                      <LineIcon />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     disabled={busy}

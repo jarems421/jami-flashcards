@@ -188,6 +188,12 @@ function memorySchema(): Schema {
           type: Type.STRING,
           description: "The reference (m1, m2...) of the memory to rewrite, keep or forget.",
         },
+        links: {
+          type: Type.ARRAY,
+          description:
+            "Optional, on remember or keep: up to two refs of listed memories that are plainly the same mistake or difficulty seen in another subject or topic. Leave out when unsure.",
+          items: { type: Type.STRING },
+        },
       },
       required: ["action"],
     },
@@ -209,7 +215,9 @@ export function buildAssistantResponseSchema(
    * practice is on, a practice set. Its reading of the request, not the
    * material: that is made afterwards, and reviewed, in the answer's panel.
    */
-  studyMaterialKinds: readonly string[] = []
+  studyMaterialKinds: readonly string[] = [],
+  /** Whether files are attached, so Tutor may suggest saving one as a source. */
+  sourceSaveInvited = false
 ) {
   const sourceRefItems: Schema =
     allowedSourceRefs.length > 0
@@ -234,6 +242,21 @@ export function buildAssistantResponseSchema(
         ? { questions: questionsSchema(allowedSourceRefs) }
         : {}),
       ...(memoryWritable ? { memory: memorySchema() } : {}),
+      ...(sourceSaveInvited
+        ? {
+            saveSource: {
+              type: Type.OBJECT,
+              description:
+                "Only when the student asked to save an attached file as a source and the file, title and folder are clear.",
+              properties: {
+                attachment: { type: Type.STRING, description: "The attachment reference, such as A1." },
+                title: { type: Type.STRING, description: "A short title for the source." },
+                folder: { type: Type.STRING, description: "The folder reference, such as F1, or empty." },
+              },
+              required: ["attachment", "title"],
+            },
+          }
+        : {}),
       ...(studyMaterialKinds.length > 0
         ? {
             studyMaterial: {

@@ -17,7 +17,7 @@ vi.mock("@/lib/ai/gemini", () => ({
   streamGeminiText: vi.fn(),
 }));
 
-const { generateAiText } = await import("@/lib/ai/provider-router");
+const { generateAiText, streamAiText } = await import("@/lib/ai/provider-router");
 
 const request = {
   contents: [{ role: "user" as const, parts: [{ text: "Check this." }] }],
@@ -293,6 +293,24 @@ describe("a call watched for stalls", () => {
     })).resolves.toBe('{"ok":true}');
 
     expect(mocks.generateOpenRouterText).not.toHaveBeenCalled();
+    expect(mocks.streamOpenRouterText.mock.calls[0][0].stallTimeoutMs).toBe(30_000);
+  });
+
+  it("watches a streamed answer for stalls, so a long budget only goes to an answer that is working", async () => {
+    mocks.streamOpenRouterText.mockImplementationOnce(async function* () {
+      yield "ok";
+    });
+    const chunks: string[] = [];
+    for await (const chunk of streamAiText({
+      role: "supervisor",
+      request,
+      timeoutMs: 90_000,
+      stallTimeoutMs: 30_000,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.join("")).toBe("ok");
     expect(mocks.streamOpenRouterText.mock.calls[0][0].stallTimeoutMs).toBe(30_000);
   });
 

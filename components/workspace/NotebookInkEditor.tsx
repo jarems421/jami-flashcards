@@ -216,10 +216,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     );
     inkSmoothingOptionsRef.current =
       getNotebookInkSmoothingOptions(penSettings);
-    /** Whether the next stroke goes to the fast live canvas. Read at contact. */
-    const fastLiveInk = penSettings.liveInk === "fast";
-    const fastLiveInkRef = useRef(fastLiveInk);
-    fastLiveInkRef.current = fastLiveInk;
+    /*
+     * Every stroke goes to the fast live canvas. It was a setting with a
+     * "classic" way back until 1 Oct 2026; the classic path was only ever a
+     * slower version of the same ink, so it went. If js-draw's internals ever
+     * stop matching, `installNotebookLiveInk` returns null and js-draw's own
+     * wet ink takes over by itself.
+     */
     const liveInkCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const liveInkRef = useRef<NotebookLiveInk | null>(null);
     /**
@@ -236,7 +239,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         if (
           !surface ||
           !liveInk ||
-          !fastLiveInkRef.current ||
           pointerLifecycleRef.current?.isInteracting
         ) {
           return;
@@ -681,7 +683,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             ? installNotebookLiveInk({ editor, jsDraw, canvas: liveInkCanvas })
             : null;
           liveInkRef.current = liveInk;
-          liveInk?.setParked(fastLiveInkRef.current);
+          liveInk?.setParked(true);
           editor.toolController
             .getMatchingTools(jsDraw.EraserTool)
             .forEach((eraser) => {
@@ -954,11 +956,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       strokeRegionRectRef.current = null;
     }, [inkWindow]);
 
-    useEffect(() => {
-      liveInkRef.current?.setParked(fastLiveInk);
-      if (fastLiveInk) prepareLiveInkRef.current();
-    }, [fastLiveInk]);
-
     // A pan or zoom moves which part of the page is on screen, so the live
     // canvas is resized for it now rather than on the next pointerdown.
     const windowLeft = inkWindow?.left ?? 0;
@@ -1194,7 +1191,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           strokeRegionRectRef.current = regionRect
             ? { pointerId: event.pointerId, rect: regionRect }
             : null;
-          if (regionRect && fastLiveInkRef.current) {
+          if (regionRect) {
             liveInkRef.current?.begin({
               surfaceRect: surface.getBoundingClientRect(),
               regionRect,

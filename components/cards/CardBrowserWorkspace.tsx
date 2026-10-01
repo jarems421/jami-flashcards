@@ -13,7 +13,6 @@ import CardGrid from "@/components/cards/CardGrid";
 import CardEditorDialog from "@/components/decks/CardEditorDialog";
 import CardPreviewDialog from "@/components/decks/CardPreviewDialog";
 import DiagramEditorDialog from "@/components/decks/diagram/DiagramEditorDialog";
-import DiagramWalkthroughDialog from "@/components/decks/diagram/DiagramWalkthroughDialog";
 import { Button, EmptyState, Skeleton } from "@/components/ui";
 import { useCardBrowser } from "@/hooks/useCardBrowser";
 import { useCardBulkActions } from "@/hooks/useCardBulkActions";
@@ -22,7 +21,7 @@ import type { Topic } from "@/lib/material/topics";
 import type { Source } from "@/lib/material/sources";
 import { getCardContentDuplicateCounts } from "@/lib/study/card-quality";
 import { getCardDuplicateKey, type Card } from "@/lib/study/cards";
-import { mergeSavedDiagramCards, type OcclusionDiagram } from "@/lib/study/image-occlusion";
+import { mergeSavedDiagramCards } from "@/lib/study/image-occlusion";
 import type { Deck } from "@/lib/study/decks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 
@@ -76,7 +75,6 @@ export default function CardBrowserWorkspace({
     feedback,
   });
   const [diagramCard, setDiagramCard] = useState<Card | null>(null);
-  const [walkthrough, setWalkthrough] = useState<{ diagram: OcclusionDiagram; title: string; cards: Card[] } | null>(null);
   const editing = useCardEditing({
     cards,
     setCards,
@@ -205,16 +203,6 @@ export default function CardBrowserWorkspace({
         )}
         onClose={editing.preview.close}
         onEdit={editing.preview.edit}
-        onWalkthrough={(card) => {
-          if (!card.occlusion) return;
-          editing.preview.close();
-          const diagramId = card.occlusion.diagram.id;
-          setWalkthrough({
-            diagram: card.occlusion.diagram,
-            title: card.front.trim() || "Diagram",
-            cards: cards.filter((entry) => entry.occlusion?.diagram.id === diagramId),
-          });
-        }}
       />
 
       <DiagramEditorDialog
@@ -240,13 +228,6 @@ export default function CardBrowserWorkspace({
           removedIds.forEach(bulk.selection.remove);
           feedback.success("Diagram deleted.");
         }}
-      />
-      <DiagramWalkthroughDialog
-        diagram={walkthrough?.diagram ?? null}
-        title={walkthrough?.title ?? "Diagram"}
-        cards={walkthrough?.cards}
-        userId={userId}
-        onClose={() => setWalkthrough(null)}
       />
 
       <CardEditorDialog

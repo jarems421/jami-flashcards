@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { OcclusionPicture } from "@/components/cards/OcclusionFigure";
 import DiagramCanvas from "@/components/decks/diagram/DiagramCanvas";
@@ -23,7 +23,6 @@ import { useDiagramEditor, type DiagramEditorController } from "@/hooks/useDiagr
 import { useDiagramPictureUrl } from "@/hooks/useDiagramPictureUrl";
 import { featureFlags } from "@/lib/app/feature-flags";
 import type { Topic } from "@/lib/material/topics";
-import type { CardImage } from "@/lib/study/card-images";
 import type { Card } from "@/lib/study/cards";
 import { cropDiagramPicture, type DiagramPicture } from "@/lib/study/diagram-image";
 import {
@@ -43,8 +42,6 @@ type Step = "picture" | "crop" | "kind" | "label";
 
 export type DiagramEditorStart =
   | { kind: "new"; picture?: DiagramPicture; next?: "label" | "crop" }
-  /** A new diagram on a picture another diagram already has. */
-  | { kind: "reuse"; image: CardImage }
   | { kind: "edit"; card: Card };
 
 type DiagramEditorDialogProps = {
@@ -107,18 +104,15 @@ function DiagramEditorSession({
     deckId,
     editing,
     picture: start.kind === "new" ? start.picture : null,
-    reuseImage: start.kind === "reuse" ? start.image : null,
   });
   const [step, setStep] = useState<Step>(
     editing
       ? "label"
-      : start.kind === "reuse"
-        ? "kind"
-        : start.kind === "new" && start.picture
-          ? start.next === "crop"
-            ? "crop"
-            : "kind"
-          : "picture"
+      : start.kind === "new" && start.picture
+        ? start.next === "crop"
+          ? "crop"
+          : "kind"
+        : "picture"
   );
   const [crop, setCrop] = useState<OcclusionCrop>(FULL_CROP);
   const [cropping, setCropping] = useState(false);
@@ -132,14 +126,14 @@ function DiagramEditorSession({
 
   /*
    * The one decision a diagram needs. Labels printed on the picture are
-   * covered -- by Jami, on this tap, when it can -- and a picture without
-   * them is boxed and named by hand.
+   * covered -- by Jami on this tap, or by the student, who may want to leave
+   * some showing -- and a picture without them is boxed and named by hand.
    */
-  const chooseKind = (mode: "cover" | "name") => {
+  const chooseKind = (mode: "cover" | "name", options: { findLabels?: boolean } = {}) => {
     editor.setLabelMode(mode);
     editor.setTool("rect");
     setStep("label");
-    if (mode === "cover" && aiEnabled) void editor.detectLabels();
+    if (mode === "cover" && options.findLabels && aiEnabled) void editor.detectLabels();
   };
 
   const close = () => {
@@ -250,6 +244,8 @@ function DiagramEditorSession({
         b: () => current.setTool("rect"),
         o: () => current.setTool("ellipse"),
         f: () => current.setTool("outline"),
+        // A line from a name to its part is for pictures without printed labels.
+        ...(current.labelMode === "name" ? { l: () => current.setTool("pointer") } : {}),
         v: () => current.setTool("select"),
         "+": () => current.setZoom(current.zoom + 0.5),
         "=": () => current.setZoom(current.zoom + 0.5),
@@ -383,10 +379,6 @@ function DiagramEditorSession({
                 setPreviewing(false);
                 setStep("crop");
               }}
-              onReplace={() => {
-                setPreviewing(false);
-                setStep("picture");
-              }}
             />
             <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
               <div className="relative h-[46dvh] shrink-0 bg-[var(--color-glass-subtle)] sm:h-[54dvh] lg:h-auto lg:min-w-0 lg:flex-1">
@@ -421,6 +413,19 @@ function DiagramEditorSession({
                       onSetPointer={editor.setPointer}
                       pointerEnd={editor.pointerEnd}
                     />
+                    {editor.tool === "pointer" ? (
+                      <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center px-3">
+                        <p role="status" className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-4 py-1.5 text-center text-sm text-text-primary shadow-card">
+                          {editor.selection
+                            ? `Tap the part label ${
+                                editor.labels.findIndex((label) => label.id === editor.selection?.labelId) + 1
+                              } names, or drag its line there`
+                            : editor.labels.length > 0
+                              ? "Drag from a name's box to the part it names"
+                              : "Draw a box for the name first, then a line from it"}
+                        </p>
+                      </div>
+                    ) : null}
                   </>
                 )}
               </div>
@@ -494,7 +499,7 @@ function DiagramEditorSession({
 function DiagramSteps() {
   const steps = [
     ["Add a picture", "A diagram, a slide, or a photo of a textbook page."],
-    ["Cover the labels", "Jami covers printed labels for you, or box and name the parts."],
+    ["Cover the labels", "Cover printed labels yourself or with Jami, or box and name the parts."],
     ["Study it as one card", "Every label covered; uncover each to check, then reveal them all."],
   ];
   return (
@@ -517,11 +522,43 @@ function DiagramSteps() {
   );
 }
 
+type KindChoice = {
+  key: string;
+  title: string;
+  detail: string;
+  icon: ReactNode;
+  badge?: string;
+  onChoose: () => void;
+};
+
+function BoxAndNameIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-6 w-6">
+      <rect x="3.5" y="5" width="9" height="7" rx="1.5" />
+      <path d="M15 8.5h5.5M15 15.5h5.5M3.5 15.5h8" />
+    </svg>
+  );
+}
+
+function CoverByHandIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-6 w-6">
+      <rect x="3.5" y="4.5" width="10" height="5" rx="1.2" fill="currentColor" fillOpacity="0.25" />
+      <path d="M3.5 14.5h7M3.5 18.5h4.5" />
+      <path d="m15.5 12.5 5 5-2 2-5-5z" />
+    </svg>
+  );
+}
+
 /**
  * The one question a picture is asked, before any drawing: are its labels
  * printed on it? That decides everything after -- covering what is there, or
  * boxing and naming the parts -- so it is asked once, big, with the picture in
  * view, instead of as a setting a student has to find.
+ *
+ * A picture with labels is then asked who covers them. Jami covers every one,
+ * which is quickest; covering by hand lets a student choose which to hide and
+ * leave the rest showing. Nothing is sent to Jami until it is chosen.
  */
 function DiagramKindStep({
   imageUrl,
@@ -534,33 +571,47 @@ function DiagramKindStep({
   imageUrl: string | null;
   aiEnabled: boolean;
   canCrop: boolean;
-  onChoose: (mode: "cover" | "name") => void;
+  onChoose: (mode: "cover" | "name", options?: { findLabels?: boolean }) => void;
   onCrop: () => void;
   onReplace: () => void;
 }) {
-  const choices = [
-    {
-      mode: "cover" as const,
-      title: "It has labels",
-      detail: aiEnabled
-        ? "Jami covers every label for you. You just check the boxes."
-        : "Draw a box over each label. One tap drops a box.",
-      icon: <JamiTutorIcon className="h-6 w-6" />,
-      badge: aiEnabled ? "Fastest" : null,
-    },
-    {
-      mode: "name" as const,
-      title: "It has no labels",
-      detail: "Box each part you want to learn and type its name. Enter moves to the next.",
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-6 w-6">
-          <rect x="3.5" y="5" width="9" height="7" rx="1.5" />
-          <path d="M15 8.5h5.5M15 15.5h5.5M3.5 15.5h8" />
-        </svg>
-      ),
-      badge: null,
-    },
-  ];
+  const [askingWho, setAskingWho] = useState(false);
+  const choices: KindChoice[] = askingWho
+    ? [
+        {
+          key: "jami",
+          title: "Jami covers them",
+          detail: "Every printed label is covered for you. You just check the boxes.",
+          icon: <JamiTutorIcon className="h-6 w-6" />,
+          badge: "Fastest",
+          onChoose: () => onChoose("cover", { findLabels: true }),
+        },
+        {
+          key: "self",
+          title: "I'll cover them myself",
+          detail: "Draw a box over each label you want to learn. Leave any you want showing.",
+          icon: <CoverByHandIcon />,
+          onChoose: () => onChoose("cover"),
+        },
+      ]
+    : [
+        {
+          key: "cover",
+          title: "It has labels",
+          detail: aiEnabled
+            ? "Cover the printed labels, with Jami or by hand."
+            : "Draw a box over each label. One tap drops a box.",
+          icon: aiEnabled ? <JamiTutorIcon className="h-6 w-6" /> : <CoverByHandIcon />,
+          onChoose: () => (aiEnabled ? setAskingWho(true) : onChoose("cover")),
+        },
+        {
+          key: "name",
+          title: "It has no labels",
+          detail: "Box each part and type its name, or put the name beside it and draw a line to the part.",
+          icon: <BoxAndNameIcon />,
+          onChoose: () => onChoose("name"),
+        },
+      ];
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       <div className="relative min-h-[34dvh] flex-1 bg-[var(--color-glass-subtle)] p-4 sm:p-6">
@@ -570,12 +621,14 @@ function DiagramKindStep({
         ) : null}
       </div>
       <div className="flex shrink-0 flex-col justify-center gap-3 border-t border-[var(--color-border)] p-4 sm:p-6 lg:w-[26rem] lg:border-l lg:border-t-0">
-        <h3 className="text-lg font-semibold text-text-primary">Are the labels written on the picture?</h3>
+        <h3 className="text-lg font-semibold text-text-primary">
+          {askingWho ? "Who covers the labels?" : "Are the labels written on the picture?"}
+        </h3>
         {choices.map((choice) => (
           <button
-            key={choice.mode}
+            key={choice.key}
             type="button"
-            onClick={() => onChoose(choice.mode)}
+            onClick={choice.onChoose}
             className="group flex w-full items-start gap-3.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-left transition duration-fast hover:border-accent hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-selected-border)]"
           >
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--color-glass-medium)] text-accent transition group-hover:scale-105">
@@ -598,14 +651,22 @@ function DiagramKindStep({
           </button>
         ))}
         <div className="flex flex-wrap justify-center gap-1 pt-1">
-          {canCrop ? (
-            <Button type="button" size="sm" variant="ghost" onClick={onCrop}>
-              Crop first
+          {askingWho ? (
+            <Button type="button" size="sm" variant="ghost" onClick={() => setAskingWho(false)}>
+              Back
             </Button>
-          ) : null}
-          <Button type="button" size="sm" variant="ghost" onClick={onReplace}>
-            Use another picture
-          </Button>
+          ) : (
+            <>
+              {canCrop ? (
+                <Button type="button" size="sm" variant="ghost" onClick={onCrop}>
+                  Crop first
+                </Button>
+              ) : null}
+              <Button type="button" size="sm" variant="ghost" onClick={onReplace}>
+                Use another picture
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -621,13 +682,11 @@ function DiagramToolbar({
   previewing,
   onTogglePreview,
   onCrop,
-  onReplace,
 }: {
   editor: DiagramEditorController;
   previewing: boolean;
   onTogglePreview: () => void;
   onCrop: () => void;
-  onReplace: () => void;
 }) {
   const disabled = editor.saving || editor.deleting;
   const drawingDisabled = disabled || previewing;
@@ -662,6 +721,16 @@ function DiagramToolbar({
         disabled={drawingDisabled}
         onClick={() => editor.setTool("outline")}
       />
+      {editor.labelMode === "name" ? (
+        <ToolbarIconButton
+          label="Line to the part (L)"
+          icon="pointer"
+          active={editor.tool === "pointer"}
+          pressed={editor.tool === "pointer"}
+          disabled={drawingDisabled}
+          onClick={() => editor.setTool("pointer")}
+        />
+      ) : null}
       <ToolbarIconButton
         label="Move and resize (V)"
         icon="move"
@@ -700,7 +769,6 @@ function DiagramToolbar({
       {editor.picture?.kind === "new" ? (
         <ToolbarIconButton label="Crop the picture" icon="crop" disabled={disabled} onClick={onCrop} />
       ) : null}
-      <ToolbarIconButton label="Change the picture" icon="image" disabled={disabled} onClick={onReplace} />
       <ToolbarIconButton
         label={previewing ? "Back to editing" : "Preview as a card"}
         icon="eye"

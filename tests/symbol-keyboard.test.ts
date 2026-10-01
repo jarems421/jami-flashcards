@@ -7,10 +7,9 @@ import {
   INDEX_KEYS,
   insertKeyIntoField,
   insertTextIntoField,
-  readSymbolRecents,
-  rememberSymbol,
   planFraction,
   SYMBOL_GROUPS,
+  SYMBOL_KEYBOARD_COLUMNS,
   toIndexForm,
   type SymbolKey,
 } from "@/lib/ui/symbol-keyboard";
@@ -35,17 +34,27 @@ beforeEach(() => {
 });
 
 describe("the key set", () => {
-  it("offers five groups and no empty one", () => {
+  it("offers four short tabs, opening on the essentials", () => {
     expect(SYMBOL_GROUPS.map((entry) => entry.label)).toEqual([
       "Maths",
       "Powers",
-      "Symbols",
+      "Greek",
       "Science",
-      "Sets",
     ]);
     for (const entry of SYMBOL_GROUPS) {
       expect(entry.keys.length, `${entry.id} is empty`).toBeGreaterThan(0);
+      // Laid out like a calculator: whole rows of six, nothing left dangling.
+      expect(entry.keys.length % SYMBOL_KEYBOARD_COLUMNS, `${entry.id} has a ragged row`).toBe(0);
     }
+    // The first row of Maths is powers and roots, the fraction at its end.
+    expect(SYMBOL_GROUPS[0].keys.slice(0, 6).map((entry) => entry.label)).toEqual([
+      "x²",
+      "xⁿ",
+      "xₙ",
+      "√",
+      "∛",
+      "a⁄b",
+    ]);
   });
 
   /*
@@ -82,7 +91,10 @@ describe("the key set", () => {
   it("names and labels every key", () => {
     for (const entry of ALL_SYMBOL_KEYS) {
       expect(entry.label.trim()).not.toBe("");
-      expect(entry.insert).not.toBe("");
+      // The power and subscript keys open a slot rather than typing a character.
+      if (entry.action !== "power" && entry.action !== "subscript") {
+        expect(entry.insert).not.toBe("");
+      }
       expect(entry.name.trim()).not.toBe("");
     }
   });
@@ -116,10 +128,14 @@ describe("the key set", () => {
    * of typing, so pressing one did nothing visible and the *next* character
    * came out raised -- a hidden Shift, indistinguishable from a broken button.
    */
-  it("types something on every press, and arms no mode", () => {
+  it("types something on every press, or opens a slot the keyboard shows", () => {
     for (const entry of ALL_SYMBOL_KEYS) {
       expect(entry).not.toHaveProperty("then");
-      const types = entry.insert.length > 0 || entry.action === "fraction";
+      const types =
+        entry.insert.length > 0 ||
+        entry.action === "fraction" ||
+        entry.action === "power" ||
+        entry.action === "subscript";
       expect(types, `${entry.name} must put something in the field`).toBe(true);
     }
   });
@@ -226,32 +242,6 @@ describe("writing into a field", () => {
     expect(insertKeyIntoField(node, key("Change in"))).toBe(
       "EnergyΔ is conserved"
     );
-  });
-});
-
-describe("remembering what gets used", () => {
-  it("starts empty and puts the newest first", () => {
-    expect(readSymbolRecents()).toEqual([]);
-    rememberSymbol(key("Pi"), rememberSymbol(key("Degree"), []));
-    expect(readSymbolRecents().map((entry) => entry.name)).toEqual([
-      "Pi",
-      "Degree",
-    ]);
-  });
-
-  it("moves a repeat to the front instead of listing it twice", () => {
-    const first = rememberSymbol(key("Degree"), []);
-    const second = rememberSymbol(key("Pi"), first);
-    rememberSymbol(key("Degree"), second);
-    expect(readSymbolRecents().map((entry) => entry.name)).toEqual([
-      "Degree",
-      "Pi",
-    ]);
-  });
-
-  it("survives nonsense in storage", () => {
-    window.localStorage.setItem("jami:symbol-keyboard-recents", "{ not json");
-    expect(readSymbolRecents()).toEqual([]);
   });
 });
 

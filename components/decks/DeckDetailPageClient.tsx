@@ -19,11 +19,7 @@ import {
   releaseCardImageDraft,
 } from "@/services/study/card-images";
 import { getCardContentDuplicateCounts } from "@/lib/study/card-quality";
-import {
-  applyOcclusionUpdates,
-  mergeSavedDiagramCards,
-  type OcclusionDiagram,
-} from "@/lib/study/image-occlusion";
+import { applyOcclusionUpdates, mergeSavedDiagramCards } from "@/lib/study/image-occlusion";
 import { releaseDiagramLabels } from "@/services/study/image-occlusion";
 import { useUser } from "@/components/providers/UserProvider";
 import type { Feedback } from "@/lib/app/feedback";
@@ -36,7 +32,6 @@ import DeckDiagramsSection from "@/components/decks/diagram/DeckDiagramsSection"
 import DiagramEditorDialog, {
   type DiagramEditorStart,
 } from "@/components/decks/diagram/DiagramEditorDialog";
-import DiagramWalkthroughDialog from "@/components/decks/diagram/DiagramWalkthroughDialog";
 import BulkTopicToolbar from "@/components/topics/BulkTopicToolbar";
 import { getBulkTopicCapacity } from "@/lib/material/topic-management";
 import CardPreviewDialog from "@/components/decks/CardPreviewDialog";
@@ -99,7 +94,6 @@ export default function DeckDetailPageClient() {
     null
   );
   const [diagramStart, setDiagramStart] = useState<DiagramEditorStart | null>(null);
-  const [walkthrough, setWalkthrough] = useState<{ diagram: OcclusionDiagram; title: string; cards: Card[] } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [bulkTopicIds, setBulkTopicIds] = useState<string[]>([]);
@@ -638,11 +632,7 @@ export default function DeckDetailPageClient() {
           <DeckDiagramsSection
             cards={cards}
             onEdit={startEditingCard}
-            onWalkthrough={(diagram, title, diagramCards) => setWalkthrough({ diagram, title, cards: diagramCards })}
-            onReuse={(diagram) => {
-              clearFeedback();
-              setDiagramStart({ kind: "reuse", image: diagram.image });
-            }}
+            onPreview={(card) => setPreviewCardId(card.id)}
           />
 
           {filteredCards.length === 0 ? (
@@ -717,16 +707,6 @@ export default function DeckDetailPageClient() {
           setPreviewCardId(null);
           startEditingCard(card);
         }}
-        onWalkthrough={(card) => {
-          if (!card.occlusion) return;
-          setPreviewCardId(null);
-          const diagramId = card.occlusion.diagram.id;
-          setWalkthrough({
-            diagram: card.occlusion.diagram,
-            title: card.front.trim() || "Diagram",
-            cards: cards.filter((entry) => entry.occlusion?.diagram.id === diagramId),
-          });
-        }}
       />
       <DiagramEditorDialog
         start={diagramStart}
@@ -750,13 +730,6 @@ export default function DeckDetailPageClient() {
           setSelectedCardIds((prev) => prev.filter((id) => !removed.has(id)));
           success("Diagram deleted.");
         }}
-      />
-      <DiagramWalkthroughDialog
-        diagram={walkthrough?.diagram ?? null}
-        title={walkthrough?.title ?? "Diagram"}
-        cards={walkthrough?.cards}
-        userId={user.uid}
-        onClose={() => setWalkthrough(null)}
       />
       <CardEditorDialog
         card={editingCard}

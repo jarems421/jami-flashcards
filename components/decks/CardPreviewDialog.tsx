@@ -26,8 +26,6 @@ type CardPreviewDialogProps = {
   topicNames?: string[];
   onClose: () => void;
   onEdit: (card: Card) => void;
-  /** For a diagram label: go over the whole diagram by hand. */
-  onWalkthrough?: (card: Card) => void;
 };
 
 export default function CardPreviewDialog({
@@ -38,7 +36,6 @@ export default function CardPreviewDialog({
   topicNames = [],
   onClose,
   onEdit,
-  onWalkthrough,
 }: CardPreviewDialogProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -50,7 +47,7 @@ export default function CardPreviewDialog({
       onDismiss={() => onClose()}
     >
       <DialogBackdrop className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <DialogPanel className="relative w-full max-w-2xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-5 shadow-e3 sm:p-7">
+      <DialogPanel className={`relative w-full ${card?.occlusion ? "max-w-4xl" : "max-w-2xl"} rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-5 shadow-e3 sm:p-7`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <DialogTitle className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
@@ -79,7 +76,7 @@ export default function CardPreviewDialog({
                 </div>
                 {card.occlusion ? (
                   <div className="mt-3 space-y-2">
-                    <OcclusionFigure occlusion={card.occlusion} phase="question" maxHeight="18rem" />
+                    <OcclusionFigure occlusion={card.occlusion} phase="question" maxHeight="min(28rem, 45dvh)" />
                     <p className="text-center text-sm text-text-secondary">
                       {getOcclusionPrompt(card.occlusion, card.front)}
                     </p>
@@ -106,7 +103,7 @@ export default function CardPreviewDialog({
                 </div>
                 {card.occlusion ? (
                   <div className="mt-3">
-                    <OcclusionFigure occlusion={card.occlusion} phase="answer" maxHeight="18rem" />
+                    <OcclusionFigure occlusion={card.occlusion} phase="answer" maxHeight="min(28rem, 45dvh)" />
                   </div>
                 ) : null}
                 {card.backImage ? (
@@ -157,11 +154,6 @@ export default function CardPreviewDialog({
               ))}
             </div>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
-              {card.occlusion && onWalkthrough ? (
-                <Button type="button" variant="ghost" onClick={() => onWalkthrough(card)}>
-                  Go over the diagram
-                </Button>
-              ) : null}
               <Button
                 type="button"
                 variant="secondary"

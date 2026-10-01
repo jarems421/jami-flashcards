@@ -6,18 +6,13 @@ import { Button, SectionHeader } from "@/components/ui";
 import type { Card } from "@/lib/study/cards";
 import type { CardStrength } from "@/lib/study/card-strength";
 import { getDiagramStrengths } from "@/lib/study/diagram-strength";
-import {
-  getWalkthroughMasks,
-  groupDiagramCards,
-  type OcclusionDiagram,
-} from "@/lib/study/image-occlusion";
+import { getWalkthroughMasks, groupDiagramCards } from "@/lib/study/image-occlusion";
 
 type DeckDiagramsSectionProps = {
   cards: Card[];
   onEdit: (card: Card) => void;
-  onWalkthrough: (diagram: OcclusionDiagram, title: string, cards: Card[]) => void;
-  /** A new diagram on the same picture: the heart labelled again for vessels. */
-  onReuse?: (diagram: OcclusionDiagram) => void;
+  /** Shows the diagram's card as it will be studied, like any other card's preview. */
+  onPreview: (card: Card) => void;
 };
 
 const NO_REVEALED = new Set<string>();
@@ -40,12 +35,11 @@ function strengthSummary(strengths: ReadonlyMap<string, CardStrength>) {
  * The deck's diagrams, one tile each.
  *
  * A diagram's cards -- one for the whole picture, or one per label -- are
- * listed with the cards below; this is where a
- * diagram is handled as the one picture it is -- to go over by hand, to edit
- * its boxes, or to label the same picture again. The thumbnail colours each
- * label by how well it is known, so the weak spots show at a glance.
+ * listed with the cards below; this is where a diagram is handled as the one
+ * picture it is: previewed, like any card, or edited. The thumbnail colours
+ * each label by how well it is known, so the weak spots show at a glance.
  */
-export default function DeckDiagramsSection({ cards, onEdit, onWalkthrough, onReuse }: DeckDiagramsSectionProps) {
+export default function DeckDiagramsSection({ cards, onEdit, onPreview }: DeckDiagramsSectionProps) {
   const groups = useMemo(() => groupDiagramCards(cards), [cards]);
   if (groups.length === 0) return null;
 
@@ -61,6 +55,8 @@ export default function DeckDiagramsSection({ cards, onEdit, onWalkthrough, onRe
           const title = diagramCards[0]?.front.trim() || "Diagram";
           const count = diagram.labels.length;
           const strengths = getDiagramStrengths(diagramCards);
+          const [firstCard] = diagramCards;
+          if (!firstCard) return null;
           return (
             <li
               key={diagram.id}
@@ -68,8 +64,8 @@ export default function DeckDiagramsSection({ cards, onEdit, onWalkthrough, onRe
             >
               <button
                 type="button"
-                onClick={() => onWalkthrough(diagram, title, diagramCards)}
-                aria-label={`Go over ${title}`}
+                onClick={() => onPreview(firstCard)}
+                aria-label={`Preview ${title}`}
                 className="h-24 w-32 shrink-0 overflow-hidden rounded-lg bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-selected-border)]"
               >
                 <OcclusionPicture
@@ -91,19 +87,12 @@ export default function DeckDiagramsSection({ cards, onEdit, onWalkthrough, onRe
                   <p className="mt-0.5 text-xs text-text-secondary">{strengthSummary(strengths)}</p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  <Button type="button" size="sm" variant="secondary" onClick={() => onWalkthrough(diagram, title, diagramCards)}>
-                    Go over it
+                  <Button type="button" size="sm" variant="secondary" onClick={() => onPreview(firstCard)}>
+                    Preview
                   </Button>
-                  {diagramCards[0] ? (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => onEdit(diagramCards[0])}>
-                      Edit
-                    </Button>
-                  ) : null}
-                  {onReuse ? (
-                    <Button type="button" size="sm" variant="ghost" onClick={() => onReuse(diagram)}>
-                      Label again
-                    </Button>
-                  ) : null}
+                  <Button type="button" size="sm" variant="ghost" onClick={() => onEdit(firstCard)}>
+                    Edit
+                  </Button>
                 </div>
               </div>
             </li>

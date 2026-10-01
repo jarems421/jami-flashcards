@@ -17,6 +17,10 @@ import {
 import { normalizeSuggestedCards } from "@/lib/ai/tutor-card-suggestions";
 import { normalizeTutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
 import { normalizeSuggestedQuestions } from "@/lib/ai/tutor-question-suggestions";
+import {
+  normalizeTutorAttachments,
+  type TutorSourceSaveOffer,
+} from "@/lib/ai/tutor-attachments";
 
 function getFriendlyAssistantError(
   status: number,
@@ -202,6 +206,7 @@ export async function sendJamiAssistantMessage(
     : null;
   const studyMaterialRequest = normalizeTutorStudyMaterialRequest(data?.studyMaterialRequest);
   const studyMaterialOffers = normalizeTutorStudyMaterialOffers(data?.studyMaterialOffers);
+  const sourceSaveOffer = normalizeTutorSourceSaveOffer(data?.sourceSaveOffer);
   return {
     reply,
     used,
@@ -214,6 +219,17 @@ export async function sendJamiAssistantMessage(
     ...(data?.canIllustrate === true ? { canIllustrate: true } : {}),
     ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
     ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
+    ...(sourceSaveOffer ? { sourceSaveOffer } : {}),
     ...(savedThread ? { savedThread } : {}),
   };
+}
+
+function normalizeTutorSourceSaveOffer(value: unknown): TutorSourceSaveOffer | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const offer = value as Record<string, unknown>;
+  const [attachment] = normalizeTutorAttachments([offer.attachment]);
+  const title = typeof offer.title === "string" ? offer.title.trim().slice(0, 120) : "";
+  if (!attachment || !title) return null;
+  const folderId = typeof offer.folderId === "string" ? offer.folderId.trim().slice(0, 160) : "";
+  return { attachment, title, ...(folderId ? { folderId } : {}) };
 }
