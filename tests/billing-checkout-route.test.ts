@@ -71,6 +71,19 @@ describe("starting a purchase", () => {
     expect(mocks.stripePost).not.toHaveBeenCalled();
   });
 
+  it("never takes a second payment for the same months", async () => {
+    mocks.getEntitlement.mockResolvedValue({ plan: "plus", source: "subscription", anchor: 0 });
+    const switching = await POST(request({ plan: "pro", kind: "subscription", waiverAccepted: true }));
+    expect(switching.status).toBe(409);
+    expect((await switching.json()).code).toBe("use_portal");
+    const passOnTop = await POST(request({ plan: "pro", kind: "pass", waiverAccepted: true }));
+    expect((await passOnTop.json()).code).toBe("has_subscription");
+    mocks.getEntitlement.mockResolvedValue({ plan: "plus", source: "pass", anchor: 0 });
+    const monthlyOnTop = await POST(request({ plan: "pro", kind: "subscription", waiverAccepted: true }));
+    expect((await monthlyOnTop.json()).code).toBe("has_pass");
+    expect(mocks.stripePost).not.toHaveBeenCalled();
+  });
+
   it("rejects anything that is not a plan", async () => {
     expect((await POST(request({ plan: "lifetime", kind: "subscription", waiverAccepted: true }))).status).toBe(400);
     expect((await POST(request({ plan: "plus", kind: "annual", waiverAccepted: true }))).status).toBe(400);

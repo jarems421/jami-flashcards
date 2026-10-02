@@ -10,8 +10,10 @@ import {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { describeUpgradeFor, shouldOfferPlans } from "@/lib/billing/upsell";
-import type { PlanId } from "@/lib/billing/plans";
+import { describeUpgradeFor, shouldOfferPlans, suggestedUpgrade } from "@/lib/billing/upsell";
+import { PLAN_LABELS, type PlanId } from "@/lib/billing/plans";
+import CelestialBody from "@/components/billing/CelestialBody";
+import NightSkyBackdrop from "@/components/constellation/NightSkyBackdrop";
 import {
   subscribeAllowanceRefusals,
   type AllowanceRefusal,
@@ -82,6 +84,8 @@ export default function AllowanceRefusalSheet() {
     ? `/dashboard/plans?for=${encodeURIComponent(refusal.allowance)}`
     : "/dashboard/plans";
 
+  const next = refusal ? suggestedUpgrade(refusal.plan) : null;
+
   return (
     <Dialog
       open={refusal !== null}
@@ -90,26 +94,40 @@ export default function AllowanceRefusalSheet() {
       onDismiss={notNow}
     >
       <DialogBackdrop className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <DialogPanel className="app-panel relative w-full max-w-md rounded-2xl p-5 shadow-e3 sm:p-6">
-        <DialogTitle className="text-lg font-semibold text-text-primary">
-          {title}
-        </DialogTitle>
-        <DialogDescription className="mt-2 text-sm leading-6 text-text-secondary">
-          {detail}
-          {upgrade ? (
-            <>
-              {" "}
-              <span className="text-text-primary">{upgrade}</span>
-            </>
+      <DialogPanel className="app-panel relative w-full max-w-md overflow-hidden rounded-2xl shadow-e3">
+        {/* A glimpse of the plan that would help: its galaxy on the night sky. */}
+        <div className="relative h-32 overflow-hidden bg-[#07051c]">
+          <NightSkyBackdrop />
+          {next ? (
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <CelestialBody plan={next} size={170} animated />
+            </div>
           ) : null}
-        </DialogDescription>
-        <div className="mt-6 grid grid-cols-2 gap-2">
-          <Button ref={notNowRef} variant="secondary" onClick={notNow}>
-            Not now
-          </Button>
-          <ButtonLink href={plansHref} onClick={() => setRefusal(null)} className="justify-center">
-            See plans
-          </ButtonLink>
+          {next ? (
+            <span className="absolute bottom-3 left-4 rounded-full border border-white/15 bg-white/10 px-2.5 py-0.5 text-2xs font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-md">
+              {PLAN_LABELS[next]}
+            </span>
+          ) : null}
+        </div>
+        <div className="p-5 sm:p-6">
+          <DialogTitle className="text-lg font-semibold text-text-primary">{title}</DialogTitle>
+          <DialogDescription className="mt-2 text-sm leading-6 text-text-secondary">
+            {detail}
+            {upgrade ? (
+              <>
+                {" "}
+                <span className="font-semibold text-text-primary">{upgrade}</span>
+              </>
+            ) : null}
+          </DialogDescription>
+          <div className="mt-6 grid grid-cols-2 gap-2">
+            <Button ref={notNowRef} variant="secondary" onClick={notNow}>
+              Not now
+            </Button>
+            <ButtonLink href={plansHref} onClick={() => setRefusal(null)} className="justify-center">
+              See plans
+            </ButtonLink>
+          </div>
         </div>
       </DialogPanel>
     </Dialog>

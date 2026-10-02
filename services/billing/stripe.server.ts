@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { PaidPlanId } from "@/lib/billing/plans";
+import { STRIPE_API_VERSION } from "@/lib/billing/stripe-events";
 import { isBillingEnabled } from "@/services/billing/entitlements.server";
 
 /**
@@ -40,18 +41,21 @@ export class StripeRequestError extends Error {
   }
 }
 
-export async function stripePost<T>(
+async function stripeRequest<T>(
   config: StripeConfig,
+  method: "GET" | "POST" | "DELETE",
   path: string,
-  fields: Record<string, string>
+  fields?: Record<string, string>
 ): Promise<T> {
-  const response = await fetch(`https://api.stripe.com/v1/${path}`, {
-    method: "POST",
+  const query = method === "GET" && fields ? `?${new URLSearchParams(fields).toString()}` : "";
+  const response = await fetch(`https://api.stripe.com/v1/${path}${query}`, {
+    method,
     headers: {
       Authorization: `Bearer ${config.secretKey}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      "Stripe-Version": STRIPE_API_VERSION,
     },
-    body: new URLSearchParams(fields).toString(),
+    body: method === "POST" && fields ? new URLSearchParams(fields).toString() : undefined,
     signal: AbortSignal.timeout(20_000),
   });
   const body = (await response.json().catch(() => null)) as
@@ -61,4 +65,16 @@ export async function stripePost<T>(
     throw new StripeRequestError(body?.error?.message ?? "Stripe refused the request.", response.status);
   }
   return body;
+}
+
+export function stripePost<T>(config: StripeConfig, path: string, fields: Record<string, string>) {
+  return stripeRequest<T>(config, "POST", path, fields);
+}
+
+export function stripeGet<T>(config: StripeConfig, path: string, query?: Record<string, string>) {
+  return stripeRequest<T>(config, "GET", path, query);
+}
+
+export function stripeDelete<T>(config: StripeConfig, path: string) {
+  return stripeRequest<T>(config, "DELETE", path);
 }

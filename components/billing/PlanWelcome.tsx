@@ -9,11 +9,10 @@ import { PLAN_ALLOWANCES, PLAN_LABELS, type PaidPlanId } from "@/lib/billing/pla
 
 /**
  * The welcome a student sees back from paying: the night Jami opens on, their
- * plan arriving -- Nova's planet with its ring drawing in, Celestial's galaxy
- * turning -- light rising around it, and what the month now holds.
+ * plan's galaxy unfurling out of a burst of light and turning slowly, motes
+ * rising around it, and what the month now holds.
  *
- * Deliberately not stars. A star in Jami means a goal the student earned
- * (docs/ui-design-system.md), and buying a plan is not that. The motes are the
+ * Only paid plans are welcomed, so it is always a galaxy. The motes are the
  * same dust as the night sky, and nothing here blends or is promoted, so the
  * frame budget holds on an old iPad.
  */
@@ -76,7 +75,7 @@ export default function PlanWelcome({ plan, onClose }: { plan: PaidPlanId; onClo
         ))}
 
         <div className="relative flex max-w-md flex-col items-center">
-          <div className="relative grid h-44 w-44 place-items-center">
+          <div className="relative grid h-64 w-64 place-items-center">
             <div
               aria-hidden="true"
               className={`plan-welcome-halo absolute inset-[-30%] rounded-full ${
@@ -85,7 +84,17 @@ export default function PlanWelcome({ plan, onClose }: { plan: PaidPlanId; onClo
                   : "bg-[radial-gradient(circle,rgba(160,138,255,.45)_0%,rgba(120,94,255,.14)_40%,transparent_70%)]"
               }`}
             />
-            <CelestialBody plan={plan} size={176} animated className="plan-welcome-planet relative" />
+            <div
+              aria-hidden="true"
+              className={`plan-welcome-bloom absolute inset-[-10%] rounded-full ${
+                warm
+                  ? "bg-[radial-gradient(circle,rgba(255,214,190,.55)_0%,rgba(255,170,220,.18)_45%,transparent_70%)]"
+                  : "bg-[radial-gradient(circle,rgba(200,186,255,.55)_0%,rgba(140,120,255,.18)_45%,transparent_70%)]"
+              }`}
+            />
+            <div className="plan-welcome-planet relative">
+              <CelestialBody plan={plan} size={290} animated />
+            </div>
           </div>
 
           <div className="plan-welcome-rise mt-6 text-xs font-semibold uppercase tracking-[0.24em] text-[#cfc6ff]" style={{ animationDelay: "0.9s" }}>

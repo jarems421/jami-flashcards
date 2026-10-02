@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import CelestialBody from "@/components/billing/CelestialBody";
 import { Card, ProgressBar, SectionHeader } from "@/components/ui";
 import Skeleton from "@/components/ui/Skeleton";
 import type { PlanSummary, PlanSummaryItem } from "@/lib/billing/summary";
@@ -72,11 +73,14 @@ export default function PlanUsageDetails() {
 
   return (
     <Card padding="lg">
-      <SectionHeader
-        eyebrow="Usage this month"
-        title={summary.label}
-        description={resets ? `Your allowances reset on ${resets}.` : undefined}
-      />
+      <div className="flex min-w-0 items-center gap-4">
+        <CelestialBody plan={summary.plan} size={56} framed />
+        <SectionHeader
+          eyebrow="Usage this month"
+          title={summary.label}
+          description={resets ? `Your allowances reset on ${resets}.` : undefined}
+        />
+      </div>
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {counted.map((group) => (
           <section key={group.title} aria-label={group.title} className="app-subtle-panel min-w-0 rounded-xl p-4">

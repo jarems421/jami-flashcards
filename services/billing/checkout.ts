@@ -37,3 +37,26 @@ export async function startCheckout(input: {
   }
   return body.url;
 }
+
+/**
+ * Opens Stripe's page for managing a monthly plan -- change card, switch
+ * between Nova and Celestial, cancel -- and returns its link.
+ */
+export async function openBillingPortal(): Promise<string> {
+  const user = auth.currentUser;
+  if (!user) throw new CheckoutError("Sign in again to manage your plan.", null);
+  const response = await fetch("/api/billing/portal", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${await user.getIdToken()}` },
+  });
+  const body = (await response.json().catch(() => null)) as
+    | { url?: string; error?: string; code?: string }
+    | null;
+  if (!response.ok || !body?.url) {
+    throw new CheckoutError(
+      body?.error ?? "Your plan can't be managed just now. Try again shortly.",
+      body?.code ?? null
+    );
+  }
+  return body.url;
+}

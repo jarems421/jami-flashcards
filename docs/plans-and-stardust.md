@@ -300,14 +300,46 @@ wants four papers the week before an exam.
   the price and the student's first name, and pays on their own device. The
   purchase lands on the student's account.
 - **Webhook** `app/api/billing/webhook/route.ts` (Node runtime, raw body,
-  signature checked) handles:
-  - `checkout.session.completed`
-  - `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`
-  - `invoice.paid` and `invoice.payment_failed`
-  - `charge.refunded` and `charge.dispute.created`
+  signature checked against `STRIPE_WEBHOOK_SECRET`, five-minute tolerance).
+  Built 2 Oct 2026. What each event does is decided in
+  `lib/billing/stripe-events.ts`, and done in
+  `services/billing/stripe-webhook.server.ts`:
+  - `checkout.session.completed`: grants the plan or Exam Pass and starts a
+    fresh allowance month. From a billing address outside the UK it refunds
+    instead, ends any subscription and grants nothing.
+  - `customer.subscription.created`, `updated` and `deleted`: status, period
+    end, cancel-at-period-end, and the plan by price (so a switch in the
+    portal follows). A deleted subscription is paid through the moment it
+    ended.
+  - `charge.refunded`: a pass refunded in full ends then. Subscription refunds
+    are left to the subscription's own events.
 
-  Each event is processed once: its id is recorded in `stripeEvents/{eventId}`
-  inside the same transaction as its effect.
+  Stripe does not promise order, so each write records `lastEventAt` and an
+  older event is skipped; re-applying an event gives the same result. Refunds
+  are recorded in `stripeEvents/{eventId}` so a redelivery does not refund
+  twice. Stripe's API version is pinned (`STRIPE_API_VERSION`, 2024-06-20).
+  Lifetime is never overwritten, and a live pass outranks events about some
+  other, older subscription.
+- **One way of paying at a time:** checkout refuses a second subscription
+  (`use_portal`: the Plans page opens the portal to switch instead), a pass on
+  top of a subscription, and a subscription on top of a live pass.
+- **Customer portal** `app/api/billing/portal/route.ts`, opened from "Manage
+  plan" on Account for anyone paying monthly.
+
+**Stripe setup before launch** (no code needed):
+
+1. Products: Nova monthly £7.99 and Celestial monthly £14.99, recurring GBP.
+   Put their price ids in `STRIPE_PRICE_PLUS` and `STRIPE_PRICE_PRO`.
+2. Webhook endpoint `https://<domain>/api/billing/webhook` with the five
+   events above (`checkout.session.completed`, the three
+   `customer.subscription.*`, `charge.refunded`). Its signing secret goes in
+   `STRIPE_WEBHOOK_SECRET`.
+3. Customer portal: allow cancelling at the end of the period, updating the
+   card, and switching between the two prices.
+4. Optional, if the account has custom Radar rules: block cards not issued in
+   GB, so non-UK payments never happen rather than being refunded.
+5. `STRIPE_SECRET_KEY`, then `NEXT_PUBLIC_ENABLE_BILLING=true` and
+   `BILLING_LAUNCH_AT`. Checkout refuses until every one of these is set.
 - **Fees:** 1.5% + 20p per UK card payment, plus 0.7% on subscription payments.
 
 ## 6. Data
@@ -496,7 +528,7 @@ item 2:
 |---|---|---|
 | 0 | Cost safety (§10 items 1–4), lifetime script | no |
 | 1 | Plans and allowances behind `enableBilling`: `plans.ts`, usage counters, `checkAiBudget` integration, "X left this month" where each allowance is spent, Account → Plan | behind flag |
-| 2 | Stripe: products, Checkout (plans, pass, packs), webhook, Portal, parent link, UK-only, waiver box | behind flag |
+| 2 | Stripe: products, Checkout (plans, pass, packs), webhook, Portal, parent link, UK-only, waiver box. **Built 2 Oct 2026 except packs** (stardust, phase 3); needs the Stripe setup in §5 | behind flag |
 | 3 | Stardust behind `enableStardust`: ledger, earn hooks, Store, spend → extras, balance on Stars | behind flag |
 | 4 | Cosmetics in the Store | after launch |
 | 5 | DMCC reminders | before Spring 2027 |

@@ -38,7 +38,7 @@ import {
   getPlanComparisonRows,
   perDayPence,
 } from "@/lib/billing/upsell";
-import { CheckoutError, startCheckout } from "@/services/billing/checkout";
+import { CheckoutError, openBillingPortal, startCheckout } from "@/services/billing/checkout";
 import { loadPlanSummary } from "@/services/billing/plan-summary-store";
 
 /**
@@ -182,11 +182,11 @@ export default function PlansView({
       {/* The night Jami opens on, so choosing a plan feels like Jami rather than a checkout. */}
       <section className="relative overflow-hidden rounded-2xl bg-[#07051c] px-5 pb-10 pt-12 text-center text-white shadow-bubble sm:px-10 sm:pb-14 sm:pt-16">
         <NightSkyBackdrop />
-        <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-16 hidden opacity-70 md:block">
-          <CelestialBody plan="pro" size={300} animated />
+        <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-20 hidden opacity-80 md:block">
+          <CelestialBody plan="pro" size={340} animated />
         </div>
-        <div aria-hidden="true" className="pointer-events-none absolute bottom-6 left-8 hidden opacity-80 md:block">
-          <CelestialBody plan="free" size={64} />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-10 -left-10 hidden opacity-60 md:block">
+          <CelestialBody plan="plus" size={190} animated />
         </div>
         <div
           aria-hidden="true"
@@ -505,9 +505,9 @@ function BillingToggle({
   );
 }
 
-/** Each plan's body in the sky: a moon, a ringed planet, a galaxy. */
+/** Each plan's mark: Jami's star, then two galaxies, each in a window onto the night sky. */
 function PlanGlyph({ plan }: { plan: ShownPlan }) {
-  return <CelestialBody plan={plan} size={52} className="-m-1 shrink-0" />;
+  return <CelestialBody plan={plan} size={48} framed />;
 }
 
 /** "£7.99" set like a price tag: the pounds large, the pence and £ smaller. */
@@ -867,6 +867,15 @@ function CheckoutDialog({
         window.location.assign(url);
       }
     } catch (reason) {
+      // Already paying monthly: switching happens in Stripe's portal, not a second checkout.
+      if (reason instanceof CheckoutError && reason.code === "use_portal") {
+        try {
+          window.location.assign(await openBillingPortal());
+          return;
+        } catch {
+          // Fall through to the message.
+        }
+      }
       setError(
         reason instanceof CheckoutError ? reason.message : "Payments are unavailable right now. Try again shortly."
       );

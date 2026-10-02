@@ -62,6 +62,24 @@ export async function POST(request: NextRequest) {
   if (entitlement?.plan === plan && kind === "subscription") {
     return Response.json({ error: "You're on this plan already.", code: "current_plan" }, { status: 409 });
   }
+  // One way of paying at a time, so nobody is charged twice for the same months.
+  if (entitlement?.source === "subscription") {
+    return Response.json(
+      kind === "subscription"
+        ? { error: "Switch plans from Manage plan on your Account page.", code: "use_portal" }
+        : {
+            error: "You pay monthly already. Cancel it from Manage plan first, then get an Exam Pass.",
+            code: "has_subscription",
+          },
+      { status: 409 }
+    );
+  }
+  if (entitlement?.source === "pass") {
+    return Response.json(
+      { error: "Your Exam Pass already covers you until 31 July.", code: "has_pass" },
+      { status: 409 }
+    );
+  }
 
   try {
     const session = await stripePost<{ url?: string }>(

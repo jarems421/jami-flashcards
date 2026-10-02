@@ -1,15 +1,22 @@
 "use client";
 
 import { useEffect, useId, useRef } from "react";
+import { NORTHERN_STAR_BOX, NORTHERN_STAR_PATH } from "@/components/ui/NorthernStar";
 
 /**
- * Each plan as something in the night sky, drawn to look real rather than as
- * an icon: Free is a moon, Nova a ringed planet, Celestial a spiral galaxy.
+ * Each plan as something in the night sky: Free is Jami's own star, Nova a
+ * spiral galaxy, Celestial a grander barred spiral in gold and rose.
  *
- * None of them is a star. A star in Jami means a goal the student earned
- * (docs/ui-design-system.md), and a plan is not that. The galaxy is points of
- * light on a canvas -- one element however many points -- and only turns
- * where `animated` is set, by a single transform, so the frame budget holds.
+ * The galaxies are painted in soft light, the way the Milky Way looks in a
+ * long exposure: flowing arms built from blurred layers, fine filaments along
+ * them, dark dust lanes on their inner edges and a glowing core. Points are
+ * kept few and faint, because a galaxy made of dots read as grain rather than
+ * light. Each is one canvas, painted once; only `animated` ones turn, by a
+ * single transform, so the frame budget holds on an old iPad.
+ *
+ * Free uses Jami's star by choice (2 Oct 2026). It is the same path every
+ * earned star draws (components/ui/NorthernStar.tsx), white, with its light
+ * as a single drop shadow.
  */
 
 type BodyPlan = "free" | "plus" | "pro";
@@ -18,165 +25,120 @@ export default function CelestialBody({
   plan,
   size,
   animated = false,
+  framed = false,
   className = "",
 }: {
   plan: BodyPlan;
   size: number;
-  /** The welcome: rings draw in and the galaxy turns. Off everywhere else. */
+  /** The welcome and the Plans hero: the galaxy turns slowly. Off everywhere else. */
   animated?: boolean;
+  /**
+   * Set in a small window onto the night sky, so it reads on light themes too:
+   * light drawn on light would vanish.
+   */
+  framed?: boolean;
   className?: string;
 }) {
-  if (plan === "free") return <Moon size={size} className={className} />;
-  if (plan === "plus") return <RingedPlanet size={size} animated={animated} className={className} />;
-  return <Galaxy size={size} animated={animated} className={className} />;
+  const body =
+    plan === "free" ? (
+      <JamiStar size={framed ? size * 0.78 : size} />
+    ) : (
+      <Galaxy
+        size={framed ? size * 1.18 : size}
+        style={plan === "pro" ? CELESTIAL : NOVA}
+        animated={animated}
+        tilt={framed || size < 120 ? 40 : 58}
+      />
+    );
+  if (!framed) {
+    return (
+      <span aria-hidden="true" className={`inline-grid shrink-0 place-items-center ${className}`} style={{ width: size, height: size }}>
+        {body}
+      </span>
+    );
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className={`relative inline-grid shrink-0 place-items-center overflow-hidden rounded-full border border-white/15 bg-[radial-gradient(circle_at_50%_40%,#1d1650_0%,#0b0824_62%,#06041a_100%)] ${className}`}
+      style={{ width: size, height: size }}
+    >
+      {body}
+    </span>
+  );
 }
 
-function Moon({ size, className }: { size: number; className: string }) {
+function JamiStar({ size }: { size: number }) {
   const id = useId().replace(/:/g, "");
-  const craters: Array<[number, number, number]> = [
-    [40, 38, 6],
-    [58, 56, 4.5],
-    [44, 62, 3],
-    [62, 38, 3.2],
-    [33, 52, 2.4],
-    [52, 46, 2],
-    [68, 50, 2.2],
-  ];
   return (
-    <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true" className={`overflow-visible ${className}`}>
+    <svg
+      viewBox={`0 0 ${NORTHERN_STAR_BOX} ${NORTHERN_STAR_BOX}`}
+      width={size}
+      height={size}
+      className="overflow-visible [filter:drop-shadow(0_0_6px_rgba(220,212,255,.85))]"
+    >
       <defs>
-        <radialGradient id={`${id}-glow`}>
-          <stop offset="45%" stopColor="rgba(226,220,255,.32)" />
-          <stop offset="100%" stopColor="rgba(226,220,255,0)" />
+        <radialGradient id={`${id}-light`} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="rgba(214,204,255,.5)" />
+          <stop offset="100%" stopColor="rgba(214,204,255,0)" />
         </radialGradient>
-        <radialGradient id={`${id}-body`} cx="36%" cy="32%" r="78%">
-          <stop offset="0%" stopColor="#f7f5ff" />
-          <stop offset="38%" stopColor="#cfcae4" />
-          <stop offset="72%" stopColor="#8e88ab" />
-          <stop offset="100%" stopColor="#3f3a5c" />
-        </radialGradient>
-        <radialGradient id={`${id}-crater`} cx="62%" cy="66%" r="70%">
-          <stop offset="0%" stopColor="#d9d5ec" />
-          <stop offset="55%" stopColor="#8d87a8" />
-          <stop offset="100%" stopColor="#6a6487" />
-        </radialGradient>
-        <radialGradient id={`${id}-shade`} cx="30%" cy="28%" r="90%">
-          <stop offset="48%" stopColor="rgba(8,5,28,0)" />
-          <stop offset="100%" stopColor="rgba(8,5,28,.72)" />
-        </radialGradient>
-        <clipPath id={`${id}-clip`}>
-          <circle cx="50" cy="50" r="30" />
-        </clipPath>
       </defs>
-      <circle cx="50" cy="50" r="46" fill={`url(#${id}-glow)`} />
-      <circle cx="50" cy="50" r="30" fill={`url(#${id}-body)`} />
-      <g clipPath={`url(#${id}-clip)`}>
-        {/* Maria: the dark seas */}
-        <ellipse cx="57" cy="42" rx="11" ry="8" fill="#6f6990" opacity="0.32" />
-        <ellipse cx="42" cy="58" rx="9" ry="6" fill="#6f6990" opacity="0.26" />
-        {craters.map(([x, y, r]) => (
-          <g key={`${x}-${y}`}>
-            <circle cx={x} cy={y} r={r} fill={`url(#${id}-crater)`} opacity="0.6" />
-            <circle cx={x - r * 0.18} cy={y - r * 0.18} r={r * 0.82} fill="none" stroke="rgba(255,255,255,.22)" strokeWidth="0.5" />
-          </g>
-        ))}
-        <circle cx="50" cy="50" r="30" fill={`url(#${id}-shade)`} />
-      </g>
-      <circle cx="50" cy="50" r="30" fill="none" stroke="rgba(240,236,255,.35)" strokeWidth="0.6" />
+      <circle cx="80" cy="80" r="46" fill={`url(#${id}-light)`} />
+      <path d={NORTHERN_STAR_PATH} fill="#ffffff" />
     </svg>
   );
 }
 
-function RingedPlanet({ size, animated, className }: { size: number; animated: boolean; className: string }) {
-  const id = useId().replace(/:/g, "");
-  const ring = animated ? "plan-welcome-ring" : "";
-  const ringEllipse = (clip: string, extra = "") => (
-    <g clipPath={`url(#${id}-${clip})`}>
-      <ellipse
-        className={`${ring} ${extra}`}
-        pathLength={1}
-        cx="50"
-        cy="50"
-        rx="45"
-        ry="12.5"
-        fill="none"
-        stroke={`url(#${id}-ring)`}
-        strokeWidth="5.5"
-      />
-      <ellipse
-        className={`${ring} ${extra}`}
-        pathLength={1}
-        cx="50"
-        cy="50"
-        rx="40.5"
-        ry="11.2"
-        fill="none"
-        stroke="rgba(14,8,44,.55)"
-        strokeWidth="0.8"
-      />
-    </g>
-  );
-  return (
-    <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true" className={`overflow-visible ${className}`}>
-      <defs>
-        <radialGradient id={`${id}-glow`}>
-          <stop offset="35%" stopColor="rgba(170,148,255,.42)" />
-          <stop offset="100%" stopColor="rgba(170,148,255,0)" />
-        </radialGradient>
-        <radialGradient id={`${id}-body`} cx="34%" cy="30%" r="80%">
-          <stop offset="0%" stopColor="#f6f2ff" />
-          <stop offset="30%" stopColor="#c6b8ff" />
-          <stop offset="62%" stopColor="#7d66e6" />
-          <stop offset="100%" stopColor="#251a63" />
-        </radialGradient>
-        <linearGradient id={`${id}-bands`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="rgba(255,255,255,0)" />
-          <stop offset="18%" stopColor="rgba(255,226,248,.28)" />
-          <stop offset="26%" stopColor="rgba(40,22,120,.22)" />
-          <stop offset="38%" stopColor="rgba(255,255,255,.14)" />
-          <stop offset="50%" stopColor="rgba(60,34,150,.26)" />
-          <stop offset="58%" stopColor="rgba(255,214,246,.22)" />
-          <stop offset="70%" stopColor="rgba(40,22,120,.2)" />
-          <stop offset="82%" stopColor="rgba(255,255,255,.1)" />
-          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-        </linearGradient>
-        <radialGradient id={`${id}-shade`} cx="30%" cy="26%" r="92%">
-          <stop offset="46%" stopColor="rgba(6,3,26,0)" />
-          <stop offset="100%" stopColor="rgba(6,3,26,.75)" />
-        </radialGradient>
-        <linearGradient id={`${id}-ring`} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="rgba(201,188,255,.15)" />
-          <stop offset="22%" stopColor="rgba(255,232,250,.92)" />
-          <stop offset="50%" stopColor="rgba(214,200,255,.7)" />
-          <stop offset="78%" stopColor="rgba(255,214,246,.85)" />
-          <stop offset="100%" stopColor="rgba(201,188,255,.15)" />
-        </linearGradient>
-        <clipPath id={`${id}-far`} clipPathUnits="userSpaceOnUse">
-          <rect x="-10" y="-10" width="120" height="60" />
-        </clipPath>
-        <clipPath id={`${id}-near`} clipPathUnits="userSpaceOnUse">
-          <rect x="-10" y="50" width="120" height="60" />
-        </clipPath>
-        <clipPath id={`${id}-planet`}>
-          <circle cx="50" cy="50" r="22" />
-        </clipPath>
-      </defs>
-      <circle cx="50" cy="50" r="48" fill={`url(#${id}-glow)`} />
-      <g transform="rotate(-18 50 50)">
-        {ringEllipse("far")}
-        <circle cx="50" cy="50" r="22" fill={`url(#${id}-body)`} />
-        <g clipPath={`url(#${id}-planet)`}>
-          <rect x="20" y="28" width="60" height="44" fill={`url(#${id}-bands)`} />
-          {/* The ring's shadow across the planet */}
-          <ellipse cx="50" cy="55" rx="45" ry="12.5" fill="none" stroke="rgba(6,3,26,.26)" strokeWidth="3" />
-          <circle cx="50" cy="50" r="22" fill={`url(#${id}-shade)`} />
-        </g>
-        <circle cx="50" cy="50" r="22" fill="none" stroke="rgba(214,200,255,.55)" strokeWidth="0.7" />
-        {ringEllipse("near", animated ? "plan-welcome-ring-late" : "")}
-      </g>
-    </svg>
-  );
-}
+type Rgb = readonly [number, number, number];
+
+type GalaxyStyle = {
+  seed: number;
+  /** Main arms, then fainter arms between them. */
+  arms: number;
+  minorArms: number;
+  /** How many half-turns each arm makes from the core to its tip. */
+  wind: number;
+  /** Length of the central bar as a share of the radius; 0 for none. */
+  bar: number;
+  core: Rgb;
+  inner: Rgb;
+  outer: Rgb;
+  knots: readonly Rgb[];
+  glow: number;
+};
+
+const NOVA: GalaxyStyle = {
+  seed: 7,
+  arms: 2,
+  minorArms: 0,
+  wind: 2.6,
+  bar: 0.14,
+  core: [246, 240, 255],
+  inner: [190, 174, 255],
+  outer: [126, 146, 255],
+  knots: [
+    [198, 214, 255],
+    [214, 190, 255],
+  ],
+  glow: 0.85,
+};
+
+const CELESTIAL: GalaxyStyle = {
+  seed: 23,
+  arms: 2,
+  minorArms: 2,
+  wind: 2.9,
+  bar: 0.3,
+  core: [255, 214, 160],
+  inner: [255, 178, 222],
+  outer: [160, 140, 255],
+  knots: [
+    [255, 152, 214],
+    [255, 206, 170],
+    [186, 200, 255],
+  ],
+  glow: 0.95,
+};
 
 function seeded(seed: number) {
   let t = seed >>> 0;
@@ -188,13 +150,227 @@ function seeded(seed: number) {
   };
 }
 
-/**
- * A two-armed spiral galaxy, drawn face-on to a canvas and tilted with CSS so
- * it can turn in its own plane: thousands of points scattered about
- * logarithmic arms, warm and dense at the core, violet and pink at the edge,
- * added together so where they crowd they glow.
- */
-function Galaxy({ size, animated, className }: { size: number; animated: boolean; className: string }) {
+function mix(a: Rgb, b: Rgb, t: number): Rgb {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+function rgba([r, g, b]: Rgb, alpha: number) {
+  return `rgba(${Math.round(r)},${Math.round(g)},${Math.round(b)},${Math.max(0, Math.min(1, alpha)).toFixed(3)})`;
+}
+
+/** Draws one layer onto `target` blurred: with canvas filters where the browser has them, by offset copies where not. */
+function blurInto(target: CanvasRenderingContext2D, layer: HTMLCanvasElement, blur: number, size: number) {
+  if (blur <= 0.2) {
+    target.drawImage(layer, 0, 0, size, size);
+    return;
+  }
+  // Older Safari has no canvas filter: the property is simply missing.
+  if (typeof (target as { filter?: unknown }).filter === "string") {
+    target.filter = `blur(${blur.toFixed(2)}px)`;
+    target.drawImage(layer, 0, 0, size, size);
+    target.filter = "none";
+    return;
+  }
+  const copies = 8;
+  const alpha = target.globalAlpha;
+  target.globalAlpha = alpha / copies;
+  for (let index = 0; index < copies; index += 1) {
+    const angle = (index / copies) * Math.PI * 2;
+    target.drawImage(layer, Math.cos(angle) * blur * 0.6, Math.sin(angle) * blur * 0.6, size, size);
+  }
+  target.globalAlpha = alpha;
+}
+
+function paintGalaxy(ctx: CanvasRenderingContext2D, size: number, dpr: number, style: GalaxyStyle) {
+  const random = seeded(style.seed);
+  const c = size / 2;
+  const radius = size * 0.46;
+  const small = size < 110;
+  const glow = style.glow * (small ? 1.35 : 1);
+
+  // Where an arm is at `t` (0 core, 1 tip): a spiral that winds tighter near
+  // the core, so the arms sweep out of the bar rather than from a point.
+  const point = (base: number, t: number, offset = 0) => {
+    const angle = base + style.wind * Math.PI * Math.pow(t, 0.8);
+    const r = radius * (style.bar * 0.55 + (1 - style.bar * 0.55) * t) * (1 + offset);
+    return { x: c + Math.cos(angle) * r, y: c + Math.sin(angle) * r };
+  };
+  const arms: Array<{ base: number; weight: number }> = [];
+  for (let arm = 0; arm < style.arms; arm += 1) {
+    arms.push({ base: (arm / style.arms) * Math.PI * 2, weight: 1 });
+  }
+  for (let arm = 0; arm < style.minorArms; arm += 1) {
+    arms.push({ base: ((arm + 0.5) / style.minorArms) * Math.PI * 2 + 0.3, weight: 0.35 });
+  }
+
+  const layer = document.createElement("canvas");
+  layer.width = Math.round(size * dpr);
+  layer.height = Math.round(size * dpr);
+  const lctx = layer.getContext("2d");
+  if (!lctx) return;
+  lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  lctx.lineCap = "round";
+  const clearLayer = () => {
+    lctx.globalCompositeOperation = "source-over";
+    lctx.clearRect(0, 0, size, size);
+  };
+
+  // The faint disc everything sits in.
+  const halo = ctx.createRadialGradient(c, c, 0, c, c, radius * 1.05);
+  halo.addColorStop(0, rgba(style.inner, 0.2 * glow));
+  halo.addColorStop(0.35, rgba(style.inner, 0.07 * glow));
+  halo.addColorStop(1, rgba(style.outer, 0));
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = "lighter";
+
+  // The arms in three passes, widest and softest first: each drawn sharp on a
+  // layer, then blurred onto the galaxy, so they flow as light.
+  const passes = [
+    { width: 0.26, alpha: 0.09, blur: 0.09 },
+    { width: 0.12, alpha: 0.14, blur: 0.04 },
+    { width: 0.04, alpha: 0.26, blur: 0.012 },
+  ];
+  const steps = small ? 60 : 140;
+  for (const pass of passes) {
+    clearLayer();
+    lctx.globalCompositeOperation = "lighter";
+    for (const arm of arms) {
+      let previous = point(arm.base, 0.02);
+      for (let step = 1; step <= steps; step += 1) {
+        const t = 0.02 + (step / steps) * 0.98;
+        const next = point(arm.base, t);
+        // Faded in from the core, so the arms do not pile up into a white disc there.
+        const fade = Math.min(1, t * 3.5) * Math.pow(1 - t, 0.6);
+        lctx.strokeStyle = rgba(mix(style.inner, style.outer, t), pass.alpha * fade * arm.weight * glow);
+        lctx.lineWidth = Math.max(0.6, radius * pass.width * (1 - t * 0.55));
+        lctx.beginPath();
+        lctx.moveTo(previous.x, previous.y);
+        lctx.lineTo(next.x, next.y);
+        lctx.stroke();
+        previous = next;
+      }
+    }
+    blurInto(ctx, layer, radius * pass.blur, size);
+  }
+
+  if (!small) {
+    // Filaments: fine threads along each arm, a little in and out of it, which
+    // is what makes the arms look like they are flowing.
+    clearLayer();
+    lctx.globalCompositeOperation = "lighter";
+    for (const arm of arms) {
+      const threads = arm.weight === 1 ? 9 : 4;
+      for (let thread = 0; thread < threads; thread += 1) {
+        const offset = (random() - 0.5) * 0.16;
+        const start = 0.08 + random() * 0.25;
+        const end = Math.min(0.98, start + 0.35 + random() * 0.45);
+        lctx.lineWidth = 0.5 + random() * 0.7;
+        lctx.beginPath();
+        for (let step = 0; step <= 60; step += 1) {
+          const t = start + ((end - start) * step) / 60;
+          const p = point(arm.base, t, offset * (0.4 + t));
+          if (step === 0) lctx.moveTo(p.x, p.y);
+          else lctx.lineTo(p.x, p.y);
+        }
+        lctx.strokeStyle = rgba(mix(style.inner, [255, 255, 255], 0.35), 0.16 * arm.weight);
+        lctx.stroke();
+      }
+    }
+    blurInto(ctx, layer, 0.6, size);
+
+    // Dust lanes on the inner edge of the main arms.
+    clearLayer();
+    for (const arm of arms.filter((candidate) => candidate.weight === 1)) {
+      lctx.beginPath();
+      for (let step = 0; step <= 80; step += 1) {
+        const t = 0.12 + (step / 80) * 0.6;
+        const p = point(arm.base - 0.2, t, -0.02);
+        if (step === 0) lctx.moveTo(p.x, p.y);
+        else lctx.lineTo(p.x, p.y);
+      }
+      lctx.strokeStyle = "rgba(8,4,26,.55)";
+      lctx.lineWidth = radius * 0.03;
+      lctx.stroke();
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 0.6;
+    blurInto(ctx, layer, radius * 0.02, size);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "lighter";
+  }
+
+  // Star-forming knots along the arms.
+  const knot = (x: number, y: number, r: number, colour: string) => {
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+    gradient.addColorStop(0, colour);
+    gradient.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  const knotCount = small ? 4 : style.minorArms ? 26 : 16;
+  for (let index = 0; index < knotCount; index += 1) {
+    const arm = arms[index % style.arms];
+    const t = 0.25 + random() * 0.65;
+    const p = point(arm.base, t, (random() - 0.5) * 0.08);
+    const colour = style.knots[index % style.knots.length];
+    knot(p.x, p.y, radius * (small ? 0.07 : 0.03 + random() * 0.025), rgba(colour, 0.5 + random() * 0.3));
+  }
+
+  // A sprinkle of single stars, kept sparse and faint so the light stays smooth.
+  if (!small) {
+    const count = Math.round(size * 1.4);
+    for (let index = 0; index < count; index += 1) {
+      const onArm = random() < 0.7;
+      const t = Math.pow(random(), 0.9);
+      const arm = arms[index % arms.length];
+      const p = onArm
+        ? point(arm.base, t, (random() - 0.5) * 0.22)
+        : { x: c + (random() - 0.5) * radius * 2, y: c + (random() - 0.5) * radius * 2 };
+      const alpha = (onArm ? 0.55 : 0.25) * (0.4 + random() * 0.6);
+      ctx.fillStyle = rgba(mix([255, 255, 255], style.inner, random() * 0.5), alpha);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 0.35 + random() * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // The bar, where there is one: a long soft glow the arms leave from.
+  if (style.bar > 0) {
+    ctx.save();
+    ctx.translate(c, c);
+    ctx.scale(1, 0.32);
+    const bar = ctx.createRadialGradient(0, 0, 0, 0, 0, radius * style.bar * 1.1);
+    bar.addColorStop(0, rgba(style.core, 0.75));
+    bar.addColorStop(0.5, rgba(mix(style.core, style.inner, 0.4), 0.28));
+    bar.addColorStop(1, rgba(style.inner, 0));
+    ctx.fillStyle = bar;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * style.bar * 1.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // The core: a wide warm bloom, then a bright heart.
+  knot(c, c, radius * 0.42, rgba(mix(style.core, style.inner, 0.3), 0.22 * glow));
+  knot(c, c, radius * 0.18, rgba(style.core, 0.85));
+  knot(c, c, radius * 0.07, "rgba(255,255,255,1)");
+  ctx.globalCompositeOperation = "source-over";
+}
+
+function Galaxy({
+  size,
+  style,
+  animated,
+  tilt,
+}: {
+  size: number;
+  style: GalaxyStyle;
+  animated: boolean;
+  tilt: number;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -206,127 +382,22 @@ function Galaxy({ size, animated, className }: { size: number; animated: boolean
     canvas.height = Math.round(size * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
-
-    const random = seeded(29);
-    const gaussian = () => {
-      const u = Math.max(1e-6, random());
-      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * random());
-    };
-    const c = size / 2;
-    const radius = size * 0.47;
-    // Small galaxies (a card's mark) need more light per point to read at all.
-    const small = size < 120;
-    const armAngle = (arm: number, t: number) => arm * Math.PI + t * Math.PI * 3.1;
-    const blob = (x: number, y: number, r: number, colour: string) => {
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
-      gradient.addColorStop(0, colour);
-      gradient.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-    };
-
-    // The faint disc the arms sit in.
-    const halo = ctx.createRadialGradient(c, c, 0, c, c, radius);
-    halo.addColorStop(0, "rgba(255,236,246,.55)");
-    halo.addColorStop(0.25, "rgba(196,168,255,.22)");
-    halo.addColorStop(0.65, "rgba(110,84,220,.08)");
-    halo.addColorStop(1, "rgba(110,84,220,0)");
-    ctx.fillStyle = halo;
-    ctx.fillRect(0, 0, size, size);
-
-    ctx.globalCompositeOperation = "lighter";
-    // Nebula light along each arm: soft overlapping glows, so the arms read as
-    // gas and starlight rather than a scatter of dots.
-    for (let arm = 0; arm < 2; arm += 1) {
-      for (let step = 0; step < 90; step += 1) {
-        const t = 0.06 + (step / 90) * 0.94;
-        const angle = armAngle(arm, t) + gaussian() * 0.06;
-        const r = t * radius;
-        const x = c + Math.cos(angle) * r;
-        const y = c + Math.sin(angle) * r;
-        const warm = random() < 0.35;
-        const alpha = (small ? 0.16 : 0.13) * (1 - t * 0.55);
-        blob(x, y, radius * (0.2 - t * 0.08), warm ? `rgba(255,182,232,${alpha})` : `rgba(170,150,255,${alpha})`);
-      }
-    }
-
-    // Dust lanes on the inner edge of each arm.
-    ctx.globalCompositeOperation = "source-over";
-    for (let arm = 0; arm < 2; arm += 1) {
-      for (let step = 0; step < 70; step += 1) {
-        const t = 0.12 + (step / 70) * 0.75;
-        const angle = armAngle(arm, t) - 0.32;
-        const r = t * radius * 0.97;
-        blob(c + Math.cos(angle) * r, c + Math.sin(angle) * r, radius * 0.05, "rgba(12,6,34,.12)");
-      }
-    }
-
-    // Starlight: most points hug the arms, some fill the disc between them.
-    ctx.globalCompositeOperation = "lighter";
-    const count = Math.max(700, Math.min(7000, Math.round(size * size * 0.18)));
-    const dot = Math.max(small ? 0.5 : 0.3, size / 220);
-    for (let index = 0; index < count; index += 1) {
-      const inDisc = random() < 0.22;
-      const t = Math.pow(random(), inDisc ? 0.6 : 0.9);
-      const angle = inDisc
-        ? random() * Math.PI * 2
-        : armAngle(index % 2, t) + gaussian() * 0.42 * (1 - t * 0.4);
-      const r = t * radius + gaussian() * radius * 0.02;
-      const x = c + Math.cos(angle) * r;
-      const y = c + Math.sin(angle) * r;
-      const tint = random();
-      const [red, green, blue] =
-        t < 0.16
-          ? [255, 236, 214]
-          : tint < 0.45
-            ? [206, 192, 255]
-            : tint < 0.75
-              ? [255, 204, 240]
-              : [176, 196, 255];
-      const alpha = (inDisc ? 0.35 : 1) * Math.min(1, 0.2 + (1 - t) * 0.6) * (0.45 + random() * 0.55);
-      ctx.fillStyle = `rgba(${red},${green},${blue},${alpha.toFixed(3)})`;
-      ctx.beginPath();
-      ctx.arc(x, y, dot * (0.35 + random() * 0.75), 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Young clusters: a few bright pink and blue knots along the arms.
-    for (let index = 0; index < (small ? 6 : 22); index += 1) {
-      const t = 0.3 + random() * 0.6;
-      const angle = armAngle(index % 2, t) + gaussian() * 0.08;
-      const r = t * radius;
-      blob(
-        c + Math.cos(angle) * r,
-        c + Math.sin(angle) * r,
-        radius * (small ? 0.06 : 0.035),
-        random() < 0.5 ? "rgba(255,170,226,.55)" : "rgba(170,200,255,.5)"
-      );
-    }
-
-    // The bulge: warm, bright, and wider than a point.
-    blob(c, c, radius * 0.42, "rgba(255,214,200,.42)");
-    blob(c, c, radius * 0.16, "rgba(255,248,236,.95)");
-    blob(c, c, radius * 0.06, "rgba(255,255,255,1)");
-    ctx.globalCompositeOperation = "source-over";
-  }, [size]);
+    paintGalaxy(ctx, size, dpr, style);
+  }, [size, style]);
 
   return (
-    <span
-      aria-hidden="true"
-      className={`inline-grid place-items-center [perspective:600px] ${className}`}
-      style={{ width: size, height: size }}
-    >
+    <span className="inline-grid place-items-center [perspective:700px]" style={{ width: size, height: size }}>
       <canvas
         ref={ref}
         className={animated ? "plan-galaxy-spin" : undefined}
-        // A card's small mark is tilted less, so its arms still show.
-        style={{
-          width: size,
-          height: size,
-          ...(animated ? {} : { transform: `rotateX(${size < 120 ? 38 : 56}deg) rotate(-24deg)` }),
-        }}
+        style={
+          {
+            width: size,
+            height: size,
+            "--galaxy-tilt": `${tilt}deg`,
+            ...(animated ? {} : { transform: `rotateX(${tilt}deg) rotate(-24deg)` }),
+          } as React.CSSProperties
+        }
       />
     </span>
   );
