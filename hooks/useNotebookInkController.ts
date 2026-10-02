@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
 import { NOTEBOOK_INK_UI_SYNC_IDLE_MS } from "@/lib/workspace/notebook-autosave";
@@ -126,7 +133,18 @@ export function useNotebookInkController({
     cancelUiCommit();
     uiSyncTimerRef.current = window.setTimeout(() => {
       uiSyncTimerRef.current = null;
-      commitUi();
+      /*
+       * As a transition, so React renders it in slices and lets input in
+       * between them.
+       *
+       * This re-renders the whole notebook page, and it lands in the gaps
+       * between words -- exactly when the next stroke is about to start. Left
+       * as an ordinary update from a timer, React renders it in one piece, and
+       * a pen landing part-way through waits for all of it before its first
+       * ink. Nothing here is urgent: it is the undo buttons and the save
+       * indicator catching up with strokes already on the page.
+       */
+      startTransition(commitUi);
     }, NOTEBOOK_INK_UI_SYNC_IDLE_MS);
   }, [cancelUiCommit, commitUi]);
 

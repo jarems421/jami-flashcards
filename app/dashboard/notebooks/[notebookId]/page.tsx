@@ -972,10 +972,30 @@ export default function NotebookEditorPage() {
    * there is one way to end it.
    */
   const clearPlacedSelection = useCallback(() => {
-    clearTextBlockSelection();
-    setSelectedImageId(null);
-    setSelectedGraphId(null);
-  }, [clearTextBlockSelection]);
+    /*
+     * Only what is actually selected. A pen calls this as it lands, on every
+     * stroke, and setting state to the value it already holds is not free:
+     * straight after any other update -- the undo buttons catching up with the
+     * last stroke, say -- React renders this whole page once to find out that
+     * nothing changed, in the moment the next stroke is starting.
+     */
+    if (
+      selectedTextBlockId !== null ||
+      editingTextBlockId !== null ||
+      openTextBlockOptionsId !== null
+    ) {
+      clearTextBlockSelection();
+    }
+    if (selectedImageId !== null) setSelectedImageId(null);
+    if (selectedGraphId !== null) setSelectedGraphId(null);
+  }, [
+    clearTextBlockSelection,
+    editingTextBlockId,
+    openTextBlockOptionsId,
+    selectedGraphId,
+    selectedImageId,
+    selectedTextBlockId,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -3262,10 +3282,11 @@ export default function NotebookEditorPage() {
                       onInteractionChange: (active) => {
                         handleInkInteractionChange(active);
                         if (active) {
-                          setPenMenuOpen(false);
-                          setHighlighterMenuOpen(false);
-                          setEraserMenuOpen(false);
-                          setPagesDrawerOpen(false);
+                          // Only what is open: see clearPlacedSelection.
+                          if (penMenuOpen) setPenMenuOpen(false);
+                          if (highlighterMenuOpen) setHighlighterMenuOpen(false);
+                          if (eraserMenuOpen) setEraserMenuOpen(false);
+                          if (pagesDrawerOpen) setPagesDrawerOpen(false);
                           clearPlacedSelection();
                           cancelInkUiSync();
                           cancelScheduledPersistence();

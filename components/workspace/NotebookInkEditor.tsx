@@ -9,7 +9,7 @@ import {
   useRef,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { Editor as JsDrawEditor } from "js-draw";
+import type { Editor as JsDrawEditor, Point2 } from "js-draw";
 import type { NotebookStroke } from "@/lib/workspace/notebooks";
 import {
   getContinuousNotebookEraserSamples,
@@ -45,6 +45,9 @@ import {
 import type { NotebookScribbleSample } from "@/lib/workspace/notebook-scribble-erase";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
 import { getNotebookInkSmoothingOptions } from "@/lib/workspace/notebook-pen-feel";
+import { NOTEBOOK_LIFT_OFF } from "@/lib/workspace/notebook-lift-off";
+import { NotebookPredictedTip } from "@/lib/workspace/notebook-predicted-tip";
+import { readNotebookPenLiveTip } from "@/lib/workspace/notebook-smooth-pen";
 import type { NotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 import {
   installBatchedNotebookPenPreview,
@@ -151,6 +154,58 @@ const MAX_SCRIBBLE_SAMPLES = 2048;
 /** How many strokes an export writes before letting the browser in. */
 const EXPORT_SLICE_COMPONENTS = 24;
 
+/**
+ * Where this packet's predicted tip runs to, in canvas units, or null for no
+ * tip. See `notebook-predicted-tip.ts`.
+ *
+ * Measured from the same region rect as js-draw's own samples for this stroke,
+ * so the tip starts exactly where the line ends -- and from a rect read once at
+ * contact, so it costs no layout per packet.
+ */
+function getPredictedTipCanvasPoints(input: {
+  editor: JsDrawEditor;
+  event: PointerEvent;
+  jsDraw: JsDrawModule;
+  referenceRect: DOMRect | null;
+  samples: readonly PointerEvent[];
+  tracker: NotebookPredictedTip;
+}): Point2[] | null {
+  const { event, referenceRect, tracker } = input;
+  tracker.observe(
+    input.samples.map((sample) => ({
+      x: sample.clientX,
+      y: sample.clientY,
+      time: sample.timeStamp,
+    }))
+  );
+  // Pressure falls away as the pen leaves the glass. A tip drawn then would
+  // reach past where the stroke is about to end.
+  if (!referenceRect || !(event.pressure >= NOTEBOOK_LIFT_OFF.ceiling)) {
+    return null;
+  }
+  const predicted =
+    typeof event.getPredictedEvents === "function"
+      ? event.getPredictedEvents()
+      : [];
+  if (predicted.length === 0) return null;
+  const ahead = tracker.ahead(
+    predicted.map((sample) => ({
+      x: sample.clientX,
+      y: sample.clientY,
+      time: sample.timeStamp,
+    }))
+  );
+  if (ahead.length === 0) return null;
+  return ahead.map((point) =>
+    input.editor.viewport.screenToCanvas(
+      input.jsDraw.Vec2.of(
+        point.x - referenceRect.left,
+        point.y - referenceRect.top
+      )
+    )
+  );
+}
+
 type ActivePrecisionEraserGesture = {
   cursorDiameter: number;
   gesture: NotebookPrecisionEraserGesture;
@@ -220,6 +275,21 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const fastLiveInk = penSettings.liveInk === "fast";
     const fastLiveInkRef = useRef(fastLiveInk);
     fastLiveInkRef.current = fastLiveInk;
+    /**
+     * The pen contact being drawn ahead of, if any, and what it has really
+     * done lately -- see `notebook-predicted-tip.ts`. Every stylus stroke with
+     * the pen is: it is how the line keeps up, not a preference.
+     */
+    const predictedTipRef = useRef<{
+      pointerId: number;
+      tracker: NotebookPredictedTip;
+    } | null>(null);
+    /** Where the next paint's tip runs to, in canvas units, or null for none. */
+    const predictedTipPointsRef = useRef<Point2[] | null>(null);
+    /** Whether the last paint drew a tip, which something must then wipe. */
+    const predictedTipShownRef = useRef(false);
+    /** Counts paints of the live stroke, to notice a packet that drew none. */
+    const previewPaintsRef = useRef(0);
     const liveInkCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const liveInkRef = useRef<NotebookLiveInk | null>(null);
     /**
@@ -671,8 +741,34 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             // And the hold that triggers the snap has to be one a hand resting
             // on glass can actually satisfy.
             relaxNotebookStraightenHold(primaryPen);
+            const tipEditor = editor;
             penPreviewBatch = installBatchedNotebookPenPreview(
-              primaryPen as unknown as NotebookBatchedPen
+              primaryPen as unknown as NotebookBatchedPen,
+              {
+                // The predicted tip goes on after the stroke, on the same
+                // canvas, so the next paint wipes it with everything else.
+                afterPaint: () => {
+                  previewPaintsRef.current += 1;
+                  predictedTipShownRef.current = false;
+                  const points = predictedTipPointsRef.current;
+                  if (!points || points.length === 0) return;
+                  const tip = readNotebookPenLiveTip(primaryPen);
+                  // A see-through colour would darken where the two overlap.
+                  if (!tip || tip.color.a < 1) return;
+                  tipEditor.display.getWetInkRenderer().drawPath({
+                    startPoint: tip.point,
+                    commands: points.map((point) => ({
+                      kind: jsDraw.PathCommandType.LineTo,
+                      point,
+                    })),
+                    style: {
+                      fill: jsDraw.Color4.transparent,
+                      stroke: { color: tip.color, width: tip.width },
+                    },
+                  });
+                  predictedTipShownRef.current = true;
+                },
+              }
             );
             penPreviewBatchRef.current = penPreviewBatch;
           }
@@ -892,6 +988,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       lastForwardedPointerSampleRef.current.clear();
       strokeRegionRectRef.current = null;
       scribbleSamplesRef.current = null;
+      predictedTipRef.current = null;
+      predictedTipPointsRef.current = null;
+      predictedTipShownRef.current = false;
       precisionEraserGestureRef.current?.gesture.cancel();
       precisionEraserGestureRef.current = null;
       eraserOriginsRef.current = null;
@@ -1187,6 +1286,19 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             event.nativeEvent
           );
         }
+        predictedTipPointsRef.current = null;
+        // A stylus only. A mouse is not writing, and touch never draws.
+        if (tool === "pen" && event.pointerType === "pen") {
+          const tracker =
+            predictedTipRef.current?.tracker ?? new NotebookPredictedTip();
+          tracker.reset();
+          tracker.observe([
+            { x: event.clientX, y: event.clientY, time: event.timeStamp },
+          ]);
+          predictedTipRef.current = { pointerId: event.pointerId, tracker };
+        } else {
+          predictedTipRef.current = null;
+        }
         if (tool === "pen" || tool === "highlighter") {
           // js-draw has just measured the page for this contact itself, so the
           // layout is clean and this read costs nothing.
@@ -1400,6 +1512,19 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           const strokeRegion = strokeRegionRectRef.current;
           const referenceRect =
             strokeRegion?.pointerId === event.pointerId ? strokeRegion.rect : null;
+          const tipState = predictedTipRef.current;
+          predictedTipPointsRef.current =
+            tool === "pen" && tipState?.pointerId === event.pointerId
+              ? getPredictedTipCanvasPoints({
+                  editor,
+                  event: event.nativeEvent,
+                  jsDraw: pointerJsDraw,
+                  referenceRect,
+                  samples: liveSamples,
+                  tracker: tipState.tracker,
+                })
+              : null;
+          const paintsBefore = previewPaintsRef.current;
           dispatchBatchedNotebookPointerSamples({
             batch: previewBatch ?? undefined,
             samples: liveSamples,
@@ -1413,11 +1538,25 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               });
             },
           });
+          // js-draw paints nothing for a packet the lift-off gate is holding,
+          // or while it judges the pen to be resting -- which would leave the
+          // last tip standing beyond where the line now ends. Paint again, so
+          // the tip moves on with the line or goes.
+          if (
+            previewPaintsRef.current === paintsBefore &&
+            predictedTipShownRef.current
+          ) {
+            previewBatch?.paintNow();
+          }
           lastForwardedPointerSampleRef.current.set(
             event.pointerId,
             event.nativeEvent
           );
         } else {
+          if (type === "pointerup" || type === "pointercancel") {
+            // The stroke ends where it was really drawn to, never at a guess.
+            predictedTipPointsRef.current = null;
+          }
           editor.handleHTMLPointerEvent(type, event.nativeEvent);
           if (
             type === "pointerdown" &&
@@ -1449,6 +1588,12 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         if (tool !== activeTool) pendingStyleRef.current = true;
         if (strokeRegionRectRef.current?.pointerId === event.pointerId) {
           strokeRegionRectRef.current = null;
+        }
+        if (predictedTipRef.current?.pointerId === event.pointerId) {
+          // js-draw cleared its live ink as the stroke committed, tip and all.
+          predictedTipRef.current = null;
+          predictedTipPointsRef.current = null;
+          predictedTipShownRef.current = false;
         }
         let hadPointerCapture = false;
         try {

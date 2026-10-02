@@ -20,10 +20,12 @@
  *
  * ## Why not the browser's prediction
  *
- * `PointerEvent.getPredictedEvents()` exists in Chrome, and Safari does not
- * implement it -- so on iPad, which is where this app expects a Pencil, it
- * returns nothing. It also predicts the *raw* pointer, tremor included, which
- * is the signal the One Euro filter exists to remove.
+ * It answers a different question. `PointerEvent.getPredictedEvents()` -- in
+ * Chrome, and in Safari since 18.2 -- predicts the *raw* pointer, tremor
+ * included, which is the signal the One Euro filter exists to remove, so it
+ * cannot stand in for the filter's own lag. What it can cover is the browser's
+ * pipeline delay, which is far larger, and it is used for exactly that: drawn
+ * ahead of the stroke, never into it. See `notebook-predicted-tip.ts`.
  *
  * ## Why not a compositor ink trail
  *

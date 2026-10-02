@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 
 import { beforeAll, describe, expect, it } from "vitest";
-import type { Point2, Stroke, StrokeDataPoint } from "js-draw";
-import { createNotebookSmoothPenStrokeFactory } from "@/lib/workspace/notebook-smooth-pen";
+import type {
+  Point2,
+  RenderablePathSpec,
+  Stroke,
+  StrokeDataPoint,
+} from "js-draw";
+import {
+  createNotebookSmoothPenStrokeFactory,
+  readNotebookPenLiveTip,
+} from "@/lib/workspace/notebook-smooth-pen";
 import { loadJsDraw, type JsDrawModule } from "@/lib/workspace/notebook-js-draw";
 
 let jsDraw: JsDrawModule;
@@ -801,5 +809,143 @@ describe("straightening a held line", () => {
     }
 
     expect(worst / unassisted).toBeLessThan(2.5);
+  });
+});
+
+describe("the live tip the predicted tip starts from", () => {
+  /** Stands in for js-draw's wet-ink renderer: previews draw nothing here. */
+  const renderer = { drawPath() {} } as never;
+
+  function penWith(points: StrokeDataPoint[]) {
+    const builder = createNotebookSmoothPenStrokeFactory(jsDraw)(
+      points[0],
+      viewport
+    );
+    for (const next of points.slice(1)) builder.addPoint(next);
+    // Shaped like js-draw's pen tool, which keeps its builder on `builder`.
+    return { builder };
+  }
+
+  it("is where the previewed line ends, at its width there", () => {
+    const pen = penWith(
+      Array.from({ length: 30 }, (_, step) => point(100 + step * 2, 120))
+    );
+    // Nothing has been drawn yet, so there is nowhere for a tip to start.
+    expect(readNotebookPenLiveTip(pen)).toBeNull();
+
+    pen.builder.preview(renderer);
+    const tip = readNotebookPenLiveTip(pen);
+    expect(tip?.point.x).toBeCloseTo(158, 6);
+    expect(tip?.point.y).toBeCloseTo(120, 6);
+    expect(tip?.width).toBeCloseTo(PEN_WIDTH, 6);
+    expect(tip?.color.toHexString()).toBe(
+      jsDraw.Color4.fromString("#1b2a6b").toHexString()
+    );
+  });
+
+  it("takes a tapered stroke's width at its end, not its average", () => {
+    // Pressed hard and eased off: the end is the thin part.
+    const pen = penWith(
+      Array.from({ length: 60 }, (_, step) =>
+        point(100 + step * 3, 140, 8 - (step / 59) * 6.5)
+      )
+    );
+    pen.builder.preview(renderer);
+    const tip = readNotebookPenLiveTip(pen);
+    expect(tip).not.toBeNull();
+    expect(tip!.point.x).toBeCloseTo(277, 6);
+    // The mean width is about 4.75; the end's is far nearer the light 1.5.
+    expect(tip!.width).toBeLessThan(3);
+    expect(tip!.width).toBeGreaterThan(1);
+  });
+
+  it("offers no tip once the stroke has snapped straight", async () => {
+    const pen = penWith(
+      Array.from({ length: 30 }, (_, step) =>
+        point(20 + step * 10, 100 + (step % 3 === 0 ? 1.5 : -1.5))
+      )
+    );
+    pen.builder.preview(renderer);
+    expect(readNotebookPenLiveTip(pen)).not.toBeNull();
+
+    expect(await pen.builder.autocorrectShape?.()).not.toBeNull();
+    // Its far end is being aimed, not drawn: nothing to lead.
+    expect(readNotebookPenLiveTip(pen)).toBeNull();
+  });
+
+  it("finds no tip on a pen between strokes or with another builder", () => {
+    expect(readNotebookPenLiveTip({})).toBeNull();
+    expect(readNotebookPenLiveTip({ builder: null })).toBeNull();
+    // The highlighter's builder has no tip to offer.
+    expect(readNotebookPenLiveTip({ builder: { preview() {} } })).toBeNull();
+    expect(
+      readNotebookPenLiveTip({ builder: { liveTip: () => ({ width: 2 }) } })
+    ).toBeNull();
+  });
+});
+
+describe("a stroke that doubles back on itself", () => {
+  /** The previewed line's points, its curves walked finely. */
+  function previewed(
+    builder: ReturnType<ReturnType<typeof createNotebookSmoothPenStrokeFactory>>
+  ) {
+    const drawn: RenderablePathSpec[] = [];
+    builder.preview({
+      drawPath: (spec: RenderablePathSpec) => drawn.push(spec),
+    } as never);
+    const spec = drawn[0];
+    if (!spec) throw new Error("Nothing was previewed.");
+    const out: Point2[] = [spec.startPoint];
+    let current = spec.startPoint;
+    for (const command of spec.commands) {
+      if (command.kind === jsDraw.PathCommandType.CubicBezierTo) {
+        const {
+          controlPoint1: c1,
+          controlPoint2: c2,
+          endPoint: end,
+        } = command;
+        for (let step = 1; step <= 16; step += 1) {
+          const t = step / 16;
+          const u = 1 - t;
+          out.push(
+            jsDraw.Vec2.of(
+              u * u * u * current.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * end.x,
+              u * u * u * current.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * end.y
+            )
+          );
+        }
+        current = end;
+      } else if (command.kind === jsDraw.PathCommandType.LineTo) {
+        out.push(command.point);
+        current = command.point;
+      }
+    }
+    return out;
+  }
+
+  it("keeps the bottom of a leg the pen slows into and comes back up from", () => {
+    // The bottom of an 'm' leg as it reaches the pen once the tremor filter
+    // has smoothed it: steps shrinking under a pixel into the turn, and the
+    // way back up all but the same line, a hair to the side.
+    const down = Array.from({ length: 30 }, (_, step) =>
+      point(100 + step * 0.002, 100 + step * 0.7)
+    );
+    const bottom = down[down.length - 1].pos;
+    const up = Array.from({ length: 20 }, (_, step) =>
+      point(100.3 + step * 0.002, bottom.y - (step + 1) * 0.7)
+    );
+
+    const builder = createNotebookSmoothPenStrokeFactory(jsDraw)(down[0], viewport);
+    for (const next of down.slice(1)) builder.addPoint(next);
+    // Once the pen has turned, the line it has drawn must still reach the
+    // bottom: it used to vanish back up the leg as the pen came round, the
+    // length of the leg at worst.
+    let shallowest = Number.POSITIVE_INFINITY;
+    for (const next of up) {
+      builder.addPoint(next);
+      const deepest = Math.max(...previewed(builder).map((at) => at.y));
+      shallowest = Math.min(shallowest, deepest);
+    }
+    expect(bottom.y - shallowest).toBeLessThan(0.8);
   });
 });

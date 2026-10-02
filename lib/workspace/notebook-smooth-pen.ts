@@ -390,6 +390,38 @@ const UNMISTAKABLE_CORNER_DEGREES = 100;
  */
 const CORNER_SLOWDOWN = 0.35;
 
+/** The end of the line being written, as the predicted tip needs it. */
+export type NotebookPenLiveTip = {
+  point: Point2;
+  /** In canvas units, like every other width js-draw is given. */
+  width: number;
+  color: Color4;
+};
+
+type NotebookSmoothPenBuilder = ComponentBuilder & {
+  liveTip(): NotebookPenLiveTip | null;
+};
+
+/**
+ * The live tip of whatever stroke `pen` is building, if its builder is this
+ * one. js-draw keeps the builder on a protected field, so it is reached for
+ * and checked rather than assumed: the highlighter's builder has no tip to
+ * offer, and neither does a pen between strokes.
+ */
+export function readNotebookPenLiveTip(pen: object): NotebookPenLiveTip | null {
+  const builder = (pen as { builder?: unknown }).builder;
+  if (typeof builder !== "object" || builder === null) return null;
+  const liveTip = (builder as { liveTip?: unknown }).liveTip;
+  if (typeof liveTip !== "function") return null;
+  const tip: unknown = liveTip.call(builder);
+  if (typeof tip !== "object" || tip === null) return null;
+  const { point, width, color } = tip as Partial<NotebookPenLiveTip>;
+  if (!point || !color || typeof width !== "number" || !(width > 0)) {
+    return null;
+  }
+  return { point, width, color };
+}
+
 export function createNotebookSmoothPenStrokeFactory(
   jsDraw: JsDrawModule,
   feel: NotebookPenFeel = getNotebookPenFeel(NOTEBOOK_PEN_SMOOTHING_DEFAULT)
@@ -546,7 +578,10 @@ export function createNotebookSmoothPenStrokeFactory(
   };
   const { cornerDegrees, cornerDominance, easeTowardsNeighbours } = feel;
 
-  return (startPoint: StrokeDataPoint, viewport: Viewport): ComponentBuilder => {
+  return (
+    startPoint: StrokeDataPoint,
+    viewport: Viewport
+  ): NotebookSmoothPenBuilder => {
     const color: Color4 = startPoint.color;
     /*
      * One width for the whole stroke, averaged over its samples.
@@ -584,6 +619,7 @@ export function createNotebookSmoothPenStrokeFactory(
     const cornerCosine = Math.cos((cornerDegrees * Math.PI) / 180);
     const cornerRadians = (cornerDegrees * Math.PI) / 180;
     const unmistakableCorner = (UNMISTAKABLE_CORNER_DEGREES * Math.PI) / 180;
+    const unmistakableCosine = Math.cos(unmistakableCorner);
     const points: Point2[] = [Vec2.of(startPoint.pos.x, startPoint.pos.y)];
     /**
      * The newest sample, held back one step.
@@ -928,8 +964,15 @@ export function createNotebookSmoothPenStrokeFactory(
       return from.plus(direction.times(reach.dot(direction)));
     };
 
+    /**
+     * Where the line most recently drawn ends, and its width there. See
+     * `liveTip` below.
+     */
+    let lastTip: { point: Point2; width: number } | null = null;
+
     const renderablePath = (): RenderablePathSpec => {
       if (straightened) {
+        lastTip = null;
         return straightLineSpec(straightened.from, straightened.to);
       }
 
@@ -949,6 +992,7 @@ export function createNotebookSmoothPenStrokeFactory(
         // four cubics, the usual circle approximation.
         const centre = shape[0];
         const radius = width / 2;
+        lastTip = { point: centre, width };
         const handle = radius * 0.5522847498;
         const around = [
           Vec2.of(radius, 0),
@@ -1100,6 +1144,9 @@ export function createNotebookSmoothPenStrokeFactory(
           point.minus(normals[index].times(halfWidths[index]))
         );
 
+        // The end cap is a half circle of this radius about the last point.
+        lastTip = { point: shape[last], width: halfWidths[last] * 2 };
+
         // Out along one edge, round the end, back along the other, round the
         // start. One closed loop: a stroke made of separate subpaths is welded
         // into a zig-zag by everything downstream that closes a path.
@@ -1156,10 +1203,24 @@ export function createNotebookSmoothPenStrokeFactory(
         });
       }
 
+      lastTip = { point: shape[shape.length - 1], width };
       return { startPoint: shape[0], commands, style: stroked };
     };
 
     return {
+      /**
+       * Where the line drawn by the last preview ends, its width there and
+       * its colour: where a predicted tip has to start to join it without a
+       * seam. Both ends of a stroke are round, so a round-capped line of that
+       * width from that point continues it exactly.
+       *
+       * Null before anything has been drawn, and while the stroke has snapped
+       * straight -- its far end is then being aimed, not drawn.
+       */
+      liveTip(): NotebookPenLiveTip | null {
+        if (straightened || !lastTip) return null;
+        return { point: lastTip.point, width: lastTip.width, color };
+      },
       getBBox() {
         const shape = straightened
           ? [straightened.from, straightened.to]
@@ -1221,9 +1282,31 @@ export function createNotebookSmoothPenStrokeFactory(
           arriving.magnitude() > minimumCornerArm &&
           leaving.magnitude() > minimumCornerArm &&
           arriving.normalized().dot(leaving.normalized()) < cornerCosine;
+        /*
+         * And where it doubles back, however short the step that shows it.
+         *
+         * The rule above wants both arms longer than `minimumCornerArm`, so
+         * that a wobble too small to measure is not taken for a corner. A pen
+         * slowing into the bottom of an 'm' leg, though, moves less than that
+         * per sample, and once the tremor filter has smoothed the retrace the
+         * way back up is all but the same line -- no offset, no long arm,
+         * nothing kept. The bottom of the leg was dropped and the line ran
+         * from the last point kept, up to 24px higher, straight to the pen on
+         * its way back up: the ink just drawn there vanished as the pen turned
+         * round, and the leg came out short. Replayed slowly, a 40px 'm' lost
+         * 7.6px of each leg.
+         *
+         * A turn past the unmistakable corner is no wobble, and the step that
+         * shows it is never under `minimumStep`, so only the arriving arm has
+         * to be long enough to have a direction.
+         */
+        const doublesBack =
+          arriving.magnitude() > minimumCornerArm &&
+          arriving.normalized().dot(leaving.normalized()) < unmistakableCosine;
 
         if (
           turns ||
+          doublesBack ||
           strayFromLine(pending, lastKept, next) >= shapeTolerance ||
           next.distanceTo(lastKept) >= maximumSpan
         ) {

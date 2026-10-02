@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type RefObject } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useRef,
+  type RefObject,
+} from "react";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
 import {
@@ -269,49 +275,63 @@ export function useNotebookPersistenceController({
           status,
         });
 
-        if (pageState.read().selectedPage?.id === input.page.id) {
-          pageState.setContentRevision(saveResult.contentRevision);
-        }
+        /*
+         * As a transition: the values below are written at once (the page
+         * store's own reads see them straight away), but the re-render they
+         * cause is done in slices.
+         *
+         * The write returns whenever the network does, and the usual moment
+         * is just after writing has started again -- the save waits for five
+         * quiet seconds, so it goes out as someone pauses to think and comes
+         * back as they carry on. As an ordinary update that re-rendered the
+         * whole notebook page in one piece, in the middle of whatever stroke
+         * was being written.
+         */
+        startTransition(() => {
+          if (pageState.read().selectedPage?.id === input.page.id) {
+            pageState.setContentRevision(saveResult.contentRevision);
+          }
 
-        const currentRevision = editorRevisionRef.current;
-        const selectedPageId = pageState.read().selectedPage?.id ?? null;
-        const staleness = {
-          pageId: input.page.id,
-          selectedPageId,
-          saveRevision: input.saveRevision,
-          currentRevision,
-        };
-
-        latestRef.current.onPageSaved({
-          pageId: input.page.id,
-          typedContent,
-          textBlocks: input.textBlocks,
-          inkData,
-          inkSvg: input.inkSvg,
-          pageColor: input.pageColor,
-          pageStyle: input.pageStyle,
-          status,
-          contentRevision: saveResult.contentRevision,
-          updatedAt: saveResult.updatedAt,
-          replaceStoredContent:
-            shouldNotebookSaveReplaceStoredPageContent(staleness),
-        });
-
-        if (shouldNotebookSaveUpdateLivePage(staleness)) {
-          pageState.setTextBlocks(input.textBlocks);
-        }
-
-        if (
-          isNotebookSaveCompletionCurrent({
-            saveId: input.saveId,
+          const currentRevision = editorRevisionRef.current;
+          const selectedPageId = pageState.read().selectedPage?.id ?? null;
+          const staleness = {
+            pageId: input.page.id,
+            selectedPageId,
             saveRevision: input.saveRevision,
             currentRevision,
-            latestSaveId: latestSaveIdRef.current,
-          })
-        ) {
-          pageState.setSaveStatus("saved");
-          latestRef.current.onClearError("Could not autosave this page.");
-        }
+          };
+
+          latestRef.current.onPageSaved({
+            pageId: input.page.id,
+            typedContent,
+            textBlocks: input.textBlocks,
+            inkData,
+            inkSvg: input.inkSvg,
+            pageColor: input.pageColor,
+            pageStyle: input.pageStyle,
+            status,
+            contentRevision: saveResult.contentRevision,
+            updatedAt: saveResult.updatedAt,
+            replaceStoredContent:
+              shouldNotebookSaveReplaceStoredPageContent(staleness),
+          });
+
+          if (shouldNotebookSaveUpdateLivePage(staleness)) {
+            pageState.setTextBlocks(input.textBlocks);
+          }
+
+          if (
+            isNotebookSaveCompletionCurrent({
+              saveId: input.saveId,
+              saveRevision: input.saveRevision,
+              currentRevision,
+              latestSaveId: latestSaveIdRef.current,
+            })
+          ) {
+            pageState.setSaveStatus("saved");
+            latestRef.current.onClearError("Could not autosave this page.");
+          }
+        });
 
         void deleteNotebookPageDraft(
           {

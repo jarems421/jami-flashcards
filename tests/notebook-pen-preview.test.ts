@@ -72,6 +72,39 @@ describe("notebook pen preview batching", () => {
     expect(previewCount).toBe(1);
   });
 
+  it("lets something be drawn after every live paint, but not the final one", () => {
+    // The predicted tip is painted here, on top of the stroke and wiped with
+    // it. The stroke's last paint shows exactly what is about to be kept, so
+    // nothing is drawn after that one.
+    const events: string[] = [];
+    const pen: NotebookBatchedPen = {
+      previewStroke() {
+        events.push("paint");
+      },
+      onPointerUp() {
+        this.previewStroke();
+        this.previewStroke();
+        return false;
+      },
+      onGestureCancel() {},
+    };
+    const batch = installBatchedNotebookPenPreview(pen, {
+      afterPaint: () => events.push("after"),
+    });
+
+    batch.paintNow();
+    batch.beginBatch();
+    pen.previewStroke();
+    pen.previewStroke();
+    batch.endBatch();
+    pen.previewStroke();
+    expect(events).toEqual(["paint", "after", "paint", "after", "paint", "after"]);
+
+    events.length = 0;
+    pen.onPointerUp({});
+    expect(events).toEqual(["paint"]);
+  });
+
   it("drops unfinished batch work when cancelled or disposed", () => {
     let previewCount = 0;
     let cancelCount = 0;

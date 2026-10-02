@@ -22,7 +22,16 @@ export type NotebookPenPreviewBatch = {
  * frame gate introduced.
  */
 export function installBatchedNotebookPenPreview(
-  pen: NotebookBatchedPen
+  pen: NotebookBatchedPen,
+  options: {
+    /**
+     * Runs straight after every paint of the unfinished stroke, on the same
+     * canvas, so whatever it draws is wiped by the next paint along with the
+     * stroke. Not run for the last paint at pointer-up, which shows the stroke
+     * exactly as it is about to be kept. See `notebook-predicted-tip.ts`.
+     */
+    afterPaint?: () => void;
+  } = {}
 ): NotebookPenPreviewBatch {
   const originalPreviewStroke = pen.previewStroke;
   const originalPointerUp = pen.onPointerUp;
@@ -36,6 +45,7 @@ export function installBatchedNotebookPenPreview(
   const paintOriginal = () => {
     if (disposed) return;
     originalPreviewStroke.call(pen);
+    if (!finalizing) options.afterPaint?.();
   };
 
   pen.previewStroke = function batchedPreview() {
