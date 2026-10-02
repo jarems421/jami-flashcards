@@ -952,6 +952,21 @@
     user-select: text !important;
   }
 
+  /*
+   * ...except an answer that is held for its menu (`AssistantAnswerHold`). On
+   * a touch screen holding text is iOS's own gesture, selecting it, and the
+   * two cannot share a finger. The menu's "Select text" removes the attribute
+   * and gives holding back to the system for that answer.
+   */
+  @media (pointer: coarse) {
+    [data-answer-hold="true"],
+    [data-answer-hold="true"] * {
+      -webkit-touch-callout: none !important;
+      -webkit-user-select: none !important;
+      user-select: none !important;
+    }
+  }
+
   body.jami-notebook-editor-active .app-nav {
     display: none !important;
   }
@@ -1429,16 +1444,30 @@
     font-weight: 600;
   }
 
-  /* A few lines of exercise-book paper for the example answer. */
+  /*
+   * A few lines of exercise-book paper for the example answer, with the words
+   * written on the lines. The type size and line height are set here, not by
+   * utilities beside it: `text-sm` also sets a line height, and utilities
+   * outrank this layer, so the text ran at a different pitch from the rules
+   * and drifted into the middle of them from the second line on.
+   * `--landing-rule-at` is where a rule falls in each line: just under the
+   * baseline, so descenders cross it as they would on paper.
+   */
   .landing-ruled {
+    --landing-rule: 1.625rem;
+    --landing-rule-at: 1.125rem;
     background-image: repeating-linear-gradient(
       180deg,
       transparent 0,
-      transparent calc(1.625rem - 1px),
-      rgba(214, 193, 244, 0.16) calc(1.625rem - 1px),
-      rgba(214, 193, 244, 0.16) 1.625rem
+      transparent var(--landing-rule-at),
+      rgba(214, 193, 244, 0.2) var(--landing-rule-at),
+      rgba(214, 193, 244, 0.2) calc(var(--landing-rule-at) + 1px),
+      transparent calc(var(--landing-rule-at) + 1px),
+      transparent var(--landing-rule)
     );
-    line-height: 1.625rem;
+    font-size: 0.875rem;
+    line-height: var(--landing-rule);
+    min-height: calc(var(--landing-rule) * 2);
   }
 
   /* The pen as the example answer is written. */
