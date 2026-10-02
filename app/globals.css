@@ -4488,3 +4488,7 @@ html.panels-solid body.constellation-background-enabled .app-nav {
   .plan-welcome-bloom{opacity:0}
   .plan-welcome-mote{display:none}
 }
+/* A plan mark straight on the page: on light themes the galaxy is drawn as
+   ink rather than light (inverted, hues kept), so it shows on a pale card. */
+:is(html, body).app-theme-pink .plan-mark-adaptive .plan-galaxy,
+:is(html, body).app-theme-paper-white .plan-mark-adaptive .plan-galaxy{filter:invert(1) hue-rotate(180deg) saturate(1.6) contrast(1.1)}

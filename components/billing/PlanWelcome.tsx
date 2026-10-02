@@ -75,7 +75,7 @@ export default function PlanWelcome({ plan, onClose }: { plan: PaidPlanId; onClo
         ))}
 
         <div className="relative flex max-w-md flex-col items-center">
-          <div className="relative grid h-64 w-64 place-items-center">
+          <div className="relative grid h-[17.5rem] w-[17.5rem] place-items-center">
             <div
               aria-hidden="true"
               className={`plan-welcome-halo absolute inset-[-30%] rounded-full ${
@@ -93,7 +93,7 @@ export default function PlanWelcome({ plan, onClose }: { plan: PaidPlanId; onClo
               }`}
             />
             <div className="plan-welcome-planet relative">
-              <CelestialBody plan={plan} size={290} animated />
+              <CelestialBody plan={plan} size={280} animated />
             </div>
           </div>
 

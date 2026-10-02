@@ -505,9 +505,9 @@ function BillingToggle({
   );
 }
 
-/** Each plan's mark: Jami's star, then two galaxies, each in a window onto the night sky. */
+/** Each plan's mark: Jami's star, then two galaxies, straight on the card. */
 function PlanGlyph({ plan }: { plan: ShownPlan }) {
-  return <CelestialBody plan={plan} size={48} framed />;
+  return <CelestialBody plan={plan} size={64} className="-my-3 -ml-2" />;
 }
 
 /** "£7.99" set like a price tag: the pounds large, the pence and £ smaller. */
