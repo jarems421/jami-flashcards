@@ -122,6 +122,34 @@ describe("formal blind marking pipeline", () => {
     });
   });
 
+  it("asks a supervisor whose thinking ran out the budget again with thinking off", async () => {
+    let supervisorCalls = 0;
+    generateAiText.mockImplementation(async ({ role }: { role: string }) => {
+      if (role !== "supervisor") return report({ q1: 2, q2: 3 });
+      supervisorCalls += 1;
+      // Cut off mid-report, as when thinking spends the whole output ceiling.
+      return supervisorCalls === 1 ? report({ q1: 2, q2: 3 }).slice(0, 180) : report({ q1: 2, q2: 3 });
+    });
+
+    await expect(markPracticePaperWithAudit(input())).resolves.toMatchObject({
+      result: { awardedMarks: 5 },
+    });
+    const supervisor = generateAiText.mock.calls.map((call) => call[0]).filter((call) => call.role === "supervisor");
+    expect(supervisor).toHaveLength(2);
+    expect(supervisor[0].reasoningEffort).toBeUndefined();
+    expect(supervisor[1].reasoningEffort).toBe("none");
+  });
+
+  it("does not retry a truncated worker report, whose thinking cannot be turned off", async () => {
+    generateAiText.mockImplementation(async ({ role }: { role: string }) =>
+      role === "worker" ? report({ q1: 2, q2: 3 }).slice(0, 180) : report({ q1: 2, q2: 3 })
+    );
+
+    await expect(markPracticePaperWithAudit(input())).rejects.toThrow(/truncated/);
+    const worker = generateAiText.mock.calls.map((call) => call[0]).filter((call) => call.role === "worker");
+    expect(worker).toHaveLength(1);
+  });
+
   it("reuses completed provider checkpoints after a workflow retry", async () => {
     generateAiText.mockRejectedValue(new Error("provider must not be called"));
     const parsed = JSON.parse(report({ q1: 2, q2: 3 }));
@@ -722,6 +750,33 @@ describe("marking by levels", () => {
       prompt: JSON.stringify(calls[0].request.contents),
     };
   };
+
+  const primaryEffort = async (target: typeof essay, variant?: Record<string, boolean>) => {
+    generateAiText.mockReset();
+    generateAiText.mockImplementation(async () => levelReport("Question", target.questions[0].marks, 2));
+    await markSingleQuestionAdaptively({
+      paper: target,
+      answerParts: [{ text: "--- BEGIN UNTRUSTED REFERENCE: ANSWER q1 ---\nAn answer.\n--- END UNTRUSTED REFERENCE: ANSWER q1 ---" }],
+      deadlineAt: Date.now() + 60_000,
+      maxOutputTokens: 2_000,
+      forceVerification: true,
+      ...(variant ? { variant } : {}),
+    });
+    return generateAiText.mock.calls.map((entry) => entry[0]).find((call) => call.role === "supervisor")?.reasoningEffort;
+  };
+
+  it("marks a levels-marked answer with the primary's thinking off", async () => {
+    expect(await primaryEffort(essay)).toBe("none");
+  });
+
+  it("lets the primary think on a levels-marked answer when the variant asks", async () => {
+    expect(await primaryEffort(essay, { quickLevelsQuestions: false })).toBeUndefined();
+  });
+
+  it("keeps the short point-marked rule as it was", async () => {
+    expect(await primaryEffort(pointsPaper)).toBe("none");
+    expect(await primaryEffort(pointsPaper, { quickShortQuestions: false })).toBeUndefined();
+  });
 
   it("settles a disputed essay with the worker", async () => {
     const { adjudicator } = await markDisputed(essay, "Question 2", 8);

@@ -159,6 +159,8 @@ export default async function main(args: string[]) {
    */
   const banded = args.includes("--banded");
   const onlySubject = flag("subject");
+  /** One awarding body, for sources that record it per record. */
+  const onlyBoard = flag("board")?.replace(/-/g, " ");
   /** One marking regime, so an essay change is not paid for on the short answers beside it. */
   const onlyRegime = flag("regime");
   /** Short questions only, where the primary marks with light reasoning. */
@@ -168,6 +170,7 @@ export default async function main(args: string[]) {
     (record) =>
       (banded || (record.criteria?.length ?? 0) > 0) &&
       (onlySubject === undefined || record.subject === onlySubject) &&
+      (onlyBoard === undefined || record.board?.toLowerCase() === onlyBoard.toLowerCase()) &&
       (onlyRegime === undefined || record.regime === onlyRegime) &&
       (maxMarks <= 0 || record.maxMarks <= maxMarks)
   );
@@ -234,6 +237,24 @@ Matching the ${withCriteria.length} records ${matching} marked.
       return Array.from({ length: perQuestion }, (_, index) => group[(Math.floor(index * step) + offset) % group.length]);
     });
   };
+  /**
+   * A fixed share of records, chosen by a hash of each id.
+   *
+   * `--per-question=1` takes the same position from every question, and in a
+   * board's exemplar booklet that position means something: Response A is
+   * usually the full-marks answer. A hash keeps the sample unrelated to the
+   * order the source printed things in, and the same on every run.
+   */
+  const share = Number(flag("sample") ?? 0);
+  const hashed = (id: string) => {
+    let hash = 2166136261;
+    for (let index = 0; index < id.length; index += 1) {
+      hash ^= id.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0) / 4294967296;
+  };
+  if (share > 0 && share < 1) withCriteria = withCriteria.filter((record) => hashed(record.id) < share);
   const sampled = spread(withCriteria);
   const chosen = limit > 0 ? sampled.slice(0, limit) : sampled;
 
@@ -320,6 +341,16 @@ Matching the ${withCriteria.length} records ${matching} marked.
    */
   const loadAnswerPages = async (record: MarkingCorpusRecord) => {
     if (record.answer.kind !== "image") return [];
+    /*
+     * A record of cut-out scans lists exactly the answer, one image per path,
+     * so all of it is sent. The `--pages` ceiling is for page references into a
+     * whole PDF, and applied here it silently dropped the end of the longest
+     * answers: GCSE essays over three scans were marked 38% of their tariff
+     * low, everything else +0.6% (Oct 2026). Production sends every page.
+     */
+    if (record.answer.paths.every((path) => /\.(png|jpe?g)$/i.test(path))) {
+      return (await Promise.all(record.answer.paths.map((path) => loadScannedPages(path)))).flat();
+    }
     const [first, ...rest] = record.answer.paths;
     const parts = await loadScannedPages(first ?? "", { downscaleBy, maxImages, belowLabel: candidateLabel(record) });
     for (const reference of rest) {
@@ -332,7 +363,7 @@ Matching the ${withCriteria.length} records ${matching} marked.
 
   /**
    * A marking change switched off, to measure it on the same answers:
-   * `--variant=no-levels,no-practice,no-researched,supervisor-adjudicator,always-adjudicate,slow-short,no-across-pages`.
+   * `--variant=no-levels,no-practice,no-researched,supervisor-adjudicator,always-adjudicate,slow-short,slow-levels,quick-all,no-across-pages`.
    */
   const variantFlags = new Set((flag("variant") ?? "").split(",").filter(Boolean));
   const variant: MarkingVariant | undefined = variantFlags.size
@@ -343,6 +374,8 @@ Matching the ${withCriteria.length} records ${matching} marked.
         ...(variantFlags.has("supervisor-adjudicator") ? { levelsAdjudicator: "supervisor" as const } : {}),
         ...(variantFlags.has("always-adjudicate") ? { settleCloseLevelsDisputes: false } : {}),
         ...(variantFlags.has("slow-short") ? { quickShortQuestions: false } : {}),
+        ...(variantFlags.has("quick-all") ? { quickAllQuestions: true } : {}),
+        ...(variantFlags.has("slow-levels") ? { quickLevelsQuestions: false } : {}),
         ...(variantFlags.has("no-across-pages") ? { workAcrossPages: false } : {}),
       }
     : undefined;
@@ -354,6 +387,8 @@ Matching the ${withCriteria.length} records ${matching} marked.
     pipeline,
     ...(timeoutMs > 0 ? { timeoutMs } : {}),
     loadAnswerImages: loadAnswerPages,
+    loadQuestionImages: async (record) =>
+      (await Promise.all((record.questionImages ?? []).map((path) => loadScannedPages(path)))).flat(),
     onMarkerReport: (report) => appendFileSync(markerJournal, `${JSON.stringify(report)}
 `),
     onProgress: ({ done, record, awarded, error }) =>

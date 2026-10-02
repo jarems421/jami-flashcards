@@ -128,6 +128,13 @@ export type MarkingCorpusRecord = {
   stage?: EducationStage;
   /** Finer identity within the qualification, e.g. "Grade 9". */
   levelDetail?: string;
+  /**
+   * The awarding body and course the question was set for, where the record
+   * itself knows. A source spanning several boards cannot name one for all of
+   * its records, and a per-board benchmark needs it per record.
+   */
+  board?: string;
+  course?: string;
   subject: string;
   regime: MarkingRegime;
   questionId: string;
@@ -138,6 +145,16 @@ export type MarkingCorpusRecord = {
   /** One entry per human marker. More than one makes disagreement measurable. */
   humanMarks: readonly number[];
   maxMarks: number;
+  /**
+   * The question as printed, where the source printed it as a picture. Its
+   * text layer flattens fractions and powers ("Work out # 15 22"), and a
+   * marker cannot judge working against a question it cannot read. Sent the
+   * way Past Paper Practice sends a question's own images: as question
+   * material, never as the student's work.
+   */
+  questionImages?: readonly string[];
+  /** The question refers to a source or figure the record does not carry. */
+  stimulusMissing?: boolean;
   markScheme?: string;
   examinerCommentary?: string;
   /** Present where the source marks criterion by criterion. */
@@ -301,6 +318,18 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
     commentary: true,
     notes:
       "Upper-school maths at close to first-year undergraduate difficulty. The best available proxy for proof-style marking, which no corpus covers properly.",
+  },
+  {
+    id: "gcse-board-exemplars",
+    title: "GCSE examiner-marked student work — AQA, Pearson Edexcel and OCR",
+    level: "gcse",
+    subjects: ["maths", "english", "biology", "chemistry", "physics", "combinedScience", "history", "geography"],
+    regimes: ["additive", "banded"],
+    licence: { id: "board exemplar", redistributable: false, verified: false },
+    handwritten: true,
+    commentary: true,
+    notes:
+      "The first GCSE source that names its board, which is what a per-board or per-subject benchmark needs: Medly's mock questions name none. Real students' answers from real series, marked by the board's examining team and published to show teachers how a scheme was applied -- Pearson's exemplar booklets, AQA's answers and commentaries, OCR's exemplar candidate work and examiners' reports. Every record carries its board and course. Answers are the embedded scans, extracted on their own so the typed award and commentary beside them never reach the marker. Single-marked: the published mark is the board's own, so there is no second examiner to measure disagreement against. Built by scripts/eval/build-gcse-board-corpus.py. Measure-only: the boards permit private use, and Pearson reserves text and data mining.",
   },
   {
     id: "nzqa-exemplars",

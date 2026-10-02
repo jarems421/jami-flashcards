@@ -109,7 +109,7 @@ type MarkerObservers = Partial<
  * given rather than a more expensive one that happens to share a prompt.
  */
 async function markPastPaperPracticeQuestion(
-  adapted: { paper: PracticePaper; answerParts: AiContentPart[] },
+  adapted: { paper: PracticePaper; answerParts: AiContentPart[]; originalPaperParts?: AiContentPart[] },
   deadlineAt: number,
   observers: MarkerObservers = {}
 ) {
@@ -123,6 +123,7 @@ async function markPastPaperPracticeQuestion(
   const marked = await markSingleQuestionAdaptively({
     paper: adapted.paper,
     answerParts: adapted.answerParts,
+    ...(adapted.originalPaperParts ? { originalPaperParts: adapted.originalPaperParts } : {}),
     examinerPracticeRules: await loadQuestionTypeRules(adapted.paper.assessmentProfile, adapted.paper.title),
     deadlineAt,
     maxOutputTokens: getAiTokenCap("examQuestionMarking"),
@@ -209,6 +210,8 @@ export type EvaluationMarkerOptions = {
    * it never calls.
    */
   loadAnswerImages?: (record: MarkingCorpusRecord) => Promise<readonly AiContentPart[]>;
+  /** The record's printed-question images, where it carries them. */
+  loadQuestionImages?: (record: MarkingCorpusRecord) => Promise<readonly AiContentPart[]>;
   onProgress?: (progress: {
     done: number;
     record: string;
@@ -434,7 +437,16 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
       }
     }
 
-    const adapted = adaptRecordToPaper(request.record, { answerImages });
+    let questionImages: readonly AiContentPart[] = [];
+    if ((request.record.questionImages?.length ?? 0) > 0 && options.loadQuestionImages) {
+      try {
+        questionImages = await options.loadQuestionImages(request.record);
+      } catch {
+        // Marked from the question's text alone, as the record would be without them.
+      }
+    }
+
+    const adapted = adaptRecordToPaper(request.record, { answerImages, questionImages });
     if (!adapted.ok) {
       stats.unsupported += 1;
       stats.reasons.push(adapted.reason);
@@ -508,6 +520,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
             return await markPracticePaperWithAudit({
               paper: adapted.adapted.paper,
               answerParts: adapted.adapted.answerParts,
+              ...(adapted.adapted.originalPaperParts ? { originalPaperParts: adapted.adapted.originalPaperParts } : {}),
               examinerPracticeRules: await loadQuestionTypeRules(adapted.adapted.paper.assessmentProfile, adapted.adapted.paper.title),
               exemplarParts: exemplarsToParts(request.exemplars),
               deadlineAt,

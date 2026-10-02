@@ -202,6 +202,69 @@ students have actually had marked, how often the blind markers disagreed and
 how often a student's check changed the mark and which way. On 23 September:
 16 attempts, markers disagreed on 2, no checks requested yet.
 
+## GCSE by board and subject, 1-2 October 2026
+
+Not an approval. The first GCSE measurement that names its board:
+`artifacts/corpus/gcse-board-exemplars.json`, built by
+`scripts/eval/build-gcse-board-corpus.py` from the boards' own published
+examiner-marked student work (Pearson exemplar booklets, AQA answers and
+commentaries, OCR exemplar candidate work). Real students, real series, the
+board's own mark; single-marked. Scans are cut out of the PDFs so the typed
+award and commentary beside them never reach the marker. Measure-only.
+
+`scripts/eval/gcse-benchmark-report.ts` gives the breakdown with 95%
+intervals; a cell under 20 answers is reported as too few to call.
+
+| | answers | marks agreeing | total exact | within one | bias |
+| --- | --- | --- | --- | --- | --- |
+| All | 353 | 90% | 73% | 89% | -0.21 |
+| Pearson Edexcel Maths | 122 | 95% | 84% | 98% | +0.10 |
+| OCR Maths | 113 | 96% | 88% | 98% | +0.01 |
+| AQA Geography | 53 | 88% | 62% | 89% | +0.09 |
+| Pearson Edexcel History | 30 | 84% | 30% | 50% | -1.00 |
+| Pearson Edexcel English Language | 22 | 82% | 36% | 55% | -2.59 |
+| AQA History | 13 | 88% | 23% | 69% | too few |
+
+For scale, two examiners marking the same GCSE answer (Medly, double-marked)
+agree exactly on 72% of point-marked answers and 34% of levels-marked ones.
+
+**What it found.** Point-marked questions are close to examiner level.
+Levels-marked answers are held back at the top: both blind markers put answers
+the examiner placed in the top band about a sixth of the tariff too low (40/40
+given 30, 16/16 given 12), while lower answers were within a few percent. A
+paragraph in the boards' own words telling the marker to test the top
+descriptor before settling lower changed nothing (12 answers closer, 13
+further), and was removed. Still open.
+
+**Measurement faults fixed on the way, recorded because each looked like a
+marker fault.** The harness capped an answer at three images, which cut the
+end off the longest essays (those answers were 38% of the tariff low, the rest
++0.6%). Board level tables did not parse, so levels-marked answers were sent
+with derived bands and a notice that the board published no descriptors
+(false); the first 83 AQA figures were taken that way and discarded.
+
+**Marking changes.** A supervisor whose thinking fills the 16,000-token output
+ceiling returned a cut-off report and the marking failed, about 2% of maths
+answers. It is now asked once more with thinking off
+(`callMarker`, tested in `practice-paper-marking-pipeline.test.ts`).
+
+**Thinking off, measured.** `--variant=quick-all` marks with the supervisor's
+thinking off. Paired on the 116 answers that are marked with thinking:
+21 closer to the examiner, 18 further, average error unchanged (10.2% of the
+tariff); levels-marked 18 closer, 13 further; point-marked maths over four
+marks 3 closer, 5 further. The supervisor's median call time fell from 43 to 8
+seconds. A quarter of thinking calls ended in an HTTP 502 after a median of
+about two minutes; with thinking off, 18%.
+
+Checked on answers nothing was tuned on: 36 unseen double-marked Medly GCSE
+English answers (`--offset=4`), both arms. Thinking off sat 1.22 marks from the
+examiners' mean against 1.28, between the two examiners on 21 against 19,
+bias -0.58 against -0.92; paired, 7 closer and 10 further (p = 0.63). No loss
+either way, so **levels-marked questions now mark with the primary's thinking
+off** (`primaryReasoningEffort`; `--variant=slow-levels` is the other arm).
+Point-marked questions over four marks keep it. The verifier and the
+adjudicator are unchanged.
+
 ## Remaining release evidence
 
 Per-criterion evidence presence is checked, but presence does not establish

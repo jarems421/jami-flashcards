@@ -61,6 +61,8 @@ const LEVEL_DESCRIPTIONS: Record<string, string> = {
 export type AdaptedPaper = {
   paper: PracticePaper;
   answerParts: AiContentPart[];
+  /** The question as printed, where the record carries it as images. */
+  originalPaperParts?: AiContentPart[];
   /**
    * Whether the scheme's own structure was read, or the whole tariff was left
    * as one point.
@@ -193,6 +195,7 @@ function markSchemeFor(record: MarkingCorpusRecord): PracticePaperMarkScheme {
  * Language questions word for word, and were marked as nobody's.
  */
 function realCourse(record: MarkingCorpusRecord): { board: string; course: string } | null {
+  if (record.board && record.course) return { board: record.board, course: record.course };
   switch (record.sourceId) {
     case "medly-gcse":
       return record.subject === "english" ? { board: "AQA", course: "GCSE English Language" } : null;
@@ -224,6 +227,8 @@ export type AdaptOptions = {
    * refusal as before, so a scan is never marked blind.
    */
   answerImages?: readonly AiContentPart[];
+  /** The record's `questionImages`, loaded. */
+  questionImages?: readonly AiContentPart[];
 };
 
 export function adaptRecordToPaper(
@@ -276,6 +281,17 @@ export function adaptRecordToPaper(
     adapted: {
       schemeRepresentation: structuredPoints || markScheme.items[0]?.marking === "weightedTraits" ? "structured" : "unstructured",
       paper,
+      // Labelled as Past Paper Practice labels a question's own images.
+      ...(options.questionImages?.length
+        ? {
+            originalPaperParts: [
+              {
+                text: "Original question asset: the question as printed on the exam paper. This is question material, not student working.",
+              },
+              ...options.questionImages,
+            ],
+          }
+        : {}),
       answerParts: scanned
         ? [
             {

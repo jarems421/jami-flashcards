@@ -183,6 +183,10 @@ export type MarkingVariant = {
   settleCloseLevelsDisputes?: boolean;
   /** False to let the primary think on short point-marked questions too. */
   quickShortQuestions?: boolean;
+  /** True to mark every question with the primary's thinking off, to measure what thinking buys. */
+  quickAllQuestions?: boolean;
+  /** False to let the primary think on levels-marked questions. */
+  quickLevelsQuestions?: boolean;
   /** False to leave out how to read handwriting that runs across pages. */
   workAcrossPages?: boolean;
 };
@@ -206,8 +210,20 @@ export type MarkingVariant = {
  * Short and point-marked only. Each of those marks names one achievement the
  * scheme states, and the two blind markers are still compared criterion by
  * criterion, so a primary that missed something is caught by the verifier and
- * the dispute settled by an adjudicator that does think. Longer and
- * levels-marked questions keep their thinking: there the judgement is the work.
+ * the dispute settled by an adjudicator that does think. Longer point-marked
+ * questions keep their thinking.
+ *
+ * Levels-marked questions mark without it too, since October 2026. The
+ * expectation had been that there the judgement is the work; measured, it was
+ * not. On 74 real AQA and Pearson GCSE extended answers, paired, thinking off
+ * moved 18 answers closer to the board's mark and 13 further (exact 25 -> 28),
+ * and on 36 unseen double-marked Medly English answers it sat 1.22 marks from
+ * the examiners' mean against 1.28, between the two examiners on 21 against
+ * 19 (paired 7 closer, 10 further: noise both ways). The supervisor's median
+ * call fell from 43 seconds to 8, and thinking calls were the ones that hit
+ * the output ceiling or a two-minute 502. `--variant=slow-levels` is the
+ * other arm. On point-marked maths over four marks it went the other way,
+ * slightly (3 closer, 5 further), so those keep thinking.
  *
  * Measured, thinly, on handwritten Higher Maths questions of up to four marks
  * (`criterion-run --max-marks=4 --variant=slow-short` is the other arm): the
@@ -221,9 +237,11 @@ export type MarkingVariant = {
 const QUICK_MARKING_MAX_MARKS = 4;
 
 function primaryReasoningEffort(paper: PracticePaper, variant?: MarkingVariant) {
+  if (variant?.quickAllQuestions) return "none" as const;
+  if (paper.questions.length !== 1) return undefined;
+  if (marksByLevels(paper)) return variant?.quickLevelsQuestions === false ? undefined : ("none" as const);
   if (variant?.quickShortQuestions === false) return undefined;
-  const short = paper.questions.length === 1 && paper.totalMarks <= QUICK_MARKING_MAX_MARKS;
-  return short && !marksByLevels(paper) ? ("none" as const) : undefined;
+  return paper.totalMarks <= QUICK_MARKING_MAX_MARKS ? ("none" as const) : undefined;
 }
 
 /**
@@ -429,6 +447,16 @@ function subjectAdapter(paper: PracticePaper) {
  * (find the level by best fit, then the mark within it, looking at the overall
  * quality and not picking holes), and the rule every board prints that
  * indicative content is neither exhaustive nor required for the top level.
+ *
+ * Still not enough at the top. On real AQA and Pearson GCSE scripts (Oct
+ * 2026) both blind markers put answers the examiner placed in the top band
+ * about a sixth of the tariff too low -- 40/40 given 30, 16/16 given 12 --
+ * while lower answers were within a few percent. A further paragraph in the
+ * boards' own words ("every mark is designed to be awarded", "use the full
+ * range"), telling the marker to test the top descriptor before settling
+ * lower, changed nothing: 12 answers closer, 13 further, top-band bias -16.9%
+ * to -16.7%. Wording is not what holds the top back; examples of top-band work
+ * may be.
  */
 const LEVELS_OF_RESPONSE = `Where the guide marks a question by levels (bands) or by weighted assessment objectives, mark it the way examiners are trained to, in two steps.
 
@@ -752,8 +780,21 @@ async function callMarker(input: PracticePaperMarkingInput & {
    * outruns even the derived timeout. If that starts appearing, the answer is a
    * terser evidence instruction rather than more patience.
    */
+  /**
+   * Except when the budget went on thinking, which the retry can turn off.
+   *
+   * Measured on 175 GCSE maths answers (Oct 2026): three markings failed
+   * because the supervisor thought until it hit the 16,000-token ceiling and
+   * its report was cut off; the report itself is a few hundred tokens. Thinking
+   * off is the mode short questions already mark in, and the supervisor's
+   * endpoints honour only "none" (the GLM worker rejects it, so this is the
+   * supervisor's alone). A marked answer from a marker that did not think is
+   * still checked by the blind verifier; a refusal is no mark at all.
+   */
+  const thinkingCanBeSwitchedOff =
+    input.modelRole === "supervisor" && input.reasoningEffort !== "none";
   const attemptsFor = (kind: string | undefined) =>
-    isEmpty(kind) ? 3 : kind === "truncated" ? 1 : 2;
+    isEmpty(kind) ? 3 : kind === "truncated" ? (thinkingCanBeSwitchedOff ? 2 : 1) : 2;
 
   /*
    * What the student typed, so a quotation can be looked for in it. Taken from
@@ -787,7 +828,7 @@ async function callMarker(input: PracticePaperMarkingInput & {
     });
     // A sticky empty response is the one failure a different endpoint fixes.
     const failover = isEmpty(failure?.kind) ? failoverProvidersFor(input.modelRole) : [];
-    generated = await call(failover, retryEffort);
+    generated = await call(failover, failure?.kind === "truncated" ? "none" : retryEffort);
     result = parsePracticePaperMarkingModelAnswer(generated, input.paper, candidate);
     failure = result ? null : diagnose(generated);
   }
