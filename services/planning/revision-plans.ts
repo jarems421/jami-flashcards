@@ -82,6 +82,83 @@ function readEntry(dayKey: string, data: Record<string, unknown>): RevisionPlanE
   };
 }
 
+/**
+ * Today's plan as last read, kept on this device for the next launch.
+ *
+ * Today will not draw its first card until it knows whether there is a plan,
+ * so the plan's two reads -- the plan, then its week -- sat in front of the
+ * whole page on every launch, plan or none. The kept copy answers at once and
+ * is read again behind it. Only the week it was read for is kept, and it comes
+ * back through the same normalising as a stored document does.
+ */
+const STORED_TODAY_PLAN_PREFIX = "jami:today-plan:";
+const STORED_TODAY_PLAN_VERSION = 1;
+
+export type StoredTodayRevisionPlan = {
+  plan: RevisionPlan | null;
+  entries: RevisionPlanEntry[];
+};
+
+export function readStoredTodayRevisionPlan(
+  uid: string,
+  weekStartDayKey: string
+): StoredTodayRevisionPlan | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(`${STORED_TODAY_PLAN_PREFIX}${uid}`);
+    if (!raw) return null;
+    const stored: unknown = JSON.parse(raw);
+    if (typeof stored !== "object" || stored === null) return null;
+    const { version, weekStartDayKey: storedWeek, plan, entries } = stored as Record<string, unknown>;
+    if (version !== STORED_TODAY_PLAN_VERSION || storedWeek !== weekStartDayKey) return null;
+    if (!Array.isArray(entries)) return null;
+    if (plan === null) return { plan: null, entries: [] };
+    if (typeof plan !== "object" || typeof (plan as { id?: unknown }).id !== "string") {
+      return null;
+    }
+    const planData = plan as Record<string, unknown>;
+    return {
+      plan: readPlan(planData.id as string, planData),
+      entries: entries
+        .filter(
+          (entry): entry is Record<string, unknown> =>
+            typeof entry === "object" && entry !== null && typeof entry.dayKey === "string"
+        )
+        .map((entry) => readEntry(entry.dayKey as string, entry)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function storeTodayRevisionPlan(
+  uid: string,
+  weekStartDayKey: string,
+  value: StoredTodayRevisionPlan
+) {
+  try {
+    window.localStorage.setItem(
+      `${STORED_TODAY_PLAN_PREFIX}${uid}`,
+      JSON.stringify({ version: STORED_TODAY_PLAN_VERSION, weekStartDayKey, ...value })
+    );
+  } catch {
+    // Only a head start for the next launch.
+  }
+}
+
+/** Forgets every kept plan on this device, at sign-out. */
+export function clearStoredTodayRevisionPlans() {
+  if (typeof window === "undefined") return;
+  try {
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(STORED_TODAY_PLAN_PREFIX)) window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage that cannot be read holds nothing to clear.
+  }
+}
+
 export async function loadRevisionPlans(uid: string): Promise<RevisionPlan[]> {
   const snapshot = await getDocs(
     query(plansPath(uid), orderBy("updatedAt", "desc"), limit(MAX_PLANS_PER_STUDENT))

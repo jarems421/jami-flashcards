@@ -20,6 +20,18 @@ export function getDashboardCacheRevision(userId: string) {
   return `${globalRevision}:${userRevisions.get(userId) ?? 0}`;
 }
 
+/**
+ * Whether anything this student's pages show has been written since the app
+ * opened.
+ *
+ * A copy of a page kept from an earlier launch is then known to be behind:
+ * showing it would show the student their own change undone, if only until
+ * the load behind it lands.
+ */
+export function hasDashboardChangedThisSession(userId: string) {
+  return globalRevision > 0 || (userRevisions.get(userId) ?? 0) > 0;
+}
+
 export function getDashboardCacheEntry<T>(userId: string) {
   return entries.get(userId) as DashboardCacheEntry<T> | undefined;
 }

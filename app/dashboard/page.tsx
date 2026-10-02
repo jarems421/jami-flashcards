@@ -60,6 +60,8 @@ import {
   loadDashboardSnapshot,
   type DashboardSnapshot,
 } from "@/services/dashboard/today";
+import { hasDashboardChangedThisSession } from "@/services/dashboard/cache";
+import { readTodayDeviceCopy } from "@/services/dashboard/today-device-copy";
 import { TutorialResumeCard, useTutorial } from "@/components/onboarding/TutorialProvider";
 import { shouldInviteToTutorial } from "@/lib/onboarding/tutorial";
 import FirstNightPanel from "@/components/onboarding/FirstNightPanel";
@@ -148,6 +150,14 @@ export default function DashboardHome() {
   const [hasActiveStudySession, setHasActiveStudySession] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  /** Drawn from this device's copy, with the real load still on its way. */
+  const [showingDeviceCopy, setShowingDeviceCopy] = useState(false);
+  /**
+   * Whether a real snapshot is on the page, which a device copy must never
+   * replace, and whether a load has finished at all -- after which a copy is
+   * no longer waiting on anything.
+   */
+  const loadProgressRef = useRef({ applied: false, settled: false });
   const { feedback, success, showError, clear: clearFeedback } = useFeedback();
   const [inAppUsername, setInAppUsername] = useState<string | null>(null);
   const [completedMission, setCompletedMission] = useState<MissionHandoff | null>(null);
@@ -182,6 +192,7 @@ export default function DashboardHome() {
         load: () => loadDashboardSnapshot(uid, options),
         isCurrent: () => requestId === dashboardRequestIdRef.current,
         apply: ({ snapshot, feedback: loadFeedback }) => {
+          loadProgressRef.current.applied = true;
           applySnapshot(snapshot);
           lastForegroundRefreshAtRef.current = snapshot.fetchedAt;
           if (loadFeedback) {
@@ -193,25 +204,52 @@ export default function DashboardHome() {
           console.error("Failed to load Today.", error);
           showError("Failed to load Today. Try refreshing in a moment.");
         },
-        onSettled: () => setIsLoading(false),
+        onSettled: () => {
+          loadProgressRef.current.settled = true;
+          setIsLoading(false);
+          setShowingDeviceCopy(false);
+        },
       });
     },
     [applySnapshot, showError, success]
   );
 
   useEffect(() => {
+    let active = true;
+    const progress = { applied: false, settled: false };
+    loadProgressRef.current = progress;
     const cached = getCachedDashboardSnapshot(user.uid);
     if (cached) {
+      progress.applied = true;
       applySnapshot(cached.snapshot);
       setIsLoading(false);
       lastForegroundRefreshAtRef.current = cached.snapshot.fetchedAt;
     } else {
       setIsLoading(true);
+      /*
+       * Launching with nothing in memory, Today draws the copy this device
+       * kept of it and loads behind it, rather than holding skeletons for
+       * every round trip. Not once anything has been written this session:
+       * the copy would then show the student their own change undone.
+       */
+      if (!hasDashboardChangedThisSession(user.uid)) {
+        void readTodayDeviceCopy({ userId: user.uid, dayKey: getStudyDayKey() }).then(
+          (copy) => {
+            if (!active || !copy || progress.applied) return;
+            applySnapshot(copy);
+            setIsLoading(false);
+            // A load that has already failed leaves the copy as the best
+            // there is, with nothing more coming behind it.
+            setShowingDeviceCopy(!progress.settled);
+          }
+        );
+      }
     }
     if (cached?.freshness !== "fresh") {
       void loadAll(user.uid);
     }
     return () => {
+      active = false;
       dashboardRequestIdRef.current += 1;
     };
   }, [applySnapshot, user.uid, loadAll]);
@@ -644,7 +682,14 @@ export default function DashboardHome() {
       <AppPage
         title="Today"
         width="2xl"
-        action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
+        action={
+          <RefreshIconButton
+            // Turning while a kept copy is shown: what is on the page is
+            // about to be brought up to date.
+            refreshing={refreshing || showingDeviceCopy}
+            onClick={() => void handleRefresh()}
+          />
+        }
         contentClassName="space-y-6 sm:space-y-8"
       >
         {feedback ? (

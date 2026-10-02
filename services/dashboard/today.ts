@@ -34,6 +34,7 @@ import {
   setDashboardCacheEntry,
   setDashboardInFlight,
 } from "@/services/dashboard/cache";
+import { keepTodayDeviceCopy } from "@/services/dashboard/today-device-copy";
 
 export const DASHBOARD_FRESH_MS = 60_000;
 export const DASHBOARD_STALE_MS = 5 * 60_000;
@@ -160,6 +161,49 @@ async function fetchDashboardSnapshot(
   await ensureStudyStateSetup(userId);
   const now = Date.now();
 
+  const cardsRequest = settle(loadUserCards(userId, reads));
+  const sessionRequest = settle(
+    loadRemoteActiveStudySession(userId, getStudyDayKey(now), now)
+  );
+  const draftsRequest = settle(getPendingGeneratedContentDrafts(userId, 4));
+  /*
+   * The second round of reads starts the moment its own inputs arrive, not
+   * when the slowest of the first round does.
+   *
+   * The review queue needs only cards and the session, and the sources only
+   * the drafts. Both used to wait for all eleven first reads -- every mastery
+   * event the student has ever earned among them -- so the slowest unrelated
+   * read set the start of the second round trip on every visit to Today.
+   */
+  const reviewStateRequest = Promise.all([cardsRequest, sessionRequest]).then(
+    ([cardsResult, sessionResult]) =>
+      (cardsResult.ok || previous?.cards) && sessionResult.ok
+        ? settle(
+            ensureDailyReviewState(
+              userId,
+              cardsResult.ok ? cardsResult.value : previous?.cards ?? [],
+              now,
+              {
+                activeSession:
+                  "session" in sessionResult.value ? sessionResult.value.session : null,
+              }
+            )
+          )
+        : null
+  );
+  const sourcesRequest = draftsRequest.then((draftsResult) =>
+    !draftsResult.ok && previous
+      ? ({ ok: false, error: draftsResult.error } as const)
+      : settle(
+          getActiveSourcesForDashboard(
+            userId,
+            (draftsResult.ok ? draftsResult.value : [])
+              .map((draft) => draft.sourceId)
+              .filter((sourceId): sourceId is string => Boolean(sourceId))
+          )
+        )
+  );
+
   const [
     decksResult,
     usernameResult,
@@ -172,52 +216,25 @@ async function fetchDashboardSnapshot(
     draftsResult,
     foldersResult,
     notebooksResult,
+    sourcesResult,
   ] = await Promise.all([
     settle(getDecks(userId, reads)),
     settle(loadInAppUsername(userId)),
-    settle(loadUserCards(userId, reads)),
-    settle(loadRemoteActiveStudySession(userId, getStudyDayKey(now), now)),
+    cardsRequest,
+    sessionRequest,
     settle(getDashboardGoalSummary(userId, now)),
     settle(loadDashboardStudyActivity(userId)),
     settle(getActiveTopics(userId, reads)),
     settle(getMasteryEvents(userId)),
-    settle(getPendingGeneratedContentDrafts(userId, 4)),
+    draftsRequest,
     settle(
       getActiveStudyFoldersPage(userId, { pageSize: 1 }).then(
         (page) => page.items
       )
     ),
     settle(getRecentActiveNotebooks(userId, 1)),
+    sourcesRequest,
   ]);
-  /*
-   * The review queue needs only cards and the session, so it is read beside
-   * the sources rather than after them: the two were a second and third round
-   * trip in a row on every visit to Today.
-   */
-  const reviewStateRequest =
-    cardsResult.ok || previous?.cards
-      ? sessionResult.ok
-        ? settle(
-            ensureDailyReviewState(
-              userId,
-              cardsResult.ok ? cardsResult.value : previous?.cards ?? [],
-              now,
-              { activeSession: "session" in sessionResult.value ? sessionResult.value.session : null }
-            )
-          )
-        : null
-      : null;
-  const sourcesResult =
-    !draftsResult.ok && previous
-      ? ({ ok: false, error: draftsResult.error } as const)
-      : await settle(
-          getActiveSourcesForDashboard(
-            userId,
-            (draftsResult.ok ? draftsResult.value : [])
-              .map((draft) => draft.sourceId)
-              .filter((sourceId): sourceId is string => Boolean(sourceId))
-          )
-        );
 
   const decks = resolveSection({
     result: decksResult,
@@ -289,7 +306,7 @@ async function fetchDashboardSnapshot(
         ? "stale"
         : "unavailable";
 
-  const reviewStateResult = reviewStateRequest ? await reviewStateRequest : null;
+  const reviewStateResult = await reviewStateRequest;
   if (reviewStateResult) {
     if (reviewStateResult.ok) {
       const reviewState = reviewStateResult.value;
@@ -388,6 +405,29 @@ async function fetchDashboardSnapshot(
   };
 }
 
+/**
+ * Keeps this snapshot as the device's copy of Today, once the page has drawn it.
+ *
+ * Writing a copy clones the whole snapshot, which for a large account is real
+ * work; it waits until the browser is idle so it never sits between a load
+ * landing and the page showing it.
+ */
+function keepCopyAfterPaint(userId: string, snapshot: DashboardSnapshot) {
+  if (typeof window === "undefined") return;
+  const keep = () =>
+    void keepTodayDeviceCopy({
+      snapshot,
+      userId,
+      dayKey: getStudyDayKey(snapshot.fetchedAt),
+      now: snapshot.fetchedAt,
+    });
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(keep, { timeout: 2_000 });
+  } else {
+    window.setTimeout(keep, 300);
+  }
+}
+
 export function getCachedDashboardSnapshot(
   userId: string,
   now = Date.now()
@@ -428,6 +468,7 @@ export async function loadDashboardSnapshot(
     const hasDegradedSections = Object.values(result.snapshot.sections).some(
       (state) => state !== "ready"
     );
+    if (!hasDegradedSections) keepCopyAfterPaint(userId, result.snapshot);
     setDashboardCacheEntry(userId, {
       value: result.snapshot,
       // A failed refresh may update some sections, but it must not make stale

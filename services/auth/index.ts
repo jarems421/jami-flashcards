@@ -25,6 +25,9 @@ import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
 import { getPasswordRequirementMessage } from "@/lib/auth/password-strength";
 import { writePhotoBackground } from "@/lib/app/photo-background";
 import { applyAppearanceToDevice, DEFAULT_APPEARANCE } from "@/lib/app/appearance";
+import { clearDeviceCopies } from "@/services/cache/device-store";
+import { clearStoredStudyActions } from "@/services/learning/study-actions";
+import { clearStoredTodayRevisionPlans } from "@/services/planning/revision-plans";
 
 const provider = new GoogleAuthProvider();
 const AUTH_OPERATION_TIMEOUT_MS = 30_000;
@@ -130,7 +133,18 @@ export const logout = async () => {
   // the next person to sign in should not open on them.
   writePhotoBackground(null);
   applyAppearanceToDevice(DEFAULT_APPEARANCE, null);
+  forgetDeviceCopies();
 };
+
+/**
+ * The copies of Today kept for a fast launch are this account's too, and say
+ * far more about it than its colours do.
+ */
+function forgetDeviceCopies() {
+  void clearDeviceCopies();
+  clearStoredStudyActions();
+  clearStoredTodayRevisionPlans();
+}
 
 // Email sign-up
 /**
@@ -408,4 +422,5 @@ export async function deleteAccount(
     // The server has already deleted the account; local auth cleanup is best-effort.
   });
   writePhotoBackground(null);
+  forgetDeviceCopies();
 }

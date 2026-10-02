@@ -5,6 +5,7 @@ import type { StudyAction } from "@/lib/learning/actions/study-actions";
 import {
   getCachedStudyActions,
   loadStudyActionsForToday,
+  readStoredStudyActions,
   type StudyActionsResponse,
 } from "@/services/learning/study-actions";
 
@@ -16,7 +17,9 @@ export type StudyActionsState = {
 
 function initialState(uid: string, enabled: boolean): StudyActionsState {
   if (!enabled) return { status: "disabled", actions: [], folders: [] };
-  const cached = getCachedStudyActions(uid);
+  // This session's answer, or else the one this device kept from today's
+  // last launch; either way the request below still runs and replaces it.
+  const cached = getCachedStudyActions(uid) ?? readStoredStudyActions(uid);
   return cached
     ? { status: "ready", actions: cached.actions, folders: cached.folders }
     : { status: "loading", actions: [], folders: [] };

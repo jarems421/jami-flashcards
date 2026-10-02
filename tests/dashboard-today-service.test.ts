@@ -56,9 +56,8 @@ vi.mock("@/services/study/notebooks", () => ({
   getRecentActiveNotebooks: mocks.getRecentActiveNotebooks,
 }));
 
-const { clearDashboardData, invalidateDashboardData } = await import(
-  "@/services/dashboard/cache"
-);
+const { clearDashboardData, hasDashboardChangedThisSession, invalidateDashboardData } =
+  await import("@/services/dashboard/cache");
 const { getCachedDashboardSnapshot, loadDashboardSnapshot } = await import(
   "@/services/dashboard/today"
 );
@@ -204,6 +203,35 @@ describe("Today data coordinator", () => {
     mocks.getDecks.mockResolvedValue([]);
     await loadDashboardSnapshot("user-1");
     expect(mocks.getDecks).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts the second round of reads as soon as its own inputs are in", async () => {
+    // Every mastery event a student has earned can be the slowest read of
+    // all, and neither the review queue nor the sources need it.
+    let finishMastery!: (value: unknown[]) => void;
+    mocks.getMasteryEvents.mockReturnValue(
+      new Promise((resolve) => {
+        finishMastery = resolve;
+      })
+    );
+
+    const loading = loadDashboardSnapshot("user-1");
+    await vi.waitFor(() => {
+      expect(mocks.ensureDailyReviewState).toHaveBeenCalledOnce();
+      expect(mocks.getActiveSourcesForDashboard).toHaveBeenCalledOnce();
+    });
+    finishMastery([]);
+
+    const result = await loading;
+    expect(result.snapshot.sections.dailyReview).toBe("ready");
+    expect(result.snapshot.sections.sources).toBe("ready");
+  });
+
+  it("knows when something has been written since the app opened", () => {
+    // What decides whether a copy kept from an earlier launch may be shown.
+    expect(hasDashboardChangedThisSession("user-1")).toBe(false);
+    invalidateDashboardData("user-1");
+    expect(hasDashboardChangedThisSession("user-1")).toBe(true);
   });
 
   it("does not rebuild review queues when active-session state is unavailable", async () => {

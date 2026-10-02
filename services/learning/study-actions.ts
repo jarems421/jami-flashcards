@@ -1,4 +1,6 @@
+import { APP_BUILD } from "@/lib/app/app-build";
 import type { StudyAction } from "@/lib/learning/actions/study-actions";
+import { getStudyDayKey } from "@/lib/study/day";
 import { auth } from "@/services/firebase/client";
 
 export type StudyActionsResponse = {
@@ -21,6 +23,75 @@ const cache = new Map<string, { storedAt: number; value: StudyActionsResponse }>
 export function getCachedStudyActions(uid: string, now = Date.now()) {
   const entry = cache.get(uid);
   return entry && now - entry.storedAt < STUDY_ACTIONS_CACHE_MS ? entry.value : null;
+}
+
+/**
+ * The last answer, kept on this device for the next launch.
+ *
+ * The request behind it is a server calculation over several folders, and on a
+ * launch it can also be waiting for the server itself to start: seconds, every
+ * time the app is opened, before "Jami suggests" had anything in it. The kept
+ * answer is shown at once and replaced when the new one arrives. Kept only for
+ * the study day it was given on, and only by the build that asked for it.
+ */
+const STORED_STUDY_ACTIONS_PREFIX = "jami:today-actions:";
+const STORED_STUDY_ACTIONS_VERSION = 1;
+
+type StoredStudyActions = {
+  version: typeof STORED_STUDY_ACTIONS_VERSION;
+  build: string;
+  dayKey: string;
+  value: StudyActionsResponse;
+};
+
+export function readStoredStudyActions(
+  uid: string,
+  dayKey = getStudyDayKey()
+): StudyActionsResponse | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(`${STORED_STUDY_ACTIONS_PREFIX}${uid}`);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as Partial<StoredStudyActions> | null;
+    if (
+      !stored ||
+      stored.version !== STORED_STUDY_ACTIONS_VERSION ||
+      stored.build !== APP_BUILD ||
+      stored.dayKey !== dayKey
+    ) {
+      return null;
+    }
+    return readResponse(stored.value);
+  } catch {
+    return null;
+  }
+}
+
+function storeStudyActions(uid: string, value: StudyActionsResponse) {
+  try {
+    const stored: StoredStudyActions = {
+      version: STORED_STUDY_ACTIONS_VERSION,
+      build: APP_BUILD,
+      dayKey: getStudyDayKey(value.generatedAt),
+      value,
+    };
+    window.localStorage.setItem(`${STORED_STUDY_ACTIONS_PREFIX}${uid}`, JSON.stringify(stored));
+  } catch {
+    // Only a head start for the next launch; it loads either way.
+  }
+}
+
+/** Forgets every kept answer on this device, at sign-out. */
+export function clearStoredStudyActions() {
+  if (typeof window === "undefined") return;
+  try {
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(STORED_STUDY_ACTIONS_PREFIX)) window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage that cannot be read holds nothing to clear.
+  }
 }
 
 function readResponse(body: unknown): StudyActionsResponse {
@@ -47,5 +118,6 @@ export async function loadStudyActionsForToday(
   if (!response.ok) throw new Error("Recommendations are unavailable right now.");
   const value = readResponse(await response.json());
   cache.set(user.uid, { storedAt: Date.now(), value });
+  storeStudyActions(user.uid, value);
   return value;
 }

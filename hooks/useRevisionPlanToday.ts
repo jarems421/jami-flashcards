@@ -27,7 +27,9 @@ import {
 import {
   loadActiveRevisionPlan,
   loadRevisionPlanEntries,
+  readStoredTodayRevisionPlan,
   saveRevisionPlanEntry,
+  storeTodayRevisionPlan,
 } from "@/services/planning/revision-plans";
 import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 
@@ -69,7 +71,16 @@ export function useRevisionPlanToday(input: {
   decks: readonly (PlanActivityDeck & { name?: string })[];
 }): RevisionPlanTodayState {
   const { uid, enabled } = input;
-  const [plan, setPlan] = useState<RevisionPlan | null>(null);
+  const dayKey = getStudyDayKey();
+  const weekStartDayKey = planWeekStartDayKey(dayKey);
+  /*
+   * What this device kept of the plan at the last launch, if anything: drawn
+   * at once and read again behind it. See `readStoredTodayRevisionPlan`.
+   */
+  const [kept] = useState(() =>
+    enabled && uid ? readStoredTodayRevisionPlan(uid, weekStartDayKey) : null
+  );
+  const [plan, setPlan] = useState<RevisionPlan | null>(kept?.plan ?? null);
   /**
    * The whole visible week, not just today.
    *
@@ -77,12 +88,19 @@ export function useRevisionPlanToday(input: {
    * exist, so this is usually one read returning one or two rows. Today is
    * picked back out of it rather than fetched separately.
    */
-  const [entries, setEntries] = useState<RevisionPlanEntry[]>([]);
-  const [loading, setLoading] = useState(enabled);
-  const dayKey = getStudyDayKey();
-  const weekStartDayKey = planWeekStartDayKey(dayKey);
+  const [entries, setEntries] = useState<RevisionPlanEntry[]>(kept?.entries ?? []);
+  const [loading, setLoading] = useState(enabled && !kept);
   // Held so an optimistic tick can be written without the save racing a reload.
   const savingRef = useRef(false);
+  /** Whether anything is on the page yet; a re-read never blanks what is. */
+  const shownRef = useRef(Boolean(kept));
+  /**
+   * Counts changes the student makes, so a read that was out while one was
+   * made -- and so may not include it -- is not allowed to undo it.
+   */
+  const changesRef = useRef(0);
+  const rereadAfterSaveRef = useRef(false);
+  const loadRef = useRef<() => Promise<void>>(async () => undefined);
 
   const load = useCallback(async () => {
     if (!enabled || !uid) {
@@ -91,31 +109,42 @@ export function useRevisionPlanToday(input: {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!shownRef.current) setLoading(true);
+    const changesAtStart = changesRef.current;
     try {
       const active = await loadActiveRevisionPlan(uid);
-      setPlan(active);
-      if (!active) {
-        setEntries([]);
+      const weekEntries = active
+        ? await loadRevisionPlanEntries(uid, active.id, {
+            fromDayKey: weekStartDayKey,
+            toDayKey: shiftStudyDayKey(weekStartDayKey, PLAN_WEEK_LENGTH - 1),
+            max: PLAN_WEEK_LENGTH,
+          })
+        : [];
+      if (changesRef.current !== changesAtStart) {
+        // Read again once the change has been saved, rather than show a read
+        // from before it.
+        if (savingRef.current) rereadAfterSaveRef.current = true;
+        else void loadRef.current();
         return;
       }
-      setEntries(
-        await loadRevisionPlanEntries(uid, active.id, {
-          fromDayKey: weekStartDayKey,
-          toDayKey: shiftStudyDayKey(weekStartDayKey, PLAN_WEEK_LENGTH - 1),
-          max: PLAN_WEEK_LENGTH,
-        })
-      );
+      setPlan(active);
+      setEntries(weekEntries);
+      storeTodayRevisionPlan(uid, weekStartDayKey, { plan: active, entries: weekEntries });
     } catch {
       // Today must render without a plan. A plan that cannot be read is the
       // same as not having one, and saying so loudly on the home page would be
-      // worse than the absence.
-      setPlan(null);
-      setEntries([]);
+      // worse than the absence. A plan already on the page from this device's
+      // copy stays there: it is the last thing known, not a guess.
+      if (!shownRef.current) {
+        setPlan(null);
+        setEntries([]);
+      }
     } finally {
+      shownRef.current = true;
       setLoading(false);
     }
   }, [enabled, uid, weekStartDayKey]);
+  loadRef.current = load;
 
   useEffect(() => {
     void load();
@@ -196,21 +225,31 @@ export function useRevisionPlanToday(input: {
       const stored = entries.find((candidate) => candidate.dayKey === targetDayKey);
       const updated = { ...change(stored ?? { dayKey: targetDayKey }), dayKey: targetDayKey };
       const previous = entries;
-      setEntries((current) => [
-        ...current.filter((candidate) => candidate.dayKey !== targetDayKey),
+      const next = [
+        ...entries.filter((candidate) => candidate.dayKey !== targetDayKey),
         updated,
-      ]);
+      ];
+      changesRef.current += 1;
+      setEntries(next);
       savingRef.current = true;
       void saveRevisionPlanEntry(uid, plan.id, updated)
+        .then(() => {
+          // The next launch should open on the tick, not on the plan before it.
+          storeTodayRevisionPlan(uid, weekStartDayKey, { plan, entries: next });
+        })
         .catch(() => {
           setEntries(previous);
         })
         .finally(() => {
           savingRef.current = false;
+          if (rereadAfterSaveRef.current) {
+            rereadAfterSaveRef.current = false;
+            void loadRef.current();
+          }
         });
       return true;
     },
-    [entries, plan, uid]
+    [entries, plan, uid, weekStartDayKey]
   );
 
   const toggleSlot = useCallback(
