@@ -40,6 +40,7 @@ import { mapNotebookData } from "@/lib/workspace/notebooks";
 import { mapStudyFolderData, type StudyFolder } from "@/lib/workspace/study-folders";
 import { loadNotebookMarkings } from "@/services/learning/notebook-markings.server";
 import { loadRevisionEvidence } from "@/services/learning/revision-sessions.server";
+import { loadTutorChecks } from "@/services/learning/tutor-checks.server";
 import { getAdminDb } from "@/services/firebase/admin";
 
 type AdminDb = ReturnType<typeof getAdminDb>;
@@ -749,7 +750,7 @@ export async function loadLearnerEvidence(
    * and revision sessions need only what is already loaded, and waiting for the
    * card chain added a round trip per folder to Today for no reason.
    */
-  const [{ cards, studentTopics }, [notebookMarkings, revisionSessions, studentConcerns]] = await Promise.all([
+  const [{ cards, studentTopics }, [notebookMarkings, revisionSessions, studentConcerns, tutorChecks]] = await Promise.all([
     (async () => {
       const cards = [
         ...pagedCards,
@@ -783,6 +784,8 @@ export async function loadLearnerEvidence(
           })
         : Promise.resolve([]),
       loadStudentConcerns(uid),
+      // Tutor's quick checks asked in this scope; see `tutor-check-signals.ts`.
+      loadTutorChecks({ uid, ...(folderId ? { folderId } : deckId ? { deckId } : {}) }),
     ]),
   ]);
   const specification = folder ? folderSpecification(folder) : undefined;
@@ -795,6 +798,7 @@ export async function loadLearnerEvidence(
     practicePaperAttempts,
     notebookMarkings,
     revisionSessions,
+    ...(tutorChecks.length > 0 ? { tutorChecks } : {}),
     topicLabels: {
       ...Object.fromEntries(
         decks.map((deck) => [`deck:${deck.id}`, { label: deck.name, source: "deck" as const }])

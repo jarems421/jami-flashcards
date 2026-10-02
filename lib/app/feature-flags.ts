@@ -11,7 +11,8 @@ export type FeatureFlagKey =
   | "enableRevisionPlans"
   | "enableRevisionSessions"
   | "enableConceptRelations"
-  | "enableTutorMemory";
+  | "enableTutorMemory"
+  | "enableTutorChecks";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
@@ -85,6 +86,12 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    * stops every write, without deleting what is stored.
    */
   enableTutorMemory: true,
+  /*
+   * Tutor's quick checks: one short question in chat, marked on the reply
+   * against points fixed when it was asked, kept as weak evidence. Off stops
+   * Tutor asking them and the engine reading them, without deleting any.
+   */
+  enableTutorChecks: true,
 };
 
 /**
@@ -108,6 +115,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableRevisionSessions: process.env.NEXT_PUBLIC_ENABLE_REVISION_SESSIONS,
   enableConceptRelations: process.env.NEXT_PUBLIC_ENABLE_CONCEPT_RELATIONS,
   enableTutorMemory: process.env.NEXT_PUBLIC_ENABLE_TUTOR_MEMORY,
+  enableTutorChecks: process.env.NEXT_PUBLIC_ENABLE_TUTOR_CHECKS,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -136,4 +144,5 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableRevisionSessions: isFeatureEnabled("enableRevisionSessions"),
   enableConceptRelations: isFeatureEnabled("enableConceptRelations"),
   enableTutorMemory: isFeatureEnabled("enableTutorMemory"),
+  enableTutorChecks: isFeatureEnabled("enableTutorChecks"),
 };

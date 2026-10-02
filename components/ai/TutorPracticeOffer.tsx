@@ -19,9 +19,12 @@ import { noteStudyActionOutcomeById } from "@/services/learning/study-action-eve
 export default function TutorPracticeOffer({
   userId,
   offer,
+  eyebrow = "Exam practice",
 }: {
   userId: string;
   offer: PracticeOffer;
+  /** What kind of advice this is: practice for the topic, or the folder's next step. */
+  eyebrow?: string;
 }) {
   const [dismissed, setDismissed] = useState(false);
   const shownRef = useRef(false);
@@ -51,14 +54,14 @@ export default function TutorPracticeOffer({
 
   return (
     <section
-      aria-label="Suggested practice"
+      aria-label={eyebrow}
       className="app-subtle-panel mt-2 overflow-hidden rounded-2xl"
     >
       <div className="flex items-start gap-2.5 px-3.5 py-3">
         <JamiTutorIcon className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <div className="min-w-0 flex-1">
           <p className="text-2xs font-semibold uppercase tracking-[0.08em] text-text-muted">
-            Exam practice
+            {eyebrow}
           </p>
           <h3 className="mt-0.5 text-sm font-semibold leading-5 text-text-primary">{offer.title}</h3>
           {offer.description ? (

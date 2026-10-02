@@ -101,6 +101,7 @@ const SOURCE_PHRASE: Record<LearningEvidenceKind, string> = {
   "past-paper": "exam questions",
   notebook: "your notes",
   revision: "revision sessions",
+  "tutor-check": "quick checks in Tutor",
 };
 
 function listPhrase(parts: readonly string[]) {

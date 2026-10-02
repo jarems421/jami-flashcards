@@ -4,6 +4,7 @@ import type { AiContentPart } from "@/lib/ai/content-parts";
 import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
 import type { AiReasoningEffort } from "@/lib/ai/provider-policy";
 import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
+import type { TutorCheckScope } from "@/lib/learning/events/tutor-check";
 import type { Source } from "@/lib/material/sources";
 
 /**
@@ -71,6 +72,17 @@ export type ResolvedJamiAssistantContext = {
    * which tells the model the offer is there. See `practiceActionForMaterial`.
    */
   practiceOffer?: TutorPracticeOffer;
+  /**
+   * The engine's next step for the whole scope, attached under the answer only
+   * when the model says the student asked what to do next. Only ever present
+   * with `learningContext`, which names it.
+   */
+  nextStepOffer?: TutorPracticeOffer;
+  /**
+   * Where a quick check on this material would count, when one may be asked:
+   * the material's concepts and the engine's scope for them. Server-chosen.
+   */
+  checkTarget?: { topicKeys: readonly string[]; scope: TutorCheckScope };
   /**
    * The course behind the folder: its verified specification, topic headings
    * and examiners' question-type rules, and any of the student's sources that

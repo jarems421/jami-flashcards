@@ -143,6 +143,11 @@ export type JamiAssistantResponse = {
    * the conversation: reopened next week, it may no longer be true.
    */
   practiceOffer?: TutorPracticeOffer;
+  /**
+   * The engine's next step for the folder, attached when the student asked
+   * what to do next. Live advice like `practiceOffer`, and never saved.
+   */
+  nextStepOffer?: TutorPracticeOffer;
   canIllustrate?: boolean;
   /** Tutor agreed to make these; the drawer starts making them at once. */
   studyMaterialRequest?: TutorStudyMaterialRequest;
@@ -200,6 +205,12 @@ export type ParsedJamiAssistantModelAnswer = {
    * offered the field.
    */
   memory?: unknown;
+  /** A quick check's points, passed through unread for `readTutorCheckProposal`. */
+  quickCheck?: unknown;
+  /** The verdict on last turn's check, passed through unread for `readTutorCheckMarking`. */
+  checkMarking?: unknown;
+  /** The model's reading that the student asked what to do next. */
+  offerNextStep?: true;
 };
 
 export type TutorRoutingPreflight = {
@@ -222,6 +233,9 @@ type ModelAnswerPayload = {
   cards?: unknown;
   questions?: unknown;
   memory?: unknown;
+  quickCheck?: unknown;
+  checkMarking?: unknown;
+  offerNextStep?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -981,6 +995,13 @@ export function parseJamiAssistantModelAnswer(
     ...(payload.memory !== undefined && payload.memory !== null
       ? { memory: payload.memory }
       : {}),
+    ...(payload.quickCheck !== undefined && payload.quickCheck !== null
+      ? { quickCheck: payload.quickCheck }
+      : {}),
+    ...(payload.checkMarking !== undefined && payload.checkMarking !== null
+      ? { checkMarking: payload.checkMarking }
+      : {}),
+    ...(payload.offerNextStep === true ? { offerNextStep: true } : {}),
     usedCurrentContext: payload.usedCurrentContext,
     usedGeneralKnowledge: payload.usedGeneralKnowledge,
     usedWebResearch:

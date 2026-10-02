@@ -215,6 +215,7 @@ type DrawerMessage = {
   suggestedQuestions?: JamiAssistantSuggestedQuestion[];
   /** Live advice from the engine; shown with this answer, never saved with the chat. */
   practiceOffer?: TutorPracticeOfferData;
+  nextStepOffer?: TutorPracticeOfferData;
   illustrations?: AssistantIllustration[];
   canIllustrate?: boolean;
   studyMaterialRequest?: TutorStudyMaterialRequest;
@@ -809,6 +810,7 @@ export default function JamiAssistantDrawer({
           suggestedCards: response.suggestedCards,
           suggestedQuestions: response.suggestedQuestions,
           practiceOffer: response.practiceOffer,
+          nextStepOffer: response.nextStepOffer,
           canIllustrate: response.canIllustrate,
           studyMaterialRequest: response.studyMaterialRequest,
           studyMaterialOffers: response.studyMaterialOffers,
@@ -1245,6 +1247,14 @@ export default function JamiAssistantDrawer({
                             candidate.practiceOffer?.actionId === message.practiceOffer?.actionId
                         ) === index ? (
                           <TutorPracticeOffer userId={userId} offer={message.practiceOffer} />
+                        ) : null}
+                        {/* Asked for ("what next?"), so shown on the answer that was asked. */}
+                        {message.nextStepOffer ? (
+                          <TutorPracticeOffer
+                            userId={userId}
+                            offer={message.nextStepOffer}
+                            eyebrow="Your next step"
+                          />
                         ) : null}
                         {message.canIllustrate &&
                         !message.illustrations?.length &&

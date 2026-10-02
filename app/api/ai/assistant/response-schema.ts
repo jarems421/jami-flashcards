@@ -194,6 +194,71 @@ function memorySchema(): Schema {
   };
 }
 
+/**
+ * A quick check's marking points, fixed when the question is asked.
+ *
+ * Written before the student answers, so the later marking is against points
+ * that could not have been bent to fit the answer. The question itself goes in
+ * the answer; only the points come here.
+ */
+function quickCheckSchema(): Schema {
+  return {
+    type: Type.OBJECT,
+    description:
+      "Only when your answer ends by asking the student one short question to answer from memory: the points a correct answer must make. Leave it out on every other turn.",
+    properties: {
+      points: {
+        type: Type.ARRAY,
+        description: "One to four points, each something a correct answer must state or do.",
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            criterion: { type: Type.STRING, description: "What the point is, in your own words." },
+            marks: { type: Type.INTEGER, description: "1, or 2 for a point that carries the idea." },
+          },
+          required: ["criterion", "marks"],
+        },
+      },
+    },
+    required: ["points"],
+  };
+}
+
+/**
+ * The verdict on the student's answer to the check asked last turn: whether
+ * they attempted it, and one yes or no per stored point. Marks are not asked
+ * for; the server adds them up from the stored points.
+ */
+function checkMarkingSchema(pointCount: number): Schema {
+  return {
+    type: Type.OBJECT,
+    description:
+      "Your verdict on the student's answer to the quick check you asked last turn.",
+    properties: {
+      attempted: {
+        type: Type.BOOLEAN,
+        description:
+          "True if this message answers the check, including \"I don't know\". False if they asked for a hint, asked something else, or changed the subject.",
+      },
+      awarded: {
+        type: Type.ARRAY,
+        description: `Exactly ${pointCount} entries, in the order of the points: whether the answer earned each.`,
+        items: { type: Type.BOOLEAN },
+      },
+    },
+    required: ["attempted", "awarded"],
+  };
+}
+
+export type AssistantResponseExtras = {
+  /** Whether Tutor may ask a quick check this turn. */
+  checkInvited?: boolean;
+  /** Points in the check awaiting an answer, when one is. */
+  pendingCheckPoints?: number;
+  /** Whether the engine has a next step Tutor may attach. */
+  nextStepAvailable?: boolean;
+};
+
 export function buildAssistantResponseSchema(
   allowedSourceRefs: string[],
   /** Whether this turn may carry a marking at all. Off for every non-marking turn. */
@@ -209,7 +274,8 @@ export function buildAssistantResponseSchema(
    * practice is on, a practice set. Its reading of the request, not the
    * material: that is made afterwards, and reviewed, in the answer's panel.
    */
-  studyMaterialKinds: readonly string[] = []
+  studyMaterialKinds: readonly string[] = [],
+  extras: AssistantResponseExtras = {}
 ) {
   const sourceRefItems: Schema =
     allowedSourceRefs.length > 0
@@ -234,6 +300,19 @@ export function buildAssistantResponseSchema(
         ? { questions: questionsSchema(allowedSourceRefs) }
         : {}),
       ...(memoryWritable ? { memory: memorySchema() } : {}),
+      ...(extras.checkInvited ? { quickCheck: quickCheckSchema() } : {}),
+      ...(extras.pendingCheckPoints
+        ? { checkMarking: checkMarkingSchema(extras.pendingCheckPoints) }
+        : {}),
+      ...(extras.nextStepAvailable
+        ? {
+            offerNextStep: {
+              type: Type.BOOLEAN,
+              description:
+                "True only when the student asked what to do next or what to revise, to put Jami's next step under your answer.",
+            },
+          }
+        : {}),
       ...(studyMaterialKinds.length > 0
         ? {
             studyMaterial: {

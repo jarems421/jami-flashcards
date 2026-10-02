@@ -309,6 +309,16 @@ service cloud.firestore {
       }
 
       /*
+       * Tutor's quick checks: one short question asked in chat, marked on the
+       * reply. Server-written only, for the same reason as notebook markings.
+       */
+      match /tutorChecks/{checkId} {
+        allow read: if isSelf(userId);
+        allow create, update: if false;
+        allow delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      /*
        * The Tutor shelf: things a student saved from a Revision Session to do
        * later, and things Jami made for them from one. A to-do list, written
        * by its owner: a kind, a concept, a folder and a link into the app --

@@ -191,6 +191,7 @@ export async function sendJamiAssistantMessage(
   const suggestedCards = normalizeSuggestedCards(data?.suggestedCards);
   const suggestedQuestions = normalizeSuggestedQuestions(data?.suggestedQuestions);
   const practiceOffer = normalizeTutorPracticeOffer(data?.practiceOffer);
+  const nextStepOffer = normalizeTutorPracticeOffer(data?.nextStepOffer);
   const savedThreadData =
     data?.savedThread &&
     typeof data.savedThread === "object" &&
@@ -211,6 +212,7 @@ export async function sendJamiAssistantMessage(
     ...(suggestedCards.length > 0 ? { suggestedCards } : {}),
     ...(suggestedQuestions.length > 0 ? { suggestedQuestions } : {}),
     ...(practiceOffer ? { practiceOffer } : {}),
+    ...(nextStepOffer ? { nextStepOffer } : {}),
     ...(data?.canIllustrate === true ? { canIllustrate: true } : {}),
     ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
     ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
