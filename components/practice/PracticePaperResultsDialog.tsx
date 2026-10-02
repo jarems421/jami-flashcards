@@ -13,6 +13,7 @@ import {
   StudyText,
 } from "@/components/ui";
 import { ScoreMeter, scoreBand } from "./ScoreBand";
+import AllowanceHint from "@/components/billing/AllowanceHint";
 import type {
   PracticePaper,
   PracticePaperAttempt,
@@ -326,7 +327,8 @@ export default function PracticePaperResultsDialog({
             <AttemptHistory attempts={attempts} />
           ) : null}
 
-          <div className="mt-7 flex flex-wrap justify-end gap-2 border-t border-[var(--color-border)] pt-5">
+          <div className="mt-7 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--color-border)] pt-5">
+            <AllowanceHint allowance="papers" mode="nudge" className="mr-auto max-w-sm" />
             <Button
               type="button"
               variant="secondary"

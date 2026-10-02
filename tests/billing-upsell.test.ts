@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeAllowancePace,
   describePassAllowance,
+  perDayPence,
   describeUpgradeFor,
   getExamPassQuote,
   getPlanComparisonRows,
@@ -17,28 +19,36 @@ describe("when plans are offered", () => {
     expect(suggestedUpgrade("lifetime")).toBeNull();
   });
 
-  it("offers once per allowance per session, never to Pro, Lifetime or billing-off", () => {
+  it("offers once a session whatever ran out, never to Pro, Lifetime or billing-off", () => {
     const offered = new Set<string>();
-    expect(shouldOfferPlans({ plan: "free", key: "papers", alreadyOffered: offered })).toBe(true);
+    expect(shouldOfferPlans({ plan: "free", alreadyOffered: offered })).toBe(true);
     offered.add("papers");
-    expect(shouldOfferPlans({ plan: "free", key: "papers", alreadyOffered: offered })).toBe(false);
-    expect(shouldOfferPlans({ plan: "free", key: "tutor", alreadyOffered: offered })).toBe(true);
-    expect(shouldOfferPlans({ plan: "pro", key: "tutor", alreadyOffered: new Set() })).toBe(false);
-    expect(shouldOfferPlans({ plan: "lifetime", key: "tutor", alreadyOffered: new Set() })).toBe(false);
-    expect(shouldOfferPlans({ plan: null, key: "tutor", alreadyOffered: new Set() })).toBe(false);
+    expect(shouldOfferPlans({ plan: "free", alreadyOffered: offered })).toBe(false);
+    expect(shouldOfferPlans({ plan: "pro", alreadyOffered: new Set() })).toBe(false);
+    expect(shouldOfferPlans({ plan: "lifetime", alreadyOffered: new Set() })).toBe(false);
+    expect(shouldOfferPlans({ plan: null, alreadyOffered: new Set() })).toBe(false);
+  });
+
+  it("stays away for three days after Not now", () => {
+    const now = Date.parse("2026-10-10T12:00:00Z");
+    const day = 24 * 60 * 60 * 1000;
+    const base = { plan: "free" as const, alreadyOffered: new Set<string>(), now };
+    expect(shouldOfferPlans({ ...base, dismissedAt: now - 2 * day })).toBe(false);
+    expect(shouldOfferPlans({ ...base, dismissedAt: now - 3 * day - 1 })).toBe(true);
+    expect(shouldOfferPlans({ ...base, dismissedAt: null })).toBe(true);
   });
 
   it("says what the next plan includes of what ran out", () => {
-    expect(describeUpgradeFor("free", "papers")).toBe("Plus includes 6 Jami papers a month.");
-    expect(describeUpgradeFor("plus", "papers")).toBe("Pro includes 12 Jami papers a month.");
-    expect(describeUpgradeFor("free", "photos")).toBe("Plus includes 10 Tutor photos a month.");
-    expect(describeUpgradeFor("free", "fileCards")).toBe("Plus includes unlimited flashcard batches.");
+    expect(describeUpgradeFor("free", "papers")).toBe("Nova includes 8 Jami papers a month.");
+    expect(describeUpgradeFor("plus", "papers")).toBe("Celestial includes 14 Jami papers a month.");
+    expect(describeUpgradeFor("free", "photos")).toBe("Nova includes 10 Tutor photos a month.");
+    expect(describeUpgradeFor("free", "fileCards")).toBe("Nova includes unlimited flashcard batches.");
     expect(describeUpgradeFor("pro", "papers")).toBeNull();
   });
 
   it("compares the plans from the same numbers that are enforced", () => {
     const papers = getPlanComparisonRows().find((row) => row.key === "papers");
-    expect(papers).toEqual({ key: "papers", label: "Jami papers", free: "1 a month", plus: "6 a month", pro: "12 a month" });
+    expect(papers).toEqual({ key: "papers", label: "Jami papers", free: "1 a month", plus: "8 a month", pro: "14 a month" });
     const photos = getPlanComparisonRows().find((row) => row.key === "photos");
     expect(photos?.free).toBe("Not included");
   });
@@ -61,10 +71,28 @@ describe("the Exam Pass as students weigh it up", () => {
   });
 
   it("totals each allowance across the pass, with the monthly reset beside it", () => {
-    expect(describePassAllowance("plus", "papers", 10)).toEqual({ total: "60", perMonth: "6 a month" });
+    expect(describePassAllowance("plus", "papers", 10)).toEqual({ total: "80", perMonth: "8 a month" });
     expect(describePassAllowance("pro", "tutor", 10)).toEqual({ total: "10,000", perMonth: "1,000 a month" });
     expect(describePassAllowance("plus", "pages", 10)).toEqual({ total: "Unlimited", perMonth: null });
     expect(describePassAllowance("free", "photos", 10)).toEqual({ total: "Not included", perMonth: null });
+  });
+});
+
+describe("making allowances and prices concrete", () => {
+  it("turns a monthly allowance into the pace it would be used at", () => {
+    expect(describeAllowancePace("plus", "papers")).toBe("nearly 2 a week");
+    expect(describeAllowancePace("pro", "papers")).toBe("about 3 a week");
+    expect(describeAllowancePace("plus", "tutor")).toBe("about 17 a day");
+    expect(describeAllowancePace("pro", "tutor")).toBe("about 33 a day");
+    expect(describeAllowancePace("free", "papers")).toBeNull();
+    expect(describeAllowancePace("plus", "pages")).toBeNull();
+    expect(describeAllowancePace("free", "photos")).toBeNull();
+  });
+
+  it("spreads a monthly price over its days", () => {
+    expect(perDayPence(799)).toBe(26);
+    expect(perDayPence(1499)).toBe(49);
+    expect(perDayPence(600)).toBe(20);
   });
 });
 

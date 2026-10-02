@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import AppPage from "@/components/layout/AppPage";
 import PlansView from "@/components/billing/PlansView";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { ALLOWANCE_KEYS, type AllowanceKey } from "@/lib/billing/plans";
+import { ALLOWANCE_KEYS, PAID_PLAN_IDS, type AllowanceKey, type PaidPlanId } from "@/lib/billing/plans";
 
 function PlansContent() {
   const search = useSearchParams();
@@ -14,7 +14,16 @@ function PlansContent() {
     requested && (ALLOWANCE_KEYS as readonly string[]).includes(requested)
       ? (requested as AllowanceKey)
       : null;
-  return <PlansView highlight={highlight} checkoutSucceeded={search.get("checkout") === "success"} />;
+  const bought = search.get("plan");
+  const welcomePlan =
+    bought && (PAID_PLAN_IDS as readonly string[]).includes(bought) ? (bought as PaidPlanId) : null;
+  return (
+    <PlansView
+      highlight={highlight}
+      checkoutSucceeded={search.get("checkout") === "success"}
+      welcomePlan={welcomePlan}
+    />
+  );
 }
 
 /**

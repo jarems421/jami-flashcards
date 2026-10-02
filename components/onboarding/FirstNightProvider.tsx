@@ -46,6 +46,7 @@ import FirstNightBloom, { type FirstNightBloomContent } from "@/components/onboa
 import { TUTORIAL_ACTION_EVENT, type OnboardingActionId } from "@/lib/onboarding/tutorial";
 import { createOnboardingStarIfMissing } from "@/services/constellation/stars";
 import { setUpFirstNightSubjects } from "@/services/onboarding/first-night-setup";
+import { PLAN_LABELS, PLAN_SPACE_LIMITS } from "@/lib/billing/plans";
 import { loadFirstNight, saveFirstNight } from "@/services/profile/first-night";
 
 export type FirstNightFinale = "none" | "drawing" | "reward" | "leaving";
@@ -363,6 +364,10 @@ export default function FirstNightProvider({ userId, children }: { userId: strin
           change((current) => (current.examReady === result.examReady ? current : { ...current, examReady: result.examReady }));
           if (result.failed > 0) {
             setToast("Some of your folders could not be made. You can add them in Practice.");
+          } else if (result.overPlan > 0) {
+            setToast(
+              `Free includes ${PLAN_SPACE_LIMITS.free.folders} folders, so Jami made your first ${PLAN_SPACE_LIMITS.free.folders}. ${PLAN_LABELS.plus} and ${PLAN_LABELS.pro} have room for every subject.`
+            );
           }
         })
         .catch((error: unknown) => {

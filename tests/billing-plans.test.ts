@@ -16,8 +16,8 @@ const at = (iso: string) => Date.parse(iso);
 
 describe("plan allowances", () => {
   it("has the limits agreed in the pricing doc", () => {
-    expect(PLAN_ALLOWANCES.plus.papers.limit).toBe(6);
-    expect(PLAN_ALLOWANCES.pro.papers.limit).toBe(12);
+    expect(PLAN_ALLOWANCES.plus.papers.limit).toBe(8);
+    expect(PLAN_ALLOWANCES.pro.papers.limit).toBe(14);
     expect(PLAN_ALLOWANCES.plus.photos.limit).toBe(10);
     expect(PLAN_ALLOWANCES.pro.photos.limit).toBe(24);
     expect(PLAN_ALLOWANCES.plus.videos.limit).toBe(30);
@@ -63,14 +63,14 @@ describe("plan allowances", () => {
 
 describe("deciding an allowance", () => {
   it("allows until the limit, then refuses", () => {
-    const usage = { used: { papers: 5 }, extra: {} };
+    const usage = { used: { papers: 7 }, extra: {} };
     expect(decideAllowance({ plan: "plus", key: "papers", usage })).toEqual({
       allowed: true,
       remainingAfter: 0,
     });
     expect(
-      decideAllowance({ plan: "plus", key: "papers", usage: { used: { papers: 6 }, extra: {} } })
-    ).toEqual({ allowed: false, limit: 6, used: 6 });
+      decideAllowance({ plan: "plus", key: "papers", usage: { used: { papers: 8 }, extra: {} } })
+    ).toEqual({ allowed: false, limit: 8, used: 8 });
   });
 
   it("adds bought extras on top of the plan", () => {
@@ -78,7 +78,7 @@ describe("deciding an allowance", () => {
       decideAllowance({
         plan: "plus",
         key: "papers",
-        usage: { used: { papers: 6 }, extra: { papers: 2 } },
+        usage: { used: { papers: 8 }, extra: { papers: 2 } },
       }).allowed
     ).toBe(true);
   });
@@ -107,7 +107,7 @@ describe("deciding an allowance", () => {
   it("tells Free that photos come with a paid plan rather than that they ran out", () => {
     expect(
       describeAllowanceRefusal({ plan: "free", key: "photos", periodEnd: at("2026-11-14T09:00:00Z") })
-    ).toBe("Tutor photos come with Plus and Pro.");
+    ).toBe("Tutor photos come with Nova and Celestial.");
   });
 
   it("says what ran out, when it resets and what includes more", () => {
@@ -118,7 +118,7 @@ describe("deciding an allowance", () => {
     });
     expect(message).toContain("Jami papers");
     expect(message).toContain("14 November");
-    expect(message).toContain("Pro includes more");
+    expect(message).toContain("Celestial includes more");
   });
 });
 

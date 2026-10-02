@@ -29,6 +29,11 @@ answering real questions, spent in a Store in Account.
 
 ## 2. Plans
 
+**Names (2 Oct 2026).** Students see **Free**, **Nova** (the £7.99 plan) and
+**Celestial** (the £14.99 plan). Code, Stripe metadata and stored plan
+documents keep the ids `plus` and `pro`; only `PLAN_LABELS` in
+`lib/billing/plans.ts` changes the names. The tables below use the ids.
+
 Limits follow cost × how often it is used (agreed direction 1 Oct 2026):
 generous on what is cheap and used constantly, strict on what is expensive and
 rare, a little strict on what is expensive and frequent.
@@ -46,16 +51,18 @@ rare, a little strict on what is expensive and frequent.
 | Video imports (1–5p by length) | 3 | 30 | 60 |
 | Everyday AI: "Draft this answer" on a card (≈0.03p), flashcards or practice questions from a file, the Tutor or a chat (≈0.5p a batch), deck study prep, answer checks, planner chats | small monthly caps (50 drafts, 10 batches each) | unlimited | unlimited |
 | *Expensive and frequent: a little strict* | | | |
-| Jami papers, written and marked (25p) | 1 | 6 | 12 |
+| Jami papers, written and marked (25p) | 1 | 8 | 14 |
 | Tutor web searches (1.5p) | 5 | 30 | 60 |
 | *Expensive and rare: strict* | | | |
 | Generated photos in the Tutor (≈4.5p) | — | 10 | 24 |
 | Re-marking a paper (8p) | stardust | stardust | stardust |
-| Flashcards, notebooks, folders, uploads, planner, Today | unlimited | unlimited | unlimited |
+| Folders | 3 | unlimited | unlimited |
+| The student's own notebooks in each folder (papers and practice notebooks not counted) | 3 | unlimited | unlimited |
+| Flashcards, uploads, planner, Today | unlimited | unlimited | unlimited |
 | Stardust you can earn a month | 40 ✦ | 60 ✦ | 100 ✦ |
 | **Jami keeps from a typical student** | — | **£6.12** | **£11.79** |
-| Jami keeps at about half use | — | £3.65 | £6.14 |
-| Jami keeps from a student maxing every allowance | — | −£1.93 | −£4.68 |
+| Jami keeps at about half use | — | £3.40 | £5.89 |
+| Jami keeps from a student maxing every allowance | — | −£2.43 | −£5.18 |
 
 "Unlimited" pages means a monthly ceiling only an exploiter meets: 10,000 on
 Plus, 20,000 on Pro (twenty and forty textbooks; at most £1.10 and £2.20). Re-indexing a source the
@@ -84,10 +91,40 @@ cost included (fair-use features, stardust, hosting, Stripe):
 | | Cost: typical | moderate | maxed | Profit: typical | moderate | maxed |
 |---|---|---|---|---|---|---|
 | Free | £0.22 | £0.77 | £1.26 | — | — | — |
-| Plus £7.99 | £1.49 | £3.96 | £9.54 | £6.12 (77%) | £3.65 (46%) | −£1.93 |
-| Pro £14.99 | £2.67 | £8.32 | £19.15 | £11.79 (79%) | £6.14 (41%) | −£4.68 |
+| Plus £7.99 | £1.49 | £4.21 | £10.04 | £6.12 (77%) | £3.40 (43%) | −£2.43 |
+| Pro £14.99 | £2.67 | £8.57 | £19.65 | £11.79 (79%) | £5.89 (39%) | −£5.18 |
 
-A maxed student uses every allowance in full every month. Fixed costs (Vercel
+A maxed student uses every allowance in full every month. **2 Oct 2026:**
+two more papers on each paid plan (6 → 8, 12 → 14) add 50p to a maxed month
+and about 25p to a moderate one; a typical student, who does not use all
+their papers, is unchanged.
+
+**Free's room (2 Oct 2026).** Free keeps 3 folders and 3 notebooks of the
+student's own in each. Nothing already made is removed; a student over the
+limit cannot make another until they archive one. Checked in the browser
+before creating (`services/billing/space-limits.ts`): folders and notebooks
+cost nothing to run, so this is a plan boundary, not a cost safeguard, and it
+fails open. The first-night welcome makes folders for the first three
+subjects picked on Free and says so.
+
+**Where plans are offered (2 Oct 2026).** In-app research agrees that an offer
+converts when it answers a limit the student just hit and annoys when it
+repeats, so:
+
+- **At a wall:** the plans sheet, at most once a session whatever ran out,
+  and not for three days after "Not now". Later walls get the inline message
+  and reset date only.
+- **Before a wall:** a low-allowance hint ("1 Jami paper left until 14
+  November") carries a quiet "See plans" link. Neutral counts never do, and
+  none appears inside a timed exam.
+- **Room:** the new folder and notebook forms say when it is the last one, and
+  when there is no room, before the student fills them in.
+- **After a success:** the marked-paper results say "Want another before 14
+  November? Nova includes 8 Jami papers a month." only once the last paper is
+  used. Never a modal.
+- **On the Plans page:** the recommended plan is the step up from the
+  student's own (Nova, or Celestial for a Nova student), and the hero shows
+  their month so far. Fixed costs (Vercel
 Pro £15 and the ICO fee £4.33, about £19 a month in total) are covered by four
 typical Plus subscribers.
 

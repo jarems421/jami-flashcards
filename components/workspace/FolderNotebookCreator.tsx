@@ -19,6 +19,8 @@ import {
   type ObjectIconId,
 } from "@/lib/workspace/object-card-styles";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
+import SpaceRoomNotice from "@/components/billing/SpaceRoomNotice";
+import { assertRoomForNotebook } from "@/services/billing/space-limits";
 import { importUploadedNotebook } from "@/services/study/notebook-import";
 import {
   createNotebook,
@@ -90,6 +92,7 @@ export default function FolderNotebookCreator({
     setError(null);
     setUploadProgress(null);
     try {
+      await assertRoomForNotebook(userId, folder.id);
       if (file) {
         const imported = await importUploadedNotebook({
           userId,
@@ -196,6 +199,7 @@ export default function FolderNotebookCreator({
           <FeedbackBanner type="error" message={error} onDismiss={() => setError(null)} />
         </div>
       ) : null}
+      <SpaceRoomNotice kind="notebooks" userId={userId} folderId={folder.id} className="mb-4" />
 
       <div className="grid gap-6">
         <div className="grid gap-4 sm:grid-cols-[6.75rem_minmax(0,1fr)] sm:items-center sm:gap-5">

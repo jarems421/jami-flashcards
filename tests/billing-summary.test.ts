@@ -21,10 +21,10 @@ describe("the plan summary on the Account page", () => {
       period,
     });
     if (!summary.enabled) throw new Error("expected a summary");
-    expect(summary.label).toBe("Plus");
+    expect(summary.label).toBe("Nova");
     expect(summary.resetsAt).toBe(period.end);
     const items = summary.groups.flatMap((group) => group.items);
-    expect(items.find((item) => item.key === "papers")).toMatchObject({ limit: 7, used: 4, remaining: 3 });
+    expect(items.find((item) => item.key === "papers")).toMatchObject({ limit: 9, used: 4, remaining: 5 });
     expect(items.find((item) => item.key === "tutor")).toMatchObject({ remaining: 380 });
     expect(items.find((item) => item.key === "fileCards")?.shown).toBe("unlimited");
   });

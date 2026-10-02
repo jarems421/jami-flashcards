@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { getAllowanceHint, type AllowanceHintMode } from "@/lib/billing/hints";
+import { getAllowanceHint, getAllowanceHintPlansHref, type AllowanceHintMode } from "@/lib/billing/hints";
 import type { AllowanceKey } from "@/lib/billing/plans";
 import type { PlanSummary } from "@/lib/billing/summary";
 import {
@@ -13,7 +13,8 @@ import {
 
 /**
  * The line to show about one allowance where it is spent, or null for none --
- * which is almost always. See `lib/billing/hints.ts` for when a line appears.
+ * which is almost always -- with a quiet plans link once it is a warning. See
+ * `lib/billing/hints.ts` for when each appears.
  */
 export function useAllowanceHint(key: AllowanceKey, mode: AllowanceHintMode) {
   const enabled = featureFlags.enableBilling;
@@ -43,5 +44,7 @@ export function useAllowanceHint(key: AllowanceKey, mode: AllowanceHintMode) {
     };
   }, [enabled]);
 
-  return enabled ? getAllowanceHint({ summary, key, mode }) : null;
+  if (!enabled) return null;
+  const text = getAllowanceHint({ summary, key, mode });
+  return text ? { text, plansHref: getAllowanceHintPlansHref({ summary, key }) } : null;
 }

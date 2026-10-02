@@ -13,6 +13,8 @@ import FolderCourseSection from "./FolderCourseSection";
 import FolderDetailsFields from "./FolderDetailsFields";
 import FolderLookSection from "./FolderLookSection";
 import WorkspaceActionDialog from "./WorkspaceActionDialog";
+import SpaceRoomNotice from "@/components/billing/SpaceRoomNotice";
+import { assertRoomForFolder } from "@/services/billing/space-limits";
 import type { ObjectColorId, ObjectIconId } from "@/lib/workspace/object-card-styles";
 
 type CreateFolderDialogProps = {
@@ -72,6 +74,7 @@ export default function CreateFolderDialog({
     setSaving(true);
     setError(null);
     try {
+      await assertRoomForFolder(userId);
       const examCourse = courseForm.resolvedCourse.course;
       const folder = await createStudyFolder(userId, {
         name,
@@ -113,6 +116,8 @@ export default function CreateFolderDialog({
           />
         </div>
       ) : null}
+
+      {open ? <SpaceRoomNotice kind="folders" userId={userId} className="mb-4" /> : null}
 
       <form onSubmit={handleSubmit}>
         <fieldset disabled={saving} className="grid gap-6">

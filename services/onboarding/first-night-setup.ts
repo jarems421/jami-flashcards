@@ -1,4 +1,5 @@
 import { planFirstNightSetup, type FirstNightAnswers } from "@/lib/onboarding/first-night";
+import { getFolderRoom } from "@/services/billing/space-limits";
 import { createStudyFolder, getActiveStudyFolders, updateStudyFolder } from "@/services/study/folders";
 
 /**
@@ -12,8 +13,10 @@ import { createStudyFolder, getActiveStudyFolders, updateStudyFolder } from "@/s
  * walkthrough to mention, and `examReady` only counts courses actually saved.
  */
 export async function setUpFirstNightSubjects(userId: string, answers: FirstNightAnswers) {
-  const existing = await getActiveStudyFolders(userId);
-  const plan = planFirstNightSetup(answers, existing);
+  const [existing, room] = await Promise.all([getActiveStudyFolders(userId), getFolderRoom(userId)]);
+  // Free keeps three folders: the first subjects picked become folders, and
+  // the walkthrough says how many more the plan had no room for.
+  const plan = planFirstNightSetup(answers, existing, room?.left);
   let created = 0;
   let failed = 0;
   let examReady = false;
@@ -53,5 +56,5 @@ export async function setUpFirstNightSubjects(userId: string, answers: FirstNigh
     examReady = existing.some((folder) => folder.examCourse && names.has(folder.name.trim().toLowerCase()));
   }
 
-  return { created, failed, examReady };
+  return { created, failed, examReady, overPlan: plan.overPlan };
 }

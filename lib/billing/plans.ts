@@ -24,11 +24,29 @@ export const PLAN_PRICES_PENCE: Record<PaidPlanId, number> = {
   pro: 1499,
 };
 
+/**
+ * What students see the plans called (agreed 2 Oct 2026). The ids stay
+ * `plus` and `pro` in code, Stripe metadata and stored plan documents; only
+ * these names are shown. Free keeps a plain name so £0 is never in doubt.
+ */
 export const PLAN_LABELS: Record<PlanId, string> = {
   free: "Free",
-  plus: "Plus",
-  pro: "Pro",
+  plus: "Nova",
+  pro: "Celestial",
   lifetime: "Lifetime",
+};
+
+/**
+ * How much room a plan has, separate from the monthly allowances: Free keeps
+ * three folders and three notebooks of the student's own in each (agreed
+ * 2 Oct 2026). Null is no limit. Nothing already made is ever removed; a
+ * student over the limit simply cannot make another until there is room.
+ */
+export const PLAN_SPACE_LIMITS: Record<PlanId, { folders: number | null; notebooksPerFolder: number | null }> = {
+  free: { folders: 3, notebooksPerFolder: 3 },
+  plus: { folders: null, notebooksPerFolder: null },
+  pro: { folders: null, notebooksPerFolder: null },
+  lifetime: { folders: null, notebooksPerFolder: null },
 };
 
 /** Every monthly allowance a plan can include. */
@@ -113,7 +131,7 @@ export const PLAN_ALLOWANCES: Record<
     searches: count(30),
     photos: count(10),
     answers: count(250),
-    papers: count(6),
+    papers: count(8),
     // A Jami paper's first marking comes with the paper. This is for papers a
     // student brings -- their own past papers -- and for marking one again.
     paperMarkings: count(6),
@@ -128,7 +146,7 @@ export const PLAN_ALLOWANCES: Record<
     searches: count(60),
     photos: count(24),
     answers: count(600),
-    papers: count(12),
+    papers: count(14),
     paperMarkings: count(12),
     revisionSessions: count(120),
     pages: unlimited(20_000),
@@ -174,7 +192,7 @@ export const ACTION_ALLOWANCE: Record<AiBudgetAction, AllowanceKey | null> = {
 
 /** What a student sees an allowance called, in "You've used this month's …". */
 export const ALLOWANCE_LABELS: Record<AllowanceKey, string> = {
-  tutor: "Tutor questions",
+  tutor: "Tutor messages",
   searches: "Tutor web searches",
   photos: "Tutor photos",
   diagrams: "Tutor diagrams",
@@ -309,13 +327,13 @@ export function describeAllowanceRefusal(input: {
   const what = ALLOWANCE_LABELS[input.key];
   // Nothing included at all on this plan (Free's photos): there was nothing to use up.
   if (getAllowance(input.plan, input.key)?.limit === 0) {
-    return `${what[0].toUpperCase()}${what.slice(1)} come with Plus and Pro.`;
+    return `${what[0].toUpperCase()}${what.slice(1)} come with ${PLAN_LABELS.plus} and ${PLAN_LABELS.pro}.`;
   }
   const upgrade =
     input.plan === "free"
-      ? " Plus and Pro include far more."
+      ? ` ${PLAN_LABELS.plus} and ${PLAN_LABELS.pro} include far more.`
       : input.plan === "plus"
-        ? " Pro includes more."
+        ? ` ${PLAN_LABELS.pro} includes more.`
         : "";
   return `You've used this month's ${what}. They reset on ${resets}.${upgrade}`;
 }

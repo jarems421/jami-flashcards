@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAllowanceHint, getLowAllowanceThreshold } from "@/lib/billing/hints";
+import { getAllowanceHint, getAllowanceHintPlansHref, getLowAllowanceThreshold } from "@/lib/billing/hints";
 import { buildPlanSummary } from "@/lib/billing/summary";
 import type { AllowanceKey } from "@/lib/billing/plans";
 
@@ -21,21 +21,21 @@ describe("allowance hints", () => {
   it("says nothing about the Tutor until only a few questions are left", () => {
     expect(getAllowanceHint({ summary: summaryFor("plus", { tutor: 300 }), key: "tutor", mode: "low" })).toBeNull();
     expect(getAllowanceHint({ summary: summaryFor("plus", { tutor: 492 }), key: "tutor", mode: "low" })).toBe(
-      "8 Tutor questions left until 14 November"
+      "8 Tutor messages left until 14 November"
     );
     expect(getAllowanceHint({ summary: summaryFor("plus", { tutor: 499 }), key: "tutor", mode: "low" })).toBe(
-      "1 Tutor question left until 14 November"
+      "1 Tutor message left until 14 November"
     );
   });
 
   it("always counts papers beside the button", () => {
     expect(getAllowanceHint({ summary: summaryFor("plus", { papers: 2 }), key: "papers", mode: "always" })).toBe(
-      "4 of 6 Jami papers left this month"
+      "6 of 8 Jami papers left this month"
     );
   });
 
   it("says when something has run out and when it comes back", () => {
-    expect(getAllowanceHint({ summary: summaryFor("plus", { papers: 6 }), key: "papers", mode: "always" })).toBe(
+    expect(getAllowanceHint({ summary: summaryFor("plus", { papers: 8 }), key: "papers", mode: "always" })).toBe(
       "No Jami papers left until 14 November"
     );
   });
@@ -54,5 +54,27 @@ describe("allowance hints", () => {
     expect(getLowAllowanceThreshold(30)).toBe(6);
     expect(getLowAllowanceThreshold(6)).toBe(2);
     expect(getLowAllowanceThreshold(1)).toBe(1);
+  });
+});
+
+describe("where hints point at plans", () => {
+  it("links to plans only once a hint is a warning, and only with a plan to move up to", () => {
+    expect(getAllowanceHintPlansHref({ summary: summaryFor("plus", { papers: 2 }), key: "papers" })).toBeNull();
+    expect(getAllowanceHintPlansHref({ summary: summaryFor("plus", { papers: 7 }), key: "papers" })).toBe(
+      "/dashboard/plans?for=papers"
+    );
+    expect(getAllowanceHintPlansHref({ summary: summaryFor("free", { papers: 1 }), key: "papers" })).toBe(
+      "/dashboard/plans?for=papers"
+    );
+    expect(getAllowanceHintPlansHref({ summary: summaryFor("pro", { papers: 14 }), key: "papers" })).toBeNull();
+    expect(getAllowanceHintPlansHref({ summary: summaryFor("lifetime", { papers: 99 }), key: "papers" })).toBeNull();
+  });
+
+  it("nudges after a success only once the last one is used", () => {
+    expect(getAllowanceHint({ summary: summaryFor("free", { papers: 0 }), key: "papers", mode: "nudge" })).toBeNull();
+    expect(getAllowanceHint({ summary: summaryFor("free", { papers: 1 }), key: "papers", mode: "nudge" })).toBe(
+      "Want another before 14 November? Nova includes 8 Jami papers a month."
+    );
+    expect(getAllowanceHint({ summary: summaryFor("pro", { papers: 14 }), key: "papers", mode: "nudge" })).toBeNull();
   });
 });

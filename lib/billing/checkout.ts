@@ -36,7 +36,7 @@ export function buildCheckoutSessionFields(input: {
   const returnTo = `${input.origin}/dashboard/plans`;
   const fields: Record<string, string> = {
     client_reference_id: input.uid,
-    success_url: `${returnTo}?checkout=success`,
+    success_url: `${returnTo}?checkout=success&plan=${input.plan}`,
     cancel_url: `${returnTo}?checkout=cancelled`,
     // UK only (doc §5): an address is required so the webhook can check it.
     billing_address_collection: "required",

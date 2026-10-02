@@ -74,7 +74,7 @@ describe("monthly allowances in the budget check", () => {
   });
 
   it("refuses once the month's allowance is used, and says when it resets", async () => {
-    mocks.store.set(USAGE_PATH, { used: { papers: 6 } });
+    mocks.store.set(USAGE_PATH, { used: { papers: 8 } });
     const decision = await checkAiBudget({ uid: "user-1", action: "practicePaperGeneration", now: NOW });
     expect(decision).toMatchObject({ allowed: false, reason: "allowance_used" });
     if (!decision.allowed) {
@@ -89,13 +89,13 @@ describe("monthly allowances in the budget check", () => {
   });
 
   it("cannot hand the last one to two requests at once", async () => {
-    mocks.store.set(USAGE_PATH, { used: { papers: 5 } });
+    mocks.store.set(USAGE_PATH, { used: { papers: 7 } });
     const [first, second] = await Promise.all([
       checkAiBudget({ uid: "user-1", action: "practicePaperGeneration", now: NOW, skipBurstLimit: true }),
       checkAiBudget({ uid: "user-1", action: "practicePaperGeneration", now: NOW, skipBurstLimit: true }),
     ]);
     expect([first.allowed, second.allowed].filter(Boolean)).toHaveLength(1);
-    expect(usedOf("papers")).toBe(6);
+    expect(usedOf("papers")).toBe(8);
   });
 
   it("gives the allowance back when the work fails", async () => {

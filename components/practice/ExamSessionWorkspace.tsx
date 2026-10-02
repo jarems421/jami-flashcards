@@ -1272,7 +1272,7 @@ export default function ExamSessionWorkspace({ sessionId }: { sessionId: string 
                             : "Mark answer"}
                     </Button>
                   </div>
-                  <AllowanceHint allowance="answers" mode="low" className="mt-2 text-right" />
+                  <AllowanceHint allowance="answers" mode="low" offerPlans={false} className="mt-2 text-right" />
                 </div>
               ) : null}
             </section>

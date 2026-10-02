@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Button, Card, IconBubble, OptionSwitch } from "@/components/ui";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Button, Card, IconBubble } from "@/components/ui";
 import {
   Dialog,
   DialogBackdrop,
@@ -9,12 +9,17 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/Dialog";
+import NightSkyBackdrop from "@/components/constellation/NightSkyBackdrop";
+import CelestialBody from "@/components/billing/CelestialBody";
+import PlanWelcome from "@/components/billing/PlanWelcome";
 import { CHECKOUT_WAIVER_TEXT, type CheckoutKind } from "@/lib/billing/checkout";
 import {
   ALLOWANCE_KEYS,
   ALLOWANCE_LABELS,
+  PLAN_ALLOWANCES,
   PLAN_LABELS,
   PLAN_PRICES_PENCE,
+  PLAN_SPACE_LIMITS,
   getExamPassExpiry,
   getExamPassMonths,
   getExamPassPricePence,
@@ -24,11 +29,14 @@ import {
 } from "@/lib/billing/plans";
 import type { PlanSummary } from "@/lib/billing/summary";
 import {
+  TUTOR_HOUR_PENCE,
+  describeAllowancePace,
   describePassAllowance,
   describePlanAllowance,
   describeUpgradeFor,
   getExamPassQuote,
   getPlanComparisonRows,
+  perDayPence,
 } from "@/lib/billing/upsell";
 import { CheckoutError, startCheckout } from "@/services/billing/checkout";
 import { loadPlanSummary } from "@/services/billing/plan-summary-store";
@@ -37,83 +45,85 @@ import { loadPlanSummary } from "@/services/billing/plan-summary-store";
  * Choosing a plan.
  *
  * Reached only on purpose: from "See plans" after running out of something,
- * from the plan row on Account, or from Usage. Nothing here counts down,
- * nothing is "limited time", and "Free" is shown as a real plan rather than a
- * trap. Buying asks once, in plain words, for the 14-day waiver; a student can
- * also make a link for a parent to pay on their own device.
+ * from the plan row on Account, or from Usage. Most buyers are under 18
+ * (docs/plans-and-stardust.md §1), so this page persuades only with what is
+ * true and checkable, and never with pressure:
+ *
+ * - The recommended plan is raised in the middle (the centre-stage effect).
+ *   It is a recommendation, never a popularity claim we cannot back.
+ * - Each card shows only what people buy a plan for: papers, Tutor, marking
+ *   and room. The rest is one tap away in "Everything else".
+ * - Numbers are made concrete: allowances as the pace they would be used at
+ *   ("nearly 2 a week"), prices as a daily figure beside the real one, and the
+ *   month set against one hour of private tutoring.
+ * - Risk is taken away before it is asked about: cancel any time, your work
+ *   stays on Free, a parent can pay, and a short list of honest answers.
+ * - Nothing counts down, nothing is "limited time", and Free is a real plan.
  *
  * The Exam Pass is the cheaper way to pay, so it leads with what it works out
- * at each month and shows each allowance across the whole pass, rather than
- * one large price beside the same monthly numbers.
+ * at each month and shows each allowance across the whole pass.
  */
 
 type ShownPlan = Exclude<PlanId, "lifetime">;
 
-/** The two things a plan is mostly chosen for, shown large on each card. */
-const HEADLINE_ROWS: AllowanceKey[] = ["papers", "tutor"];
-const CARD_ROWS: AllowanceKey[] = ["answers", "searches", "photos", "videos"];
+const OUTCOMES: Record<ShownPlan, string> = {
+  free: "See what Jami can do",
+  plus: "Revise every subject, every week",
+  pro: "Everything, for exam season",
+};
 
 const TAGLINES: Record<ShownPlan, string> = {
-  free: "Try everything, with small monthly amounts.",
-  plus: "For steady revision across your subjects.",
-  pro: "For heavy exam prep and lots of papers.",
+  free: "A taste of everything, free for good.",
+  plus: "Papers, marking and Tutor for steady revision, with room for all your subjects.",
+  pro: `Nearly twice ${PLAN_LABELS.plus}, for heavy papers and lots of marking.`,
 };
 
-const ALWAYS_FREE = ["Flashcards and decks", "Notebooks", "Folders and sources", "Your planner", "Constellations"];
+/** What a plan is bought for, shown on every card. */
+const MAIN_ROWS: AllowanceKey[] = ["tutor", "answers", "paperMarkings"];
+/** Paced, because they are used often enough for "about 17 a day" to mean something. */
+const PACED_ROWS: AllowanceKey[] = ["tutor", "answers"];
+/** One tap away: real, but nobody chooses a plan for them. */
+const EXTRA_ROWS: AllowanceKey[] = ["revisionSessions", "videos", "searches", "photos", "diagramLabels", "pages"];
 
-// Full class strings so Tailwind keeps them. Each plan has its own light: the
-// same washes the Tutor door uses, from the theme's own tokens.
-const PLAN_STYLE: Record<ShownPlan, { card: string; wash: string; glyph: string }> = {
-  free: {
-    card: "border-[var(--color-border-strong)]",
-    wash: "bg-[radial-gradient(120%_90%_at_0%_0%,var(--color-glass-medium)_0%,transparent_62%)]",
-    glyph: "bg-[var(--color-glass-medium)] text-text-secondary",
-  },
-  plus: {
-    card: "border-accent shadow-accent",
-    wash: "bg-[radial-gradient(120%_90%_at_0%_0%,var(--color-accent-muted)_0%,transparent_62%)]",
-    glyph: "bg-accent-muted text-accent",
-  },
-  pro: {
-    card: "border-warm-border",
-    wash: "bg-[radial-gradient(120%_90%_at_0%_0%,var(--color-warm-glow)_0%,transparent_62%)]",
-    glyph: "border border-warm-border bg-warm-glow text-warm-accent",
-  },
-};
-
-const ROW_LABELS: Partial<Record<AllowanceKey, string>> = {
-  papers: "Jami papers",
-  answers: "Marked answers",
-  tutor: "Tutor questions",
-  searches: "Web searches",
-  photos: "Tutor photos",
-  videos: "Video imports",
+const ROW_WORDS: Partial<Record<AllowanceKey, string>> = {
+  tutor: "Tutor messages",
+  answers: "marked answers",
+  paperMarkings: "of your own past papers marked",
   revisionSessions: "Revision Sessions",
-  paperMarkings: "Paper markings",
-  diagramLabels: "Label finds",
-  pages: "Searchable pages",
+  videos: "video imports",
+  searches: "web searches",
+  photos: "Tutor photos",
+  diagramLabels: "label finds on diagram cards",
+  pages: "pages Tutor can search",
 };
 
-function rowLabel(key: AllowanceKey) {
-  const label = ROW_LABELS[key] ?? ALLOWANCE_LABELS[key];
-  return `${label[0].toUpperCase()}${label.slice(1)}`;
+function rowWords(key: AllowanceKey) {
+  return ROW_WORDS[key] ?? ALLOWANCE_LABELS[key];
 }
 
 function pounds(pence: number) {
   return `£${(pence / 100).toFixed(2)}`;
 }
 
+function poundsShort(pence: number) {
+  return pence % 100 === 0 ? `£${pence / 100}` : pounds(pence);
+}
+
 export default function PlansView({
   highlight,
   checkoutSucceeded,
+  welcomePlan,
 }: {
   highlight: AllowanceKey | null;
   /** Back from Stripe after paying: the webhook may take a moment to grant the plan. */
   checkoutSucceeded: boolean;
+  /** The plan just bought, for the welcome. */
+  welcomePlan?: PaidPlanId | null;
 }) {
   const [summary, setSummary] = useState<PlanSummary | null>(null);
   const [kind, setKind] = useState<CheckoutKind>("subscription");
   const [buying, setBuying] = useState<{ plan: PaidPlanId; forParent: boolean } | null>(null);
+  const [welcome, setWelcome] = useState<PaidPlanId | null>(checkoutSucceeded ? (welcomePlan ?? null) : null);
   // One "now" for the whole visit, so prices cannot shift between render and checkout.
   const [now] = useState(() => Date.now());
 
@@ -147,10 +157,13 @@ export default function PlansView({
     getExamPassQuote("plus", now).discountPercent,
     getExamPassQuote("pro", now).discountPercent
   );
+  // Recommend the step up from where the student is; Nova for everyone else.
+  const recommended: PaidPlanId = current === "plus" ? "pro" : "plus";
+  const monthSoFar = summary?.enabled && summary.plan !== "lifetime" ? usageSoFar(summary) : [];
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      {checkoutSucceeded ? (
+    <div className="space-y-10 sm:space-y-14">
+      {checkoutSucceeded && !welcome ? (
         <div role="status" className="app-subtle-panel rounded-xl px-4 py-3 text-sm text-text-primary">
           Thank you. Your plan is being set up and will show here in a moment.
         </div>
@@ -166,46 +179,64 @@ export default function PlansView({
         </Card>
       ) : null}
 
-      <Card tone="warm" padding="lg">
+      {/* The night Jami opens on, so choosing a plan feels like Jami rather than a checkout. */}
+      <section className="relative overflow-hidden rounded-2xl bg-[#07051c] px-5 pb-10 pt-12 text-center text-white shadow-bubble sm:px-10 sm:pb-14 sm:pt-16">
+        <NightSkyBackdrop />
+        <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-16 hidden opacity-70 md:block">
+          <CelestialBody plan="pro" size={300} animated />
+        </div>
+        <div aria-hidden="true" className="pointer-events-none absolute bottom-6 left-8 hidden opacity-80 md:block">
+          <CelestialBody plan="free" size={64} />
+        </div>
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_120%_at_100%_0%,var(--color-accent-muted)_0%,transparent_55%)]"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-[radial-gradient(70%_100%_at_50%_100%,rgba(255,170,226,.16)_0%,transparent_70%)]"
         />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0 max-w-xl">
-            <h2 className="text-2xl font-medium leading-tight tracking-tight text-text-primary [text-wrap:balance] sm:text-3xl">
-              {reason && highlightKey
-                ? `Want more ${ROW_LABELS[highlightKey] ?? ALLOWANCE_LABELS[highlightKey]}?`
-                : "Choose how much Jami you need"}
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-text-muted sm:text-base sm:leading-7">
-              {reason
-                ? `${reason} Free keeps working, and your allowances come back every month.`
-                : "Flashcards, notebooks and your planner are free on every plan. Plans add more of what Jami writes and marks for you."}
-            </p>
+        <div className="relative mx-auto flex max-w-2xl flex-col items-center">
+          {reason && highlightKey ? (
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-[#ffd6f6] backdrop-blur-md">
+              You&apos;ve used this month&apos;s {ALLOWANCE_LABELS[highlightKey]}
+            </span>
+          ) : (
+            <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#cfc6ff]">Jami plans</span>
+          )}
+          <h2 className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight [text-wrap:balance] sm:text-6xl">
+            {reason && highlightKey ? (
+              <>
+                Keep going with <NightGradient>more {ALLOWANCE_LABELS[highlightKey]}</NightGradient>
+              </>
+            ) : (
+              <>
+                Go further <NightGradient>with Jami</NightGradient>
+              </>
+            )}
+          </h2>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-[#d9d3f7] [text-wrap:pretty] sm:text-base sm:leading-7">
+            {reason
+              ? `${reason} Free keeps working, and your allowances come back every month.`
+              : "More papers written for your course, more marking, more Tutor, and room for every subject."}
+          </p>
+          {monthSoFar.length > 0 ? (
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              {monthSoFar.map((item) => (
+                <span key={item} className="rounded-full border border-white/10 bg-white/[0.07] px-3 py-1 text-xs text-[#e6e1ff] backdrop-blur-md">
+                  {item}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="mt-8">
+            <BillingToggle value={kind} onChange={setKind} saving={bestSaving} />
           </div>
-          <div className="w-full min-w-0 lg:w-[30rem] lg:shrink-0">
-            <OptionSwitch
-              label="How to pay"
-              hideLabel
-              value={kind}
-              onChange={setKind}
-              options={[
-                { value: "subscription", label: "Monthly", detail: "Cancel any time" },
-                {
-                  value: "pass",
-                  label: "Exam Pass",
-                  detail: `Pay once to July · up to ${bestSaving}% off`,
-                },
-              ]}
-              columns={2}
-              className="w-full"
-            />
-          </div>
+          <p className="mt-3 min-h-5 text-xs text-[#b8b0e6]">
+            {kind === "pass"
+              ? `Pay once and it lasts until ${passUntil}. It never renews.`
+              : "Pay monthly, cancel any time."}
+          </p>
         </div>
-      </Card>
+      </section>
 
-      <div className="grid items-stretch gap-4 lg:grid-cols-3">
+      <div className="grid items-stretch gap-6 lg:grid-cols-3 lg:gap-4">
         {(["free", "plus", "pro"] as const).map((plan) => (
           <PlanCard
             key={plan}
@@ -215,6 +246,7 @@ export default function PlansView({
             passUntil={passUntil}
             passMonths={passMonths}
             current={current === plan}
+            recommended={plan === recommended}
             disabled={lifetime}
             highlight={highlightKey}
             onChoose={(paid) => setBuying({ plan: paid, forParent: false })}
@@ -222,21 +254,18 @@ export default function PlansView({
         ))}
       </div>
 
-      <section
-        aria-label="Free on every plan"
-        className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
-      >
-        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary">
-          Free on every plan
-        </span>
-        <ul className="flex flex-wrap gap-2">
-          {ALWAYS_FREE.map((item) => (
-            <li key={item} className="app-chip rounded-full px-3 py-1 text-xs font-medium">
-              {item}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <div className="grid gap-4 md:grid-cols-3">
+        <ValueTile title="Less than one hour of tutoring" icon={<path d="M4 19V9l8-5 8 5v10M9 19v-6h6v6" />}>
+          A GCSE tutor costs about {poundsShort(TUTOR_HOUR_PENCE)} an hour. {PLAN_LABELS.plus} is{" "}
+          {pounds(PLAN_PRICES_PENCE.plus)} for the whole month.
+        </ValueTile>
+        <ValueTile title="Cancel any time" icon={<path d="M5 12.5l4.5 4.5L19 7.5" />}>
+          No contract. Cancel in Account and keep your plan to the end of the month you paid for.
+        </ValueTile>
+        <ValueTile title="Your work stays yours" icon={<path d="M6 4h9l3 3v13H6zM9 12h6M9 16h6" />}>
+          Go back to Free whenever you like. Every card, notebook and folder you made stays.
+        </ValueTile>
+      </div>
 
       <Card padding="lg">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -255,40 +284,68 @@ export default function PlansView({
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 gap-2">
-            <Button
-              variant="secondary"
-              disabled={lifetime}
-              onClick={() => setBuying({ plan: "plus", forParent: true })}
-            >
-              Link for Plus
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button variant="secondary" disabled={lifetime} onClick={() => setBuying({ plan: "plus", forParent: true })}>
+              Link for {PLAN_LABELS.plus}
             </Button>
-            <Button
-              variant="secondary"
-              disabled={lifetime}
-              onClick={() => setBuying({ plan: "pro", forParent: true })}
-            >
-              Link for Pro
+            <Button variant="secondary" disabled={lifetime} onClick={() => setBuying({ plan: "pro", forParent: true })}>
+              Link for {PLAN_LABELS.pro}
             </Button>
           </div>
         </div>
       </Card>
 
+      <section aria-labelledby="plans-questions" className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <div>
+          <h2 id="plans-questions" className="text-xl font-medium tracking-tight text-text-primary">
+            Questions
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">The things students and parents ask before choosing.</p>
+        </div>
+        <div className="divide-y divide-[var(--color-border)] rounded-2xl border border-[var(--color-border)]">
+          <Question title="What does Free include?">
+            Small monthly amounts of papers, marking and Tutor, unlimited flashcards, and{" "}
+            {PLAN_SPACE_LIMITS.free.folders} folders with up to {PLAN_SPACE_LIMITS.free.notebooksPerFolder}{" "}
+            notebooks of your own in each. {PLAN_LABELS.plus} and {PLAN_LABELS.pro} have no limit on folders or
+            notebooks.
+          </Question>
+          <Question title="What happens when I run out?">
+            That one thing pauses until your allowance comes back next month. Everything else keeps
+            working, and you can still study, write notes and review cards.
+          </Question>
+          <Question title="How do I cancel?">
+            In Account, any time. There is no fee, and you keep your plan until the end of the month
+            you paid for. Then you are on Free, and nothing you made is deleted.
+          </Question>
+          <Question title="What is the Exam Pass?">
+            One payment that covers you until {passUntil}, cheaper each month than paying monthly.
+            You get the same allowances every month, and it never renews, so there is nothing to
+            cancel.
+          </Question>
+          <Question title="Can a parent pay?">
+            Yes. Make a link above and send it. They pay on their own device and only see the plan
+            and the price.
+          </Question>
+          <Question title="Is paying safe?">
+            Payments go through Stripe, a payments company used by businesses worldwide. Jami never
+            sees or stores your card. UK cards only.
+          </Question>
+        </div>
+      </section>
+
       <details className="app-subtle-panel group rounded-xl">
         <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-semibold text-text-primary">
           Compare everything
-          <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 text-text-muted transition group-open:rotate-180" fill="currentColor">
-            <path d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z" />
-          </svg>
+          <Chevron />
         </summary>
         <div className="overflow-x-auto px-5 pb-5">
           <table className="w-full min-w-[32rem] text-left text-sm">
             <thead>
               <tr className="text-2xs uppercase tracking-[0.14em] text-text-secondary">
                 <th className="py-2 pr-4 font-semibold">Each month</th>
-                <th className="py-2 pr-4 font-semibold">Free</th>
-                <th className="py-2 pr-4 font-semibold">Plus</th>
-                <th className="py-2 font-semibold">Pro</th>
+                <th className="py-2 pr-4 font-semibold">{PLAN_LABELS.free}</th>
+                <th className="py-2 pr-4 font-semibold">{PLAN_LABELS.plus}</th>
+                <th className="py-2 font-semibold">{PLAN_LABELS.pro}</th>
               </tr>
             </thead>
             <tbody>
@@ -301,7 +358,19 @@ export default function PlansView({
                 </tr>
               ))}
               <tr className="border-t border-[var(--color-border)]">
-                <td className="py-2.5 pr-4 text-text-primary">Flashcards, notebooks, folders, planner</td>
+                <td className="py-2.5 pr-4 text-text-primary">Folders</td>
+                <td className="py-2.5 pr-4 text-text-muted">{PLAN_SPACE_LIMITS.free.folders}</td>
+                <td className="py-2.5 pr-4 text-text-muted">Unlimited</td>
+                <td className="py-2.5 text-text-muted">Unlimited</td>
+              </tr>
+              <tr className="border-t border-[var(--color-border)]">
+                <td className="py-2.5 pr-4 text-text-primary">Your own notebooks in each folder</td>
+                <td className="py-2.5 pr-4 text-text-muted">{PLAN_SPACE_LIMITS.free.notebooksPerFolder}</td>
+                <td className="py-2.5 pr-4 text-text-muted">Unlimited</td>
+                <td className="py-2.5 text-text-muted">Unlimited</td>
+              </tr>
+              <tr className="border-t border-[var(--color-border)]">
+                <td className="py-2.5 pr-4 text-text-primary">Flashcards, decks and the planner</td>
                 <td className="py-2.5 pr-4 text-text-muted">Unlimited</td>
                 <td className="py-2.5 pr-4 text-text-muted">Unlimited</td>
                 <td className="py-2.5 text-text-muted">Unlimited</td>
@@ -329,21 +398,144 @@ export default function PlansView({
           onClose={() => setBuying(null)}
         />
       ) : null}
+
+      {welcome ? <PlanWelcome plan={welcome} onClose={() => setWelcome(null)} /> : null}
     </div>
   );
 }
 
-/** A small planet: a moon for Free, one ring for Plus, two for Pro. */
-function PlanGlyph({ plan }: { plan: ShownPlan }) {
+/** "Jami papers 1 of 1 used": the month so far, so the choice is about this student. */
+function usageSoFar(summary: Extract<PlanSummary, { enabled: true }>) {
+  const items = summary.groups.flatMap((group) => group.items);
+  return (["papers", "tutor", "answers"] as const)
+    .map((key) => items.find((item) => item.key === key))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item && item.shown === "count" && item.used > 0))
+    .map((item) => `${ALLOWANCE_LABELS[item.key][0].toUpperCase()}${ALLOWANCE_LABELS[item.key].slice(1)}: ${item.used.toLocaleString("en-GB")} of ${item.limit.toLocaleString("en-GB")} used`);
+}
+
+function NightGradient({ children }: { children: ReactNode }) {
   return (
-    <IconBubble size="md" shape="circle" className={PLAN_STYLE[plan].glyph} aria-hidden>
-      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.4">
-        <circle cx="12" cy="12" r="3.6" fill="currentColor" stroke="none" />
-        {plan === "free" ? <circle cx="18.5" cy="7" r="1.4" fill="currentColor" stroke="none" /> : null}
-        {plan !== "free" ? <ellipse cx="12" cy="12" rx="8.6" ry="3.2" transform="rotate(-22 12 12)" /> : null}
-        {plan === "pro" ? <ellipse cx="12" cy="12" rx="10.4" ry="4.6" transform="rotate(28 12 12)" opacity="0.6" /> : null}
-      </svg>
-    </IconBubble>
+    <span className="bg-[linear-gradient(100deg,#c9bcff_10%,#ffd6f6_60%,#ffe9c7)] bg-clip-text text-transparent">
+      {children}
+    </span>
+  );
+}
+
+function GradientText({ children, warm }: { children: ReactNode; warm: boolean }) {
+  return (
+    <span
+      className={`bg-clip-text text-transparent ${
+        warm
+          ? "bg-[linear-gradient(100deg,var(--color-warm-accent),var(--color-accent-hover))]"
+          : "bg-[linear-gradient(100deg,var(--color-accent-hover),var(--color-warm-accent))]"
+      }`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Chevron() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 shrink-0 text-text-muted transition group-open:rotate-180" fill="currentColor">
+      <path d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z" />
+    </svg>
+  );
+}
+
+/** Monthly or Exam Pass, as one pill on the night sky: how to pay, not which plan. */
+function BillingToggle({
+  value,
+  onChange,
+  saving,
+}: {
+  value: CheckoutKind;
+  onChange: (next: CheckoutKind) => void;
+  saving: number;
+}) {
+  const options: { value: CheckoutKind; label: string }[] = [
+    { value: "subscription", label: "Monthly" },
+    { value: "pass", label: "Exam Pass" },
+  ];
+  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    event.preventDefault();
+    const next = value === "subscription" ? "pass" : "subscription";
+    onChange(next);
+    event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-value="${next}"]`)?.focus();
+  };
+  return (
+    <div
+      role="radiogroup"
+      aria-label="How to pay"
+      className="inline-flex rounded-full border border-white/15 bg-white/[0.07] p-1 backdrop-blur-md"
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            data-value={option.value}
+            onKeyDown={onKeyDown}
+            onClick={() => onChange(option.value)}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c9bcff] sm:px-5 ${
+              selected
+                ? "bg-white text-[#1b1240] shadow-accent"
+                : "text-[#e6e1ff] hover:text-white"
+            }`}
+          >
+            {option.label}
+            {option.value === "pass" ? (
+              <span
+                className={`rounded-full px-2 py-0.5 text-2xs font-semibold ${
+                  selected ? "bg-[#ece6ff] text-[#3b2a8f]" : "bg-[#ffd6f6]/20 text-[#ffd6f6]"
+                }`}
+              >
+                Up to {saving}% off
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Each plan's body in the sky: a moon, a ringed planet, a galaxy. */
+function PlanGlyph({ plan }: { plan: ShownPlan }) {
+  return <CelestialBody plan={plan} size={52} className="-m-1 shrink-0" />;
+}
+
+/** "£7.99" set like a price tag: the pounds large, the pence and £ smaller. */
+function Price({ pence }: { pence: number }) {
+  const whole = Math.floor(pence / 100);
+  const part = String(pence % 100).padStart(2, "0");
+  return (
+    <span className="inline-flex items-start font-semibold tracking-tight text-text-primary tabular-nums" aria-label={pounds(pence)}>
+      <span aria-hidden="true" className="mt-1.5 text-2xl">£</span>
+      <span aria-hidden="true" className="text-6xl leading-none">{whole}</span>
+      {pence === 0 ? null : (
+        <span aria-hidden="true" className="mt-1.5 text-2xl">.{part}</span>
+      )}
+    </span>
+  );
+}
+
+/** Jami papers as paper, one mark for each a month. */
+function PaperRow({ count, tone }: { count: number; tone: string }) {
+  return (
+    <div aria-hidden="true" className="flex flex-wrap gap-1">
+      {Array.from({ length: count }, (_, index) => (
+        <svg key={index} viewBox="0 0 14 18" className={`h-[18px] w-[14px] ${tone}`} fill="none" stroke="currentColor" strokeWidth="1.2">
+          <path d="M1.5 1.5h7l4 4v11h-11z" fill="currentColor" fillOpacity="0.16" />
+          <path d="M4 8.5h6M4 11h6M4 13.5h4" strokeLinecap="round" />
+        </svg>
+      ))}
+    </div>
   );
 }
 
@@ -354,6 +546,7 @@ function PlanCard({
   passUntil,
   passMonths,
   current,
+  recommended,
   disabled,
   highlight,
   onChoose,
@@ -364,155 +557,272 @@ function PlanCard({
   passUntil: string;
   passMonths: number;
   current: boolean;
+  recommended: boolean;
   disabled: boolean;
   highlight: AllowanceKey | null;
   onChoose: (plan: PaidPlanId) => void;
 }) {
   const paid = plan === "free" ? null : plan;
-  const featured = plan === "plus";
-  const pass = kind === "pass";
+  const warm = plan === "pro";
+  const pass = kind === "pass" && Boolean(paid);
   const quote = paid ? getExamPassQuote(paid, now) : null;
-  const style = PLAN_STYLE[plan];
-  const rows =
-    highlight && !CARD_ROWS.includes(highlight) && !HEADLINE_ROWS.includes(highlight)
-      ? [highlight, ...CARD_ROWS]
-      : CARD_ROWS;
+  const monthlyPence = !paid ? 0 : pass && quote ? quote.perMonthPence : PLAN_PRICES_PENCE[paid];
+  const papers = PLAN_ALLOWANCES[plan].papers.limit;
+  const space = PLAN_SPACE_LIMITS[plan];
+  const extras = highlight && EXTRA_ROWS.includes(highlight);
+  const accentTone = !paid ? "text-text-secondary" : warm ? "text-warm-accent" : "text-accent";
 
+  // Free has no pass, so it keeps its monthly numbers either way.
   const amount = (key: AllowanceKey) => {
-    // Free has no pass, so it keeps its monthly numbers either way.
-    if (!pass || !paid) {
+    if (!pass) {
       const value = describePlanAllowance(plan, key);
-      return { main: value.replace(" a month", ""), aside: null as string | null };
+      return {
+        main: value.replace(" a month", ""),
+        aside: PACED_ROWS.includes(key) ? describeAllowancePace(plan, key) : null,
+      };
     }
     const value = describePassAllowance(plan, key, passMonths);
     return { main: value.total, aside: value.perMonth };
   };
 
-  return (
+  const row = (key: AllowanceKey, quiet: boolean) => {
+    const { main, aside } = amount(key);
+    const missing = main === "Not included";
+    const emphasised = key === highlight;
+    return (
+      <li
+        key={key}
+        className={`flex min-w-0 items-start gap-2.5 ${emphasised ? "-mx-2 rounded-lg bg-accent-muted px-2 py-1" : ""}`}
+      >
+        <Tick missing={missing} strong={recommended && !quiet} warm={warm} />
+        <span className={`min-w-0 ${missing ? "text-text-muted" : quiet ? "text-text-muted" : "text-text-secondary"}`}>
+          {missing ? (
+            <>No {rowWords(key)}</>
+          ) : (
+            <>
+              <span className="font-semibold text-text-primary tabular-nums">{main}</span> {rowWords(key)}
+              {aside ? <span className="text-text-muted"> · {aside}</span> : null}
+            </>
+          )}
+        </span>
+      </li>
+    );
+  };
+
+  const card = (
     <section
       aria-label={`${PLAN_LABELS[plan]} plan`}
-      className={`relative flex min-w-0 flex-col overflow-hidden rounded-3xl border-[1.5px] bg-[var(--color-surface-panel)] p-5 shadow-bubble backdrop-blur-md sm:p-6 ${style.card}`}
+      className={`relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl p-6 sm:p-7 ${
+        recommended
+          ? "bg-[var(--color-surface-raised)] lg:py-9"
+          : `border-[1.5px] bg-[var(--color-surface-panel)] shadow-bubble backdrop-blur-md ${
+              warm ? "border-warm-border" : "border-[var(--color-border-strong)]"
+            }`
+      }`}
     >
-      <div aria-hidden="true" className={`pointer-events-none absolute inset-0 ${style.wash}`} />
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-0 ${
+          !paid
+            ? "bg-[radial-gradient(120%_60%_at_0%_0%,var(--color-glass-medium)_0%,transparent_60%)]"
+            : warm
+              ? "bg-[radial-gradient(130%_70%_at_100%_0%,var(--color-warm-glow)_0%,transparent_62%)]"
+              : "bg-[radial-gradient(130%_70%_at_50%_0%,var(--color-accent-muted)_0%,transparent_65%)]"
+        }`}
+      />
       <div className="relative flex flex-1 flex-col">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <PlanGlyph plan={plan} />
-            <h2 className="text-xl font-medium tracking-tight text-text-primary">{PLAN_LABELS[plan]}</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-text-primary">
+              {paid ? <GradientText warm={warm}>{PLAN_LABELS[plan]}</GradientText> : PLAN_LABELS[plan]}
+            </h2>
           </div>
           {current ? (
             <span className="app-chip rounded-full px-2.5 py-0.5 text-2xs font-semibold">Your plan</span>
-          ) : featured ? (
-            <span className="rounded-full bg-accent-muted px-2.5 py-0.5 text-2xs font-semibold text-accent">
-              Most students
-            </span>
           ) : null}
         </div>
-        <p className="mt-2 text-sm text-text-muted">{TAGLINES[plan]}</p>
+        <h3 className="mt-5 text-lg font-semibold leading-snug text-text-primary [text-wrap:balance]">{OUTCOMES[plan]}</h3>
+        <p className="mt-1 text-sm leading-6 text-text-muted">{TAGLINES[plan]}</p>
 
-        <div className="mt-5 min-h-[4.75rem]">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-4xl font-semibold tracking-tight text-text-primary tabular-nums">
-              {!paid ? "£0" : pass && quote ? pounds(quote.perMonthPence) : pounds(PLAN_PRICES_PENCE[paid])}
-            </span>
-            <span className="text-sm text-text-muted">{paid ? "a month" : "for good"}</span>
-          </div>
+        <div className="mt-6 flex items-end gap-2">
+          <Price pence={monthlyPence} />
+          <span className="mb-1 text-sm text-text-muted">{paid ? "a month" : "for good"}</span>
+        </div>
+        <div className="mt-2 flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
           {paid && pass && quote ? (
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
+            <>
               <span>
                 {pounds(quote.pricePence)} once · {quote.months} {quote.months === 1 ? "month" : "months"}
               </span>
-              <span className="rounded-full bg-[var(--color-success-muted)] px-2 py-0.5 font-semibold text-text-primary">
+              <span className="rounded-full bg-success-muted px-2 py-0.5 font-semibold text-text-primary">
                 Save {pounds(quote.savingPence)}
               </span>
-            </div>
+            </>
           ) : paid ? (
-            <div className="mt-1.5 text-xs text-text-muted">Renews monthly. Cancel any time.</div>
+            <span>
+              That&apos;s about <span className="font-semibold text-text-secondary">{perDayPence(monthlyPence)}p a day</span>
+            </span>
           ) : (
-            <div className="mt-1.5 text-xs text-text-muted">No card needed.</div>
+            <span>No card needed</span>
           )}
         </div>
 
-        <div className="mt-5 text-2xs font-semibold uppercase tracking-[0.16em] text-text-secondary">
-          {pass && paid ? `Until ${passUntil}` : "Each month"}
-        </div>
-
-        <div className="mt-2.5 grid grid-cols-2 gap-2">
-          {HEADLINE_ROWS.map((key) => {
-            const { main, aside } = amount(key);
-            const emphasised = key === highlight;
-            return (
-              <div
-                key={key}
-                className={`min-w-0 rounded-2xl border px-3 py-2.5 ${
-                  emphasised
-                    ? "border-accent bg-accent-muted"
-                    : "border-[var(--color-border)] bg-[var(--color-glass-subtle)]"
-                }`}
-              >
-                <div className="text-2xl font-semibold tracking-tight text-text-primary tabular-nums">
-                  {main}
-                </div>
-                <div className="text-xs text-text-secondary">{rowLabel(key)}</div>
-                {pass && paid && aside ? <div className="text-2xs text-text-muted">{aside}</div> : null}
-              </div>
-            );
-          })}
-        </div>
-
-        <ul className="mt-4 space-y-2.5 text-sm">
-          {rows.map((key) => {
-            const { main, aside } = amount(key);
-            const emphasised = key === highlight;
-            const muted = main === "Not included";
-            return (
-              <li
-                key={key}
-                className={`flex min-w-0 items-baseline justify-between gap-3 ${
-                  emphasised ? "-mx-2 rounded-lg bg-accent-muted px-2 py-1" : ""
-                }`}
-              >
-                <span className={`min-w-0 ${emphasised ? "font-semibold text-text-primary" : "text-text-secondary"}`}>
-                  {rowLabel(key)}
-                </span>
-                <span className="shrink-0 text-right tabular-nums">
-                  <span className={muted ? "text-text-muted" : "text-text-primary"}>{main}</span>
-                  {pass && paid && aside ? (
-                    <span className="text-2xs text-text-muted"> · {aside}</span>
-                  ) : null}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-        <p className="mt-3 text-xs text-text-muted">
-          {plan === "free"
-            ? "Flashcards, notebooks and the planner are unlimited."
-            : "Everything else is unlimited for normal studying."}
-        </p>
-
-        <div className="mt-auto pt-6">
+        <div className="mt-6">
           {!paid ? (
             <Button variant="ghost" disabled className="w-full justify-center">
               {current ? "Your plan" : "Free forever"}
             </Button>
           ) : (
             <Button
-              variant={featured ? "primary" : "secondary"}
+              variant={recommended ? "primary" : "secondary"}
+              size={recommended ? "lg" : "md"}
               disabled={disabled || (current && !pass)}
               className="w-full justify-center"
               onClick={() => onChoose(paid)}
             >
-              {current && !pass
-                ? "Your plan"
-                : pass
-                  ? `Get ${PLAN_LABELS[paid]} to July`
-                  : `Choose ${PLAN_LABELS[paid]}`}
+              {current && !pass ? "Your plan" : pass ? `Get ${PLAN_LABELS[paid]} to July` : `Get ${PLAN_LABELS[paid]}`}
             </Button>
           )}
+          <p className="mt-2 text-center text-2xs text-text-muted">
+            {!paid ? "Always free." : pass ? `Lasts until ${passUntil}.` : "Cancel any time."}
+          </p>
         </div>
+
+        <div className="my-6 h-px bg-[var(--color-border)]" />
+
+        <div
+          className={`rounded-2xl border px-3.5 py-3 ${
+            highlight === "papers" ? "border-accent bg-accent-muted" : "border-[var(--color-border)] bg-[var(--color-glass-subtle)]"
+          }`}
+        >
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-base font-semibold text-text-primary">
+              {pass ? describePassAllowance(plan, "papers", passMonths).total : papers}{" "}
+              {papers === 1 && !pass ? "Jami paper" : "Jami papers"}
+            </span>
+            <span className="text-2xs text-text-muted">
+              {pass ? `${papers} a month` : describeAllowancePace(plan, "papers") ?? "a month"}
+            </span>
+          </div>
+          <div className="mt-2">
+            <PaperRow count={papers} tone={accentTone} />
+          </div>
+          <div className="mt-1.5 text-2xs text-text-muted">Exam-style papers written for your course, marked by Jami.</div>
+        </div>
+
+        <ul className="mt-4 space-y-2.5 text-sm">
+          {MAIN_ROWS.map((key) => row(key, false))}
+          <li className="flex min-w-0 items-start gap-2.5">
+            <Tick missing={false} strong={recommended} warm={warm} />
+            <span className="min-w-0 text-text-secondary">
+              {space.folders === null ? (
+                <>
+                  <span className="font-semibold text-text-primary">Unlimited</span> folders and notebooks
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-text-primary">{space.folders}</span> folders,{" "}
+                  {space.notebooksPerFolder} notebooks in each
+                </>
+              )}
+            </span>
+          </li>
+        </ul>
+
+        <details className="group mt-5 border-t border-[var(--color-border)] pt-1" open={Boolean(extras) || undefined}>
+          <summary className="flex cursor-pointer list-none items-center justify-between py-3 text-xs font-semibold text-text-secondary hover:text-text-primary">
+            Everything else
+            <Chevron />
+          </summary>
+          <ul className="space-y-2 pb-1 text-xs">
+            {EXTRA_ROWS.map((key) => row(key, true))}
+            <li className="flex min-w-0 items-start gap-2.5">
+              <Tick missing={false} strong={false} warm={warm} />
+              <span className="min-w-0 text-text-muted">
+                <span className="font-semibold text-text-primary">Unlimited</span> flashcards, decks and the planner
+              </span>
+            </li>
+            <li className="flex min-w-0 items-start gap-2.5">
+              <Tick missing={false} strong={false} warm={warm} />
+              <span className="min-w-0 text-text-muted">
+                {paid ? (
+                  <>
+                    <span className="font-semibold text-text-primary">Unlimited</span> card drafts and cards from files
+                  </>
+                ) : (
+                  <>Card drafts and cards from files, a few each month</>
+                )}
+              </span>
+            </li>
+          </ul>
+        </details>
       </div>
     </section>
+  );
+
+  if (!recommended) {
+    return <div className="transition duration-normal hover:-translate-y-1 motion-reduce:transform-none">{card}</div>;
+  }
+  const edge = warm
+    ? "bg-[linear-gradient(160deg,var(--color-warm-accent),var(--color-accent)_55%,var(--color-warm-border))]"
+    : "bg-[linear-gradient(160deg,var(--color-accent),var(--color-warm-accent)_55%,var(--color-accent-muted))]";
+  return (
+    <div className={`relative rounded-2xl p-[2px] shadow-accent transition duration-normal hover:-translate-y-1 motion-reduce:transform-none lg:-my-4 ${edge}`}>
+      <span className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-[linear-gradient(100deg,var(--color-accent),var(--color-accent-hover))] px-3.5 py-1 text-2xs font-semibold uppercase tracking-[0.14em] text-accent-on shadow-accent">
+        {current ? "Your plan" : "Recommended"}
+      </span>
+      {card}
+    </div>
+  );
+}
+
+function Tick({ missing, strong, warm }: { missing: boolean; strong: boolean; warm: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`mt-0.5 grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full ${
+        missing
+          ? "bg-[var(--color-glass-subtle)] text-text-muted"
+          : strong
+            ? "bg-accent text-accent-on"
+            : warm
+              ? "bg-warm-glow text-warm-accent"
+              : "bg-accent-muted text-accent"
+      }`}
+    >
+      <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        {missing ? <path d="M4.5 8h7" /> : <path d="M4 8.5l2.5 2.5L12 5.5" />}
+      </svg>
+    </span>
+  );
+}
+
+function ValueTile({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+  return (
+    <div className="app-subtle-panel flex gap-3.5 rounded-2xl p-5">
+      <IconBubble size="md" shape="circle" className="bg-accent-muted text-accent" aria-hidden>
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          {icon}
+        </svg>
+      </IconBubble>
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+        <p className="mt-1 text-sm leading-6 text-text-muted">{children}</p>
+      </div>
+    </div>
+  );
+}
+
+function Question({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="group px-5">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-semibold text-text-primary">
+        {title}
+        <Chevron />
+      </summary>
+      <p className="-mt-1 pb-4 text-sm leading-6 text-text-muted">{children}</p>
+    </details>
   );
 }
 

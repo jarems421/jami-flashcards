@@ -410,7 +410,14 @@ type ExistingFolder = { id: string; name: string; studyLevel?: StudyLevel; examC
  * shows them how to do. A subject that already has a folder is not duplicated;
  * it is given the course the student has just told Jami, if it had none.
  */
-export function planFirstNightSetup(answers: FirstNightAnswers, existingFolders: readonly ExistingFolder[]) {
+export function planFirstNightSetup(
+  answers: FirstNightAnswers,
+  existingFolders: readonly ExistingFolder[],
+  /** Folders the student's plan has room for (Free keeps three); undefined for no limit. */
+  room?: number
+) {
+  const maxCreate = Math.min(MAX_FIRST_NIGHT_SUBJECTS, room ?? Infinity);
+  let overPlan = 0;
   const byName = new Map(existingFolders.map((folder) => [folder.name.trim().toLowerCase(), folder]));
   const seen = new Set<string>();
   const create: Array<{ name: string; studyLevel: StudyLevel | null; examCourse: ExamCourseSelection | null }> = [];
@@ -430,12 +437,19 @@ export function planFirstNightSetup(answers: FirstNightAnswers, existingFolders:
           ...(existing.studyLevel || !answers.studyLevel ? {} : { studyLevel: answers.studyLevel }),
         });
       }
-    } else if (create.length < MAX_FIRST_NIGHT_SUBJECTS) {
+    } else if (create.length < maxCreate) {
       create.push({ name, studyLevel: answers.studyLevel, examCourse: subject.examCourse });
+    } else if (create.length < MAX_FIRST_NIGHT_SUBJECTS) {
+      overPlan += 1;
     }
   }
 
-  return { create, update, examReady: answers.subjects.some((subject) => Boolean(subject.examCourse)) };
+  return {
+    create,
+    update,
+    overPlan,
+    examReady: answers.subjects.some((subject) => Boolean(subject.examCourse)),
+  };
 }
 
 export function isOnDiscoveryRoute(pathname: string, discovery: FirstNightDiscovery) {
