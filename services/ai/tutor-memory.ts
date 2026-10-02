@@ -14,6 +14,10 @@ export type TutorMemoryEntry = {
   updatedAt: number;
   /** When it will be forgotten unless it comes up again. */
   fadesAt?: number;
+  /** Times it came up again. */
+  reinforced?: number;
+  /** Other notes it is linked to, by id: the same mistake seen elsewhere. */
+  links?: string[];
 };
 
 export type TutorMemoryView = {

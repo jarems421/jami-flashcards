@@ -86,7 +86,10 @@ export function useTutorMemory() {
     (id: string) =>
       change({ target: "forget", id }, (current) => ({
         ...current,
-        items: current.items.filter((item) => item.id !== id),
+        // Its links go with it, so the map never draws a line to nothing.
+        items: current.items
+          .filter((item) => item.id !== id)
+          .map((item) => (item.links?.includes(id) ? { ...item, links: item.links.filter((link) => link !== id) } : item)),
       })),
     [change]
   );

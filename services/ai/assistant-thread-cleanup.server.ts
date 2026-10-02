@@ -4,6 +4,7 @@ import {
   isOwnedAssistantImagePath,
 } from "@/lib/ai/assistant-illustrations";
 import { normalizeAssistantIllustrations } from "@/lib/ai/jami-assistant";
+import { normalizeTutorAttachments } from "@/lib/ai/tutor-attachments";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 
 /** Firestore caps a batch at 500 operations. */
@@ -41,12 +42,16 @@ export async function deleteAssistantThread(uid: string, threadId: string) {
 
   const imagePaths = Array.from(
     new Set(
-      messages.docs.flatMap((message) =>
-        normalizeAssistantIllustrations(message.data().illustrations)
+      messages.docs.flatMap((message) => [
+        ...normalizeAssistantIllustrations(message.data().illustrations)
           // A diagram is text on the message, with no file to delete.
           .flatMap((item) => (item.kind === "diagram" ? [] : [item.storagePath]))
-          .filter((path) => isOwnedAssistantImagePath(path, uid))
-      )
+          .filter((path) => isOwnedAssistantImagePath(path, uid)),
+        // Files the student attached go with the chat; one saved as a source has its own copy.
+        ...normalizeTutorAttachments(message.data().attachments, { uid }).map(
+          (attachment) => attachment.storagePath
+        ),
+      ])
     )
   );
   await Promise.all(

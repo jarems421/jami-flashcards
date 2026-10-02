@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Editor as JsDrawEditor } from "js-draw";
 import {
   getNotebookLiveInkPixelRatio,
+  getNotebookLiveInkPixelSnap,
   getNotebookLiveInkRegion,
   installNotebookLiveInk,
   NotebookLiveInkDirtyRegion,
@@ -95,6 +96,24 @@ describe("fast live ink geometry", () => {
     expect(
       getNotebookLiveInkPixelRatio({ width: 10, height: 10, devicePixelRatio: Number.NaN })
     ).toBe(1);
+    // A 5K or Studio Display at 2x, page fully on screen: drawn at full density,
+    // not softer than the page canvas beneath it.
+    expect(
+      getNotebookLiveInkPixelRatio({ width: 2560, height: 1440, devicePixelRatio: 2 })
+    ).toBe(2);
+  });
+
+  it("puts the canvas's corner on a device pixel, so live ink is never resampled", () => {
+    // A page centred on a half pixel at 1x moves half a pixel; at 2x a quarter
+    // CSS pixel is half a device pixel.
+    expect(getNotebookLiveInkPixelSnap(100.5, 1)).toBeCloseTo(0.5);
+    expect(Math.abs(getNotebookLiveInkPixelSnap(100.25, 2))).toBeCloseTo(0.25);
+    // Already aligned, or at a fractional density, it lands on a whole device pixel.
+    expect(getNotebookLiveInkPixelSnap(64, 2)).toBe(0);
+    const origin = 37.3;
+    const snapped = (origin + getNotebookLiveInkPixelSnap(origin, 1.25)) * 1.25;
+    expect(snapped).toBeCloseTo(Math.round(snapped), 9);
+    expect(getNotebookLiveInkPixelSnap(Number.NaN, 2)).toBe(0);
   });
 
   it("compares regions by value", () => {

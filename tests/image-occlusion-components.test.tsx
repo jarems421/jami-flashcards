@@ -156,26 +156,27 @@ describe("a diagram label in study", () => {
     expect(front.textContent).toContain("Atria: name the 2 highlighted labels.");
   });
 
+  const whole: Card = {
+    ...card,
+    id: "card-whole",
+    back: HEART.labels.map((entry) => entry.answer).join("; "),
+    occlusion: {
+      diagram: {
+        ...HEART,
+        cardStyle: "whole",
+        groups: [{ id: "whole-diagram", name: "", labelIds: HEART.labels.map((entry) => entry.id) }],
+      },
+      groupId: "whole-diagram",
+    },
+  };
+
   it("lets a whole-diagram card be checked label by label before it is turned", async () => {
     const onReveal = vi.fn();
-    const whole: Card = {
-      ...card,
-      id: "card-whole",
-      back: HEART.labels.map((entry) => entry.answer).join("; "),
-      occlusion: {
-        diagram: {
-          ...HEART,
-          cardStyle: "whole",
-          groups: [{ id: "whole-diagram", name: "", labelIds: HEART.labels.map((entry) => entry.id) }],
-        },
-        groupId: "whole-diagram",
-      },
-    };
     await act(async () =>
       root.render(<StudyFlashcard card={whole} flipped={false} onReveal={onReveal} deckName="Anatomy" deckColor="#8f7de8" topicNames={[]} />)
     );
     const front = host.querySelector(".study-flashcard-face-front")!;
-    expect(front.textContent).toContain("Name every covered label. Tap a label to check it (0 of 5), then show them all.");
+    expect(front.textContent).toContain("Name every covered label. Tap each label to check it (0 of 5).");
 
     const uncover = front.querySelector<HTMLButtonElement>('button[aria-label="Uncover label 2"]')!;
     await act(async () => uncover.click());
@@ -190,6 +191,32 @@ describe("a diagram label in study", () => {
     const showAll = [...front.querySelectorAll("button")].find((button) => button.textContent === "Show all labels")!;
     await act(async () => showAll.click());
     expect(onReveal).toHaveBeenCalledTimes(1);
+  });
+
+  it("turns a whole-diagram card on its own once every label is uncovered", async () => {
+    vi.useFakeTimers();
+    try {
+      const onReveal = vi.fn();
+      await act(async () =>
+        root.render(<StudyFlashcard card={whole} flipped={false} onReveal={onReveal} deckName="Anatomy" deckColor="#8f7de8" topicNames={[]} />)
+      );
+      const front = host.querySelector(".study-flashcard-face-front")!;
+      for (const index of [1, 2, 3, 4]) {
+        const box = front.querySelector<HTMLButtonElement>(`button[aria-label="Uncover label ${index}"]`)!;
+        await act(async () => box.click());
+      }
+      await act(async () => vi.advanceTimersByTime(2000));
+      // One still covered: nothing turns.
+      expect(onReveal).not.toHaveBeenCalled();
+
+      const last = front.querySelector<HTMLButtonElement>('button[aria-label="Uncover label 5"]')!;
+      await act(async () => last.click());
+      expect(onReveal).not.toHaveBeenCalled();
+      await act(async () => vi.advanceTimersByTime(1000));
+      expect(onReveal).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("hides every other label in multiple choice even when the diagram hides only one", async () => {

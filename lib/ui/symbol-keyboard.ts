@@ -48,7 +48,13 @@ export type SymbolKey = {
   /** Announced by screen readers and shown on hover. */
   name: string;
   /** Keys that do something cleverer than typing their own text. */
-  action?: "fraction";
+  /**
+   * Keys that do more than type their own text: the fraction lifts what was
+   * typed into its top, standard form and the power and subscript keys open a
+   * slot that typing goes into (see `script-typing.ts`), and a root opens
+   * brackets with the caret inside.
+   */
+  action?: "fraction" | "standard-form" | "power" | "subscript" | "root";
 };
 
 export type SymbolGroup = {
@@ -76,163 +82,149 @@ function group(id: string, label: string, keys: RawKey[]): SymbolGroup {
   };
 }
 
-/** Operators and relations, from foundation GCSE up to A-level. */
-const MATHS: RawKey[] = [
-  c("×", "Multiply"),
-  c("÷", "Divide"),
-  c("±", "Plus or minus"),
-  c("·", "Dot product"),
-  c("≈", "Approximately equal"),
-  c("≠", "Not equal"),
-  c("≡", "Identical to"),
-  c("≤", "Less than or equal"),
-  c("≥", "Greater than or equal"),
-  c("∝", "Proportional to"),
-  c("∞", "Infinity"),
-  c("°", "Degree"),
-  c("′", "Prime"),
-  c("√", "Square root"),
-  c("∛", "Cube root"),
-  c("π", "Pi"),
-  c("∑", "Sum"),
-  c("∫", "Integral"),
-  c("∴", "Therefore"),
-  c("∵", "Because"),
-  c("∠", "Angle"),
-  c("⊥", "Perpendicular"),
-  c("∥", "Parallel"),
-  // A combining macron: it lands on the character before it, so x then this
-  // reads as one x-bar rather than two glyphs.
-  { label: "x̄", insert: "̄", name: "Bar, for a mean" },
-];
-
-/** The Greek letters that name quantities in the specifications. */
-const GREEK: RawKey[] = [
-  c("α", "Alpha"),
-  c("β", "Beta"),
-  c("γ", "Gamma"),
-  c("δ", "Delta, small change"),
-  c("ε", "Epsilon"),
-  c("η", "Eta, efficiency"),
-  c("θ", "Theta, angle"),
-  c("λ", "Lambda, wavelength"),
-  c("μ", "Mu"),
-  c("ν", "Nu, frequency"),
-  c("ρ", "Rho, density"),
-  c("σ", "Sigma"),
-  c("τ", "Tau"),
-  c("φ", "Phi"),
-  c("ω", "Omega, angular velocity"),
-  c("Δ", "Change in"),
-  c("Σ", "Capital sigma, sum"),
-  c("Φ", "Capital phi, flux"),
-  c("Ω", "Ohm"),
-];
-
-/** Physics and chemistry: reactions, states, charges and units. */
-const SCIENCE: RawKey[] = [
-  c("→", "Reacts to give"),
-  c("⇌", "Reversible reaction"),
-  c("↑", "Gas given off"),
-  c("↓", "Precipitate forms"),
-  c("⁺", "Positive charge"),
-  c("⁻", "Negative charge"),
-  { label: "(aq)", insert: "(aq)", name: "Aqueous" },
-  { label: "(s)", insert: "(s)", name: "Solid" },
-  { label: "(l)", insert: "(l)", name: "Liquid" },
-  { label: "(g)", insert: "(g)", name: "Gas" },
-  c("℃", "Degrees Celsius"),
-  c("µ", "Micro"),
-];
-
-/** A-level maths: set notation, quantifiers and implication. */
-const SETS: RawKey[] = [
-  c("∈", "Is a member of"),
-  c("∉", "Is not a member of"),
-  c("⊂", "Is a proper subset of"),
-  c("⊆", "Is a subset of"),
-  c("∪", "Union"),
-  c("∩", "Intersection"),
-  c("∅", "Empty set"),
-  c("ℕ", "Natural numbers"),
-  c("ℤ", "Integers"),
-  c("ℚ", "Rational numbers"),
-  c("ℝ", "Real numbers"),
-  c("⇒", "Implies"),
-  c("⇔", "If and only if"),
-  c("∀", "For all"),
-  c("∃", "There exists"),
-  c("|", "Such that"),
-];
-
-/**
- * Powers and indices as keys that type themselves.
+/*
+ * Laid out like a scientific calculator: four short tabs, six keys to a row,
+ * and each row one kind of thing, so a key is found by where it sits rather
+ * than by reading every glyph. The first tab holds the essentials and is the
+ * one that opens; the rest hold what a particular subject needs.
  *
- * These were deliberately absent, because two keys used to put the field into a
- * mode instead: press the standard-form key and the *next* thing you typed came
- * out raised. That is a Shift key, and it is invisible -- press it and nothing
- * happens, which is indistinguishable from a broken button. A student pressing
- * a key labelled squared expects a squared sign.
- *
- * Superscripts first because powers are far more common than chemical
- * subscripts, and the minus sits with them because a negative power is where a
- * student most often needs one they cannot type.
+ * Deliberately not everything. It used to run to five tabs of up to 24 keys in
+ * eight tight columns, with a recents row on top -- a grid of near-identical
+ * glyphs a student had to search. A key earns a place here only if students at
+ * GCSE, A-level or first-year university write it and cannot type it.
  */
-const INDICES: RawKey[] = [
-  c("²", "Squared"),
-  c("³", "Cubed"),
-  c("⁻", "Negative power"),
-  c("ⁿ", "To the power n"),
-  c("⁰", "To the power zero"),
-  c("¹", "To the power one"),
-  c("⁴", "To the power four"),
-  c("⁵", "To the power five"),
-  c("⁶", "To the power six"),
-  c("⁷", "To the power seven"),
-  c("⁸", "To the power eight"),
-  c("⁹", "To the power nine"),
-  c("₁", "Subscript one"),
-  c("₂", "Subscript two"),
-  c("₃", "Subscript three"),
-  c("₄", "Subscript four"),
-];
 
-
-export const SYMBOL_GROUPS: SymbolGroup[] = [
-  group("maths", "Maths", MATHS),
-  group("indices", "Powers", INDICES),
-  group("symbols", "Symbols", GREEK),
-  group("science", "Science", SCIENCE),
-  group("sets", "Sets", SETS),
-];
-
-/**
- * The bottom row, present whatever tab is showing.
- *
- * Both type something the moment they are pressed. They used to leave the field
- * in an index mode afterwards, so the next character a student typed silently
- * came out raised or lowered -- a hidden Shift that made ordinary typing behave
- * unpredictably right after a press. The Powers group replaces it: to write a
- * power now you press the power you want.
- *
- * The fraction key still reads back what has just been typed, which is the one
- * piece of cleverness worth keeping: type 3, press it, and the 3 lifts into
- * place as the numerator.
- */
+/** The two keys that do more than type a character. */
 export const INDEX_KEYS: SymbolKey[] = [
   {
-    id: "index:fraction",
+    id: "maths:fraction",
     label: "a⁄b",
     insert: FRACTION_SLASH,
     name: "Fraction",
     action: "fraction",
   },
   {
-    id: "index:standard-form",
+    id: "maths:standard-form",
     label: "×10ⁿ",
     insert: "×10",
     name: "Standard form",
+    action: "standard-form",
   },
+];
+
+/** Labelled with an x so a power key reads as a power, not a stray digit. */
+const power = (char: string, name: string): RawKey => ({
+  label: `x${char}`,
+  insert: char,
+  name,
+});
+
+/** Opens first: powers and roots, operators, relations, the common symbols. */
+const MATHS: RawKey[] = [
+  // Powers and roots: each one a slot to type into, not a fixed character.
+  power("²", "Squared"),
+  { label: "xⁿ", insert: "", name: "Power: type the power next", action: "power" },
+  { label: "xₙ", insert: "", name: "Subscript: type it next", action: "subscript" },
+  { label: "√", insert: "√()", name: "Square root", action: "root" },
+  { label: "∛", insert: "∛()", name: "Cube root", action: "root" },
+  INDEX_KEYS[0],
+  // Operators
+  c("×", "Multiply"),
+  c("÷", "Divide"),
+  c("±", "Plus or minus"),
+  c("≠", "Not equal"),
+  c("≈", "Approximately equal"),
+  INDEX_KEYS[1],
+  // Relations and symbols
+  c("≤", "Less than or equal"),
+  c("≥", "Greater than or equal"),
+  c("π", "Pi"),
+  c("°", "Degree"),
+  c("∞", "Infinity"),
+  c("θ", "Theta, angle"),
+  // Change, calculus and argument
+  c("Δ", "Change in"),
+  c("∫", "Integral"),
+  c("∑", "Sum"),
+  c("→", "Tends to, or gives"),
+  c("∴", "Therefore"),
+  c("∠", "Angle"),
+];
+
+/** Raised in the top two rows, lowered in the bottom two. */
+const POWERS: RawKey[] = [
+  c("⁰", "To the power zero"),
+  c("¹", "To the power one"),
+  c("²", "Squared"),
+  c("³", "Cubed"),
+  c("⁴", "To the power four"),
+  c("⁵", "To the power five"),
+  c("⁶", "To the power six"),
+  c("⁷", "To the power seven"),
+  c("⁸", "To the power eight"),
+  c("⁹", "To the power nine"),
+  c("⁻", "Negative power"),
+  c("ⁿ", "To the power n"),
+  c("₀", "Subscript zero"),
+  c("₁", "Subscript one"),
+  c("₂", "Subscript two"),
+  c("₃", "Subscript three"),
+  c("₄", "Subscript four"),
+  c("₅", "Subscript five"),
+  c("₆", "Subscript six"),
+  c("₇", "Subscript seven"),
+  c("₈", "Subscript eight"),
+  c("₉", "Subscript nine"),
+  c("ₙ", "Subscript n"),
+  c("ₓ", "Subscript x"),
+];
+
+/** The Greek letters that name quantities, lower case then capitals. */
+const GREEK: RawKey[] = [
+  c("α", "Alpha"),
+  c("β", "Beta"),
+  c("γ", "Gamma"),
+  c("δ", "Delta, small change"),
+  c("ε", "Epsilon"),
+  c("θ", "Theta"),
+  c("λ", "Lambda, wavelength"),
+  c("μ", "Mu, micro"),
+  c("π", "Pi"),
+  c("ρ", "Rho, density"),
+  c("σ", "Sigma"),
+  c("ω", "Omega, angular velocity"),
+  c("Δ", "Capital delta"),
+  c("Σ", "Capital sigma, sum"),
+  c("Φ", "Capital phi, flux"),
+  c("Ω", "Ohm"),
+  c("η", "Eta, efficiency"),
+  c("φ", "Phi"),
+];
+
+/** Reactions, charges, states and units. */
+const SCIENCE: RawKey[] = [
+  c("→", "Reacts to give"),
+  c("⇌", "Reversible reaction"),
+  c("↑", "Gas given off"),
+  c("↓", "Precipitate forms"),
+  c("⁺", "Positive charge"),
+  { label: "⁻", insert: "⁻", name: "Negative charge" },
+  { label: "(aq)", insert: "(aq)", name: "Aqueous" },
+  { label: "(s)", insert: "(s)", name: "Solid" },
+  { label: "(l)", insert: "(l)", name: "Liquid" },
+  { label: "(g)", insert: "(g)", name: "Gas" },
+  c("℃", "Degrees Celsius"),
+  c("Ω", "Ohms"),
+];
+
+/** Every tab is six keys wide; the keyboard draws it that way. */
+export const SYMBOL_KEYBOARD_COLUMNS = 6;
+
+export const SYMBOL_GROUPS: SymbolGroup[] = [
+  group("maths", "Maths", MATHS),
+  group("powers", "Powers", POWERS),
+  group("greek", "Greek", GREEK),
+  group("science", "Science", SCIENCE),
 ];
 
 const SUPERSCRIPTS: Record<string, string> = {
@@ -265,7 +257,18 @@ export function toIndexForm(character: string, mode: IndexMode): string | null {
   return table[character] ?? table[character.toLowerCase()] ?? null;
 }
 
-type EditableField = HTMLInputElement | HTMLTextAreaElement;
+const RAISED = new Set(Object.values(SUPERSCRIPTS));
+const LOWERED = new Set(Object.values(SUBSCRIPTS));
+
+/** Whether a character is already raised or lowered, and which. */
+export function scriptKindOf(character: string | undefined): IndexMode | null {
+  if (!character) return null;
+  if (RAISED.has(character)) return "super";
+  if (LOWERED.has(character)) return "sub";
+  return null;
+}
+
+export type EditableField = HTMLInputElement | HTMLTextAreaElement;
 
 /**
  * Write text into a field as though the student had typed it.
@@ -352,43 +355,5 @@ export function applyFraction(field: EditableField) {
   return insertTextIntoField(field, insert);
 }
 
-export const ALL_SYMBOL_KEYS: SymbolKey[] = [
-  ...SYMBOL_GROUPS.flatMap((entry) => entry.keys),
-  ...INDEX_KEYS,
-];
-
-const RECENTS_KEY = "jami:symbol-keyboard-recents";
-const MAX_RECENTS = 8;
-
-/** The keys this student reaches for, most recent first. */
-export function readSymbolRecents(): SymbolKey[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(RECENTS_KEY);
-    if (!raw) return [];
-    const ids = JSON.parse(raw) as unknown;
-    if (!Array.isArray(ids)) return [];
-    return ids
-      .map((id) => ALL_SYMBOL_KEYS.find((key) => key.id === id))
-      .filter((key): key is SymbolKey => Boolean(key))
-      .slice(0, MAX_RECENTS);
-  } catch {
-    return [];
-  }
-}
-
-export function rememberSymbol(key: SymbolKey, current: SymbolKey[]) {
-  const next = [key, ...current.filter((entry) => entry.id !== key.id)].slice(
-    0,
-    MAX_RECENTS
-  );
-  try {
-    window.localStorage.setItem(
-      RECENTS_KEY,
-      JSON.stringify(next.map((entry) => entry.id))
-    );
-  } catch {
-    // A convenience, not something worth failing a keystroke over.
-  }
-  return next;
-}
+/** Every key, each once: the fraction and standard-form keys live in Maths. */
+export const ALL_SYMBOL_KEYS: SymbolKey[] = SYMBOL_GROUPS.flatMap((entry) => entry.keys);

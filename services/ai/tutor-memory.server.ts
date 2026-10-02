@@ -9,6 +9,7 @@ import {
   RECENT_ACTIVITY_WINDOW_MS,
   TUTOR_MEMORY_VERSION,
   type RecentTutorActivity,
+  type TutorMemoryOperationOutcome,
   type TutorMemoryState,
   type TutorMemoryWriteContext,
 } from "@/lib/ai/tutor-memory";
@@ -70,7 +71,7 @@ export async function applyTutorMemoryFromAnswer(input: {
   now?: number;
 }) {
   const now = input.now ?? Date.now();
-  let outcome = { added: 0, updated: 0, forgotten: 0, rejected: 0 };
+  let outcome: TutorMemoryOperationOutcome = { added: 0, updated: 0, kept: 0, forgotten: 0, rejected: 0, linked: 0 };
   await updateTutorMemory(input.uid, (state) => {
     const applied = applyTutorMemoryOperations({
       state,

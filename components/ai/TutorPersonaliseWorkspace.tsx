@@ -220,9 +220,9 @@ export default function TutorPersonaliseWorkspace() {
                   number={5}
                   eyebrow="Memory"
                   title="What Jami remembers"
-                  description="Jami carries a few short notes from one chat to the next, so it knows what you found hard and what you're working on. Tap a line to correct it, or remove it."
+                  description="Jami carries short notes from one chat to the next, so it knows what you get wrong and what you're working on. Each subject is a galaxy: tap one to fly in, and tap a note to correct or forget it."
                 >
-                  <TutorMemoryPanel memory={memory} />
+                  <TutorMemoryPanel memory={memory} folders={data?.folders ?? []} />
                 </Step>
               ) : null}
             </div>

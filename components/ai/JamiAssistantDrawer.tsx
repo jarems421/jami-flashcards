@@ -42,6 +42,18 @@ import {
 } from "@/services/ai/ai-privacy-notice";
 import AllowanceHint from "@/components/billing/AllowanceHint";
 import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
+import {
+  TutorAttachButton,
+  TutorMessageAttachments,
+  TutorPendingAttachments,
+  TutorSourceSaveCard,
+} from "@/components/ai/TutorAttachments";
+import { useTutorAttachments } from "@/hooks/useTutorAttachments";
+import {
+  MAX_TUTOR_ATTACHMENTS_PER_REQUEST,
+  type TutorAttachment,
+  type TutorSourceSaveOffer,
+} from "@/lib/ai/tutor-attachments";
 import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard";
 import TutorCardSuggestions from "@/components/ai/TutorCardSuggestions";
 import TutorPracticeOffer from "@/components/ai/TutorPracticeOffer";
@@ -227,6 +239,12 @@ type DrawerMessage = {
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
   /** Answered in this sitting, so material Tutor agreed to is made straight away. */
   fresh?: boolean;
+  /** Files the student sent with this message. */
+  attachments?: TutorAttachment[];
+  /** Its files are not on a saved message yet, because the answer failed; the next one carries them. */
+  attachmentsUnsaved?: boolean;
+  /** Tutor's suggestion to save an attached file as a source, shown only in this sitting. */
+  sourceSaveOffer?: TutorSourceSaveOffer;
 };
 
 const STUDY_MATERIAL_OFFER_LABELS: Record<TutorStudyMaterialKind, string> = {
@@ -267,6 +285,8 @@ export default function JamiAssistantDrawer({
 }: JamiAssistantDrawerProps) {
   const [messages, setMessages] = useState<DrawerMessage[]>([]);
   const [input, setInput] = useState("");
+  const files = useTutorAttachments(userId);
+  const clearFiles = files.clear;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [historyNotice, setHistoryNotice] = useState<string | null>(null);
@@ -442,8 +462,9 @@ export default function JamiAssistantDrawer({
     setInsertingIllustrationId(null);
     setMinimised(false);
     setPinnedAnswers([]);
+    clearFiles();
     onOpenChange(false);
-  }, [abandonActiveRequest, onOpenChange, resetKey]);
+  }, [abandonActiveRequest, clearFiles, onOpenChange, resetKey]);
 
   useEffect(() => {
     const query = window.matchMedia(
@@ -481,8 +502,9 @@ export default function JamiAssistantDrawer({
     setInsertedIllustrationIds(new Set());
     setInsertedGraphKeys(new Set());
     setStartedMaterial({});
+    clearFiles();
     window.requestAnimationFrame(() => inputRef.current?.focus());
-  }, [abandonActiveRequest]);
+  }, [abandonActiveRequest, clearFiles]);
 
   const {
     threads,
@@ -762,15 +784,37 @@ export default function JamiAssistantDrawer({
 
   const sendMessage = useCallback(
     async (rawMessage: string) => {
-      const message = rawMessage.trim();
-      if (!message || requestPendingRef.current || viewingForeignThread) return;
+      const typed = rawMessage.trim();
+      if ((!typed && !files.ready) || files.uploading || requestPendingRef.current || viewingForeignThread) return;
 
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
       requestPendingRef.current = true;
       const abortController = new AbortController();
       requestAbortRef.current = abortController;
-      setMessages((current) => [...current, { role: "user", text: message }]);
+      const sentFiles = files.take();
+      const message = typed || "Take a look at what I've attached.";
+      /*
+       * What Tutor reads: this message's files first, then any from a message
+       * whose answer failed (not saved yet, so they go on this one), then the
+       * chat's earlier files, most recent first.
+       */
+      const unsavedFiles = messages.flatMap((entry) =>
+        entry.attachmentsUnsaved ? entry.attachments ?? [] : []
+      );
+      const newFiles = [...sentFiles, ...unsavedFiles];
+      const earlierFiles = messages
+        .flatMap((entry) => (entry.attachmentsUnsaved ? [] : entry.attachments ?? []))
+        .reverse();
+      const requestFiles = [...newFiles, ...earlierFiles].slice(0, MAX_TUTOR_ATTACHMENTS_PER_REQUEST);
+      setMessages((current) => [
+        ...current,
+        {
+          role: "user",
+          text: message,
+          ...(sentFiles.length > 0 ? { attachments: sentFiles, attachmentsUnsaved: true } : {}),
+        },
+      ]);
       setInput("");
       setLoading(true);
       setError(null);
@@ -810,6 +854,12 @@ export default function JamiAssistantDrawer({
             useRelatedSources,
             threadId: activeThread?.id,
             contextLabel: historyContextLabel,
+            ...(requestFiles.length > 0
+              ? {
+                  attachments: requestFiles,
+                  newAttachmentCount: Math.min(newFiles.length, requestFiles.length),
+                }
+              : {}),
           },
           (textSoFar) => {
             if (requestIdRef.current !== requestId) return;
@@ -839,14 +889,16 @@ export default function JamiAssistantDrawer({
           canIllustrate: response.canIllustrate,
           studyMaterialRequest: response.studyMaterialRequest,
           studyMaterialOffers: response.studyMaterialOffers,
+          sourceSaveOffer: response.sourceSaveOffer,
           fresh: true,
         };
         // Settle on the validated reply, replacing the streamed placeholder
-        // rather than trusting the deltas that produced it.
+        // rather than trusting the deltas that produced it. Every file sent so
+        // far is now on a saved message.
         setMessages((current) =>
-          streaming
-            ? [...current.slice(0, -1), assistantMessage]
-            : [...current, assistantMessage]
+          (streaming ? [...current.slice(0, -1), assistantMessage] : [...current, assistantMessage]).map(
+            (entry) => (entry.attachmentsUnsaved ? { ...entry, attachmentsUnsaved: false } : entry)
+          )
         );
         if (context.surface === "notebook") {
           reportTutorialAction("ask-tutor", {
@@ -925,6 +977,7 @@ export default function JamiAssistantDrawer({
       useRelatedSources,
       viewingForeignThread,
       requestIllustration,
+      files,
     ]
   );
 
@@ -1180,6 +1233,12 @@ export default function JamiAssistantDrawer({
                   className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div className="max-w-[90%]">
+                    {message.role === "user" && message.attachments?.length ? (
+                      <TutorMessageAttachments
+                        attachments={message.attachments}
+                        previewUrlFor={files.sentPreviewUrl}
+                      />
+                    ) : null}
                       {message.role === "assistant" ? (
                         <AssistantAnswerHold
                           enabled={!(loading && index === messages.length - 1)}
@@ -1217,6 +1276,14 @@ export default function JamiAssistantDrawer({
                           />
                         </div>
                       )}
+                    {message.role === "assistant" && message.sourceSaveOffer && !viewingForeignThread ? (
+                      <TutorSourceSaveCard
+                        userId={userId}
+                        offer={message.sourceSaveOffer}
+                        fileFor={files.sentFile}
+                        defaultFolderId={settingsFolderIds?.[0]}
+                      />
+                    ) : null}
                     {message.role === "assistant" ? (
                       <>
                         {/* The pin shares the sources line rather than taking a row of its own. */}
@@ -1430,7 +1497,7 @@ export default function JamiAssistantDrawer({
         >
           {historyOpen ? (
             <div className="text-center text-2xs text-text-muted">
-              Saved chats keep their messages, not source files or notebook snapshots.
+              Saved chats keep their messages and the files you attached, not notebook snapshots.
             </div>
           ) : viewingForeignThread ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/20 bg-accent/8 px-4 py-3">
@@ -1477,7 +1544,24 @@ export default function JamiAssistantDrawer({
             </div>
           ) : null}
 
-          <div className="relative rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-e1 transition duration-fast focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/15">
+          {files.notice ? (
+            <p className="mb-2 px-1 text-2xs text-text-muted" role="status">
+              {files.notice}
+            </p>
+          ) : null}
+          <div
+            className="relative rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-e1 transition duration-fast focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/15"
+            onDragOver={(event) => {
+              if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              const dropped = Array.from(event.dataTransfer.files);
+              if (dropped.length === 0) return;
+              event.preventDefault();
+              if (!loading) files.add(dropped);
+            }}
+          >
+            <TutorPendingAttachments items={files.pending} onRemove={files.remove} />
             <label htmlFor="jami-assistant-message" className="sr-only">
               Message Jami
             </label>
@@ -1492,6 +1576,13 @@ export default function JamiAssistantDrawer({
               className={`${compact ? "min-h-[3rem]" : "min-h-[5.75rem]"} w-full resize-none bg-transparent pb-2 pl-4 pr-4 pt-3 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82]`}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleComposerKeyDown}
+              onPaste={(event) => {
+                // A pasted screenshot is attached; pasted text is typed as usual.
+                const pasted = Array.from(event.clipboardData.files);
+                if (pasted.length === 0) return;
+                event.preventDefault();
+                files.add(pasted);
+              }}
             />
             <div className="flex items-center justify-between gap-3 px-2 pb-2">
               <TutorReasoningMenu
@@ -1506,6 +1597,7 @@ export default function JamiAssistantDrawer({
                   text: this row already holds the other things you do to a
                   message before sending it.
                 */}
+                <TutorAttachButton disabled={loading} onFiles={files.add} />
                 <SymbolKeyboard targetRef={inputRef} />
                 {dictation.supported ? (
                   <button
@@ -1526,7 +1618,11 @@ export default function JamiAssistantDrawer({
                 <button
                   type="button"
                   aria-label="Send message to Jami"
-                  disabled={loading || (!input.trim() && !dictation.listening)}
+                  disabled={
+                    loading ||
+                    files.uploading ||
+                    (!input.trim() && !dictation.listening && !files.ready)
+                  }
                   className="inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-accent-on shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
                   onClick={submitComposer}
                 >

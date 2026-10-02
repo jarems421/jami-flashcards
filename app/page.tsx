@@ -170,8 +170,6 @@ export default function Home() {
       data-app-surface="true"
       className="relative min-h-[100dvh] overflow-x-hidden text-text-primary"
     >
-      <div className="signed-out-glow signed-out-glow-hero" aria-hidden="true" />
-
       <header className="relative mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8 sm:pt-7">
         <Link
           href="/"
@@ -252,7 +250,6 @@ export default function Home() {
       </section>
 
       <section className="relative mx-auto flex w-full max-w-3xl flex-col items-center px-5 pb-20 text-center sm:px-8 lg:pb-24">
-        <div className="signed-out-glow signed-out-glow-centred" aria-hidden="true" />
         <h2 className="relative text-balance text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
           Not only exams.{" "}
           <span className="landing-accent">Any subject you study.</span>

@@ -16,40 +16,58 @@ one"), and switch either way later.
 2. **Crop** (optional, for new pictures). Drag across the diagram to frame it.
    After saving a cropped diagram, *Crop another from it* opens the same page
    or picture again, so one slide with three diagrams becomes three diagrams.
-3. **Cover the labels.** Pick a tool, then work on the picture:
+   Once labelling has started, the toolbar offers *Crop* and *Preview*; there
+   is no button to swap the picture there.
+3. **One question: are the labels written on the picture?**
+   - *It has labels*: when flashcard AI is on, a second question asks who
+     covers them. *Jami covers them* runs *Find the labels for me* straight
+     away. *I'll cover them myself* sends nothing, so a student can cover only
+     the labels they want to learn and leave the rest showing.
+   - *It has no labels*: box each part and type its name, or box a space beside
+     the part and draw a line to it (see *Lines* below).
+4. **Cover the labels.** Pick a tool, then work on the picture:
    - **Box** or **Oval**: drag to draw. A tap drops a box shaped like a label,
      which is the quickest way on a phone. Tapping an existing box selects it.
    - **Trace an outline**: draw round an irregular part (a lobe, a bone) with a
      finger, pen or mouse. The path is simplified to at most 64 points and
      becomes a polygon, which moves and resizes like a box.
+   - **Line to the part** (*name the parts* only): drag from a name's box to
+     the part it names. With a label selected, a tap anywhere points its line
+     there, which is the way on a phone. Each row in the label list also has a
+     line button that picks up this tool for that label, or removes its line.
+     The line's end and middle have handles; dragging the middle bends it.
    - **Move**: drag a box to move it. Dragging empty picture pans when zoomed.
    - The selected box has corner handles in every tool.
-   - Undo and redo cover boxes, label text, groups and found labels. A drag
-     undoes in one step, and so does typing one label.
-   - Keyboard: B, O, F and V switch tools. Arrows nudge the selected box
+   - Undo and redo cover boxes, label text, lines, groups and found labels. A
+     drag undoes in one step, and so does typing one label.
+   - Keyboard: B, O, F and V switch tools, and L picks up the Line tool when
+     naming parts. Arrows nudge the selected box
      (hold Shift to move further). Delete removes it. Esc deselects.
      Ctrl/Cmd+Z undoes, and Shift+Ctrl/Cmd+Z or Ctrl+Y redoes. +, - and 0 zoom.
    - **Find the labels for me** (cover mode, when flashcard AI is on) asks the
      AI to box every printed label and fill in its words. See *Finding printed
      labels* below.
-4. **The label list** is one row per box: its number, its name, and remove.
-   In *name the parts* each row asks for the part's name. In *cover them* a row
+5. **The label list** is one row per box: its number, its name, and remove.
+   In *name the parts* each row asks for the part's name and has a line
+   button. In *cover them* a row
    shows a name only when it has one (found by Jami, or from before), so it can
    be corrected; otherwise the picture says it, and nothing is asked.
-5. **How do you want to study it?** (two or more labels): *One card* (the
+6. **How do you want to study it?** (two or more labels): *One card* (the
    default) or *A card for each label*. Changing it on a saved diagram replaces
    its cards, and the editor says their review history starts again.
-6. **Preview** steps through every card as it will be studied. Then **Save**.
+7. **Preview** steps through every card as it will be studied. Then **Save**.
 
-The editor used to offer, per label, other accepted answers, a note, a line to
-the part and extra boxes, and per diagram, groups asked together, a question,
-"hide all / hide just that one" and line ends. They made a two-minute job feel
-like a form and are no longer shown. A diagram saved with any of them keeps
-them, and they still work in study.
+The editor used to offer, per label, other accepted answers, a note and extra
+boxes, and per diagram, groups asked together, a question, "hide all / hide
+just that one" and line ends. They made a two-minute job feel like a form and
+are no longer shown. A diagram saved with any of them keeps them, and they
+still work in study.
 
-*Label again* on the deck page reuses a saved diagram's picture for a second,
-separate set of labels, such as the same heart for blood flow instead of
-chambers. The two diagrams share the stored picture.
+Each diagram on the deck page has *Preview*, the same card preview as any
+other card, and *Edit*. The old *Go over it* walkthrough (with *Show strength*
+and *Uncover one*) and *Label again* were removed: studying the card is how a
+diagram is gone over, and editing is how it is changed. Diagrams already saved
+by *Label again* share their stored picture and keep working.
 
 Works on phone, iPad and desktop. On a phone the list sits under the picture,
 and on a large screen beside it.
@@ -72,7 +90,7 @@ label to its part. The asked label's line is always drawn on top.
 
 `describeOcclusionMask` in `lib/study/image-occlusion.ts` is the single table of
 what each label draws in each state (box style, words inside or beside, line,
-and the amber *confused* look). The study card, the walkthrough and the tests
+and the amber *confused* look). The study card, the previews and the tests
 all use it.
 
 A diagram hides every other label while one is asked. Older diagrams may have
@@ -86,10 +104,14 @@ Engine evidence, offline queue). No special path exists.
 
 - **One card for the whole diagram** is a group of every label (the reserved
   group `whole-diagram`, never shown as a group in the editor). The front has
-  every label covered and each box can be tapped to uncover it, "Tap a label to
-  check it (2 of 13)"; tapping anywhere else turns the card, which shows every
-  label, and it is rated once. Flip only. Its strength colours every box on the
-  deck page.
+  every label covered and each box can be tapped to uncover it, "Tap each label
+  to check it (2 of 13)". Once every label is uncovered the card turns on its
+  own (after a short pause, so the last one can be read); *Show all labels*
+  turns it early. The back shows every label, and it is rated once. Flip only.
+  Its strength colours every box on the deck page.
+- **Size:** a diagram card is sized by the screen (about 70% of its height)
+  rather than the fixed 16:9 of a text card, with less padding, so a tall
+  diagram is not squeezed into a thin strip.
 
 - **Flip:** the box is highlighted as the question, then uncovered. The back has
   *Show every label*, which works like Anki's *Toggle masks*.
@@ -114,11 +136,6 @@ however many words it shares with the right one ("right atrium" for the left
 atrium). The reveal outlines the label the student named in amber, next to the
 one asked, and says which is which. The review event records the other label's
 id as `confusedWithLabelId` (see *Data model*).
-
-**Go over it** on the deck page covers every label and lets the student uncover
-them one at a time, by tapping or in order. This is practice only and never
-changes a schedule. *Show strength* colours each box by how well that label is
-known, and *Often mixed up* lists the pairs the student confuses most.
 
 **Strength** (`lib/study/card-strength.ts`) is one of four words, from the card's
 own schedule: *strong* (green), *building* (amber), *needs focus* (red) or *not
@@ -195,7 +212,7 @@ its picture is useless.
   resizes with the box. A label's line has a tip and an optional bend.
 - The picture is a normal card image under `users/{uid}/cardImages/`, so the
   existing Storage rule covers it. Several diagrams can share one picture
-  (*Label again*). A picture is deleted only when no card on any diagram still
+  (saved by the former *Label again*). A picture is deleted only when no card on any diagram still
   uses it (`isPictureUsedElsewhere`).
 - **Invariant:** a diagram's labels and groups are exactly those that still have
   a card. `releaseDiagramLabels` (`services/study/image-occlusion.ts`) runs
@@ -213,7 +230,8 @@ its picture is useless.
   enforces both (at most 64 characters, only with `correct == false`).
   `loadDiagramConfusionEvents` reads a diagram's mix-ups with the
   `cardId` + `confusedWithLabelId` index in `firestore.indexes.json`, which has
-  to be deployed.
+  to be deployed. Nothing shows them since the *Go over it* walkthrough was
+  removed; the evidence is still recorded.
 
 Limits: 60 labels, 12 groups and 6 boxes per label per diagram; 64 points per
 outline; 120 characters per label, 60 per accepted answer, 80 per group name

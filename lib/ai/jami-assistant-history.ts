@@ -14,6 +14,11 @@ import {
 } from "@/lib/ai/jami-assistant-normalize";
 import { normalizeAssistantIllustrations } from "@/lib/ai/jami-assistant";
 import {
+  MAX_TUTOR_ATTACHMENTS_PER_MESSAGE,
+  normalizeTutorAttachments,
+  type TutorAttachment,
+} from "@/lib/ai/tutor-attachments";
+import {
   normalizeTutorStudyMaterialOffers,
   normalizeTutorStudyMaterialRequest,
   normalizeTutorStudyMaterialResults,
@@ -84,6 +89,8 @@ export type JamiAssistantStoredMessage = {
   studyMaterialRequest?: TutorStudyMaterialRequest;
   studyMaterialOffers?: TutorStudyMaterialKind[];
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
+  /** Files the student sent with this message. */
+  attachments?: TutorAttachment[];
   createdAt: number;
 };
 
@@ -261,6 +268,10 @@ export function mapJamiAssistantStoredMessage(
   const studyMaterialRequest = normalizeTutorStudyMaterialRequest(data.studyMaterialRequest);
   const studyMaterialOffers = normalizeTutorStudyMaterialOffers(data.studyMaterialOffers);
   const studyMaterialResults = normalizeTutorStudyMaterialResults(data.studyMaterialResults);
+  const attachments =
+    role === "user"
+      ? normalizeTutorAttachments(data.attachments, { limit: MAX_TUTOR_ATTACHMENTS_PER_MESSAGE })
+      : [];
   return {
     id,
     threadId,
@@ -276,6 +287,7 @@ export function mapJamiAssistantStoredMessage(
     ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
     ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
     ...(Object.keys(studyMaterialResults).length > 0 ? { studyMaterialResults } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
     createdAt:
       typeof data.createdAt === "number" && Number.isFinite(data.createdAt)
         ? data.createdAt

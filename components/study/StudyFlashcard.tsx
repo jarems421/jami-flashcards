@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import CardFaceImage from "@/components/cards/CardFaceImage";
 import DiagramZoomDialog from "@/components/cards/DiagramZoomDialog";
 import OcclusionFigure, { OcclusionPicture } from "@/components/cards/OcclusionFigure";
@@ -16,6 +16,8 @@ import {
 } from "@/lib/study/image-occlusion";
 
 const VISIBLE_TOPIC_LIMIT = 2;
+/** Long enough to see the last label uncovered before the card turns on its own. */
+const AUTO_TURN_DELAY_MS = 700;
 
 type StudyFlashcardProps = {
   card: Card;
@@ -70,13 +72,15 @@ function FlashcardFaceContent({
 }
 
 /**
- * A diagram card's face: the picture, and one line under it.
+ * A diagram card's face: the picture, as large as the card allows, and one
+ * line under it.
  *
- * The front asks -- the header, or what to do when there is none. The back
- * answers with the label's words and note (every label's, for a group), and
- * offers the whole picture uncovered, which is how a student checks the
- * neighbours they were unsure of. Either face can be opened full screen for a
- * closer look.
+ * The front asks -- the header, or what to do when there is none. A
+ * whole-diagram front turns on its own once every label has been uncovered.
+ * The back answers with the label's words and note (every label's, for a
+ * group), and offers the whole picture uncovered, which is how a student
+ * checks the neighbours they were unsure of. Either face can be opened full
+ * screen for a closer look.
  */
 function DiagramFaceContent({
   occlusion,
@@ -107,13 +111,25 @@ function DiagramFaceContent({
       else next.add(labelId);
       return next;
     });
+  const total = occlusion.diagram.labels.length;
+  const allChecked = checking && occlusion.diagram.labels.every((label) => checked.has(label.id));
+  // The latest onReveal, so a parent re-render never restarts the turn.
+  const onRevealRef = useRef(onReveal);
+  useEffect(() => {
+    onRevealRef.current = onReveal;
+  });
+  useEffect(() => {
+    if (!allChecked) return;
+    const timer = window.setTimeout(() => onRevealRef.current?.(), AUTO_TURN_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [allChecked]);
   const answers = labels.map((label) => label.answer.trim()).filter(Boolean);
   const notes = labels.map((label) => label.note?.trim()).filter((note): note is string => Boolean(note));
-  const canUnmask = side === "back" && occlusion.diagram.labels.length > labels.length;
+  const canUnmask = side === "back" && total > labels.length;
   const phase = side === "front" ? "question" : unmasked ? "unmasked" : "answer";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 py-4">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 py-2 sm:gap-3">
       <div className="flex min-h-0 w-full flex-1 items-center justify-center">
         {checking ? (
           <OcclusionPicture
@@ -128,23 +144,27 @@ function DiagramFaceContent({
           <OcclusionFigure occlusion={occlusion} phase={phase} fit="contain" onZoom={() => setZoomed(true)} />
         )}
       </div>
-      {checking && onReveal ? (
-        <button
-          type="button"
-          onClick={onReveal}
-          className="shrink-0 rounded-full border border-current/25 px-4 py-1.5 text-sm font-semibold transition hover:bg-current/[0.06]"
-        >
-          Show all labels
-        </button>
-      ) : null}
-      {side === "front" ? (
+      {checking ? (
+        <div className="flex w-full max-w-4xl shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-center">
+          <StudyText
+            as="p"
+            text={`${getOcclusionPrompt(occlusion, header)} Tap each label to check it (${checked.size} of ${total}).`}
+            className="text-sm font-medium opacity-80 sm:text-base"
+          />
+          {onReveal ? (
+            <button
+              type="button"
+              onClick={onReveal}
+              className="rounded-full border border-current/25 px-3.5 py-1 text-sm font-semibold transition hover:bg-current/[0.06]"
+            >
+              Show all labels
+            </button>
+          ) : null}
+        </div>
+      ) : side === "front" ? (
         <StudyText
           as="p"
-          text={
-            checking
-              ? `${getOcclusionPrompt(occlusion, header)} Tap a label to check it (${checked.size} of ${occlusion.diagram.labels.length}), then show them all.`
-              : getOcclusionPrompt(occlusion, header)
-          }
+          text={getOcclusionPrompt(occlusion, header)}
           className="max-w-4xl shrink-0 text-center text-sm font-medium opacity-80 sm:text-base"
         />
       ) : (
@@ -198,6 +218,16 @@ export default function StudyFlashcard({
   const faceStyle = { "--study-card-border": deckColor } as CSSProperties;
   const visibleTopics = topicNames.slice(0, VISIBLE_TOPIC_LIMIT);
   const hiddenTopicCount = topicNames.length - visibleTopics.length;
+  /*
+   * A diagram is read, not glanced at: in a wide 16:9 card a tall picture was
+   * left a thin strip between the header, prompt and hint. A diagram card is
+   * sized by the screen instead, with less padding round the picture.
+   */
+  const isDiagram = Boolean(card.occlusion);
+  const cardShape = isDiagram
+    ? "h-[clamp(22rem,68dvh,54rem)] sm:h-[clamp(26rem,74dvh,58rem)]"
+    : "aspect-[5/4] sm:aspect-[16/10] xl:aspect-[16/9]";
+  const facePadding = isDiagram ? "p-3 sm:p-5 lg:p-6" : "p-5 sm:p-8 lg:p-10";
 
   return (
     <div
@@ -227,12 +257,12 @@ export default function StudyFlashcard({
       aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}
     >
       <div
-        className={`study-flashcard-turn relative aspect-[5/4] w-full [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${
+        className={`study-flashcard-turn relative w-full [transform-style:preserve-3d] ${cardShape} ${
           flipped ? "[transform:rotateY(180deg)]" : ""
         }`}
       >
         <div
-          className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-2xl p-5 [backface-visibility:hidden] sm:p-8 lg:p-10"
+          className={`study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-2xl [backface-visibility:hidden] ${facePadding}`}
           aria-hidden={flipped}
           inert={flipped}
           style={faceStyle}
@@ -276,7 +306,9 @@ export default function StudyFlashcard({
             <FlashcardFaceContent text={card.front} image={card.frontImage} side="front" />
           )}
           <div className="text-center text-xs font-medium opacity-60">
-            {isWholeDiagramGroupId(card.occlusion?.groupId) ? "Press Space to show every label" : "Tap anywhere on the card or press Space to reveal"}
+            {isWholeDiagramGroupId(card.occlusion?.groupId)
+              ? "The card turns once every label is uncovered"
+              : "Tap anywhere on the card or press Space to reveal"}
           </div>
         </div>
         {/*
@@ -286,7 +318,7 @@ export default function StudyFlashcard({
           until the flip.
         */}
         <div
-          className="study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-2xl p-5 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10"
+          className={`study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-2xl [backface-visibility:hidden] [transform:rotateY(180deg)] ${facePadding}`}
           aria-hidden={!flipped}
           inert={!flipped}
           style={faceStyle}

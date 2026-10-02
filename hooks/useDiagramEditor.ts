@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useMemo, useReducer, useState } from "react";
-import type { CardImage } from "@/lib/study/card-images";
 import type { Card } from "@/lib/study/cards";
 import type { DiagramPicture } from "@/lib/study/diagram-image";
 import { labelsFromDetections } from "@/lib/study/diagram-label-detection";
@@ -68,8 +67,6 @@ type UseDiagramEditorOptions = {
   editing?: Card | null;
   /** A new diagram's picture, already prepared. */
   picture?: DiagramPicture | null;
-  /** A new diagram on a picture another diagram already has: the same heart, labelled again. */
-  reuseImage?: CardImage | null;
 };
 
 /**
@@ -83,11 +80,10 @@ export function useDiagramEditor({
   deckId,
   editing,
   picture: initialPicture,
-  reuseImage,
 }: UseDiagramEditorOptions) {
   const initialDiagram = editing?.occlusion?.diagram;
   const [picture, setPictureState] = useState<DiagramPictureState | null>(() => {
-    const image = initialDiagram?.image ?? reuseImage;
+    const image = initialDiagram?.image;
     if (image) return { kind: "saved", image, width: image.width, height: image.height };
     return initialPicture ? newPictureState(initialPicture) : null;
   });
@@ -108,7 +104,7 @@ export function useDiagramEditor({
     createDiagramEditorState
   );
   const [header, setHeader] = useState(editing?.front ?? "");
-  const [labelMode, setLabelMode] = useState<OcclusionLabelMode>(initialDiagram?.labelMode ?? "cover");
+  const [labelMode, setLabelModeState] = useState<OcclusionLabelMode>(initialDiagram?.labelMode ?? "cover");
   const [hideOthers, setHideOthers] = useState(initialDiagram?.hideOthers ?? true);
   const [pointerEnd, setPointerEnd] = useState<"dot" | "arrow">(initialDiagram?.pointerEnd ?? "dot");
   /*
@@ -131,6 +127,12 @@ export function useDiagramEditor({
   const [error, setError] = useState<string | null>(null);
 
   const { labels, groups } = history.present;
+
+  /** The Line tool belongs to naming parts, so covering labels puts it down. */
+  const setLabelMode = useCallback((mode: OcclusionLabelMode) => {
+    setLabelModeState(mode);
+    if (mode !== "name") setTool((current) => (current === "pointer" ? "rect" : current));
+  }, []);
 
   // A selection that undo took away is no selection at all.
   const selection = useMemo(() => {
@@ -337,7 +339,7 @@ export function useDiagramEditor({
     } finally {
       setDetecting(false);
     }
-  }, [detecting, labels, picture]);
+  }, [detecting, labels, picture, setLabelMode]);
 
   const pictureChanged = picture?.kind === "new" && Boolean(initialDiagram);
   const settingsChanged =

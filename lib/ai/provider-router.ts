@@ -551,6 +551,7 @@ export async function* streamAiText(
         let providerEndpoint: string | undefined;
         for await (const chunk of streamOpenRouterText({
           apiKey: process.env.OPENROUTER_API_KEY?.trim() ?? "",
+          stallTimeoutMs: options.stallTimeoutMs,
           model: attempt.model,
           providerAllowlist: attempt.providerAllowlist,
           quantizations: attempt.quantizations,

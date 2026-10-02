@@ -197,9 +197,9 @@ export default function TutorSettingsPanel({
         ) : view === "memory" ? (
           <PanelSection
             title="What Jami remembers"
-            description="Carried from one chat to the next. Tap a line to correct it."
+            description="Carried from one chat to the next. Tap a galaxy, then a note, to correct it."
           >
-            <TutorMemoryPanel memory={memory} density="compact" />
+            <TutorMemoryPanel memory={memory} folders={data?.folders ?? []} density="compact" />
           </PanelSection>
         ) : view === "style" ? (
           <div className="flex flex-col gap-5">

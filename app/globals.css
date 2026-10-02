@@ -1406,30 +1406,6 @@
   }
 
   /*
-   * Light pooled behind the content. Radial gradients rather than blurred
-   * shapes: they are already soft, and cost nothing to keep on screen.
-   */
-  .signed-out-glow {
-    inset: 0 0 auto;
-    pointer-events: none;
-    position: absolute;
-    z-index: 0;
-  }
-
-  .signed-out-glow-hero {
-    background:
-      radial-gradient(40rem 30rem at 76% 22%, rgba(143, 125, 232, 0.26), transparent 70%),
-      radial-gradient(28rem 22rem at 10% 58%, rgba(125, 224, 204, 0.09), transparent 70%);
-    height: 64rem;
-  }
-
-  /* `closest-side`, so it has faded out before it reaches its own edges. */
-  .signed-out-glow-centred {
-    background: radial-gradient(closest-side, rgba(143, 125, 232, 0.2), transparent);
-    height: 100%;
-  }
-
-  /*
    * The second half of the landing headline, in Jami's own face with the app
    * icon's lavender and teal running through it. It used to be an italic serif,
    * which read as a different product from the app a student signs in to.
@@ -4110,7 +4086,7 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 /*
  * First night: the sign-up walkthrough.
  *
- * The welcome is a night sky with one slow glow breathing across it, and the
+ * The welcome is a clean night sky with twinkling dust, and the
  * notes that follow are small night panels beside the real controls. Both sit
  * over whatever theme the student has chosen, the way the star reward does.
  */
@@ -4119,7 +4095,6 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 .fn-scroll{position:absolute;inset:0;overflow-y:auto;z-index:2}
 .fn-stage{min-height:100%}
 .fn-night{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-.fn-glow{position:absolute;inset:0;background:radial-gradient(140% 100% at 50% 30%,rgba(120,94,255,.34) 0%,rgba(86,72,210,.16) 42%,rgba(5,2,13,0) 78%);animation:fn-glow 11s ease-in-out infinite}
 .fn-dust{position:absolute;border-radius:50%;background:#fff;box-shadow:0 0 6px rgba(210,200,255,.8);opacity:var(--fn-dust);animation-name:fn-twinkle;animation-iteration-count:infinite;animation-timing-function:ease-in-out}
 .fn-welcome-sky{position:absolute;inset:0;pointer-events:none;z-index:1}
 .fn-sky{position:absolute;inset:0;pointer-events:none}
@@ -4274,7 +4249,6 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 .fn-bloom-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.35rem .6rem;margin-top:.75rem}
 
 
-@keyframes fn-glow{0%,100%{opacity:.3}50%{opacity:1}}
 @keyframes fn-dust-drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-4%,2%,0)}}
 @keyframes fn-beckon{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(1.6)}}
 @keyframes fn-bloom-in{0%{opacity:0;transform:translate(-50%,-14px) scale(.96)}100%{opacity:1;transform:translate(-50%,0) scale(1)}}
@@ -4346,6 +4320,47 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 }
 @media (prefers-reduced-motion: reduce){
   .shooting-star{display:none}
+}
+
+/*
+ * The memory map (components/ai/memory-map): what Jami remembers, as a night
+ * sky. Always night whatever the theme, like the sky it shares its shooting
+ * stars with. Galaxy names, pointers and the note card float over the canvas.
+ */
+.memory-map{position:relative;isolation:isolate;overflow:hidden;height:min(72vh,620px);min-height:420px;border-radius:24px;background:#04020d;border:1px solid rgba(226,218,255,.1);color:#f4f0ff}
+.memory-map-compact{height:440px;min-height:0}
+.memory-map-expanded{position:fixed;inset:0;z-index:90;height:100dvh;min-height:0;border-radius:0;border:0}
+.memory-map-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
+.memory-map-canvas.is-pointing{cursor:pointer}
+.memory-map-canvas.is-dragging{cursor:grabbing}
+.memory-map-overlay{position:absolute;inset:0;pointer-events:none}
+.memory-map-label{position:absolute;left:0;top:0;display:grid;justify-items:center;gap:1px;padding:6px 12px;border:0;border-radius:14px;background:transparent;color:#f4f0ff;cursor:pointer;transition:opacity .25s}
+.memory-map-label-name{font-family:var(--font-cormorant-garamond),Georgia,serif;font-style:italic;font-weight:500;font-size:22px;line-height:1.05;text-shadow:0 0 18px var(--glow),0 1px 2px rgba(0,0,0,.6)}
+.memory-map-label-meta{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:rgba(222,214,255,.55)}
+.memory-map-label:hover .memory-map-label-name,.memory-map-label.is-hot .memory-map-label-name{text-shadow:0 0 26px var(--glow),0 0 8px var(--glow)}
+.memory-map-label:focus-visible,.memory-map-pointer:focus-visible,.memory-map-chip:focus-visible,.memory-map-card-close:focus-visible{outline:2px solid #b29cff;outline-offset:2px}
+.memory-map-pointer{position:absolute;left:0;top:0;display:grid;justify-items:center;gap:1px;padding:4px 8px;border:0;border-radius:14px;background:transparent;color:#f4f0ff;cursor:pointer;transition:opacity .25s}
+.memory-map-pointer-galaxy{width:44px;height:44px;margin-bottom:2px;transition:transform .3s}
+.memory-map-pointer-name{font-family:var(--font-cormorant-garamond),Georgia,serif;font-style:italic;font-weight:500;font-size:17px;line-height:1.05;white-space:nowrap;text-shadow:0 0 14px var(--glow),0 1px 2px rgba(0,0,0,.7)}
+.memory-map-pointer-meta{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;white-space:nowrap;color:rgba(222,214,255,.6)}
+.memory-map-pointer:hover .memory-map-pointer-galaxy{transform:scale(1.12)}
+.memory-map-bar{position:absolute;top:12px;left:12px;right:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;pointer-events:none}
+.memory-map-bar>*{pointer-events:auto}
+.memory-map-chip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:7px 12px;border-radius:999px;font-size:12.5px;font-weight:600;color:#f4f0ff;background:rgba(15,10,36,.62);border:1px solid rgba(226,218,255,.14);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);cursor:pointer;transition:border-color .2s,background .2s}
+.memory-map-chip:hover{border-color:rgba(226,218,255,.32);background:rgba(30,20,66,.7)}
+.memory-map-chip-icon{padding:8px}
+.memory-map-hint{padding-left:4px;font-size:12px;color:rgba(222,214,255,.55)}
+.memory-map-empty{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);width:max-content;max-width:min(420px,calc(100% - 32px));margin:0;padding:10px 14px;border-radius:16px;text-align:center;font-size:13px;line-height:1.5;color:rgba(236,230,255,.78);background:rgba(15,10,36,.62);border:1px solid rgba(226,218,255,.12)}
+.memory-map-card{position:absolute;left:0;top:0;z-index:2;width:260px;max-width:calc(100% - 24px);padding:10px 12px 12px 14px;border-radius:16px;color:#f4f0ff;background:rgba(10,6,26,.84);border:1px solid rgba(226,218,255,.12);box-shadow:0 14px 34px -14px rgba(0,0,0,.9);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:0;visibility:hidden;transition:opacity .2s}
+.memory-map-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.memory-map-card-kind{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgb(var(--kind))}
+.memory-map-card-close{display:grid;place-items:center;width:24px;height:24px;border:0;border-radius:50%;background:transparent;color:rgba(222,214,255,.6);cursor:pointer}
+.memory-map-card-close:hover{background:rgba(255,255,255,.08);color:#f4f0ff}
+.memory-map-card-text{margin:4px 0 0;font-size:13.5px;line-height:1.45;font-weight:500}
+.memory-map-card-meta{margin:4px 0 0;font-size:11.5px;color:rgba(222,214,255,.55)}
+.memory-map-card-actions{display:flex;gap:6px;margin-top:10px}
+@media (prefers-reduced-motion: reduce){
+  .memory-map-label,.memory-map-pointer,.memory-map-pointer-galaxy,.memory-map-card,.memory-map-chip{transition:none}
 }
 
 /* First night: which course, and which tier, under a subject's board. */
