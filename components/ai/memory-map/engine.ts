@@ -23,6 +23,7 @@ import {
 } from "@/lib/ai/memory-map";
 import {
   AURORA_PALETTES,
+  CORE_SPRITE_SHARE,
   GALAXY_ARM_SHARE,
   TAU,
   armEnv,
@@ -85,6 +86,7 @@ type MapSystem = Omit<MemoryMapSystem, "notes"> & {
   noteSpin: number;
   label: HTMLButtonElement;
   pointer: HTMLButtonElement;
+  pointerMeta: HTMLSpanElement;
 };
 
 type Aurora = {
@@ -392,7 +394,26 @@ export class MemoryMapEngine {
     const pointer = document.createElement("button");
     pointer.type = "button";
     pointer.className = "memory-map-pointer";
-    pointer.style.setProperty("--tint", rgb(source.tint));
+    pointer.style.setProperty("--glow", rgba(source.tint, 0.85));
+    // A small picture of the galaxy it leads to, drawn from the galaxy itself.
+    const icon = document.createElement("canvas");
+    icon.className = "memory-map-pointer-galaxy";
+    icon.width = icon.height = 96;
+    const iconCtx = icon.getContext("2d");
+    if (iconCtx) {
+      iconCtx.translate(48, 48);
+      iconCtx.rotate(source.tilt);
+      iconCtx.scale(1, source.core ? 1 : source.squash);
+      const share = source.core ? CORE_SPRITE_SHARE : GALAXY_ARM_SHARE;
+      const size = 44 / share;
+      iconCtx.drawImage(pictures.sprite, -size / 2, -size / 2, size, size);
+    }
+    const pointerName = document.createElement("span");
+    pointerName.className = "memory-map-pointer-name";
+    pointerName.textContent = source.name;
+    const pointerMeta = document.createElement("span");
+    pointerMeta.className = "memory-map-pointer-meta";
+    pointer.append(icon, pointerName, pointerMeta);
     pointer.addEventListener("click", () => this.openSystem(source.id));
     this.overlay.appendChild(pointer);
 
@@ -414,6 +435,7 @@ export class MemoryMapEngine {
       noteSpin: 0,
       label,
       pointer,
+      pointerMeta,
     };
     system.notes = source.notes.map((note) => ({
       ...note,
@@ -1078,10 +1100,15 @@ export class MemoryMapEngine {
     }
   }
 
+  /**
+   * Note clouds. From far away they are barely there -- texture that gives a
+   * galaxy substance. Diving in, they gather into clear clouds, each with a
+   * soft light at its heart so a note is easy to find and tap.
+   */
   private drawClouds() {
     const ctx = this.ctx;
-    const detail = lerp(0.42, 1, this.level);
-    const near = clamp((this.level - 0.3) / 0.5, 0, 1);
+    const t = clamp((this.level - 0.3) / 0.6, 0, 1);
+    const near = t * t * (3 - 2 * t);
     for (const note of this.notes) {
       const pulse = this.reduced ? 1 : 1 + 0.05 * Math.sin(this.T * 0.8 + note.seed);
       const D = Math.max(4, note.px * 2.6 * pulse * lerp(0.7, 1, this.level));
@@ -1089,17 +1116,24 @@ export class MemoryMapEngine {
       const sprite = note.system.clouds[note.kind]?.[note.variant];
       if (!sprite) continue;
       const e = this.emphasis(note);
-      const alpha = clamp((0.16 + 0.34 * note.fresh) * detail * e, 0, 1);
+      const alpha = clamp(lerp(0.12, 0.45 + 0.3 * note.fresh, near) * e, 0, 1);
       ctx.save();
       ctx.translate(note.sx, note.sy);
       ctx.rotate(note.seed + (this.reduced ? 0 : this.T * 0.03));
-      if (e > 1.2 && near > 0) {
-        ctx.globalAlpha = 0.22 * near;
+      if (near > 0) {
+        // A wider, fainter veil around it once close, so it reads as a cloud, not a smudge.
+        ctx.globalAlpha = clamp((e > 1.2 ? 0.34 : 0.2) * near * Math.min(e, 1.4), 0, 1);
         ctx.drawImage(sprite, -D * 0.85, -D * 0.85, D * 1.7, D * 1.7);
       }
       ctx.globalAlpha = alpha;
       ctx.drawImage(sprite, -D / 2, -D / 2, D, D);
       ctx.restore();
+      if (near > 0) {
+        const heart = clamp(near * (0.2 + 0.25 * note.fresh) * Math.min(e, 1.5), 0, 1);
+        const H = Math.max(6, note.px * 0.6);
+        ctx.globalAlpha = heart;
+        ctx.drawImage(this.kindDots[note.kind], note.sx - H / 2, note.sy - H / 2, H, H);
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -1136,13 +1170,13 @@ export class MemoryMapEngine {
       const [gx, gy] = this.w2s(system.x, system.y);
       if (gx > L && gx < R && gy > Tp && gy < B) { this.place(system.pointer, 0, 0, 0); continue; }
       const dx = gx - this.cx, dy = gy - this.cy;
-      const tx = dx > 0 ? (R - 70 - this.cx) / dx : (L + 70 - this.cx) / (dx || -1e-6);
-      const ty = dy > 0 ? (B - 16 - this.cy) / dy : (Tp + 16 - this.cy) / (dy || -1e-6);
+      // Kept far enough in from the edge for the little galaxy and its name.
+      const tx = dx > 0 ? (R - 56 - this.cx) / dx : (L + 56 - this.cx) / (dx || -1e-6);
+      const ty = dy > 0 ? (B - 44 - this.cy) / dy : (Tp + 40 - this.cy) / (dy || -1e-6);
       const t = Math.min(Math.abs(tx), Math.abs(ty));
-      const label = `${system.name} · ${aurora.count} ${aurora.count === 1 ? "link" : "links"}`;
-      if (system.pointer.dataset.label !== label) {
-        system.pointer.dataset.label = label;
-        system.pointer.textContent = label;
+      const meta = `${aurora.count} ${aurora.count === 1 ? "link" : "links"}`;
+      if (system.pointerMeta.textContent !== meta) {
+        system.pointerMeta.textContent = meta;
         system.pointer.setAttribute("aria-label", `Fly to ${system.name}: ${aurora.count} linked ${aurora.count === 1 ? "note" : "notes"}`);
       }
       this.place(system.pointer, this.cx + dx * t, this.cy + dy * t, inside, "translate(-50%, -50%)");
