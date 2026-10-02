@@ -69,7 +69,7 @@ export default function PlanSummaryRow() {
               <span className="font-semibold">{summary.label}</span>
               <span className="text-text-muted">
                 {lifetime
-                  ? " · free for good, because you joined before plans"
+                  ? " · free for good with no monthly limits, because you joined before plans"
                   : resets
                     ? ` · allowances reset on ${resets}`
                     : ""}

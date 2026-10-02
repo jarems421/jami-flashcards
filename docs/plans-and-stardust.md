@@ -396,6 +396,15 @@ Stardust is not learning evidence and never enters the Learning Engine.
 
 ## 8. Existing accounts
 
+**Agreed 2 Oct 2026: every current user gets Lifetime, free for good, with
+unlimited use: no monthly allowances, no hidden monthly ceilings, no folder or
+notebook limits and no plan offers. Only accounts that exist at launch; anyone
+who signs up after it chooses Free, Nova or Celestial.** The daily fair-use
+limits that applied before plans existed still apply to everyone.
+
+At launch, set `BILLING_LAUNCH_AT` before turning billing on: with it unset,
+every account reads as Lifetime, new sign-ups included.
+
 `BILLING_LAUNCH_AT` (env) is the launch timestamp. Before launch,
 `scripts/grant-lifetime-access.mjs` writes `plan: "lifetime"` for every Auth
 account created before it (24 accounts on 26 Sep 2026).
