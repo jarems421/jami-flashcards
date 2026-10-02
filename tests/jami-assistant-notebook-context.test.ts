@@ -144,7 +144,7 @@ describe("notebook-wide Tutor awareness", () => {
     expect(text).toContain("Known values: u = 4 and a = 2.");
     expect(text).toContain("Page 2 (current)");
     expect(text).toContain("I used v = u + at.");
-    expect(text).toContain("page imagery are available for the current page and, where pictured below, the page either side of it");
+    expect(text).toContain("page imagery are available for the current page and for any page pictured below");
     expect(mocks.notebookPages.limit).toHaveBeenCalledWith(60);
     // Page 1 has nothing drawn on it, so its typed text says everything and no picture is sent.
     expect(result.currentParts.some((part) => "inlineData" in part)).toBe(false);

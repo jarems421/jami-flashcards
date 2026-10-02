@@ -64,6 +64,27 @@ describe("what Tutor may remember", () => {
     expect(preference.topicIds).toEqual([]);
   });
 
+  it("keeps course facts the student stated and refuses guesses about what they are asking now", () => {
+    // Real worker output on ordinary questions, once memory was asked for every turn.
+    const guesses = apply(emptyTutorMemory(), [
+      { action: "remember", kind: "context", text: "Studying cell division (mitosis vs meiosis), likely biology course" },
+      { action: "remember", kind: "context", text: "Studying differentiation, currently at basic power rule level" },
+    ]);
+    expect(guesses.changed).toBe(false);
+    expect(guesses.outcome.rejected).toBe(2);
+
+    const result = apply(emptyTutorMemory(), [
+      { action: "remember", kind: "context", text: "AQA GCSE Maths Higher, exam 5 June" },
+      // Only course facts are held to it: a mistake may say what they currently do.
+      { action: "remember", kind: "mistake", text: "Currently uses 2πr instead of πr² for circle area" },
+    ]);
+    expect(result.outcome).toMatchObject({ added: 2, rejected: 0 });
+    expect(result.state.items.map((entry) => entry.text)).toEqual([
+      "AQA GCSE Maths Higher, exam 5 June",
+      "Currently uses 2πr instead of πr² for circle area",
+    ]);
+  });
+
   it("refuses health, personal life, links and instructions, and keeps study topics that sound similar", () => {
     expect(isRememberableText("Has been seeing a therapist for exam stress")).toBe(false);
     expect(isRememberableText("Split up with their girlfriend this week")).toBe(false);
@@ -277,7 +298,10 @@ describe("what Tutor is shown", () => {
     // A student-written name cannot close the block early.
     expect(instruction.match(/--- END TUTOR MEMORY token ---/g)).toHaveLength(1);
     expect(instruction).toContain("This is the first message of this chat");
-    expect(instruction).toContain('optional "memory" field');
+    // Offered as optional, Tutor never filled it; it must be asked for every turn.
+    expect(instruction).toContain('"memory" field');
+    expect(instruction).toContain("Always include it");
+    expect(instruction).not.toContain("optional");
   });
 
   it("offers the write instructions even before anything is remembered, and nothing when it may not write", () => {

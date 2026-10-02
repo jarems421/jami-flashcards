@@ -494,7 +494,7 @@ ${distant
     );
   }
 
-  return `Notebook page map (loaded when the student asked; handwriting and page imagery are available for the current page and, where pictured below, the page either side of it; treat any other page's typed text as an outline rather than its full contents):
+  return `Notebook page map (loaded when the student asked; handwriting and page imagery are available for the current page and for any page pictured below (the page either side, and any page the student names); treat any other page's typed text as an outline rather than its full contents. If the work they ask about is on a page that is not pictured, ask them which page number it is on rather than saying you cannot read it):
 ${sections
     .join("\n\n")
     .slice(0, NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT)}`;
@@ -773,6 +773,8 @@ async function resolveNotebookContext(input: {
   db: AdminDb;
   uid: string;
   context: Extract<JamiAssistantContext, { surface: "notebook" }>;
+  /** What the student asked, which says which other pages to read. */
+  message: string;
 }) {
   const userRef = input.db.collection("users").doc(input.uid);
   const [notebookSnapshot, pageSnapshot, notebookPagesSnapshot] = await Promise.all([
@@ -848,6 +850,7 @@ async function resolveNotebookContext(input: {
     notebookId: notebook.id,
     pages: notebookPages,
     currentPageId: page.id,
+    message: input.message,
   });
 
   return {
@@ -988,7 +991,7 @@ export async function resolveJamiAssistantContext(input: {
         ? await resolveSourcesContext({ db, uid, context: input.context })
         : input.context.surface === "practice"
           ? await resolvePracticeContext({ db, uid, context: input.context })
-          : await resolveNotebookContext({ db, uid, context: input.context });
+          : await resolveNotebookContext({ db, uid, context: input.context, message: input.message });
   const pinnedSourceIds = getPinnedSourceIds(resolved.relations, input.useRelatedSources);
   const deckId =
     "deckId" in resolved && typeof resolved.deckId === "string" && resolved.deckId

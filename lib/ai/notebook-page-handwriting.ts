@@ -172,3 +172,57 @@ export function selectNeighbourHandwritingPages(
 
   return null;
 }
+
+/** Most pages Tutor is shown as pictures beside the current one, all reasons together. */
+export const MAX_PICTURED_NOTEBOOK_PAGES = 4;
+
+const NAMED_PAGES = /\b(?:pages?|pg|p)\.?\s*(\d{1,3})(?:\s*(?:-|–|to|and|&|,)\s*(\d{1,3}))?/gi;
+const FIRST_PAGE = /\b(?:first|opening) page\b/i;
+
+/**
+ * Pages the student named: "page 3", "pages 2 and 4", "pages 2-4", "p3",
+ * "the first page". In the order they were named, only pages that exist.
+ */
+export function findNamedNotebookPages(
+  message: string,
+  availablePageNumbers: readonly number[]
+) {
+  const available = new Set(availablePageNumbers);
+  const named: number[] = [];
+  for (const match of message.matchAll(NAMED_PAGES)) {
+    const from = Number(match[1]);
+    const to = match[2] ? Number(match[2]) : from;
+    // A range is walked; a pair ("pages 2 and 7") is just its two ends.
+    const isRange = /-|–|to/.test(match[0]) && to > from && to - from < MAX_PICTURED_NOTEBOOK_PAGES;
+    const pages = isRange
+      ? Array.from({ length: to - from + 1 }, (_, index) => from + index)
+      : [from, to];
+    named.push(...pages);
+  }
+  if (FIRST_PAGE.test(message)) named.push(1);
+  return Array.from(new Set(named)).filter((pageNumber) => available.has(pageNumber));
+}
+
+/**
+ * Every page to picture beside the current one, most important first.
+ *
+ * Pages the student named come first, then the page either side (a question
+ * most often spans those), then whatever the continuation and marking cues
+ * above reach for. Capped, so a request never grows without bound.
+ */
+export function selectNotebookPicturedPageNumbers(input: NotebookNeighbourInput) {
+  const available = new Set(input.availablePageNumbers);
+  const adjacent = [input.currentPageNumber - 1, input.currentPageNumber + 1].filter(
+    (pageNumber) => available.has(pageNumber)
+  );
+  const cued = selectNeighbourHandwritingPages(input)?.pageNumbers ?? [];
+  return Array.from(
+    new Set([
+      ...findNamedNotebookPages(input.message, input.availablePageNumbers),
+      ...adjacent,
+      ...cued,
+    ])
+  )
+    .filter((pageNumber) => pageNumber !== input.currentPageNumber)
+    .slice(0, MAX_PICTURED_NOTEBOOK_PAGES);
+}

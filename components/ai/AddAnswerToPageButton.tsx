@@ -38,16 +38,36 @@ export default function AddAnswerToPageButton({
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        {added ? (
-          <path d="M3.5 8.5l3 3 6-7" />
-        ) : (
-          <>
-            <path d="M9.5 1.75H4.25a1.5 1.5 0 0 0-1.5 1.5v9.5a1.5 1.5 0 0 0 1.5 1.5h7.5a1.5 1.5 0 0 0 1.5-1.5V5.5z" />
-            <path d="M8 7v4.5M5.75 9.25h4.5" />
-          </>
-        )}
+        {added ? <path d="M3.5 8.5l3 3 6-7" /> : <AddToPagePaths />}
       </svg>
       {added ? "Added" : "Add to page"}
     </button>
+  );
+}
+
+function AddToPagePaths() {
+  return (
+    <>
+      <path d="M9.5 1.75H4.25a1.5 1.5 0 0 0-1.5 1.5v9.5a1.5 1.5 0 0 0 1.5 1.5h7.5a1.5 1.5 0 0 0 1.5-1.5V5.5z" />
+      <path d="M8 7v4.5M5.75 9.25h4.5" />
+    </>
+  );
+}
+
+/** A page with a plus: the same mark as the button, for the answer's hold menu. */
+export function AddToPageIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <AddToPagePaths />
+    </svg>
   );
 }

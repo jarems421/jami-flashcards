@@ -155,15 +155,15 @@ function questionsSchema(allowedSourceRefs: string[]): Schema {
 /**
  * Changes to Tutor's memory of the student, offered only when memory is on.
  *
- * Optional and usually absent: most turns teach something and remember
- * nothing. Whatever arrives is checked by `applyTutorMemoryOperations`, which
+ * Required when offered, and usually empty: most turns teach something and
+ * remember nothing. Whatever arrives is checked by `applyTutorMemoryOperations`, which
  * refuses anything it would not have written itself.
  */
 function memorySchema(): Schema {
   return {
     type: Type.ARRAY,
     description:
-      "Changes to what you remember about the student across chats. Leave it out unless the student said something that will matter in later chats.",
+      "Changes to what you remember about the student across chats. An empty list unless this turn showed something that will matter in later chats.",
     items: {
       type: Type.OBJECT,
       properties: {
@@ -285,6 +285,8 @@ export function buildAssistantResponseSchema(
       },
     },
     required: [
+      // Required when offered: left optional, Tutor never filled it.
+      ...(memoryWritable ? ["memory"] : []),
       "answer",
       "sourceRefs",
       "usedCurrentContext",

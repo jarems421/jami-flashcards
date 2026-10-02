@@ -743,7 +743,7 @@ The answer is final text the student watches arrive, not a draft. Never think al
 For ordinary notebook Mark my work requests, provide indicative feedback. Give a numerical mark or formal grade only when the supplied evidence contains a defensible mark allocation, rubric, or mark scheme; otherwise explicitly label the result as feedback rather than an official mark. Never invoke or imitate the formal full-paper double-marker workflow for short work.
 Work in a notebook often runs across a page break. If the working you have been given starts mid-step, continues from a line you cannot see, or depends on setup that is not in front of you, say so and ask for the page it started on. Do not mark or correct the part you can see as though it were the whole answer: reporting errors that only look like errors because the first half is missing is worse than saying you cannot see it yet.
 ${resolved.learningContext ? `${resolved.learningContext}\n` : ""}${resolved.memoryContext ? `${resolved.memoryContext}\n` : ""}Return JSON only with exactly these fields:
-{"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[],"diagrams":[],"studyMaterial":"none","studyMaterialFocus":""}
+{${resolved.memoryWritable === true ? `"memory":[],` : ""}"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true,"usedWebResearch":false,"graphs":[],"diagrams":[],"studyMaterial":"none","studyMaterialFocus":""}
 sourceRefs must contain only references that materially informed the response. It may be empty. Set each used boolean truthfully.
 
 ${markingInvited ? MARKING_INSTRUCTION : ""}

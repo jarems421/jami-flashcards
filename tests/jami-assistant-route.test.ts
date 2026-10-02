@@ -822,10 +822,13 @@ describe("universal Jami assistant route", () => {
     );
     const call = mocks.streamText.mock.calls[0]?.[0] as {
       request: { systemInstruction: string };
-      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+      generationConfig: { responseSchema: { properties: Record<string, unknown>; required: string[] } };
     };
     expect(call.request.systemInstruction).toContain('[m1] (finds hard) "Finds moles hard"');
     expect(call.generationConfig.responseSchema.properties).toHaveProperty("memory");
+    // Optional, the model left it out of every answer, so nothing was ever saved.
+    expect(call.generationConfig.responseSchema.required).toContain("memory");
+    expect(call.request.systemInstruction).toContain('{"memory":[],"answer":');
     expect(mocks.applyMemory).toHaveBeenCalledWith(expect.objectContaining({
       uid: "user-1",
       operations,
@@ -848,9 +851,12 @@ describe("universal Jami assistant route", () => {
     await readStream(await postAssistant(request(validBody())));
 
     const call = mocks.streamText.mock.calls[0]?.[0] as {
-      generationConfig: { responseSchema: { properties: Record<string, unknown> } };
+      request: { systemInstruction: string };
+      generationConfig: { responseSchema: { properties: Record<string, unknown>; required: string[] } };
     };
     expect(call.generationConfig.responseSchema.properties).not.toHaveProperty("memory");
+    expect(call.generationConfig.responseSchema.required).not.toContain("memory");
+    expect(call.request.systemInstruction).not.toContain('"memory":[]');
     expect(mocks.applyMemory).not.toHaveBeenCalled();
   });
 

@@ -446,6 +446,96 @@ describe("JamiAssistantDrawer floating over a notebook", () => {
     expect(button(/answer added to page/i)).toBeDefined();
   });
 
+  /*
+   * On an iPad the buttons under an answer are small and easy to miss, and
+   * holding the answer only started selecting its text. Holding it opens the
+   * same actions, larger, where the finger is.
+   */
+  it("opens the answer's actions when it is pressed and held", async () => {
+    const reply = "Use $v^2 = u^2 + 2as$ with $u = 0$.";
+    sendJamiAssistantMessage.mockResolvedValue({ reply, followUps: [], used: [] });
+    const onAnswerInsert = vi.fn(() => true);
+    renderFloating(true, onAnswerInsert);
+    typeMessage("Which equation?");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const answer = document.querySelector<HTMLElement>("[data-answer-hold='true']");
+    expect(answer?.textContent).toContain("with");
+
+    function press(type: string, x = 40, y = 40) {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+      Object.defineProperties(event, {
+        pointerId: { value: 1 },
+        pointerType: { value: "touch" },
+        isPrimary: { value: true },
+      });
+      act(() => {
+        answer?.dispatchEvent(event);
+      });
+    }
+    const menuItems = () =>
+      [...document.querySelectorAll("[aria-label='Answer actions'] [role='menuitem']")].map(
+        (item) => item.textContent
+      );
+
+    vi.useFakeTimers();
+    try {
+      // A press that moves is a scroll, and opens nothing.
+      press("pointerdown");
+      press("pointermove", 40, 80);
+      act(() => vi.advanceTimersByTime(600));
+      expect(menuItems()).toEqual([]);
+
+      press("pointerdown");
+      act(() => vi.advanceTimersByTime(600));
+      expect(menuItems()).toEqual(["Add to page", "Keep beside page", "Select text"]);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const add = [...document.querySelectorAll<HTMLElement>("[role='menuitem']")].find(
+      (item) => item.textContent === "Add to page"
+    );
+    act(() => add?.click());
+    expect(onAnswerInsert).toHaveBeenCalledWith(reply);
+    expect(menuItems()).toEqual([]);
+    expect(button(/answer added to page/i)).toBeDefined();
+  });
+
+  it("gives holding back to the system once Select text is chosen", async () => {
+    sendJamiAssistantMessage.mockResolvedValue({ reply: "An answer.", followUps: [], used: [] });
+    renderFloating(true, vi.fn(() => true));
+    typeMessage("A question");
+    await act(async () => {
+      sendButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const answer = document.querySelector<HTMLElement>("[data-answer-hold='true']");
+    const event = new MouseEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 10 });
+    Object.defineProperties(event, {
+      pointerId: { value: 1 },
+      pointerType: { value: "touch" },
+      isPrimary: { value: true },
+    });
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        answer?.dispatchEvent(event);
+      });
+      act(() => vi.advanceTimersByTime(600));
+    } finally {
+      vi.useRealTimers();
+    }
+    const select = [...document.querySelectorAll<HTMLElement>("[role='menuitem']")].find(
+      (item) => item.textContent === "Select text"
+    );
+    act(() => select?.click());
+    expect(document.querySelector("[data-answer-hold='true']")).toBeNull();
+    expect(answer?.textContent).toContain("An answer.");
+  });
+
   it("offers no Add to page where there is no page to add to", async () => {
     sendJamiAssistantMessage.mockResolvedValue({ reply: "An answer.", followUps: [], used: [] });
     renderFloating(true);

@@ -51,7 +51,10 @@ import type { TutorPracticeOffer as TutorPracticeOfferData } from "@/lib/ai/tuto
 import type { JamiAssistantSuggestedQuestion } from "@/lib/ai/tutor-question-suggestions";
 import { drawnFigureToPng } from "@/components/ai/drawn-figure-image";
 import TutorReasoningMenu from "@/components/ai/TutorReasoningMenu";
-import AddAnswerToPageButton from "@/components/ai/AddAnswerToPageButton";
+import AddAnswerToPageButton, { AddToPageIcon } from "@/components/ai/AddAnswerToPageButton";
+import AssistantAnswerHold, {
+  type AssistantAnswerHoldAction,
+} from "@/components/ai/AssistantAnswerHold";
 import AssistantAnswerBody from "@/components/ai/AssistantAnswerBody";
 import { splitAssistantAnswerAtDiagram } from "@/lib/ai/assistant-answer-layout";
 import {
@@ -86,6 +89,7 @@ import {
   FloatingTutorPinButton,
   FloatingTutorPinnedAnswer,
   FloatingTutorResizeFrame,
+  PinIcon,
   floatingRectStyle,
   floatingTutorPanelClass,
   isCompactFloatingCard,
@@ -734,6 +738,28 @@ export default function JamiAssistantDrawer({
     [onAnswerInsert]
   );
 
+  /** What pressing and holding an answer offers: the buttons under it, larger. */
+  const answerHoldActions = (message: DrawerMessage, key: string) => {
+    const actions: AssistantAnswerHoldAction[] = [];
+    if (canInsertAnswer) {
+      actions.push({
+        id: "add-to-page",
+        label: "Add to page",
+        icon: <AddToPageIcon />,
+        onSelect: () => addAnswerToPage(message, key),
+      });
+    }
+    if (floating) {
+      actions.push({
+        id: "pin",
+        label: "Keep beside page",
+        icon: <PinIcon className="h-4 w-4" />,
+        onSelect: () => pinAnswer(message.text),
+      });
+    }
+    return actions;
+  };
+
   const sendMessage = useCallback(
     async (rawMessage: string) => {
       const message = rawMessage.trim();
@@ -1154,14 +1180,12 @@ export default function JamiAssistantDrawer({
                   className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div className="max-w-[90%]">
-                    <div
-                      className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
-                        message.role === "user"
-                          ? "rounded-br-md bg-accent text-accent-on"
-                          : "rounded-bl-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-primary"
-                      }`}
-                    >
                       {message.role === "assistant" ? (
+                        <AssistantAnswerHold
+                          enabled={!(loading && index === messages.length - 1)}
+                          actions={answerHoldActions(message, message.id ?? `index-${index}`)}
+                          className="rounded-xl rounded-bl-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm leading-relaxed text-text-primary"
+                        >
                         <AssistantGraphActionsContext.Provider value={graphActions}>
                         <AssistantAnswerBody
                           text={message.text}
@@ -1184,13 +1208,15 @@ export default function JamiAssistantDrawer({
                           )}
                         />
                         </AssistantGraphActionsContext.Provider>
+                        </AssistantAnswerHold>
                       ) : (
-                        <StudyText
-                          text={message.text}
-                          className="select-text whitespace-pre-wrap"
-                        />
+                        <div className="rounded-xl rounded-br-md bg-accent px-4 py-3 text-sm leading-relaxed text-accent-on">
+                          <StudyText
+                            text={message.text}
+                            className="select-text whitespace-pre-wrap"
+                          />
+                        </div>
                       )}
-                    </div>
                     {message.role === "assistant" ? (
                       <>
                         {/* The pin shares the sources line rather than taking a row of its own. */}

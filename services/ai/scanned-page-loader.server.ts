@@ -72,6 +72,17 @@ export async function loadScannedPages(
   reference: string,
   options: ScannedPageOptions = {}
 ): Promise<AiContentPart[]> {
+  // A scan already cut out of its PDF, at the size it should be sent.
+  if (/\.(png|jpe?g)$/i.test(reference)) {
+    return [
+      {
+        inlineData: {
+          mimeType: /\.png$/i.test(reference) ? "image/png" : "image/jpeg",
+          data: readFileSync(reference).toString("base64"),
+        },
+      },
+    ];
+  }
   const { file, firstPage, lastPage } = parsePageReference(reference);
   const factor = options.downscaleBy ?? 2;
   const maxImages = options.maxImages ?? 4;
