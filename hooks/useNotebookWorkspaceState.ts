@@ -12,15 +12,9 @@ import {
   NOTEBOOK_PEN_SETTINGS_DEFAULT,
   type NotebookPenSettings,
 } from "@/lib/workspace/notebook-pen-feel";
-import type {
-  NotebookPage,
-  NotebookStrokeColor,
-} from "@/lib/workspace/notebooks";
+import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
 
 export type NotebookPageFrameSize = { width: number; height: number };
-export type NotebookConfirmRequest =
-  | { kind: "clear-page" }
-  | { kind: "delete-page"; page: NotebookPage };
 
 export function useNotebookDrawingToolState() {
   const [penColor, setPenColor] = useState<NotebookStrokeColor>("black");
@@ -61,11 +55,16 @@ export function useNotebookDrawingToolState() {
     },
     []
   );
+  /*
+   * Only what is open. This runs as a pen lands, and setting state to the
+   * value it already holds is not free: straight after another update, React
+   * renders the whole editor once to find out that nothing changed.
+   */
   const closeMenus = useCallback(() => {
-    setPenMenuOpen(false);
-    setHighlighterMenuOpen(false);
-    setEraserMenuOpen(false);
-  }, []);
+    if (penMenuOpen) setPenMenuOpen(false);
+    if (highlighterMenuOpen) setHighlighterMenuOpen(false);
+    if (eraserMenuOpen) setEraserMenuOpen(false);
+  }, [eraserMenuOpen, highlighterMenuOpen, penMenuOpen]);
 
   return {
     openMenu,
@@ -98,6 +97,8 @@ export function useNotebookDrawingToolState() {
   };
 }
 
+export type NotebookDrawingToolState = ReturnType<typeof useNotebookDrawingToolState>;
+
 export function useNotebookNavigationState() {
   const [pageZoom, setPageZoom] = useState(1);
   const [pagePan, setPagePan] = useState<NotebookPagePan>({ x: 0, y: 0 });
@@ -126,31 +127,15 @@ export function useNotebookNavigationState() {
   };
 }
 
+/** The pull-to-create affordance past the last page, and the ink editor's remount key. */
 export function useNotebookPageCreationState() {
-  const [showAddPagesDialog, setShowAddPagesDialog] = useState(false);
-  const [notebookFile, setNotebookFile] = useState<File | null>(null);
-  const [notebookUploadProgress, setNotebookUploadProgress] = useState<
-    number | null
-  >(null);
-  const [addingNotebookFile, setAddingNotebookFile] = useState(false);
   const [createPageActive, setCreatePageActive] = useState(false);
   const [createPageProgress, setCreatePageProgress] = useState(0);
   const [creatingPage, setCreatingPage] = useState(false);
   const [createPageBounce, setCreatePageBounce] = useState(false);
-  const [deletingPageId, setDeletingPageId] = useState<string | null>(null);
-  const [confirmDialog, setConfirmDialog] =
-    useState<NotebookConfirmRequest | null>(null);
   const [inkEditorMountRevision, setInkEditorMountRevision] = useState(0);
 
   return {
-    showAddPagesDialog,
-    setShowAddPagesDialog,
-    notebookFile,
-    setNotebookFile,
-    notebookUploadProgress,
-    setNotebookUploadProgress,
-    addingNotebookFile,
-    setAddingNotebookFile,
     createPageActive,
     setCreatePageActive,
     createPageProgress,
@@ -159,10 +144,6 @@ export function useNotebookPageCreationState() {
     setCreatingPage,
     createPageBounce,
     setCreatePageBounce,
-    deletingPageId,
-    setDeletingPageId,
-    confirmDialog,
-    setConfirmDialog,
     inkEditorMountRevision,
     setInkEditorMountRevision,
   };

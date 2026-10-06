@@ -37,7 +37,7 @@ const ERASER_DOT_SIZE: Record<NotebookEraserSize, string> = {
   large: "1.35rem",
 };
 
-type NotebookToolSettingsPopoverProps = {
+export type NotebookToolSettingsPopoverProps = {
   /** Which toolbar edge the popover hangs off. */
   dock: NotebookToolbarDock;
   /** The toolbar and this panel always agree on which tool is showing. */
