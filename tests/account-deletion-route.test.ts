@@ -70,6 +70,22 @@ describe("DELETE /api/account/delete", () => {
     expect(routeMocks.deleteAccountWithAdmin).not.toHaveBeenCalled();
   });
 
+  it("refuses the shared demo account, however recently it signed in", async () => {
+    routeMocks.verifyIdToken.mockResolvedValue({
+      uid: "demo-user",
+      demo: true,
+      auth_time: Math.floor(Date.now() / 1_000),
+    });
+    const { DELETE } = await import("@/app/api/account/delete/route");
+    const response = await DELETE(createRequest({ token: "demo-token" }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "account/demo-account",
+    });
+    expect(routeMocks.deleteAccountWithAdmin).not.toHaveBeenCalled();
+  });
+
   it("deletes only the uid verified from the recent Firebase token", async () => {
     routeMocks.verifyIdToken.mockResolvedValue({
       uid: "user-a",

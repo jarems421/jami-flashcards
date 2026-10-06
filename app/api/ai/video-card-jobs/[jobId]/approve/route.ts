@@ -1,24 +1,18 @@
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { getBearerToken } from "@/lib/auth/bearer";
 import { mapVideoCardJobData } from "@/lib/ai/video-card-jobs";
 import { mapCardData } from "@/lib/study/cards";
-import { getAdminAuth, getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
+import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
-
-async function uidFor(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try { return (await getAdminAuth().verifyIdToken(token)).uid; } catch { return null; }
-}
 
 function failure(error: string, status: number) {
   return Response.json({ error }, { status });
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
-  const uid = await uidFor(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401);
   const { jobId } = await params;
   if (!/^[A-Za-z0-9_-]{16,160}$/.test(jobId)) return failure("Job not found", 404);

@@ -156,3 +156,53 @@ describe("source Tutor network protection", () => {
     expect(bob.parts[0]?.text).toBe("Bob's separate notes.");
   });
 });
+
+describe("why a source could not be read", () => {
+  const pdf: Source = {
+    id: "source-pdf",
+    title: "Past paper",
+    type: "file",
+    folderIds: [],
+    topicIds: [],
+    fileName: "paper.pdf",
+    fileType: "application/pdf",
+    storagePath: "users/user-1/sourceFiles/source-pdf/paper.pdf",
+    status: "active",
+    createdBy: "user-1",
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  it("keeps a reason worded for the student", async () => {
+    await expect(prepareSourceForTutor(pdf, async () => Buffer.alloc(0), "user-1")).rejects.toMatchObject({
+      name: "SourceReadError",
+      message: "The uploaded file is empty or too large.",
+    });
+  });
+
+  it("does not pass a storage error's paths through, but keeps it as the cause", async () => {
+    const storageError = new Error("No such object: jami-prod.appspot.com/users/user-1/sourceFiles/source-pdf/paper.pdf");
+    const failure = await prepareSourceForTutor({ ...pdf, updatedAt: 2 }, async () => {
+      throw storageError;
+    }, "user-1").catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ name: "SourceReadError", message: "This source could not be read." });
+    expect(failure instanceof Error ? failure.cause : null).toBe(storageError);
+  });
+
+  it("does not pass a failed evidence brief's error through either", async () => {
+    const failure = await normalizePreparedTutorSourceForTextModel(
+      {
+        sourceId: "source-scan",
+        label: "Scanned paper",
+        inputBytes: 10,
+        parts: [{ inlineData: { mimeType: "application/pdf", data: "cGRm" } }],
+      },
+      async () => {
+        throw Object.assign(new Error("provider overloaded"), { status: 503 });
+      }
+    ).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ name: "SourceReadError", message: "This source could not be read." });
+  });
+});

@@ -1,32 +1,22 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { start } from "workflow/api";
 import { parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
 import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
-import { getBearerToken } from "@/lib/auth/bearer";
 import { mapPracticePaperJobData, MAX_PRACTICE_PAPER_SOURCE_IDS } from "@/lib/practice/practice-papers";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
   refundAiBudget,
 } from "@/services/ai/budgets";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb } from "@/services/firebase/admin";
 import { generatePracticePaperWorkflow } from "@/workflows/practice-paper-generation";
 
 export const runtime = "nodejs";
 
 function failure(error: string, status: number, code: string) {
   return Response.json({ error, code }, { status });
-}
-
-async function authenticate(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try {
-    return (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    return null;
-  }
 }
 
 function normalizeIdempotencyKey(value: string | null) {
@@ -37,7 +27,7 @@ function normalizeIdempotencyKey(value: string | null) {
 }
 
 export async function GET(request: NextRequest) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const snapshot = await getAdminDb()
     .collection("users")
@@ -57,7 +47,7 @@ export async function POST(request: NextRequest) {
   if (!isAnyAiProviderConfigured()) {
     return failure("AI features are not configured", 503, "not_configured");
   }
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
 
   let parsedRequest;

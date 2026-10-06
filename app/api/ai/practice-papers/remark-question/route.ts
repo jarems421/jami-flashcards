@@ -1,7 +1,6 @@
 import type { NextRequest } from "next/server";
-import { getBearerToken } from "@/lib/auth/bearer";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { enqueuePracticePaperMarking, PracticePaperMarkingQueueError } from "@/services/ai/practice-paper-marking-jobs.server";
-import { getAdminAuth } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 
@@ -10,12 +9,8 @@ function failure(error: string, status: number, code: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return failure("Unauthorized", 401, "unauthorized");
-  let uid: string;
-  try { uid = (await getAdminAuth().verifyIdToken(token)).uid; } catch {
-    return failure("Unauthorized", 401, "unauthorized");
-  }
+  const uid = await authenticateRequest(request);
+  if (!uid) return failure("Unauthorized", 401, "unauthorized");
   let body: Record<string, unknown>;
   try { body = await request.json() as Record<string, unknown>; } catch {
     return failure("Invalid request body", 400, "invalid_request");

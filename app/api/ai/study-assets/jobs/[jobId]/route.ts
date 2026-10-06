@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
-import { getBearerToken } from "@/lib/auth/bearer";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { getAdminDb } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
 
 export const runtime = "nodejs";
@@ -23,18 +23,8 @@ export async function GET(
     );
   }
 
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) {
-    return Response.json(
-      { error: "Unauthorized", code: "unauthorized" },
-      { status: 401 }
-    );
-  }
-
-  let uid: string;
-  try {
-    uid = (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
+  const uid = await authenticateRequest(request);
+  if (!uid) {
     return Response.json(
       { error: "Unauthorized", code: "unauthorized" },
       { status: 401 }

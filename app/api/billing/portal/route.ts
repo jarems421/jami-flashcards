@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
-import { getBearerToken } from "@/lib/auth/bearer";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { createLogger } from "@/lib/observability/logger";
 import { getStripeConfig, stripePost } from "@/services/billing/stripe.server";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 
@@ -12,14 +12,8 @@ export const runtime = "nodejs";
  * plan to the end of the month paid for; the webhook records it.
  */
 export async function POST(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  let uid: string;
-  try {
-    uid = (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const uid = await authenticateRequest(request);
+  if (!uid) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const config = getStripeConfig();
   if (!config) {

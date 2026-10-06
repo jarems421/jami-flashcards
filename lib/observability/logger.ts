@@ -128,6 +128,8 @@ function describeError(error: unknown): LogFields {
       errorCategory,
       ...(typeof status === "number" ? { status } : {}),
       ...(typeof code === "string" ? { code } : {}),
+      // An error wrapped to be shown safely keeps what actually failed here.
+      ...(error.cause !== undefined ? { cause: describeError(error.cause) } : {}),
     };
   }
 

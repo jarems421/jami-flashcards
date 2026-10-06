@@ -77,6 +77,19 @@ describe("Storage security rules", () => {
     await assertFails(uploadBytes(ref(bobStorage, filePath), blob("application/pdf")));
   });
 
+  it("lets an owner set a public profile photo, but not the shared demo account", async () => {
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const bobStorage = testEnv.authenticatedContext("bob").storage();
+    const guestStorage = testEnv.unauthenticatedContext().storage();
+    const demoStorage = testEnv.authenticatedContext("demo-user", { demo: true }).storage();
+
+    await assertSucceeds(uploadBytes(ref(aliceStorage, "profilePhotos/alice/photo.png"), blob("image/png")));
+    await assertSucceeds(getBytes(ref(guestStorage, "profilePhotos/alice/photo.png")));
+    await assertFails(uploadBytes(ref(bobStorage, "profilePhotos/alice/other.png"), blob("image/png")));
+    await assertFails(uploadBytes(ref(aliceStorage, "profilePhotos/alice/notes.pdf"), blob("application/pdf")));
+    await assertFails(uploadBytes(ref(demoStorage, "profilePhotos/demo-user/photo.png"), blob("image/png")));
+  });
+
   it("keeps card images private to their owner, and images only", async () => {
     const aliceStorage = testEnv.authenticatedContext("alice").storage();
     const bobStorage = testEnv.authenticatedContext("bob").storage();

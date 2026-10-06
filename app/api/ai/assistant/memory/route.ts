@@ -1,9 +1,6 @@
 import type { NextRequest } from "next/server";
-import {
-  assistantAssetError,
-  authenticateAssistantAssetRequest,
-  authenticateAssistantWriter,
-} from "@/services/ai/assistant-assets.server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { assistantAssetError, authenticateAssistantWriter } from "@/services/ai/assistant-assets.server";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { createLogger } from "@/lib/observability/logger";
 import {
@@ -48,7 +45,7 @@ export async function GET(request: NextRequest) {
   if (!featureFlags.enableTutorMemory) {
     return assistantAssetError("Not found", 404, "not_found");
   }
-  const uid = await authenticateAssistantAssetRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return assistantAssetError("Unauthorized", 401, "unauthorized");
   return Response.json(view(await loadTutorMemory(uid)));
 }

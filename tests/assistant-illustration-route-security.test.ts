@@ -19,8 +19,10 @@ vi.mock("server-only", () => ({}));
 vi.mock("sharp", () => ({
   default: vi.fn(() => ({ metadata: vi.fn(async () => ({ width: 800, height: 600 })) })),
 }));
+vi.mock("@/services/auth/authenticate-request.server", () => ({
+  authenticateRequest: mocks.authenticate,
+}));
 vi.mock("@/services/ai/assistant-assets.server", () => ({
-  authenticateAssistantAssetRequest: mocks.authenticate,
   assistantAssetError: (error: string, status: number, code: string) =>
     Response.json({ error, code }, { status }),
 }));

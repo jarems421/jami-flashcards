@@ -39,8 +39,11 @@ service firebase.storage {
 
     match /profilePhotos/{userId}/{fileName} {
       allow read: if true;
+      // Readable by anyone, so the shared demo account must not be able to put
+      // a picture here for every later visitor to see.
       allow write: if request.auth != null
         && request.auth.uid == userId
+        && !isDemoAccount()
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp)');
     }

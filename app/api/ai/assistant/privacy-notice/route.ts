@@ -1,8 +1,6 @@
 import type { NextRequest } from "next/server";
-import {
-  assistantAssetError,
-  authenticateAssistantAssetRequest,
-} from "@/services/ai/assistant-assets.server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { assistantAssetError } from "@/services/ai/assistant-assets.server";
 import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
@@ -12,7 +10,7 @@ export const runtime = "nodejs";
 const AI_PRIVACY_NOTICE_VERSION = 3;
 
 export async function GET(request: NextRequest) {
-  const uid = await authenticateAssistantAssetRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return assistantAssetError("Unauthorized", 401, "unauthorized");
   const user = await getAdminDb().collection("users").doc(uid).get();
   return Response.json({
@@ -24,7 +22,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const uid = await authenticateAssistantAssetRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return assistantAssetError("Unauthorized", 401, "unauthorized");
   await getAdminDb().collection("users").doc(uid).set(
     {

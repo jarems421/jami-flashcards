@@ -1,24 +1,14 @@
 import { FieldValue } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
-import { getBearerToken } from "@/lib/auth/bearer";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { mapPracticePaperData, type PracticePaperAttempt } from "@/lib/practice/practice-papers";
 import { applyPracticePaperMarkCorrection } from "@/lib/practice/practice-paper-results";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 
 function failure(error: string, status: number, code: string) {
   return Response.json({ error, code }, { status });
-}
-
-async function authenticate(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try {
-    return (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    return null;
-  }
 }
 
 function publicPaper(paperId: string, data: Record<string, unknown>) {
@@ -29,7 +19,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ paperId: string }> }
 ) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const { paperId } = await params;
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(paperId)) {

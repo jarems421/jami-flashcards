@@ -28,6 +28,29 @@ export type PreparedSource = {
 };
 
 /**
+ * A source Jami could not read, with the reason worded for the student.
+ *
+ * Tutor shows a source's failure to the student who added it, so the reader
+ * says why in words they can act on -- the link is private, the file is
+ * empty -- and anything else that fails underneath, from storage, a parser or
+ * a model, becomes "could not be read", with the original kept as its cause
+ * for the logs. A storage error can name buckets and paths, which are not for
+ * a page.
+ */
+export class SourceReadError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "SourceReadError";
+  }
+}
+
+function asSourceReadError(error: unknown) {
+  return error instanceof SourceReadError
+    ? error
+    : new SourceReadError("This source could not be read.", { cause: error });
+}
+
+/**
  * OpenRouter text roles never receive raw PDFs or source images. A specialist
  * may inspect those private bytes, but only its bounded text evidence brief is
  * allowed to cross the worker/supervisor boundary.
@@ -37,11 +60,15 @@ export async function normalizePreparedTutorSourceForTextModel(
   extractEvidence: (parts: readonly AiContentPart[]) => Promise<string>
 ): Promise<PreparedSource> {
   if (prepared.parts.every((part) => "text" in part)) return prepared;
-  const evidenceBrief = normalizeExtractedText(
-    await extractEvidence(prepared.parts)
-  );
+  let extracted: string;
+  try {
+    extracted = await extractEvidence(prepared.parts);
+  } catch (error) {
+    throw asSourceReadError(error);
+  }
+  const evidenceBrief = normalizeExtractedText(extracted);
   if (!evidenceBrief) {
-    throw new Error("The visual document did not contain readable evidence.");
+    throw new SourceReadError("The visual document did not contain readable evidence.");
   }
   return {
     ...prepared,
@@ -109,7 +136,7 @@ export function isBlockedSourceAddress(address: string) {
 async function assertPublicSourceUrl(value: string) {
   const url = new URL(value);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Only public HTTP and HTTPS links can be read.");
+    throw new SourceReadError("Only public HTTP and HTTPS links can be read.");
   }
   const hostname = url.hostname.toLowerCase();
   if (
@@ -118,14 +145,14 @@ async function assertPublicSourceUrl(value: string) {
     hostname.endsWith(".local") ||
     hostname === "metadata.google.internal"
   ) {
-    throw new Error("This link points to a private network address.");
+    throw new SourceReadError("This link points to a private network address.");
   }
   const addresses = await lookup(hostname, { all: true });
   if (
     addresses.length === 0 ||
     addresses.some((entry) => isBlockedSourceAddress(entry.address))
   ) {
-    throw new Error("This link points to a private network address.");
+    throw new SourceReadError("This link points to a private network address.");
   }
   return url;
 }
@@ -153,7 +180,7 @@ export async function fetchPublicSourceText(
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (!location || redirectCount === MAX_REDIRECTS) {
-        throw new Error("The link redirected too many times.");
+        throw new SourceReadError("The link redirected too many times.");
       }
       currentUrl = await assertPublicSourceUrl(
         new URL(location, currentUrl).toString()
@@ -162,20 +189,20 @@ export async function fetchPublicSourceText(
     }
 
     if (!response.ok) {
-      throw new Error(`The link returned ${response.status}.`);
+      throw new SourceReadError(`The link returned ${response.status}.`);
     }
 
     const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
     if (!contentType.includes("text/html") && !contentType.includes("text/plain")) {
-      throw new Error("The link does not provide a readable webpage.");
+      throw new SourceReadError("The link does not provide a readable webpage.");
     }
     const contentLength = Number(response.headers.get("content-length") ?? 0);
     if (contentLength > MAX_WEB_SOURCE_BYTES) {
-      throw new Error("The webpage is too large to read safely.");
+      throw new SourceReadError("The webpage is too large to read safely.");
     }
     const buffer = Buffer.from(await response.arrayBuffer());
     if (buffer.byteLength > MAX_WEB_SOURCE_BYTES) {
-      throw new Error("The webpage is too large to read safely.");
+      throw new SourceReadError("The webpage is too large to read safely.");
     }
 
     const raw = buffer.toString("utf8");
@@ -198,7 +225,7 @@ export async function fetchPublicSourceText(
     return normalizeExtractedText(`${title}\n\n${mainText}`, limit);
   }
 
-  throw new Error("The link could not be read.");
+  throw new SourceReadError("The link could not be read.");
 }
 
 async function extractDocumentText(buffer: Buffer, fileType: string) {
@@ -224,7 +251,7 @@ async function extractDocumentText(buffer: Buffer, fileType: string) {
   if (fileType === "text/plain") {
     return normalizeExtractedText(buffer.toString("utf8"));
   }
-  throw new Error("This document type cannot be converted to text.");
+  throw new SourceReadError("This document type cannot be converted to text.");
 }
 
 function pruneCache(now: number) {
@@ -291,7 +318,20 @@ export async function prepareSourceForTutor(
   const cacheKey = `${normalizedCacheNamespace}:${source.id}:${source.updatedAt}`;
   const cached = readCache(cacheKey);
   if (cached) return cached;
+  let value: PreparedSource;
+  try {
+    value = await readSource(source, loadStoredFile);
+  } catch (error) {
+    throw asSourceReadError(error);
+  }
+  writeCache(cacheKey, value);
+  return value;
+}
 
+async function readSource(
+  source: Source,
+  loadStoredFile: (storagePath: string) => Promise<Buffer>
+): Promise<PreparedSource> {
   const label = source.title || "Untitled source";
   let value: PreparedSource;
 
@@ -305,7 +345,7 @@ export async function prepareSourceForTutor(
     };
   } else if (source.type === "link" && source.externalUrl) {
     const text = await fetchPublicSourceText(source.externalUrl);
-    if (!text) throw new Error("The link did not contain readable text.");
+    if (!text) throw new SourceReadError("The link did not contain readable text.");
     value = {
       sourceId: source.id,
       label,
@@ -314,11 +354,11 @@ export async function prepareSourceForTutor(
     };
   } else if (source.type === "file" && source.storagePath && source.fileType) {
     if (!isSourceFileMimeType(source.fileType)) {
-      throw new Error("This uploaded file type is not supported by Jami.");
+      throw new SourceReadError("This uploaded file type is not supported by Jami.");
     }
     const buffer = await loadStoredFile(source.storagePath);
     if (buffer.byteLength <= 0 || buffer.byteLength >= MAX_SOURCE_FILE_SIZE) {
-      throw new Error("The uploaded file is empty or too large.");
+      throw new SourceReadError("The uploaded file is empty or too large.");
     }
     const kind = getSourceFileKind(source.fileType);
     if (kind === "image" || kind === "pdf") {
@@ -337,7 +377,7 @@ export async function prepareSourceForTutor(
       };
     } else {
       const text = await extractDocumentText(buffer, source.fileType);
-      if (!text) throw new Error("The document did not contain readable text.");
+      if (!text) throw new SourceReadError("The document did not contain readable text.");
       value = {
         sourceId: source.id,
         label,
@@ -346,9 +386,7 @@ export async function prepareSourceForTutor(
       };
     }
   } else {
-    throw new Error("This source does not contain readable material.");
+    throw new SourceReadError("This source does not contain readable material.");
   }
-
-  writeCache(cacheKey, value);
   return value;
 }

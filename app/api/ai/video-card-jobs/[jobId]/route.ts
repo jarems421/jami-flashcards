@@ -1,25 +1,24 @@
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { getBearerToken } from "@/lib/auth/bearer";
 import { mapVideoCardJobData, VIDEO_CARD_REVIEW_CEILING } from "@/lib/ai/video-card-jobs";
 import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import { refundAiBudget } from "@/services/ai/budgets";
-import { getAdminAuth, getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
+import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
-async function uidFor(request: NextRequest) { const token = getBearerToken(request.headers.get("authorization")); if (!token) return null; try { return (await getAdminAuth().verifyIdToken(token)).uid; } catch { return null; } }
 function failure(error: string, status: number) { return Response.json({ error }, { status }); }
 function valid(id: string) { return /^[A-Za-z0-9_-]{16,160}$/.test(id); }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
-  const uid = await uidFor(request); if (!uid) return failure("Unauthorized", 401);
+  const uid = await authenticateRequest(request); if (!uid) return failure("Unauthorized", 401);
   const { jobId } = await params; if (!valid(jobId)) return failure("Job not found", 404);
   const snapshot = await getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId).get();
   return snapshot.exists ? Response.json(mapVideoCardJobData(jobId, snapshot.data() ?? {})) : failure("Job not found", 404);
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
-  const uid = await uidFor(request); if (!uid) return failure("Unauthorized", 401);
+  const uid = await authenticateRequest(request); if (!uid) return failure("Unauthorized", 401);
   const { jobId } = await params; if (!valid(jobId)) return failure("Job not found", 404);
   let body: { drafts?: unknown }; try { body = await request.json(); } catch { return failure("Invalid request", 400); }
   if (!Array.isArray(body.drafts) || body.drafts.length > VIDEO_CARD_REVIEW_CEILING) return failure("Invalid cards", 400);
@@ -33,7 +32,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
-  const uid = await uidFor(request); if (!uid) return failure("Unauthorized", 401);
+  const uid = await authenticateRequest(request); if (!uid) return failure("Unauthorized", 401);
   const { jobId } = await params; if (!valid(jobId)) return failure("Job not found", 404);
   const ref = getAdminDb().collection("users").doc(uid).collection("videoCardJobs").doc(jobId); const snap = await ref.get();
   if (!snap.exists) return failure("Job not found", 404); const data = snap.data() ?? {};

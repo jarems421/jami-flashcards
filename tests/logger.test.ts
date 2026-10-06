@@ -171,6 +171,19 @@ describe("error fields", () => {
     expect(JSON.stringify(record)).not.toContain("Gemini is overloaded");
   });
 
+  it("describes what a wrapped error was wrapping, still without its message", () => {
+    const cause = Object.assign(new Error("No such object: bucket/users/u/file.pdf"), { code: "storage/object-not-found" });
+    const error = new Error("This source could not be read.", { cause });
+
+    const record = buildLogRecord({ level: "warn", event: "source.prepare_failed", fields: { error } });
+
+    expect(record.error).toMatchObject({
+      name: "Error",
+      cause: { name: "Error", code: "storage/object-not-found" },
+    });
+    expect(JSON.stringify(record)).not.toContain("No such object");
+  });
+
   it("describes a thrown non-Error instead of logging [object Object]", () => {
     const record = buildLogRecord({
       level: "error",
