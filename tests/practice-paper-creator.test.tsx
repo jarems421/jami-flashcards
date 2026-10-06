@@ -169,7 +169,15 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  vi.useRealTimers();
 });
+
+/** Moves the clock on, letting whatever the builder scheduled run. */
+async function wait(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
 
 describe("the practice paper builder", () => {
   it("asks for a study folder before anything else", async () => {
@@ -231,6 +239,42 @@ describe("the practice paper builder", () => {
     await click("Answer and continue");
 
     expect(vi.mocked(papers.clarifyPracticePaperJob)).toHaveBeenCalledWith("job-1", "Calculator");
+  });
+
+  it("leaves the student's answer alone while Jami waits for it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    window.history.replaceState(null, "", "/dashboard/practice/papers/new?job=job-1");
+    // A fresh copy each time, as a network read gives.
+    vi.mocked(papers.getPracticePaperJob).mockImplementation(async () =>
+      job({ status: "needs_clarification", clarificationQuestion: "Is the exam calculator or non-calculator?" })
+    );
+    await open();
+    await type("Your answer", "Calculator");
+    await wait(10_000);
+
+    // Nothing moves without the student, so the request is not read again and the answer stays.
+    expect(vi.mocked(papers.getPracticePaperJob)).toHaveBeenCalledTimes(1);
+    expect(field("Your answer").value).toBe("Calculator");
+  });
+
+  it("follows a request Jami is building and opens the paper when it is ready", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    window.history.replaceState(null, "", "/dashboard/practice/papers/new?job=job-1");
+    const reads = [job({ status: "running", stage: "designing" }), job({ status: "running", stage: "building_mark_scheme" })];
+    vi.mocked(papers.getPracticePaperJob).mockImplementation(async () => reads.shift() ?? job({ status: "ready" }));
+    await open();
+    expect(document.body.textContent).toContain("Designing the paper");
+
+    await wait(1_000);
+    expect(vi.mocked(papers.getPracticePaperJob)).toHaveBeenCalledTimes(2);
+    await wait(1_000);
+    // Read every few seconds, not on every render the last read caused.
+    expect(vi.mocked(papers.getPracticePaperJob)).toHaveBeenCalledTimes(2);
+    expect(push).not.toHaveBeenCalled();
+
+    await wait(2_000);
+    expect(vi.mocked(papers.getPracticePaperJob)).toHaveBeenCalledTimes(3);
+    expect(push).toHaveBeenCalledWith("/dashboard/notebooks/paper-1");
   });
 
   it("makes an uploaded paper and opens it", async () => {

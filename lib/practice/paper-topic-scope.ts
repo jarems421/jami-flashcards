@@ -28,6 +28,22 @@ export type PaperTopicScope = {
   conceptIds: string[];
 };
 
+/** What a student has ticked in the topic picker, before it becomes a scope. */
+export type PaperTopicSelection = {
+  /** Whole topics in the paper. */
+  topicIds: string[];
+  /** Single subtopics chosen inside topics that are not in whole. */
+  conceptIds: string[];
+};
+
+/** Every topic of the course, which is what a new paper starts with. */
+export function wholeCourseSelection(specificationId: string): PaperTopicSelection {
+  return {
+    topicIds: (servableExamSpecificationTopics(specificationId)?.topics ?? []).map((topic) => topic.id),
+    conceptIds: [],
+  };
+}
+
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
 
 export function readPaperTopicScope(value: unknown): PaperTopicScope | null {
