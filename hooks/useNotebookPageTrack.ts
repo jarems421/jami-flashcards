@@ -46,6 +46,8 @@ export type NotebookPageTrack = {
   markInkSnapshotReady: (pageId: string) => void;
   /** Writes the offset immediately; use during a gesture. */
   writeOffset: (offset: number) => void;
+  /** Moves the track straight to an offset, cutting any settle animation short. */
+  jumpTo: (offset: number) => void;
   /** Coalesces writes to one per animation frame. */
   queueOffset: (offset: number) => void;
   /** Runs a settle animation and resolves when the transition lands. */
@@ -178,6 +180,15 @@ export function useNotebookPageTrack({
     [trackRef]
   );
 
+  const jumpTo = useCallback(
+    (offset: number) => {
+      const track = trackRef.current;
+      if (track) track.style.transition = "none";
+      writeOffset(offset);
+    },
+    [trackRef, writeOffset]
+  );
+
   const cancelQueuedOffset = useCallback(() => {
     if (animationFrameRef.current === null) return;
     window.cancelAnimationFrame(animationFrameRef.current);
@@ -298,6 +309,7 @@ export function useNotebookPageTrack({
     captureInkSnapshot,
     markInkSnapshotReady,
     writeOffset,
+    jumpTo,
     queueOffset,
     animateTo,
     handleTransitionEnd,

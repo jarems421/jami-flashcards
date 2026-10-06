@@ -30,7 +30,6 @@ export function useNotebookDrawingToolState() {
   const [penMenuOpen, setPenMenuOpen] = useState(false);
   const [highlighterMenuOpen, setHighlighterMenuOpen] = useState(false);
   const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
-  const [touchInkHintVisible, setTouchInkHintVisible] = useState(false);
   // The stored preferences are read on the client after mount, so the server
   // and the first client render agree. See `readNotebookScribbleErasePreference`
   // and `readNotebookPenSettings`.
@@ -90,8 +89,6 @@ export function useNotebookDrawingToolState() {
     setHighlighterMenuOpen,
     eraserMenuOpen,
     setEraserMenuOpen,
-    touchInkHintVisible,
-    setTouchInkHintVisible,
     scribbleToErase,
     setScribbleToErase,
   };
@@ -126,6 +123,8 @@ export function useNotebookNavigationState() {
     setPageSwipeInkSnapshot,
   };
 }
+
+export type NotebookPageCreationState = ReturnType<typeof useNotebookPageCreationState>;
 
 /** The pull-to-create affordance past the last page, and the ink editor's remount key. */
 export function useNotebookPageCreationState() {

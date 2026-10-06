@@ -27,8 +27,6 @@ import { getNotebookWorkingPageStatus } from "@/lib/workspace/notebook-page-cont
 import { makeNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 import {
   buildTypedContentFromTextBlocks,
-  type Notebook,
-  type NotebookInkData,
   type NotebookPage,
   type NotebookPageColor,
   type NotebookPageStyle,
@@ -38,6 +36,7 @@ import {
   saveNotebookPageSnapshot,
 } from "@/services/study/notebooks";
 import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
+import type { NotebookPageSaveResult } from "@/lib/workspace/notebook-save-result";
 
 type PageSnapshotInput = {
   page: NotebookPage;
@@ -49,21 +48,6 @@ type PageSnapshotInput = {
   saveId: number;
   saveRevision: number;
   baseContentRevision: number;
-};
-
-export type NotebookPageSaveResult = {
-  pageId: string;
-  typedContent: string;
-  textBlocks: NotebookTextBlock[];
-  inkData: NotebookInkData;
-  inkSvg: string;
-  pageColor: NotebookPageColor;
-  pageStyle: NotebookPageStyle;
-  status: NotebookPage["status"];
-  contentRevision: number;
-  updatedAt: Notebook["updatedAt"];
-  /** False when a newer edit landed mid-save, so stored content must stand. */
-  replaceStoredContent: boolean;
 };
 
 export type MarkPageUnsavedOptions = {

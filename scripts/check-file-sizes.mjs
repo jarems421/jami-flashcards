@@ -60,9 +60,8 @@ const EXCEPTIONS = new Map([
   // and restores the ratchet: none can grow another line without failing CI.
   ["components/workspace/NotebookInkEditor.tsx", 1301],
   // Removed on 2026-09-15: practice-paper generation was split into its stages.
-  // Lowered on 2026-08-14: the assistant-context builder moved out to
-  // hooks/useNotebookAssistantContext when the multi-model work pushed it over.
-  ["app/dashboard/notebooks/[notebookId]/page.tsx", 2977],
+  // Removed on 2026-10-06: the notebook page became a composition root over
+  // its controller hooks (3,638 -> 1,196 lines).
   ["app/dashboard/study/page.tsx", 2160],
 ]);
 

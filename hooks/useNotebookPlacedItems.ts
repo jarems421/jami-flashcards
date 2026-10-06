@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { NotebookLoader } from "@/hooks/useNotebookLoader";
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
 import {
@@ -406,7 +406,30 @@ export function useNotebookPlacedItems({
     [currentGraphBlocksFor, pageState, selectPlacedGraph, showError, success, writePageGraphs]
   );
 
+  /** What the image and graph layers need from here, kept stable for their memo. */
+  const imageLayerProps = useMemo(
+    () => ({
+      selectedImageId,
+      onSelect: handleSelectImage,
+      onCommit: handleImagesCommit,
+      onDelete: handleDeleteImage,
+    }),
+    [handleDeleteImage, handleImagesCommit, handleSelectImage, selectedImageId]
+  );
+  const graphLayerProps = useMemo(
+    () => ({
+      selectedGraphId,
+      onSelect: handleSelectGraph,
+      onCommit: handleGraphsCommit,
+      onEdit: setGraphEditorTarget,
+      onDelete: handleDeleteGraph,
+    }),
+    [handleDeleteGraph, handleGraphsCommit, handleSelectGraph, selectedGraphId]
+  );
+
   return {
+    imageLayerProps,
+    graphLayerProps,
     selectedImageId,
     selectedGraphId,
     graphEditorTarget,

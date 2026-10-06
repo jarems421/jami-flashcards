@@ -13,7 +13,6 @@ import {
   type DashboardDataLoadOptions,
 } from "@/hooks/useDashboardData";
 import { useFeedback } from "@/hooks/useFeedback";
-import type { Feedback } from "@/lib/app/feedback";
 import { sortByCreatedAtNewest } from "@/lib/app/recent-items";
 import type { Topic } from "@/lib/material/topics";
 import type { Source } from "@/lib/material/sources";
@@ -40,18 +39,11 @@ export default function CardsSearchPage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const {
     feedback,
+    show: handlePanelFeedback,
     success,
     showError,
     clear: clearFeedback,
   } = useFeedback();
-
-  const handlePanelFeedback = useCallback(
-    (next: Feedback) => {
-      if (next.type === "success") success(next.message);
-      else showError(next.message);
-    },
-    [showError, success]
-  );
 
   const loadCardsData = useCallback(async (reads: DashboardDataLoadOptions = {}) => {
     const [userDecks, userCards, userSources, userFolders, userTopics] =
