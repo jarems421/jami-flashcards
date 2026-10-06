@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, Input, Select } from "@/components/ui";
+import { PinIcon } from "@/components/ai/JamiFloatingTutor";
 import type { PendingTutorAttachment } from "@/hooks/useTutorAttachments";
+import { isNotebookSheetFileType } from "@/lib/workspace/notebook-sheet";
 import type { TutorAttachment, TutorSourceSaveOffer } from "@/lib/ai/tutor-attachments";
 import { SOURCE_FILE_MIME_TYPES, getSourceFileTypeLabel } from "@/lib/material/source-files";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
@@ -164,19 +166,36 @@ function SentAttachment({ attachment, localUrl }: { attachment: TutorAttachment;
 export function TutorMessageAttachments({
   attachments,
   previewUrlFor,
+  onKeepBeside,
 }: {
   attachments: readonly TutorAttachment[];
   previewUrlFor: (storagePath: string) => string | undefined;
+  /** In a notebook: keeps a PDF or picture open beside the page to work from. */
+  onKeepBeside?: (attachment: TutorAttachment) => void;
 }) {
   return (
     <div className="mb-1.5 flex flex-wrap justify-end gap-2">
-      {attachments.map((attachment) => (
-        <SentAttachment
-          key={attachment.storagePath}
-          attachment={attachment}
-          localUrl={previewUrlFor(attachment.storagePath)}
-        />
-      ))}
+      {attachments.map((attachment) =>
+        onKeepBeside && isNotebookSheetFileType(attachment.fileType) ? (
+          <span key={attachment.storagePath} className="flex flex-col items-end gap-1">
+            <SentAttachment attachment={attachment} localUrl={previewUrlFor(attachment.storagePath)} />
+            <button
+              type="button"
+              className="inline-flex min-h-7 items-center gap-1 rounded-full px-2 text-2xs font-semibold text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+              onClick={() => onKeepBeside(attachment)}
+            >
+              <PinIcon className="h-3 w-3" />
+              Keep beside page
+            </button>
+          </span>
+        ) : (
+          <SentAttachment
+            key={attachment.storagePath}
+            attachment={attachment}
+            localUrl={previewUrlFor(attachment.storagePath)}
+          />
+        )
+      )}
     </div>
   );
 }

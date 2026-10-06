@@ -81,6 +81,59 @@ export function normalizeTutorAttachments(
   return attachments;
 }
 
+/**
+ * How many of the student's messages an attached file stays with the chat for.
+ *
+ * A question sheet is worked through over many turns, so a file is not
+ * dropped with the turn it came on. Nor is it read forever: a chat that has
+ * moved on stops paying to read a sheet it finished with. Mentioning the file
+ * again brings it back.
+ */
+export const TUTOR_ATTACHMENT_ACTIVE_STUDENT_TURNS = 20;
+
+const ATTACHMENT_REFERENCE_PATTERN =
+  /\b(?:the|that|this|my|those|these)\s+(?:(?:question|questions|problem|exam|past|practice|work|answer|revision|homework|mark|formula|data)\s+)?(?:sheet|worksheet|handout|pdf|file|attachment|document|doc|photo|picture|pic|image|screenshot|scan)s?\b|\b(?:i|we)\s+(?:sent|uploaded|attached|shared)\b/i;
+
+/** Whether a message points at a file attached earlier in the chat. */
+export function refersToTutorAttachment(message: string) {
+  return ATTACHMENT_REFERENCE_PATTERN.test(message);
+}
+
+/**
+ * The files Tutor reads for the next message: this message's own first, then
+ * any from a message whose answer failed (not saved yet, so they go on this
+ * one), then the chat's earlier files, most recent first -- those attached in
+ * the last few messages, or all of them when the student mentions a file.
+ */
+export function selectTutorRequestAttachments(input: {
+  messages: readonly {
+    role: "user" | "assistant";
+    attachments?: readonly TutorAttachment[];
+    attachmentsUnsaved?: boolean;
+  }[];
+  sentFiles: readonly TutorAttachment[];
+  message: string;
+}): { files: TutorAttachment[]; newCount: number } {
+  const unsavedFiles = input.messages.flatMap((entry) =>
+    entry.attachmentsUnsaved ? entry.attachments ?? [] : []
+  );
+  const newFiles = [...input.sentFiles, ...unsavedFiles];
+  const recalled = refersToTutorAttachment(input.message);
+  const earlierFiles: TutorAttachment[] = [];
+  // The message being sent is the first student turn counted.
+  let studentTurns = 1;
+  for (let index = input.messages.length - 1; index >= 0; index -= 1) {
+    const entry = input.messages[index];
+    if (entry.role !== "user") continue;
+    if (!entry.attachmentsUnsaved && (recalled || studentTurns <= TUTOR_ATTACHMENT_ACTIVE_STUDENT_TURNS)) {
+      earlierFiles.push(...[...(entry.attachments ?? [])].reverse());
+    }
+    studentTurns += 1;
+  }
+  const files = [...newFiles, ...earlierFiles].slice(0, MAX_TUTOR_ATTACHMENTS_PER_REQUEST);
+  return { files, newCount: Math.min(newFiles.length, files.length) };
+}
+
 /** The reference an attachment goes by in the prompt: A1, A2... */
 export function tutorAttachmentRef(index: number) {
   return `A${index + 1}`;

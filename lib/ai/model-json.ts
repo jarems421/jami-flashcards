@@ -20,6 +20,8 @@
  * English word are recovered.
  */
 
+import katex from "katex";
+
 /**
  * Pulls the JSON array out of a model response that may have wrapped it in
  * prose or a code fence. Returns the input unchanged when no array is found,
@@ -37,27 +39,60 @@ export function extractJsonArray(text: string) {
 
 const JSON_ESCAPE_CHARS = new Set(['"', "\\", "/", "b", "f", "n", "r", "t", "u"]);
 
-/** Escapes that must be preserved: unambiguous, or a unicode sequence. */
-const PRESERVED_ESCAPE_CHARS = new Set(['"', "\\", "/", "u"]);
+/** Escapes that must be preserved: they mean one thing only. */
+const PRESERVED_ESCAPE_CHARS = new Set(['"', "\\", "/"]);
 
 /**
- * n-commands worth recovering. Each continues with letters that do not begin an
- * English word, so a genuine newline can never be mistaken for one. `\nu` and
- * `\ne` are excluded on purpose: a paragraph starting "under" or "next" is
- * ordinary prose.
+ * n-commands worth recovering anywhere. Each ends where its name ends, and no
+ * line of English starts with one as a whole word, so a genuine newline can
+ * never be mistaken for one: "\nequation" is a line starting "equation", not
+ * `\neq` followed by "uation".
  */
 const RECOVERABLE_NEWLINE_COMMANDS =
-  /^n(?:abla|eq|otin|leq|geq|subseteq|subset|parallel|rightarrow|equiv)/;
+  /^n(?:abla|eq|otin|ot(?=\\|=)|leq|geq|subseteq|subset|parallel|rightarrow|leftarrow|Rightarrow|Leftrightarrow|equiv|cong|ewline)(?![a-zA-Z])/;
+
+/**
+ * n-commands that could also be a line starting with a short word -- "u = 0"
+ * under a list of SUVAT values, "e.g.", "mid-point" -- and so are only
+ * recovered inside inline maths, where a line break cannot be.
+ */
+const INLINE_MATH_NEWLINE_COMMANDS = /^n(?:u|i|e|eg|mid)(?![a-zA-Z])/;
+
+/**
+ * A `\u` that is not a unicode escape: `\underline`, `\uparrow`, `\upsilon`.
+ * Fewer than four characters left, all hex, is an escape still arriving.
+ */
+function isUnicodeEscape(raw: string, at: number) {
+  const digits = raw.slice(at + 2, at + 6);
+  return /^[0-9a-fA-F]*$/.test(digits) && (digits.length === 4 || at + 6 > raw.length);
+}
 
 export function repairModelJsonBackslashes(raw: string): string {
   if (!raw.includes("\\")) return raw;
 
   let out = "";
+  // Where the scan is in the answer text, for the n-commands that only maths
+  // makes unambiguous. Reset by every string boundary and line break, so a
+  // stray dollar sign cannot reach past its own line.
+  let inlineMath = false;
+  let displayMath = false;
 
   for (let at = 0; at < raw.length; at += 1) {
     const char = raw[at];
 
     if (char !== "\\") {
+      if (char === '"') {
+        inlineMath = false;
+        displayMath = false;
+      } else if (char === "$") {
+        if (raw[at + 1] === "$") {
+          displayMath = !displayMath;
+          out += "$$";
+          at += 1;
+          continue;
+        }
+        if (!displayMath) inlineMath = !inlineMath;
+      }
       out += char;
       continue;
     }
@@ -79,16 +114,36 @@ export function repairModelJsonBackslashes(raw: string): string {
 
     // Not a JSON escape at all, so the model meant a literal backslash and the
     // document currently does not parse: `\sqrt`, `\cdot`, `\pi`, `\alpha`.
+    // `\(` and `\)` open and close inline maths as `$` does.
     if (!JSON_ESCAPE_CHARS.has(next)) {
+      if (next === "(") inlineMath = true;
+      if (next === ")") inlineMath = false;
       out += "\\\\";
       continue;
     }
 
+    // `\underline` is not a unicode escape, and left alone it is a syntax
+    // error that throws the whole answer away.
+    if (next === "u") {
+      if (isUnicodeEscape(raw, at)) {
+        out += char + next;
+        at += 1;
+      } else {
+        out += "\\\\";
+      }
+      continue;
+    }
+
     if (next === "n") {
-      if (RECOVERABLE_NEWLINE_COMMANDS.test(raw.slice(at + 1))) {
+      const rest = raw.slice(at + 1);
+      if (
+        RECOVERABLE_NEWLINE_COMMANDS.test(rest) ||
+        (inlineMath && INLINE_MATH_NEWLINE_COMMANDS.test(rest))
+      ) {
         out += "\\\\";
         continue;
       }
+      inlineMath = false;
       out += char + next;
       at += 1;
       continue;
@@ -238,7 +293,73 @@ export function unwrapTextModeSymbols(text: string): string {
   );
 }
 
-/** Both LaTeX repairs, for text a model wrote for a student to read. */
+const knownLatexCommands = new Map<string, boolean>();
+
+/** Whether KaTeX knows `\name`. Asked of KaTeX itself, so no list goes stale. */
+function isLatexCommand(name: string) {
+  let known = knownLatexCommands.get(name);
+  if (known === undefined) {
+    try {
+      katex.renderToString(`\\${name}`, { throwOnError: true });
+      known = true;
+    } catch (error) {
+      // Any other complaint -- a missing argument -- means the name exists.
+      known = !(error instanceof Error && error.message.includes("Undefined control sequence"));
+    }
+    if (knownLatexCommands.size < 1_000) knownLatexCommands.set(name, known);
+  }
+  return known;
+}
+
+const OVER_ESCAPED_COMMAND = /(?<!\\)\\\\([a-zA-Z]+)/g;
+const OVER_ESCAPED_INLINE_DELIMITERS = /(?<!\\)\\\\\(([\s\S]*?)(?<!\\)\\\\\)/g;
+/** `\\[2pt]` is a row break with extra space, not an opening delimiter. */
+const OVER_ESCAPED_DISPLAY_DELIMITERS =
+  /(?<!\\)\\\\\[(?!\s*-?[\d.]+\s*(?:pt|em|ex|mm|cm|mu)\s*\])([\s\S]*?)(?<!\\)\\\\\]/g;
+const MATH_SPAN = /\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)/g;
+const LATEX_ENVIRONMENT = /\\begin\{([a-zA-Z*]+)\}[\s\S]*?\\end\{\1\}/g;
+
+/**
+ * LaTeX a model escaped twice, put back.
+ *
+ * Asked for JSON, a model sometimes escapes every backslash once for JSON and
+ * once more for luck, and the answer arrives holding `\\frac{1}{2}`. KaTeX
+ * reads `\\` as a line break, so the student saw a broken line and the word
+ * "frac", and `40^\\circ` as an error. `\\` directly before a command name is
+ * never a line break anyone meant, so it is put back to one backslash; the
+ * doubled row break `\\\\` and doubled spacing such as `\\,` are put back
+ * inside maths only, where the meaning is certain.
+ */
+export function collapseOverEscapedLatex(text: string): string {
+  if (!text.includes("\\\\")) return text;
+  return text
+    .replace(OVER_ESCAPED_INLINE_DELIMITERS, (_match, body: string) => `\\(${body}\\)`)
+    .replace(OVER_ESCAPED_DISPLAY_DELIMITERS, (_match, body: string) => `\\[${body}\\]`)
+    .replace(OVER_ESCAPED_COMMAND, (match, name: string) => (isLatexCommand(name) ? `\\${name}` : match))
+    .replace(MATH_SPAN, (span) => {
+      const rows = span.replace(/(?<!\\)\\{4}(?!\\)/g, "\\\\");
+      // Outside an environment `\\,` cannot be a row break before a comma.
+      return rows.includes("\\begin{") ? rows : rows.replace(/(?<!\\)\\\\(?=[,;:!%{}|])/g, "\\");
+    });
+}
+
+/**
+ * Row breaks a model wrote with one backslash, put back to two.
+ *
+ * Written into JSON unescaped, a matrix's `4 \\ -3` parses as `4 \ -3`: one
+ * row, and the column vector reads as a sum. Inside an environment a lone
+ * backslash before a space, digit or minus sign can only have been a row break.
+ */
+export function restoreEnvironmentRowBreaks(text: string): string {
+  if (!text.includes("\\begin{")) return text;
+  return text.replace(LATEX_ENVIRONMENT, (environment) =>
+    environment.replace(/(?<!\\)\\(?=[\s\d-])/g, "\\\\")
+  );
+}
+
+/** Every LaTeX repair, for text a model wrote for a student to read. */
 export function repairModelLatex(text: string): string {
-  return unwrapTextModeSymbols(restoreEscapeEatenLatex(text));
+  return unwrapTextModeSymbols(
+    restoreEscapeEatenLatex(restoreEnvironmentRowBreaks(collapseOverEscapedLatex(text)))
+  );
 }

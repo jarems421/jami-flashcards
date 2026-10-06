@@ -193,6 +193,26 @@ describe("uploaded notebook import", () => {
     expect(result.pages).toHaveLength(2);
   });
 
+  it("keeps the chosen paper for added pages while the file's pages stay white plain", async () => {
+    await importUploadedNotebook({
+      userId: "alice",
+      folderId: "folder-1",
+      title: "Paper",
+      file,
+      pageColor: "cream",
+      pageStyle: "grid",
+    });
+
+    expect(mocks.createNotebook).toHaveBeenCalledWith(
+      "alice",
+      expect.objectContaining({ pageColor: "cream", pageStyle: "grid" })
+    );
+    expect(mocks.createNotebookPages).toHaveBeenCalledWith("alice", [
+      expect.objectContaining({ pageColor: "white", pageStyle: "plain" }),
+      expect.objectContaining({ pageColor: "white", pageStyle: "plain" }),
+    ]);
+  });
+
   it("cleans up Firestore records and storage after a partial failure", async () => {
     mocks.createNotebookPages.mockRejectedValue(new Error("page write failed"));
 

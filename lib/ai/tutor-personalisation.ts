@@ -627,7 +627,7 @@ export function buildTutorPersonalisationInstruction(input: {
 
   const lines: string[] = [
     "--- HOW THIS STUDENT WANTS TO BE TAUGHT ---",
-    "The student saved these settings to shape how you teach them. Apply them to every answer without announcing them. Where they differ from the default teaching approach described in these instructions -- whether to open with a hint, how much to explain, how to give feedback, whether to end with a check -- these settings win. Only the student's current message outranks them: if it asks for something different, do what it asks.",
+    "The student saved these settings to shape how you teach them. Follow them without announcing them. Where they differ from the default teaching approach described in these instructions -- whether to open with a hint, how much to explain, how to give feedback, whether to end with a check -- these settings win. Only the student's current message outranks them: if it asks for something different, do what it asks.",
   ];
 
   if (style.length > 0) {
@@ -657,11 +657,22 @@ export function buildTutorPersonalisationInstruction(input: {
 
   if (generalNotes.length > 0) {
     lines.push(
-      "Notes the student wants applied in every subject:",
+      "Notes for every subject:",
       ...fenced(
         input.boundaryToken,
         generalNotes.map((note) => `- ${note}`)
       )
+    );
+  }
+
+  /*
+   * Most notes describe a kind of answer, not every answer. This block once
+   * said "apply them to every answer", and a note asking for the common
+   * mistake got one tacked onto a request to copy out question 1 of a PDF.
+   */
+  if (generalNotes.length > 0 || (folder?.notes.length ?? 0) > 0) {
+    lines.push(
+      "Most notes describe a kind of answer, not every answer. Use each note where the reply is the kind it is about and leave it out where it is not: a note about common mistakes belongs where a method or answer is being taught or checked, and a note about real-world examples belongs where a new idea is introduced. A request that is not teaching -- copying out or reformatting a question, finding something in a source, a quick fact, a short follow-up -- usually needs none of them. Notes about form (spelling, tone, length, notation) apply to every reply, and so does a note that says it does (\"always\", \"every answer\"). Never add a section only because a note mentions it; leaving out a note that does not fit the request is following it."
     );
   }
 
@@ -688,7 +699,7 @@ export function buildTutorPersonalisationInstruction(input: {
 export const GENERAL_NOTE_SUGGESTIONS: readonly string[] = [
   "Name the rule or formula before you use it.",
   "Give me a real-world example when a new idea comes up.",
-  "Point out the mistake students usually make here.",
+  "When you teach a method, point out the mistake students usually make.",
   "Keep paragraphs short.",
   "Use British spelling.",
 ];

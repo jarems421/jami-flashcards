@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTutorStudyMaterialInstruction,
+  describeTutorStudyMaterialChoice,
   detectTutorStudyMaterialRequest,
+  isOpenTutorStudyMaterialRequest,
+  normalizeTutorStudyMaterialChoice,
+  normalizeTutorStudyMaterialSetup,
   getTutorStudyMaterialOffers,
   normalizeTutorStudyMaterialRequest,
   normalizeTutorStudyMaterialResult,
@@ -14,6 +18,53 @@ import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 const sources: JamiAssistantContext = { surface: "sources", sourceIds: ["source-1"] };
 const teachingAnswer =
   "When you separate variables, you want every y term with dy and every x term with dx. ".repeat(5);
+
+describe("asking what to make first", () => {
+  it.each([
+    "make me flashcards",
+    "Can you make me some flashcards please?",
+    "Help me make flashcards or a practice set.",
+    "I'd like 10 practice questions",
+    "give me a practice set",
+  ])("asks first when %j names nothing to make them on", (message) => {
+    expect(isOpenTutorStudyMaterialRequest(message)).toBe(true);
+  });
+
+  it.each([
+    "make flashcards on osmosis",
+    "make me flashcards on this",
+    "give me 5 practice questions about enzyme denaturation",
+    "flashcards from lecture 4 please",
+  ])("makes them at once when %j says what on", (message) => {
+    expect(isOpenTutorStudyMaterialRequest(message)).toBe(false);
+  });
+
+  it("reads a setup back with the kind asked for always among those offered", () => {
+    expect(
+      normalizeTutorStudyMaterialSetup({ kind: "practice", kinds: ["flashcards"], topics: ["Osmosis", "osmosis", "", 4, "Enzymes"] })
+    ).toEqual({ kind: "practice", kinds: ["practice", "flashcards"], topics: ["Osmosis", "Enzymes"] });
+    expect(normalizeTutorStudyMaterialSetup({ kind: "essays" })).toBeUndefined();
+  });
+
+  it("makes what the student chose lean on what they find hard, within the limits", () => {
+    const choice = normalizeTutorStudyMaterialChoice(
+      { focus: "Osmosis", struggle: "which way water moves", count: 99 },
+      "practice"
+    );
+    expect(choice).toEqual({ focus: "Osmosis", struggle: "which way water moves", count: 10 });
+    expect(describeTutorStudyMaterialChoice(choice!)).toBe(
+      "Osmosis, focusing on what they find hard: which way water moves"
+    );
+    expect(normalizeTutorStudyMaterialChoice({ focus: "  " }, "flashcards")).toBeUndefined();
+  });
+
+  it("tells Tutor to ask, not make, and to suggest topics", () => {
+    const instruction = buildTutorStudyMaterialInstruction({ requested: "flashcards", practiceAvailable: true, askFirst: true });
+    expect(instruction).toContain("has not said what on");
+    expect(instruction).toContain('set studyMaterial to "none"');
+    expect(instruction).toContain("studyMaterialTopics");
+  });
+});
 
 describe("detectTutorStudyMaterialRequest", () => {
   it.each([

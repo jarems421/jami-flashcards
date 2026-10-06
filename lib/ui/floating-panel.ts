@@ -165,12 +165,14 @@ export function restoreFloatingRectUnderPointer(
  * A panel of the preferred size, tucked into the bottom-right corner.
  *
  * Bottom-right because that is where the page's margin is emptiest on a
- * landscape tablet, and furthest from the notebook's toolbar.
+ * landscape tablet, and furthest from the notebook's toolbar. A panel that
+ * sits beside the Tutor card -- a sheet to work from -- takes the bottom-left.
  */
 export function cornerFloatingRect(
   size: { width: number; height: number },
   viewport: FloatingViewport,
-  limits: FloatingLimits
+  limits: FloatingLimits,
+  side: "left" | "right" = "right"
 ): FloatingRect {
   const fitted = clampFloatingRect(
     { x: 0, y: 0, width: size.width, height: size.height },
@@ -180,7 +182,7 @@ export function cornerFloatingRect(
   return clampFloatingRect(
     {
       ...fitted,
-      x: viewport.width - limits.margin - fitted.width,
+      x: side === "left" ? limits.margin : viewport.width - limits.margin - fitted.width,
       y: viewport.height - limits.margin - fitted.height,
     },
     viewport,

@@ -2,7 +2,6 @@ import type { AiContentPart } from "@/lib/ai/content-parts";
 import type { JamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import type { JamiAssistantSuggestedCard } from "@/lib/ai/tutor-card-suggestions";
 import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
-import type { JamiAssistantSuggestedQuestion } from "@/lib/ai/tutor-question-suggestions";
 
 import { normalizeAssistantId as normalizeId } from "@/lib/ai/jami-assistant-normalize";
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
@@ -10,11 +9,14 @@ import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 import { extractTutorGraphs, MAX_TUTOR_GRAPHS, readTutorGraphSpecs } from "@/lib/ai/assistant-graph";
 import {
   isTutorStudyMaterialKind,
+  normalizeTutorStudyMaterialTopics,
   type TutorStudyMaterialKind,
   type TutorStudyMaterialRequest,
   type TutorStudyMaterialResult,
+  type TutorStudyMaterialSetup,
 } from "@/lib/ai/tutor-study-material";
 import { extractTutorDiagrams, MAX_TUTOR_DIAGRAMS, readTutorDiagramSpecs } from "@/lib/ai/tutor-diagram";
+import { readTutorSuggestions, type TutorSuggestion } from "@/lib/ai/tutor-suggestion";
 import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
 import {
   MAX_TUTOR_ATTACHMENTS_PER_MESSAGE,
@@ -23,8 +25,25 @@ import {
   type TutorSourceSaveOffer,
 } from "@/lib/ai/tutor-attachments";
 
-export const JAMI_ASSISTANT_MAX_HISTORY_MESSAGES = 12;
+/**
+ * How much of a chat Tutor reads back on each turn.
+ *
+ * It was the last twelve messages, so working through a question sheet lost
+ * the start of the sheet six questions in. Forty messages keeps a long working
+ * session together, and the total keeps it cheap: long answers are cut to their
+ * first part, and the oldest turns go first once the total is reached. Anything
+ * older can still be found when the student refers back to it
+ * (`lib/ai/tutor-chat-recall.ts`).
+ */
+export const JAMI_ASSISTANT_MAX_HISTORY_MESSAGES = 40;
 export const JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH = 4_000;
+export const JAMI_ASSISTANT_MAX_HISTORY_TOTAL_LENGTH = 48_000;
+/**
+ * The turns routing reads for a repeated concept or a challenge. Kept at the
+ * old window, so a longer history does not quietly send more turns to the
+ * larger models.
+ */
+export const JAMI_ASSISTANT_ROUTING_HISTORY_MESSAGES = 12;
 export const JAMI_ASSISTANT_MAX_MESSAGE_LENGTH = 2_000;
 /** Sources a student can hand the Tutor at once. Not shown: the content search, not a count, decides what is read. */
 export const JAMI_ASSISTANT_MAX_SOURCE_IDS = 100;
@@ -148,8 +167,6 @@ export type JamiAssistantResponse = {
   citations?: JamiAssistantCitation[];
   /** Flashcards offered in reply to a request for them; saved only if the student chooses. */
   suggestedCards?: JamiAssistantSuggestedCard[];
-  /** Practice questions offered in reply to a request for them; saved only if the student chooses. */
-  suggestedQuestions?: JamiAssistantSuggestedQuestion[];
   /**
    * The engine's practice advice for the topic in front of the student, when
    * that is its decision. Live advice, so it is shown but never saved with
@@ -161,6 +178,8 @@ export type JamiAssistantResponse = {
   studyMaterialRequest?: TutorStudyMaterialRequest;
   /** Offered under the answer, made only if the student asks. */
   studyMaterialOffers?: TutorStudyMaterialKind[];
+  /** Tutor asking what to make before it makes anything; shown as a card to fill in. */
+  studyMaterialSetup?: TutorStudyMaterialSetup;
   /** Already made from this answer, keyed by kind. */
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
   /** Tutor's suggestion to save an attached file as a source; saved only once the student confirms. */
@@ -190,6 +209,10 @@ export type ParsedJamiAssistantModelAnswer = {
   /** Tutor's own reading of whether it was asked to make study material. */
   studyMaterial: TutorStudyMaterialKind | null;
   studyMaterialFocus: string;
+  /** Topics Tutor suggests choosing from, when it asked what to make. */
+  studyMaterialTopics: string[];
+  /** The next steps Tutor chose to suggest under the answer, usually none. */
+  suggestions: TutorSuggestion[];
   /**
    * A structured verdict on the page, when one was asked for and the model
    * offered one.
@@ -207,8 +230,6 @@ export type ParsedJamiAssistantModelAnswer = {
    * turn that invited them.
    */
   cards?: unknown;
-  /** Practice questions, likewise passed through for `readTutorQuestionSuggestions`. */
-  questions?: unknown;
   /**
    * Changes Tutor proposed to its memory of the student, passed through unread.
    * `applyTutorMemoryOperations` is the one gate, and only on a turn that
@@ -234,6 +255,8 @@ type ModelAnswerPayload = {
   graphs?: unknown;
   studyMaterial?: unknown;
   studyMaterialFocus?: unknown;
+  studyMaterialTopics?: unknown;
+  suggestions?: unknown;
   diagrams?: unknown;
   marking?: unknown;
   cards?: unknown;
@@ -636,8 +659,6 @@ const DETAILED_REQUEST_PATTERN =
 const STANDARD_REQUEST_PATTERN =
   /\b(?:explain|analyse|analyze|evaluate|compare|contrast|summari[sz]e|check (?:my|this)|review (?:my|this)|show (?:me )?(?:the )?steps|why|how does|how do|how can)\b/i;
 const HINT_REQUEST_PATTERN = /\b(?:hint|clue|nudge)\b/i;
-const WORKED_STEPS_PATTERN =
-  /\b(?:solve|equation|calculation|calculate|proof|derive|working|steps?)\b/i;
 
 /**
  * Keeps everyday tutor replies compact while allowing students to explicitly
@@ -685,25 +706,20 @@ export function getJamiAssistantResponseGuidance(input: {
         ? "STANDARD mode: answer directly in roughly 40-120 words, working excluded. Use a short list only when it makes the answer easier to scan."
         : "DETAILED mode: provide the requested depth, but keep every paragraph necessary and focused.";
 
-  const followUps: JamiAssistantFollowUp[] = [];
-  if (depth !== "detailed") {
-    followUps.push({ label: "Explain more", prompt: "Explain that in more detail." });
-  }
-  if (asksForHint && input.context.surface === "learn") {
-    followUps.push({
-      label: "Another hint",
-      prompt: "Give me one more short hint without revealing the answer.",
-    });
-  } else if (depth !== "detailed" && WORKED_STEPS_PATTERN.test(message)) {
-    followUps.push({ label: "Show steps", prompt: "Show me the steps." });
-  }
+  // The one follow-up that is always worth having: the student asked for a
+  // hint, and the next one is the obvious thing to want. Anything else under
+  // an answer is Tutor's own suggestions; see lib/ai/tutor-suggestion.ts.
+  const followUps: JamiAssistantFollowUp[] =
+    asksForHint && input.context.surface === "learn"
+      ? [{ label: "Another hint", prompt: "Give me one more short hint without revealing the answer." }]
+      : [];
 
   return {
     depth,
     maxOutputTokens:
       depth === "brief" ? 1_500 : depth === "standard" ? 3_000 : 6_000,
     instruction: `${modeInstruction} ${surfaceInstruction} Start with the answer. Answer only the part of the question the student asked about -- if they name (a)(i), do not solve (a)(ii), (a)(iii) or (b). Do not restate the question, add a generic introduction, repeat the conclusion, or use unnecessary headings.`.trim(),
-    followUps: followUps.slice(0, 2),
+    followUps,
   };
 }
 
@@ -794,7 +810,7 @@ export function normalizeJamiAssistantHistory(
 ): JamiAssistantHistoryMessage[] {
   if (!Array.isArray(value)) return [];
 
-  return value
+  const messages = value
     .filter(
       (entry): entry is Record<string, unknown> =>
         Boolean(entry && typeof entry === "object")
@@ -813,8 +829,46 @@ export function normalizeJamiAssistantHistory(
     .filter(
       (entry): entry is JamiAssistantHistoryMessage =>
         entry.role !== null && Boolean(entry.text)
-    )
-    .slice(-JAMI_ASSISTANT_MAX_HISTORY_MESSAGES);
+    );
+  const size = countJamiAssistantHistoryWindow(messages.map((entry) => entry.text));
+  return messages.slice(messages.length - size);
+}
+
+/**
+ * How many of a chat's messages, counted from the newest, Tutor reads back.
+ *
+ * Takes texts already cut to their per-message length. Always at least the
+ * newest message, so a single long answer is never dropped whole.
+ */
+export function countJamiAssistantHistoryWindow(texts: readonly string[]): number {
+  let total = 0;
+  let count = 0;
+  for (let index = texts.length - 1; index >= 0; index -= 1) {
+    if (count >= JAMI_ASSISTANT_MAX_HISTORY_MESSAGES) break;
+    total += texts[index].length;
+    if (count > 0 && total > JAMI_ASSISTANT_MAX_HISTORY_TOTAL_LENGTH) break;
+    count += 1;
+  }
+  return count;
+}
+
+/**
+ * A stored chat as the history Tutor reads: cut per message, then the newest
+ * turns that fit. Returns the earlier turns too, which only the recall search
+ * looks at.
+ */
+export function splitJamiAssistantHistoryWindow<T extends { text: string }>(
+  messages: readonly T[]
+): { window: T[]; earlier: T[] } {
+  const cut = messages.map((message) => ({
+    ...message,
+    text: stripJamiAssistantReferenceMarkers(message.text).slice(
+      0,
+      JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH
+    ),
+  }));
+  const size = countJamiAssistantHistoryWindow(cut.map((message) => message.text));
+  return { window: cut.slice(cut.length - size), earlier: messages.slice(0, messages.length - size) };
 }
 
 function normalizeContext(value: unknown): JamiAssistantContext | null {
@@ -1028,6 +1082,10 @@ export function parseJamiAssistantModelAnswer(
       typeof payload.studyMaterialFocus === "string"
         ? payload.studyMaterialFocus.replace(/\s+/g, " ").trim().slice(0, 240)
         : "",
+    studyMaterialTopics: normalizeTutorStudyMaterialTopics(payload.studyMaterialTopics),
+    // Likewise lenient: a missing or unknown choice is no suggestion, which is
+    // also the right answer most of the time.
+    suggestions: readTutorSuggestions(payload.suggestions),
   };
 }
 

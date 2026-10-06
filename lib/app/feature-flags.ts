@@ -12,6 +12,7 @@ export type FeatureFlagKey =
   | "enableRevisionSessions"
   | "enableConceptRelations"
   | "enableTutorMemory"
+  | "enableTutorChatRecall"
   | "enableBilling";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
@@ -87,6 +88,12 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    */
   enableTutorMemory: true,
   /*
+   * Tutor searching back when a student refers to something said before:
+   * earlier in a long chat, or in another chat while memory is on. Off, Tutor
+   * reads only the recent part of the current chat, as before.
+   */
+  enableTutorChatRecall: true,
+  /*
    * Plans and monthly allowances (docs/plans-and-stardust.md). Off until
    * launch: off, every student keeps today's daily limits and nothing else,
    * exactly as before plans existed. On, new accounts get Free's monthly
@@ -116,6 +123,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableRevisionSessions: process.env.NEXT_PUBLIC_ENABLE_REVISION_SESSIONS,
   enableConceptRelations: process.env.NEXT_PUBLIC_ENABLE_CONCEPT_RELATIONS,
   enableTutorMemory: process.env.NEXT_PUBLIC_ENABLE_TUTOR_MEMORY,
+  enableTutorChatRecall: process.env.NEXT_PUBLIC_ENABLE_TUTOR_CHAT_RECALL,
   enableBilling: process.env.NEXT_PUBLIC_ENABLE_BILLING,
 };
 
@@ -145,5 +153,6 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableRevisionSessions: isFeatureEnabled("enableRevisionSessions"),
   enableConceptRelations: isFeatureEnabled("enableConceptRelations"),
   enableTutorMemory: isFeatureEnabled("enableTutorMemory"),
+  enableTutorChatRecall: isFeatureEnabled("enableTutorChatRecall"),
   enableBilling: isFeatureEnabled("enableBilling"),
 };

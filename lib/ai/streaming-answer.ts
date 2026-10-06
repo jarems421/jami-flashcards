@@ -17,10 +17,41 @@ import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 
 const ANSWER_KEY_PATTERN = /"answer"\s*:\s*"/;
 
+/**
+ * How far past a backslash the repair can look before it decides what the
+ * backslash meant: the longest n-command name, or a unicode escape.
+ */
+const BACKSLASH_LOOKAHEAD = 16;
+
+/**
+ * The buffer up to the first backslash the repair cannot decide yet.
+ *
+ * Whether `\t` is a tab or the start of `\times` depends on what follows it.
+ * Read at a chunk boundary, it was a tab, and the route had already sent it on
+ * by the time "imes" arrived -- the student watched `\times` arrive as a gap
+ * and "imes". Holding back the last few characters after a backslash costs
+ * nothing visible and means nothing shown is ever taken back.
+ */
+function settledPrefix(rawBuffer: string) {
+  const undecidedFrom = rawBuffer.length - BACKSLASH_LOOKAHEAD;
+  for (let at = rawBuffer.indexOf("\\"); at >= 0; at = rawBuffer.indexOf("\\", at)) {
+    const next = rawBuffer[at + 1];
+    if (next === undefined) return rawBuffer.slice(0, at);
+    // `\"`, `\\` and `\/` mean one thing whatever follows.
+    if (next === '"' || next === "\\" || next === "/") {
+      at += 2;
+      continue;
+    }
+    if ("bfnrtu".includes(next) && at > undecidedFrom) return rawBuffer.slice(0, at);
+    at += 1;
+  }
+  return rawBuffer;
+}
+
 export function extractStreamingAnswer(rawBuffer: string): string {
   // Unescaped LaTeX backslashes would otherwise be unescaped into control
   // characters here, mid-stream, before anything else can notice.
-  const buffer = repairModelJsonBackslashes(rawBuffer);
+  const buffer = repairModelJsonBackslashes(settledPrefix(rawBuffer));
   const opening = buffer.match(ANSWER_KEY_PATTERN);
   if (!opening || opening.index === undefined) return "";
 

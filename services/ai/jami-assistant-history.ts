@@ -137,12 +137,12 @@ export function toDrawerMessages(messages: JamiAssistantStoredMessage[]) {
     followUps: message.followUps,
     citations: message.citations,
     suggestedCards: message.suggestedCards,
-    suggestedQuestions: message.suggestedQuestions,
     illustrations: message.illustrations,
     canIllustrate: message.canIllustrate,
     studyMaterialRequest: message.studyMaterialRequest,
     studyMaterialOffers: message.studyMaterialOffers,
     studyMaterialResults: message.studyMaterialResults,
+    studyMaterialSetup: message.studyMaterialSetup,
     attachments: message.attachments,
     id: message.id,
   }));

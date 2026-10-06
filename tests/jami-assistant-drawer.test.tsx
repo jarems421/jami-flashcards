@@ -142,6 +142,36 @@ afterEach(() => {
 });
 
 describe("JamiAssistantDrawer", () => {
+  it("inline, carries the conversation in a card in the page rather than a dialog over it", async () => {
+    const onOpenChange = vi.fn();
+    act(() => {
+      root.render(
+        <JamiAssistantDrawer
+          layout="inline"
+          userId="user-1"
+          open
+          onOpenChange={onOpenChange}
+          resetKey="reset-1"
+          contextKey={CONTEXT_KEY}
+          contextLabel="This page"
+          historyContextLabel="this page"
+          getContext={getContext}
+        />
+      );
+    });
+    // In the page where it was rendered, not portalled into a dialog.
+    const card = container.querySelector("section[aria-label=\"Jami chat\"]");
+    expect(card).not.toBeNull();
+    expect(document.querySelector("[role=\"dialog\"]")).toBeNull();
+    expect(card?.querySelector("h2")?.textContent).toBe("Jami");
+    // The reply box is ready for the next question.
+    expect(document.activeElement).toBe(card?.querySelector("textarea"));
+    // Closing hands back to the page.
+    const close = [...(card?.querySelectorAll("button") ?? [])].find((button) => button.getAttribute("aria-label") === "Close Jami assistant");
+    act(() => close?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it("will not send an empty or whitespace-only message", async () => {
     render();
     typeMessage("   ");

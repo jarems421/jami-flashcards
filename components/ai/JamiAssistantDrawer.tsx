@@ -5,6 +5,8 @@ import {
   useEffect,
   useRef,
   useState,
+  type ComponentProps,
+  type ElementType,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
@@ -50,17 +52,15 @@ import {
 } from "@/components/ai/TutorAttachments";
 import { useTutorAttachments } from "@/hooks/useTutorAttachments";
 import {
-  MAX_TUTOR_ATTACHMENTS_PER_REQUEST,
+  selectTutorRequestAttachments,
   type TutorAttachment,
   type TutorSourceSaveOffer,
 } from "@/lib/ai/tutor-attachments";
 import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard";
 import TutorCardSuggestions from "@/components/ai/TutorCardSuggestions";
 import TutorPracticeOffer from "@/components/ai/TutorPracticeOffer";
-import TutorQuestionSuggestions from "@/components/ai/TutorQuestionSuggestions";
 import type { JamiAssistantSuggestedCard } from "@/lib/ai/tutor-card-suggestions";
 import type { TutorPracticeOffer as TutorPracticeOfferData } from "@/lib/ai/tutor-practice-offer";
-import type { JamiAssistantSuggestedQuestion } from "@/lib/ai/tutor-question-suggestions";
 import { drawnFigureToPng } from "@/components/ai/drawn-figure-image";
 import TutorReasoningMenu from "@/components/ai/TutorReasoningMenu";
 import AddAnswerToPageButton, { AddToPageIcon } from "@/components/ai/AddAnswerToPageButton";
@@ -95,6 +95,7 @@ import {
 } from "@/components/ai/JamiAssistantIcons";
 import TutorSettingsPanel from "@/components/ai/TutorSettingsPanel";
 import TutorStudyMaterialPanel from "@/components/ai/TutorStudyMaterialPanel";
+import TutorStudyMaterialSetupCard from "@/components/ai/TutorStudyMaterialSetupCard";
 import FloatingTutorHeader from "@/components/ai/JamiFloatingTutorHeader";
 import {
   FloatingTutorPill,
@@ -111,9 +112,11 @@ import {
 import { featureFlags } from "@/lib/app/feature-flags";
 import {
   TUTOR_STUDY_MATERIAL_KINDS,
+  type TutorStudyMaterialChoice,
   type TutorStudyMaterialKind,
   type TutorStudyMaterialRequest,
   type TutorStudyMaterialResult,
+  type TutorStudyMaterialSetup,
 } from "@/lib/ai/tutor-study-material";
 
 /**
@@ -184,6 +187,8 @@ type JamiAssistantDrawerProps = {
    * the notebook reports its own failures.
    */
   onAnswerInsert?: (text: string) => boolean;
+  /** Keeps a PDF or picture sent in this chat open beside the notebook page. */
+  onKeepAttachmentBeside?: (attachment: TutorAttachment) => void;
   /**
    * The folders this conversation's material belongs to, when the surface
    * knows.
@@ -206,6 +211,8 @@ type JamiAssistantDrawerProps = {
    * per mount, so a surface that wants to send another remounts the drawer.
    */
   initialMessage?: string;
+  /** Open on the list of saved chats, for a surface whose way in is "pick a chat". */
+  startInHistory?: boolean;
   /**
    * How Jami sits over the work.
    *
@@ -214,12 +221,68 @@ type JamiAssistantDrawerProps = {
    * also shrink to a pill or leave one answer pinned beside the page. Phones
    * get the full-screen sheet either way: there is no room to float.
    *
-   * `page` is the whole screen at every size, for a chat started from a page
-   * whose point is the chat -- the Tutor page -- where opening a side panel
-   * beside a big "ask" box read as being sent somewhere else.
+   * `page` is the whole screen at every size.
+   *
+   * `inline` is a card in the page itself, for a page whose point is the chat
+   * -- the Tutor page. The question is typed into the page and the
+   * conversation carries on in the same place, instead of the page handing
+   * off to a panel or a full-screen chat the moment you send.
    */
-  layout?: "sidebar" | "floating" | "page";
+  layout?: "sidebar" | "floating" | "page" | "inline";
 };
+
+/**
+ * The frame the chat sits in: a dialog over the work, or -- inline -- a card
+ * in the page. Everything inside is the same either way.
+ */
+const THREAD_PLACES: Record<JamiAssistantThread["surface"], string> = {
+  learn: "on your flashcards",
+  sources: "in your material",
+  practice: "in practice",
+  notebook: "in a notebook",
+};
+
+/** Where a saved chat began, in a few words: "in a notebook (Biology notes)". */
+function describeThreadPlace(thread: JamiAssistantThread) {
+  return `${THREAD_PLACES[thread.surface]} (${thread.contextLabel})`;
+}
+
+function TutorChatShell({
+  inline,
+  open,
+  dialogProps,
+  backdropClassName,
+  panelProps,
+  afterPanel,
+  children,
+}: {
+  inline: boolean;
+  open: boolean;
+  dialogProps: Omit<ComponentProps<typeof Dialog>, "children" | "open">;
+  backdropClassName: string;
+  panelProps: ComponentProps<typeof DialogPanel>;
+  afterPanel?: ReactNode;
+  children: ReactNode;
+}) {
+  if (inline) {
+    return open ? (
+      <section
+        aria-label="Jami chat"
+        data-notebook-text-editor="true"
+        className="app-panel relative flex h-[min(82dvh,58rem)] min-h-[30rem] w-full flex-col overflow-hidden rounded-3xl"
+      >
+        {children}
+      </section>
+    ) : null;
+  }
+  return (
+    <Dialog {...dialogProps} open={open}>
+      <DialogBackdrop className={backdropClassName} />
+      <DialogPanel {...panelProps}>{children}</DialogPanel>
+      {afterPanel}
+    </Dialog>
+  );
+}
 
 type DrawerMessage = {
   id?: string;
@@ -229,7 +292,6 @@ type DrawerMessage = {
   followUps?: JamiAssistantFollowUp[];
   citations?: JamiAssistantCitation[];
   suggestedCards?: JamiAssistantSuggestedCard[];
-  suggestedQuestions?: JamiAssistantSuggestedQuestion[];
   /** Live advice from the engine; shown with this answer, never saved with the chat. */
   practiceOffer?: TutorPracticeOfferData;
   illustrations?: AssistantIllustration[];
@@ -237,6 +299,8 @@ type DrawerMessage = {
   studyMaterialRequest?: TutorStudyMaterialRequest;
   studyMaterialOffers?: TutorStudyMaterialKind[];
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
+  /** Tutor asked what to make first; the card under the answer is filled in here. */
+  studyMaterialSetup?: TutorStudyMaterialSetup;
   /** Answered in this sitting, so material Tutor agreed to is made straight away. */
   fresh?: boolean;
   /** Files the student sent with this message. */
@@ -278,9 +342,11 @@ export default function JamiAssistantDrawer({
   onGraphInsert,
   onDrawingInsert,
   onAnswerInsert,
+  onKeepAttachmentBeside,
   settingsFolderIds,
   contextControls,
   initialMessage,
+  startInHistory = false,
   layout = "sidebar",
 }: JamiAssistantDrawerProps) {
   const [messages, setMessages] = useState<DrawerMessage[]>([]);
@@ -290,7 +356,7 @@ export default function JamiAssistantDrawer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [historyNotice, setHistoryNotice] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(startInHistory);
   const [threadLoading, setThreadLoading] = useState(false);
   const [activeThread, setActiveThread] = useState<JamiAssistantThread | null>(null);
   const [useRelatedSources, setUseRelatedSources] = useState(true);
@@ -307,6 +373,10 @@ export default function JamiAssistantDrawer({
   const [startedMaterial, setStartedMaterial] = useState<
     Record<string, TutorStudyMaterialKind[]>
   >({});
+  /** What the student chose on a setup card, by answer: made with that, not Tutor's guess. */
+  const [materialChoices, setMaterialChoices] = useState<
+    Record<string, { kind: TutorStudyMaterialKind; choice: TutorStudyMaterialChoice }>
+  >({});
   /** The answer just added to the page, confirmed beside it for a moment. */
   const [addedAnswerKey, setAddedAnswerKey] = useState<string | null>(null);
   /*
@@ -321,6 +391,9 @@ export default function JamiAssistantDrawer({
   const [sidePanel, setSidePanel] = useState(false);
   const floating = layout === "floating" && sidePanel;
   const fullPage = layout === "page";
+  const inline = layout === "inline";
+  // A dialog's title names the dialog; a card in the page has none to name.
+  const ChatTitle: ElementType = inline ? "h2" : DialogTitle;
   // Shrunk to a pill rather than closed, so the pill stays to bring it back.
   const [minimised, setMinimised] = useState(false);
   /*
@@ -458,6 +531,7 @@ export default function JamiAssistantDrawer({
     setInsertedIllustrationIds(new Set());
     setInsertedGraphKeys(new Set());
     setStartedMaterial({});
+    setMaterialChoices({});
     setGeneratingIllustrationId(null);
     setInsertingIllustrationId(null);
     setMinimised(false);
@@ -502,6 +576,7 @@ export default function JamiAssistantDrawer({
     setInsertedIllustrationIds(new Set());
     setInsertedGraphKeys(new Set());
     setStartedMaterial({});
+    setMaterialChoices({});
     clearFiles();
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }, [abandonActiveRequest, clearFiles]);
@@ -699,6 +774,15 @@ export default function JamiAssistantDrawer({
       [messageId]: Array.from(new Set([...(current[messageId] ?? []), kind])),
     }));
 
+  const makeFromSetup = (
+    messageId: string,
+    kind: TutorStudyMaterialKind,
+    choice: TutorStudyMaterialChoice
+  ) => {
+    setMaterialChoices((current) => ({ ...current, [messageId]: { kind, choice } }));
+    startStudyMaterial(messageId, kind);
+  };
+
   const graphActions: AssistantGraphActions = {
     canInsert: Boolean(onGraphInsert) && contextKey.startsWith("notebook:") && !viewingForeignThread,
     insertingKey: insertingGraphKey,
@@ -785,7 +869,7 @@ export default function JamiAssistantDrawer({
   const sendMessage = useCallback(
     async (rawMessage: string) => {
       const typed = rawMessage.trim();
-      if ((!typed && !files.ready) || files.uploading || requestPendingRef.current || viewingForeignThread) return;
+      if ((!typed && !files.ready) || files.uploading || requestPendingRef.current) return;
 
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
@@ -794,19 +878,11 @@ export default function JamiAssistantDrawer({
       requestAbortRef.current = abortController;
       const sentFiles = files.take();
       const message = typed || "Take a look at what I've attached.";
-      /*
-       * What Tutor reads: this message's files first, then any from a message
-       * whose answer failed (not saved yet, so they go on this one), then the
-       * chat's earlier files, most recent first.
-       */
-      const unsavedFiles = messages.flatMap((entry) =>
-        entry.attachmentsUnsaved ? entry.attachments ?? [] : []
-      );
-      const newFiles = [...sentFiles, ...unsavedFiles];
-      const earlierFiles = messages
-        .flatMap((entry) => (entry.attachmentsUnsaved ? [] : entry.attachments ?? []))
-        .reverse();
-      const requestFiles = [...newFiles, ...earlierFiles].slice(0, MAX_TUTOR_ATTACHMENTS_PER_REQUEST);
+      const { files: requestFiles, newCount: newAttachmentCount } = selectTutorRequestAttachments({
+        messages,
+        sentFiles,
+        message,
+      });
       setMessages((current) => [
         ...current,
         {
@@ -857,7 +933,7 @@ export default function JamiAssistantDrawer({
             ...(requestFiles.length > 0
               ? {
                   attachments: requestFiles,
-                  newAttachmentCount: Math.min(newFiles.length, requestFiles.length),
+                  newAttachmentCount,
                 }
               : {}),
           },
@@ -884,11 +960,11 @@ export default function JamiAssistantDrawer({
           followUps: response.followUps,
           citations: response.citations,
           suggestedCards: response.suggestedCards,
-          suggestedQuestions: response.suggestedQuestions,
           practiceOffer: response.practiceOffer,
           canIllustrate: response.canIllustrate,
           studyMaterialRequest: response.studyMaterialRequest,
           studyMaterialOffers: response.studyMaterialOffers,
+          studyMaterialSetup: response.studyMaterialSetup,
           sourceSaveOffer: response.sourceSaveOffer,
           fresh: true,
         };
@@ -975,7 +1051,6 @@ export default function JamiAssistantDrawer({
       historyContextLabel,
       messages,
       useRelatedSources,
-      viewingForeignThread,
       requestIllustration,
       files,
     ]
@@ -987,6 +1062,11 @@ export default function JamiAssistantDrawer({
    * a request and sets state, which a render must not do.
    */
   const sentInitialRef = useRef(false);
+  // Inline there is no dialog to move focus, so the reply box takes it when
+  // the chat opens, ready for the next question, without scrolling the page.
+  useEffect(() => {
+    if (inline && open) inputRef.current?.focus({ preventScroll: true });
+  }, [inline, open]);
   useEffect(() => {
     if (!open || !initialMessage || sentInitialRef.current) return;
     sentInitialRef.current = true;
@@ -1026,36 +1106,34 @@ export default function JamiAssistantDrawer({
 
   return (
     <>
-    <Dialog
+    <TutorChatShell
+      inline={inline}
       open={open && (!floating || card.rect !== null)}
-      modal={fullPage || !sidePanel}
-      initialFocusRef={inputRef}
-      className={`fixed inset-0 flex ${fullPage ? "justify-center" : "justify-end"} ${
-        sidePanel && !fullPage ? "pointer-events-none" : ""
-      }`}
-      onDismiss={() => onOpenChange(false)}
-    >
-      <DialogBackdrop
-        className={
-          fullPage ? "absolute inset-0 bg-[var(--color-surface-base)]" : "absolute inset-0 bg-black/55 backdrop-blur-[1px]"
-        }
-      />
-      <DialogPanel
-        data-notebook-text-editor="true"
-        className={
-          floating
-            ? floatingTutorPanelClass(card)
-            : fullPage
-              ? "pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-4xl flex-col overflow-hidden bg-[var(--color-surface-panel-strong)] md:border-x md:border-[var(--color-border)]"
-              : "pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-shell"
-        }
+      dialogProps={{
+        modal: fullPage || !sidePanel,
+        initialFocusRef: inputRef,
+        className: `fixed inset-0 flex ${fullPage ? "justify-center" : "justify-end"} ${
+          sidePanel && !fullPage ? "pointer-events-none" : ""
+        }`,
+        onDismiss: () => onOpenChange(false),
+      }}
+      backdropClassName={
+        fullPage ? "absolute inset-0 bg-[var(--color-surface-base)]" : "absolute inset-0 bg-black/55 backdrop-blur-[1px]"
+      }
+      panelProps={{
+        "data-notebook-text-editor": "true",
+        className: floating
+          ? floatingTutorPanelClass(card)
+          : fullPage
+            ? "pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-4xl flex-col overflow-hidden bg-[var(--color-surface-panel-strong)] md:border-x md:border-[var(--color-border)]"
+            : "pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-shell",
         /*
           The panel colour is a few percent translucent, which reads as depth
           over the scrim but lets the card show through once the scrim is gone.
           As a side panel it sits on an opaque base so the same colour stays,
           and the work behind it does not bleed into the conversation.
         */
-        style={
+        style:
           sidePanel || fullPage
             ? {
                 ...(floating && card.rect ? floatingRectStyle(card.rect) : null),
@@ -1063,15 +1141,16 @@ export default function JamiAssistantDrawer({
                 backgroundImage:
                   "linear-gradient(var(--color-surface-panel-strong), var(--color-surface-panel-strong))",
               }
-            : undefined
-        }
-        {...(floating ? card.bodyDragProps : {})}
-      >
+            : undefined,
+        ...(floating ? card.bodyDragProps : {}),
+      } as ComponentProps<typeof DialogPanel>}
+      afterPanel={floating ? <FloatingTutorResizeFrame frame={card} /> : null}
+    >
         {floating ? (
           <FloatingTutorHeader
             frame={card}
             subtitle={
-              historyOpen ? "Chat history" : viewingForeignThread ? "Saved chat · read only" : contextLabel
+              historyOpen ? "Chat history" : viewingForeignThread ? "Carrying on a saved chat" : contextLabel
             }
             compact={compact}
             historyOpen={historyOpen}
@@ -1095,14 +1174,14 @@ export default function JamiAssistantDrawer({
                 <JamiTutorIcon className="h-[1.35rem] w-[1.35rem]" />
               </div>
               <div className="min-w-0">
-                <DialogTitle className="text-base font-semibold leading-tight text-text-primary">
+                <ChatTitle className="text-base font-semibold leading-tight text-text-primary">
                   Jami
-                </DialogTitle>
+                </ChatTitle>
                 <p className="mt-0.5 truncate text-xs text-text-muted">
                   {historyOpen
                     ? "Chat history"
                     : viewingForeignThread
-                      ? "Saved chat · read only"
+                      ? "Carrying on a saved chat"
                       : contextLabel}
                 </p>
               </div>
@@ -1237,6 +1316,7 @@ export default function JamiAssistantDrawer({
                       <TutorMessageAttachments
                         attachments={message.attachments}
                         previewUrlFor={files.sentPreviewUrl}
+                        onKeepBeside={onKeepAttachmentBeside}
                       />
                     ) : null}
                       {message.role === "assistant" ? (
@@ -1326,12 +1406,6 @@ export default function JamiAssistantDrawer({
                             cards={message.suggestedCards}
                           />
                         ) : null}
-                        {message.suggestedQuestions?.length ? (
-                          <TutorQuestionSuggestions
-                            userId={userId}
-                            questions={message.suggestedQuestions}
-                          />
-                        ) : null}
                         {/* Once per conversation: the first answer that carries this advice. */}
                         {message.practiceOffer &&
                         messages.findIndex(
@@ -1363,6 +1437,16 @@ export default function JamiAssistantDrawer({
                             </button>
                           </div>
                         ) : null}
+                        {message.studyMaterialSetup &&
+                        message.id &&
+                        activeThread &&
+                        !viewingForeignThread &&
+                        studyMaterialKindsFor(message, startedMaterial[message.id] ?? []).length === 0 ? (
+                          <TutorStudyMaterialSetupCard
+                            setup={message.studyMaterialSetup}
+                            onMake={(kind, choice) => makeFromSetup(message.id!, kind, choice)}
+                          />
+                        ) : null}
                         {message.id && activeThread
                           ? studyMaterialKindsFor(message, startedMaterial[message.id] ?? []).map((kind) => (
                               <TutorStudyMaterialPanel
@@ -1372,10 +1456,15 @@ export default function JamiAssistantDrawer({
                                 threadId={activeThread.id}
                                 messageId={message.id!}
                                 focus={
-                                  message.studyMaterialRequest?.kind === kind
-                                    ? message.studyMaterialRequest.focus
-                                    : undefined
+                                  materialChoices[message.id!]?.kind === kind
+                                    ? materialChoices[message.id!]!.choice.focus
+                                    : message.studyMaterialRequest?.kind === kind
+                                      ? message.studyMaterialRequest.focus
+                                      : undefined
                                 }
+                                {...(materialChoices[message.id!]?.kind === kind
+                                  ? { choice: materialChoices[message.id!]!.choice }
+                                  : {})}
                                 result={message.studyMaterialResults?.[kind]}
                                 readOnly={viewingForeignThread}
                                 // Offers always start on the press; a request only in the sitting it was made.
@@ -1499,26 +1588,13 @@ export default function JamiAssistantDrawer({
             <div className="text-center text-2xs text-text-muted">
               Saved chats keep their messages and the files you attached, not notebook snapshots.
             </div>
-          ) : viewingForeignThread ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/20 bg-accent/8 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-text-primary">
-                  This chat belongs to another study context
-                </p>
-                <p className="mt-1 text-2xs leading-relaxed text-text-muted">
-                  You can read it here. Start a new chat to ask about {historyContextLabel}.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="shrink-0 rounded-full bg-accent px-3.5 py-2 text-xs font-semibold text-accent-on transition duration-fast hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-                onClick={startNewChat}
-              >
-                New chat
-              </button>
-            </div>
           ) : (
             <>
+          {viewingForeignThread ? (
+            <p className="mb-3 rounded-lg border border-accent/20 bg-accent/8 px-3.5 py-2.5 text-2xs leading-relaxed text-text-secondary">
+              This chat started {activeThread ? describeThreadPlace(activeThread) : "somewhere else"}. Carry on here and Jami picks it up, now with {historyContextLabel} in front of it.
+            </p>
+          ) : null}
           {error ? (
             <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-error/35 bg-error-muted px-3.5 py-3 text-xs text-[var(--color-error-text)]" role="alert">
               <span className="leading-relaxed">{error}</span>
@@ -1719,9 +1795,7 @@ export default function JamiAssistantDrawer({
             />
           </div>
         ) : null}
-      </DialogPanel>
-      {floating ? <FloatingTutorResizeFrame frame={card} /> : null}
-    </Dialog>
+    </TutorChatShell>
     {/* A pinned answer already says where Jami is, and opens it; the pill would repeat it. */}
     {floating && !open && minimised && !pinned ? (
       <FloatingTutorPill onOpen={() => onOpenChange(true)} />

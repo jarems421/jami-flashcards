@@ -141,7 +141,22 @@ describe("normalizeMathDelimiters", () => {
   it("handles multiple math blocks", () => {
     expect(
       normalizeMathDelimiters("Inline \\(x\\) and display \\[y\\] plus $$z$$")
-    ).toBe("Inline $x$ and display $$\ny\n$$ plus $$\nz\n$$");
+    ).toBe("Inline $x$ and display $\\displaystyle y$ plus $$\nz\n$$");
+  });
+
+  it("keeps a display that shares its line with words on that line, at display size", () => {
+    expect(normalizeMathDelimiters("Hence $$y = 3$$ as required.")).toBe(
+      "Hence $\\displaystyle y = 3$ as required."
+    );
+    expect(normalizeMathDelimiters("$$x = 1$$ so done.")).toBe("$\\displaystyle x = 1$ so done.");
+    expect(normalizeMathDelimiters("1. First $$x = 2$$\n2. Second")).toBe(
+      "1. First $\\displaystyle x = 2$\n2. Second"
+    );
+  });
+
+  it("takes a closing full stop inside the display, and leaves a list item's display as a display", () => {
+    expect(normalizeMathDelimiters("Solve:\n\n$$x^2 = 4$$.")).toBe("Solve:\n\n$$\nx^2 = 4.\n$$");
+    expect(normalizeMathDelimiters("- $$a = b$$")).toBe("- $$\na = b\n$$");
   });
 
   it("preserves text without math", () => {

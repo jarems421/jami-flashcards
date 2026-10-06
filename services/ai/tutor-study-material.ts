@@ -2,6 +2,7 @@ import { auth } from "@/services/firebase/client";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import {
   normalizeTutorStudyMaterialResult,
+  type TutorStudyMaterialChoice,
   type TutorStudyMaterialKind,
   type TutorStudyMaterialResult,
 } from "@/lib/ai/tutor-study-material";
@@ -33,6 +34,8 @@ export async function requestTutorStudyMaterial(input: {
   messageId: string;
   kind: TutorStudyMaterialKind;
   context: JamiAssistantContext;
+  /** What the student chose, when Tutor asked what to make first. */
+  choice?: TutorStudyMaterialChoice;
   signal?: AbortSignal;
 }): Promise<{ result: TutorStudyMaterialResult; drafts?: TutorFlashcardDraftPreview[] }> {
   const user = auth.currentUser;
@@ -48,6 +51,7 @@ export async function requestTutorStudyMaterial(input: {
       messageId: input.messageId,
       kind: input.kind,
       context: input.context,
+      ...(input.choice ? { choice: input.choice } : {}),
     }),
     ...(input.signal ? { signal: input.signal } : {}),
   });

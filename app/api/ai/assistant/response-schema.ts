@@ -217,7 +217,12 @@ export function buildAssistantResponseSchema(
    */
   studyMaterialKinds: readonly string[] = [],
   /** Whether files are attached, so Tutor may suggest saving one as a source. */
-  sourceSaveInvited = false
+  sourceSaveInvited = false,
+  /**
+   * The next steps Tutor may suggest under its answer. Optional in the schema:
+   * leaving it out is the same as an empty list, which is the usual case.
+   */
+  suggestionKinds: readonly string[] = []
 ) {
   const sourceRefItems: Schema =
     allowedSourceRefs.length > 0
@@ -270,6 +275,22 @@ export function buildAssistantResponseSchema(
               type: Type.STRING,
               description:
                 "What this answer is about, as a short, specific topic phrase from the conversation, for flashcards or questions to cover.",
+            },
+            studyMaterialTopics: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description:
+                "Only when asked to ask the student what to make: three to six short topic names they could choose, most useful first. Otherwise empty.",
+            },
+          }
+        : {}),
+      ...(suggestionKinds.length > 0
+        ? {
+            suggestions: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING, format: "enum", enum: [...suggestionKinds] },
+              description:
+                "Next steps to suggest under the answer. Almost always empty: one only when it would clearly help this student now, several only when each would on its own.",
             },
           }
         : {}),

@@ -11,10 +11,13 @@ import {
   type JamiAssistantThread,
 } from "@/lib/ai/jami-assistant-history";
 import {
+  describeTutorStudyMaterialChoice,
+  normalizeTutorStudyMaterialChoice,
   normalizeTutorStudyMaterialFocus,
   normalizeTutorStudyMaterialOffers,
   normalizeTutorStudyMaterialRequest,
   normalizeTutorStudyMaterialResults,
+  normalizeTutorStudyMaterialSetup,
   readTutorStudyMaterialCount,
   TUTOR_FLASHCARD_MAX_COUNT,
   type TutorStudyMaterialKind,
@@ -66,6 +69,8 @@ export async function loadTutorStudyMaterialTurn(input: {
   messageId: string;
   contextKey: string;
   kind: TutorStudyMaterialKind;
+  /** What the student chose on the card, when Tutor asked first. Unread until checked. */
+  choice?: unknown;
 }): Promise<TutorStudyMaterialTurn> {
   const userRef = getAdminDb().collection("users").doc(input.uid);
   const threadRef = userRef.collection("assistantThreads").doc(input.threadId);
@@ -87,7 +92,11 @@ export async function loadTutorStudyMaterialTurn(input: {
 
   const request = normalizeTutorStudyMaterialRequest(stored.studyMaterialRequest);
   const offers = normalizeTutorStudyMaterialOffers(stored.studyMaterialOffers);
-  if (request?.kind !== input.kind && !offers.includes(input.kind)) {
+  // Tutor asked what to make: the card may make any kind it offered, on what the student chose.
+  const setup = normalizeTutorStudyMaterialSetup(stored.studyMaterialSetup);
+  const fromSetup = Boolean(setup?.kinds.includes(input.kind));
+  const choice = fromSetup ? normalizeTutorStudyMaterialChoice(input.choice, input.kind) : undefined;
+  if (request?.kind !== input.kind && !offers.includes(input.kind) && !fromSetup) {
     throw new TutorStudyMaterialError(
       "Ask Tutor for these in the chat first.",
       409,
@@ -119,15 +128,20 @@ export async function loadTutorStudyMaterialTurn(input: {
   const askedWith = [...turns].reverse().find((entry) => entry.role === "user");
   const askedText = typeof askedWith?.text === "string" ? askedWith.text : "";
 
-  const focus =
-    request?.kind === input.kind
+  if (fromSetup && !choice && request?.kind !== input.kind && !offers.includes(input.kind)) {
+    throw new TutorStudyMaterialError("Choose what these should be on.", 400, "focus_required");
+  }
+  const focus = choice
+    ? describeTutorStudyMaterialChoice(choice)
+    : request?.kind === input.kind
       ? request.focus
       : normalizeTutorStudyMaterialFocus(stored.studyMaterialFocus, askedText);
   if (!focus) {
     throw new TutorStudyMaterialError("Tell Tutor what these should be on.", 400, "focus_required");
   }
-  const count =
-    request?.kind === input.kind && request.count
+  const count = choice?.count
+    ? choice.count
+    : request?.kind === input.kind && request.count
       ? request.count
       : readTutorStudyMaterialCount(askedText, input.kind);
 

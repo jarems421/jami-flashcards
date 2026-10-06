@@ -7,7 +7,10 @@ import {
   getTutorRoutingSignals,
   isRoutineNotebookMarkMyWork,
   JAMI_ASSISTANT_MAX_HISTORY_MESSAGES,
+  JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH,
+  JAMI_ASSISTANT_MAX_HISTORY_TOTAL_LENGTH,
   normalizeJamiAssistantHistory,
+  splitJamiAssistantHistoryWindow,
   stripJamiAssistantReferenceMarkers,
   parseJamiAssistantModelAnswer,
   parseJamiAssistantRequest,
@@ -129,14 +132,38 @@ describe("Jami assistant request contract", () => {
 
   it("bounds conversation history to the latest valid messages", () => {
     const history = normalizeJamiAssistantHistory(
-      Array.from({ length: 20 }, (_, index) => ({
+      Array.from({ length: 60 }, (_, index) => ({
         role: index % 2 === 0 ? "user" : "model",
         text: `Message ${index}`,
       }))
     );
     expect(history).toHaveLength(JAMI_ASSISTANT_MAX_HISTORY_MESSAGES);
-    expect(history[0]?.text).toBe("Message 8");
-    expect(history.at(-1)?.text).toBe("Message 19");
+    expect(history[0]?.text).toBe(`Message ${60 - JAMI_ASSISTANT_MAX_HISTORY_MESSAGES}`);
+    expect(history.at(-1)?.text).toBe("Message 59");
+  });
+
+  it("drops the oldest turns once long answers fill the history budget", () => {
+    const long = "x".repeat(JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH + 500);
+    const history = normalizeJamiAssistantHistory(
+      Array.from({ length: 30 }, (_, index) => ({
+        role: index % 2 === 0 ? "user" : "model",
+        text: `${index} ${long}`,
+      }))
+    );
+    const total = history.reduce((sum, entry) => sum + entry.text.length, 0);
+    expect(history.every((entry) => entry.text.length <= JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH)).toBe(true);
+    expect(total).toBeLessThanOrEqual(JAMI_ASSISTANT_MAX_HISTORY_TOTAL_LENGTH);
+    expect(history.length).toBeLessThan(30);
+    expect(history.at(-1)?.text.startsWith("29 ")).toBe(true);
+  });
+
+  it("splits a stored chat into the turns read back and the earlier ones", () => {
+    const messages = Array.from({ length: 50 }, (_, index) => ({ id: `m${index}`, text: `Message ${index}` }));
+    const { window, earlier } = splitJamiAssistantHistoryWindow(messages);
+    expect(window).toHaveLength(JAMI_ASSISTANT_MAX_HISTORY_MESSAGES);
+    expect(earlier).toHaveLength(50 - JAMI_ASSISTANT_MAX_HISTORY_MESSAGES);
+    expect(earlier.at(-1)?.id).toBe(`m${49 - JAMI_ASSISTANT_MAX_HISTORY_MESSAGES}`);
+    expect(window[0]?.id).toBe(`m${50 - JAMI_ASSISTANT_MAX_HISTORY_MESSAGES}`);
   });
 });
 
@@ -162,6 +189,8 @@ describe("Jami assistant model and receipt contract", () => {
       usedWebResearch: false,
       studyMaterial: null,
       studyMaterialFocus: "",
+      studyMaterialTopics: [],
+      suggestions: [],
     });
     expect(
       parseJamiAssistantModelAnswer(
@@ -403,7 +432,8 @@ describe("Jami assistant response length guidance", () => {
     expect(guidance).toMatchObject({
       depth: "brief",
       maxOutputTokens: 1_500,
-      followUps: [{ label: "Explain more" }],
+      // Nothing under a simple answer unless Tutor chooses it.
+      followUps: [],
     });
     expect(guidance.instruction).toContain("1-3 sentences");
   });
@@ -440,10 +470,7 @@ describe("Jami assistant response length guidance", () => {
     });
 
     expect(hint.instruction).toContain("exactly one short hint");
-    expect(hint.followUps.map((item) => item.label)).toEqual([
-      "Explain more",
-      "Another hint",
-    ]);
+    expect(hint.followUps.map((item) => item.label)).toEqual(["Another hint"]);
     expect(notebookCheck.depth).toBe("standard");
     expect(notebookCheck.instruction).toContain("at most three concrete issues");
   });

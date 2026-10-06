@@ -274,6 +274,7 @@ export async function updateNotebook(
     pastPaperId: string;
     color: string;
     icon: string;
+    pageColor: NotebookPageColor;
     pageStyle: NotebookPageStyle;
     uploadedFileId: string;
     previewInkSvg: string;
@@ -309,6 +310,7 @@ export async function updateNotebook(
   }
   if (input.color !== undefined) updates.color = input.color.trim().slice(0, 80) || null;
   if (input.icon !== undefined) updates.icon = input.icon.trim().slice(0, 40) || null;
+  if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
   if (input.pageStyle !== undefined) updates.pageStyle = input.pageStyle;
   if (input.uploadedFileId !== undefined) {
     updates.uploadedFileId = input.uploadedFileId.trim().slice(0, 160) || null;

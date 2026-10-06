@@ -158,7 +158,25 @@ describe("NotebookEditorDialog saving", () => {
       topicIds: ["t-1"],
       color: "amber",
       icon: "notebook",
+      pageColor: "cream",
+      pageStyle: "lined",
     });
+  });
+
+  it("saves the paper chosen for pages added from now on", async () => {
+    await render(notebook({ type: "uploaded_file", pageColor: "white", pageStyle: "plain" }));
+    await click(button("Cream"));
+    await click(button("Grid"));
+    await click(button("Save notebook"));
+
+    expect(updateNotebook).toHaveBeenCalledWith(
+      "user-1",
+      "nb-1",
+      expect.objectContaining({ pageColor: "cream", pageStyle: "grid" })
+    );
+    expect(onSaved).toHaveBeenCalledWith(
+      expect.objectContaining({ pageColor: "cream", pageStyle: "grid" })
+    );
   });
 
   it("hands the updated notebook back so the list need not refetch", async () => {

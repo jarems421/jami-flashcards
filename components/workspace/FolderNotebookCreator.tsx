@@ -102,6 +102,8 @@ export default function FolderNotebookCreator({
           topicIds,
           color,
           icon,
+          pageColor,
+          pageStyle,
           onProgress: setUploadProgress,
         });
         onCreated(
@@ -247,15 +249,19 @@ export default function FolderNotebookCreator({
                 Remove
               </Button>
             </div>
-          ) : (
-            <NotebookPageDefaultsPicker
-              pageColor={pageColor}
-              pageStyle={pageStyle}
-              onPageColorChange={setPageColor}
-              onPageStyleChange={setPageStyle}
-              disabled={creating}
-            />
-          )}
+          ) : null}
+          {file ? (
+            <p className="text-xs leading-5 text-text-muted">
+              The paper for pages you add. The file&apos;s own pages stay exactly as they are.
+            </p>
+          ) : null}
+          <NotebookPageDefaultsPicker
+            pageColor={pageColor}
+            pageStyle={pageStyle}
+            onPageColorChange={setPageColor}
+            onPageStyleChange={setPageStyle}
+            disabled={creating}
+          />
 
           <input
             ref={fileInputRef}

@@ -14,10 +14,10 @@ import { mapJamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import {
   normalizeTutorStudyMaterialOffers,
   normalizeTutorStudyMaterialRequest,
+  normalizeTutorStudyMaterialSetup,
 } from "@/lib/ai/tutor-study-material";
 import { normalizeSuggestedCards } from "@/lib/ai/tutor-card-suggestions";
 import { normalizeTutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
-import { normalizeSuggestedQuestions } from "@/lib/ai/tutor-question-suggestions";
 import { reportAllowanceRefusal } from "@/services/billing/allowance-events";
 import {
   normalizeTutorAttachments,
@@ -201,7 +201,6 @@ export async function sendJamiAssistantMessage(
   const followUps = normalizeFollowUps(data?.followUps);
   const citations = normalizeAssistantCitations(data?.citations);
   const suggestedCards = normalizeSuggestedCards(data?.suggestedCards);
-  const suggestedQuestions = normalizeSuggestedQuestions(data?.suggestedQuestions);
   const practiceOffer = normalizeTutorPracticeOffer(data?.practiceOffer);
   const savedThreadData =
     data?.savedThread &&
@@ -214,6 +213,7 @@ export async function sendJamiAssistantMessage(
     : null;
   const studyMaterialRequest = normalizeTutorStudyMaterialRequest(data?.studyMaterialRequest);
   const studyMaterialOffers = normalizeTutorStudyMaterialOffers(data?.studyMaterialOffers);
+  const studyMaterialSetup = normalizeTutorStudyMaterialSetup(data?.studyMaterialSetup);
   const sourceSaveOffer = normalizeTutorSourceSaveOffer(data?.sourceSaveOffer);
   return {
     reply,
@@ -222,11 +222,11 @@ export async function sendJamiAssistantMessage(
     ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
     ...(citations.length > 0 ? { citations } : {}),
     ...(suggestedCards.length > 0 ? { suggestedCards } : {}),
-    ...(suggestedQuestions.length > 0 ? { suggestedQuestions } : {}),
     ...(practiceOffer ? { practiceOffer } : {}),
     ...(data?.canIllustrate === true ? { canIllustrate: true } : {}),
     ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
     ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
+    ...(studyMaterialSetup ? { studyMaterialSetup } : {}),
     ...(sourceSaveOffer ? { sourceSaveOffer } : {}),
     ...(savedThread ? { savedThread } : {}),
   };

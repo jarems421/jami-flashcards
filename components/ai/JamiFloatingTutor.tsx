@@ -139,13 +139,13 @@ export function FloatingTutorPinButton({ onPin }: { onPin: () => void }) {
   );
 }
 
-function FloatingLayer({ children }: { children: ReactNode }) {
+export function FloatingLayer({ children }: { children: ReactNode }) {
   if (typeof document === "undefined") return null;
   // Over the page and its toolbars, under every dialog (which start at 100).
   return createPortal(<div className="relative z-[90]">{children}</div>, document.body);
 }
 
-const OPAQUE_PANEL_STYLE = {
+export const OPAQUE_PANEL_STYLE = {
   backgroundColor: "var(--color-surface-base)",
   backgroundImage:
     "linear-gradient(var(--color-surface-panel-strong), var(--color-surface-panel-strong))",

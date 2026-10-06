@@ -10,9 +10,15 @@ import {
 } from "@/components/ui";
 import FormDisclosure from "@/components/ui/FormDisclosure";
 import type { Topic } from "@/lib/material/topics";
-import type { Notebook } from "@/lib/workspace/notebooks";
+import type {
+  Notebook,
+  NotebookPageColor,
+  NotebookPageStyle,
+} from "@/lib/workspace/notebooks";
+import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
 import { updateNotebook } from "@/services/study/notebooks";
 import { NotebookObjectCard } from "./NotebookObjectCard";
+import NotebookPageDefaultsPicker, { NOTEBOOK_PAGE_STYLE_LABELS } from "./NotebookPageDefaultsPicker";
 import { ObjectStylePicker } from "./ObjectStylePicker";
 import WorkspaceActionDialog from "./WorkspaceActionDialog";
 import {
@@ -33,7 +39,10 @@ type NotebookEditorDialogProps = {
 };
 
 /**
- * A notebook's name, cover and topics -- the same dialog that makes one.
+ * A notebook's name, cover, paper and topics -- the same dialog that makes one.
+ *
+ * The paper is what pages added from now on are made on. Pages already in the
+ * notebook keep theirs, so a PDF's own pages are never painted over.
  */
 export default function NotebookEditorDialog({
   userId,
@@ -53,6 +62,8 @@ export default function NotebookEditorDialog({
   const [icon, setIcon] = useState<ObjectIconId>(
     normalizeObjectIcon(notebook.icon)
   );
+  const [pageColor, setPageColor] = useState<NotebookPageColor>(notebook.pageColor);
+  const [pageStyle, setPageStyle] = useState<NotebookPageStyle>(notebook.pageStyle);
   const [saving, setSaving] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +84,8 @@ export default function NotebookEditorDialog({
         topicIds,
         color,
         icon,
+        pageColor,
+        pageStyle,
       });
       onSaved({
         ...notebook,
@@ -80,6 +93,8 @@ export default function NotebookEditorDialog({
         topicIds,
         color,
         icon,
+        pageColor,
+        pageStyle,
         updatedAt: Date.now(),
       });
     } catch (saveError) {
@@ -166,8 +181,8 @@ export default function NotebookEditorDialog({
                 title={title.trim() || "Notebook preview"}
                 color={color}
                 icon={icon}
-                pageColor={notebook.pageColor}
-                pageStyle={notebook.pageStyle}
+                pageColor={pageColor}
+                pageStyle={pageStyle}
                 updatedLabel="Notebook preview"
                 compact
                 editorPreview
@@ -193,6 +208,21 @@ export default function NotebookEditorDialog({
                 colorLabel="Cover colour"
                 iconLabel="Cover icon"
                 compact
+              />
+            </FormDisclosure>
+            <FormDisclosure
+              title="Paper"
+              summary={`${getNotebookPaperPalette(pageColor).label} ${NOTEBOOK_PAGE_STYLE_LABELS[pageStyle].toLowerCase()}`}
+            >
+              <p className="mb-3 text-xs leading-5 text-text-muted">
+                Pages you add from now on. Pages already in the notebook keep their paper.
+              </p>
+              <NotebookPageDefaultsPicker
+                pageColor={pageColor}
+                pageStyle={pageStyle}
+                onPageColorChange={setPageColor}
+                onPageStyleChange={setPageStyle}
+                disabled={saving}
               />
             </FormDisclosure>
             <FormDisclosure

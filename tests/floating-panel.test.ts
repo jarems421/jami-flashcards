@@ -25,6 +25,12 @@ describe("floating panel geometry", () => {
     });
   });
 
+  it("starts a sheet in the bottom-left, clear of the Tutor card", () => {
+    const sheet = cornerFloatingRect({ width: 380, height: 620 }, VIEWPORT, LIMITS, "left");
+    expect(sheet).toEqual({ x: 12, y: 820 - 12 - 620, width: 380, height: 620 });
+    expect(floatingRectsOverlap(sheet, cornerFloatingRect({ width: 360, height: 560 }, VIEWPORT, LIMITS))).toBe(false);
+  });
+
   it("stops a drag at the edge of the screen instead of losing the panel", () => {
     const start = { x: 800, y: 200, width: 360, height: 500 };
     expect(moveFloatingRect(start, 5000, -5000, VIEWPORT, LIMITS)).toEqual({

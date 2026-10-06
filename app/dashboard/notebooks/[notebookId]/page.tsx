@@ -70,6 +70,14 @@ import {
   useNotebookPanelState,
 } from "@/hooks/useNotebookWorkspaceState";
 import { useNotebookAssistantContext } from "@/hooks/useNotebookAssistantContext";
+import { useFolderSheetChoices, useNotebookSheet } from "@/hooks/useNotebookSheet";
+import NotebookSheetPanel from "@/components/workspace/NotebookSheetPanel";
+import NotebookSheetPicker from "@/components/workspace/NotebookSheetPicker";
+import {
+  notebookSheetFromAttachment,
+  notebookSheetsFromNotebookFiles,
+} from "@/lib/workspace/notebook-sheet";
+import type { TutorAttachment } from "@/lib/ai/tutor-attachments";
 import type {
   NotebookFile,
   NotebookImageRef,
@@ -124,7 +132,10 @@ import {
   shouldSuppressTouchAfterStylus,
   type NotebookPageDragIntent,
 } from "@/lib/workspace/notebook-inking";
-import { getNotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
+import {
+  getNotebookInkRenderWindow,
+  isWholeNotebookInkSheet,
+} from "@/lib/workspace/notebook-ink-window";
 import {
   createNotebookGraphBlock,
   MAX_NOTEBOOK_GRAPHS,
@@ -275,6 +286,27 @@ export default function NotebookEditorPage() {
     },
     onDraftRestored: () => setInkEditorMountRevision((current) => current + 1),
   });
+
+  /*
+   * A sheet kept beside the page -- a question sheet or mark scheme to work
+   * from without swiping away -- and the picker for choosing one.
+   */
+  const notebookSheet = useNotebookSheet(notebookId ?? "");
+  const [sheetPickerOpen, setSheetPickerOpen] = useState(false);
+  const folderSheetChoices = useFolderSheetChoices({
+    userId: user?.uid ?? "",
+    folderId: notebook?.folderId ?? "",
+    enabled: sheetPickerOpen,
+  });
+  const notebookSheetChoices = useMemo(() => notebookSheetsFromNotebookFiles(files), [files]);
+  const keepSheet = notebookSheet.keep;
+  const handleKeepAttachmentBeside = useCallback(
+    (attachment: TutorAttachment) => {
+      const sheet = notebookSheetFromAttachment(attachment);
+      if (sheet) keepSheet(sheet);
+    },
+    [keepSheet]
+  );
 
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
   const isPageNavigationLocked = useCallback(
@@ -1736,9 +1768,11 @@ export default function NotebookEditorPage() {
       return false;
     }
     const lastPage = pages[pages.length - 1];
-    const basePage = selectedPage ?? lastPage;
-    const pageColorValue = basePage?.pageColor ?? notebook.pageColor ?? "white";
-    const pageStyleValue = basePage?.pageStyle ?? notebook.pageStyle ?? "plain";
+    // A new page is on the notebook's own paper. Copying the page being left
+    // gave a PDF notebook's added pages the PDF page's plain white, whatever
+    // paper the student chose for the notebook.
+    const pageColorValue = notebook.pageColor ?? "white";
+    const pageStyleValue = notebook.pageStyle ?? "plain";
     const nextPageNumber = (lastPage?.pageNumber ?? pages.length) + 1;
 
     pageNavigationLockedRef.current = true;
@@ -1832,7 +1866,6 @@ export default function NotebookEditorPage() {
     prefersReducedNotebookMotion,
     prepareCurrentPageForNavigation,
     returnPageTrackToSource,
-    selectedPage,
     setCreatePageActive,
     setCreatePageBounce,
     setCreatePageProgress,
@@ -2972,6 +3005,26 @@ export default function NotebookEditorPage() {
     frameWidth: viewportLayout.frameSize.width,
     frameHeight: viewportLayout.frameSize.height,
   });
+  /*
+   * The part of an imported PDF to draw again at full sharpness when zoomed.
+   * Tighter than the ink's window: a PDF slice is redrawn rarely, so it needs
+   * little room to pan into, and each extra point costs a whole canvas pixel
+   * per screen pixel. Nothing when the sheet is whole -- a fitted page is
+   * already drawn at full density.
+   */
+  const pdfDetailSlice = getNotebookInkRenderWindow({
+    sheetWidth: pageWidthPx,
+    sheetHeight: pageHeightPx,
+    pageX: viewportLayout.pageOrigin.x,
+    pageY: viewportLayout.pageOrigin.y,
+    frameWidth: viewportLayout.frameSize.width,
+    frameHeight: viewportLayout.frameSize.height,
+    overscan: 0.15,
+    grid: 64,
+  });
+  const activePdfDetailWindow = isWholeNotebookInkSheet(pdfDetailSlice)
+    ? null
+    : pdfDetailSlice;
 
   return (
     <main
@@ -3012,6 +3065,29 @@ export default function NotebookEditorPage() {
                 if (nextOpen) handleAssistantOpenChange(false);
               }}
             />
+            {!practicePaperTutorLocked ? (
+              <ToolbarIconButton
+                label={
+                  !notebookSheet.sheet
+                    ? "Keep a sheet beside the page"
+                    : notebookSheet.open
+                      ? "Hide sheet"
+                      : `Show sheet: ${notebookSheet.sheet.title}`
+                }
+                icon="sheet"
+                active={Boolean(notebookSheet.sheet && notebookSheet.open)}
+                pressed={notebookSheet.sheet ? notebookSheet.open : undefined}
+                onClick={() => {
+                  if (notebookSheet.sheet) notebookSheet.setOpen(!notebookSheet.open);
+                  else setSheetPickerOpen(true);
+                }}
+              >
+                {notebookSheet.sheet && !notebookSheet.open ? (
+                  // Kept but hidden: one tap brings it back.
+                  <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent" />
+                ) : null}
+              </ToolbarIconButton>
+            ) : null}
             {!practicePaperTutorLocked ? (
               <ToolbarIconButton
                 label="Ask Jami" icon="ai"
@@ -3148,8 +3224,31 @@ export default function NotebookEditorPage() {
             onGraphInsert={handleTutorGraphInsert}
             onDrawingInsert={handleAddImage}
             onAnswerInsert={handleTutorAnswerInsert}
+            onKeepAttachmentBeside={handleKeepAttachmentBeside}
           />
         ) : null}
+        {!practicePaperTutorLocked ? (
+          <NotebookSheetPanel
+            sheet={notebookSheet.sheet}
+            open={notebookSheet.open}
+            onChange={() => setSheetPickerOpen(true)}
+            onHide={() => notebookSheet.setOpen(false)}
+            onClose={notebookSheet.close}
+          />
+        ) : null}
+        <NotebookSheetPicker
+          open={sheetPickerOpen && !practicePaperTutorLocked}
+          notebookSheets={notebookSheetChoices}
+          folderSheets={folderSheetChoices.sheets}
+          folderLoading={folderSheetChoices.loading}
+          folderFailed={folderSheetChoices.failed}
+          currentPath={notebookSheet.sheet?.storagePath ?? null}
+          onPick={(sheet) => {
+            notebookSheet.keep(sheet);
+            setSheetPickerOpen(false);
+          }}
+          onCancel={() => setSheetPickerOpen(false)}
+        />
         <NotebookGraphEditorDialog
           open={graphEditorTarget !== null}
           graph={selectedPage?.graphBlocks.find((graph) => graph.id === graphEditorTarget) ?? null}
@@ -3238,6 +3337,7 @@ export default function NotebookEditorPage() {
                           }`
                         : undefined,
                       pdfFadeIn: pageSwipeMotion?.phase !== "handoff",
+                      pdfDetailWindow: activePdfDetailWindow,
                       pdfOnRenderStateChange:
                         handleActivePdfRenderStateChange,
                       pdfOnCanvasReady: (canvas) => {

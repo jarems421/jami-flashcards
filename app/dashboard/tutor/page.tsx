@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import { SettingsIcon } from "@/components/ai/JamiAssistantIcons";
@@ -65,8 +65,10 @@ function MaterialIcon() {
  *
  * One question, three doors and one inbox. The question comes first because
  * asking is what most visits are for: type it, choose the material -- one
- * source or several -- and the chat opens beside the page with the answer on
- * its way. Under it, Jami's other places, all the same shape: the revision
+ * source or several -- and send, and the card it was typed into becomes the
+ * conversation, with the answer on its way. Closing the chat brings the
+ * question back. It used to open a full-screen chat on send, which felt like
+ * being sent somewhere else mid-sentence. Under it, Jami's other places, all the same shape: the revision
  * plan, a revision session, and the material itself. Then what Jami has made
  * that is waiting for the student's OK.
  *
@@ -89,7 +91,7 @@ export default function TutorPage() {
    * fresh conversation, and `message` is what that conversation opens by
    * sending.
    */
-  const [chat, setChat] = useState<{ key: number; open: boolean; message?: string }>({
+  const [chat, setChat] = useState<{ key: number; open: boolean; message?: string; history?: boolean }>({
     key: 0,
     open: false,
   });
@@ -170,6 +172,18 @@ export default function TutorPage() {
 
   const ask = (message: string) =>
     setChat((current) => ({ key: current.key + 1, open: true, message }));
+  const openChats = () => setChat((current) => ({ key: current.key + 1, open: true, history: true }));
+  const chatOpen = chat.open && selectedIds.length > 0;
+
+  // The chat takes the ask box's place. If that place has scrolled off the
+  // top -- a quick action pressed lower down -- bring it back into view.
+  const askAreaRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const area = askAreaRef.current;
+    if (!chatOpen || !area || area.getBoundingClientRect().top >= 0) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    area.scrollIntoView({ block: "start", behavior: reduced ? "auto" : "smooth" });
+  }, [chatOpen, chat.key]);
 
   return (
     <AppPage
@@ -199,17 +213,82 @@ export default function TutorPage() {
         />
       ) : null}
 
-      <div data-tutorial-target="tutor-material">
-        <TutorAskPanel
-          sources={sources}
-          selectedIds={selectedIds}
-          onSelectedChange={setChosenSourceIds}
-          onAsk={ask}
-          loading={loading}
-        />
+      <div ref={askAreaRef} data-tutorial-target="tutor-material" className="scroll-mt-4">
+        {chatOpen ? (
+          <JamiAssistantDrawer
+            key={chat.key}
+            // The conversation carries on in the card the question was typed into.
+            layout="inline"
+            userId={user.uid}
+            open={chatOpen}
+            onOpenChange={(open) => setChat((current) => ({ ...current, open }))}
+            resetKey="tutor-page"
+            contextKey={getJamiAssistantContextKey({ surface: "sources", sourceIds: selectedIds })}
+            contextLabel={several ? `${selectedSources.length} selected sources` : selectedSources[0]?.title ?? "Your material"}
+            historyContextLabel={
+              several
+                ? `${selectedSources[0]?.title ?? "Sources"} and ${selectedSources.length - 1} more`
+                : selectedSources[0]?.title ?? "Source"
+            }
+            getContext={() => ({ surface: "sources", sourceIds: selectedIds })}
+            settingsFolderIds={Array.from(new Set(selectedSources.flatMap((source) => source.folderIds)))}
+            quickActions={tutorSourceActions(selectedIds.length)}
+            // Add or drop material without leaving the chat. Before the first
+            // message that simply changes what the chat reads; after it, the
+            // conversation was about the old material, so a new one starts.
+            contextControls={({ conversationStarted }) => (
+              <TutorSourcePicker
+                sources={sources}
+                selectedIds={selectedIds}
+                onChange={(ids) => {
+                  setChosenSourceIds(ids);
+                  if (conversationStarted) {
+                    setChat((current) => ({ key: current.key + 1, open: true }));
+                  }
+                }}
+                {...(conversationStarted
+                  ? { changeNote: "Changing the material starts a new chat." }
+                  : {})}
+              />
+            )}
+            {...(chat.message ? { initialMessage: chat.message } : {})}
+            startInHistory={Boolean(chat.history)}
+          />
+        ) : (
+          <TutorAskPanel
+            sources={sources}
+            selectedIds={selectedIds}
+            onSelectedChange={setChosenSourceIds}
+            onAsk={ask}
+            onOpenChats={openChats}
+            loading={loading}
+          />
+        )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/*
+          Making study material, which used to be found only inside a source.
+          It asks first -- flashcards or a practice set, which topic, what is
+          hard -- in the chat card above, so nothing is made on a guess.
+        */}
+        {sources.length > 0 || loading ? (
+          <TutorDoor
+            onOpen={() => ask("Help me make flashcards or a practice set.")}
+            icon={<JamiTutorIcon className="h-5 w-5" />}
+            title="Make flashcards or questions"
+            description="Pick a topic and say what you find hard. Jami makes flashcards, or a marked practice set, from your material."
+            action="Start making"
+          />
+        ) : (
+          <TutorDoor
+            href="/dashboard/library"
+            icon={<JamiTutorIcon className="h-5 w-5" />}
+            title="Make flashcards or questions"
+            description="Add some notes, a past paper or a link first, and Jami can make flashcards or a marked practice set from them."
+            action="Add material"
+          />
+        )}
         {featureFlags.enableRevisionPlans ? (
           <TutorPlanCard plan={activePlan} loading={loading} />
         ) : null}
@@ -346,44 +425,6 @@ export default function TutorPage() {
 
       {featureFlags.enableRevisionSessions ? <RevisionTutorShelf variant="shelf" /> : null}
 
-      <JamiAssistantDrawer
-        key={chat.key}
-        // The ask box is the page's main thing, so its chat takes the screen rather than a side panel.
-        layout="page"
-        userId={user.uid}
-        open={chat.open && selectedIds.length > 0}
-        onOpenChange={(open) => setChat((current) => ({ ...current, open }))}
-        resetKey="tutor-page"
-        contextKey={getJamiAssistantContextKey({ surface: "sources", sourceIds: selectedIds })}
-        contextLabel={several ? `${selectedSources.length} selected sources` : selectedSources[0]?.title ?? "Your material"}
-        historyContextLabel={
-          several
-            ? `${selectedSources[0]?.title ?? "Sources"} and ${selectedSources.length - 1} more`
-            : selectedSources[0]?.title ?? "Source"
-        }
-        getContext={() => ({ surface: "sources", sourceIds: selectedIds })}
-        settingsFolderIds={Array.from(new Set(selectedSources.flatMap((source) => source.folderIds)))}
-        quickActions={tutorSourceActions(selectedIds.length)}
-        // Add or drop material without leaving the chat. Before the first
-        // message that simply changes what the chat reads; after it, the
-        // conversation was about the old material, so a new one starts.
-        contextControls={({ conversationStarted }) => (
-          <TutorSourcePicker
-            sources={sources}
-            selectedIds={selectedIds}
-            onChange={(ids) => {
-              setChosenSourceIds(ids);
-              if (conversationStarted) {
-                setChat((current) => ({ key: current.key + 1, open: true }));
-              }
-            }}
-            {...(conversationStarted
-              ? { changeNote: "Changing the material starts a new chat." }
-              : {})}
-          />
-        )}
-        {...(chat.message ? { initialMessage: chat.message } : {})}
-      />
     </AppPage>
   );
 }

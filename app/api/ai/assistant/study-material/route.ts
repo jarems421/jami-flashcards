@@ -85,6 +85,8 @@ export async function POST(request: NextRequest) {
       messageId,
       contextKey: getJamiAssistantContextKey(getJamiAssistantSavedContext(parsedContext.context)),
       kind,
+      // What the student picked on the card, checked against the answer that asked.
+      choice: body.choice,
     });
   } catch (error) {
     if (error instanceof TutorStudyMaterialError) return apiFailure(error.message, error.status, error.code);

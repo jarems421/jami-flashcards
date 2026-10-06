@@ -38,6 +38,8 @@ type UseFloatingPanelOptions = {
   /** Size for a first visit, before the student has moved or resized anything. */
   preferredSize: { width: number; height: number };
   limits: FloatingLimits;
+  /** The bottom corner it starts in. Right unless it would sit on the Tutor card. */
+  side?: "left" | "right";
 };
 
 type StoredFloatingPanel = {
@@ -156,6 +158,7 @@ export function useFloatingPanel({
   enabled,
   preferredSize,
   limits,
+  side = "right",
 }: UseFloatingPanelOptions) {
   // Only listens while on screen, so a hidden panel does not re-render its host on every resize.
   const subscribe = useCallback(
@@ -181,7 +184,7 @@ export function useFloatingPanel({
     width > 0
       ? placed
         ? clampFloatingRect(placed, viewport, limits)
-        : cornerFloatingRect(preferredSize, viewport, limits)
+        : cornerFloatingRect(preferredSize, viewport, limits, side)
       : null;
   const rect =
     placedRect && maximised ? maximisedFloatingRect(viewport, limits) : placedRect;
@@ -393,7 +396,7 @@ export function useFloatingPanel({
     const currentViewport = readViewport();
     const own = placed
       ? clampFloatingRect(placed, currentViewport, limits)
-      : cornerFloatingRect(preferredSize, currentViewport, limits);
+      : cornerFloatingRect(preferredSize, currentViewport, limits, side);
     const others = Array.isArray(other) ? other : [other];
     if (!maximised && others.every((rect) => !floatingRectsOverlap(own, rect))) return;
     const clear =

@@ -171,46 +171,6 @@ export async function createFlashcardDraft(
   return docRef.id;
 }
 
-export async function createPracticeQuestionDraft(
-  userId: string,
-  input: {
-    questionText: string;
-    answerText?: string;
-    solutionText?: string;
-    topicIds: string[];
-    sourceType?: "question" | "tutor" | "manual" | "source";
-    sourceId?: string;
-  }
-) {
-  const now = Date.now();
-  const questionText = input.questionText.trim();
-  if (!questionText) {
-    throw new Error("Question text is required.");
-  }
-
-  const docRef = await withTimeout(
-    addDoc(draftsCollection(userId), {
-      kind: "practice-question",
-      title: questionText.slice(0, 120) || "Practice question draft",
-      questionText: questionText.slice(0, 4_000),
-      answerText: input.answerText?.trim().slice(0, 4_000) || null,
-      solutionText: input.solutionText?.trim().slice(0, 8_000) || null,
-      topicIds: input.topicIds,
-      origin: "source-derived",
-      contentStatus: "draft",
-      sourceType: input.sourceType ?? "source",
-      sourceId: input.sourceId ?? null,
-      createdAt: now,
-      updatedAt: now,
-    }),
-    WRITE_MS,
-    "Create practice question draft"
-  );
-  invalidateDashboardData(userId);
-
-  return docRef.id;
-}
-
 export async function updateGeneratedContentDraftStatus(
   userId: string,
   draftId: string,

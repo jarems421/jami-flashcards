@@ -4,9 +4,11 @@ import katex from "katex";
 
 import {
   closeUnbalancedJson,
+  collapseOverEscapedLatex,
   ESCAPE_EATEN_LATEX,
   repairModelJsonBackslashes,
   repairModelLatex,
+  restoreEnvironmentRowBreaks,
   restoreEscapeEatenLatex,
 } from "@/lib/ai/model-json";
 import { extractStreamingAnswer } from "@/lib/ai/streaming-answer";
@@ -78,6 +80,21 @@ describe("repairModelJsonBackslashes", () => {
 
   it("preserves unicode escapes", () => {
     expect(parse(String.raw`{"a":"caf\u00e9"}`).a).toBe("café");
+  });
+
+  it("recovers short n-commands inside inline maths, where a line cannot break", () => {
+    const raw = String.raw`{"a":"$\nu = 3$, $x \ne 0$, $\neg p$, $3 \nmid 7$, $a \not\equiv b$"}`;
+    expect(parse(raw).a).toBe(String.raw`$\nu = 3$, $x \ne 0$, $\neg p$, $3 \nmid 7$, $a \not\equiv b$`);
+  });
+
+  it("keeps a line that starts with a short word as a line", () => {
+    const raw = String.raw`{"a":"Values:\nu = 0\ne.g. here\nequation (1)\nmid-point\nCosts $5\nunder budget"}`;
+    expect(parse(raw).a).toBe("Values:\nu = 0\ne.g. here\nequation (1)\nmid-point\nCosts $5\nunder budget");
+  });
+
+  it("reads \\underline and \\uparrow as commands rather than failing the whole answer", () => {
+    const raw = String.raw`{"a":"$\underline{a}$ and $\uparrow$"}`;
+    expect(parse(raw).a).toBe(String.raw`$\underline{a}$ and $\uparrow$`);
   });
 
   it("leaves text with no backslashes untouched", () => {
@@ -156,12 +173,63 @@ describe("restoreEscapeEatenLatex", () => {
   });
 });
 
+describe("collapseOverEscapedLatex", () => {
+  it("puts back commands, delimiters, row breaks and spacing a model escaped twice", () => {
+    expect(collapseOverEscapedLatex(String.raw`$\\frac{1}{2} \\times 40^\\circ$`)).toBe(
+      String.raw`$\frac{1}{2} \times 40^\circ$`
+    );
+    expect(collapseOverEscapedLatex(String.raw`Use \\(\\sin x\\) and \\[x = 2\\]`)).toBe(
+      String.raw`Use \(\sin x\) and \[x = 2\]`
+    );
+    expect(collapseOverEscapedLatex(String.raw`$$\\begin{pmatrix} 4 \\\\ -3 \\end{pmatrix}$$`)).toBe(
+      String.raw`$$\begin{pmatrix} 4 \\ -3 \end{pmatrix}$$`
+    );
+    expect(collapseOverEscapedLatex(String.raw`$12\\,\\Omega$ and $15\\%$`)).toBe(String.raw`$12\,\Omega$ and $15\%$`);
+  });
+
+  it("leaves real row breaks, set braces and names KaTeX does not know alone", () => {
+    for (const text of [
+      String.raw`$$\begin{pmatrix} 4 \\ -3 \end{pmatrix}$$`,
+      String.raw`$$\begin{aligned} a &= 1 \\[4pt] b &= 2 \end{aligned}$$`,
+      String.raw`$$a = 1 \\ b = 2$$`,
+      String.raw`$x \in \{1, 2\}$ and $50\%$`,
+      String.raw`A path such as C:\\Users\\me`,
+      String.raw`$$\begin{cases} 1 & x > 0 \\\text{else} \end{cases}$$`,
+    ]) {
+      expect(collapseOverEscapedLatex(text)).toBe(text);
+    }
+  });
+});
+
+describe("restoreEnvironmentRowBreaks", () => {
+  it("puts back a row break that arrived as one backslash", () => {
+    expect(restoreEnvironmentRowBreaks(String.raw`$$\begin{pmatrix} 4 \ -3 \end{pmatrix}$$`)).toBe(
+      String.raw`$$\begin{pmatrix} 4 \\ -3 \end{pmatrix}$$`
+    );
+  });
+
+  it("leaves commands and correct row breaks inside an environment alone", () => {
+    const text = String.raw`$$\begin{cases} x^2 & \text{if } x \geq 0 \\ -x & \text{otherwise} \end{cases}$$`;
+    expect(restoreEnvironmentRowBreaks(text)).toBe(text);
+  });
+});
+
 describe("streaming and parsing seams", () => {
   it("streams unescaped LaTeX without control characters leaking through", () => {
     const buffer = String.raw`{"answer":"The optimum is $20^\text{o}\text{C}$ and`;
     const answer = extractStreamingAnswer(buffer);
     expect(answer).toContain(String.raw`\text{o}`);
     expect(answer).not.toMatch(/[\t\f\b]/);
+  });
+
+  it("never shows a character it later takes back, wherever a chunk ends", () => {
+    const raw = String.raw`{"answer":"So $\frac{1}{2} \times \beta \rightarrow \nu$ and $\underline{a}$.","sourceRefs":[]}`;
+    const full = extractStreamingAnswer(raw);
+    for (let cut = 1; cut <= raw.length; cut += 1) {
+      const soFar = extractStreamingAnswer(raw.slice(0, cut));
+      expect(full.startsWith(soFar), `cut at ${cut}: ${JSON.stringify(soFar)}`).toBe(true);
+    }
+    expect(full).toBe(String.raw`So $\frac{1}{2} \times \beta \rightarrow \nu$ and $\underline{a}$.`);
   });
 
   it("no longer drops a finished answer that used \\sqrt", () => {

@@ -10,11 +10,15 @@ import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import { createNotebookPdfDocumentCache } from "@/lib/workspace/notebook-pdf-cache";
 import {
   getNotebookPdfCanvasPlacement,
+  getNotebookPdfDetailRender,
   getNotebookPdfRenderMetrics,
   loadNotebookPdfJs,
   MAX_NOTEBOOK_PDF_CANVAS_PIXELS,
+  sameNotebookPdfDetailRender,
   shouldRerenderNotebookPdfCanvas,
   validateNotebookPdfPageIndex,
+  type NotebookPdfDetailRender,
+  type NotebookPdfDetailWindow,
 } from "@/lib/workspace/notebook-pdf";
 import { whenNotebookInkIdle } from "@/lib/workspace/notebook-ink-activity";
 import { getNotebookFileBytes } from "@/services/study/notebook-files";
@@ -53,8 +57,22 @@ type NotebookPdfPageProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
   maxPixelRatio?: number;
   maxCanvasPixels?: number;
   fadeIn?: boolean;
+  /**
+   * The part of the page on screen, in this element's CSS pixels. When the
+   * whole-page canvas is below the screen's density, this slice is drawn
+   * again on top at full density. Only the page being written on passes it.
+   */
+  detailWindow?: NotebookPdfDetailWindow | null;
   onRenderStateChange?: (state: NotebookPdfRenderState) => void;
   onCanvasReady?: (canvas: HTMLCanvasElement | null) => void;
+};
+
+/** The sharp slice on screen, and the host size it was drawn for. */
+type ShownPdfDetail = {
+  contentKey: string;
+  render: NotebookPdfDetailRender;
+  hostWidth: number;
+  hostHeight: number;
 };
 
 export type NotebookPdfRenderState = "loading" | "ready" | "error";
@@ -77,6 +95,12 @@ type ShownPdfCanvas = {
  *
  * pdf.js draws on the main thread, so its slices are also held while a pen is
  * on the page -- see `notebook-ink-activity.ts`.
+ *
+ * Zoomed in, the whole-page canvas runs out of pixels before the screen does,
+ * so the part on screen (`detailWindow`) is drawn a second time at the
+ * screen's density, on top -- see `getNotebookPdfDetailRender`. It has its own
+ * pair of canvases, swapped the same way, and is let go whenever the whole
+ * page is sharp enough without it.
  */
 export default function NotebookPdfPage({
   storagePath,
@@ -85,6 +109,7 @@ export default function NotebookPdfPage({
   maxPixelRatio = 2,
   maxCanvasPixels = MAX_NOTEBOOK_PDF_CANVAS_PIXELS,
   fadeIn = true,
+  detailWindow,
   onRenderStateChange,
   onCanvasReady,
   className = "",
@@ -93,6 +118,15 @@ export default function NotebookPdfPage({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const firstCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const secondCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const firstDetailCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const secondDetailCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const detailFrontIndexRef = useRef<0 | 1>(0);
+  const detailShownRef = useRef<ShownPdfDetail | null>(null);
+  const hasDetailWindow = Boolean(detailWindow);
+  const detailLeft = detailWindow?.left ?? 0;
+  const detailTop = detailWindow?.top ?? 0;
+  const detailWidth = detailWindow?.width ?? 0;
+  const detailHeight = detailWindow?.height ?? 0;
   /** Which of the two canvases is on screen. */
   const frontIndexRef = useRef<0 | 1>(0);
   const shownRef = useRef<ShownPdfCanvas | null>(null);
@@ -324,6 +358,153 @@ export default function NotebookPdfPage({
     visible,
   ]);
 
+  // The sharp slice over a zoomed page. Drawn only once the whole page is up.
+  useEffect(() => {
+    const host = hostRef.current;
+    const first = firstDetailCanvasRef.current;
+    const second = secondDetailCanvasRef.current;
+    if (!host || !first || !second) return;
+    const canvases = [first, second] as const;
+    const letGo = () => {
+      for (const canvas of canvases) {
+        canvas.style.visibility = "hidden";
+        canvas.width = 1;
+        canvas.height = 1;
+      }
+      detailShownRef.current = null;
+    };
+    if (status !== "ready" || !visible || !storagePath || !hasDetailWindow) {
+      letGo();
+      return;
+    }
+
+    const hostWidth = host.clientWidth;
+    const hostHeight = host.clientHeight;
+    const shown = detailShownRef.current;
+    // A new zoom makes the old slice the wrong size, so it goes at once; the
+    // whole page shows underneath until the new one lands. A pan keeps it.
+    if (
+      shown &&
+      (shown.contentKey !== contentKey ||
+        shown.hostWidth !== hostWidth ||
+        shown.hostHeight !== hostHeight)
+    ) {
+      letGo();
+    }
+
+    let disposed = false;
+    let renderTask: RenderTask | null = null;
+    let cancelIdleWait: (() => void) | null = null;
+    void documentCache
+      .get(storagePath)
+      .then(async (pdf) => {
+        if (disposed) return;
+        const page = await pdf.getPage(
+          validateNotebookPdfPageIndex(pageIndex, pdf.numPages) + 1
+        );
+        if (disposed) return;
+        const baseViewport = page.getViewport({ scale: 1 });
+        const pixelRatio = window.devicePixelRatio || 1;
+        const metrics = getNotebookPdfRenderMetrics({
+          pageWidth: baseViewport.width,
+          pageHeight: baseViewport.height,
+          hostWidth,
+          hostHeight,
+          pixelRatio,
+          maxPixelRatio,
+          maxCanvasPixels,
+        });
+        const detail = getNotebookPdfDetailRender({
+          window: {
+            left: detailLeft,
+            top: detailTop,
+            width: detailWidth,
+            height: detailHeight,
+          },
+          cssWidth: metrics.cssWidth,
+          cssHeight: metrics.cssHeight,
+          basePixelRatio: metrics.pixelRatio,
+          hostWidth,
+          hostHeight,
+          devicePixelRatio: pixelRatio,
+        });
+        if (!detail) {
+          letGo();
+          return;
+        }
+        const current = detailShownRef.current;
+        if (current && sameNotebookPdfDetailRender(current.render, detail)) return;
+
+        const front = canvases[detailFrontIndexRef.current];
+        const spare = canvases[detailFrontIndexRef.current === 0 ? 1 : 0];
+        const target = current ? spare : front;
+        target.style.visibility = "hidden";
+        target.width = detail.canvasWidth;
+        target.height = detail.canvasHeight;
+        target.style.left = `${detail.left}px`;
+        target.style.top = `${detail.top}px`;
+        target.style.width = `${detail.width}px`;
+        target.style.height = `${detail.height}px`;
+        const context = target.getContext("2d", { alpha: false });
+        if (!context) return;
+        const task = page.render({
+          canvas: target,
+          canvasContext: context,
+          viewport: page.getViewport({ scale: metrics.cssScale * detail.pixelRatio }),
+          // Shift the page so the slice's corner lands on the canvas's corner.
+          transform: [1, 0, 0, 1, -detail.offsetX, -detail.offsetY],
+          background: "#ffffff",
+        });
+        renderTask = task;
+        task.onContinue = (next: () => void) => {
+          cancelIdleWait = whenNotebookInkIdle(() => {
+            cancelIdleWait = null;
+            next();
+          });
+        };
+        await task.promise;
+        if (disposed) return;
+        target.style.visibility = "visible";
+        if (target !== front) {
+          front.style.visibility = "hidden";
+          front.width = 1;
+          front.height = 1;
+          detailFrontIndexRef.current = detailFrontIndexRef.current === 0 ? 1 : 0;
+        }
+        detailShownRef.current = { contentKey, render: detail, hostWidth, hostHeight };
+      })
+      .catch((error) => {
+        if (
+          disposed ||
+          (error instanceof Error && error.name === "RenderingCancelledException")
+        ) {
+          return;
+        }
+        // The whole page is still showing; the slice is only ever extra.
+        console.warn("Notebook PDF detail render failed.", { storagePath, pageIndex, error });
+      });
+
+    return () => {
+      disposed = true;
+      cancelIdleWait?.();
+      renderTask?.cancel();
+    };
+  }, [
+    contentKey,
+    detailHeight,
+    detailLeft,
+    detailTop,
+    detailWidth,
+    hasDetailWindow,
+    maxCanvasPixels,
+    maxPixelRatio,
+    pageIndex,
+    sizeRevision,
+    status,
+    storagePath,
+    visible,
+  ]);
+
   return (
     <div
       ref={hostRef}
@@ -338,6 +519,8 @@ export default function NotebookPdfPage({
       >
         <canvas ref={firstCanvasRef} className="absolute block" />
         <canvas ref={secondCanvasRef} className="invisible absolute block" />
+        <canvas ref={firstDetailCanvasRef} className="invisible absolute block" />
+        <canvas ref={secondDetailCanvasRef} className="invisible absolute block" />
       </div>
       {status === "loading" ? (
         <div className="absolute inset-0 grid place-items-center bg-white text-xs font-semibold text-slate-500">

@@ -19,7 +19,7 @@ type NotebookPageDefaultsPickerProps = {
   disabled?: boolean;
 };
 
-const STYLE_LABELS: Record<NotebookPageStyle, string> = {
+export const NOTEBOOK_PAGE_STYLE_LABELS: Record<NotebookPageStyle, string> = {
   plain: "Plain",
   lined: "Lined",
   grid: "Grid",
@@ -113,7 +113,7 @@ export default function NotebookPageDefaultsPicker({
                   className="h-7 w-6 rounded-sm border border-black/15 shadow-sm"
                   style={paperStyle(pageColor, style)}
                 />
-                {STYLE_LABELS[style]}
+                {NOTEBOOK_PAGE_STYLE_LABELS[style]}
               </button>
             );
           })}

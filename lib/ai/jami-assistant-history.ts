@@ -22,18 +22,16 @@ import {
   normalizeTutorStudyMaterialOffers,
   normalizeTutorStudyMaterialRequest,
   normalizeTutorStudyMaterialResults,
+  normalizeTutorStudyMaterialSetup,
   type TutorStudyMaterialKind,
   type TutorStudyMaterialRequest,
   type TutorStudyMaterialResult,
+  type TutorStudyMaterialSetup,
 } from "@/lib/ai/tutor-study-material";
 import {
   normalizeSuggestedCards,
   type JamiAssistantSuggestedCard,
 } from "@/lib/ai/tutor-card-suggestions";
-import {
-  normalizeSuggestedQuestions,
-  type JamiAssistantSuggestedQuestion,
-} from "@/lib/ai/tutor-question-suggestions";
 
 export const JAMI_ASSISTANT_MAX_SAVED_THREADS = 50;
 export const JAMI_ASSISTANT_MAX_THREAD_TITLE_LENGTH = 80;
@@ -83,11 +81,11 @@ export type JamiAssistantStoredMessage = {
   followUps?: JamiAssistantFollowUp[];
   citations?: JamiAssistantCitation[];
   suggestedCards?: JamiAssistantSuggestedCard[];
-  suggestedQuestions?: JamiAssistantSuggestedQuestion[];
   illustrations?: AssistantIllustration[];
   canIllustrate?: boolean;
   studyMaterialRequest?: TutorStudyMaterialRequest;
   studyMaterialOffers?: TutorStudyMaterialKind[];
+  studyMaterialSetup?: TutorStudyMaterialSetup;
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
   /** Files the student sent with this message. */
   attachments?: TutorAttachment[];
@@ -263,11 +261,11 @@ export function mapJamiAssistantStoredMessage(
   const followUps = normalizeFollowUps(data.followUps);
   const citations = normalizeAssistantCitations(data.citations);
   const suggestedCards = normalizeSuggestedCards(data.suggestedCards);
-  const suggestedQuestions = normalizeSuggestedQuestions(data.suggestedQuestions);
   const illustrations = normalizeAssistantIllustrations(data.illustrations);
   const studyMaterialRequest = normalizeTutorStudyMaterialRequest(data.studyMaterialRequest);
   const studyMaterialOffers = normalizeTutorStudyMaterialOffers(data.studyMaterialOffers);
   const studyMaterialResults = normalizeTutorStudyMaterialResults(data.studyMaterialResults);
+  const studyMaterialSetup = normalizeTutorStudyMaterialSetup(data.studyMaterialSetup);
   const attachments =
     role === "user"
       ? normalizeTutorAttachments(data.attachments, { limit: MAX_TUTOR_ATTACHMENTS_PER_MESSAGE })
@@ -281,12 +279,12 @@ export function mapJamiAssistantStoredMessage(
     ...(followUps.length > 0 ? { followUps } : {}),
     ...(citations.length > 0 ? { citations } : {}),
     ...(suggestedCards.length > 0 ? { suggestedCards } : {}),
-    ...(suggestedQuestions.length > 0 ? { suggestedQuestions } : {}),
     ...(illustrations.length > 0 ? { illustrations } : {}),
     ...(data.canIllustrate === true ? { canIllustrate: true } : {}),
     ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
     ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
     ...(Object.keys(studyMaterialResults).length > 0 ? { studyMaterialResults } : {}),
+    ...(studyMaterialSetup ? { studyMaterialSetup } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
     createdAt:
       typeof data.createdAt === "number" && Number.isFinite(data.createdAt)

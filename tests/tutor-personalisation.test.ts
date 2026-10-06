@@ -247,6 +247,25 @@ describe("the personalisation prompt block", () => {
     expect(block).toContain("- Be brief.\n- Use British spelling.");
   });
 
+  it("tells the model a note applies where it fits, not to every reply", () => {
+    const withNotes = buildTutorPersonalisationInstruction({
+      preferences: {
+        ...DEFAULT_TUTOR_PREFERENCES,
+        notes: ["Point out the mistake students usually make."],
+      },
+      boundaryToken: TOKEN,
+    });
+    const styleOnly = buildTutorPersonalisationInstruction({
+      preferences: { ...DEFAULT_TUTOR_PREFERENCES, explanationDepth: "concise" },
+      boundaryToken: TOKEN,
+    });
+
+    expect(withNotes).toContain("Most notes describe a kind of answer, not every answer.");
+    expect(withNotes).toContain("copying out or reformatting a question");
+    expect(withNotes).not.toContain("every answer without announcing");
+    expect(styleOnly).not.toContain("Most notes describe");
+  });
+
   it("fences everything the student typed, folder name included, and closes with the app's own word", () => {
     const block = buildTutorPersonalisationInstruction({
       preferences: DEFAULT_TUTOR_PREFERENCES,

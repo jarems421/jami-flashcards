@@ -12,21 +12,25 @@ import type { Source } from "@/lib/material/sources";
  *
  * It used to say "Ask from your own material" and send the student to the
  * Library to find some first. Now the question and the material are chosen
- * together, here: type, pick one source or several, send -- and the chat
- * opens full screen with the answer on its way, and closes back to here. The three starting
- * points are the same ones the chat itself offers.
+ * together, here: type, pick one source or several, send -- and this card
+ * becomes the conversation, in place, with the answer on its way. Closing it
+ * brings this back. The three starting points are the same ones the chat
+ * itself offers.
  */
 export default function TutorAskPanel({
   sources,
   selectedIds,
   onSelectedChange,
   onAsk,
+  onOpenChats,
   loading = false,
 }: {
   sources: readonly Source[];
   selectedIds: readonly string[];
   onSelectedChange: (ids: string[]) => void;
   onAsk: (message: string) => void;
+  /** Opens the chat on the student's saved chats, from any place, to carry one on. */
+  onOpenChats?: () => void;
   loading?: boolean;
 }) {
   const [message, setMessage] = useState("");
@@ -117,6 +121,17 @@ export default function TutorAskPanel({
               </button>
             ))}
           </div>
+          {onOpenChats ? (
+            <div className="relative mt-3 flex justify-center">
+              <button
+                type="button"
+                onClick={onOpenChats}
+                className="rounded-full px-3 py-1.5 text-sm font-semibold text-[var(--color-accent)] transition duration-fast hover:bg-[var(--color-glass-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+              >
+                Open a previous chat
+              </button>
+            </div>
+          ) : null}
         </>
       )}
 

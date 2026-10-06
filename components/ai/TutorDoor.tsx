@@ -9,18 +9,22 @@ import type { ReactNode } from "react";
  * read as a pile of unrelated panels. Every door now has the same shape: what
  * it is, one line on what it does for you, where you are with it, and the way
  * in. The whole card is the link, so the button is a label, not a second
- * target.
+ * target. A door that opens something on this page, rather than going
+ * somewhere, takes `onOpen` instead of `href` and is the same card as a button.
  */
 export default function TutorDoor({
   href,
+  onOpen,
   icon,
   tone = "accent",
   title,
   description,
   status,
   action,
-}: {
-  href: string;
+}: (
+  | { href: string; onOpen?: never }
+  | { href?: never; onOpen: () => void }
+) & {
   icon: ReactNode;
   /** Which of Jami's colours the door is washed in, so the three tell apart. */
   tone?: "accent" | "warm" | "success";
@@ -43,11 +47,9 @@ export default function TutorDoor({
         ? "border-[var(--color-success)] bg-[var(--color-success-muted)] text-[var(--color-success)]"
         : "border-accent/40 bg-accent/15 text-[var(--color-accent)]";
 
-  return (
-    <Link
-      href={href}
-      className={`app-panel group flex h-full flex-col gap-3 rounded-3xl p-5 transition duration-fast ease-spring hover:-translate-y-0.5 hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 sm:p-6 ${wash}`}
-    >
+  const className = `app-panel group flex h-full flex-col gap-3 rounded-3xl p-5 text-left transition duration-fast ease-spring hover:-translate-y-0.5 hover:border-[var(--color-border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 sm:p-6 ${wash}`;
+  const body = (
+    <>
       <span className={`grid h-11 w-11 place-items-center rounded-2xl border ${mark}`} aria-hidden="true">
         {icon}
       </span>
@@ -64,6 +66,15 @@ export default function TutorDoor({
           <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </span>
+    </>
+  );
+  return href !== undefined ? (
+    <Link href={href} className={className}>
+      {body}
     </Link>
+  ) : (
+    <button type="button" onClick={onOpen} className={className}>
+      {body}
+    </button>
   );
 }

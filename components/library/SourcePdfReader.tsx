@@ -22,11 +22,14 @@ export default function SourcePdfReader({
   storagePath,
   title,
   fallback,
+  compact = false,
 }: {
   storagePath: string;
   title: string;
   /** Shown when the file cannot be opened. */
   fallback: React.ReactNode;
+  /** Tight margins, for a sheet kept in a small panel beside a page. */
+  compact?: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
@@ -77,12 +80,16 @@ export default function SourcePdfReader({
       ref={hostRef}
       role="document"
       aria-label={`${title} PDF`}
-      className="flex w-full flex-col items-center gap-3 px-3 py-4 sm:gap-4 sm:px-6 sm:py-6"
+      className={`flex w-full flex-col items-center ${
+        compact ? "gap-2 p-2" : "gap-3 px-3 py-4 sm:gap-4 sm:px-6 sm:py-6"
+      }`}
     >
       {!current?.pdf || width === 0 ? (
         <div
           role="status"
-          className="grid min-h-[22rem] w-full place-items-center text-sm font-semibold text-text-muted"
+          className={`grid w-full place-items-center text-sm font-semibold text-text-muted ${
+            compact ? "min-h-[10rem]" : "min-h-[22rem]"
+          }`}
         >
           Loading PDF…
         </div>
@@ -94,7 +101,7 @@ export default function SourcePdfReader({
             pageNumber={index + 1}
             pageCount={pageCount}
             // The page's own column, not the whole panel, on a wide screen.
-            width={Math.min(width - 24, 880)}
+            width={Math.min(width - (compact ? 16 : 24), 880)}
           />
         ))
       )}

@@ -214,6 +214,35 @@ describe("Tutor study material route", () => {
     });
   });
 
+  it("makes what the student chose on Tutor's setup card, and needs a choice to make anything", async () => {
+    mocks.docs.set(ANSWER, {
+      ...mocks.docs.get(ANSWER),
+      studyMaterialRequest: undefined,
+      studyMaterialOffers: [],
+      studyMaterialSetup: { kind: "flashcards", kinds: ["flashcards", "practice"], topics: ["Osmosis"] },
+    });
+    mocks.createPracticeSet.mockResolvedValue({
+      id: "session-2",
+      questions: [{}, {}, {}],
+      maxTotal: 9,
+      practiceSet: { title: "Osmosis" },
+    });
+
+    const unchosen = await postStudyMaterial(request(body("practice")));
+    expect(unchosen.status).toBe(400);
+    expect(mocks.createPracticeSet).not.toHaveBeenCalled();
+
+    const response = await postStudyMaterial(
+      request({ ...body("practice"), choice: { focus: "Osmosis", struggle: "which way water moves", count: 3 } })
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.createPracticeSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        focus: "Osmosis, focusing on what they find hard: which way water moves",
+      })
+    );
+  });
+
   it("refuses a kind nobody asked for or offered, before charging", async () => {
     mocks.docs.set(ANSWER, { ...mocks.docs.get(ANSWER), studyMaterialRequest: undefined, studyMaterialOffers: [] });
 

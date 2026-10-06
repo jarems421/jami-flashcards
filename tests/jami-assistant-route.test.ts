@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
+import { getJamiAssistantContextKey } from "@/lib/ai/jami-assistant-history";
 import {
   captureStructuredLogs,
   expectRedactedLogs,
@@ -37,6 +38,9 @@ const mocks = vi.hoisted(() => {
     >(async () => ({ ok: false, reason: "not_configured" })),
     refundBudget: vi.fn(),
     persisted: [] as Array<{ kind: string; path: string; data?: unknown }>,
+    /** Saved documents by path, and saved chat messages, for tests that open a chat. */
+    stored: new Map<string, Record<string, unknown>>(),
+    storedMessages: [] as Array<{ id: string; data: Record<string, unknown> }>,
   };
 });
 
@@ -53,11 +57,21 @@ vi.mock("@/services/firebase/admin", () => ({
           id,
           path: documentPath,
           collection: (name: string) => collection(`${documentPath}/${name}`),
-          get: vi.fn(async () => ({ exists: false, id, data: () => undefined })),
+          get: vi.fn(async () => {
+            const saved = mocks.stored.get(documentPath);
+            return { exists: Boolean(saved), id, data: () => saved };
+          }),
         };
       },
       where: vi.fn(() => ({
-        get: vi.fn(async () => ({ empty: true, docs: [] })),
+        get: vi.fn(async () =>
+          path.endsWith("/assistantMessages")
+            ? {
+                empty: mocks.storedMessages.length === 0,
+                docs: mocks.storedMessages.map((message) => ({ id: message.id, data: () => message.data })),
+              }
+            : { empty: true, docs: [] }
+        ),
       })),
     });
     return {
@@ -208,6 +222,8 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.persisted.length = 0;
+  mocks.stored.clear();
+  mocks.storedMessages.length = 0;
   mocks.verifyIdToken.mockResolvedValue({ uid: "user-1" });
   mocks.checkBudget.mockResolvedValue({
     allowed: true,
@@ -272,10 +288,10 @@ describe("universal Jami assistant route", () => {
         { kind: "source", id: "source-1", label: "Biology notes" },
         { kind: "general-knowledge", label: "general knowledge" },
       ],
-      followUps: [
-        { label: "Explain more", prompt: "Explain that in more detail." },
-      ],
     });
+    // A simple question gets its answer, not a row of offers under it.
+    expect(terminal).not.toHaveProperty("followUps");
+    expect(terminal).not.toHaveProperty("studyMaterialOffers");
     expect(mocks.resolveContext).toHaveBeenCalledWith({
       uid: "user-1",
       message: "What is photosynthesis?",
@@ -323,6 +339,79 @@ describe("universal Jami assistant route", () => {
     expect(referenceOrder).toContain(
       "ignore it completely when it is about something else"
     );
+  });
+
+  it("carries a chat started in the Library on in another place, and moves it there", async () => {
+    const sourcesContext = { surface: "sources", sourceIds: ["source-1"] };
+    mocks.stored.set("users/user-1/assistantThreads/thread-1", {
+      title: "Enzymes",
+      surface: "sources",
+      context: sourcesContext,
+      contextKey: getJamiAssistantContextKey(sourcesContext as never),
+      contextLabel: "Biology notes",
+      createdAt: 1,
+      updatedAt: 2,
+      messageCount: 2,
+    });
+    // What the old place decided about withholding answers does not follow the chat.
+    mocks.stored.set("users/user-1/assistantRouteState/thread-1", { phase: "question" });
+    mocks.storedMessages.push(
+      { id: "m1", data: { threadId: "thread-1", role: "user", text: "Why do enzymes denature?", createdAt: 1 } },
+      { id: "m2", data: { threadId: "thread-1", role: "assistant", text: "Heat breaks the bonds that hold their shape.", createdAt: 2 } }
+    );
+
+    const response = await postAssistant(request(validBody({ threadId: "thread-1" })));
+    const { terminal } = await readStream(response);
+
+    expect(response.status).toBe(200);
+    const generation = mocks.streamText.mock.calls[0]?.[0] as {
+      request: { systemInstruction: string; contents: Array<{ parts: Array<{ text?: string }> }> };
+    };
+    // Tutor knows where it began and where it is now, and keeps the dialogue.
+    expect(generation.request.systemInstruction).toContain("This conversation began about their material in the Library");
+    expect(generation.request.systemInstruction).toContain("while reviewing flashcards");
+    expect(JSON.stringify(generation.request.contents)).toContain("Heat breaks the bonds");
+    // The chat now lives where the student carried it on.
+    const threadWrite = mocks.persisted.find((entry) => entry.path === "users/user-1/assistantThreads/thread-1");
+    expect(threadWrite?.data).toMatchObject({ surface: "learn", context: { surface: "learn", cardId: "card-1" } });
+    expect(terminal).toMatchObject({ savedThread: { id: "thread-1", surface: "learn" } });
+  });
+
+  it("asks what to make first when the student names nothing, and makes nothing yet", async () => {
+    mocks.streamText.mockResolvedValueOnce(
+      JSON.stringify({
+        answer: "Happy to. What should they focus on?",
+        sourceRefs: [],
+        usedCurrentContext: false,
+        usedGeneralKnowledge: true,
+        usedWebResearch: false,
+        graphs: [],
+        studyMaterial: "none",
+        studyMaterialFocus: "",
+        studyMaterialTopics: ["Osmosis", "Enzymes", "Osmosis"],
+      })
+    );
+
+    const response = await postAssistant(
+      request(validBody({ message: "make me flashcards", context: { surface: "sources", sourceIds: ["source-1"] } }))
+    );
+    const { terminal } = await readStream(response);
+
+    expect(terminal).toMatchObject({
+      type: "done",
+      studyMaterialSetup: { kind: "flashcards", kinds: ["flashcards", "practice"], topics: ["Osmosis", "Enzymes"] },
+    });
+    expect(terminal).not.toHaveProperty("studyMaterialRequest");
+    expect(terminal).not.toHaveProperty("studyMaterialOffers");
+    expect(mocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({ systemInstruction: expect.stringContaining("has not said what on") }),
+      })
+    );
+    const savedAnswer = mocks.persisted.find(
+      (entry) => entry.kind === "create" && (entry.data as { role?: string }).role === "assistant"
+    );
+    expect(savedAnswer?.data).toMatchObject({ studyMaterialSetup: { kind: "flashcards" } });
   });
 
   it("agrees to make flashcards a student asks for, from any chat, and records it", async () => {
@@ -376,7 +465,7 @@ describe("universal Jami assistant route", () => {
     });
   });
 
-  it("offers flashcards and practice questions after teaching", async () => {
+  it("offers only what Tutor suggests after teaching", async () => {
     const answer = JSON.stringify({
       answer: `${"Light is absorbed by chlorophyll and drives the splitting of water. ".repeat(6)}`,
       sourceRefs: [],
@@ -386,6 +475,7 @@ describe("universal Jami assistant route", () => {
       graphs: [],
       studyMaterial: "none",
       studyMaterialFocus: "why photosynthesis needs light",
+      suggestions: ["practice"],
     });
     mocks.streamText.mockResolvedValueOnce(answer);
 
@@ -394,8 +484,95 @@ describe("universal Jami assistant route", () => {
     );
     const { terminal } = await readStream(response);
 
-    expect(terminal).toMatchObject({ studyMaterialOffers: ["flashcards", "practice"] });
+    expect(terminal).toMatchObject({ studyMaterialOffers: ["practice"] });
+    expect(terminal).not.toHaveProperty("followUps");
     expect(terminal).not.toHaveProperty("studyMaterialRequest");
+    expect(mocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generationConfig: expect.objectContaining({
+          responseSchema: expect.objectContaining({
+            properties: expect.objectContaining({
+              suggestions: expect.objectContaining({
+                items: expect.objectContaining({
+                  enum: ["steps", "flashcards", "practice"],
+                }),
+              }),
+            }),
+          }),
+        }),
+        request: expect.objectContaining({
+          systemInstruction: expect.stringContaining(
+            '"flashcards": when you have taught or explained something the student will need to remember later'
+          ),
+        }),
+      })
+    );
+  });
+
+  it("can offer several next steps when Tutor suggests several", async () => {
+    mocks.streamText.mockResolvedValueOnce(
+      JSON.stringify({
+        answer: `${"Light is absorbed by chlorophyll and drives the splitting of water. ".repeat(6)}`,
+        sourceRefs: [],
+        usedCurrentContext: false,
+        usedGeneralKnowledge: true,
+        usedWebResearch: false,
+        graphs: [],
+        studyMaterial: "none",
+        studyMaterialFocus: "why photosynthesis needs light",
+        suggestions: ["flashcards", "practice"],
+      })
+    );
+
+    const { terminal } = await readStream(
+      await postAssistant(
+        request(validBody({ message: "I'm struggling to see why plants need light, can you explain?" }))
+      )
+    );
+
+    expect(terminal).toMatchObject({ studyMaterialOffers: ["flashcards", "practice"] });
+  });
+
+  it("offers nothing after teaching when Tutor suggests nothing", async () => {
+    mocks.streamText.mockResolvedValueOnce(
+      JSON.stringify({
+        answer: `${"Light is absorbed by chlorophyll and drives the splitting of water. ".repeat(6)}`,
+        sourceRefs: [],
+        usedCurrentContext: false,
+        usedGeneralKnowledge: true,
+        usedWebResearch: false,
+        graphs: [],
+        studyMaterial: "none",
+        studyMaterialFocus: "why photosynthesis needs light",
+        suggestions: [],
+      })
+    );
+
+    const { terminal } = await readStream(
+      await postAssistant(
+        request(validBody({ message: "I'm struggling to see why plants need light, can you explain?" }))
+      )
+    );
+
+    expect(terminal).not.toHaveProperty("studyMaterialOffers");
+    expect(terminal).not.toHaveProperty("followUps");
+  });
+
+  it("never offers Explain more; a student who wants more asks", async () => {
+    mocks.streamText.mockResolvedValueOnce(
+      JSON.stringify({
+        answer: "Plants turn light energy into stored chemical energy.",
+        sourceRefs: [],
+        usedCurrentContext: true,
+        usedGeneralKnowledge: true,
+        usedWebResearch: false,
+        suggestions: ["more"],
+      })
+    );
+
+    const { terminal } = await readStream(await postAssistant(request(validBody())));
+
+    expect(terminal).not.toHaveProperty("followUps");
   });
 
   it("puts the learner profile in the system instruction when there is one", async () => {
@@ -583,9 +760,6 @@ describe("universal Jami assistant route", () => {
       type: "done",
       reply: "A general explanation.",
       used: [{ kind: "general-knowledge", label: "general knowledge" }],
-      followUps: [
-        { label: "Explain more", prompt: "Explain that in more detail." },
-      ],
       sourceFailures: [
         {
           id: "source-1",
@@ -895,16 +1069,34 @@ describe("universal Jami assistant route", () => {
     expect(schema).toHaveProperty("studyMaterial");
   });
 
-  it("offers to make flashcards after an answer drawn from sources", async () => {
+  it("can offer flashcards after a short answer drawn from sources, when Tutor suggests them", async () => {
+    mocks.streamText.mockResolvedValueOnce(
+      JSON.stringify({
+        answer: "Plants turn light energy into stored chemical energy.",
+        sourceRefs: ["S1"],
+        usedCurrentContext: true,
+        usedGeneralKnowledge: true,
+        usedWebResearch: false,
+        suggestions: ["flashcards"],
+      })
+    );
     const { terminal } = await readStream(
       await postAssistant(
         request(validBody({ context: { surface: "sources", sourceIds: ["source-1"] } }))
       )
     );
 
-    expect(terminal).toMatchObject({
-      studyMaterialOffers: expect.arrayContaining(["flashcards"]),
-    });
+    expect(terminal).toMatchObject({ studyMaterialOffers: ["flashcards"] });
+  });
+
+  it("does not offer flashcards Tutor did not suggest, even from sources", async () => {
+    const { terminal } = await readStream(
+      await postAssistant(
+        request(validBody({ context: { surface: "sources", sourceIds: ["source-1"] } }))
+      )
+    );
+
+    expect(terminal).not.toHaveProperty("studyMaterialOffers");
   });
 
   it("enforces the transactional daily budget before provider work", async () => {

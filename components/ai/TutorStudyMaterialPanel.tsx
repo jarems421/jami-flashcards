@@ -16,6 +16,7 @@ import FlashcardDraftReview, {
 } from "@/components/ai/FlashcardDraftReview";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type {
+  TutorStudyMaterialChoice,
   TutorStudyMaterialKind,
   TutorStudyMaterialResult,
 } from "@/lib/ai/tutor-study-material";
@@ -56,6 +57,8 @@ type TutorStudyMaterialPanelProps = {
   messageId: string;
   /** What Tutor said it would make them on, while they are being made. */
   focus?: string;
+  /** What the student chose on Tutor's setup card, sent with the request. */
+  choice?: TutorStudyMaterialChoice;
   /** Already made, from this session or a reopened chat. */
   result?: TutorStudyMaterialResult;
   /** Read only: a saved chat from another study context. */
@@ -84,6 +87,7 @@ export default function TutorStudyMaterialPanel({
   threadId,
   messageId,
   focus,
+  choice,
   result,
   readOnly = false,
   autoStart = true,
@@ -109,7 +113,7 @@ export default function TutorStudyMaterialPanel({
     let pending = inFlight.get(key);
     if (!pending) {
       pending = Promise.resolve(getContext()).then((context) =>
-        requestTutorStudyMaterial({ threadId, messageId, kind, context })
+        requestTutorStudyMaterial({ threadId, messageId, kind, context, ...(choice ? { choice } : {}) })
       );
       inFlight.set(key, pending);
     }
@@ -136,7 +140,7 @@ export default function TutorStudyMaterialPanel({
     return () => {
       active = false;
     };
-  }, [attempt, getContext, kind, messageId, readOnly, result, status, threadId]);
+  }, [attempt, choice, getContext, kind, messageId, readOnly, result, status, threadId]);
 
   useEffect(() => {
     if (status !== "making") return;

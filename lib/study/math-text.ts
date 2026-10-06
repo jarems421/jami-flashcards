@@ -141,13 +141,27 @@ export function normalizeMathDelimiters(text: string): string {
 
     const display = match[1] ?? match[3];
     if (display !== undefined) {
-      // \[ ... \] and $$...$$ -> multi-line display math, except on a table
-      // row, where a line break would end the row: there it stays on its line.
-      result.push(
-        isOnTableRow(text, index)
-          ? `$\\displaystyle ${display.trim().replace(/\s*\n\s*/g, " ")}$`
-          : `$$\n${display.trim()}\n$$`
-      );
+      const end = index + match[0].length;
+      const after = restOfLine(text, end);
+      // Punctuation that closes the sentence goes inside the display, as
+      // typeset maths has it; left after the closing $$ it stops the block
+      // being read as maths at all.
+      const closing = /^[.,;:]$/.test(after.trim()) ? after.trim() : "";
+      // \[ ... \] and $$...$$ -> multi-line display math, except where a line
+      // break would split something that has to stay on one line -- a table
+      // row, "Hence $$y = 3$$ as required", a list item's words -- and so
+      // the maths stays inline, at display size.
+      if (
+        isOnTableRow(text, index) ||
+        (after.trim() && !closing) ||
+        (isOnListItem(text, index) && hasTextBefore(text, index))
+      ) {
+        result.push(`$\\displaystyle ${display.trim().replace(/\s*\n\s*/g, " ")}$`);
+      } else {
+        result.push(`$$\n${display.trim()}${closing}\n$$`);
+        cursor = end + after.length;
+        continue;
+      }
     } else if (match[2] !== undefined) {
       // \( ... \) -> inline math
       result.push(`$${match[2].trim()}$`);
@@ -161,6 +175,27 @@ export function normalizeMathDelimiters(text: string): string {
 
   result.push(text.slice(cursor));
   return result.join("");
+}
+
+/**
+ * Whether words come before `index` on its line. A list marker or quote
+ * marker does not count: "- $$a = b$$" is a display on a list item.
+ */
+function hasTextBefore(text: string, index: number) {
+  const lineStart = text.lastIndexOf("\n", index - 1) + 1;
+  return !/^\s*(?:>\s*)*(?:(?:[-*+]|\d{1,3}[.)])\s+)?$/.test(text.slice(lineStart, index));
+}
+
+/** Whether the character at `index` sits on a Markdown list item. */
+function isOnListItem(text: string, index: number) {
+  const lineStart = text.lastIndexOf("\n", index - 1) + 1;
+  return /^\s*(?:>\s*)*(?:[-*+]|\d{1,3}[.)])\s/.test(text.slice(lineStart, index));
+}
+
+/** The rest of the line from `index`, up to but not including its newline. */
+function restOfLine(text: string, index: number) {
+  const lineEnd = text.indexOf("\n", index);
+  return text.slice(index, lineEnd < 0 ? text.length : lineEnd);
 }
 
 /** Whether the character at `index` sits on a Markdown table row. */

@@ -174,6 +174,121 @@ export function shouldRerenderNotebookPdfCanvas(input: {
  * canvas already on screen grows with it at once, slightly soft until the
  * sharper redraw lands, instead of staying small or going blank.
  */
+/**
+ * The sharp layer over a zoomed PDF page: only the part on screen, drawn at
+ * the screen's own density.
+ *
+ * The whole-page canvas has a pixel ceiling, which a zoomed page passes
+ * early -- around 1.3x on an iPad -- and from there its density falls as the
+ * zoom rises: a 2x screen at 3x zoom was being shown about one pixel per
+ * point, softer than a non-Retina screen. That is exactly where someone is
+ * writing small. So the whole page stays as it is, for panning into, and the
+ * visible slice is drawn again on top at full density. The slice is a little
+ * over one screen, so it costs about what the whole page did at fit.
+ */
+export const MAX_NOTEBOOK_PDF_DETAIL_PIXELS = 6_000_000;
+export const MAX_NOTEBOOK_PDF_DETAIL_PIXEL_RATIO = 3;
+
+/** The visible part of the page, in the PDF host's CSS pixels. */
+export type NotebookPdfDetailWindow = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+export type NotebookPdfDetailRender = {
+  /** Where the sharp canvas sits in the host, in CSS pixels. */
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  pixelRatio: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  /** How far into the page, in canvas pixels, the slice starts. */
+  offsetX: number;
+  offsetY: number;
+};
+
+/**
+ * Which slice to draw sharp, or null when the whole-page canvas is already
+ * as sharp as the screen -- every fitted page, and any zoom below the
+ * ceiling.
+ */
+export function getNotebookPdfDetailRender(input: {
+  window: NotebookPdfDetailWindow | null | undefined;
+  /** The whole page as drawn: its size in the host and its density. */
+  cssWidth: number;
+  cssHeight: number;
+  basePixelRatio: number;
+  hostWidth: number;
+  hostHeight: number;
+  devicePixelRatio: number;
+  maxPixelRatio?: number;
+  maxCanvasPixels?: number;
+}): NotebookPdfDetailRender | null {
+  const window = input.window;
+  if (!window || !(window.width > 0) || !(window.height > 0)) return null;
+  const desired = Math.min(
+    input.maxPixelRatio ?? MAX_NOTEBOOK_PDF_DETAIL_PIXEL_RATIO,
+    Math.max(1, Number.isFinite(input.devicePixelRatio) ? input.devicePixelRatio : 1)
+  );
+  // Within a few per cent of the screen, the page is already sharp.
+  if (!(input.basePixelRatio < desired * 0.95)) return null;
+
+  // The PDF is centred in its host, as the whole-page canvas is placed.
+  const pdfLeft = (input.hostWidth - input.cssWidth) / 2;
+  const pdfTop = (input.hostHeight - input.cssHeight) / 2;
+  const left = Math.max(pdfLeft, Math.floor(window.left));
+  const top = Math.max(pdfTop, Math.floor(window.top));
+  const right = Math.min(pdfLeft + input.cssWidth, Math.ceil(window.left + window.width));
+  const bottom = Math.min(pdfTop + input.cssHeight, Math.ceil(window.top + window.height));
+  const width = right - left;
+  const height = bottom - top;
+  if (!(width > 0) || !(height > 0)) return null;
+
+  const budget =
+    Number.isFinite(input.maxCanvasPixels) && (input.maxCanvasPixels ?? 0) > 0
+      ? input.maxCanvasPixels!
+      : MAX_NOTEBOOK_PDF_DETAIL_PIXELS;
+  const area = width * height;
+  const pixelRatio = area * desired * desired > budget ? Math.sqrt(budget / area) : desired;
+  // Not worth a second canvas unless it is clearly sharper than the first.
+  if (pixelRatio < input.basePixelRatio * 1.1) return null;
+
+  const canvasWidth = Math.max(1, Math.round(width * pixelRatio));
+  const canvasHeight = Math.max(1, Math.round(height * pixelRatio));
+  return {
+    left,
+    top,
+    // Sized from the canvas so each canvas pixel lands on one screen pixel.
+    width: canvasWidth / pixelRatio,
+    height: canvasHeight / pixelRatio,
+    pixelRatio,
+    canvasWidth,
+    canvasHeight,
+    offsetX: (left - pdfLeft) * pixelRatio,
+    offsetY: (top - pdfTop) * pixelRatio,
+  };
+}
+
+/** Whether two slices would draw the same pixels in the same place. */
+export function sameNotebookPdfDetailRender(
+  first: NotebookPdfDetailRender | null,
+  second: NotebookPdfDetailRender | null
+) {
+  if (first === second) return true;
+  if (!first || !second) return false;
+  return (
+    first.left === second.left &&
+    first.top === second.top &&
+    first.canvasWidth === second.canvasWidth &&
+    first.canvasHeight === second.canvasHeight &&
+    first.pixelRatio === second.pixelRatio
+  );
+}
+
 export function getNotebookPdfCanvasPlacement(input: {
   cssWidth: number;
   cssHeight: number;

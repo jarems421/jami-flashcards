@@ -6,6 +6,10 @@ import {
   isOwnedTutorAttachmentPath,
   normalizeTutorAttachments,
   readTutorSourceSaveOffer,
+  refersToTutorAttachment,
+  selectTutorRequestAttachments,
+  TUTOR_ATTACHMENT_ACTIVE_STUDENT_TURNS,
+  type TutorAttachment,
 } from "@/lib/ai/tutor-attachments";
 import {
   getJamiAssistantResponseGuidance,
@@ -132,5 +136,49 @@ describe("Tutor answers stay short and on the part asked", () => {
     expect(route).toMatch(/const REQUEST_TIMEOUT_MS = 90_000;/);
     expect(route).toMatch(/export const maxDuration = 150;/);
     expect(route.match(/stallTimeoutMs: ANSWER_STALL_TIMEOUT_MS/g)).toHaveLength(2);
+  });
+});
+
+describe("Files attached earlier in a chat", () => {
+  const file = (name: string): TutorAttachment => ({
+    storagePath: `users/u1/sourceFiles/chat-${name}/${name}.pdf`,
+    fileName: `${name}.pdf`,
+    fileType: "application/pdf",
+    sizeBytes: 1_000,
+  });
+  const turns = (count: number) =>
+    Array.from({ length: count }, (_, index) => [
+      { role: "user" as const, text: `Question ${index}` },
+      { role: "assistant" as const, text: `Answer ${index}` },
+    ]).flat();
+
+  it("stays with the chat well past the twelve messages history used to hold", () => {
+    const messages = [{ role: "user" as const, attachments: [file("sheet")] }, ...turns(15)];
+    const { files, newCount } = selectTutorRequestAttachments({ messages, sentFiles: [], message: "Now question 9" });
+    expect(files.map((entry) => entry.fileName)).toEqual(["sheet.pdf"]);
+    expect(newCount).toBe(0);
+  });
+
+  it("drops off once the chat has moved on, and comes back when mentioned", () => {
+    const messages = [{ role: "user" as const, attachments: [file("sheet")] }, ...turns(TUTOR_ATTACHMENT_ACTIVE_STUDENT_TURNS)];
+    expect(selectTutorRequestAttachments({ messages, sentFiles: [], message: "What is entropy?" }).files).toEqual([]);
+    expect(
+      selectTutorRequestAttachments({ messages, sentFiles: [], message: "Back to the question sheet, Q4 please" }).files
+    ).toHaveLength(1);
+    expect(refersToTutorAttachment("the pdf I sent")).toBe(true);
+    expect(refersToTutorAttachment("Explain the photoelectric effect")).toBe(false);
+  });
+
+  it("reads this message's files first, then unsaved ones, then the newest earlier ones", () => {
+    const messages = [
+      { role: "user" as const, attachments: [file("old")] },
+      { role: "assistant" as const },
+      { role: "user" as const, attachments: [file("recent")] },
+      { role: "assistant" as const },
+      { role: "user" as const, attachments: [file("failed")], attachmentsUnsaved: true },
+    ];
+    const { files, newCount } = selectTutorRequestAttachments({ messages, sentFiles: [file("new")], message: "Help" });
+    expect(files.map((entry) => entry.fileName)).toEqual(["new.pdf", "failed.pdf", "recent.pdf", "old.pdf"]);
+    expect(newCount).toBe(2);
   });
 });

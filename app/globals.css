@@ -4335,13 +4335,13 @@ html.panels-solid body.constellation-background-enabled .app-nav {
 .memory-map-canvas.is-dragging{cursor:grabbing}
 .memory-map-overlay{position:absolute;inset:0;pointer-events:none}
 .memory-map-label{position:absolute;left:0;top:0;display:grid;justify-items:center;gap:1px;padding:6px 12px;border:0;border-radius:14px;background:transparent;color:#f4f0ff;cursor:pointer;transition:opacity .25s}
-.memory-map-label-name{font-family:var(--font-cormorant-garamond),Georgia,serif;font-style:italic;font-weight:500;font-size:22px;line-height:1.05;text-shadow:0 0 18px var(--glow),0 1px 2px rgba(0,0,0,.6)}
+.memory-map-label-name{font-family:inherit;font-weight:600;font-size:19px;line-height:1.05;text-shadow:0 0 18px var(--glow),0 1px 2px rgba(0,0,0,.6)}
 .memory-map-label-meta{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:rgba(222,214,255,.55)}
 .memory-map-label:hover .memory-map-label-name,.memory-map-label.is-hot .memory-map-label-name{text-shadow:0 0 26px var(--glow),0 0 8px var(--glow)}
 .memory-map-label:focus-visible,.memory-map-pointer:focus-visible,.memory-map-chip:focus-visible,.memory-map-card-close:focus-visible{outline:2px solid #b29cff;outline-offset:2px}
 .memory-map-pointer{position:absolute;left:0;top:0;display:grid;justify-items:center;gap:1px;padding:4px 8px;border:0;border-radius:14px;background:transparent;color:#f4f0ff;cursor:pointer;transition:opacity .25s}
 .memory-map-pointer-galaxy{width:44px;height:44px;margin-bottom:2px;transition:transform .3s}
-.memory-map-pointer-name{font-family:var(--font-cormorant-garamond),Georgia,serif;font-style:italic;font-weight:500;font-size:17px;line-height:1.05;white-space:nowrap;text-shadow:0 0 14px var(--glow),0 1px 2px rgba(0,0,0,.7)}
+.memory-map-pointer-name{font-family:inherit;font-weight:600;font-size:15px;line-height:1.05;white-space:nowrap;text-shadow:0 0 14px var(--glow),0 1px 2px rgba(0,0,0,.7)}
 .memory-map-pointer-meta{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;white-space:nowrap;color:rgba(222,214,255,.6)}
 .memory-map-pointer:hover .memory-map-pointer-galaxy{transform:scale(1.12)}
 .memory-map-bar{position:absolute;top:12px;left:12px;right:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;pointer-events:none}

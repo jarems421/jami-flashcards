@@ -3,7 +3,10 @@ import {
   assertImportedNotebookPageCount,
   buildUploadedNotebookPageMappings,
   getNotebookPdfCanvasPlacement,
+  getNotebookPdfDetailRender,
   getNotebookPdfRenderMetrics,
+  MAX_NOTEBOOK_PDF_DETAIL_PIXELS,
+  sameNotebookPdfDetailRender,
   resolveNotebookPageBackgroundFileId,
   shouldRerenderNotebookPdfCanvas,
   validateOwnedNotebookPdfStoragePath,
@@ -233,5 +236,107 @@ describe("notebook PDF helpers", () => {
         hostHeight: 600,
       })
     ).toEqual({ width: 100, height: 50, left: 0, top: 25 });
+  });
+});
+
+describe("the sharp slice over a zoomed PDF page", () => {
+  // An A4 page on a 2x iPad, zoomed to 3x: the sheet is about 2400 x 3400.
+  const page = { width: 595, height: 842 };
+  const zoomed = getNotebookPdfRenderMetrics({
+    pageWidth: page.width,
+    pageHeight: page.height,
+    hostWidth: 2400,
+    hostHeight: 3396,
+    pixelRatio: 2,
+  });
+  const screen = { left: 900, top: 1200, width: 834, height: 1112 };
+
+  it("is needed because the whole page falls below the screen's density when zoomed", () => {
+    expect(zoomed.pixelRatio).toBeLessThan(1);
+  });
+
+  it("draws the visible part at the screen's own density, within the budget", () => {
+    const detail = getNotebookPdfDetailRender({
+      window: screen,
+      cssWidth: zoomed.cssWidth,
+      cssHeight: zoomed.cssHeight,
+      basePixelRatio: zoomed.pixelRatio,
+      hostWidth: 2400,
+      hostHeight: 3396,
+      devicePixelRatio: 2,
+    });
+    expect(detail).not.toBeNull();
+    expect(detail!.pixelRatio).toBe(2);
+    expect(detail!.canvasWidth * detail!.canvasHeight).toBeLessThanOrEqual(MAX_NOTEBOOK_PDF_DETAIL_PIXELS);
+    // Its corner is where the window starts, and the drawing starts there too.
+    const pdfLeft = (2400 - zoomed.cssWidth) / 2;
+    expect(detail!.left).toBe(screen.left);
+    expect(detail!.offsetX).toBeCloseTo((screen.left - pdfLeft) * 2);
+    // Sized from its own pixels, so each lands on one screen pixel.
+    expect(detail!.width * detail!.pixelRatio).toBe(detail!.canvasWidth);
+  });
+
+  it("lowers its density rather than its area when the window is very large", () => {
+    const detail = getNotebookPdfDetailRender({
+      window: { left: 0, top: 0, width: 2400, height: 3396 },
+      cssWidth: zoomed.cssWidth,
+      cssHeight: zoomed.cssHeight,
+      basePixelRatio: 0.5,
+      hostWidth: 2400,
+      hostHeight: 3396,
+      devicePixelRatio: 3,
+    });
+    expect(detail!.pixelRatio).toBeLessThan(3);
+    expect(detail!.canvasWidth * detail!.canvasHeight).toBeLessThanOrEqual(MAX_NOTEBOOK_PDF_DETAIL_PIXELS + 4000);
+  });
+
+  it("is not drawn when the whole page is already sharp, or nothing is on screen", () => {
+    const fitted = getNotebookPdfRenderMetrics({
+      pageWidth: page.width,
+      pageHeight: page.height,
+      hostWidth: 800,
+      hostHeight: 1132,
+      pixelRatio: 2,
+    });
+    const common = {
+      cssWidth: fitted.cssWidth,
+      cssHeight: fitted.cssHeight,
+      basePixelRatio: fitted.pixelRatio,
+      hostWidth: 800,
+      hostHeight: 1132,
+      devicePixelRatio: 2,
+    };
+    expect(getNotebookPdfDetailRender({ ...common, window: { left: 0, top: 0, width: 800, height: 1132 } })).toBeNull();
+    expect(
+      getNotebookPdfDetailRender({ ...common, basePixelRatio: 1, window: null })
+    ).toBeNull();
+    // A window entirely in the margin beside a narrow PDF draws nothing.
+    expect(
+      getNotebookPdfDetailRender({
+        ...common,
+        basePixelRatio: 1,
+        cssWidth: 400,
+        window: { left: 0, top: 0, width: 150, height: 500 },
+      })
+    ).toBeNull();
+  });
+
+  it("treats the same slice as unchanged, so a small pan redraws nothing", () => {
+    const input = {
+      window: screen,
+      cssWidth: zoomed.cssWidth,
+      cssHeight: zoomed.cssHeight,
+      basePixelRatio: zoomed.pixelRatio,
+      hostWidth: 2400,
+      hostHeight: 3396,
+      devicePixelRatio: 2,
+    };
+    expect(sameNotebookPdfDetailRender(getNotebookPdfDetailRender(input), getNotebookPdfDetailRender(input))).toBe(true);
+    expect(
+      sameNotebookPdfDetailRender(
+        getNotebookPdfDetailRender(input),
+        getNotebookPdfDetailRender({ ...input, window: { ...screen, left: 964 } })
+      )
+    ).toBe(false);
   });
 });

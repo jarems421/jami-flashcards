@@ -2,6 +2,8 @@ import type {
   Notebook,
   NotebookFile,
   NotebookPage,
+  NotebookPageColor,
+  NotebookPageStyle,
 } from "@/lib/workspace/notebooks";
 import {
   assertImportedNotebookPageCount,
@@ -40,6 +42,12 @@ export async function importUploadedNotebook(input: {
   topicIds?: string[];
   color?: string;
   icon?: string;
+  /**
+   * The paper for pages the student adds later. The file's own pages are
+   * always plain white, so the PDF or image shows as it is.
+   */
+  pageColor?: NotebookPageColor;
+  pageStyle?: NotebookPageStyle;
   onProgress?: (progress: number) => void;
 }) {
   validateNotebookUploadFile(input.file);
@@ -57,8 +65,8 @@ export async function importUploadedNotebook(input: {
         topicIds: input.topicIds,
         color: input.color,
         icon: input.icon,
-        pageColor: IMPORTED_PAGE_COLOR,
-        pageStyle: IMPORTED_PAGE_STYLE,
+        pageColor: input.pageColor ?? IMPORTED_PAGE_COLOR,
+        pageStyle: input.pageStyle ?? IMPORTED_PAGE_STYLE,
       });
     } catch (error) {
       throw new Error(getImportStageMessage("Could not create the notebook", error));

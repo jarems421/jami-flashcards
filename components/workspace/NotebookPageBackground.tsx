@@ -10,6 +10,7 @@ import type {
   NotebookPageStyle,
 } from "@/lib/workspace/notebooks";
 import { getNotebookPageStyleBackground } from "@/lib/workspace/notebook-page-content";
+import type { NotebookPdfDetailWindow } from "@/lib/workspace/notebook-pdf";
 
 /**
  * How a page of each colour is painted, including the edge that separates it
@@ -60,6 +61,7 @@ export default function NotebookPageBackground({
   pdfLazy,
   pdfMaxPixelRatio,
   pdfFadeIn,
+  pdfDetailWindow,
   pdfRenderKey,
   pdfAriaHidden = true,
   pdfAriaLabel,
@@ -85,6 +87,8 @@ export default function NotebookPageBackground({
   pdfLazy?: boolean;
   pdfMaxPixelRatio?: number;
   pdfFadeIn?: boolean;
+  /** The part of a zoomed PDF on screen, drawn again at full sharpness. */
+  pdfDetailWindow?: NotebookPdfDetailWindow | null;
   pdfRenderKey?: string;
   pdfAriaHidden?: boolean;
   pdfAriaLabel?: string;
@@ -133,6 +137,7 @@ export default function NotebookPageBackground({
         lazy={pdfLazy}
         maxPixelRatio={pdfMaxPixelRatio}
         fadeIn={pdfFadeIn}
+        detailWindow={pdfDetailWindow}
         onRenderStateChange={pdfOnRenderStateChange}
         onCanvasReady={pdfOnCanvasReady}
         className="absolute inset-0"

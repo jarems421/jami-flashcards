@@ -58,6 +58,123 @@ export function isTutorStudyMaterialKind(value: unknown): value is TutorStudyMat
   return value === "flashcards" || value === "practice";
 }
 
+/**
+ * Tutor asking what to make, before it makes anything.
+ *
+ * "Make me flashcards" with nothing to go on used to be made at once, on
+ * whatever the request's own words were -- so a student who had not yet said
+ * what they were revising got a set on nothing in particular. Now Tutor asks
+ * first, the way a tutor would: which topic, what they are finding hard, how
+ * many. The answer carries this, and the chat shows it as a short card the
+ * student fills in; nothing is made until they do.
+ */
+export type TutorStudyMaterialSetup = {
+  /** What the student asked for, chosen first on the card. */
+  kind: TutorStudyMaterialKind;
+  /** What the card may make. Both, where practice is on: the student can switch. */
+  kinds: TutorStudyMaterialKind[];
+  /** Topics Tutor suggests, from the material and what the student finds hard. */
+  topics: string[];
+};
+
+export const TUTOR_STUDY_MATERIAL_MAX_TOPICS = 6;
+const MAX_TOPIC_LENGTH = 60;
+
+export function normalizeTutorStudyMaterialTopics(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const topics: string[] = [];
+  for (const entry of value) {
+    const topic = normalizeAssistantText(
+      typeof entry === "string" ? entry.replace(/\s+/g, " ") : "",
+      MAX_TOPIC_LENGTH
+    );
+    const key = topic.toLowerCase();
+    if (!topic || seen.has(key)) continue;
+    seen.add(key);
+    topics.push(topic);
+    if (topics.length >= TUTOR_STUDY_MATERIAL_MAX_TOPICS) break;
+  }
+  return topics;
+}
+
+export function normalizeTutorStudyMaterialSetup(value: unknown): TutorStudyMaterialSetup | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (!isTutorStudyMaterialKind(record.kind)) return undefined;
+  const kinds = normalizeTutorStudyMaterialOffers(record.kinds);
+  return {
+    kind: record.kind,
+    kinds: kinds.includes(record.kind) ? kinds : [record.kind, ...kinds],
+    topics: normalizeTutorStudyMaterialTopics(record.topics),
+  };
+}
+
+/** What the student chose on the card. */
+export type TutorStudyMaterialChoice = {
+  /** The topic or topics to make them on. */
+  focus: string;
+  /** What they said they are finding hard, if anything. */
+  struggle?: string;
+  count?: number;
+};
+
+export function normalizeTutorStudyMaterialChoice(
+  value: unknown,
+  kind: TutorStudyMaterialKind
+): TutorStudyMaterialChoice | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const focus = normalizeTutorStudyMaterialFocus(record.focus);
+  if (!focus) return undefined;
+  const struggle = normalizeTutorStudyMaterialFocus(record.struggle);
+  const maximum = kind === "flashcards" ? TUTOR_FLASHCARD_MAX_COUNT : TUTOR_PRACTICE_MAX_COUNT;
+  const count =
+    typeof record.count === "number" && Number.isFinite(record.count)
+      ? Math.max(kind === "flashcards" ? 2 : 1, Math.min(maximum, Math.round(record.count)))
+      : undefined;
+  return { focus, ...(struggle ? { struggle } : {}), ...(count ? { count } : {}) };
+}
+
+/**
+ * The focus a choice makes, in one line: the topic, then what the student
+ * finds hard about it, so what is made leans on the hard part.
+ */
+export function describeTutorStudyMaterialChoice(choice: TutorStudyMaterialChoice) {
+  return normalizeTutorStudyMaterialFocus(
+    choice.struggle ? `${choice.focus}, focusing on what they find hard: ${choice.struggle}` : choice.focus
+  );
+}
+
+/** Words that ask for material without saying what it is on. */
+const OPEN_REQUEST_FILLER = new Set(
+  (
+    "a an the some few couple any more me my i im i'm i'd id i'll ill we us you u your please pls can could would will " +
+    "want wanted need like love help get give make create generate write build produce draft prepare set " +
+    "do turn put let lets let's to on for from of about with and or of up just quick quickly new " +
+    "flashcard flashcards flash card cards revision cue practice practise question questions qs " +
+    "session sessions sets paper papers problem problems exam exams style test tests quiz " +
+    "study material materials notes stuff things something them one two three four five six seven " +
+    "eight nine ten eleven twelve fifteen twenty hey hi hello okay ok so now today maybe"
+  ).split(" ")
+);
+/** Pointing at what is on screen means the subject is already known. */
+const POINTING_PATTERN = /\b(?:this|that|these|those|it|above|here|page|card|chapter|lecture|topic)\b/i;
+
+/**
+ * Whether a request for material names nothing to make it on.
+ *
+ * "Make me flashcards", "can I have a practice set please": nothing but the
+ * asking. Anything else -- a topic, "on this", "from my enzymes notes" --
+ * means Tutor has something to go on and makes them straight away.
+ */
+export function isOpenTutorStudyMaterialRequest(message: string) {
+  const text = message.trim().toLowerCase();
+  if (!text || POINTING_PATTERN.test(text)) return false;
+  const words = text.replace(/[^a-z0-9'\s-]+/g, " ").split(/[\s-]+/).filter(Boolean);
+  return words.every((word) => OPEN_REQUEST_FILLER.has(word) || /^\d+$/.test(word));
+}
+
 const NUMBER_WORDS: Record<string, number> = {
   a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
   eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, twenty: 20,
@@ -281,7 +398,13 @@ export function normalizeTutorStudyMaterialResults(
 export function buildTutorStudyMaterialInstruction(input: {
   requested: TutorStudyMaterialKind | null;
   practiceAvailable: boolean;
+  /** The student asked without saying what on: Tutor asks before anything is made. */
+  askFirst?: boolean;
 }) {
+  if (input.requested && input.askFirst) {
+    const noun = input.requested === "flashcards" ? "flashcards" : "a practice set";
+    return `The student wants ${noun} but has not said what on. Do not make anything yet: set studyMaterial to "none". In one or two warm, short sentences, ask what they would like them to focus on, and offer to centre them on whatever they are finding hard. A card under your reply lets them pick a topic, say what they find hard and choose how many, so do not list options in the answer itself. Fill studyMaterialTopics with three to six short topic names they could choose, most useful first: what they are known to get wrong or find hard, then the main topics of their current material or conversation. Each is a few words naming a topic, never a sentence.`;
+  }
   const practiceLine = input.practiceAvailable
     ? "Jami can also make a marked practice set: exam-style questions the student answers and Jami marks, saved in Practice so they can start it now or later."
     : "Practice sets are not available in this deployment, so if the student asks for practice questions, ask them in the chat instead.";
