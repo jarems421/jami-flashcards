@@ -61,8 +61,8 @@ const EXCEPTIONS = new Map([
   ["components/workspace/NotebookInkEditor.tsx", 1301],
   // Removed on 2026-09-15: practice-paper generation was split into its stages.
   // Removed on 2026-10-06: the notebook page became a composition root over
-  // its controller hooks (3,638 -> 1,196 lines).
-  ["app/dashboard/study/page.tsx", 2160],
+  // its controller hooks (3,638 -> 1,196 lines), and the study page over its
+  // session, exercise and queue hooks (2,431 -> 687 lines).
 ]);
 
 function* sourceFiles(dir) {

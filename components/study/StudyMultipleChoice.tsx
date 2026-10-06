@@ -3,8 +3,16 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, StudyText } from "@/components/ui";
 import type { McqQuestion } from "@/lib/study/mcq";
+import type { StudyVariantReportReason } from "@/lib/study/study-modes";
 
 const OPTION_SHORTCUTS = ["1", "2", "3", "4"];
+
+const REPORT_OPTIONS: Array<[StudyVariantReportReason, string]> = [
+  ["multiple-correct", "More than one answer"],
+  ["wrong-grade", "Wrong answer marked"],
+  ["unrelated-options", "Unrelated options"],
+  ["other", "Something else"],
+];
 
 type StudyMultipleChoiceProps = {
   prompt: string;
@@ -16,7 +24,7 @@ type StudyMultipleChoiceProps = {
   busy?: boolean;
   initialChosenId?: string;
   onSelectionChange?: (id: string) => void;
-  onReport?: (reason: "multiple-correct" | "wrong-grade" | "poor-gap" | "unrelated-options" | "other") => void;
+  onReport?: (reason: StudyVariantReportReason) => void;
 };
 
 /**
@@ -165,12 +173,7 @@ export default function StudyMultipleChoice({
           <button type="button" onClick={() => setReportOpen((open) => !open)} aria-expanded={reportOpen} className="text-xs text-text-muted underline-offset-4 hover:text-text-secondary hover:underline">Something&apos;s wrong</button>
           {reportOpen ? (
             <div className="mx-auto mt-2 flex max-w-xl flex-wrap justify-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3" aria-label="What is wrong with this question?">
-              {[
-                ["multiple-correct", "More than one answer"],
-                ["wrong-grade", "Wrong answer marked"],
-                ["unrelated-options", "Unrelated options"],
-                ["other", "Something else"],
-              ].map(([reason, label]) => <button key={reason} type="button" onClick={() => onReport(reason as "multiple-correct" | "wrong-grade" | "unrelated-options" | "other")} className="rounded-full border border-[var(--color-border)] px-3 py-1.5 text-xs text-text-secondary hover:bg-[var(--color-glass-medium)]">{label}</button>)}
+              {REPORT_OPTIONS.map(([reason, label]) => <button key={reason} type="button" onClick={() => onReport(reason)} className="rounded-full border border-[var(--color-border)] px-3 py-1.5 text-xs text-text-secondary hover:bg-[var(--color-glass-medium)]">{label}</button>)}
             </div>
           ) : null}
         </div>

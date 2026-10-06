@@ -112,7 +112,7 @@ describe("the shared meter", () => {
      */
     const live = [
       "components/practice/ExamGenerationProgress.tsx",
-      "app/dashboard/study/page.tsx",
+      "components/study/StudyCardStage.tsx",
     ];
     for (const file of live) {
       const source = readFileSync(join(root, file), "utf8");

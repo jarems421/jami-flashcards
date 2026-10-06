@@ -245,6 +245,23 @@ export function getRemainingFreshRequiredCards(
   );
 }
 
+/** What is left of today's Daily Review, split the way Learn offers it. */
+export function getRemainingDailyReview(state: DailyReviewState | null, cards: Card[]) {
+  const carryover = getRemainingCarryoverRequiredCards(state, cards);
+  const fresh = getRemainingFreshRequiredCards(state, cards);
+  const completedOptional = new Set(state?.completedOptionalCardIds ?? []);
+  const optional = state
+    ? getCardsByIds(cards, state.optionalCardIds).filter((card) => !completedOptional.has(card.id))
+    : [];
+  return { carryover, fresh, required: [...carryover, ...fresh], optional };
+}
+
+/** Whether a session held nothing but cards carried over from an earlier day. */
+export function isCarryoverOnly(state: DailyReviewState | null, sessionCards: Card[]) {
+  const carryover = new Set(state?.carryoverRequiredCardIds ?? []);
+  return sessionCards.length > 0 && sessionCards.every((card) => carryover.has(card.id));
+}
+
 export function buildDailyReviewQueues(cards: Card[], now: number, carryoverCardIds: string[] = []) {
   const eligibleCards = cards.filter((card) => isCardEligibleForDailyReview(card, now));
   const { neverReviewedCards, weakCards, mediumCards, easyCards } = sortCardsForDailyReview(eligibleCards, now);

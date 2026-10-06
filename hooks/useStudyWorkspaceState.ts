@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import type { StarReward } from "@/components/constellation/StarRewardOverlay";
-import { getMsUntilNextStudyBoundary } from "@/lib/study/day";
 import type { AnswerFeedback } from "@/lib/study/study-feedback";
 import type { Card } from "@/lib/study/cards";
 import type { CardRating } from "@/lib/study/scheduler";
@@ -102,15 +101,11 @@ export function useStudySessionState() {
   const [answerFeedback, setAnswerFeedback] =
     useState<AnswerFeedback | null>(null);
   const [starReward, setStarReward] = useState<StarReward | null>(null);
-  const [countdownMs, setCountdownMs] = useState(
-    getMsUntilNextStudyBoundary()
-  );
   const [offlineMode, setOfflineMode] = useState(false);
   const [offlineSnapshotAt, setOfflineSnapshotAt] = useState<number | null>(
     null
   );
   const [pendingOfflineReviews, setPendingOfflineReviews] = useState(0);
-  const [sessionRestoreReady, setSessionRestoreReady] = useState(false);
 
   return {
     sessionKind,
@@ -131,15 +126,11 @@ export function useStudySessionState() {
     setAnswerFeedback,
     starReward,
     setStarReward,
-    countdownMs,
-    setCountdownMs,
     offlineMode,
     setOfflineMode,
     offlineSnapshotAt,
     setOfflineSnapshotAt,
     pendingOfflineReviews,
     setPendingOfflineReviews,
-    sessionRestoreReady,
-    setSessionRestoreReady,
   };
 }

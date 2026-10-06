@@ -14,6 +14,7 @@ import {
   buildDailyReviewQueues,
   getDailyReviewBucket,
   getRemainingCarryoverRequiredCards,
+  getRemainingDailyReview,
   getRemainingFreshRequiredCards,
   getUnfinishedRequiredCardIds,
   shouldPauseDailyReviewStateRefresh,
@@ -492,6 +493,40 @@ describe("daily review memory risk", () => {
     expect(getRemainingFreshRequiredCards(state, cards).map((card) => card.id)).toEqual([
       "fresh",
     ]);
+  });
+
+  it("gathers what is left of the day, easy extras included", () => {
+    const cards = [
+      createReviewCard("carryover"),
+      createReviewCard("fresh"),
+      createReviewCard("extra"),
+      createReviewCard("done-extra"),
+    ];
+    const state = {
+      id: "dailyReview",
+      studyDayKey: "2026-01-03",
+      generatedAt: 1,
+      requiredCardIds: ["carryover", "fresh"],
+      optionalCardIds: ["extra", "done-extra"],
+      carryoverRequiredCardIds: ["carryover"],
+      completedRequiredCardIds: [],
+      completedOptionalCardIds: ["done-extra"],
+      parkedRequiredCardIds: [],
+      requiredRetryCounts: {},
+      updatedAt: 1,
+    };
+
+    const remaining = getRemainingDailyReview(state, cards);
+    expect(remaining.carryover.map((card) => card.id)).toEqual(["carryover"]);
+    expect(remaining.fresh.map((card) => card.id)).toEqual(["fresh"]);
+    expect(remaining.required.map((card) => card.id)).toEqual(["carryover", "fresh"]);
+    expect(remaining.optional.map((card) => card.id)).toEqual(["extra"]);
+    expect(getRemainingDailyReview(null, cards)).toEqual({
+      carryover: [],
+      fresh: [],
+      required: [],
+      optional: [],
+    });
   });
 
   it("pauses daily review rebuilding while a daily session is still active", () => {

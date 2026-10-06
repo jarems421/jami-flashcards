@@ -40,6 +40,21 @@ export function isStudyMode(value: unknown): value is StudyMode {
   );
 }
 
+/** Why a student reported a question Jami wrote for one of their cards. */
+export const STUDY_VARIANT_REPORT_REASONS = [
+  "multiple-correct",
+  "wrong-grade",
+  "poor-gap",
+  "unrelated-options",
+  "other",
+] as const;
+
+export type StudyVariantReportReason = (typeof STUDY_VARIANT_REPORT_REASONS)[number];
+
+export function isStudyVariantReportReason(value: unknown): value is StudyVariantReportReason {
+  return STUDY_VARIANT_REPORT_REASONS.some((reason) => reason === value);
+}
+
 /**
  * Optional per-card overrides. Every field is optional and nothing is written
  * to existing cards, so this needs no migration: a card without it is marked
@@ -111,6 +126,9 @@ export type ExerciseVerdict =
   | "partial"
   | "incorrect"
   | "needs-self-grade";
+
+/** How one showing of a card ended, as a session's history records it. */
+export type StudyAnswerOutcome = "correct" | "partial" | "incorrect" | "uncertain";
 
 export type ResolvedExercise = {
   presentationId?: string;

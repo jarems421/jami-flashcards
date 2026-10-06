@@ -1,177 +1,112 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { loadPresentationHistory, recordPresentation } from "@/services/study/presentation-history";
-import { keepCardPicturesForOffline } from "@/services/study/card-images";
-import { readPresentationViewState } from "@/lib/study/presentation-state";
+import { useCallback, useEffect, useMemo } from "react";
+import StarRewardOverlay from "@/components/constellation/StarRewardOverlay";
+import AppPage from "@/components/layout/AppPage";
 import { useUser } from "@/components/providers/UserProvider";
-import { useFeedback } from "@/hooks/useFeedback";
-import { toggleIdSelection } from "@/lib/app/multi-select";
-import { ensureConstellationSetup } from "@/services/constellation/constellations";
-import { buildDailyReviewQueues, DAILY_REVIEW_STATE_DOC_ID, getCardsByIds, getRemainingCarryoverRequiredCards, getRemainingFreshRequiredCards, sortCardsByStudyPriority } from "@/lib/study/daily-review";
-import { getMsUntilNextStudyBoundary, getStudyDayKey } from "@/lib/study/day";
-import { buildCustomReviewCards, countCardsByDeck, countCardsByTopic, EMPTY_FOCUSED_REVIEW_RECENTS, getFocusedReviewRecentsKey, mergeRecentValues, nameById, normalizeFocusedReviewRecents, parseIdsParam, resolveRecents, searchByName } from "@/lib/study/focused-review";
-import { formatResetCountdown, getSessionLabel, RATING_LABELS } from "@/lib/study/study-feedback";
-import InlineStudyFeedback from "@/components/study/InlineStudyFeedback";
-import StudyFlashcard from "@/components/study/StudyFlashcard";
-import StudyRatingControls from "@/components/study/StudyRatingControls";
-import StudyExerciseStage from "@/components/study/StudyExerciseStage";
-import StudyModePicker from "@/components/study/StudyModePicker";
-import StudySessionPreparing from "@/components/study/StudySessionPreparing";
 import FocusedReviewBuilder from "@/components/study/FocusedReviewBuilder";
-import StudyHomeStat from "@/components/study/StudyHomeStat";
-import { isSuccessfulRating, type CardRating } from "@/lib/study/scheduler";
-import { getCardListTitle, getNextDueCard, type Card } from "@/lib/study/cards";
-import { isFeatureEnabled } from "@/lib/app/feature-flags";
-import { DEFAULT_STUDY_MODE_POLICY, readStudyModePolicy, saveStudyModePolicy } from "@/lib/study/study-mode-preference";
-import { getCardContentHash, STUDY_MODE_LABELS, type StudyMode, type StudyModePolicy } from "@/lib/study/study-modes";
-import {
-  applyStudySessionShape,
-  readStudySessionShape,
-} from "@/lib/study/session-spec-queue";
-import { noteStudyActionOutcomeById } from "@/services/learning/study-action-events";
-import { noteMissionCompleted } from "@/lib/learning/mission-handoff";
 import MissionHandback from "@/components/study/MissionHandback";
-import { countedDraftKey, presentationDraftKey, resolvePresentationId } from "@/lib/study/presentation-identity";
-import { resolveCurrentExercise, type ExercisePin } from "@/lib/study/exercise-resolution";
-import { canCarryModeEventually, getModeEligibility } from "@/lib/study/mode-eligibility";
-import { buildSessionExerciseSnapshots } from "@/lib/study/session-exercises";
-import { buildSimpleStudyQueue } from "@/lib/study/simple-study";
-import { getOfflineQueuedReviews, getStuckOfflineReviews, loadOfflineStudySnapshot, saveOfflineStudySnapshot } from "@/lib/study/offline-study";
+import StudyCardStage, { StudyQuestionWriting } from "@/components/study/StudyCardStage";
+import StudyDailyReviewCard, { type DailyRequiredSessionScope } from "@/components/study/StudyDailyReviewCard";
+import StudyExerciseStage from "@/components/study/StudyExerciseStage";
+import StudyFlashcard from "@/components/study/StudyFlashcard";
+import StudyModePicker from "@/components/study/StudyModePicker";
+import StudyOfflineBanner from "@/components/study/StudyOfflineBanner";
+import StudyOtherWays from "@/components/study/StudyOtherWays";
+import StudySessionComplete from "@/components/study/StudySessionComplete";
+import StudySessionEmpty from "@/components/study/StudySessionEmpty";
+import StudySessionPreparing from "@/components/study/StudySessionPreparing";
+import { ButtonLink, EmptyState, FeedbackBanner, Skeleton } from "@/components/ui";
+import { useFeedback } from "@/hooks/useFeedback";
+import { useFocusedReview } from "@/hooks/useFocusedReview";
+import { useSessionStreak } from "@/hooks/useSessionStreak";
+import { useStudyActionOutcome } from "@/hooks/useStudyActionOutcome";
+import { useStudyAssets } from "@/hooks/useStudyAssets";
+import { useStudyBackgroundSync } from "@/hooks/useStudyBackgroundSync";
+import { useStudyExerciseController } from "@/hooks/useStudyExerciseController";
+import { useStudyExercises } from "@/hooks/useStudyExercises";
+import { useStudyKeyboardShortcuts } from "@/hooks/useStudyKeyboardShortcuts";
+import { useStudyModePolicy } from "@/hooks/useStudyModePolicy";
+import { useStudyPreparation } from "@/hooks/useStudyPreparation";
+import { useStudyQuestionWait } from "@/hooks/useStudyQuestionWait";
+import { useStudyQueue } from "@/hooks/useStudyQueue";
+import { useStudyRequest } from "@/hooks/useStudyRequest";
+import { useStudySessionPersistence } from "@/hooks/useStudySessionPersistence";
+import { useStudySessionRecord } from "@/hooks/useStudySessionRecord";
+import { useStudySessionRestore, type ResumedStudySession } from "@/hooks/useStudySessionRestore";
+import { useStudySessionState } from "@/hooks/useStudyWorkspaceState";
+import { isFeatureEnabled } from "@/lib/app/feature-flags";
+import { getNextDueCard, type Card } from "@/lib/study/cards";
+import { getRemainingDailyReview, isCarryoverOnly } from "@/lib/study/daily-review";
+import { getDeckColorPreset } from "@/lib/study/deck-style";
+import { canCarryModeEventually } from "@/lib/study/mode-eligibility";
+import { countModeAnswers } from "@/lib/study/mode-results";
 import {
   buildPersistedStudySession,
-  canRestorePersistedSession,
   clearClosedStudySessionTombstone,
-  clearPersistedStudySession,
-  closePersistedStudySession,
   createEmptySessionStats,
-  hasClosedStudySessionTombstone,
-  hydratePersistedSessionCards,
-  isIncomingSessionNewer,
-  loadClosedStudySessionTombstone,
-  loadPersistedStudySession,
-  markClosedStudySessionTombstoneSynced,
-  saveClosedStudySessionTombstone,
   savePersistedStudySession,
-  type PersistedStudySession,
-  type PersistedStudyExercise,
-  type StudyModeResults,
   type StudySessionKind,
 } from "@/lib/study/session";
-import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
-import { loadUserCards } from "@/services/study/cards";
-import { syncOfflineStudyReviews } from "@/services/study/offline";
-import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActiveStudySession } from "@/services/study/session";
-import { loadStudyActivity } from "@/services/study/activity";
-import { checkTypedAnswer, loadStudyAssets, reportStudyVariant, retireStudyAsset, cardWithStudyAsset as askedCard } from "@/services/study/study-assets";
-import type { StudyAsset } from "@/lib/ai/study-assets";
-import { computeStudyStreak } from "@/lib/study/activity";
-import { getDecks } from "@/services/study/decks";
-import { getActiveTopics } from "@/services/study/topics";
-import { getTopicNameKey, type Topic } from "@/lib/material/topics";
-import { getDeckColorPreset } from "@/lib/study/deck-style";
-import AppPage from "@/components/layout/AppPage";
-import StarRewardOverlay from "@/components/constellation/StarRewardOverlay";
-import { useFocusedReviewState, useStudyDataState, useStudySessionState } from "@/hooks/useStudyWorkspaceState";
-import { useStudyExerciseController } from "@/hooks/useStudyExerciseController";
-import { useStudyPreparation } from "@/hooks/useStudyPreparation";
-import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
-import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
-import {
-  Button, Card as SurfaceCard, EmptyState, FeedbackBanner,
-  JamiTutorIcon, ProgressBar, Skeleton,
-} from "@/components/ui";
-
-type SessionKind = StudySessionKind;
-
-const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
-type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
-
-/** How often a session retries a send that did not land, on its own. */
-const OFFLINE_SYNC_RETRY_MS = 15_000;
-/** The longest a student waits on one card's question before it is shown as a flashcard. */
-const QUESTION_WAIT_LIMIT_MS = 20_000;
+import { buildSessionExerciseSnapshots } from "@/lib/study/session-exercises";
+import { chooseStudyNextStep } from "@/lib/study/session-next-step";
+import { buildSimpleStudyQueue } from "@/lib/study/simple-study";
+import { DEFAULT_STUDY_MODE_POLICY } from "@/lib/study/study-mode-preference";
+import { STUDY_MODE_LABELS } from "@/lib/study/study-modes";
+import { loadPresentationHistory } from "@/services/study/presentation-history";
+import { saveRemoteActiveStudySession } from "@/services/study/session";
+import { cardWithStudyAsset as askedCard } from "@/services/study/study-assets";
 
 export default function StudyPage() {
-  const searchParams = useSearchParams();
   const { user } = useUser();
-  const rawMode = searchParams.get("mode");
-  const rawDecksParam = searchParams.get("decks");
-  const rawTopicsParam = searchParams.get("topics");
-  const rawTagsParam = searchParams.get("tags");
-  /*
-   * What the Learning Engine asked this session to do, when it opened it.
-   *
-   * Null for a student who opened Learn themselves, and the queue is then the
-   * ordinary scheduler one -- they are not carrying out a recommendation, so
-   * nothing should be narrowed or cut short on their behalf.
-   */
-  const sessionShape = useMemo(
-    () => readStudySessionShape(searchParams.get("focus"), searchParams.get("focusCount")),
-    [searchParams]
-  );
-  const requestedMode =
-    rawMode === "custom" || rawMode === "daily" ? rawMode : null;
-  const requestedDeckIds = useMemo(() => parseIdsParam(rawDecksParam), [rawDecksParam]);
-  const requestedTopicIds = useMemo(() => parseIdsParam(rawTopicsParam), [rawTopicsParam]);
-  const requestedLegacyTags = useMemo(() => parseIdsParam(rawTagsParam), [rawTagsParam]);
-  const hasIncomingFocusedIntent =
-    requestedMode === "custom" ||
-    requestedDeckIds.length > 0 ||
-    requestedTopicIds.length > 0 ||
-    requestedLegacyTags.length > 0;
-  const {
-    decks, setDecks, cards, setCards, topics, setTopics,
-    dailyReviewState, setDailyReviewState, loaded, setLoaded,
-  } = useStudyDataState();
-  const {
-    selectedDeckIds, setSelectedDeckIds, selectedTopicIds, setSelectedTopicIds,
-    deckSearch, setDeckSearch, topicSearch, setTopicSearch,
-    focusedReviewOpen, setFocusedReviewOpen,
-    focusedFilterKind, setFocusedFilterKind,
-    focusedReviewRecents, setFocusedReviewRecents,
-  } = useFocusedReviewState({
-    requestedDeckIds,
-    requestedTopicIds,
-    hasRequestedLegacyTags: requestedLegacyTags.length > 0,
-    initiallyOpen: hasIncomingFocusedIntent,
-  });
+  const userId = user.uid;
+  const request = useStudyRequest();
+  const fromActionId = request.fromActionId;
+  const { feedback, success, showError, clear: clearFeedback } = useFeedback();
+  const studyModesEnabled = isFeatureEnabled("enableStudyModes");
   const {
     sessionKind, setSessionKind, sessionCards, setSessionCards,
     index, setIndex, flipped, setFlipped,
     jamiAssistantOpen, setJamiAssistantOpen, savingRating, setSavingRating,
     sessionStats, setSessionStats, answerFeedback, setAnswerFeedback,
-    starReward, setStarReward, countdownMs, setCountdownMs,
+    starReward, setStarReward,
     offlineMode, setOfflineMode, offlineSnapshotAt, setOfflineSnapshotAt,
     pendingOfflineReviews, setPendingOfflineReviews,
-    sessionRestoreReady, setSessionRestoreReady,
   } = useStudySessionState();
-  const { feedback, success, showError, clear: clearFeedback } = useFeedback();
-  const studyModesEnabled = isFeatureEnabled("enableStudyModes");
-  const [modePolicy, setModePolicyState] = useState<StudyModePolicy>(
-    DEFAULT_STUDY_MODE_POLICY
-  );
-  const setModePolicy = useCallback(
-    (next: StudyModePolicy) => {
-      setModePolicyState(next);
-      saveStudyModePolicy(user.uid, next);
-    },
-    [user.uid]
-  );
+  const record = useStudySessionRecord();
+  const { identity, adopt: adoptSession, forget: forgetSession, noteCurrent, currentRevision, hasOpenSession } = record;
+  const { policy: modePolicy, choose: setModePolicy, adopt: adoptModePolicy } = useStudyModePolicy(userId);
 
-  useEffect(() => {
-    setModePolicyState(readStudyModePolicy(user.uid));
-  }, [user.uid]);
-  const [modeResults, setModeResults] = useState<StudyModeResults>({});
-  const [recentModes, setRecentModes] = useState<StudyMode[]>([]);
-  const [restoredExercises, setRestoredExercises] = useState<PersistedStudyExercise[]>([]);
-  const [reportedPresentations, setReportedPresentations] = useState<Set<string>>(() => new Set());
-  const [draftResponses, setDraftResponses] = useState<Record<string, string | Record<string, string>>>({});
-  const [variantHistory, setVariantHistory] = useState<Record<string, string[]>>({});
-  const [outcomeHistory, setOutcomeHistory] = useState<Record<string, Array<"correct" | "partial" | "incorrect" | "uncertain">>>({});
-  const [studyAssets, setStudyAssets] = useState<Record<string, StudyAsset>>({});
+  const { decks, cards, setCards, topics, dailyReviewState, setDailyReviewState, loaded, loadAll } = useStudyQueue({
+    userId,
+    hasOpenSession,
+    setOfflineMode,
+    setOfflineSnapshotAt,
+    setPendingOfflineReviews,
+    clearFeedback,
+    showError,
+    success,
+  });
+  const focused = useFocusedReview({
+    userId,
+    request,
+    cards,
+    decks,
+    topics,
+    sessionActive: sessionKind !== null,
+    clearFeedback,
+  });
+  const { refreshPendingOfflineReviews, syncPendingOfflineReviews } = useStudyBackgroundSync({
+    userId,
+    loadAll,
+    hasOpenSession,
+    setOfflineMode,
+    setPendingOfflineReviews,
+  });
+  const { assets: studyAssets, mergeAssets, retireAsset } = useStudyAssets({
+    enabled: studyModesEnabled,
+    sessionCards,
+  });
   const {
     progress: preparation,
     clearProgress: clearPreparation,
@@ -180,1185 +115,35 @@ export default function StudyPage() {
     prepareSessionAssets,
     prepareRemainingAssets,
     prepareCardNow,
-  } = useStudyPreparation({
-    enabled: studyModesEnabled,
-    modePolicy,
-    onAssetsReady: useCallback(
-      (ready: Record<string, StudyAsset>) =>
-        setStudyAssets((prev) => ({ ...prev, ...ready })),
-      []
-    ),
-  });
-  const sessionSeedRef = useRef(0);
-  /** Cards already sent for last-moment preparation, so it is asked for once. */
-  const justInTimePreparedRef = useRef(new Set<string>());
-  /**
-   * Showings of a card, as `cardId:presentation`, that a pinned session is
-   * asking as an ordinary flashcard: its question could not be made in time.
-   * Kept for the showing, so options that land while the student is looking at
-   * the card do not swap the question out from under them.
-   */
-  const [flashcardFallbackKeys, setFlashcardFallbackKeys] = useState<Set<string>>(() => new Set());
-  const handleStarRewardDone = useCallback(
-    () => setStarReward(null),
-    [setStarReward]
-  );
-  const autoStartHandledRef = useRef(false);
-  const sessionRestoreHandledRef = useRef(false);
-  const sessionStartedAtRef = useRef<number | null>(null);
-  const sessionStudyDayKeyRef = useRef<string | null>(null);
-  const sessionIdRef = useRef<string | null>(null);
-  const sessionRevisionRef = useRef(0);
-  const latestPersistedSessionRef = useRef<PersistedStudySession | null>(null);
-  const loadRequestIdRef = useRef(0);
-  const lastForegroundRefreshAtRef = useRef(0);
-  const remoteCloseKeyRef = useRef<string | null>(null);
-  const focusedReviewToggleRef = useRef<HTMLButtonElement>(null);
-  const pinnedExerciseRef = useRef<ExercisePin | null>(null);
-  const countedPresentationsRef = useRef(new Set<string>());
-
-  useEffect(() => {
-    setSelectedDeckIds(requestedDeckIds);
-    setSelectedTopicIds(requestedTopicIds);
-    setFocusedReviewOpen(hasIncomingFocusedIntent);
-    setFocusedFilterKind(
-      (requestedTopicIds.length > 0 || requestedLegacyTags.length > 0) &&
-        requestedDeckIds.length === 0
-        ? "topics"
-        : "decks"
-    );
-    setSessionKind(null);
-    setSessionCards([]);
-    setIndex(0);
-    setFlipped(false);
-    setAnswerFeedback(null);
-    setSessionStats(createEmptySessionStats());
-    setRestoredExercises([]);
-    setRecentModes([]);
-    setReportedPresentations(new Set());
-    setDraftResponses({});
-    setVariantHistory({});
-    setOutcomeHistory({});
-    autoStartHandledRef.current = false;
-    sessionRestoreHandledRef.current = false;
-    sessionStartedAtRef.current = null;
-    sessionStudyDayKeyRef.current = null;
-    sessionIdRef.current = null;
-    sessionRevisionRef.current = 0;
-    latestPersistedSessionRef.current = null;
-    remoteCloseKeyRef.current = null;
-    setSessionRestoreReady(false);
-  }, [
-    hasIncomingFocusedIntent, requestedDeckIds, requestedLegacyTags,
-    requestedMode, requestedTopicIds, setAnswerFeedback, setFlipped,
-    setFocusedFilterKind, setFocusedReviewOpen, setIndex, setSelectedDeckIds,
-    setSelectedTopicIds, setSessionCards, setSessionKind,
-    setSessionRestoreReady, setSessionStats,
-  ]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    try {
-      const stored = window.localStorage.getItem(getFocusedReviewRecentsKey(user.uid));
-      setFocusedReviewRecents(stored ? normalizeFocusedReviewRecents(JSON.parse(stored)) : EMPTY_FOCUSED_REVIEW_RECENTS);
-    } catch (error) {
-      console.warn("Failed to load focused review recents.", error);
-      setFocusedReviewRecents(EMPTY_FOCUSED_REVIEW_RECENTS);
-    }
-  }, [setFocusedReviewRecents, user.uid]);
-
-  const pushFocusedReviewRecents = useCallback(
-    (deckIds: string[], topicIds: string[]) => {
-      setFocusedReviewRecents((current) => {
-        const next = {
-          deckIds: mergeRecentValues(current.deckIds, deckIds),
-          topicIds: mergeRecentValues(current.topicIds, topicIds),
-        };
-
-        if (typeof window !== "undefined") {
-          try {
-            window.localStorage.setItem(getFocusedReviewRecentsKey(user.uid), JSON.stringify(next));
-          } catch (error) {
-            console.warn("Failed to save focused review recents.", error);
-          }
-        }
-
-        return next;
-      });
-    },
-    [setFocusedReviewRecents, user.uid]
-  );
-
-  useEffect(() => {
-    const interval = setInterval(
-      () => setCountdownMs(getMsUntilNextStudyBoundary()),
-      30_000
-    );
-    return () => clearInterval(interval);
-  }, [setCountdownMs]);
+  } = useStudyPreparation({ enabled: studyModesEnabled, modePolicy, onAssetsReady: mergeAssets });
 
   useEffect(() => {
     if (!answerFeedback) return;
-    const timeout = window.setTimeout(
-      () => setAnswerFeedback(null),
-      answerFeedback.holdMs ?? 2400
-    );
+    const timeout = window.setTimeout(() => setAnswerFeedback(null), answerFeedback.holdMs ?? 2400);
     return () => window.clearTimeout(timeout);
   }, [answerFeedback, setAnswerFeedback]);
 
-  const loadAll = useCallback(async (options: { keepSessionMounted?: boolean } = {}) => {
-    const requestId = loadRequestIdRef.current + 1;
-    loadRequestIdRef.current = requestId;
-    if (!options.keepSessionMounted) {
-      setLoaded(false);
-    }
-    clearFeedback();
-    try {
-      const setupResults = await Promise.allSettled([
-        ensureStudyStateSetup(user.uid),
-        ensureConstellationSetup(user.uid),
-      ]);
-
-      setupResults.forEach((result, index) => {
-        if (result.status === "rejected") {
-          const label = index === 0 ? "study state" : "constellation";
-          console.warn(`Non-blocking ${label} setup failed.`, result.reason);
-        }
-      });
-
-      const now = Date.now();
-      const activeSessionPromise = loadRemoteActiveStudySession(user.uid, getStudyDayKey(now), now).catch((error) => {
-        console.warn("Failed to load remote active study session before daily review refresh.", error);
-        return { session: null, foundRemoteSession: false };
-      });
-      const [nextDecks, nextCards, nextTopics, activeSessionResult] = await Promise.all([
-        getDecks(user.uid),
-        loadUserCards(user.uid, { force: true }),
-        getActiveTopics(user.uid).catch((error) => {
-          console.error("Failed to load Topics for Learn filters.", error);
-          showError(
-            "Topics are temporarily unavailable. Your card session is still usable."
-          );
-          return [] as Topic[];
-        }),
-        activeSessionPromise,
-      ]);
-      const sortedCards = sortCardsByStudyPriority(nextCards, now);
-      const nextDailyReviewState = await ensureDailyReviewState(user.uid, sortedCards, now, {
-        activeSession: activeSessionResult.session,
-      });
-      if (requestId !== loadRequestIdRef.current) {
-        return;
-      }
-      setDecks(nextDecks);
-      setCards(sortedCards);
-      setTopics(nextTopics);
-      setDailyReviewState(nextDailyReviewState);
-      saveOfflineStudySnapshot(user.uid, { cards: sortedCards, decks: nextDecks });
-      // Their pictures too, once the page has settled: diagram cards are no use offline without them.
-      window.setTimeout(() => keepCardPicturesForOffline(sortedCards), 4_000);
-      setOfflineMode(false);
-      setOfflineSnapshotAt(Date.now());
-    } catch (error) {
-      console.error(error);
-      if (requestId !== loadRequestIdRef.current) {
-        return;
-      }
-
-      if (options.keepSessionMounted && latestPersistedSessionRef.current) {
-        setOfflineMode(true);
-        setPendingOfflineReviews(getStuckOfflineReviews(user.uid).length);
-        success("Still using your current study session. New data will refresh when the connection settles.");
-        return;
-      }
-
-      const snapshot = loadOfflineStudySnapshot(user.uid);
-
-      if (snapshot) {
-        const now = Date.now();
-        const sortedCards = sortCardsByStudyPriority(snapshot.cards, now);
-        const queues = buildDailyReviewQueues(sortedCards, now);
-        setDecks(snapshot.decks);
-        setCards(sortedCards);
-        setTopics([]);
-        setDailyReviewState({
-          id: DAILY_REVIEW_STATE_DOC_ID,
-          studyDayKey: getStudyDayKey(now),
-          generatedAt: snapshot.savedAt,
-          requiredCardIds: queues.requiredCards.map((card) => card.id),
-          optionalCardIds: queues.optionalCards.map((card) => card.id),
-          carryoverRequiredCardIds: queues.carryoverRequiredCards.map((card) => card.id),
-          completedRequiredCardIds: [],
-          completedOptionalCardIds: [],
-          parkedRequiredCardIds: [],
-          requiredRetryCounts: {},
-          updatedAt: snapshot.savedAt,
-        });
-        setOfflineMode(true);
-        setOfflineSnapshotAt(snapshot.savedAt);
-        success("Using your offline study cache. Answers will sync when you are back online.");
-      } else {
-        setDecks([]);
-        setCards([]);
-        setTopics([]);
-        setDailyReviewState(null);
-        showError("Failed to load your study queue.");
-      }
-    } finally {
-      if (requestId === loadRequestIdRef.current) {
-        setLoaded(true);
-      }
-    }
-  }, [
-    clearFeedback,
-    setCards,
-    setDailyReviewState,
-    setDecks,
-    setLoaded,
-    setOfflineMode,
-    setOfflineSnapshotAt,
-    setPendingOfflineReviews,
-    setTopics,
-    showError,
-    success,
-    user.uid,
-  ]);
-
-  useEffect(() => {
-    void loadAll();
-  }, [loadAll, setOfflineMode, setPendingOfflineReviews, user.uid]);
-
-  useEffect(() => {
-    if (topics.length === 0 || requestedLegacyTags.length === 0) return;
-    const topicIds = requestedLegacyTags
-      .map(
-        (legacyTag) =>
-          topics.find(
-            (topic) => getTopicNameKey(topic.name) === getTopicNameKey(legacyTag)
-          )?.id
-      )
-      .filter((topicId): topicId is string => Boolean(topicId));
-    const nextTopicIds = Array.from(new Set([...requestedTopicIds, ...topicIds]));
-    setSelectedTopicIds(nextTopicIds);
-
-    const params = new URLSearchParams(window.location.search);
-    params.delete("tags");
-    if (nextTopicIds.length > 0) params.set("topics", nextTopicIds.join(","));
-    const nextSearch = params.toString();
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`
-    );
-  }, [
-    requestedLegacyTags,
-    requestedTopicIds,
-    setSelectedTopicIds,
-    topics,
-  ]);
-
-  useEffect(() => {
-    if (!focusedReviewRecents.legacyTags?.length || topics.length === 0) return;
-    const migratedTopicIds = focusedReviewRecents.legacyTags
-      .map(
-        (legacyTag) =>
-          topics.find(
-            (topic) => getTopicNameKey(topic.name) === getTopicNameKey(legacyTag)
-          )?.id
-      )
-      .filter((topicId): topicId is string => Boolean(topicId));
-    const next = {
-      deckIds: focusedReviewRecents.deckIds,
-      topicIds: mergeRecentValues(
-        focusedReviewRecents.topicIds,
-        migratedTopicIds
-      ),
-    };
-    setFocusedReviewRecents(next);
-    try {
-      window.localStorage.setItem(
-        getFocusedReviewRecentsKey(user.uid),
-        JSON.stringify(next)
-      );
-    } catch (error) {
-      console.warn("Failed to migrate focused review recents.", error);
-    }
-  }, [focusedReviewRecents, setFocusedReviewRecents, topics, user.uid]);
-
-  useEffect(() => {
-    const retryClosedSessionSync = () => {
-      const tombstone = loadClosedStudySessionTombstone(user.uid);
-      if (!tombstone?.retryRemoteClose) {
-        return;
-      }
-
-      void closeRemoteStudySession(
-        user.uid,
-        tombstone.session,
-        tombstone.status,
-        tombstone.reason
-      )
-        .then((saved) => {
-          if (saved) {
-            markClosedStudySessionTombstoneSynced(user.uid);
-          }
-        })
-        .catch((error) => {
-          console.warn("Failed to retry closed study session sync.", error);
-        });
-    };
-
-    const handleFocus = () => {
-      if (document.visibilityState === "hidden") {
-        return;
-      }
-
-      setOfflineMode(typeof navigator !== "undefined" ? !navigator.onLine : false);
-      setPendingOfflineReviews(getStuckOfflineReviews(user.uid).length);
-      retryClosedSessionSync();
-
-      if (latestPersistedSessionRef.current) {
-        return;
-      }
-
-      const now = Date.now();
-      if (now - lastForegroundRefreshAtRef.current < STUDY_FOREGROUND_REFRESH_THROTTLE_MS) {
-        return;
-      }
-
-      lastForegroundRefreshAtRef.current = now;
-      void loadAll({ keepSessionMounted: true });
-    };
-
-    if (document.visibilityState !== "hidden") {
-      retryClosedSessionSync();
-    }
-
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleFocus);
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleFocus);
-    };
-  }, [loadAll, setOfflineMode, setPendingOfflineReviews, user.uid]);
-
-  /**
-   * Count only the answers that have stopped moving.
-   *
-   * Every answer passes through the device queue on its way up, so counting the
-   * queue counted normal saving and put a sync notice on screen for a student
-   * whose session was working perfectly. What is worth showing is an answer
-   * that has been sitting there past the point where a send should have
-   * finished.
-   */
-  const refreshPendingOfflineReviews = useCallback(() => {
-    setPendingOfflineReviews(getStuckOfflineReviews(user.uid).length);
-  }, [setPendingOfflineReviews, user.uid]);
-
-  const syncPendingOfflineReviews = useCallback(async () => {
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      setOfflineMode(true);
-      return;
-    }
-
-    const pending = getOfflineQueuedReviews(user.uid).length;
-    if (pending === 0) {
-      setPendingOfflineReviews(0);
-      return;
-    }
-
-    const result = await syncOfflineStudyReviews(user.uid);
-    refreshPendingOfflineReviews();
-
-    if (result.synced > 0) {
-      if (latestPersistedSessionRef.current) {
-        return;
-      }
-      await loadAll({ keepSessionMounted: true });
-    }
-  }, [
-    loadAll,
-    refreshPendingOfflineReviews,
-    setOfflineMode,
-    setPendingOfflineReviews,
-    user.uid,
-  ]);
-
-  useEffect(() => {
-    refreshPendingOfflineReviews();
-
-    const handleOnline = () => {
-      setOfflineMode(false);
-      void syncPendingOfflineReviews();
-    };
-    const handleOffline = () => setOfflineMode(true);
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
-    if (typeof navigator !== "undefined") {
-      setOfflineMode(!navigator.onLine);
-      if (navigator.onLine) {
-        void syncPendingOfflineReviews();
-      }
-    }
-
-    /*
-     * Keep trying, quietly.
-     *
-     * A send that failed mid-session used to wait for the next answer, the next
-     * focus or a button. None of those happen for a student reading the card
-     * they are stuck on, so the retry runs on its own clock -- and the same
-     * tick moves an answer into the stuck count once it has sat long enough,
-     * which is what puts the notice on screen at all.
-     */
-    const retry = window.setInterval(() => {
-      refreshPendingOfflineReviews();
-      if (typeof navigator === "undefined" || navigator.onLine) {
-        void syncPendingOfflineReviews();
-      }
-    }, OFFLINE_SYNC_RETRY_MS);
-
-    return () => {
-      window.clearInterval(retry);
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, [
-    refreshPendingOfflineReviews,
-    setOfflineMode,
-    syncPendingOfflineReviews,
-  ]);
-
-  const optionalDailyCards = useMemo(
-    () => (dailyReviewState ? getCardsByIds(cards, dailyReviewState.optionalCardIds) : []),
-    [cards, dailyReviewState]
-  );
-  const carryoverRequiredIdSet = useMemo(
-    () => new Set(dailyReviewState?.carryoverRequiredCardIds ?? []),
-    [dailyReviewState]
-  );
-  const remainingCarryoverRequiredCards = useMemo(
-    () => getRemainingCarryoverRequiredCards(dailyReviewState, cards),
-    [cards, dailyReviewState]
-  );
-  const remainingFreshRequiredCards = useMemo(
-    () => getRemainingFreshRequiredCards(dailyReviewState, cards),
-    [cards, dailyReviewState]
-  );
-  const remainingRequiredCards = useMemo(
-    () => [...remainingCarryoverRequiredCards, ...remainingFreshRequiredCards],
-    [remainingCarryoverRequiredCards, remainingFreshRequiredCards]
-  );
-  const remainingOptionalCards = useMemo(() => {
-    if (!dailyReviewState) return [];
-    const completed = new Set(dailyReviewState.completedOptionalCardIds);
-    return optionalDailyCards.filter((card) => !completed.has(card.id));
-  }, [dailyReviewState, optionalDailyCards]);
-  const hasCarryoverRequiredCards = remainingCarryoverRequiredCards.length > 0;
-  const hasCards = cards.length > 0;
-  const customPreviewCards = useMemo(
-    () =>
-      applyStudySessionShape(
-        buildCustomReviewCards(cards, selectedDeckIds, selectedTopicIds),
-        sessionShape
-      ),
-    [cards, selectedDeckIds, selectedTopicIds, sessionShape]
-  );
+  const daily = useMemo(() => getRemainingDailyReview(dailyReviewState, cards), [cards, dailyReviewState]);
   const simpleStudyQueue = useMemo(() => buildSimpleStudyQueue(cards), [cards]);
-  const hasCustomFilters = selectedDeckIds.length > 0 || selectedTopicIds.length > 0;
-  const customSelectionEmpty = hasCards && customPreviewCards.length === 0;
-
-  useEffect(() => {
-    if (sessionKind === null && hasCustomFilters) {
-      setFocusedReviewOpen(true);
-    }
-  }, [hasCustomFilters, sessionKind, setFocusedReviewOpen]);
-
-  const deckNamesById = useMemo(() => nameById(decks), [decks]);
-  const topicNamesById = useMemo(() => nameById(topics), [topics]);
-  const deckCardCounts = useMemo(() => countCardsByDeck(cards), [cards]);
-  const topicCardCounts = useMemo(() => countCardsByTopic(cards), [cards]);
-  const deckSearchResults = useMemo(() => searchByName(decks, deckSearch), [deckSearch, decks]);
-  const topicSearchResults = useMemo(
-    () => searchByName(topics, topicSearch, getTopicNameKey),
-    [topicSearch, topics]
-  );
-  const recentDecks = useMemo(
-    () => resolveRecents(decks, focusedReviewRecents.deckIds),
-    [decks, focusedReviewRecents.deckIds]
-  );
-  const recentTopics = useMemo(
-    () => resolveRecents(topics, focusedReviewRecents.topicIds),
-    [topics, focusedReviewRecents.topicIds]
-  );
-
-  const toggleDeckFilter = useCallback((deckId: string) => {
-    setSelectedDeckIds((prev) => toggleIdSelection(prev, deckId));
-    clearFeedback();
-  }, [clearFeedback, setSelectedDeckIds]);
-
-  const toggleTopicFilter = useCallback((topicId: string) => {
-    setSelectedTopicIds((prev) => toggleIdSelection(prev, topicId));
-    clearFeedback();
-  }, [clearFeedback, setSelectedTopicIds]);
-
-  const startSession = useCallback(
-    (kind: SessionKind, requiredScope: DailyRequiredSessionScope = "all") => {
-      void (async () => {
-        const nextCards =
-          kind === "daily-required"
-            ? requiredScope === "carryover"
-              ? remainingCarryoverRequiredCards
-              : requiredScope === "fresh"
-                ? remainingFreshRequiredCards
-                : remainingRequiredCards
-            : kind === "daily-optional"
-              ? remainingOptionalCards
-              : kind === "simple"
-                ? simpleStudyQueue.cards
-                : customPreviewCards;
-        const seed = Math.floor(Math.random() * 0x7fffffff) || 1;
-        sessionSeedRef.current = seed;
-        const wantsPreparation = studyModesEnabled && nextCards.length > 0;
-        // Started beside the history read rather than after it: neither needs the other.
-        const preparation = wantsPreparation
-          ? prepareSessionAssets(nextCards).catch((error: unknown) => {
-              console.warn("Study preparation failed; starting unprepared.", error);
-              return null;
-            })
-          : Promise.resolve(null);
-        const history = await loadPresentationHistory(user.uid, nextCards);
-        setVariantHistory(history.variants);
-        setOutcomeHistory(history.outcomes);
-        setRecentModes([]);
-        setDraftResponses({});
-        setRestoredExercises([]);
-        pinnedExerciseRef.current = null;
-
-        let assets = studyAssets;
-        let headStart: Card[] = [];
-        let remainder: Card[] = [];
-        const ready = await preparation;
-        if (wantsPreparation) clearPreparation();
-        if (ready) {
-          assets = { ...studyAssets, ...ready.assets };
-          headStart = ready.headStart;
-          remainder = ready.remainder;
-          setStudyAssets(assets);
-        }
-
-        const asAsked = (card: Card) => askedCard(card, assets);
-
-        const now = Date.now();
-
-        /*
-         * Every card due is studied, whichever mode was picked.
-         *
-         * Cards that could never be asked this way used to be left out at the
-         * door, with a notice saying so -- which meant cards that were due
-         * went unreviewed, and a student saw "cannot be asked this way" at the
-         * start of most Multiple Choice sessions. They stay in now, and are
-         * shown as ordinary flashcards when they come round, with a line
-         * saying why. Only a queue with nothing at all that suits the mode is
-         * turned away, because then the choice itself was the problem.
-         */
-        const eligibleCards = nextCards;
-        if (
-          studyModesEnabled &&
-          modePolicy.kind === "fixed" &&
-          nextCards.length > 0 &&
-          !nextCards.some((card) => canCarryModeEventually(asAsked(card), modePolicy.mode, { seed }))
-        ) {
-          showError(
-            `None of these cards suit ${STUDY_MODE_LABELS[modePolicy.mode]}. Try Smart Mix or another mode.`
-          );
-          return;
-        }
-        justInTimePreparedRef.current.clear();
-        setFlashcardFallbackKeys(new Set());
-
-        const nextStats = createEmptySessionStats();
-        const sessionSelectedDeckIds = kind === "simple" ? [] : selectedDeckIds;
-        const sessionSelectedTopicIds = kind === "simple" ? [] : selectedTopicIds;
-        const nextSession = buildPersistedStudySession({
-          userId: user.uid,
-          kind,
-          sessionCards: eligibleCards,
-          index: 0,
-          stats: nextStats,
-          selectedDeckIds: sessionSelectedDeckIds,
-          selectedTopicIds: sessionSelectedTopicIds,
-          startedAt: now,
-          now,
-          modePolicy,
-          seed,
-        });
-
-        clearClosedStudySessionTombstone(user.uid);
-        sessionIdRef.current = nextSession.sessionId;
-        sessionStartedAtRef.current = now;
-        sessionStudyDayKeyRef.current = nextSession.studyDayKey;
-        sessionRevisionRef.current = nextSession.revision;
-        latestPersistedSessionRef.current = nextSession;
-        remoteCloseKeyRef.current = null;
-        setSessionKind(kind);
-        setSessionCards(eligibleCards);
-        setSessionStats(nextStats);
-        setModeResults({});
-        setIndex(0);
-        setFlipped(false);
-        setSavingRating(null);
-        setAnswerFeedback(null);
-        clearFeedback();
-        savePersistedStudySession(nextSession);
-        void saveRemoteActiveStudySession(nextSession).catch((error) => {
-          console.warn("Failed to save active study session.", error);
-        });
-
-        if (kind === "custom") {
-          pushFocusedReviewRecents(selectedDeckIds, selectedTopicIds);
-        }
-
-        void prepareRemainingAssets(remainder, headStart);
-      })();
-    },
-    [
-      clearFeedback,
-      clearPreparation,
-      prepareRemainingAssets,
-      prepareSessionAssets,
-      studyAssets,
-      customPreviewCards,
-      modePolicy,
-      pushFocusedReviewRecents,
-      remainingCarryoverRequiredCards,
-      remainingFreshRequiredCards,
-      remainingOptionalCards,
-      remainingRequiredCards,
-      selectedDeckIds,
-      selectedTopicIds,
-      setAnswerFeedback,
-      setFlipped,
-      setIndex,
-      setSavingRating,
-      setSessionCards,
-      setSessionKind,
-      setSessionStats,
-      showError,
-      simpleStudyQueue.cards,
-      studyModesEnabled,
-      user.uid,
-    ]
-  );
-
-  const handleCustomReviewClick = useCallback(() => {
-    if (!hasCards) {
-      showError("Create at least one card first, then Focused Review will be ready.");
-      return;
-    }
-
-    if (customPreviewCards.length === 0) {
-      showError(hasCustomFilters
-          ? "No cards match those filters. Clear them or choose a different deck or Topic."
-          : "Add cards first, then Focused Review will be ready.");
-      return;
-    }
-
-    startSession("custom");
-  }, [
-    customPreviewCards.length,
-    hasCards,
-    hasCustomFilters,
-    showError,
-    startSession,
-  ]);
-
-  const clearCustomFilters = useCallback(() => {
-    setSelectedDeckIds([]);
-    setSelectedTopicIds([]);
-    clearFeedback();
-  }, [clearFeedback, setSelectedDeckIds, setSelectedTopicIds]);
-
-  useEffect(() => {
-    if (!loaded || sessionRestoreHandledRef.current) return;
-    sessionRestoreHandledRef.current = true;
-    let cancelled = false;
-
-    const restoreSession = async () => {
-      const currentStudyDayKey = getStudyDayKey(Date.now());
-      const localSession = loadPersistedStudySession(user.uid, currentStudyDayKey);
-      let remoteSession: PersistedStudySession | null = null;
-      let remoteClosedSession: PersistedStudySession | null = null;
-      let foundRemoteSession = false;
-
-      try {
-        const remoteResult = await loadRemoteActiveStudySession(user.uid, currentStudyDayKey);
-        remoteSession = remoteResult.session;
-        remoteClosedSession = remoteResult.closedSession ?? null;
-        foundRemoteSession = remoteResult.foundRemoteSession;
-      } catch (error) {
-        console.warn("Failed to load remote active study session.", error);
-      }
-
-      let restoredSession = localSession;
-      if (remoteSession && (!restoredSession || isIncomingSessionNewer(restoredSession, remoteSession))) {
-        restoredSession = remoteSession;
-      }
-      // Server snapshots deliberately omit local responses. Preserve them only
-      // for the same session; presentation IDs keep them bound to their exercise.
-      if (restoredSession && localSession?.sessionId === restoredSession.sessionId) {
-        restoredSession = { ...restoredSession, draftResponses: localSession.draftResponses };
-      }
-      if (
-        restoredSession &&
-        restoredSession.selectedTopicIds.length === 0 &&
-        restoredSession.legacySelectedTags?.length
-      ) {
-        const migratedTopicIds = restoredSession.legacySelectedTags
-          .map(
-            (legacyTag) =>
-              topics.find(
-                (topic) =>
-                  getTopicNameKey(topic.name) === getTopicNameKey(legacyTag)
-              )?.id
-          )
-          .filter((topicId): topicId is string => Boolean(topicId));
-        restoredSession = {
-          ...restoredSession,
-          selectedTopicIds: migratedTopicIds,
-          legacySelectedTags: undefined,
-        };
-      }
-
-      if (cancelled) {
-        return;
-      }
-
-      if (foundRemoteSession && !remoteSession) {
-        if (
-          remoteClosedSession &&
-          restoredSession &&
-          remoteClosedSession.sessionId === restoredSession.sessionId &&
-          isIncomingSessionNewer(restoredSession, remoteClosedSession)
-        ) {
-          saveClosedStudySessionTombstone(remoteClosedSession, false);
-          clearPersistedStudySession(user.uid);
-          latestPersistedSessionRef.current = null;
-          setSessionRestoreReady(true);
-          return;
-        }
-
-        if (!restoredSession) {
-          clearPersistedStudySession(user.uid);
-          latestPersistedSessionRef.current = null;
-          setSessionRestoreReady(true);
-          return;
-        }
-
-        if (remoteClosedSession && remoteClosedSession.sessionId !== restoredSession.sessionId) {
-          saveClosedStudySessionTombstone(remoteClosedSession, false);
-        }
-
-        setSessionRestoreReady(true);
-        return;
-      }
-
-      if (
-        remoteClosedSession &&
-        restoredSession &&
-        remoteClosedSession.sessionId === restoredSession.sessionId &&
-        isIncomingSessionNewer(restoredSession, remoteClosedSession)
-      ) {
-        saveClosedStudySessionTombstone(remoteClosedSession, false);
-        clearPersistedStudySession(user.uid);
-        latestPersistedSessionRef.current = null;
-        setSessionRestoreReady(true);
-        return;
-      }
-
-      if (
-        restoredSession &&
-        hasClosedStudySessionTombstone(
-          user.uid,
-          restoredSession.sessionId,
-          restoredSession.revision
-        )
-      ) {
-        clearPersistedStudySession(user.uid);
-        latestPersistedSessionRef.current = null;
-        setSessionRestoreReady(true);
-        return;
-      }
-
-      if (
-        !restoredSession ||
-        !canRestorePersistedSession(
-          restoredSession,
-          requestedMode,
-          requestedDeckIds,
-          requestedTopicIds
-        )
-      ) {
-        setSessionRestoreReady(true);
-        return;
-      }
-
-      const restored = hydratePersistedSessionCards(restoredSession, cards, dailyReviewState);
-      if (restored.cards.length === 0 || restored.index >= restored.cards.length) {
-        clearPersistedStudySession(user.uid);
-        saveClosedStudySessionTombstone(
-          closePersistedStudySession(restoredSession, "completed", "completed")
-        );
-        void closeRemoteStudySession(user.uid, restoredSession, "completed", "completed").catch((error) => {
-          console.warn("Failed to close empty active study session.", error);
-        });
-        setSessionRestoreReady(true);
-        return;
-      }
-
-      sessionIdRef.current = restoredSession.sessionId;
-      sessionStartedAtRef.current = restoredSession.startedAt;
-      sessionStudyDayKeyRef.current = restoredSession.studyDayKey;
-      sessionRevisionRef.current = restoredSession.revision;
-      latestPersistedSessionRef.current = restoredSession;
-      remoteCloseKeyRef.current = null;
-      savePersistedStudySession(restoredSession);
-      setSessionKind(restoredSession.kind);
-      setSessionCards(restored.cards);
-      setSessionStats(restoredSession.stats);
-      setIndex(restored.index);
-      setModePolicyState(restoredSession.modePolicy ?? DEFAULT_STUDY_MODE_POLICY);
-      setModeResults(restoredSession.modeResults ?? {});
-      setRecentModes(restoredSession.recentModes ?? []);
-      setDraftResponses(restoredSession.draftResponses ?? {});
-      setVariantHistory(restoredSession.variantHistory ?? {});
-      setOutcomeHistory(restoredSession.outcomeHistory ?? {});
-      setRestoredExercises(restoredSession.exercises ?? []);
-      sessionSeedRef.current = restoredSession.seed ?? 0;
-      setFlipped(false);
-      setSavingRating(null);
-      setAnswerFeedback(null);
-      clearFeedback();
-
-      if (restoredSession.kind === "custom") {
-        setSelectedDeckIds(restoredSession.selectedDeckIds);
-        setSelectedTopicIds(restoredSession.selectedTopicIds);
-      }
-
-      autoStartHandledRef.current = true;
-      setSessionRestoreReady(true);
-    };
-
-    void restoreSession();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    cards,
-    clearFeedback,
-    dailyReviewState,
-    loaded,
-    requestedDeckIds,
-    requestedMode,
-    requestedTopicIds,
-    setAnswerFeedback,
-    setFlipped,
-    setIndex,
-    setSavingRating,
-    setSelectedDeckIds,
-    setSelectedTopicIds,
-    setSessionCards,
-    setSessionKind,
-    setSessionRestoreReady,
-    setSessionStats,
-    topics,
-    user.uid,
-  ]);
-
-  useEffect(() => {
-    if (!loaded || !sessionRestoreReady || autoStartHandledRef.current) return;
-    if (requestedMode === "daily") {
-      autoStartHandledRef.current = true;
-      if (remainingCarryoverRequiredCards.length > 0) {
-        return;
-      }
-      if (remainingRequiredCards.length > 0) {
-        startSession("daily-required");
-        return;
-      }
-      if (remainingOptionalCards.length > 0) {
-        startSession("daily-optional");
-      }
-      return;
-    }
-    if (requestedMode === "custom" && customPreviewCards.length > 0) {
-      autoStartHandledRef.current = true;
-      startSession("custom");
-      return;
-    }
-    autoStartHandledRef.current = true;
-  }, [customPreviewCards.length, loaded, remainingCarryoverRequiredCards.length, remainingOptionalCards.length, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTopicIds.length, sessionRestoreReady, startSession]);
+  const hasCards = cards.length > 0;
+  const focusedCards = focused.previewCards;
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
-  useEffect(() => { if (done) cancelPreparation(); }, [done, cancelPreparation]);
-
-  /*
-   * Tell the Learning Engine the work it asked for actually got done.
-   *
-   * Only when a recommendation opened this session, and only once cards were
-   * genuinely answered -- arriving at an empty queue is not doing the work,
-   * and recording it as such would rest the advice without anything having
-   * happened. Recorded once per session; the write is deduplicated by day
-   * anyway, and the ref keeps it from being sent on every later render.
-   */
-  const completionNotedRef = useRef(false);
-  const abandonNotedRef = useRef(false);
-  const fromActionId = searchParams.get("from");
   useEffect(() => {
-    if (!done || !fromActionId || !user.uid) return;
-    if (sessionStats.reviewedCards === 0) return;
-    if (completionNotedRef.current) return;
-    completionNotedRef.current = true;
-    noteStudyActionOutcomeById(
-      user.uid,
-      fromActionId,
-      "completed",
-      sessionStudyDayKeyRef.current ?? getStudyDayKey()
-    );
-    /*
-     * And tell Today, so the page the student came from can say so when they
-     * go back. Separate from the record above on purpose: that one is evidence
-     * the engine reads, this one is a sentence, and losing it costs nothing.
-     */
-    noteMissionCompleted(fromActionId, sessionStats.reviewedCards);
-  }, [done, fromActionId, sessionStats.reviewedCards, user.uid]);
+    if (done) cancelPreparation();
+  }, [done, cancelPreparation]);
 
-  /*
-   * Tell the engine when the student opened its work and walked away.
-   *
-   * Recorded at the moment they go, never inferred later from the absence of a
-   * completion: a session still open, a closed tab and a lost connection are
-   * indistinguishable afterwards, and none of them is a decision to stop.
-   *
-   * `pagehide` rather than `beforeunload`, because it also fires when a phone
-   * backgrounds the tab, and a student who switches app mid-session has done
-   * the same thing as one who closes it. Recorded once; finishing first wins.
-   */
-  useEffect(() => {
-    if (!fromActionId || !user.uid) return;
-    const noteAbandoned = () => {
-      if (abandonNotedRef.current || completionNotedRef.current) return;
-      if (sessionKind === null || done) return;
-      abandonNotedRef.current = true;
-      noteStudyActionOutcomeById(
-        user.uid,
-        fromActionId,
-        "abandoned",
-        sessionStudyDayKeyRef.current ?? getStudyDayKey()
-      );
-    };
-    window.addEventListener("pagehide", noteAbandoned);
-    return () => {
-      window.removeEventListener("pagehide", noteAbandoned);
-      // Leaving the page within the app is leaving the session just the same.
-      noteAbandoned();
-    };
-  }, [done, fromActionId, sessionKind, user.uid]);
-  const [daysRunning, setDaysRunning] = useState<number | null>(null);
-  const reviewedThisSession = sessionStats.reviewedCards;
-
-  useEffect(() => {
-    if (!done || reviewedThisSession === 0) {
-      setDaysRunning(null);
-      return;
-    }
-
-    let cancelled = false;
-    void loadStudyActivity(user.uid)
-      .then((activity) => {
-        if (!cancelled) setDaysRunning(computeStudyStreak(activity));
-      })
-      .catch(() => {
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [done, reviewedThisSession, user.uid]);
   const current = loaded && sessionKind !== null && !done ? sessionCards[index] : null;
-  const currentDeck = current
-    ? decks.find((deck) => deck.id === current.deckId)
-    : undefined;
-  const currentDeckColor = getDeckColorPreset(currentDeck?.colorPreset);
-  const nextDueCard = useMemo(() => getNextDueCard(cards), [cards]);
+  const currentDeck = current ? decks.find((deck) => deck.id === current.deckId) : undefined;
   const preparedCurrent = useMemo(
     () => (current ? askedCard(current, studyAssets) : null),
     [current, studyAssets]
   );
+  const nextDueCard = useMemo(() => getNextDueCard(cards), [cards]);
 
-  const totalCards = sessionCards.length;
-  const remainingCards = current ? totalCards - index : 0;
-  const accuracyPercentage = sessionStats.reviewedCards > 0 ? Math.round((sessionStats.correctAnswers / sessionStats.reviewedCards) * 100) : 0;
-  const progressPercent = totalCards > 0 ? Math.round((index / totalCards) * 100) : 0;
-  const sessionWasCarryoverOnly =
-    sessionKind === "daily-required" &&
-    sessionCards.length > 0 &&
-    sessionCards.every((card) => carryoverRequiredIdSet.has(card.id));
-
-  const bumpSessionRevision = useCallback(() => {
-    sessionRevisionRef.current = Math.max(1, sessionRevisionRef.current + 1);
-    return sessionRevisionRef.current;
-  }, []);
-
-  const getCurrentPersistedSession = useCallback(
-    (now = Date.now()) => {
-      if (!sessionKind) {
-        return null;
-      }
-
-      const currentSession = buildPersistedStudySession({
-        userId: user.uid,
-        sessionId: sessionIdRef.current,
-        revision: sessionRevisionRef.current,
-        studyDayKey: sessionStudyDayKeyRef.current,
-        kind: sessionKind,
-        sessionCards,
-        index,
-        stats: sessionStats,
-        selectedDeckIds,
-        selectedTopicIds,
-        startedAt: sessionStartedAtRef.current,
-        now,
-        modePolicy,
-        seed: sessionSeedRef.current,
-        modeResults,
-        recentModes,
-        draftResponses,
-        variantHistory,
-        outcomeHistory,
-        exercises: buildSessionExerciseSnapshots({
-          cards: sessionCards.slice(index),
-          asAsked: (card) => askedCard(card, studyAssets),
-          modePolicy,
-          index,
-          seed: sessionSeedRef.current,
-          modeCounts: Object.fromEntries(Object.entries(modeResults).map(([mode, result]) => [mode, result?.answered ?? 0])) as Partial<Record<StudyMode, number>>,
-          recentModes,
-          firstExercise: pinnedExerciseRef.current?.exercise ?? null,
-          presentationId: pinnedExerciseRef.current?.presentationId,
-          sessionId: sessionIdRef.current ?? undefined,
-          variantHistory,
-          outcomeHistory,
-        }),
-      });
-
-      sessionIdRef.current = currentSession.sessionId;
-      sessionStartedAtRef.current = currentSession.startedAt;
-      sessionStudyDayKeyRef.current = currentSession.studyDayKey;
-      sessionRevisionRef.current = currentSession.revision;
-      latestPersistedSessionRef.current = currentSession;
-      return currentSession;
-    },
-    [
-      index,
-      modePolicy,
-      modeResults,
-      recentModes,
-      draftResponses,
-      variantHistory,
-      outcomeHistory,
-      selectedDeckIds,
-      selectedTopicIds,
-      sessionCards,
-      sessionKind,
-      sessionStats,
-      studyAssets,
-      user.uid,
-    ]
-  );
-
-  useEffect(() => {
-    if (!loaded || !sessionKind) return;
-
-    const now = Date.now();
-    const currentSession = getCurrentPersistedSession(now);
-    if (!currentSession) return;
-
-    if (done) {
-      const closeKey = `${currentSession.sessionId}:${currentSession.revision}:completed`;
-      clearPersistedStudySession(user.uid);
-      const closedSession = closePersistedStudySession(currentSession, "completed", "completed", now);
-      saveClosedStudySessionTombstone(closedSession);
-      latestPersistedSessionRef.current = null;
-      if (remoteCloseKeyRef.current !== closeKey) {
-        remoteCloseKeyRef.current = closeKey;
-        void closeRemoteStudySession(
-          user.uid,
-          currentSession,
-          "completed",
-          "completed",
-          now
-        )
-          .then((saved) => {
-            if (saved) {
-              markClosedStudySessionTombstoneSynced(user.uid);
-            }
-          })
-          .catch((error) => {
-            console.warn("Failed to close completed study session.", error);
-          });
-      }
-      return;
-    }
-
-    savePersistedStudySession(currentSession);
-    void saveRemoteActiveStudySession(currentSession).catch((error) => {
-      console.warn("Failed to save active study session.", error);
-    });
-  }, [done, getCurrentPersistedSession, loaded, sessionKind, user.uid]);
-
-  useEffect(() => {
-    const persistBeforeSuspend = () => {
-      const currentSession = getCurrentPersistedSession();
-      if (currentSession && currentSession.status === "active") {
-        savePersistedStudySession(currentSession);
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        persistBeforeSuspend();
-      }
-    };
-
-    window.addEventListener("pagehide", persistBeforeSuspend);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    document.addEventListener("freeze", persistBeforeSuspend);
-
-    return () => {
-      window.removeEventListener("pagehide", persistBeforeSuspend);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      document.removeEventListener("freeze", persistBeforeSuspend);
-    };
-  }, [getCurrentPersistedSession]);
-
-  const closeJamiAssistant = useCallback(
-    () => setJamiAssistantOpen(false),
-    [setJamiAssistantOpen]
-  );
-
-  const {
-    reveal: handleFlip,
-    commitReview,
-    revisitAfterHint,
-    presentation,
-  } = useStudyExerciseController({
-    userId: user.uid,
+  const closeJamiAssistant = useCallback(() => setJamiAssistantOpen(false), [setJamiAssistantOpen]);
+  const controller = useStudyExerciseController({
+    userId,
     // Stamped on every answer this session produces, when a recommendation opened it.
     ...(fromActionId ? { interventionId: fromActionId } : {}),
     current,
@@ -1382,289 +167,329 @@ export default function StudyPage() {
     setSavingRating,
     offlineMode,
     setOfflineMode,
-    bumpSessionRevision,
+    bumpSessionRevision: record.bumpRevision,
     refreshPendingOfflineReviews,
     clearFeedback,
     notifyError: showError,
   });
+  const { reveal: handleFlip, presentation } = controller;
 
-  const showingAsFlashcard = current
-    ? flashcardFallbackKeys.has(`${current.id}:${presentation}`)
-    : false;
-
-  const currentExercise = useMemo(() => {
-    const asked = preparedCurrent;
-    if (!current || !asked || !sessionKind || !studyModesEnabled) return null;
-    if (showingAsFlashcard) return null;
-    const { exercise, pin } = resolveCurrentExercise({
-      card: current,
-      asked,
-      index,
-      presentation,
-      policy: modePolicy,
-      sessionId: sessionIdRef.current ?? "session",
-      seed: sessionSeedRef.current,
-      pinned: pinnedExerciseRef.current,
-      restoredExercises,
-      reportedPresentations,
-      retiredVariantIds: preparedCurrent?.studySettings?.generatedStudy?.retiredVariantIds ?? [],
-      isRetiredDraft: (variantId) => draftResponses[`retired:${variantId}`] === "1",
-      modeCounts: Object.fromEntries(
-        Object.entries(modeResults).map(([mode, result]) => [mode, result?.answered ?? 0])
-      ) as Partial<Record<StudyMode, number>>,
-      presentationIndex: Object.values(modeResults).reduce((sum, result) => sum + (result?.answered ?? 0), 0),
-      recentModes,
-      recentVariantIds: variantHistory[current.id] ?? [],
-      recentOutcomes: outcomeHistory[current.id] ?? [],
-      newId: () => crypto.randomUUID(),
-    });
-    if (pin) pinnedExerciseRef.current = pin;
-    return exercise;
-  }, [
+  const exercises = useStudyExercises({
+    userId,
+    enabled: studyModesEnabled,
     current,
-    preparedCurrent,
+    asked: preparedCurrent,
+    index,
+    sessionKind,
+    modePolicy,
+    identity,
+    controller,
+    retireAsset,
+    prepareRemainingAssets,
+    showError,
+  });
+  const { currentExercise, showingAsFlashcard, showAsFlashcard, handleRating } = exercises;
+  const exerciseSnapshot = exercises.snapshot;
+
+  const questionWait = useStudyQuestionWait({
+    enabled: studyModesEnabled,
+    modePolicy,
+    current,
+    asked: preparedCurrent,
+    currentExercise,
+    showingAsFlashcard,
+    showAsFlashcard,
     index,
     presentation,
-    modePolicy,
-    restoredExercises,
-    modeResults,
-    recentModes,
-    variantHistory,
-    outcomeHistory,
-    reportedPresentations,
-    draftResponses,
-    sessionKind,
-    studyModesEnabled,
-    showingAsFlashcard,
-  ]);
-
-  useEffect(() => {
-    if (!studyModesEnabled || sessionCards.length === 0) return;
-    let cancelled = false;
-    void loadStudyAssets(sessionCards).then((assets) => {
-      if (!cancelled) setStudyAssets((prev) => ({ ...prev, ...assets }));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionCards, studyModesEnabled]);
-
-  const handleSemanticCheck = useCallback(
-    async (response: string, gapResponses?: Record<string, string>) => {
-      if (!current) return null;
-      if (!currentExercise?.presentationId) return null;
-      const checked = await checkTypedAnswer({ cardId: current.id, response, sourceHash: currentExercise.cardContentHash, presentationId: currentExercise.presentationId, assetKey: currentExercise.markingSettings?.generatedStudy?.sourceHash, bundleRevision: currentExercise.markingSettings?.generatedStudy?.bundleRevision, ...(gapResponses ? { gapResponses, variantId: currentExercise.variantId } : {}) });
-      return checked && checked.verdict !== "needs-self-grade"
-        ? { ...checked, verdict: checked.verdict }
-        : null;
-    },
-    [current, currentExercise]
-  );
-
-  const recordModeAnswer = useCallback((mode: StudyMode, verdict: "correct" | "partial" | "incorrect" | "uncertain", assisted: boolean) => {
-    const identity = pinnedExerciseRef.current?.presentationId ?? currentExercise?.presentationId;
-    if (!identity) return;
-    const countedKey = countedDraftKey(identity);
-    if (draftResponses[countedKey] === "1" || countedPresentationsRef.current.has(identity)) return;
-    countedPresentationsRef.current.add(identity);
-    setDraftResponses((previous) => ({ ...previous, [countedKey]: "1" }));
-    if (current) void recordPresentation(user.uid, current.id, { id: identity, sourceHash: getCardContentHash(current), mode, variantId: currentExercise?.variantId, outcome: verdict, assisted, at: Date.now() });
-    setRecentModes((previous) => [...previous, mode].slice(-8));
-    if (current?.id && currentExercise?.variantId) {
-      setVariantHistory((previous) => ({ ...previous, [current.id]: [...(previous[current.id] ?? []), currentExercise.variantId!].slice(-8) }));
-    }
-    if (current?.id) setOutcomeHistory((previous) => ({ ...previous, [current.id]: [...(previous[current.id] ?? []), verdict].slice(-5) }));
-    setModeResults((prev) => {
-      const previous = prev[mode] ?? { answered: 0, correct: 0, partial: 0, uncertain: 0, assisted: 0 };
-      return {
-        ...prev,
-        [mode]: {
-          answered: previous.answered + 1,
-          correct: previous.correct + (verdict === "correct" ? 1 : 0),
-          partial: (previous.partial ?? 0) + (verdict === "partial" ? 1 : 0),
-          uncertain: (previous.uncertain ?? 0) + (verdict === "uncertain" ? 1 : 0),
-          assisted: (previous.assisted ?? 0) + (assisted ? 1 : 0),
-        },
-      };
-    });
-  }, [current, currentExercise, user.uid, draftResponses]);
-
-  const handleReportExercise = useCallback((reason: "multiple-correct" | "wrong-grade" | "poor-gap" | "unrelated-options" | "other") => {
-    if (!current || !currentExercise?.variantId) return;
-    if (currentExercise.presentationId) {
-      setDraftResponses((previous) => {
-        const next = { ...previous };
-        delete next[currentExercise.presentationId!];
-        return next;
-      });
-    }
-    setReportedPresentations((previous) => new Set(previous).add(`${current.id}:${presentation}`));
-    const variantId = currentExercise.variantId;
-    setDraftResponses((previous) => ({ ...previous, [`retired:${variantId}`]: "1" }));
-    setRestoredExercises((previous) => previous.filter((item) => item.variantId !== variantId));
-    setStudyAssets((previous) => retireStudyAsset(previous, current.id, variantId));
-    pinnedExerciseRef.current = null;
-    void reportStudyVariant({ cardId: current.id, variantId, bundleVersion: currentExercise.markingSettings?.generatedStudy?.bundleVersion ?? 3, reason }).then(() => prepareRemainingAssets([current])).catch(() => {
-      showError("That question was hidden, but Jami could not save the report just now.");
-    });
-  }, [current, currentExercise, presentation, showError, prepareRemainingAssets]);
-
-  const handleRating = useCallback(
-    (rating: CardRating, options: { requeueOnMiss?: boolean; confusedWithLabelId?: string } = {}) => {
-      if (!current) return;
-      const presentationKey = presentationDraftKey({
-        sessionId: sessionIdRef.current ?? "session",
-        index,
-        cardId: current.id,
-        presentation,
-      });
-      const { commitId, persist } = resolvePresentationId({
-        pinnedId: pinnedExerciseRef.current?.presentationId,
-        exerciseId: currentExercise?.presentationId,
-        stored: draftResponses[presentationKey],
-        sessionId: sessionIdRef.current ?? "session",
-        index,
-        cardId: current.id,
-        newId: () => crypto.randomUUID(),
-      });
-      if (persist) setDraftResponses((previous) => ({ ...previous, [presentationKey]: commitId }));
-      /*
-       * Counted once per presentation, never once per attempt to save it. A
-       * failed save leaves the student pressing a rating again, and Smart Mix
-       * counted every press -- inflating the summary and, worse, the recent
-       * outcomes it picks the next mode from.
-       */
-      const countedKey = countedDraftKey(commitId);
-      if (!currentExercise && studyModesEnabled && draftResponses[countedKey] !== "1") {
-        setDraftResponses((previous) => ({ ...previous, [countedKey]: "1" }));
-        recordModeAnswer("classic", isSuccessfulRating(rating) ? "correct" : "incorrect", false);
-      }
-      return commitReview({
-        commitId,
-        cardId: current.id,
-        rating,
-        answeredAt: Date.now(),
-        requeueOnMiss: options.requeueOnMiss,
-        ...(options.confusedWithLabelId ? { confusedWithLabelId: options.confusedWithLabelId } : {}),
-      });
-    },
-    [commitReview, current, currentExercise, draftResponses, index, presentation, recordModeAnswer, setDraftResponses, studyModesEnabled]
-  );
-
-  const getLearnAssistantContext = useCallback(async (): Promise<JamiAssistantContext> => {
-    if (!current) {
-      throw new Error("This flashcard is no longer available.");
-    }
-
-    return {
-      surface: "learn",
-      cardId: current.id,
-      phase: flipped ? "answer" : "question",
-    };
-  }, [current, flipped]);
-
-  const learnAssistantQuickActions = useMemo(
-    () =>
-      flipped
-        ? [
-            { label: "Explain simply", prompt: "Explain this card simply." },
-            { label: "Give an example", prompt: "Give me a clear example of this idea." },
-            {
-              label: "What might I mix up?",
-              prompt: "What is this commonly confused with, and how can I tell the difference?",
-            },
-          ]
-        : [
-            {
-              label: "Give me a hint",
-              prompt:
-                "Give me one hint towards this without telling me the answer.",
-            },
-            {
-              label: "I don't know",
-              prompt:
-                "I'm stuck on this. Walk me through how to work it out, step by step.",
-            },
-            {
-              label: "Break it down",
-              prompt: "What is this question actually asking? Break it down for me.",
-            },
-          ],
-    [flipped]
-  );
-
-  const handleRatingRef = useRef(handleRating);
-  useEffect(() => {
-    handleRatingRef.current = handleRating;
+    sessionCards,
+    setSessionCards,
+    studyAssets,
+    seed: identity?.seed ?? 0,
+    prepareCardNow,
   });
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      if (currentExercise) return;
-      if (event.code === "Space") {
-        event.preventDefault();
-        if (!flipped && current) handleFlip();
-        return;
+  const { selectedDeckIds, selectedTopicIds } = focused;
+  const getCurrentPersistedSession = useCallback(
+    (now = Date.now()) => {
+      if (!sessionKind || !identity) {
+        return null;
       }
-      if (!flipped || savingRating !== null || !current) return;
-      const ratingMap: Record<string, CardRating> =
-        sessionKind === "simple"
-          ? { "1": "again", "2": "good" }
-          : { "1": "again", "2": "hard", "3": "good", "4": "easy" };
-      const mappedRating = ratingMap[event.key];
-      if (mappedRating) {
-        event.preventDefault();
-        void handleRatingRef.current(mappedRating);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [current, currentExercise, flipped, handleFlip, savingRating, sessionKind]);
 
-  const exitSession = () => {
-    if (sessionKind) {
-      const now = Date.now();
-      const status = done ? "completed" : "ended";
-      const reason = done ? "completed" : "user-ended";
-      const currentSession =
-        getCurrentPersistedSession(now) ??
-        buildPersistedStudySession({
-          userId: user.uid,
-          sessionId: sessionIdRef.current,
-          revision: sessionRevisionRef.current,
-          studyDayKey: sessionStudyDayKeyRef.current,
-          kind: sessionKind,
-          sessionCards,
-          index: done ? sessionCards.length : index,
-          stats: sessionStats,
-          selectedDeckIds,
-          selectedTopicIds,
-          startedAt: sessionStartedAtRef.current,
+      const { modeResults, recentModes, draftResponses, variantHistory, outcomeHistory, pinned } = exerciseSnapshot;
+      const currentSession = buildPersistedStudySession({
+        userId,
+        sessionId: identity.sessionId,
+        revision: currentRevision(),
+        studyDayKey: identity.studyDayKey,
+        kind: sessionKind,
+        sessionCards,
+        index,
+        stats: sessionStats,
+        selectedDeckIds,
+        selectedTopicIds,
+        startedAt: identity.startedAt,
+        now,
+        modePolicy,
+        seed: identity.seed,
+        modeResults,
+        recentModes,
+        draftResponses,
+        variantHistory,
+        outcomeHistory,
+        exercises: buildSessionExerciseSnapshots({
+          cards: sessionCards.slice(index),
+          asAsked: (card) => askedCard(card, studyAssets),
+          modePolicy,
+          index,
+          seed: identity.seed,
+          modeCounts: countModeAnswers(modeResults),
+          recentModes,
+          firstExercise: pinned?.exercise ?? null,
+          presentationId: pinned?.presentationId,
+          sessionId: identity.sessionId,
+          variantHistory,
+          outcomeHistory,
+        }),
+      });
+
+      noteCurrent(currentSession);
+      return currentSession;
+    },
+    [
+      currentRevision, exerciseSnapshot, identity, index, modePolicy, noteCurrent, selectedDeckIds,
+      selectedTopicIds, sessionCards, sessionKind, sessionStats, studyAssets, userId,
+    ]
+  );
+
+  const { closeSession } = useStudySessionPersistence({
+    userId,
+    loaded,
+    sessionKind,
+    done,
+    record,
+    getCurrentPersistedSession,
+  });
+
+  const { noteLeft } = useStudyActionOutcome({
+    userId,
+    actionId: fromActionId,
+    sessionOpen: sessionKind !== null && !done,
+    done,
+    reviewedCards: sessionStats.reviewedCards,
+    studyDayKey: identity?.studyDayKey ?? null,
+  });
+  const daysRunning = useSessionStreak({ userId, done, reviewedThisSession: sessionStats.reviewedCards });
+
+  const { pushRecents } = focused;
+  const beginExercises = exercises.begin;
+  const resetQuestionWait = questionWait.reset;
+  const startSession = useCallback(
+    (kind: StudySessionKind, requiredScope: DailyRequiredSessionScope = "all") => {
+      void (async () => {
+        const nextCards =
+          kind === "daily-required"
+            ? requiredScope === "carryover"
+              ? daily.carryover
+              : requiredScope === "fresh"
+                ? daily.fresh
+                : daily.required
+            : kind === "daily-optional"
+              ? daily.optional
+              : kind === "simple"
+                ? simpleStudyQueue.cards
+                : focusedCards;
+        const seed = Math.floor(Math.random() * 0x7fffffff) || 1;
+        const wantsPreparation = studyModesEnabled && nextCards.length > 0;
+        // Started beside the history read rather than after it: neither needs the other.
+        const preparing = wantsPreparation
+          ? prepareSessionAssets(nextCards).catch((error: unknown) => {
+              console.warn("Study preparation failed; starting unprepared.", error);
+              return null;
+            })
+          : Promise.resolve(null);
+        const history = await loadPresentationHistory(userId, nextCards);
+
+        let assets = studyAssets;
+        let headStart: Card[] = [];
+        let remainder: Card[] = [];
+        const ready = await preparing;
+        if (wantsPreparation) clearPreparation();
+        if (ready) {
+          assets = { ...studyAssets, ...ready.assets };
+          headStart = ready.headStart;
+          remainder = ready.remainder;
+          mergeAssets(ready.assets);
+        }
+
+        /*
+         * Every card due is studied, whichever mode was picked.
+         *
+         * Cards that could never be asked this way used to be left out at the
+         * door, with a notice saying so -- which meant cards that were due
+         * went unreviewed, and a student saw "cannot be asked this way" at the
+         * start of most Multiple Choice sessions. They stay in now, and are
+         * shown as ordinary flashcards when they come round, with a line
+         * saying why. Only a queue with nothing at all that suits the mode is
+         * turned away, because then the choice itself was the problem.
+         */
+        if (
+          studyModesEnabled &&
+          modePolicy.kind === "fixed" &&
+          nextCards.length > 0 &&
+          !nextCards.some((card) => canCarryModeEventually(askedCard(card, assets), modePolicy.mode, { seed }))
+        ) {
+          showError(
+            `None of these cards suit ${STUDY_MODE_LABELS[modePolicy.mode]}. Try Smart Mix or another mode.`
+          );
+          return;
+        }
+
+        const now = Date.now();
+        const nextStats = createEmptySessionStats();
+        const nextSession = buildPersistedStudySession({
+          userId,
+          kind,
+          sessionCards: nextCards,
+          index: 0,
+          stats: nextStats,
+          selectedDeckIds: kind === "simple" ? [] : selectedDeckIds,
+          selectedTopicIds: kind === "simple" ? [] : selectedTopicIds,
+          startedAt: now,
           now,
+          modePolicy,
+          seed,
         });
-      const closedSession = closePersistedStudySession(currentSession, status, reason, now);
 
-      saveClosedStudySessionTombstone(closedSession);
-      remoteCloseKeyRef.current = `${closedSession.sessionId}:${closedSession.closedRevision ?? closedSession.revision}:${closedSession.status}`;
-      void closeRemoteStudySession(user.uid, currentSession, status, reason, now)
-        .then((saved) => {
-          if (saved) {
-            markClosedStudySessionTombstoneSynced(user.uid);
-          }
-        })
-        .catch((error) => {
-          console.warn("Failed to close active study session.", error);
+        clearClosedStudySessionTombstone(userId);
+        adoptSession(nextSession);
+        beginExercises(history);
+        resetQuestionWait();
+        setSessionKind(kind);
+        setSessionCards(nextCards);
+        setSessionStats(nextStats);
+        setIndex(0);
+        setFlipped(false);
+        setSavingRating(null);
+        setAnswerFeedback(null);
+        clearFeedback();
+        savePersistedStudySession(nextSession);
+        void saveRemoteActiveStudySession(nextSession).catch((error) => {
+          console.warn("Failed to save active study session.", error);
         });
+
+        if (kind === "custom") {
+          pushRecents(selectedDeckIds, selectedTopicIds);
+        }
+
+        void prepareRemainingAssets(remainder, headStart);
+      })();
+    },
+    [
+      adoptSession, beginExercises, clearFeedback, clearPreparation, daily, focusedCards, mergeAssets,
+      modePolicy, prepareRemainingAssets, prepareSessionAssets, pushRecents, resetQuestionWait,
+      selectedDeckIds, selectedTopicIds, setAnswerFeedback, setFlipped, setIndex, setSavingRating,
+      setSessionCards, setSessionKind, setSessionStats, showError, simpleStudyQueue.cards, studyAssets,
+      studyModesEnabled, userId,
+    ]
+  );
+
+  const handleCustomReviewClick = useCallback(() => {
+    if (!hasCards) {
+      showError("Create at least one card first, then Focused Review will be ready.");
+      return;
     }
 
+    if (focusedCards.length === 0) {
+      showError(focused.hasFilters
+        ? "No cards match those filters. Clear them or choose a different deck or Topic."
+        : "Add cards first, then Focused Review will be ready.");
+      return;
+    }
+
+    startSession("custom");
+  }, [focused.hasFilters, focusedCards.length, hasCards, showError, startSession]);
+
+  const { resetToRequest: resetFocusedToRequest, selectFilters } = focused;
+  const resetExercises = exercises.reset;
+  const adoptExercises = exercises.adopt;
+  const resetForRequest = useCallback(() => {
+    resetFocusedToRequest();
+    setSessionKind(null);
+    setSessionCards([]);
+    setIndex(0);
+    setFlipped(false);
+    setAnswerFeedback(null);
+    setSessionStats(createEmptySessionStats());
+    resetExercises();
+    forgetSession();
+  }, [
+    forgetSession, resetExercises, resetFocusedToRequest, setAnswerFeedback, setFlipped, setIndex,
+    setSessionCards, setSessionKind, setSessionStats,
+  ]);
+
+  const resumeSession = useCallback(
+    ({ session, cards: resumedCards, index: resumedIndex }: ResumedStudySession) => {
+      adoptSession(session);
+      savePersistedStudySession(session);
+      setSessionKind(session.kind);
+      setSessionCards(resumedCards);
+      setSessionStats(session.stats);
+      setIndex(resumedIndex);
+      adoptModePolicy(session.modePolicy ?? DEFAULT_STUDY_MODE_POLICY);
+      adoptExercises(session);
+      setFlipped(false);
+      setSavingRating(null);
+      setAnswerFeedback(null);
+      clearFeedback();
+      if (session.kind === "custom") {
+        selectFilters(session.selectedDeckIds, session.selectedTopicIds);
+      }
+    },
+    [
+      adoptExercises, adoptModePolicy, adoptSession, clearFeedback, selectFilters, setAnswerFeedback,
+      setFlipped, setIndex, setSavingRating, setSessionCards, setSessionKind, setSessionStats,
+    ]
+  );
+
+  useStudySessionRestore({
+    userId,
+    loaded,
+    request,
+    cards,
+    topics,
+    dailyReviewState,
+    onRequestChange: resetForRequest,
+    onResume: resumeSession,
+    onForget: record.noteClosed,
+    closeSession,
+    queue: {
+      carryover: daily.carryover.length,
+      required: daily.required.length,
+      optional: daily.optional.length,
+      focused: focusedCards.length,
+    },
+    startSession,
+  });
+
+  useStudyKeyboardShortcuts({
+    enabled: current !== null && !currentExercise,
+    flipped,
+    ratingLocked: savingRating !== null,
+    scale: sessionKind === "simple" ? "two-point" : "four-point",
+    onReveal: handleFlip,
+    onRate: handleRating,
+  });
+
+  const exitSession = () => {
+    // Leaving through the page is leaving just the same, when it is unfinished.
+    noteLeft();
+    const now = Date.now();
+    const currentSession = getCurrentPersistedSession(now);
+    if (currentSession) {
+      closeSession(currentSession, done ? "completed" : "ended", done ? "completed" : "user-ended", now);
+    }
     cancelPreparation();
-    clearPersistedStudySession(user.uid);
-    sessionStartedAtRef.current = null;
-    sessionStudyDayKeyRef.current = null;
-    sessionIdRef.current = null;
-    sessionRevisionRef.current = 0;
-    latestPersistedSessionRef.current = null;
+    forgetSession();
     setSessionKind(null);
     setSessionCards([]);
     setSessionStats(createEmptySessionStats());
@@ -1674,103 +499,9 @@ export default function StudyPage() {
     setAnswerFeedback(null);
   };
 
-  /**
-   * Why the card in front of the student cannot be asked the way they chose.
-   *
-   * Null whenever there is an exercise, which is the usual case; a reason code
-   * only when a session locked to one mode has reached a card that mode cannot
-   * use yet.
-   */
-  const fixedModeRefusal =
-    studyModesEnabled && modePolicy.kind === "fixed" && current && !currentExercise
-      ? getModeEligibility(preparedCurrent ?? current, modePolicy.mode, {
-          seed: sessionSeedRef.current,
-        })
-      : null;
-  const fixedModeRefusalReason =
-    fixedModeRefusal && !fixedModeRefusal.eligible ? fixedModeRefusal.reason : null;
-
-  /**
-   * The card in front of the student is still having its question written.
-   *
-   * Every other reason is permanent -- a picture answer, an author who turned
-   * the mode off, a card Jami read and found no fair question in -- and those
-   * cards are simply shown as flashcards. "Not prepared yet" is the one reason
-   * about timing, and it is never shown as a refusal any more.
-   */
-  const waitingForQuestion =
-    fixedModeRefusalReason === "needs-preparation" && !showingAsFlashcard;
-
-  /*
-   * A ready card goes first.
-   *
-   * Preparation runs through the queue in order, several cards at a time, and
-   * a student who answers quickly can still reach a card before its own call
-   * has come back. The student used to wait for it -- or, before that, be told
-   * it could not be asked. Any card further on whose question is ready is
-   * brought forward instead, and this one takes the next turn, by which time
-   * it has usually landed. Only when nothing ahead is ready does anybody wait.
-   */
-  useEffect(() => {
-    if (!waitingForQuestion || !current || modePolicy.kind !== "fixed") return;
-    const mode = modePolicy.mode;
-    const readyOffset = sessionCards
-      .slice(index + 1)
-      .findIndex(
-        (card) =>
-          getModeEligibility(askedCard(card, studyAssets), mode, {
-            seed: sessionSeedRef.current,
-          }).eligible
-      );
-    if (readyOffset < 0) return;
-    const readyAt = index + 1 + readyOffset;
-    setSessionCards((previous) => {
-      if (previous[index]?.id !== current.id || previous[readyAt] === undefined) return previous;
-      const next = [...previous];
-      const [ready] = next.splice(readyAt, 1);
-      next.splice(index, 0, ready);
-      return next;
-    });
-    pinnedExerciseRef.current = null;
-  }, [current, index, modePolicy, sessionCards, setSessionCards, studyAssets, waitingForQuestion]);
-
-  /*
-   * Nothing ahead is ready either, so this card is prepared now, on its own.
-   *
-   * Once per card. A card already on its way from the background pass is not
-   * asked for twice; it is handed over when it lands. If nothing can be made
-   * for it now -- the provider failed, or the day's allowance is spent -- it
-   * is asked as a flashcard rather than refused.
-   */
-  useEffect(() => {
-    const card = current;
-    if (!card || !waitingForQuestion) return;
-    if (justInTimePreparedRef.current.has(card.id)) return;
-    justInTimePreparedRef.current.add(card.id);
-    const fallbackKey = `${card.id}:${presentation}`;
-    const lookAhead = sessionCards.slice(index + 1, index + 3);
-    void prepareCardNow(card, lookAhead).then((result) => {
-      if (result === null) {
-        setFlashcardFallbackKeys((previous) => new Set(previous).add(fallbackKey));
-      }
-    });
-  }, [current, index, prepareCardNow, presentation, sessionCards, waitingForQuestion]);
-
-  /*
-   * A wait has a limit.
-   *
-   * One card's question takes about fifteen seconds to write and check, and a
-   * slow one forty. Past this, the student is shown the card as a flashcard
-   * and the question is kept for the next time the card comes round.
-   */
-  useEffect(() => {
-    if (!waitingForQuestion || !current) return;
-    const fallbackKey = `${current.id}:${presentation}`;
-    const timer = window.setTimeout(() => {
-      setFlashcardFallbackKeys((previous) => new Set(previous).add(fallbackKey));
-    }, QUESTION_WAIT_LIMIT_MS);
-    return () => window.clearTimeout(timer);
-  }, [current, presentation, waitingForQuestion]);
+  const handleStarRewardDone = useCallback(() => setStarReward(null), [setStarReward]);
+  const totalCards = sessionCards.length;
+  const ratingScale = sessionKind === "simple" ? "two-point" : "four-point";
 
   return (
     <AppPage
@@ -1781,640 +512,165 @@ export default function StudyPage() {
       contentClassName="space-y-4 sm:space-y-6"
     >
       {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} /> : null}
-      {offlineMode || pendingOfflineReviews > 0 ? (
-        <div className="rounded-xl border border-warm-border bg-warm-glow p-4 text-sm text-text-secondary">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="font-semibold text-text-primary">
-                {offlineMode ? "Offline study is active" : "Offline answers are waiting to sync"}
-              </div>
-              <p className="mt-1 leading-6">
-                {pendingOfflineReviews > 0
-                  ? `${pendingOfflineReviews} review${pendingOfflineReviews === 1 ? "" : "s"} will sync when the browser is online.`
-                  : offlineSnapshotAt
-                    ? `Using a study snapshot saved ${new Date(offlineSnapshotAt).toLocaleString()}.`
-                    : "Cards are cached locally when a study queue loads."}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={pendingOfflineReviews === 0 || offlineMode}
-              onClick={() => void syncPendingOfflineReviews()}
-            >
-              Sync now
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      <StudyOfflineBanner
+        offline={offlineMode}
+        pendingReviews={pendingOfflineReviews}
+        snapshotSavedAt={offlineSnapshotAt}
+        onSync={() => void syncPendingOfflineReviews()}
+      />
       {!loaded ? (
         <div className="space-y-4"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-72" /></div>
-      ) : (
-        <>
-          {sessionKind === null ? (
-            <>
-              {!hasCards ? (
-                <EmptyState
-                  title="Nothing to review yet"
-                  description="Create one card and it will appear here ready to learn."
-                  action={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-[var(--color-text-inverse)] shadow-accent transition duration-fast hover:bg-accent-hover">Create cards</Link>}
-                  secondaryAction={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-button-secondary transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Open decks</Link>}
-                />
-              ) : null}
-              {hasCards ? (
-                <SurfaceCard tone="warm" padding="lg">
-                  <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 max-w-2xl">
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
-                        Daily Review
-                      </div>
-                      <h2 className="mt-2 text-2xl font-semibold leading-tight tracking-tight text-text-primary sm:text-3xl">
-                        {hasCarryoverRequiredCards
-                          ? "Finish yesterday's review first."
-                          : remainingRequiredCards.length > 0
-                            ? "Your next review is ready."
-                            : "You're clear for today."}
-                      </h2>
-                      <p className="mt-3 max-w-xl text-sm leading-6 text-text-secondary sm:text-base">
-                        {hasCarryoverRequiredCards
-                          ? "Continue the unfinished cards, then move into today's set when you're ready."
-                          : remainingRequiredCards.length > 0
-                            ? "Start with the cards most likely to slip from memory."
-                            : remainingOptionalCards.length > 0
-                              ? "Your priority cards are done. Easy extras are available if you want another pass."
-                              : "There is nothing you need to review right now."}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-sm text-text-muted sm:text-right">
-                      <span>Next reset in </span>
-                      <span className="font-semibold tabular-nums text-text-secondary">
-                        {formatResetCountdown(countdownMs)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 flex flex-wrap gap-x-8 gap-y-5 border-y border-[var(--color-border)] py-5">
-                    {hasCarryoverRequiredCards ? (
-                      <StudyHomeStat
-                        value={remainingCarryoverRequiredCards.length}
-                        label="Unfinished"
-                      />
-                    ) : null}
-                    <StudyHomeStat
-                      value={remainingFreshRequiredCards.length}
-                      label={hasCarryoverRequiredCards ? "Today" : "Needs attention"}
-                    />
-                    <StudyHomeStat
-                      value={remainingOptionalCards.length}
-                      label="Easy extras"
-                    />
-                  </div>
-
-                  {studyModesEnabled ? (
-                    <div className="mt-6">
-                      <StudyModePicker policy={modePolicy} onChange={setModePolicy} />
-                    </div>
-                  ) : null}
-
-                  <div data-tutorial-target="complete-review" className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
-                    {hasCarryoverRequiredCards ? (
-                      <Button
-                        type="button"
-                        onClick={() =>
-                          startSession("daily-required", "carryover")
-                        }
-                        variant="warm"
-                        size="lg"
-                        className="w-full sm:w-auto"
-                      >
-                        Continue unfinished review
-                      </Button>
-                    ) : remainingRequiredCards.length > 0 ? (
-                      <Button
-                        type="button"
-                        onClick={() => startSession("daily-required", "all")}
-                        data-tutorial-target="start-review"
-                        variant="warm"
-                        size="lg"
-                        className="w-full sm:w-auto"
-                      >
-                        Start Daily Review
-                      </Button>
-                    ) : remainingOptionalCards.length === 0 ? (
-                      <span className="app-success inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold">
-                        All clear
-                      </span>
-                    ) : null}
-
-                    {hasCarryoverRequiredCards &&
-                    remainingFreshRequiredCards.length > 0 ? (
-                      <Button
-                        type="button"
-                        onClick={() => startSession("daily-required", "fresh")}
-                        variant="secondary"
-                        size="md"
-                        className="w-full sm:w-auto"
-                      >
-                        Start today&apos;s cards
-                      </Button>
-                    ) : null}
-
-                    {remainingOptionalCards.length > 0 ? (
-                      <Button
-                        type="button"
-                        onClick={() => startSession("daily-optional")}
-                        variant={
-                          remainingRequiredCards.length === 0
-                            ? "secondary"
-                            : "ghost"
-                        }
-                        size="md"
-                        className="w-full sm:w-auto"
-                      >
-                        Review easy extras
-                      </Button>
-                    ) : null}
-                  </div>
-                </SurfaceCard>
-              ) : null}
-              {hasCards ? (
-                <section
-                  aria-labelledby="other-study-heading"
-                  className="space-y-3"
-                >
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                      Your choice
-                    </div>
-                    <h2
-                      id="other-study-heading"
-                      className="mt-1 text-xl font-semibold tracking-tight text-text-primary"
-                    >
-                      Other ways to study
-                    </h2>
-                  </div>
-
-                  <div className="grid gap-4 xl:grid-cols-2">
-                    <SurfaceCard
-                      padding="md"
-                      className={`flex h-full flex-col ${focusedReviewOpen ? "xl:col-span-2" : ""}`}
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                            Focused Review
-                          </div>
-                          <h3 className="mt-2 text-lg font-semibold text-text-primary">
-                            Choose exactly what to practice
-                          </h3>
-                          <p className="mt-2 text-sm leading-6 text-text-secondary">
-                            Pick decks or Topics for a targeted session.
-                          </p>
-                        </div>
-                        <Button
-                          ref={focusedReviewToggleRef}
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          aria-expanded={focusedReviewOpen}
-                          aria-controls="focused-review-builder"
-                          onClick={() =>
-                            setFocusedReviewOpen((currentOpen) => !currentOpen)
-                          }
-                          className="w-full shrink-0 sm:w-auto"
-                        >
-                          {focusedReviewOpen
-                            ? "Hide choices"
-                            : hasCustomFilters
-                              ? "Edit selection"
-                              : "Choose decks or Topics"}
-                        </Button>
-                      </div>
-
-                      {focusedReviewOpen ? (
-                        <FocusedReviewBuilder
-                          filterKind={focusedFilterKind}
-                          onFilterKindChange={setFocusedFilterKind}
-                          decks={{
-                            search: deckSearch,
-                            onSearchChange: setDeckSearch,
-                            searchResults: deckSearchResults,
-                            recents: recentDecks,
-                            selectedIds: selectedDeckIds,
-                            namesById: deckNamesById,
-                            cardCounts: deckCardCounts,
-                            onToggle: toggleDeckFilter,
-                          }}
-                          topics={{
-                            search: topicSearch,
-                            onSearchChange: setTopicSearch,
-                            searchResults: topicSearchResults,
-                            recents: recentTopics,
-                            selectedIds: selectedTopicIds,
-                            namesById: topicNamesById,
-                            cardCounts: topicCardCounts,
-                            onToggle: toggleTopicFilter,
-                          }}
-                          previewCount={customPreviewCards.length}
-                          selectionEmpty={customSelectionEmpty}
-                          modePicker={
-                            studyModesEnabled ? (
-                              <StudyModePicker
-                                policy={modePolicy}
-                                surface="focused"
-                                // The builder's own step heading asks it.
-                                hideLabel
-                                onChange={setModePolicy}
-                              />
-                            ) : undefined
-                          }
-                          onClearFilters={clearCustomFilters}
-                          onStart={handleCustomReviewClick}
+      ) : sessionKind === null ? (
+        hasCards ? (
+          <>
+            <StudyDailyReviewCard
+              carryoverCount={daily.carryover.length}
+              freshCount={daily.fresh.length}
+              requiredCount={daily.required.length}
+              optionalCount={daily.optional.length}
+              modePicker={
+                studyModesEnabled ? <StudyModePicker policy={modePolicy} onChange={setModePolicy} /> : undefined
+              }
+              onStartRequired={(scope) => startSession("daily-required", scope)}
+              onStartOptional={() => startSession("daily-optional")}
+            />
+            <StudyOtherWays
+              focused={{
+                open: focused.open,
+                onToggleOpen: focused.toggleOpen,
+                hasFilters: focused.hasFilters,
+                selectedCount: selectedDeckIds.length + selectedTopicIds.length,
+                previewCount: focusedCards.length,
+                builder: (
+                  <FocusedReviewBuilder
+                    filterKind={focused.filterKind}
+                    onFilterKindChange={focused.setFilterKind}
+                    decks={focused.deckColumn}
+                    topics={focused.topicColumn}
+                    previewCount={focusedCards.length}
+                    selectionEmpty={focusedCards.length === 0}
+                    modePicker={
+                      studyModesEnabled ? (
+                        <StudyModePicker
+                          policy={modePolicy}
+                          surface="focused"
+                          // The builder's own step heading asks it.
+                          hideLabel
+                          onChange={setModePolicy}
                         />
-                      ) : (
-                        <>
-                          <div
-                            className="mt-4 text-sm font-medium text-text-muted"
-                            aria-live="polite"
-                          >
-                            {hasCustomFilters
-                              ? `${selectedDeckIds.length + selectedTopicIds.length} selected · ${customPreviewCards.length} cards`
-                              : `${customPreviewCards.length} cards available`}
-                          </div>
-                          <div className="mt-auto pt-5">
-                            {customPreviewCards.length > 0 ? (
-                              <Button
-                                type="button"
-                                onClick={handleCustomReviewClick}
-                                className="w-full sm:w-auto"
-                              >
-                                Start Focused Review
-                              </Button>
-                            ) : null}
-                          </div>
-                        </>
-                      )}
-                    </SurfaceCard>
-
-                    <SurfaceCard
-                      padding="md"
-                      className="flex h-full flex-col"
-                    >
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                        Simple Study
-                      </div>
-                      <h3 className="mt-2 text-lg font-semibold text-text-primary">
-                        Make one quick pass
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-text-secondary">
-                        Clear new and missed cards with a simple correct-or-wrong choice.
-                      </p>
-                      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-text-muted">
-                        <span>
-                          <strong className="font-semibold tabular-nums text-text-primary">
-                            {simpleStudyQueue.newCount}
-                          </strong>{" "}
-                          new
-                        </span>
-                        <span>
-                          <strong className="font-semibold tabular-nums text-text-primary">
-                            {simpleStudyQueue.wrongCount}
-                          </strong>{" "}
-                          missed
-                        </span>
-                      </div>
-                      {studyModesEnabled ? (
-                        <div className="mt-5">
-                          <StudyModePicker
-                            policy={modePolicy}
-                            surface="simple"
-                            onChange={setModePolicy}
-                          />
-                        </div>
-                      ) : null}
-                      <div className="mt-auto pt-5">
-                        {simpleStudyQueue.cards.length > 0 ? (
-                          <Button
-                            type="button"
-                            onClick={() => startSession("simple")}
-                            variant="secondary"
-                            className="w-full sm:w-auto"
-                          >
-                            Start Simple Study
-                          </Button>
-                        ) : (
-                          <span className="app-success inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold">
-                            All clear
-                          </span>
-                        )}
-                      </div>
-                    </SurfaceCard>
-                  </div>
-                </section>
-              ) : null}
-            </>
-          ) : null}
-          {sessionKind === null ? null : done ? (
-            totalCards === 0 && sessionStats.reviewedCards === 0 ? (
-              <EmptyState
-                emoji="Review"
-                eyebrow="Nothing to study"
-                title="No cards in this session"
-                description={sessionKind === "daily-required" ? "Your Daily Review is clear right now." : sessionKind === "daily-optional" ? "There are no easy extras left right now." : sessionKind === "simple" ? "Simple Study is clear right now." : "This Focused Review does not match any cards yet."}
-                helperText="That is not a bug, it just means this queue is empty for the current selection."
-                action={<Button type="button" onClick={exitSession}>Back to study home</Button>}
-                secondaryAction={sessionKind === "custom" ? <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-button-secondary transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Edit cards</Link> : undefined}
-              />
-            ) : (
-              <>
-              {fromActionId && sessionStats.reviewedCards > 0 ? (
-                <MissionHandback answered={sessionStats.reviewedCards} />
-              ) : null}
-              <SurfaceCard tone="warm" padding="lg" className="animate-warm-glow-pulse">
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">Session complete</div>
-                    <h2 className="mt-3 text-xl font-medium leading-tight tracking-tight text-text-primary sm:text-2xl">Good work.</h2>
-                    <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                      {sessionKind === "simple"
-                        ? `You cleared Simple Study after ${sessionStats.reviewedCards} answer${sessionStats.reviewedCards === 1 ? "" : "s"}. Your next best step is ready below.`
-                        : `You reviewed ${sessionStats.reviewedCards} of ${totalCards} card${totalCards === 1 ? "" : "s"}. Your next best step is ready below.`}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm text-text-secondary">
-                      <span className="text-sm font-semibold text-text-primary">{accuracyPercentage}%</span> accuracy
-                    </div>
-                    {daysRunning !== null && daysRunning > 0 ? (
-                      <div className="rounded-xl border border-warm-border bg-warm-glow px-4 py-3 text-sm text-text-secondary">
-                        <span className="text-sm font-semibold text-text-primary">
-                          {daysRunning}
-                        </span>{" "}
-                        day{daysRunning === 1 ? "" : "s"} running
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-center text-sm">
-                    <div className="text-xs text-text-muted">Reviewed</div>
-                    <div className="mt-2 flex min-h-7 items-center justify-center text-lg font-semibold leading-none tabular-nums text-text-primary">{sessionStats.reviewedCards}</div>
-                  </div>
-                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm">
-                    <div className="text-center text-xs text-text-muted">Ratings</div>
-                    <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs text-text-secondary">
-                      {(["again", "hard", "good", "easy"] as CardRating[]).map((rating) => (
-                        <span key={rating} className="inline-flex items-center justify-between gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-2.5 py-1">
-                          <span>{RATING_LABELS[rating]}</span>
-                          <span className="font-semibold tabular-nums text-text-primary">{sessionStats.ratings[rating]}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  {Object.keys(modeResults).length > 0 ? (
-                    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm">
-                      <div className="text-center text-xs text-text-muted">By mode</div>
-                      <div className="mt-2 grid gap-1.5 text-xs text-text-secondary">
-                        {(Object.entries(modeResults) as Array<
-                          [StudyMode, { answered: number; correct: number }]
-                        >).map(([mode, result]) => (
-                          <span
-                            key={mode}
-                            className="inline-flex items-center justify-between gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-2.5 py-1"
-                          >
-                            <span>{STUDY_MODE_LABELS[mode]}</span>
-                            <span className="font-semibold tabular-nums text-text-primary">
-                              {result.correct}/{result.answered}
-                            </span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-center text-sm">
-                    <div className="text-xs text-text-muted">Goals completed</div>
-                    <div className="mt-2 flex min-h-7 items-center justify-center text-lg font-semibold leading-none tabular-nums text-text-primary">{sessionStats.completedGoals}</div>
-                  </div>
-                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-center text-sm">
-                    <div className="text-xs text-text-muted">Rewards</div>
-                    <div className="mt-2 text-sm text-text-secondary"><span className="font-semibold tabular-nums text-text-primary">{sessionStats.starsEarned}</span> star{sessionStats.starsEarned === 1 ? "" : "s"}</div>
-                  </div>
-                </div>
-                <div className="mt-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Next best step</div>
-                  <div className="mt-2 text-base font-semibold text-text-primary sm:text-lg">
-                    {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0
-                      ? "Today's priority cards are ready"
-                      : sessionKind === "simple"
-                        ? "Simple Study is clear"
-                      : sessionKind === "daily-required" && remainingOptionalCards.length > 0
-                      ? "Easy extras are ready"
-                      : hasCards && customPreviewCards.length > 0
-                        ? "Focused Review is ready"
-                        : sessionStats.completedGoals > 0
-                          ? "Check your new star"
-                          : "Tidy your cards"}
-                  </div>
-                  <p className="mt-1 text-sm leading-6 text-text-secondary">
-                    {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0
-                      ? "The unfinished carryover is clear. Move into the fresh cards selected for this Daily Review when you are ready."
-                      : sessionKind === "simple"
-                        ? "You can switch to Daily Review, build a focused session, or come back when more cards need a simple pass."
-                      : sessionKind === "daily-required" && remainingOptionalCards.length > 0
-                      ? "These are lighter extra reps. Do them only if you want a little more practice today."
-                      : hasCards && customPreviewCards.length > 0
-                        ? "Build a session from any deck or Topic whenever you want targeted practice."
-                        : sessionStats.completedGoals > 0
-                          ? "Goal rewards become stars in your constellation."
-                          : "Review is done for now. Add, fix, or tidy cards whenever something feels off."}
-                  </p>
-                  {nextDueCard?.dueDate ? (
-                    <p className="mt-3 text-xs font-medium text-text-muted">
-                      Next due card: {new Intl.DateTimeFormat("en", {
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                        month: "short",
-                      }).format(nextDueCard.dueDate)}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0 ? (
-                    <Button type="button" onClick={() => startSession("daily-required", "fresh")} size="lg" variant="warm">Start today&apos;s priority cards</Button>
-                  ) : sessionKind === "daily-required" && remainingOptionalCards.length > 0 ? (
-                    <Button type="button" onClick={() => startSession("daily-optional")} size="lg" variant="warm">Review easy extras</Button>
-                  ) : hasCards && customPreviewCards.length > 0 ? (
-                    <Button type="button" onClick={() => startSession("custom")} size="lg" variant="warm">Start Focused Review</Button>
-                  ) : sessionStats.completedGoals > 0 ? (
-                    <Link href="/dashboard/constellation" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-2xl border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-warm transition duration-fast hover:-translate-y-[1px] hover:brightness-105">View constellation</Link>
-                  ) : (
-                    <Link href="/dashboard/cards" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-2xl border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-warm transition duration-fast hover:-translate-y-[1px] hover:brightness-105">Edit cards</Link>
-                  )}
-                  {sessionKind === "simple" && simpleStudyQueue.cards.length === 0 ? null : (
-                    <Button type="button" onClick={() => startSession(sessionKind)} size="lg" variant="secondary">Run this session again</Button>
-                  )}
-                  <Button type="button" onClick={exitSession} variant="secondary" size="lg">Back to study home</Button>
-                </div>
-              </SurfaceCard>
-              </>
-            )
-          ) : current ? (
-            <div key={current.id} className="animate-slide-up space-y-4 sm:space-y-5">
-              <InlineStudyFeedback feedback={answerFeedback} />
-              <section className="study-session-stage space-y-5 px-1 py-2 sm:px-2 sm:py-3">
-                  <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
-                    <div className="min-w-0">
-                      <div className="text-2xs font-semibold uppercase tracking-[0.2em] text-text-muted">{getSessionLabel(sessionKind)}</div>
-                      <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1.5 text-sm leading-none text-text-secondary">
-                        <span className="font-semibold tabular-nums text-text-primary">{remainingCards}</span>
-                        <span className="text-text-muted">/</span>
-                        <span className="tabular-nums">{totalCards}</span>
-                        <span>cards remaining</span>
-                      </div>
-                    </div>
-                    <div className="flex items-end gap-2.5">
-                      <div className="min-w-[10rem] flex-1 lg:min-w-[12rem] lg:flex-none">
-                        <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
-                          <span>Progress</span>
-                          <span className="tabular-nums">{progressPercent}%</span>
-                        </div>
-                        <ProgressBar progress={progressPercent} />
-                      </div>
-                      <button
-                        type="button"
-                        title="Ask Jami about this card"
-                        aria-label="Ask Jami about this card"
-                        aria-haspopup="dialog"
-                        aria-expanded={jamiAssistantOpen}
-                        onClick={() => setJamiAssistantOpen(true)}
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1.5 text-xs font-semibold text-text-secondary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-                      >
-                        <JamiTutorIcon className="h-4 w-4" />
-                        Jami
-                      </button>
-                    </div>
-                  </div>
-
-                  <JamiAssistantDrawer
-                    userId={user.uid}
-                    open={jamiAssistantOpen}
-                    onOpenChange={setJamiAssistantOpen}
-                    resetKey={current.id}
-                    contextKey={`learn:${current.id}`}
-                    contextLabel="Current flashcard"
-                    historyContextLabel={`Flashcard · ${getCardListTitle(current).slice(0, 72)}`}
-                    getContext={getLearnAssistantContext}
-                    quickActions={learnAssistantQuickActions}
-                    settingsFolderIds={
-                      decks.find((deck) => deck.id === current.deckId)?.folderIds ?? []
+                      ) : undefined
                     }
-                    emptyStateNote={
-                      flipped
-                        ? undefined
-                        : "Jami cannot see this card's answer until you flip it, so it can nudge you towards it but never hand it over."
-                    }
+                    onClearFilters={focused.clearFilters}
+                    onStart={handleCustomReviewClick}
                   />
-                  {pinnedExerciseRef.current?.recoveryNotice ? <p role="status" className="mx-auto max-w-xl text-center text-sm text-text-secondary">{pinnedExerciseRef.current.recoveryNotice}</p> : null}
-                  {currentExercise ? (
-                    <StudyExerciseStage
-                      key={`${current.id}:${currentExercise.mode}:${currentExercise.cardContentHash}:${presentation}`}
-                      card={preparedCurrent ?? current}
-                      exercise={currentExercise}
-                      viewState={readPresentationViewState(draftResponses[`state:${currentExercise.presentationId}`])}
-                      onViewStateChange={(state) => setDraftResponses((previous) => ({ ...previous, [`state:${currentExercise.presentationId}`]: JSON.stringify(state) }))}
-                      ratingScale={
-                        sessionKind === "simple" ? "two-point" : "four-point"
-                      }
-                      savingRating={savingRating}
-                      onCommit={(rating, options) => {
-                        setRestoredExercises((previous) => previous.filter((item) => item.presentationId !== currentExercise.presentationId));
-                        return handleRating(rating, options);
-                      }}
-                      onModeAnswered={recordModeAnswer}
-                      onRevisitAfterHint={() => {
-                        if (currentExercise.presentationId) {
-                          setDraftResponses((previous) => {
-                            const next = { ...previous };
-                            delete next[currentExercise.presentationId!];
-                            return next;
-                          });
-                        }
-                        const used = draftResponses[`hint-revisit:${current.id}`] === "1";
-                        setDraftResponses((previous) => ({ ...previous, [`hint-revisit:${current.id}`]: "1" }));
-                        setRestoredExercises((previous) => previous.filter((item) => item.presentationId !== currentExercise.presentationId));
-                        revisitAfterHint(current.id, used);
-                      }}
-                      onSemanticCheck={handleSemanticCheck}
-                      onReportExercise={currentExercise.source === "cached-ai" && currentExercise.variantId ? handleReportExercise : undefined}
-                      draftResponse={currentExercise.presentationId ? draftResponses[currentExercise.presentationId] : undefined}
-                      onDraftChange={currentExercise.presentationId ? (response) => setDraftResponses((previous) => ({ ...previous, [currentExercise.presentationId!]: response })) : undefined}
-                    />
-                  ) : waitingForQuestion ? (
-                    <div data-study-current-card-id={current.id} className="study-flashcard-face mx-auto flex min-h-[16rem] w-full max-w-[62rem] flex-col items-center justify-center gap-5 rounded-2xl p-6 text-center sm:p-10">
-                      <div aria-hidden className="flex items-center gap-2">
-                        {[0, 1, 2].map((dot) => (
-                          <span
-                            key={dot}
-                            className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent"
-                            style={{ animationDelay: `${dot * 160}ms` }}
-                          />
-                        ))}
-                      </div>
-                      <div className="max-w-lg space-y-2">
-                        <h2 className="text-xl font-semibold text-text-primary">Writing this question</h2>
-                        <p role="status" className="text-sm leading-relaxed text-text-secondary">
-                          Jami is writing the options for this card. It takes a few seconds, and only the first time.
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() =>
-                          setFlashcardFallbackKeys((previous) =>
-                            new Set(previous).add(`${current.id}:${presentation}`)
-                          )
-                        }
-                      >
-                        Show it as a flashcard
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      {modePolicy.kind === "fixed" && (fixedModeRefusalReason || showingAsFlashcard) ? (
-                        <p role="status" className="mx-auto mb-3 max-w-xl text-center text-sm text-text-secondary">
-                          {showingAsFlashcard
-                            ? `Its ${STUDY_MODE_LABELS[modePolicy.mode]} question isn't ready yet, so here it is as a flashcard.`
-                            : `${STUDY_MODE_LABELS[modePolicy.mode]} doesn't suit this card, so here it is as a flashcard.`}
-                        </p>
-                      ) : null}
-                      <StudyFlashcard
-                        card={current}
-                        flipped={flipped}
-                        onReveal={handleFlip}
-                        deckName={deckNamesById[current.deckId] ?? "Flashcard"}
-                        deckColor={currentDeckColor.base}
-                        topicNames={(current.topicIds ?? []).map(
-                          (topicId) => topicNamesById[topicId] ?? "Topic"
-                        )}
-                      />
-                    </>
-                  )}
-              </section>
-              {flipped && !currentExercise ? (
-                <StudyRatingControls
-                  scale={sessionKind === "simple" ? "two-point" : "four-point"}
-                  savingRating={savingRating}
-                  onRate={handleRating}
-                />
+                ),
+                onStart: handleCustomReviewClick,
+              }}
+              simple={{
+                newCount: simpleStudyQueue.newCount,
+                wrongCount: simpleStudyQueue.wrongCount,
+                cardCount: simpleStudyQueue.cards.length,
+                modePicker: studyModesEnabled ? (
+                  <StudyModePicker policy={modePolicy} surface="simple" onChange={setModePolicy} />
+                ) : undefined,
+                onStart: () => startSession("simple"),
+              }}
+            />
+          </>
+        ) : (
+          <EmptyState
+            title="Nothing to review yet"
+            description="Create one card and it will appear here ready to learn."
+            action={<ButtonLink href="/dashboard/cards">Create cards</ButtonLink>}
+            secondaryAction={<ButtonLink href="/dashboard/decks" variant="secondary">Open decks</ButtonLink>}
+          />
+        )
+      ) : done ? (
+        totalCards === 0 && sessionStats.reviewedCards === 0 ? (
+          <StudySessionEmpty sessionKind={sessionKind} onExit={exitSession} />
+        ) : (
+          <>
+            {fromActionId && sessionStats.reviewedCards > 0 ? (
+              <MissionHandback answered={sessionStats.reviewedCards} />
+            ) : null}
+            <StudySessionComplete
+              sessionKind={sessionKind}
+              stats={sessionStats}
+              totalCards={totalCards}
+              modeResults={exercises.modeResults}
+              daysRunning={daysRunning}
+              nextStep={chooseStudyNextStep({
+                sessionKind,
+                sessionWasCarryoverOnly:
+                  sessionKind === "daily-required" && isCarryoverOnly(dailyReviewState, sessionCards),
+                remainingFreshRequired: daily.fresh.length,
+                remainingOptional: daily.optional.length,
+                focusedCardCount: focusedCards.length,
+                completedGoals: sessionStats.completedGoals,
+              })}
+              nextDueAt={nextDueCard?.dueDate ?? null}
+              canRepeat={!(sessionKind === "simple" && simpleStudyQueue.cards.length === 0)}
+              onStart={startSession}
+              onExit={exitSession}
+            />
+          </>
+        )
+      ) : current ? (
+        <StudyCardStage
+          key={current.id}
+          userId={userId}
+          card={current}
+          sessionKind={sessionKind}
+          index={index}
+          totalCards={totalCards}
+          answerFeedback={answerFeedback}
+          flipped={flipped}
+          assistantOpen={jamiAssistantOpen}
+          onAssistantOpenChange={setJamiAssistantOpen}
+          settingsFolderIds={currentDeck?.folderIds ?? []}
+          recoveryNotice={exercises.recoveryNotice}
+          showRatingControls={flipped && !currentExercise}
+          savingRating={savingRating}
+          onRate={handleRating}
+          onEnd={exitSession}
+        >
+          {currentExercise && exercises.stageProps ? (
+            <StudyExerciseStage
+              key={`${current.id}:${currentExercise.mode}:${currentExercise.cardContentHash}:${presentation}`}
+              card={preparedCurrent ?? current}
+              exercise={currentExercise}
+              ratingScale={ratingScale}
+              savingRating={savingRating}
+              {...exercises.stageProps}
+            />
+          ) : questionWait.waitingForQuestion ? (
+            <StudyQuestionWriting
+              cardId={current.id}
+              onShowAsFlashcard={() => showAsFlashcard(current.id, presentation)}
+            />
+          ) : (
+            <>
+              {modePolicy.kind === "fixed" && (questionWait.refusalReason || showingAsFlashcard) ? (
+                <p role="status" className="mx-auto mb-3 max-w-xl text-center text-sm text-text-secondary">
+                  {showingAsFlashcard
+                    ? `Its ${STUDY_MODE_LABELS[modePolicy.mode]} question isn't ready yet, so here it is as a flashcard.`
+                    : `${STUDY_MODE_LABELS[modePolicy.mode]} doesn't suit this card, so here it is as a flashcard.`}
+                </p>
               ) : null}
-              <div className="flex flex-wrap gap-3">
-                <Button type="button" onClick={exitSession} variant="secondary">End session</Button>
-              </div>
-            </div>
-          ) : null}
-        </>
-      )}
+              <StudyFlashcard
+                card={current}
+                flipped={flipped}
+                onReveal={handleFlip}
+                deckName={focused.deckNamesById[current.deckId] ?? "Flashcard"}
+                deckColor={getDeckColorPreset(currentDeck?.colorPreset).base}
+                topicNames={(current.topicIds ?? []).map(
+                  (topicId) => focused.topicNamesById[topicId] ?? "Topic"
+                )}
+              />
+            </>
+          )}
+        </StudyCardStage>
+      ) : null}
       <StarRewardOverlay reward={starReward} onDone={handleStarRewardDone} />
       {preparation ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--color-surface-base)]/85 px-4 backdrop-blur-sm">
