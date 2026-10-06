@@ -1,4 +1,7 @@
-import type { Editor as JsDrawEditor } from "js-draw";
+import type { Editor as JsDrawEditor, Point2 } from "js-draw";
+import type { JsDrawModule } from "@/lib/workspace/notebook-js-draw";
+import { NOTEBOOK_LIFT_OFF } from "@/lib/workspace/notebook-lift-off";
+import type { NotebookPredictedTip } from "@/lib/workspace/notebook-predicted-tip";
 
 type JsDrawPointerRuntime = Pick<
   typeof import("js-draw"),
@@ -117,4 +120,76 @@ export function dispatchPreciseNotebookPointerMove(input: {
     current: pointer,
     allPointers: [pointer],
   });
+}
+
+/**
+ * The predicted tip of the stroke being drawn, shared between the pointer
+ * handler that plans it and the pen paint that draws it. See
+ * `notebook-predicted-tip.ts`.
+ */
+export type NotebookLivePenTip = {
+  /**
+   * The pen contact being drawn ahead of, if any, and what it has really done
+   * lately. Every stylus stroke with the pen is: it is how the line keeps up,
+   * not a preference.
+   */
+  contact: { pointerId: number; tracker: NotebookPredictedTip } | null;
+  /** Where the next paint's tip runs to, in canvas units, or null for none. */
+  points: Point2[] | null;
+  /** Whether the last paint drew a tip, which something must then wipe. */
+  shown: boolean;
+  /** Counts paints of the live stroke, to notice a packet that drew none. */
+  paints: number;
+};
+
+/**
+ * Where this packet's predicted tip runs to, in canvas units, or null for no
+ * tip. See `notebook-predicted-tip.ts`.
+ *
+ * Measured from the same region rect as js-draw's own samples for this stroke,
+ * so the tip starts exactly where the line ends -- and from a rect read once at
+ * contact, so it costs no layout per packet.
+ */
+export function getPredictedTipCanvasPoints(input: {
+  editor: Pick<JsDrawEditor, "viewport">;
+  event: PointerEvent;
+  jsDraw: Pick<JsDrawModule, "Vec2">;
+  referenceRect: DOMRect | null;
+  samples: readonly PointerEvent[];
+  tracker: NotebookPredictedTip;
+}): Point2[] | null {
+  const { event, referenceRect, tracker } = input;
+  tracker.observe(
+    input.samples.map((sample) => ({
+      x: sample.clientX,
+      y: sample.clientY,
+      time: sample.timeStamp,
+    }))
+  );
+  // Pressure falls away as the pen leaves the glass. A tip drawn then would
+  // reach past where the stroke is about to end.
+  if (!referenceRect || !(event.pressure >= NOTEBOOK_LIFT_OFF.ceiling)) {
+    return null;
+  }
+  const predicted =
+    typeof event.getPredictedEvents === "function"
+      ? event.getPredictedEvents()
+      : [];
+  if (predicted.length === 0) return null;
+  const ahead = tracker.ahead(
+    predicted.map((sample) => ({
+      x: sample.clientX,
+      y: sample.clientY,
+      time: sample.timeStamp,
+    }))
+  );
+  if (ahead.length === 0) return null;
+  return ahead.map((point) =>
+    input.editor.viewport.screenToCanvas(
+      input.jsDraw.Vec2.of(
+        point.x - referenceRect.left,
+        point.y - referenceRect.top
+      )
+    )
+  );
 }
