@@ -84,13 +84,15 @@ test("a student can set up, answer, and recover a past-paper session", async ({ 
     await page.getByRole("button", { name: "One fewer easy question" }).click();
   }
   await page.getByRole("button", { name: "One fewer medium question" }).click();
-  await expect(page.getByText("2 questions")).toBeVisible({ timeout: 20_000 });
+  // Exact: the switch for Jami-written questions also says how many of "your 2 questions" it adds.
+  await expect(page.getByText("2 questions", { exact: true })).toBeVisible({ timeout: 20_000 });
   console.log("[setup] mix reduced to the two questions available");
   await start.click();
 
   // --- Workspace ---------------------------------------------------------
   await page.waitForURL(/\/dashboard\/practice\/questions\/[^/]+$/, { timeout: 60_000 });
-  const prompt = page.getByText(E2E_EXAM_QUESTIONS[0].prompt, { exact: false });
+  // The seeded marked session has already used the first question, and unseen questions come first.
+  const prompt = page.getByText(E2E_EXAM_QUESTIONS[1].prompt, { exact: false });
   await expect(prompt).toBeVisible({ timeout: 45_000 });
   console.log("[workspace] first question rendered");
 

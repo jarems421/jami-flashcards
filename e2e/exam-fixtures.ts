@@ -217,7 +217,9 @@ function markedSession(userId: string, now: number) {
         sourceUrl: "https://example.invalid/e2e",
         sourceSha256: "e2e",
       },
-      contentVersion: "e2e-v1",
+      // The version the session was made from, as the corpus holds it: a check
+      // against any other is refused as a changed question.
+      contentVersion: `v1-${question.id}`,
     }],
     status: "active",
     answeredCount: 1,
