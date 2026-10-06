@@ -6,13 +6,6 @@ export type ContentOrigin =
 
 export type ContentStatus = "draft" | "approved" | "rejected" | "archived";
 
-export type ContentProvenance = {
-  origin: ContentOrigin;
-  contentStatus: ContentStatus;
-  reviewedAt?: number;
-  reviewedBy?: string;
-};
-
 export function isContentOrigin(value: unknown): value is ContentOrigin {
   return (
     value === "user-authored" ||
@@ -30,6 +23,11 @@ export function normalizeOptionalString(value: unknown, maxLength = 10_000) {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   return normalized ? normalized.slice(0, maxLength) : undefined;
+}
+
+/** A count or size read from stored data: a whole number, never negative, else the fallback. */
+export function normalizeNonNegativeInteger(value: unknown, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : fallback;
 }
 
 export function normalizeStringArray(value: unknown, maxItems = 20, maxLength = 120) {

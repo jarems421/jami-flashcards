@@ -117,7 +117,7 @@ describe("finding a question's rule", () => {
 
 describe("reading an extraction's reply", () => {
   it("takes the rules however the reply wraps them", async () => {
-    const { parseRulesReply } = await import("@/services/ai/question-type-research.server");
+    const { parseRulesReply } = await import("@/lib/practice/question-types");
     expect(parseRulesReply('{"rules":[{"id":"a"}]}')?.rules).toHaveLength(1);
     expect(parseRulesReply('[{"id":"a"},{"id":"b"}]')?.rules).toHaveLength(2);
     expect(parseRulesReply('```json\n[{"id":"a"}]\n```')?.rules).toHaveLength(1);

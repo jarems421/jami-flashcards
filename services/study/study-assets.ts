@@ -8,7 +8,7 @@ import {
 import { auth, db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import type { StudyAsset } from "@/lib/ai/study-assets";
-import type { CardStudySettings } from "@/lib/study/study-modes";
+import type { CardStudySettings, StudyVariantReportReason } from "@/lib/study/study-modes";
 import { hasCurrentStudySource } from "@/lib/study/asset-freshness";
 import type { Card } from "@/lib/study/cards";
 import { STUDY_ASSET_PROMPT_VERSION, STUDY_ASSET_SCHEMA_VERSION, STUDY_ASSET_VALIDATOR_VERSION } from "@/lib/study/study-asset-versions";
@@ -103,14 +103,6 @@ export async function prepareStudyAssets(input: {
     );
   }
   return data;
-}
-
-export async function getStudyAssetJob(jobId: string) {
-  const response = await fetch(`/api/ai/study-assets/jobs/${jobId}`, {
-    headers: await authHeaders(),
-  });
-  if (!response.ok) return null;
-  return (await response.json()) as StudyAssetPreparation;
 }
 
 /**
@@ -255,7 +247,7 @@ export async function reportStudyVariant(input: {
   cardId: string;
   variantId: string;
   bundleVersion: number;
-  reason: "multiple-correct" | "wrong-grade" | "poor-gap" | "unrelated-options" | "other";
+  reason: StudyVariantReportReason;
 }) {
   const response = await fetch("/api/ai/study-assets/report", {
     method: "POST",

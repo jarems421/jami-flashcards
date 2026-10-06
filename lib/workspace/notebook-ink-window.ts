@@ -156,6 +156,42 @@ export function getNotebookInkRenderWindow(input: {
   };
 }
 
+/** How far past the frame a PDF's sharp redraw reaches, as a share of the frame. */
+const PDF_DETAIL_OVERSCAN = 0.15;
+const PDF_DETAIL_GRID = 64;
+
+/**
+ * The parts of the open sheet to paint at full density.
+ *
+ * Only the sheet being written on is clipped. The adjacent sheets in the
+ * swipe track are only ever seen from the fitted view -- swiping is what one
+ * finger does when the page is not zoomed -- and a fitted sheet is painted
+ * whole anyway, so there is nothing for them to gain.
+ *
+ * The PDF slice is tighter than the ink's window: it is redrawn rarely, so it
+ * needs little room to pan into, and each extra point costs a whole canvas
+ * pixel per screen pixel. It is null when the sheet is whole -- a fitted page
+ * is already drawn at full density.
+ */
+export function getNotebookSheetRenderWindows(input: {
+  sheetWidth: number;
+  sheetHeight: number;
+  pageX: number;
+  pageY: number;
+  frameWidth: number;
+  frameHeight: number;
+}) {
+  const pdfSlice = getNotebookInkRenderWindow({
+    ...input,
+    overscan: PDF_DETAIL_OVERSCAN,
+    grid: PDF_DETAIL_GRID,
+  });
+  return {
+    ink: getNotebookInkRenderWindow(input),
+    pdfDetail: isWholeNotebookInkSheet(pdfSlice) ? null : pdfSlice,
+  };
+}
+
 /** Whether a window covers the whole sheet, and so changes nothing. */
 export function isWholeNotebookInkSheet(window: NotebookInkRenderWindow) {
   return (

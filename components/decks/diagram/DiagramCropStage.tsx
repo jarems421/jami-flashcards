@@ -1,15 +1,14 @@
 "use client";
 
 import { useRef, type PointerEvent } from "react";
+import type { OcclusionPoint, OcclusionShape } from "@/lib/study/image-occlusion";
 import {
   moveShape,
   resizeShape,
   shapeFromPoints,
   type OcclusionCrop,
-  type OcclusionPoint,
-  type OcclusionShape,
   type ResizeHandle,
-} from "@/lib/study/image-occlusion";
+} from "@/lib/study/image-occlusion-geometry";
 
 type DiagramCropStageProps = {
   imageUrl: string | null;

@@ -8,9 +8,7 @@ import {
   calculatePracticePaperPercentage,
   getPracticePaperGradeLabel,
 } from "@/lib/practice/practice-paper-grades";
-import {
-  applyPracticePaperMarkCorrection,
-} from "@/lib/practice/practice-papers";
+import { applyPracticePaperMarkCorrection } from "@/lib/practice/practice-paper-results";
 
 const paper = mapPracticePaperData("paper-1", {
   notebookId: "paper-1",

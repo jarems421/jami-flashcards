@@ -2,10 +2,10 @@ import {
   MAX_DIAGRAM_LABELS,
   MAX_LABEL_ANSWER_LENGTH,
   clampShape,
-  shapeContainsPoint,
   type OcclusionLabel,
   type OcclusionShape,
 } from "@/lib/study/image-occlusion";
+import { shapeContainsPoint } from "@/lib/study/image-occlusion-geometry";
 
 /**
  * Finding a diagram's printed labels with a vision model, on request.

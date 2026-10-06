@@ -125,10 +125,6 @@ async function embedChunks(apiKey: string, title: string, chunks: readonly Sourc
   return results.flat();
 }
 
-export function deleteAccountSourceIndex(uid: string) {
-  return deleteChunkSnapshots(uid);
-}
-
 export async function rebuildSourceIndex(uid: string, sourceId: string) {
   const apiKey = getConfiguredGeminiEmbeddingApiKey(process.env);
   if (!apiKey || !resolveAiProviderPolicy(process.env).geminiReady) {

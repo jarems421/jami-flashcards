@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   useCallback,
@@ -9,235 +8,125 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import AppPage from "@/components/layout/AppPage";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
-import PracticePaperAttemptBar from "@/components/practice/PracticePaperAttemptBar";
-import NotebookQuestionOverlay from "@/components/workspace/NotebookQuestionOverlay";
-import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
-import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayers";
-import NotebookImageLayer from "@/components/workspace/NotebookImageLayer";
-import NotebookGraphLayer from "@/components/workspace/NotebookGraphLayer";
-import NotebookGraphEditorDialog from "@/components/workspace/NotebookGraphEditorDialog";
-import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
-import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
-import NotebookPagesDrawer from "@/components/workspace/NotebookPagesDrawer";
-import NotebookPageNavigation from "@/components/workspace/NotebookPageNavigation";
-import NotebookDrawingToolbar, {
-  type NotebookToolMenu,
-} from "@/components/workspace/NotebookDrawingToolbar";
-import NotebookAddPagesDialog from "@/components/workspace/NotebookAddPagesDialog";
-import NotebookPhoneLayoutNotice from "@/components/workspace/NotebookPhoneLayoutNotice";
-import NotebookSaveIndicator from "@/components/workspace/NotebookSaveIndicator";
-import NotebookToolSettingsPopover from "@/components/workspace/NotebookToolSettingsPopover";
-import NotebookTextBlockLayer from "@/components/workspace/NotebookTextBlockLayer";
-import ToolbarIconButton, {
-  NotebookIcon,
-} from "@/components/workspace/NotebookToolbarIconButton";
-import NotebookViewport, {
-  type NotebookViewportPreview,
-} from "@/components/workspace/NotebookViewport";
-import {
-  Button,
-  ButtonLink,
-  ConfirmDialog,
-  EmptyState,
-  FeedbackBanner,
-  Skeleton,
-} from "@/components/ui";
-import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
+import { FeedbackBanner } from "@/components/ui";
+import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
+import NotebookAddPagesDialog from "@/components/workspace/NotebookAddPagesDialog";
+import NotebookCreatePageAffordance from "@/components/workspace/NotebookCreatePageAffordance";
+import NotebookDrawingToolbar from "@/components/workspace/NotebookDrawingToolbar";
+import NotebookEditorConfirmDialog from "@/components/workspace/NotebookEditorConfirmDialog";
+import NotebookEditorFallback from "@/components/workspace/NotebookEditorFallback";
+import NotebookEditorHeader from "@/components/workspace/NotebookEditorHeader";
+import NotebookFloatingNotice from "@/components/workspace/NotebookFloatingNotice";
+import NotebookGraphEditorDialog from "@/components/workspace/NotebookGraphEditorDialog";
+import NotebookGraphLayer from "@/components/workspace/NotebookGraphLayer";
+import NotebookImageLayer from "@/components/workspace/NotebookImageLayer";
+import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayers";
+import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
+import NotebookPageNavigation from "@/components/workspace/NotebookPageNavigation";
+import NotebookPagesDrawer from "@/components/workspace/NotebookPagesDrawer";
+import NotebookPhoneLayoutNotice from "@/components/workspace/NotebookPhoneLayoutNotice";
+import NotebookQuestionOverlay from "@/components/workspace/NotebookQuestionOverlay";
+import NotebookSheetsLayer, {
+  useNotebookSheetsBeside,
+} from "@/components/workspace/NotebookSheetsBeside";
+import { getNotebookSwipePreviews } from "@/components/workspace/NotebookSwipePreviews";
+import NotebookTextBlockLayer from "@/components/workspace/NotebookTextBlockLayer";
+import NotebookToolSettingsPopover from "@/components/workspace/NotebookToolSettingsPopover";
+import NotebookViewport from "@/components/workspace/NotebookViewport";
 import { useFeedback } from "@/hooks/useFeedback";
-import { useNotebookLoader } from "@/hooks/useNotebookLoader";
+import { PHONE_LAYOUT_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
+import { useNotebookActivePage } from "@/hooks/useNotebookActivePage";
+import { useNotebookAssistantContext } from "@/hooks/useNotebookAssistantContext";
+import { useNotebookEditorShell, useNotebookPageUrl } from "@/hooks/useNotebookEditorShell";
+import { useNotebookExitGuard } from "@/hooks/useNotebookExitGuard";
 import { useNotebookInkController } from "@/hooks/useNotebookInkController";
+import { useNotebookKeyboardShortcuts } from "@/hooks/useNotebookKeyboardShortcuts";
+import { useNotebookLiveInkLayer } from "@/hooks/useNotebookLiveInkLayer";
+import { useNotebookLoader } from "@/hooks/useNotebookLoader";
+import { useNotebookPageHydration } from "@/hooks/useNotebookPageHydration";
+import { useNotebookPageManagement } from "@/hooks/useNotebookPageManagement";
+import { getNotebookPointFromEvent, useNotebookPagePointer } from "@/hooks/useNotebookPagePointer";
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
 import { useNotebookPageTrack } from "@/hooks/useNotebookPageTrack";
-import {
-  useNotebookPersistenceController,
-  type NotebookPageSaveResult,
-} from "@/hooks/useNotebookPersistenceController";
+import { useNotebookNavigationLock, useNotebookPageTurn } from "@/hooks/useNotebookPageTurn";
+import { useNotebookPersistenceController } from "@/hooks/useNotebookPersistenceController";
+import { useNotebookPlacedItems } from "@/hooks/useNotebookPlacedItems";
+import { useNotebookSwipeGesture } from "@/hooks/useNotebookSwipeGesture";
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
+import { useNotebookToolSettings } from "@/hooks/useNotebookToolSettings";
+import { useNotebookTouchInkHint } from "@/hooks/useNotebookTouchInkHint";
 import { useNotebookViewportController } from "@/hooks/useNotebookViewportController";
-import { usePracticePaperStatus } from "@/hooks/usePracticePaperStatus";
-import { usePracticePaperRetake } from "@/hooks/usePracticePaperRetake";
 import {
   useNotebookDrawingToolState,
   useNotebookNavigationState,
   useNotebookPageCreationState,
   useNotebookPanelState,
 } from "@/hooks/useNotebookWorkspaceState";
-import { useNotebookAssistantContext } from "@/hooks/useNotebookAssistantContext";
-import { useFolderSheetChoices, useNotebookSheets } from "@/hooks/useNotebookSheet";
-import NotebookSheetPanel, { useNotebookSheetFrames } from "@/components/workspace/NotebookSheetPanel";
-import NotebookSheetPicker from "@/components/workspace/NotebookSheetPicker";
-import { onScreenFloatingRects } from "@/components/ai/JamiFloatingTutor";
+import { usePracticePaperRetake } from "@/hooks/usePracticePaperRetake";
+import { usePracticePaperStatus } from "@/hooks/usePracticePaperStatus";
+import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
+import { createNotebookAnswerBlock } from "@/lib/workspace/notebook-answer-block";
 import {
-  MAX_NOTEBOOK_SHEETS,
-  notebookSheetFromAttachment,
-  notebookSheetsFromNotebookFiles,
-  type NotebookSheet,
-} from "@/lib/workspace/notebook-sheet";
-import type { TutorAttachment } from "@/lib/ai/tutor-attachments";
-import type {
-  NotebookFile,
-  NotebookImageRef,
-  NotebookPage,
-  NotebookStrokeTool,
-  NotebookTextBlock,
-} from "@/lib/workspace/notebooks";
+  getNotebookAssistantQuickActions,
+  notebookPageHasWork,
+} from "@/lib/workspace/notebook-assistant";
+import {
+  clampNotebookPagePan,
+  shouldSuppressTouchAfterStylus,
+} from "@/lib/workspace/notebook-inking";
+import {
+  clearNotebookNativeSelection,
+  installNotebookStylusTouchListeners,
+} from "@/lib/workspace/notebook-interaction-lock";
+import { makeNotebookTextBlockId } from "@/lib/workspace/notebook-page-content";
+import { notebookToolMovesPlacedItems } from "@/lib/workspace/notebook-page-state";
+import {
+  type NotebookPdfCanvasTracking,
+} from "@/lib/workspace/notebook-pdf-canvas";
+import {
+  applyNotebookPageSave,
+  applyNotebookPreviewFromSave,
+  type NotebookPageSaveResult,
+} from "@/lib/workspace/notebook-save-result";
 import {
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
 } from "@/lib/workspace/notebooks";
-import {
-  getNotebookPageStyleBackground,
-  makeNotebookTextBlockId,
-  normalizeNotebookStrokes,
-} from "@/lib/workspace/notebook-page-content";
-import { createNotebookAnswerBlock } from "@/lib/workspace/notebook-answer-block";
-import {
-  getNotebookSwipePreviewDirection,
-  isNotebookPageSwipePreviewEnabled,
-  resolveNotebookCarouselPages,
-  shouldShowNotebookNewPagePreview,
-} from "@/lib/workspace/notebook-carousel";
-import {
-  clearNotebookNativeSelection,
-  installNotebookStylusTouchListeners,
-  installNotebookViewportZoomBlock,
-  isNotebookSelectableTextTarget,
-  isNotebookTextEditingTarget,
-  NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
-  safelyReleasePointerCapture,
-  safelySetPointerCapture,
-  shouldSuppressNotebookNativeEvent,
-} from "@/lib/workspace/notebook-interaction-lock";
-import {
-  clampNotebookPagePan,
-  clampNotebookThicknessPercent,
-  getHighlighterWidthFromPercent,
-  getNotebookCreatePagePull,
-  getNotebookPageDragIntent,
-  getNotebookPageIndexAfterSwipe,
-  getNotebookSwipeDragOffset,
-  getNotebookSwipeDirection,
-  getNotebookSwipeReleaseDecision,
-  getNotebookSwipeSettleDuration,
-  getNotebookSwipeVelocity,
-  getPenWidthFromPercent,
-  isNotebookViewportZoomedIn,
-  shouldCreateNotebookPageOnRelease,
-  mapClientPointToNotebookPage,
-  shouldPointerSwipePages,
-  shouldSuppressTouchAfterStylus,
-  type NotebookPageDragIntent,
-} from "@/lib/workspace/notebook-inking";
-import {
-  getNotebookInkRenderWindow,
-  isWholeNotebookInkSheet,
-} from "@/lib/workspace/notebook-ink-window";
-import {
-  createNotebookGraphBlock,
-  MAX_NOTEBOOK_GRAPHS,
-  type NotebookGraphBlock,
-  type NotebookGraphDraft,
-} from "@/lib/workspace/notebook-graphs";
-import {
-  createNotebookPage,
-  deleteNotebookPage,
-  updateNotebookPageGraphs,
-  updateNotebookPageImages,
-} from "@/services/study/notebooks";
-import {
-  addUploadedImageToNotebookPage,
-  deleteUploadedNotebookImageFile,
-} from "@/services/study/notebook-page-images";
-import { appendUploadedFileToNotebook } from "@/services/study/notebook-import";
-import {
-  legacyStrokesToJsDrawSvg,
-} from "@/lib/workspace/notebook-ink-data";
-import {
-  buildNotebookPageSearch,
-  prepareNotebookExit,
-} from "@/lib/workspace/notebook-navigation";
-import { setUnsavedWork } from "@/lib/app/app-build";
-import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
-import {
-  isNotebookToolDoublePress,
-  readNotebookScribbleErasePreference,
-  saveNotebookScribbleErasePreference,
-  type NotebookToolPress,
-} from "@/lib/workspace/notebook-toolbar";
-import {
-  clampNotebookPenSettings,
-  readNotebookPenSettings,
-  saveNotebookPenSettings,
-} from "@/lib/workspace/notebook-pen-feel";
-import {
-  readNotebookToolPreferences,
-  saveNotebookToolPreferences,
-} from "@/lib/workspace/notebook-tool-preferences";
-import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
-import { getNotebookAssistantQuickActions } from "@/lib/workspace/notebook-assistant";
 import { recordPracticePaperTutorUse } from "@/services/study/practice-papers";
-import {
-  trackNotebookPdfCanvas,
-  type NotebookPdfCanvasTracking,
-} from "@/lib/workspace/notebook-pdf-canvas";
-import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
 
-type Point = { x: number; y: number };
-type EditorTool = NotebookStrokeTool | "text" | "select";
-
-/*
- * Whether images and graphs can be picked up and moved.
- *
- * There is no select button any more. Select is still where the notebook rests
- * when no tool is on, but on an iPad without a keyboard nothing leads back to
- * it once a pen is chosen -- so the text tool, the one non-drawing tool on the
- * toolbar, moves placed things too.
- */
-function movesPlacedItems(tool: EditorTool) {
-  return tool === "select" || tool === "text";
-}
-type PageSwipeState = {
-  pointerId: number;
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
-  lastX: number;
-  lastY: number;
-  samples: Array<{ x: number; time: number }>;
-  axis: "horizontal" | "vertical" | null;
-  intent: NotebookPageDragIntent | null;
-  completed: boolean;
-};
 const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
-/** How recently the Pencil was writing for a touch to count as the palm holding it. */
-const RECENT_PENCIL_MS = 5_000;
-// Each edge keeps a generous 32px invisible hit area, but the visible
-// affordance is a slim grip bar sitting on the border, not a bubble.
 
+/**
+ * The notebook editor, as the composition root for its controllers.
+ *
+ * Each concern lives in its own hook -- loading, the shared page store, ink,
+ * autosave, placed items, text boxes, tools, page turns and swipes -- and this
+ * component creates them in the order they depend on one another, routes the
+ * page's pointer input between them, and lays out what they render.
+ *
+ * A few controllers call one another in a loop (ink marks the page unsaved, a
+ * pinch cancels a swipe, a load resets the viewport), so the earlier ones are
+ * handed callbacks that reach the later ones; every controller keeps its
+ * callbacks behind a ref, so they are only ever called after this has run.
+ */
 export default function NotebookEditorPage() {
   const { user } = useUser();
+  const userId = user.uid;
   const params = useParams<{ notebookId?: string | string[] }>();
-  const notebookId = Array.isArray(params.notebookId)
-    ? params.notebookId[0]
-    : params.notebookId;
+  const notebookId = Array.isArray(params.notebookId) ? params.notebookId[0] : params.notebookId;
   // Shared page state lives in one store so its committed value and its
   // render value cannot drift. Read it with `pageState.read()` inside handlers.
   const { store: pageState, state: pageSnapshot } = useNotebookPageState();
   const { textBlocks, pageColor, pageStyle, saveStatus, tool } = pageSnapshot;
   const {
-    setTextBlocks, setPageColor, setPageStyle, setSaveStatus, setTool,
-  } = pageState;
-  const {
     feedback,
+    show: showFeedback,
     success,
     showError,
     showThrownError,
@@ -245,88 +134,107 @@ export default function NotebookEditorPage() {
     clearIfShowing: clearFeedbackIfShowing,
   } = useFeedback();
 
-  /** The loader reports a whole notice; route it to the right method. */
-  const applyFeedback = useCallback(
-    (next: Feedback | null) => {
-      if (!next) {
-        clearFeedback();
-      } else if (next.type === "success") {
-        success(next.message);
-      } else {
-        showError(next.message);
-      }
-    },
-    [clearFeedback, showError, success]
-  );
+  // Plain editor state, declared before the controllers that read and write it.
+  const drawingTools = useNotebookDrawingToolState();
+  const {
+    penColor, highlighterColor, eraserWidth,
+    openMenu: openToolMenu, closeMenus: closeDrawingToolMenus,
+  } = drawingTools;
+  const {
+    pageZoom, setPageZoom, pagePan, setPagePan,
+    frameSize, setFrameSize, pageSwipeMotion, setPageSwipeMotion,
+    pageSwipeInkSnapshot, setPageSwipeInkSnapshot,
+  } = useNotebookNavigationState();
+  const creation = useNotebookPageCreationState();
+  const {
+    createPageActive, createPageProgress, creatingPage, createPageBounce,
+    inkEditorMountRevision, setInkEditorMountRevision,
+  } = creation;
+  const {
+    assistantOpen, setAssistantOpen, pagesDrawerOpen, setPagesDrawerOpen,
+    phoneFullEditing, setPhoneFullEditing,
+  } = useNotebookPanelState();
+  const isPhoneLayout = useMediaQuery(PHONE_LAYOUT_QUERY);
+  const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
+  const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
+  /** Bumped on every edit; save results older than the newest are discarded. */
+  const editorRevisionRef = useRef(0);
+  const pageFrameRef = useRef<HTMLDivElement | null>(null);
+  const pageTrackRef = useRef<HTMLDivElement | null>(null);
+  const pagePreviewLayerRef = useRef<HTMLDivElement | null>(null);
+  const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const createPageAffordanceRef = useRef<HTMLDivElement | null>(null);
+  const createPageIndicatorRef = useRef<HTMLDivElement | null>(null);
+  const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
+  const activePdfCanvasTrackingRef = useRef<NotebookPdfCanvasTracking<HTMLCanvasElement>>({
+    canvas: null,
+    renderKey: null,
+  });
+  const navigationLock = useNotebookNavigationLock();
+  const { swipeRef: pageSwipeRef, isLocked: isPageNavigationLocked } = navigationLock;
 
+  const loader = useNotebookLoader({
+    userId,
+    notebookId,
+    pageState,
+    onFeedback: showFeedback,
+    onBeforeLoad: () => {
+      viewport.resetViewportGestures();
+      setPageZoom(1);
+      setPagePan({ x: 0, y: 0 });
+      editorRevisionRef.current = 0;
+      persistence.resetSaveTracking();
+    },
+    onDraftRestored: () => setInkEditorMountRevision((current) => current + 1),
+  });
   const {
     notebook,
     setNotebook,
     pages,
     setPages,
     files,
-    setFiles,
     fileUrls,
-    hydratePageInk,
-    resolvedImageFileIds,
     selectedPageId,
-    setSelectedPageId,
     loading,
     loadFailed,
     takeRecoveredDraft,
     reload: reloadNotebook,
-  } = useNotebookLoader({
-    userId: user?.uid,
-    notebookId,
-    pageState,
-    onFeedback: applyFeedback,
-    onBeforeLoad: () => {
-      resetViewportGestures();
-      setPageZoom(1);
-      setPagePan({ x: 0, y: 0 });
-      editorRevisionRef.current = 0;
-      resetSaveTracking();
-    },
-    onDraftRestored: () => setInkEditorMountRevision((current) => current + 1),
-  });
+  } = loader;
 
-  /*
-   * Sheets kept beside the page -- question sheets or mark schemes to work
-   * from without swiping away -- up to three, and the picker for choosing one.
-   */
-  const notebookSheets = useNotebookSheets(notebookId ?? "");
-  const sheetFrames = useNotebookSheetFrames(
-    notebookSheets.open,
-    Array.from({ length: MAX_NOTEBOOK_SHEETS }, (_, slot) =>
-      notebookSheets.sheets.some((kept) => kept.slot === slot)
-    )
-  );
-  /** What the picker is choosing for: another sheet (no slot), or a different one in a panel. */
-  const [sheetPicker, setSheetPicker] = useState<{ replaceSlot: number | null } | null>(null);
-  const folderSheetChoices = useFolderSheetChoices({
-    userId: user?.uid ?? "",
+  const sheetsBeside = useNotebookSheetsBeside({
+    notebookId: notebookId ?? "",
+    userId,
     folderId: notebook?.folderId ?? "",
-    enabled: sheetPicker !== null,
+    files,
   });
-  const notebookSheetChoices = useMemo(() => notebookSheetsFromNotebookFiles(files), [files]);
-  const keepSheetBeside = (sheet: NotebookSheet) => {
-    // Measured before the new panel exists, so it lands clear of the Tutor
-    // card, pinned answers and the other sheets rather than on top of one.
-    const onScreen = onScreenFloatingRects();
-    const { slot, added } = notebookSheets.add(sheet);
-    if (added && onScreen.length > 0) sheetFrames[slot].moveClearOf(onScreen);
-  };
-  const handleKeepAttachmentBeside = (attachment: TutorAttachment) => {
-    const sheet = notebookSheetFromAttachment(attachment);
-    if (sheet) keepSheetBeside(sheet);
-  };
 
-  const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
-  const isPageNavigationLocked = useCallback(
-    () => pageNavigationLockedRef.current,
-    []
-  );
+  const {
+    selectedPage,
+    selectedPageIndex,
+    selectedPageInkUnloaded,
+    selectedPageInkSvg,
+    activeNotebookFile,
+    activeNotebookFileUrl,
+    activePdfRenderKey,
+    resolvePageBackground,
+    trackPreviousPage,
+    trackNextPage,
+  } = useNotebookActivePage({
+    notebook,
+    pages,
+    selectedPageId,
+    files,
+    fileUrls,
+    swipeMotion: pageSwipeMotion,
+  });
 
+  const ink = useNotebookInkController({
+    pageState,
+    inkEditorRef,
+    onEdit: (options) => persistence.markPageUnsaved(options),
+    resetTextBlockInteraction: () => resetTextBlockInteraction(),
+    onUiCommitted: () => clearFeedbackIfShowing("Could not autosave this page."),
+  });
   const {
     inkReadyRef,
     inkInteractionActiveRef,
@@ -337,217 +245,33 @@ export default function NotebookEditorPage() {
     undoDepth,
     redoDepth,
     setInkReady,
-    setInkHasContent,
     isInteracting: isInkInteracting,
-    recordTextEdit: pushUndoAction,
+    recordTextEdit,
     undo: handleUndo,
     redo: handleRedo,
-    clearHistory: clearInkHistory,
+    clearInk: clearPageInk,
     handleInkChange,
     handleInkHistoryChange,
     handleInteractionChange: handleInkInteractionChange,
     commitUi: flushInkUiSync,
     scheduleUiCommit: scheduleInkUiSync,
     cancelUiCommit: cancelInkUiSync,
-  } = useNotebookInkController({
-    pageState,
-    inkEditorRef,
-    onEdit: (options) => markPageUnsaved(options),
-    resetTextBlockInteraction: () => resetTextBlockInteraction(),
-    onUiCommitted: () =>
-      clearFeedbackIfShowing("Could not autosave this page."),
-  });
+  } = ink;
 
-  const {
-    penColor, setPenColor, penThicknessPercent, setPenThicknessPercent,
-    highlighterColor, setHighlighterColor,
-    highlighterThicknessPercent, setHighlighterThicknessPercent,
-    eraserMode, setEraserMode, eraserWidth, setEraserWidth,
-    penMenuOpen, setPenMenuOpen, highlighterMenuOpen, setHighlighterMenuOpen,
-    eraserMenuOpen, setEraserMenuOpen,
-    touchInkHintVisible, setTouchInkHintVisible,
-    scribbleToErase, setScribbleToErase,
-    penSettings, setPenSettings,
-  } = useNotebookDrawingToolState();
-  const {
-    pageZoom, setPageZoom, pagePan, setPagePan,
-    frameSize, setFrameSize, pageSwipeMotion, setPageSwipeMotion,
-    pageSwipeInkSnapshot, setPageSwipeInkSnapshot,
-  } = useNotebookNavigationState();
-  const {
-    showAddPagesDialog, setShowAddPagesDialog, notebookFile, setNotebookFile,
-    notebookUploadProgress, setNotebookUploadProgress,
-    addingNotebookFile, setAddingNotebookFile,
-    createPageActive, setCreatePageActive, createPageProgress, setCreatePageProgress,
-    creatingPage, setCreatingPage, createPageBounce, setCreatePageBounce,
-    deletingPageId, setDeletingPageId, confirmDialog, setConfirmDialog,
-    inkEditorMountRevision, setInkEditorMountRevision,
-  } = useNotebookPageCreationState();
-  const {
-    assistantOpen, setAssistantOpen, pagesDrawerOpen, setPagesDrawerOpen,
-    isPhoneLayout, setIsPhoneLayout, phoneFullEditing, setPhoneFullEditing,
-  } = useNotebookPanelState();
   const { practicePaperStatus, handlePracticePaperStatusChange } =
     usePracticePaperStatus(setAssistantOpen);
   const [practicePaperEditingLocked, setPracticePaperEditingLocked] = useState(false);
   const [practicePaperTutorLocked, setPracticePaperTutorLocked] = useState(false);
-  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
-  const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
-  /** The id of the graph open in the editor, "new" while one is being made, or null. */
-  const [graphEditorTarget, setGraphEditorTarget] = useState<string | null>(null);
   const handlePracticePaperRetake = usePracticePaperRetake(pageState, setPages, setInkEditorMountRevision);
-  const pageFrameRef = useRef<HTMLDivElement | null>(null);
-  const pageTrackRef = useRef<HTMLDivElement | null>(null);
-  const pagePreviewLayerRef = useRef<HTMLDivElement | null>(null);
-  const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
-  const activePdfCanvasTrackingRef = useRef<
-    NotebookPdfCanvasTracking<HTMLCanvasElement>
-  >({
-    canvas: null,
-    renderKey: null,
-  });
-  const pageNavigationTokenRef = useRef(0);
-  const pageNavigationLockedRef = useRef(false);
-  const pageCreationInFlightRef = useRef(false);
-  const maybeFinishPageHandoffRef = useRef<() => void>(() => undefined);
-  const handoffFinishAnimationFrameRef = useRef<number | null>(null);
-  const activePageBackgroundReadyRef = useRef(true);
-  const createPageActiveRef = useRef(false);
-  const createPageAffordanceRef = useRef<HTMLDivElement | null>(null);
-  const createPageIndicatorRef = useRef<HTMLDivElement | null>(null);
-  const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
-  const pageSwipeRef = useRef<PageSwipeState | null>(null);
-  const inkMountedUnloadedPageIdRef = useRef<string | null>(null);
-  const editorRevisionRef = useRef(0);
-  const ignoredTouchInkCountRef = useRef(0);
-  const touchInkHintTimeoutRef = useRef<number | null>(null);
-  const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
-  const selectedPage = useMemo(
-    () => pages.find((page) => page.id === selectedPageId) ?? pages[0] ?? null,
-    [pages, selectedPageId]
-  );
-  const selectedPageIndex = useMemo(
-    () => pages.findIndex((page) => page.id === selectedPage?.id),
-    [pages, selectedPage?.id]
-  );
-  const notebookPageHasWork = useMemo(
-    () =>
-      Boolean(
-        selectedPage?.typedContent?.trim() ||
-          textBlocks.some((block) => block.text.trim()) ||
-          inkHasContent ||
-          selectedPage?.inkData?.svg ||
-          (selectedPage?.strokeData?.strokes.length ?? 0) > 0 ||
-          (selectedPage?.imageRefs.length ?? 0) > 0 ||
-          (selectedPage?.graphBlocks.length ?? 0) > 0
-      ),
-    [inkHasContent, selectedPage, textBlocks]
-  );
+  const pageEditingEnabled = fullNotebookEditingEnabled && !practicePaperEditingLocked;
+
+  const pageHasWork = notebookPageHasWork({ page: selectedPage, textBlocks, inkHasContent });
   const notebookAssistantQuickActions = useMemo(
-    () => getNotebookAssistantQuickActions({ hasWork: notebookPageHasWork }),
-    [notebookPageHasWork]
+    () => getNotebookAssistantQuickActions({ hasWork: pageHasWork }),
+    [pageHasWork]
   );
 
-  // Each time the page changes, the ink editor remounts and re-deserializes the
-  // SVG. Mark ink as not-yet-ready so the static ink underlay shows until the
-  // editor paints, then NotebookInkEditor's onReady clears it — no blank flash.
-  useEffect(() => {
-    inkReadyRef.current = false;
-    setInkReady(false);
-  }, [inkReadyRef, selectedPage?.id, setInkReady]);
-  const hasMappedBackgroundPages = useMemo(
-    () => pages.some((page) => Boolean(page.backgroundFileId)),
-    [pages]
-  );
-  const previousPage = pages[selectedPageIndex - 1] ?? null;
-  const nextPage = pages[selectedPageIndex + 1] ?? null;
-  const carouselPages = resolveNotebookCarouselPages({
-    motion: pageSwipeMotion,
-    previousPage,
-    nextPage,
-  });
-  const trackPreviousPage = carouselPages.previousPage;
-  const trackNextPage = carouselPages.nextPage;
-  // Ink is fetched separately from the page record. Until it lands, the canvas
-  // is empty for that reason alone, so it must not accept new strokes: the
-  // editor reads its SVG once at mount, and drawing here would mean saving a
-  // near-blank page over the student's real drawing.
-  const selectedPageInkUnloaded = selectedPage
-    ? pageHasUnloadedInk(selectedPage)
-    : false;
-  const selectedPageInkSvg = useMemo(() => {
-    if (!selectedPage) {
-      return legacyStrokesToJsDrawSvg([], CANVAS_WIDTH, CANVAS_HEIGHT);
-    }
-    return (
-      selectedPage.inkData?.svg ??
-      legacyStrokesToJsDrawSvg(
-        normalizeNotebookStrokes(selectedPage.strokeData?.strokes),
-        CANVAS_WIDTH,
-        CANVAS_HEIGHT
-      )
-    );
-  }, [selectedPage]);
-  const activeNotebookFile = useMemo(() => {
-    const backgroundFileId = resolveNotebookPageBackgroundFileId({
-      pageBackgroundFileId: selectedPage?.backgroundFileId,
-      notebookUploadedFileId: notebook?.uploadedFileId,
-      firstFileId: files[0]?.id,
-      hasMappedPages: hasMappedBackgroundPages,
-    });
-    if (!backgroundFileId) return null;
-    return files.find((file) => file.id === backgroundFileId) ?? null;
-  }, [
-    files,
-    hasMappedBackgroundPages,
-    notebook?.uploadedFileId,
-    selectedPage?.backgroundFileId,
-  ]);
-  const activeNotebookFileUrl = activeNotebookFile ? fileUrls[activeNotebookFile.id] : undefined;
-  const activePdfRenderKey =
-    selectedPage &&
-    activeNotebookFile?.fileType === "application/pdf" &&
-    activeNotebookFile.storagePath
-      ? `${selectedPage.id}:${activeNotebookFile.id}:${selectedPage.pdfPageIndex ?? 0}`
-      : null;
-  // Resolve any page's background file + URL (mirrors activeNotebookFile) so the
-  // swipe preview can render the real adjacent page rather than a placeholder.
-  const resolvePageBackground = useCallback(
-    (page: NotebookPage | null | undefined) => {
-      if (!page) return { file: null as NotebookFile | null, url: undefined };
-      const backgroundFileId = resolveNotebookPageBackgroundFileId({
-        pageBackgroundFileId: page.backgroundFileId,
-        notebookUploadedFileId: notebook?.uploadedFileId,
-        firstFileId: files[0]?.id,
-        hasMappedPages: hasMappedBackgroundPages,
-      });
-      if (!backgroundFileId) {
-        return { file: null as NotebookFile | null, url: undefined };
-      }
-      const file =
-        files.find((entry) => entry.id === backgroundFileId) ?? null;
-      return { file, url: file ? fileUrls[file.id] : undefined };
-    },
-    [files, fileUrls, hasMappedBackgroundPages, notebook?.uploadedFileId]
-  );
-  const trackPreviousBackground = resolvePageBackground(trackPreviousPage);
-  const trackNextBackground = resolvePageBackground(trackNextPage);
-  const {
-    layout: viewportLayout,
-    pageFit,
-    pageWidthPx,
-    pageHeightPx,
-    pageTrackTravelDistance,
-    pagePanLiveRef,
-    isPinchActive,
-    cancelPinchAnimationFrame: cancelPinchZoomAnimationFrame,
-    resetPageSurfaceTransform,
-    cancelActivePinch,
-    resetViewportGestures,
-    handleTouchPointerDown,
-    handleTouchPointerMove,
-    handleTouchPointerEnd,
-  } = useNotebookViewportController({
+  const viewport = useNotebookViewportController({
     frameSize,
     pageZoom,
     pagePan,
@@ -564,29 +288,28 @@ export default function NotebookEditorPage() {
         cooldownUntil: stylusCooldownUntilRef.current,
         now: Date.now(),
       }),
-    onPinchTakeover: () => cancelPageSwipeForPinch(),
+    onPinchTakeover: () => turn.cancelSwipeForPinch(),
     onClearSwipeCandidate: () => {
       pageSwipeRef.current = null;
     },
-    onSwipeEnd: (event, options) => handleStopPageSwipe(event, options),
+    onSwipeEnd: (event, options) => swipe.end(event, options),
   });
-
   const {
-    offsetRef: pageTrackOffsetRef,
-    motionRef: pageSwipeMotionRef,
-    updateSwipeMotion: updatePageSwipeMotion,
-    setPreviewDirection: setPagePreviewDirection,
-    setPreviewVisibility: setPagePreviewVisibility,
-    captureInkSnapshot: capturePageSwipeInkSnapshot,
-    markInkSnapshotReady: markPageSwipeInkSnapshotReady,
-    writeOffset: writePageTrackOffset,
-    queueOffset: queuePageTrackOffset,
-    animateTo: animatePageTrackTo,
-    handleTransitionEnd: handlePageTrackTransitionEnd,
-    resolveTransition: resolvePageTrackTransition,
-    cancelQueuedOffset: cancelQueuedPageTrackOffset,
-    writeCreatePageProgress,
-  } = useNotebookPageTrack({
+    layout: viewportLayout,
+    pageFit,
+    pageWidthPx,
+    pageHeightPx,
+    pageTrackTravelDistance,
+    pagePanLiveRef,
+    isPinchActive,
+    cancelPinchAnimationFrame: cancelPinchZoomAnimationFrame,
+    cancelActivePinch,
+    handleTouchPointerDown,
+    handleTouchPointerMove,
+    handleTouchPointerEnd,
+  } = viewport;
+
+  const track = useNotebookPageTrack({
     trackRef: pageTrackRef,
     previewLayerRef: pagePreviewLayerRef,
     createPageAffordanceRef,
@@ -595,49 +318,29 @@ export default function NotebookEditorPage() {
     getSelectedPageId: () => pageState.read().selectedPage?.id ?? null,
     // Prepared while the page was idle, so beginning a swipe does not pay for
     // an SVG export on the pointermove that starts it.
-    getInkSnapshotSvg: () =>
-      inkEditorRef.current?.serializeWarm() ?? selectedPageInkSvg,
+    getInkSnapshotSvg: () => inkEditorRef.current?.serializeWarm() ?? selectedPageInkSvg,
     onSwipeMotionChange: setPageSwipeMotion,
     onInkSnapshotChange: setPageSwipeInkSnapshot,
   });
 
-  const markActivePageBackgroundSettled = useCallback(() => {
-    activePageBackgroundReadyRef.current = true;
-    window.requestAnimationFrame(() => maybeFinishPageHandoffRef.current());
-  }, []);
-
-  const handleActivePdfRenderStateChange = useCallback(
-    (status: "loading" | "ready" | "error") => {
-      activePageBackgroundReadyRef.current = status !== "loading";
-      if (status !== "loading") {
-        window.requestAnimationFrame(() => maybeFinishPageHandoffRef.current());
-      }
-    },
-    []
-  );
-
   const handleAssistantOpenChange = useCallback((open: boolean) => {
     if (open) {
       // Here rather than on the toolbar button: the floating Tutor reopens from its own pill too.
-      if (!assistantOpen && practicePaperStatus === "in_progress" && user?.uid && notebook) {
-        void recordPracticePaperTutorUse(user.uid, notebook.id).catch(() => undefined);
+      if (!assistantOpen && practicePaperStatus === "in_progress" && userId && notebook) {
+        void recordPracticePaperTutorUse(userId, notebook.id).catch(() => undefined);
       }
       setPagesDrawerOpen(false);
-      setPenMenuOpen(false);
-      setHighlighterMenuOpen(false);
-      setEraserMenuOpen(false);
+      closeDrawingToolMenus();
     }
     setAssistantOpen(open);
   }, [
     assistantOpen,
+    closeDrawingToolMenus,
     notebook,
     practicePaperStatus,
-    user?.uid,
+    userId,
     setAssistantOpen,
-    setEraserMenuOpen,
-    setHighlighterMenuOpen,
     setPagesDrawerOpen,
-    setPenMenuOpen,
   ]);
 
   const getNotebookAssistantContext = useNotebookAssistantContext({
@@ -653,71 +356,13 @@ export default function NotebookEditorPage() {
     editorRevisionRef,
   });
 
-  // `selectedPage` is derived from the pages list, so the store has to be told
-  // about it. Handlers read the open page through `pageState.read()`.
   useEffect(() => {
-    pageState.selectPage(selectedPage);
-  }, [pageState, selectedPage]);
-
-  useEffect(() => {
-    activePdfCanvasTrackingRef.current = {
-      canvas: null,
-      renderKey: null,
-    };
+    activePdfCanvasTrackingRef.current = { canvas: null, renderKey: null };
   }, [activePdfRenderKey]);
 
-  useEffect(() => {
-    createPageActiveRef.current = createPageActive;
-  }, [createPageActive]);
+  useNotebookPageUrl(selectedPage?.id);
 
-  useEffect(() => {
-    if (!activeNotebookFile) {
-      activePageBackgroundReadyRef.current = true;
-      window.requestAnimationFrame(() => maybeFinishPageHandoffRef.current());
-      return;
-    }
-    if (activeNotebookFile.fileType.startsWith("image/")) {
-      const terminalWithoutImage =
-        Boolean(resolvedImageFileIds[activeNotebookFile.id]) &&
-        !activeNotebookFileUrl;
-      activePageBackgroundReadyRef.current = terminalWithoutImage;
-      if (terminalWithoutImage) {
-        window.requestAnimationFrame(() => maybeFinishPageHandoffRef.current());
-      }
-      return;
-    }
-    const waitingForPdf =
-      activeNotebookFile.fileType === "application/pdf" &&
-      Boolean(activeNotebookFile.storagePath);
-    activePageBackgroundReadyRef.current = !waitingForPdf;
-    if (!waitingForPdf) {
-      window.requestAnimationFrame(() => maybeFinishPageHandoffRef.current());
-    }
-  }, [
-    activeNotebookFile,
-    activeNotebookFileUrl,
-    resolvedImageFileIds,
-    selectedPage?.id,
-  ]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !selectedPage?.id) return;
-    const nextSearch = buildNotebookPageSearch(
-      window.location.search,
-      selectedPage.id
-    );
-    const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
-    window.history.replaceState(window.history.state, "", nextUrl);
-  }, [selectedPage?.id]);
-
-  // Push the precision/stroke selection straight to the ink editor whenever it
-  // changes. This bypasses the deferred style application (which can stall if a
-  // stale eraser pointer leaves activePointers > 0), so the chosen mode always
-  // reaches js-draw and the two modes keep their distinct roles.
-  useEffect(() => {
-    inkEditorRef.current?.setEraserMode(eraserMode);
-  }, [eraserMode]);
-
+  // The frame mounts once the notebook has loaded, so measuring restarts then.
   useEffect(() => {
     const frame = pageFrameRef.current;
     if (!frame || typeof window === "undefined") return;
@@ -758,61 +403,19 @@ export default function NotebookEditorPage() {
     pagePanLiveRef.current = pagePan;
   }, [pagePan, pagePanLiveRef]);
 
+  const handlePageSaved = useCallback(
+    (result: NotebookPageSaveResult) => {
+      setPages((current) =>
+        current.map((page) => (page.id === result.pageId ? applyNotebookPageSave(page, result) : page))
+      );
+      setNotebook((current) => (current ? applyNotebookPreviewFromSave(current, result) : current));
+    },
+    [setNotebook, setPages]
+  );
 
-  const handlePageSaved = useCallback((result: NotebookPageSaveResult) => {
-    setPages((current) =>
-      current.map((page) =>
-        page.id === result.pageId
-          ? {
-              ...page,
-              typedContent: result.typedContent.trim() || undefined,
-              textBlocks: result.replaceStoredContent
-                ? result.textBlocks
-                : page.textBlocks,
-              inkData: result.replaceStoredContent
-                ? result.inkData
-                : page.inkData,
-              strokeData: result.replaceStoredContent
-                ? undefined
-                : page.strokeData,
-              pageColor: result.replaceStoredContent
-                ? result.pageColor
-                : page.pageColor,
-              pageStyle: result.replaceStoredContent
-                ? result.pageStyle
-                : page.pageStyle,
-              status: result.status,
-              contentRevision: result.contentRevision,
-              updatedAt: result.updatedAt,
-            }
-          : page
-      )
-    );
-    setNotebook((current) =>
-      current
-        ? {
-            ...current,
-            previewInkSvg:
-              result.inkSvg.length <= 120_000 ? result.inkSvg : undefined,
-            previewPageId: result.pageId,
-            updatedAt: result.updatedAt,
-          }
-        : current
-    );
-  }, [setNotebook, setPages]);
-
-  const {
-    markPageUnsaved,
-    saveCurrentPage,
-    queueCurrentPageSaveForExit,
-    persistCurrentPageDraftSync,
-    schedulePendingWork,
-    cancelScheduledWork: cancelScheduledPersistence,
-    resetSaveTracking,
-    hasSaveInFlight,
-  } = useNotebookPersistenceController({
+  const persistence = useNotebookPersistenceController({
     pageState,
-    userId: user?.uid,
+    userId,
     inkEditorRef,
     editorRevisionRef,
     isInkInteracting,
@@ -823,137 +426,52 @@ export default function NotebookEditorPage() {
     commitUi: flushInkUiSync,
     scheduleUiCommit: scheduleInkUiSync,
   });
+  const {
+    markPageUnsaved,
+    saveCurrentPage,
+    schedulePendingWork,
+    cancelScheduledWork: cancelScheduledPersistence,
+  } = persistence;
 
-  /*
-   * Image writes run one at a time, and each starts from the list the one
-   * before it left. Two quick moves used to overlap, the second was rejected,
-   * and its image jumped back to where the drag began.
-   */
-  const imageWriteChainRef = useRef<Promise<unknown>>(Promise.resolve());
-  /** The last image list written or asked for, per page, ahead of `pages`. */
-  const latestImageRefsRef = useRef<{ pageId: string; imageRefs: NotebookImageRef[] } | null>(
-    null
-  );
-  const [addingImage, setAddingImage] = useState(false);
-
-  const queueImageWrite = useCallback(<T,>(task: () => Promise<T>) => {
-    const run = imageWriteChainRef.current.then(task, task);
-    imageWriteChainRef.current = run.catch(() => undefined);
-    return run;
-  }, []);
-
-  const currentImageRefsFor = useCallback(
-    (pageId: string) => {
-      const latest = latestImageRefsRef.current;
-      if (latest?.pageId === pageId) return latest.imageRefs;
-      const selected = pageState.read().selectedPage;
-      return selected?.id === pageId ? selected.imageRefs : [];
-    },
-    [pageState]
-  );
-
-  const applyPageImages = useCallback(
-    (pageId: string, imageRefs: NotebookImageRef[], updatedAt: number) => {
-      latestImageRefsRef.current = { pageId, imageRefs };
-      setPages((current) =>
-        current.map((page) =>
-          page.id === pageId ? { ...page, imageRefs, updatedAt } : page
-        )
-      );
-    },
-    [setPages]
-  );
-
-  const handleIllustrationInserted = useCallback(
-    (input: { imageRef: NotebookImageRef; contentRevision: number }) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!pageId) return;
-      const latest = latestImageRefsRef.current;
-      if (
-        latest?.pageId === pageId &&
-        !latest.imageRefs.some((image) => image.sourceAssetId === input.imageRef.sourceAssetId)
-      ) {
-        latestImageRefsRef.current = { pageId, imageRefs: [...latest.imageRefs, input.imageRef] };
-      }
-      setPages((current) =>
-        current.map((page) =>
-          page.id === pageId
-            ? {
-                ...page,
-                imageRefs: page.imageRefs.some(
-                  (image) => image.sourceAssetId === input.imageRef.sourceAssetId
-                )
-                  ? page.imageRefs
-                  : [...page.imageRefs, input.imageRef],
-                contentRevision: input.contentRevision,
-                updatedAt: Date.now(),
-              }
-            : page
-        )
-      );
-      pageState.setContentRevision(input.contentRevision);
-      setSelectedImageId(input.imageRef.id);
-      if (!isPhoneLayout) setTool("select");
-      setSaveStatus("saved");
-      success("Visual added to this page.");
-    },
-    [isPhoneLayout, pageState, setPages, setSaveStatus, setTool, success]
-  );
-
-  /*
-   * Images are their own field, so a move no longer flushes the page first or
-   * touches its revision -- the flush was there to dodge a conflict the image
-   * write itself was causing, and it put a save round-trip in front of every
-   * drop.
-   */
-  const handleNotebookImagesCommit = useCallback(
-    (imageRefs: NotebookImageRef[]) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!user?.uid || !notebookId || !pageId) return Promise.resolve();
-      const userId = user.uid;
-      latestImageRefsRef.current = { pageId, imageRefs };
-      return queueImageWrite(async () => {
-        const result = await updateNotebookPageImages(userId, {
-          notebookId,
-          pageId,
-          imageRefs,
-        });
-        applyPageImages(pageId, imageRefs, result.updatedAt);
-      }).catch((error: unknown) => {
-        latestImageRefsRef.current = null;
-        showThrownError(error, "That image could not be moved. Try again.");
-        throw error;
-      });
-    },
-    [applyPageImages, notebookId, pageState, queueImageWrite, showThrownError, user?.uid]
-  );
-
-  useEffect(() => {
-    setSelectedImageId(null);
-  }, [selectedPage?.id]);
-
-  useEffect(() => {
-    if (!movesPlacedItems(tool)) setSelectedImageId(null);
-  }, [tool]);
+  const {
+    imageLayerProps,
+    graphLayerProps,
+    graphEditorTarget,
+    setGraphEditorTarget,
+    addingImage,
+    clearSelection: clearPlacedItemSelection,
+    currentImageRefsFor,
+    currentGraphBlocksFor,
+    handleIllustrationInserted,
+    handleAddImage,
+    handleOpenNewGraph,
+    handleSaveGraph,
+    handleTutorGraphInsert,
+  } = useNotebookPlacedItems({
+    userId,
+    notebookId,
+    pageState,
+    setPages,
+    openPageId: selectedPage?.id,
+    tool,
+    isPhoneLayout,
+    closeToolMenus: closeDrawingToolMenus,
+    success,
+    showError,
+    showThrownError,
+  });
+  const placedItemsEditingEnabled =
+    notebookToolMovesPlacedItems(tool) && pageEditingEnabled && !isPhoneLayout;
 
   // With js-draw as the single ink engine, switching tools only updates the
   // desired style; NotebookInkEditor defers applying it while a pointer is
   // still down, so no flush/commit step is needed.
-  const switchNotebookTool = useCallback((nextTool: EditorTool) => {
-    setTool(nextTool);
-  }, [setTool]);
-
-  const commitTextBlockHistory = useCallback(
-    (previous: NotebookTextBlock[], next: NotebookTextBlock[]) => {
-      pushUndoAction(previous, next);
-    },
-    [pushUndoAction]
-  );
+  const switchNotebookTool = pageState.setTool;
 
   const cancelCompetingPageGestures = useCallback(() => {
     pageSwipeRef.current = null;
     cancelActivePinch();
-  }, [cancelActivePinch]);
+  }, [cancelActivePinch, pageSwipeRef]);
 
   const handleTextBlockLimitReached = useCallback((maximum: number) => {
     showError(`A page can contain up to ${maximum} text boxes. Move or delete one before adding another.`);
@@ -965,6 +483,7 @@ export default function NotebookEditorPage() {
   }, [switchNotebookTool]);
 
   const {
+    layerProps: textBlockLayerProps,
     selectedTextBlockId,
     editingTextBlockId,
     openTextBlockOptionsId,
@@ -972,23 +491,8 @@ export default function NotebookEditorPage() {
     resetTextBlockInteraction,
     finishActiveTextBlockGesture,
     clearTextBlockSelection,
-    selectTextBlock,
-    stopEditingTextBlock,
-    setTextBlockOptionsOpen,
     createTextBlockAtPoint,
     insertTextBlock,
-    updateTextBlock,
-    toggleTextBlockOutline,
-    deleteTextBlock,
-    handleTextBlockOptionsKeyDown,
-    startTextBlockDrag,
-    startTextBlockResize,
-    resizeTextBlock,
-    stopTextBlockResize,
-    handleTextBlockPointerDown,
-    handleTextBlockPointerMove,
-    handleTextBlockPointerUp,
-    handleTextBlockPointerCancel,
     handlePageSurfaceTextGestureMove,
     handlePageSurfaceTextGestureStop,
   } = useNotebookTextBlockController({
@@ -997,7 +501,7 @@ export default function NotebookEditorPage() {
     pageState,
     pageSurfaceRef,
     onChange: markPageUnsaved,
-    onHistoryCommit: commitTextBlockHistory,
+    onHistoryCommit: recordTextEdit,
     onGestureStart: cancelCompetingPageGestures,
     onCreateLimitReached: handleTextBlockLimitReached,
     onCreateComplete: handleTextBlockCreated,
@@ -1031,203 +535,109 @@ export default function NotebookEditorPage() {
     ) {
       clearTextBlockSelection();
     }
-    if (selectedImageId !== null) setSelectedImageId(null);
-    if (selectedGraphId !== null) setSelectedGraphId(null);
+    clearPlacedItemSelection();
   }, [
+    clearPlacedItemSelection,
     clearTextBlockSelection,
     editingTextBlockId,
     openTextBlockOptionsId,
-    selectedGraphId,
-    selectedImageId,
     selectedTextBlockId,
   ]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mediaQuery = window.matchMedia("(max-width: 767px)");
-    const update = () => setIsPhoneLayout(mediaQuery.matches);
-    update();
-    mediaQuery.addEventListener("change", update);
-    return () => mediaQuery.removeEventListener("change", update);
-  }, [setIsPhoneLayout]);
-
-  useEffect(() => {
-    setScribbleToErase(readNotebookScribbleErasePreference());
-    setPenSettings(readNotebookPenSettings());
-    // The pen as it was put down. Declared before the paper check below, so a
-    // remembered white pen opening onto white paper is still turned dark.
-    const tools = readNotebookToolPreferences();
-    setPenColor(tools.penColor);
-    setPenThicknessPercent(tools.penThicknessPercent);
-    setHighlighterColor(tools.highlighterColor);
-    setHighlighterThicknessPercent(tools.highlighterThicknessPercent);
-    setEraserMode(tools.eraserMode);
-    setEraserWidth(tools.eraserSize);
-  }, [
-    setEraserMode,
-    setEraserWidth,
-    setHighlighterColor,
-    setHighlighterThicknessPercent,
-    setPenColor,
-    setPenSettings,
-    setPenThicknessPercent,
-    setScribbleToErase,
-  ]);
-
-  useEffect(() => {
-    if (!selectedPage) {
-      setTextBlocks([]);
-      resetTextBlockInteraction();
-      clearInkHistory();
-      setInkHasContent(false);
-      pageState.resetHydration();
-      return;
-    }
-
-    if (pageState.read().hydratedPageId === selectedPage.id) {
-      return;
-    }
-
-    setTextBlocks(selectedPage.textBlocks);
-    resetTextBlockInteraction();
-    clearInkHistory();
-    setInkHasContent(
-      Boolean(selectedPage.inkData?.svg) || (selectedPage.strokeData?.strokes.length ?? 0) > 0
-    );
-    setPageColor(selectedPage.pageColor ?? notebook?.pageColor ?? "white");
-    setPageStyle(selectedPage.pageStyle ?? notebook?.pageStyle ?? "plain");
-    // Remember when the editor is mounting without this page's real ink, so the
-    // canvas can be rebuilt from it once the fetch lands.
-    inkMountedUnloadedPageIdRef.current = pageHasUnloadedInk(selectedPage)
-      ? selectedPage.id
-      : null;
-    pageState.hydratePage(selectedPage.id, selectedPage.contentRevision);
-    const recoveredDraft = takeRecoveredDraft(selectedPage.id);
-    if (recoveredDraft) {
-      editorRevisionRef.current = Math.max(1, recoveredDraft.localRevision);
-      setSaveStatus("unsaved");
-      success("Recovered unsaved work from this device. Syncing it now.");
-      schedulePendingWork();
-    } else {
-      editorRevisionRef.current = 0;
-      setSaveStatus("saved");
-    }
-    window.requestAnimationFrame(() => maybeFinishPageHandoffRef.current());
-  }, [
-    cancelInkUiSync,
-    clearInkHistory,
-    notebook?.pageColor,
-    notebook?.pageStyle,
+  const {
+    confirmRequest,
+    deletingPageId,
+    requestDeletePage,
+    requestClearPage,
+    dismissRequest,
+    confirmPendingRequest,
+    openAddPages,
+    addPagesDialog,
+  } = useNotebookPageManagement({
+    userId,
+    notebook,
+    pages,
     pageState,
+    loader,
+    saveCurrentPage,
+    editingEnabled: fullNotebookEditingEnabled,
+    clearPageInk,
     resetTextBlockInteraction,
-    schedulePendingWork,
-    selectedPage,
-    setInkHasContent,
-    setPageColor,
-    setPageStyle,
-    setSaveStatus,
-    setTextBlocks,
-    success,
-    takeRecoveredDraft,
-  ]);
+    feedback: { success, showError, showThrownError, clear: clearFeedback },
+  });
 
-  /**
-   * Rebuilds a canvas that mounted before its ink arrived.
-   *
-   * `NotebookInkEditor` reads `initialSvg` once, at mount, so ink that lands
-   * afterwards would never reach it — and the next autosave would write that
-   * empty canvas over the saved drawing. Remounting discards js-draw's undo
-   * stack, so this only runs while there is demonstrably nothing to lose, which
-   * the read-only gate on an unhydrated page guarantees.
-   */
-  useEffect(() => {
-    const pendingPageId = inkMountedUnloadedPageIdRef.current;
-    if (
-      !selectedPage ||
-      pendingPageId !== selectedPage.id ||
-      pageHasUnloadedInk(selectedPage)
-    ) {
-      return;
-    }
-    inkMountedUnloadedPageIdRef.current = null;
-    const inkEditor = inkEditorRef.current;
-    if (inkEditor?.hasInk() || (inkEditor?.getHistoryState().undoDepth ?? 0) > 0) {
-      return;
-    }
+  const {
+    handleSelectDrawingTool,
+    handleToggleTextTool,
+    pen: penToolSettings,
+    highlighter: highlighterToolSettings,
+    eraser: eraserToolSettings,
+  } = useNotebookToolSettings({
+    tools: drawingTools,
+    pageColor,
+    pageState,
+    inkEditorRef,
+    inkHasContent,
+    clearPlacedSelection,
+    onRequestClearPage: requestClearPage,
+  });
+
+  const turn = useNotebookPageTurn({
+    userId,
+    notebook,
+    pages,
+    selectedPageIndex,
+    pageState,
+    lock: navigationLock,
+    loader,
+    persistence,
+    ink,
+    track,
+    viewport: { pageTrackTravelDistance, cancelActivePinch, frameSize },
+    creation,
+    background: {
+      active: { file: activeNotebookFile, url: activeNotebookFileUrl },
+      resolve: resolvePageBackground,
+    },
+    onError: showThrownError,
+  });
+  const {
+    prepareForNavigation,
+    selectPageById,
+    turnByOffset,
+    createPageAtEnd,
+    interrupt: interruptPageTurn,
+    requestHandoffCheck,
+    markBackgroundSettled,
+    handleBackgroundRenderStateChange,
+  } = turn;
+
+  const announceRecoveredDraft = useCallback(() => {
+    success("Recovered unsaved work from this device. Syncing it now.");
+  }, [success]);
+  const remountInkEditor = useCallback(() => {
     setInkEditorMountRevision((current) => current + 1);
-  }, [selectedPage, setInkEditorMountRevision]);
+  }, [setInkEditorMountRevision]);
 
-  useEffect(() => {
-    setPenColor((current) => {
-      // Keep the nib visible when the paper changes under it: a black pen on
-      // black paper, or a white one on white or cream, writes nothing.
-      const paper = getNotebookPaperPalette(pageColor);
-      if (paper.isDark && current === "black") return "white";
-      if (!paper.isDark && current === "white") return "black";
-      return current;
-    });
-  }, [pageColor, setPenColor]);
+  useNotebookPageHydration({
+    selectedPage,
+    notebook,
+    pageState,
+    ink,
+    inkEditorRef,
+    persistence,
+    editorRevisionRef,
+    takeRecoveredDraft,
+    resetTextBlockInteraction,
+    onDraftRecovered: announceRecoveredDraft,
+    onHydrated: requestHandoffCheck,
+    remountInkEditor,
+  });
 
-  useEffect(() => {
-    if (typeof document === "undefined") return;
+  useNotebookEditorShell();
 
-    const root = document.documentElement;
-    const themeColorMeta = document.querySelector<HTMLMetaElement>(
-      'meta[name="theme-color"]'
-    );
-    const previousRootBackground = root.style.background;
-    const previousBodyBackground = document.body.style.background;
-    const previousThemeColor = themeColorMeta?.content;
-    const notebookSurfaceColor =
-      window
-        .getComputedStyle(root)
-        .getPropertyValue("--color-surface-base")
-        .trim() || "#0d1018";
-
-    root.style.background = notebookSurfaceColor;
-    document.body.style.background = notebookSurfaceColor;
-    if (themeColorMeta) {
-      themeColorMeta.content = notebookSurfaceColor;
-    }
-    document.body.classList.add(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
-
-    const preventIfOutsideTextEditor = (event: Event) => {
-      if (!shouldSuppressNotebookNativeEvent(event.target)) return;
-      event.preventDefault();
-      clearNotebookNativeSelection(document);
-    };
-    const clearSelectionIfOutsideTextEditor = () => {
-      if (isNotebookTextEditingTarget(document.activeElement)) return;
-      // A selection being made in the Tutor's answers, to copy them.
-      if (isNotebookSelectableTextTarget(document.getSelection()?.anchorNode ?? null)) return;
-      clearNotebookNativeSelection(document);
-    };
-
-    const nativeEditingEvents =
-      ["selectstart", "contextmenu", "dragstart", "copy", "cut", "paste"];
-    for (const type of nativeEditingEvents) {
-      document.addEventListener(type, preventIfOutsideTextEditor, true);
-    }
-    document.addEventListener("selectionchange", clearSelectionIfOutsideTextEditor);
-    // The browser's own pinch zoom would otherwise run alongside the sheet's.
-    const releaseViewportZoomBlock = installNotebookViewportZoomBlock(document);
-
-    return () => {
-      releaseViewportZoomBlock();
-      document.body.classList.remove(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
-      root.style.background = previousRootBackground;
-      document.body.style.background = previousBodyBackground;
-      if (themeColorMeta && previousThemeColor !== undefined) {
-        themeColorMeta.content = previousThemeColor;
-      }
-      for (const type of nativeEditingEvents) {
-        document.removeEventListener(type, preventIfOutsideTextEditor, true);
-      }
-      document.removeEventListener("selectionchange", clearSelectionIfOutsideTextEditor);
-    };
-  }, []);
-
+  // The app lost focus or the page was hidden mid-gesture: nothing may be left
+  // half-done, because the pointer that would have finished it is gone.
   useEffect(() => {
     const clearActiveInteractions = () => {
       finishActiveTextBlockGesture();
@@ -1239,33 +649,7 @@ export default function NotebookEditorPage() {
       // Teardown always resyncs pan, pinch or not, so an interrupted drag
       // cannot leave the committed pan behind the live one.
       setPagePan(pagePanLiveRef.current);
-      if (
-        pageSwipeRef.current ||
-        pageSwipeMotionRef.current ||
-        pageTrackOffsetRef.current !== 0
-      ) {
-        pageNavigationTokenRef.current += 1;
-        cancelQueuedPageTrackOffset();
-        if (handoffFinishAnimationFrameRef.current !== null) {
-          window.cancelAnimationFrame(handoffFinishAnimationFrameRef.current);
-          handoffFinishAnimationFrameRef.current = null;
-        }
-        resolvePageTrackTransition();
-        const track = pageTrackRef.current;
-        if (track) track.style.transition = "none";
-        writePageTrackOffset(0);
-        setPagePreviewVisibility(false);
-        updatePageSwipeMotion(null);
-        pageNavigationLockedRef.current = pageCreationInFlightRef.current;
-      }
-      pageSwipeRef.current = null;
-      createPageActiveRef.current = false;
-      setCreatePageActive(false);
-      setCreatePageProgress(0);
-      if (!pageCreationInFlightRef.current) {
-        setCreatingPage(false);
-      }
-      setCreatePageBounce(false);
+      interruptPageTurn();
       if (typeof document !== "undefined") {
         clearNotebookNativeSelection(document);
       }
@@ -1283,81 +667,24 @@ export default function NotebookEditorPage() {
       window.removeEventListener("blur", clearActiveInteractions);
       window.removeEventListener("pagehide", clearActiveInteractions);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (touchInkHintTimeoutRef.current !== null) {
-        window.clearTimeout(touchInkHintTimeoutRef.current);
-        touchInkHintTimeoutRef.current = null;
-      }
       cancelPinchZoomAnimationFrame();
     };
   }, [
     cancelActivePinch,
     cancelPinchZoomAnimationFrame,
-    cancelQueuedPageTrackOffset,
     finishActiveTextBlockGesture,
+    interruptPageTurn,
     pagePanLiveRef,
-    pageSwipeMotionRef,
-    pageTrackOffsetRef,
-    resetPageSurfaceTransform,
-    resolvePageTrackTransition,
-    setCreatePageActive,
-    setCreatePageBounce,
-    setCreatePageProgress,
-    setCreatingPage,
     setPagePan,
-    setPagePreviewVisibility,
     stylusCooldownUntilRef,
     stylusInteractionRef,
-    updatePageSwipeMotion,
-    writePageTrackOffset,
   ]);
-
-  /**
-   * A second finger landed mid-swipe. Unwind the page track so the pinch
-   * starts from a settled sheet instead of a half-committed swipe.
-   */
-  const cancelPageSwipeForPinch = useCallback(() => {
-    if (!pageSwipeRef.current) return;
-    cancelQueuedPageTrackOffset();
-    const track = pageTrackRef.current;
-    if (track) track.style.transition = "none";
-    writePageTrackOffset(0);
-    setPagePreviewVisibility(false);
-    createPageActiveRef.current = false;
-    setCreatePageActive(false);
-    setCreatePageProgress(0);
-    pageSwipeRef.current = null;
-  }, [
-    cancelQueuedPageTrackOffset,
-    setCreatePageActive,
-    setCreatePageProgress,
-    setPagePreviewVisibility,
-    writePageTrackOffset,
-  ]);
-
-  const getNotebookPointFromEvent = (
-    event: ReactPointerEvent<HTMLElement>
-  ): Point | null => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    return mapClientPointToNotebookPage({
-      clientX: event.clientX,
-      clientY: event.clientY,
-      rect,
-      width: CANVAS_WIDTH,
-      height: CANVAS_HEIGHT,
-    });
-  };
 
   const pageSurfaceReady = Boolean(selectedPage?.id && pageFit.width > 0);
 
   useLayoutEffect(() => {
     const surface = pageSurfaceRef.current;
-    if (
-      !surface ||
-      !selectedPage?.id ||
-      !pageSurfaceReady ||
-      typeof window === "undefined"
-    ) {
+    if (!surface || !selectedPage?.id || !pageSurfaceReady || typeof window === "undefined") {
       return;
     }
 
@@ -1374,1424 +701,92 @@ export default function NotebookEditorPage() {
       surface,
       getInkInteractionActive: () => inkInteractionActiveRef.current,
     });
-  }, [
-    cancelQueuedPageTrackOffset,
-    inkInteractionActiveRef,
-    pageSurfaceReady,
-    pageSwipeMotionRef,
-    pageTrackOffsetRef,
-    selectedPage?.id,
-  ]);
+  }, [inkInteractionActiveRef, pageSurfaceReady, selectedPage?.id]);
 
-  const prepareCurrentPageForNavigation = useCallback(async () => {
-    if (inkEditorRef.current?.isInteracting() || inkInteractionActiveRef.current) return false;
-    const { saveStatus } = pageState.read();
-    const savePending =
-      saveStatus === "saving" || saveStatus === "unsaved" || saveStatus === "failed";
-    if (hasSaveInFlight() || savePending) return saveCurrentPage({ flush: true });
-    return true;
-  }, [hasSaveInFlight, inkInteractionActiveRef, pageState, saveCurrentPage]);
-
-  const selectPageById = useCallback(
-    async (pageId: string) => {
-      if (pageId === pageState.read().selectedPage?.id) return true;
-      if (pageNavigationLockedRef.current) return false;
-      const ready = await prepareCurrentPageForNavigation();
-      if (!ready) return false;
-      // Ink first: selecting a page before its ink arrives would mount an
-      // empty canvas that autosave could write over the saved drawing.
-      if (!(await hydratePageInk(pageId))) return false;
-      setSelectedPageId(pageId);
-      return true;
-    },
-    [hydratePageInk, pageState, prepareCurrentPageForNavigation, setSelectedPageId]
-  );
-
-  const prefersReducedNotebookMotion = useCallback(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    []
-  );
-
-  const clearPageTrackMotion = useCallback(
-    (options: { invalidate?: boolean } = {}) => {
-      if (options.invalidate !== false) {
-        pageNavigationTokenRef.current += 1;
-      }
-      cancelQueuedPageTrackOffset();
-      if (handoffFinishAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(handoffFinishAnimationFrameRef.current);
-        handoffFinishAnimationFrameRef.current = null;
-      }
-      resolvePageTrackTransition();
-      const track = pageTrackRef.current;
-      if (track) track.style.transition = "none";
-      writePageTrackOffset(0);
-      setPagePreviewVisibility(false);
-      updatePageSwipeMotion(null);
-      pageNavigationLockedRef.current = pageCreationInFlightRef.current;
-      pageSwipeRef.current = null;
-      createPageActiveRef.current = false;
-      setCreatePageActive(false);
-      setCreatePageProgress(0);
-      if (!pageCreationInFlightRef.current) {
-        setCreatingPage(false);
-      }
-      setCreatePageBounce(false);
-    },
-    [
-      cancelQueuedPageTrackOffset,
-      resolvePageTrackTransition,
-      setCreatePageActive,
-      setCreatePageBounce,
-      setCreatePageProgress,
-      setCreatingPage,
-      setPagePreviewVisibility,
-      updatePageSwipeMotion,
-      writePageTrackOffset,
-    ]
-  );
-
-  useEffect(() => {
-    cancelActivePinch({ clearPointers: true, commitPan: true });
-    const motion = pageSwipeMotionRef.current;
-    if (motion?.phase === "handoff" && motion.direction) {
-      const targetOffset =
-        motion.direction === "next"
-          ? -pageTrackTravelDistance
-          : pageTrackTravelDistance;
-      const track = pageTrackRef.current;
-      if (track) track.style.transition = "none";
-      writePageTrackOffset(targetOffset);
-      updatePageSwipeMotion({ ...motion, targetOffset });
-      return;
-    }
-    if (
-      !pageSwipeRef.current &&
-      !motion &&
-      pageTrackOffsetRef.current === 0
-    ) {
-      return;
-    }
-    clearPageTrackMotion();
-  }, [
-    cancelActivePinch,
-    cancelPinchZoomAnimationFrame,
-    cancelQueuedPageTrackOffset,
-    clearPageTrackMotion,
-    frameSize.height,
-    frameSize.width,
-    pageSwipeMotionRef,
-    pageTrackOffsetRef,
-    pageTrackTravelDistance,
-    resetPageSurfaceTransform,
-    updatePageSwipeMotion,
-    writePageTrackOffset,
-  ]);
-
-  const maybeFinishPageHandoff = useCallback(() => {
-    const motion = pageSwipeMotionRef.current;
-    if (
-      motion?.phase !== "handoff" ||
-      !motion.targetPage ||
-      pageState.read().selectedPage?.id !== motion.targetPage.id ||
-      pageState.read().hydratedPageId !== motion.targetPage.id ||
-      !inkReadyRef.current ||
-      !activePageBackgroundReadyRef.current ||
-      handoffFinishAnimationFrameRef.current !== null
-    ) {
-      return;
-    }
-    handoffFinishAnimationFrameRef.current = window.requestAnimationFrame(() => {
-      handoffFinishAnimationFrameRef.current = null;
-      const currentMotion = pageSwipeMotionRef.current;
-      if (
-        currentMotion?.phase !== "handoff" ||
-        !currentMotion.targetPage ||
-        currentMotion.targetPage.id !== pageState.read().selectedPage?.id ||
-        pageState.read().hydratedPageId !== currentMotion.targetPage.id ||
-        !inkReadyRef.current ||
-        !activePageBackgroundReadyRef.current
-      ) {
-        return;
-      }
-      const track = pageTrackRef.current;
-      if (track) track.style.transition = "none";
-      writePageTrackOffset(0);
-      setPagePreviewVisibility(false);
-      updatePageSwipeMotion(null);
-      pageNavigationLockedRef.current = false;
-      createPageActiveRef.current = false;
-      setCreatePageActive(false);
-      setCreatePageProgress(0);
-      setCreatingPage(false);
-    });
-  }, [
-    inkReadyRef,
+  const { handleExitNotebook, handleRetryPageSave } = useNotebookExitGuard({
     pageState,
-    pageSwipeMotionRef,
-    setCreatePageActive,
-    setCreatePageProgress,
-    setCreatingPage,
-    setPagePreviewVisibility,
-    updatePageSwipeMotion,
-    writePageTrackOffset,
-  ]);
-  maybeFinishPageHandoffRef.current = maybeFinishPageHandoff;
+    saveStatus,
+    persistence,
+    isInkInteracting,
+    cancelInkUiCommit: cancelInkUiSync,
+    showError,
+  });
 
-  const beginPageHandoff = useCallback(
-    (
-      targetPage: NotebookPage,
-      direction: "next" | "previous",
-      kind: "page" | "create",
-      token: number
-    ) => {
-      const background = resolvePageBackground(targetPage).file;
-      inkReadyRef.current = false;
-      activePageBackgroundReadyRef.current = !(
-        background?.fileType.startsWith("image/") ||
-        (background?.fileType === "application/pdf" &&
-          background.storagePath)
-      );
-      updatePageSwipeMotion({
-        phase: "handoff",
-        kind,
-        direction,
-        targetPage,
-        targetOffset: pageTrackOffsetRef.current,
-        durationMs: 0,
-      });
-      window.requestAnimationFrame(() => {
-        if (pageNavigationTokenRef.current !== token) return;
-        setSelectedPageId(targetPage.id);
-      });
+  const createTextBlockAtEvent = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      const point = getNotebookPointFromEvent(event);
+      if (point) createTextBlockAtPoint(point);
     },
-    [
-      inkReadyRef,
-      pageTrackOffsetRef,
-      resolvePageBackground,
-      setSelectedPageId,
-      updatePageSwipeMotion,
-    ]
+    [createTextBlockAtPoint]
   );
 
-  const returnPageTrackToSource = useCallback(
-    async (velocityX: number, token: number) => {
-      const durationMs = getNotebookSwipeSettleDuration({
-        currentOffset: pageTrackOffsetRef.current,
-        targetOffset: 0,
-        travelDistance: pageTrackTravelDistance,
-        velocityX,
-        reducedMotion: prefersReducedNotebookMotion(),
-      });
-      await animatePageTrackTo({
-        phase: "returning",
-        kind: "cancel",
-        direction: null,
-        targetPage: null,
-        targetOffset: 0,
-        durationMs,
-      });
-      if (pageNavigationTokenRef.current !== token) return;
-      clearPageTrackMotion({ invalidate: false });
+  /** A tap that never moved: with the text tool in hand, a box goes there. */
+  const handlePageTap = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (tool === "text") createTextBlockAtEvent(event);
     },
-    [
-        animatePageTrackTo,
-        clearPageTrackMotion,
-        pageTrackOffsetRef,
-        pageTrackTravelDistance,
-        prefersReducedNotebookMotion,
-      ]
+    [createTextBlockAtEvent, tool]
   );
 
-  const runPageTrackNavigation = useCallback(
-    async (
-      targetPage: NotebookPage,
-      direction: "next" | "previous",
-      velocityX: number
-    ) => {
-      if (pageNavigationLockedRef.current || pageTrackTravelDistance <= 0) {
-        return false;
-      }
-      pageNavigationLockedRef.current = true;
-      const token = pageNavigationTokenRef.current + 1;
-      pageNavigationTokenRef.current = token;
-      const targetOffset =
-        direction === "next"
-          ? -pageTrackTravelDistance
-          : pageTrackTravelDistance;
-      const durationMs = getNotebookSwipeSettleDuration({
-        currentOffset: pageTrackOffsetRef.current,
-        targetOffset,
-        travelDistance: pageTrackTravelDistance,
-        velocityX,
-        reducedMotion: prefersReducedNotebookMotion(),
-      });
-      // Ink first, exactly as `selectPageById` does: opening a page before its
-      // ink arrives would mount an empty canvas that autosave could later write
-      // over the saved drawing. Neighbour prefetch usually makes this instant,
-      // and it runs against the settle animation rather than after it.
-      const readyPromise = Promise.all([
-        prepareCurrentPageForNavigation(),
-        hydratePageInk(targetPage.id),
-      ]).then(([saved, hydrated]) => saved && hydrated);
-      const settlePromise = animatePageTrackTo({
-        phase: "settling",
-        kind: "page",
-        direction,
-        targetPage,
-        targetOffset,
-        durationMs,
-      });
-      let ready = false;
-      try {
-        [ready] = await Promise.all([readyPromise, settlePromise]);
-      } catch (error) {
-        console.error("Could not prepare the notebook page change.", error);
-        showThrownError(error, "Could not save this page before changing pages.");
-        if (pageNavigationTokenRef.current === token) {
-          await returnPageTrackToSource(velocityX, token);
-        }
-        return false;
-      }
-      if (pageNavigationTokenRef.current !== token) return false;
-      if (!ready) {
-        await returnPageTrackToSource(velocityX, token);
-        return false;
-      }
-      beginPageHandoff(targetPage, direction, "page", token);
-      return true;
-    },
-    [
-      animatePageTrackTo,
-      beginPageHandoff,
-      hydratePageInk,
-      pageTrackOffsetRef,
-      pageTrackTravelDistance,
-      prefersReducedNotebookMotion,
-      prepareCurrentPageForNavigation,
-      returnPageTrackToSource,
-      showThrownError,
-    ]
-  );
-
-  const selectPageByOffset = useCallback(
-    async (offset: -1 | 1) => {
-      if (selectedPageIndex < 0 || pageNavigationLockedRef.current) return false;
-      const direction = offset === 1 ? "next" : "previous";
-      const nextIndex = getNotebookPageIndexAfterSwipe({
-        currentIndex: selectedPageIndex,
-        pageCount: pages.length,
-        direction,
-      });
-      if (nextIndex === selectedPageIndex) return false;
-      const targetPage = pages[nextIndex];
-      if (!targetPage) return false;
-      return runPageTrackNavigation(
-        targetPage,
-        direction,
-        direction === "next" ? -2 : 2
-      );
-    },
-    [pages, runPageTrackNavigation, selectedPageIndex]
-  );
-
-
-  useEffect(
-    () => () => {
-      cancelInkUiSync();
-    },
-    [cancelInkUiSync]
-  );
-
-  useEffect(() => {
-    const saveBeforeExit = (event?: PageTransitionEvent | BeforeUnloadEvent) => {
-      if (
-        pageState.read().saveStatus === "unsaved" ||
-        pageState.read().saveStatus === "failed"
-      ) {
-        persistCurrentPageDraftSync();
-        void saveCurrentPage({ flush: true });
-        if (event?.type === "beforeunload") {
-          event.preventDefault();
-          event.returnValue = "";
-        }
-      }
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        saveBeforeExit();
-      }
-    };
-
-    window.addEventListener("pagehide", saveBeforeExit);
-    window.addEventListener("beforeunload", saveBeforeExit);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("pagehide", saveBeforeExit);
-      window.removeEventListener("beforeunload", saveBeforeExit);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [pageState, persistCurrentPageDraftSync, saveCurrentPage]);
-
-  // An app update waits until this page has saved (lib/app/app-build.ts).
-  useEffect(() => {
-    setUnsavedWork("notebook", saveStatus !== "saved");
-    return () => setUnsavedWork("notebook", false);
-  }, [saveStatus]);
-
-  const handleExitNotebook = (event: ReactMouseEvent<HTMLAnchorElement>) => {
-    const exitDecision = prepareNotebookExit({
-      saveStatus: pageState.read().saveStatus,
-      persistDraftSync: persistCurrentPageDraftSync,
-      queueSaveForExit: queueCurrentPageSaveForExit,
-    });
-    if (exitDecision.shouldPreventNavigation) {
-      event.preventDefault();
-      showError("Could not autosave before leaving the notebook.");
-    }
-  };
-
-  const handleRetryPageSave = () => {
-    if (
-      pageState.read().saveStatus !== "failed" ||
-      inkInteractionActiveRef.current ||
-      inkEditorRef.current?.isInteracting()
-    ) {
-      return;
-    }
-    setSaveStatus("unsaved");
-    void saveCurrentPage({ flush: true });
-  };
-
-  const createBlankPageAtEnd = useCallback(async (velocityX = -2) => {
-    if (
-      pageNavigationLockedRef.current ||
-      pageCreationInFlightRef.current ||
-      pageTrackTravelDistance <= 0
-    ) {
-      return false;
-    }
-    if (!user?.uid || !notebook) {
-      pageNavigationLockedRef.current = true;
-      const token = pageNavigationTokenRef.current + 1;
-      pageNavigationTokenRef.current = token;
-      await returnPageTrackToSource(velocityX, token);
-      return false;
-    }
-    const lastPage = pages[pages.length - 1];
-    // A new page is on the notebook's own paper. Copying the page being left
-    // gave a PDF notebook's added pages the PDF page's plain white, whatever
-    // paper the student chose for the notebook.
-    const pageColorValue = notebook.pageColor ?? "white";
-    const pageStyleValue = notebook.pageStyle ?? "plain";
-    const nextPageNumber = (lastPage?.pageNumber ?? pages.length) + 1;
-
-    pageNavigationLockedRef.current = true;
-    pageCreationInFlightRef.current = true;
-    const token = pageNavigationTokenRef.current + 1;
-    pageNavigationTokenRef.current = token;
-    setCreatingPage(true);
-    createPageActiveRef.current = true;
-    setCreatePageActive(true);
-    setCreatePageProgress(1);
-    setCreatePageBounce(true);
-    window.setTimeout(() => setCreatePageBounce(false), 420);
-    const targetOffset = -pageTrackTravelDistance;
-    const durationMs = getNotebookSwipeSettleDuration({
-      currentOffset: pageTrackOffsetRef.current,
-      targetOffset,
-      travelDistance: pageTrackTravelDistance,
-      velocityX,
-      reducedMotion: prefersReducedNotebookMotion(),
-    });
-    const createPromise = (async () => {
-      const ready = await prepareCurrentPageForNavigation();
-      if (!ready) return null;
-      return createNotebookPage(user.uid, {
-        notebookId: notebook.id,
-        folderId: notebook.folderId,
-        pageNumber: nextPageNumber,
-        pageType: "blank",
-        pageColor: pageColorValue,
-        pageStyle: pageStyleValue,
-        status: "blank",
-      });
-    })();
-    const settlePromise = animatePageTrackTo({
-      phase: "settling",
-      kind: "create",
-      direction: "next",
-      targetPage: null,
-      targetOffset,
-      durationMs,
-    });
-    try {
-      const [newPage] = await Promise.all([createPromise, settlePromise]);
-      pageCreationInFlightRef.current = false;
-      if (pageNavigationTokenRef.current !== token) {
-        if (newPage) {
-          setPages((current) =>
-            [...current.filter((page) => page.id !== newPage.id), newPage].sort(
-              (a, b) => a.pageNumber - b.pageNumber
-            )
-          );
-        }
-        pageNavigationLockedRef.current = false;
-        setCreatingPage(false);
-        return Boolean(newPage);
-      }
-      if (!newPage) {
-        await returnPageTrackToSource(velocityX, token);
-        setCreatingPage(false);
-        return false;
-      }
-      setPages((current) =>
-        [...current.filter((page) => page.id !== newPage.id), newPage].sort(
-          (a, b) => a.pageNumber - b.pageNumber
-        )
-      );
-      beginPageHandoff(newPage, "next", "create", token);
-      return true;
-    } catch (error) {
-      pageCreationInFlightRef.current = false;
-      console.error("Could not add a notebook page.", error);
-      showThrownError(error, "Could not add a new page.");
-      if (pageNavigationTokenRef.current === token) {
-        await returnPageTrackToSource(velocityX, token);
-      } else {
-        pageNavigationLockedRef.current = false;
-      }
-      setCreatingPage(false);
-      createPageActiveRef.current = false;
-      setCreatePageActive(false);
-      setCreatePageProgress(0);
-      return false;
-    }
-  }, [
-    animatePageTrackTo,
-    beginPageHandoff,
-    notebook,
-    pageTrackOffsetRef,
-    pageTrackTravelDistance,
+  const swipe = useNotebookSwipeGesture({
+    enabled: fullNotebookEditingEnabled && !activeTextGestureId,
+    lock: navigationLock,
+    turn,
+    track,
+    creation,
+    viewport,
     pages,
-    prefersReducedNotebookMotion,
-    prepareCurrentPageForNavigation,
-    returnPageTrackToSource,
-    setCreatePageActive,
-    setCreatePageBounce,
-    setCreatePageProgress,
-    setCreatingPage,
-    setPages,
-    showThrownError,
-    user?.uid,
-  ]);
-
-  /**
-   * Runs a flick that was held while the previous turn settled.
-   *
-   * Resolved against the page the queue actually landed on, so the gesture ends
-   * up doing what it would have done on an idle track -- including making a new
-   * page when it was a hard pull past the end of the notebook.
-   */
-  const handleStartPageSwipe = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (
-      !fullNotebookEditingEnabled ||
-      !shouldPointerSwipePages(event.pointerType) ||
-      pageNavigationLockedRef.current ||
-      inkInteractionActiveRef.current ||
-      activeTextGestureId
-    ) {
-      return;
-    }
-    pagePanLiveRef.current = { ...viewportLayout.pageOrigin };
-    pageSwipeRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      currentX: event.clientX,
-      currentY: event.clientY,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      samples: [{ x: event.clientX, time: event.timeStamp }],
-      axis: null,
-      intent: null,
-      completed: false,
-    };
-    safelySetPointerCapture(event.currentTarget, event.pointerId);
-  }, [
-    activeTextGestureId,
-    fullNotebookEditingEnabled,
+    selectedPageIndex,
+    pageSurfaceRef,
     inkInteractionActiveRef,
-    pagePanLiveRef,
-    viewportLayout.pageOrigin,
-  ]);
+    onTap: handlePageTap,
+  });
 
-  const handlePageSwipeMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    const swipe = pageSwipeRef.current;
-    if (!swipe || swipe.pointerId !== event.pointerId || swipe.completed) return;
-
-    swipe.currentX = event.clientX;
-    swipe.currentY = event.clientY;
-    swipe.lastX = event.clientX;
-    swipe.lastY = event.clientY;
-    swipe.samples = [
-      ...swipe.samples,
-      { x: event.clientX, time: event.timeStamp },
-    ]
-      .filter((sample) => event.timeStamp - sample.time <= 120)
-      .slice(-24);
-
-    const totalDx = swipe.currentX - swipe.startX;
-    const totalDy = swipe.currentY - swipe.startY;
-    if (swipe.axis === null && Math.max(Math.abs(totalDx), Math.abs(totalDy)) >= 8) {
-      if (Math.abs(totalDx) > Math.abs(totalDy) * 1.05) {
-        swipe.axis = "horizontal";
-      } else if (Math.abs(totalDy) > Math.abs(totalDx) * 1.15) {
-        swipe.axis = "vertical";
-      }
-      if (swipe.axis) {
-        swipe.intent = getNotebookPageDragIntent({
-          axis: swipe.axis,
-          zoom: viewportLayout.zoom,
-        });
-        if (swipe.intent === "page") {
-          setPagePreviewVisibility(true);
-        }
-      }
-    }
-
-    if (swipe.intent === "none") {
-      event.preventDefault();
-      return;
-    }
-
-    if (swipe.intent !== "page") return;
-
-    capturePageSwipeInkSnapshot();
-    setPagePreviewDirection(getNotebookSwipePreviewDirection(totalDx));
-
-    // Forward pull past the last page → engage the "create new page" affordance.
-    if (selectedPageIndex === pages.length - 1 && totalDx < 0) {
-      const pageWidth = pageSurfaceRef.current?.getBoundingClientRect().width ?? 1;
-      const { progress, resistedOffset } = getNotebookCreatePagePull({
-        totalDx,
-        pageWidth,
-      });
-      if (!createPageActiveRef.current) {
-        createPageActiveRef.current = true;
-        setCreatePageActive(true);
-        setCreatePageProgress(progress);
-      } else {
-        writeCreatePageProgress(progress);
-      }
-      queuePageTrackOffset(resistedOffset);
-      event.preventDefault();
-      return;
-    }
-    createPageActiveRef.current = false;
-    setCreatePageActive(false);
-    setCreatePageProgress(0);
-    queuePageTrackOffset(
-      getNotebookSwipeDragOffset({
-        totalDx,
-        currentIndex: selectedPageIndex,
-        pageCount: pages.length,
-      })
-    );
-    event.preventDefault();
-  }, [
-    capturePageSwipeInkSnapshot,
-    pages.length,
-    queuePageTrackOffset,
-    selectedPageIndex,
-    setCreatePageActive,
-    setCreatePageProgress,
-    setPagePreviewDirection,
-    setPagePreviewVisibility,
-    viewportLayout.zoom,
-    writeCreatePageProgress,
-  ]);
-
-  const handleStopPageSwipe = useCallback((
-    event: ReactPointerEvent<HTMLElement>,
-    options: { allowTextTap?: boolean; cancelled?: boolean } = {}
-  ) => {
-    const swipe = pageSwipeRef.current;
-    if (!swipe || swipe.pointerId !== event.pointerId) return;
-    safelyReleasePointerCapture(event.currentTarget, event.pointerId);
-    pageSwipeRef.current = null;
-    const deltaX = event.clientX - swipe.startX;
-    const deltaY = event.clientY - swipe.startY;
-
-    const pageWidth = pageSurfaceRef.current?.getBoundingClientRect().width ?? 1;
-    const velocityX = getNotebookSwipeVelocity([
-      ...swipe.samples,
-      { x: event.clientX, time: event.timeStamp },
-    ]);
-    // A release can arrive before any move resolved an axis, so the same
-    // fitted-view rule is applied to the raw delta.
-    const horizontalGesture =
-      swipe.intent === "page" ||
-      (swipe.intent === null &&
-        !isNotebookViewportZoomedIn(viewportLayout.zoom) &&
-        Math.abs(deltaX) > 8 &&
-        Math.abs(deltaX) > Math.abs(deltaY) * 1.05);
-
-    // Releasing a forward pull past the last page either creates a page or
-    // rubber-bands back, depending on how far it was pulled (or a fast flick).
-    if (
-      horizontalGesture &&
-      selectedPageIndex === pages.length - 1 &&
-      deltaX < 0
-    ) {
-      event.preventDefault();
-      createPageActiveRef.current = false;
-      setCreatePageActive(false);
-      if (
-        !options.cancelled &&
-        shouldCreateNotebookPageOnRelease({
-          totalDx: deltaX,
-          pageWidth,
-          velocityX,
-        })
-      ) {
-        swipe.completed = true;
-        void createBlankPageAtEnd(velocityX);
-      } else {
-        pageNavigationLockedRef.current = true;
-        const token = pageNavigationTokenRef.current + 1;
-        pageNavigationTokenRef.current = token;
-        void returnPageTrackToSource(velocityX, token);
-      }
-      return;
-    }
-
-    if (horizontalGesture) {
-      event.preventDefault();
-      const decision = options.cancelled
-        ? {
-            direction: null,
-            targetIndex: selectedPageIndex,
-            shouldCommit: false,
-          }
-        : getNotebookSwipeReleaseDecision({
-            totalDx: deltaX,
-            pageWidth,
-            velocityX,
-            currentIndex: selectedPageIndex,
-            pageCount: pages.length,
-          });
-      const targetPage = decision.shouldCommit
-        ? pages[decision.targetIndex]
-        : null;
-      if (targetPage && decision.direction) {
-        swipe.completed = true;
-        void runPageTrackNavigation(targetPage, decision.direction, velocityX);
-      } else {
-        pageNavigationLockedRef.current = true;
-        const token = pageNavigationTokenRef.current + 1;
-        pageNavigationTokenRef.current = token;
-        void returnPageTrackToSource(velocityX, token);
-      }
-      return;
-    }
-
-    if (pageTrackOffsetRef.current !== 0) {
-      pageNavigationLockedRef.current = true;
-      const token = pageNavigationTokenRef.current + 1;
-      pageNavigationTokenRef.current = token;
-      void returnPageTrackToSource(velocityX, token);
-      return;
-    }
-    setPagePreviewVisibility(false);
-
-    if (
-      !swipe.completed &&
-      !options.cancelled &&
-      Math.abs(deltaX) <= 8 &&
-      Math.abs(deltaY) <= 8 &&
-      tool === "text" &&
-      options.allowTextTap &&
-        event.currentTarget instanceof HTMLElement
-    ) {
-      const tapDirection = getNotebookSwipeDirection({
-        startX: swipe.startX,
-        startY: swipe.startY,
-        currentX: event.clientX,
-        currentY: event.clientY,
-      });
-      if (!tapDirection) {
-        const point = getNotebookPointFromEvent(event);
-        if (point) createTextBlockAtPoint(point);
-      }
-    }
-  }, [
-    createBlankPageAtEnd,
-    createTextBlockAtPoint,
-    pageTrackOffsetRef,
-    pages,
-    returnPageTrackToSource,
-    runPageTrackNavigation,
-    selectedPageIndex,
-    setCreatePageActive,
-    setPagePreviewVisibility,
-    viewportLayout.zoom,
+  const { visible: touchInkHintVisible, noteIgnoredTouch } = useNotebookTouchInkHint({
+    enabled: fullNotebookEditingEnabled,
     tool,
-  ]);
-
-  const maybeShowIgnoredTouchInkHint = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (
-      event.pointerType !== "touch" ||
-      tool === "text" ||
-      !fullNotebookEditingEnabled ||
-      pageSwipeRef.current?.completed ||
-      // A finger on a zoomed sheet is reaching for the viewport, not drawing.
-      isNotebookViewportZoomedIn(viewportLayout.zoom) ||
-      isPinchActive() ||
-      /*
-       * A hand that was just holding the Pencil is a palm, not somebody trying
-       * to write with a finger. Counted, every third palm lift while writing
-       * told a Pencil user to use their Pencil -- and re-rendered this whole
-       * page twice to show and hide the hint, in the middle of their words.
-       */
-      Date.now() < stylusCooldownUntilRef.current + RECENT_PENCIL_MS
-    ) {
-      return;
-    }
-    ignoredTouchInkCountRef.current += 1;
-    if (ignoredTouchInkCountRef.current < 3) return;
-    ignoredTouchInkCountRef.current = 0;
-    setTouchInkHintVisible(true);
-    if (touchInkHintTimeoutRef.current !== null) {
-      window.clearTimeout(touchInkHintTimeoutRef.current);
-    }
-    touchInkHintTimeoutRef.current = window.setTimeout(() => {
-      setTouchInkHintVisible(false);
-      touchInkHintTimeoutRef.current = null;
-    }, 2600);
-  }, [
-    fullNotebookEditingEnabled,
+    zoom: viewportLayout.zoom,
     isPinchActive,
-    setTouchInkHintVisible,
     stylusCooldownUntilRef,
+    swipeRef: pageSwipeRef,
+  });
+
+  const {
+    handleFramePointerDown,
+    handlePagePointerDown,
+    handlePagePointerMove,
+    handlePagePointerUp,
+    handlePagePointerCancel,
+  } = useNotebookPagePointer({
+    enabled: fullNotebookEditingEnabled,
+    lock: navigationLock,
     tool,
-    viewportLayout.zoom,
-  ]);
-
-  /**
-   * A tap anywhere in the page frame lets go of whatever was selected.
-   *
-   * The sheet is only part of what somebody is looking at: on a wide window or
-   * a zoomed-out page there is a margin all round it, and tapping there is
-   * "tapping somewhere else" by any reading. Nothing was listening out there,
-   * so a selected image kept its handles up until the page itself was touched.
-   *
-   * Deliberately the last word rather than a special case for the margin. This
-   * sits above the sheet in the tree, so anything that means to keep its
-   * selection stops the event on the way up -- which is what every layer
-   * already does when a placed thing is picked up. Being unconditional means a
-   * gap in that coverage lets go of the selection rather than stranding it.
-   */
-  const handleFramePointerDown = useCallback(() => {
-    if (!fullNotebookEditingEnabled) return;
-    if (pageNavigationLockedRef.current) return;
-    clearPlacedSelection();
-  }, [clearPlacedSelection, fullNotebookEditingEnabled]);
-
-  const handlePagePointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (!fullNotebookEditingEnabled) return;
-    if (pageNavigationLockedRef.current) {
-      event.preventDefault();
-      event.stopPropagation();
-      // Everything else stays blocked while a turn settles, but a flick is
-      // tracked so it can be queued instead of silently swallowed.
-      if (shouldPointerSwipePages(event.pointerType)) {
-        handleStartPageSwipe(event);
-      }
-      return;
-    }
-    setPenMenuOpen(false);
-    setHighlighterMenuOpen(false);
-    setEraserMenuOpen(false);
-    clearPlacedSelection();
-    if (handleTouchPointerDown(event)) return;
-    if (shouldPointerSwipePages(event.pointerType)) {
-      handleStartPageSwipe(event);
-      return;
-    }
-
-    if (tool !== "text") {
-      event.preventDefault();
-      return;
-    }
-
-    event.preventDefault();
-    // The new box is selected and ready to type in. Stopped here, or the
-    // frame's tap-away below would let go of it in the same press -- which
-    // left every new box unselected, its caret gone, and whatever was typed
-    // next running the tool shortcuts instead.
-    event.stopPropagation();
-    const point = getNotebookPointFromEvent(event);
-    if (!point) return;
-    createTextBlockAtPoint(point);
-  }, [
+    closeToolMenus: closeDrawingToolMenus,
     clearPlacedSelection,
-    createTextBlockAtPoint,
-    fullNotebookEditingEnabled,
-    handleStartPageSwipe,
-    handleTouchPointerDown,
-    setEraserMenuOpen,
-    setHighlighterMenuOpen,
-    setPenMenuOpen,
-    tool,
-  ]);
+    viewport,
+    swipe,
+    createTextBlockAtEvent,
+    noteIgnoredTouch,
+  });
 
-  const handlePagePointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (handleTouchPointerMove(event)) return;
-    if (shouldPointerSwipePages(event.pointerType)) {
-      handlePageSwipeMove(event);
-    }
-  }, [
-    handlePageSwipeMove,
-    handleTouchPointerMove,
-  ]);
-
-  const handlePagePointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (event.pointerType === "touch") {
-      const swipe = pageSwipeRef.current;
-      const direction = swipe
-        ? getNotebookSwipeDirection({
-            startX: swipe.startX,
-            startY: swipe.startY,
-            currentX: event.clientX,
-            currentY: event.clientY,
-          })
-        : null;
-      if (!direction) {
-        maybeShowIgnoredTouchInkHint(event);
-      }
-    }
-    if (handleTouchPointerEnd(event, { allowTextTap: true })) return;
-    if (shouldPointerSwipePages(event.pointerType)) {
-      handleStopPageSwipe(event, { allowTextTap: true });
-    }
-  }, [
-    handleStopPageSwipe,
-    handleTouchPointerEnd,
-    maybeShowIgnoredTouchInkHint,
-  ]);
-
-  const handlePagePointerCancel = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (handleTouchPointerEnd(event, { cancelled: true })) return;
-    if (shouldPointerSwipePages(event.pointerType)) {
-      handleStopPageSwipe(event, { cancelled: true });
-    }
-  }, [
-    handleStopPageSwipe,
-    handleTouchPointerEnd,
-  ]);
-
-  const handleDeletePage = async (page: NotebookPage) => {
-    if (!user?.uid || !notebook || !fullNotebookEditingEnabled) return;
-    if (pages.length <= 1) {
-      showError("A notebook needs at least one page.");
-      return;
-    }
-
-    if (
-      pageState.read().saveStatus === "unsaved" ||
-      pageState.read().saveStatus === "failed"
-    ) {
-      const saved = await saveCurrentPage({ flush: true });
-      if (!saved) {
-        showError("Could not autosave before deleting the page.");
-        return;
-      }
-    }
-
-    setDeletingPageId(page.id);
-    clearFeedback();
-    try {
-      const deletedIndex = pages.findIndex((candidate) => candidate.id === page.id);
-      const nextPages = await deleteNotebookPage(user.uid, notebook.id, page.id);
-      const nextSelectedPage =
-        page.id === pageState.read().selectedPage?.id
-          ? nextPages[Math.min(Math.max(deletedIndex, 0), nextPages.length - 1)] ?? nextPages[0]
-          : nextPages.find((candidate) => candidate.id === pageState.read().selectedPage?.id) ??
-            nextPages[0];
-
-      pageState.resetHydration();
-      setPages(nextPages);
-      // Ink first, as everywhere else: the page taking this one's place must
-      // not open on an empty canvas that autosave could write over its drawing.
-      if (nextSelectedPage) await hydratePageInk(nextSelectedPage.id);
-      setSelectedPageId(nextSelectedPage?.id ?? null);
-      resetTextBlockInteraction();
-      success(`Page ${page.pageNumber} deleted.`);
-    } catch (error) {
-      showThrownError(error, "Could not delete this page.");
-    } finally {
-      setDeletingPageId(null);
-    }
-  };
-
-  const closeAddPagesDialog = () => {
-    if (addingNotebookFile) return;
-    setShowAddPagesDialog(false);
-    setNotebookFile(null);
-    setNotebookUploadProgress(null);
-  };
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const search = new URLSearchParams(window.location.search);
-    if (!search.has("settings")) return;
-    search.delete("settings");
-    const query = search.toString();
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`
-    );
-  }, []);
-
-  const handleAddNotebookFile = async () => {
-    if (!user?.uid || !notebook || !notebookFile) return;
-    setAddingNotebookFile(true);
-    setNotebookUploadProgress(null);
-    clearFeedback();
-    try {
-      const appended = await appendUploadedFileToNotebook({
-        userId: user.uid,
-        notebook,
-        existingPageCount: pages.length,
-        file: notebookFile,
-        onProgress: setNotebookUploadProgress,
-      });
-      const nextPages = [...pages, ...appended.pages].sort(
-        (a, b) => a.pageNumber - b.pageNumber
-      );
-      setPages(nextPages);
-      setFiles((current) => [appended.file, ...current]);
-      if (!notebook.uploadedFileId) {
-        setNotebook((current) =>
-          current
-            ? {
-                ...current,
-                uploadedFileId: appended.file.id,
-                updatedAt: Date.now(),
-              }
-            : current
-        );
-      }
-      setSelectedPageId(appended.pages[0]?.id ?? selectedPageId);
-      setNotebookFile(null);
-      setNotebookUploadProgress(null);
-      setShowAddPagesDialog(false);
-      success(`${appended.pages.length} ${
-          appended.pages.length === 1 ? "page" : "pages"
-        } added to ${notebook.title}`);
-    } catch (error) {
-      showThrownError(error, "Could not add these pages to the notebook.");
-    } finally {
-      setAddingNotebookFile(false);
-      setNotebookUploadProgress(null);
-    }
-  };
-
-  // Ink history lives entirely in js-draw; the page-level stack only tracks
-  // text-block changes. Undo drains js-draw first, then falls back to text.
-  const performClearCurrentPage = () => {
-    inkEditorRef.current?.clear();
-    setInkHasContent(false);
-    markPageUnsaved();
-  };
-
-  useEffect(() => {
-    if (!fullNotebookEditingEnabled) return;
-
-    const handleShortcut = (event: KeyboardEvent) => {
-      if (isNotebookTextEditingTarget(event.target)) return;
-      const key = event.key.toLowerCase();
-
-      if ((event.ctrlKey || event.metaKey) && key === "z") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          handleRedo();
-        } else {
-          handleUndo();
-        }
-        return;
-      }
-      // Windows' own redo, which the practice sheet already answered to.
-      if ((event.ctrlKey || event.metaKey) && key === "y") {
-        event.preventDefault();
-        handleRedo();
-        return;
-      }
-
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (key === "t") {
-        switchNotebookTool(pageState.read().tool === "text" ? "select" : "text");
-      }
-      if (key === "p") {
-        switchNotebookTool(pageState.read().tool === "pen" ? "select" : "pen");
-      }
-      if (key === "h") {
-        switchNotebookTool(
-          pageState.read().tool === "highlighter" ? "select" : "highlighter"
-        );
-      }
-      if (key === "e") {
-        switchNotebookTool(
-          pageState.read().tool === "eraser" ? "select" : "eraser"
-        );
-      }
-      if (key === "v") {
-        switchNotebookTool("select");
-      }
-      if (key === "escape") {
-        switchNotebookTool("select");
-        setPenMenuOpen(false);
-        setHighlighterMenuOpen(false);
-        setEraserMenuOpen(false);
-        clearPlacedSelection();
-      }
-    };
-
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, [
-    clearPlacedSelection,
-    fullNotebookEditingEnabled,
-    handleRedo,
-    handleUndo,
-    pageState,
-    setEraserMenuOpen,
-    setHighlighterMenuOpen,
-    setPenMenuOpen,
-    switchNotebookTool,
-  ]);
-
-  const closeDrawingToolMenus = useCallback(() => {
-    setPenMenuOpen(false);
-    setHighlighterMenuOpen(false);
-    setEraserMenuOpen(false);
-  }, [setEraserMenuOpen, setHighlighterMenuOpen, setPenMenuOpen]);
-
-  /** Which tool options popover is showing. The three are mutually exclusive. */
-  const openToolMenu: NotebookToolMenu = penMenuOpen
-    ? "pen"
-    : highlighterMenuOpen
-      ? "highlighter"
-      : eraserMenuOpen
-        ? "eraser"
-        : null;
-
-  const setToolMenuOpen = useCallback(
-    (menu: Exclude<NotebookToolMenu, null>, open: boolean) => {
-      setPenMenuOpen(menu === "pen" && open);
-      setHighlighterMenuOpen(menu === "highlighter" && open);
-      setEraserMenuOpen(menu === "eraser" && open);
-    },
-    [setEraserMenuOpen, setHighlighterMenuOpen, setPenMenuOpen]
-  );
-
-  const lastToolPressRef = useRef<NotebookToolPress | null>(null);
-
-  /**
-   * Records a toolbar press, and says whether it completes a double press of
-   * the same tool. A double press is used up, so a third quick press starts a
-   * new pair rather than counting twice.
-   */
-  const takeToolDoublePress = useCallback((tool: NotebookToolPress["tool"]) => {
-    const press = { tool, at: performance.now() };
-    const double = isNotebookToolDoublePress(lastToolPressRef.current, press);
-    lastToolPressRef.current = double ? null : press;
-    return double;
-  }, []);
-
-  /**
-   * Selecting an inactive tool switches to it; the active one toggles options.
-   * A double press of any tool puts it down.
-   */
-  const handleSelectDrawingTool = useCallback(
-    (nextTool: "pen" | "highlighter" | "eraser") => {
-      // Reaching for a tool is done with something else in mind, so whatever
-      // was selected is let go of whether or not the tool actually changes.
-      // Switching tools already dropped an image or a graph, on its own effect;
-      // pressing the tool that is already on did not, and that is the press
-      // where a selection is most obviously stale.
-      clearPlacedSelection();
-      if (takeToolDoublePress(nextTool)) {
-        closeDrawingToolMenus();
-        switchNotebookTool("select");
-        return;
-      }
-      if (pageState.read().tool !== nextTool) {
-        switchNotebookTool(nextTool);
-        closeDrawingToolMenus();
-        return;
-      }
-      setToolMenuOpen(nextTool, openToolMenu !== nextTool);
-    },
-    [
-      clearPlacedSelection,
-      closeDrawingToolMenus,
-      openToolMenu,
-      pageState,
-      setToolMenuOpen,
-      switchNotebookTool,
-      takeToolDoublePress,
-    ]
-  );
-
-  const handleToggleTextTool = useCallback(() => {
-    // Both sides of this toggle move placed things, so neither drops a
-    // selection by changing tool. Pressing the button has to say it.
-    clearPlacedSelection();
-    closeDrawingToolMenus();
-    // A double press puts it down, as it does every other tool, rather than
-    // picking it straight back up.
-    if (takeToolDoublePress("text")) {
-      switchNotebookTool("select");
-      return;
-    }
-    switchNotebookTool(pageState.read().tool === "text" ? "select" : "text");
-  }, [
-    clearPlacedSelection,
-    closeDrawingToolMenus,
-    pageState,
-    switchNotebookTool,
-    takeToolDoublePress,
-  ]);
-
-
-  /** Resolves true once the image is on the page; failures are shown here. */
-  const handleAddImage = useCallback(
-    (file: File): Promise<boolean> => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!user?.uid || !notebookId || !pageId) return Promise.resolve(false);
-      const userId = user.uid;
+  useNotebookKeyboardShortcuts({
+    enabled: fullNotebookEditingEnabled,
+    readTool: () => pageState.read().tool,
+    switchTool: switchNotebookTool,
+    undo: handleUndo,
+    redo: handleRedo,
+    onEscape: () => {
       closeDrawingToolMenus();
-      setAddingImage(true);
-      return queueImageWrite(async () => {
-        const result = await addUploadedImageToNotebookPage({
-          userId,
-          notebookId,
-          pageId,
-          file,
-          currentImageRefs: currentImageRefsFor(pageId),
-        });
-        applyPageImages(pageId, result.imageRefs, result.updatedAt);
-        if (pageState.read().selectedPage?.id === pageId) {
-          // Selected and ready to move, which is almost always the next thing.
-          switchNotebookTool("select");
-          setSelectedImageId(result.imageRef.id);
-        }
-        return true;
-      })
-        .catch((error: unknown) => {
-          showThrownError(error, "That image could not be added. Try again.");
-          return false;
-        })
-        .finally(() => setAddingImage(false));
+      clearPlacedSelection();
     },
-    [
-      applyPageImages,
-      closeDrawingToolMenus,
-      currentImageRefsFor,
-      notebookId,
-      pageState,
-      queueImageWrite,
-      showThrownError,
-      switchNotebookTool,
-      user?.uid,
-    ]
-  );
-
-  const handleDeleteImage = useCallback(
-    (imageId: string) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!user?.uid || !notebookId || !pageId) return;
-      const userId = user.uid;
-      const before = currentImageRefsFor(pageId);
-      const removed = before.find((image) => image.id === imageId);
-      if (!removed) return;
-      const imageRefs = before.filter((image) => image.id !== imageId);
-      setSelectedImageId(null);
-      // Gone at once; put back only if the page write is refused.
-      applyPageImages(pageId, imageRefs, Date.now());
-      void queueImageWrite(async () => {
-        await updateNotebookPageImages(userId, { notebookId, pageId, imageRefs });
-        await deleteUploadedNotebookImageFile(removed);
-      }).catch((error: unknown) => {
-        applyPageImages(pageId, before, Date.now());
-        showThrownError(error, "That image could not be deleted. Try again.");
-      });
-    },
-    [applyPageImages, currentImageRefsFor, notebookId, pageState, queueImageWrite, showThrownError, user?.uid]
-  );
-
-  /** The last graph list written or asked for, per page, ahead of `pages`. */
-  const latestGraphBlocksRef = useRef<{ pageId: string; graphBlocks: NotebookGraphBlock[] } | null>(
-    null
-  );
-
-  const currentGraphBlocksFor = useCallback(
-    (pageId: string) => {
-      const latest = latestGraphBlocksRef.current;
-      if (latest?.pageId === pageId) return latest.graphBlocks;
-      const selected = pageState.read().selectedPage;
-      return selected?.id === pageId ? selected.graphBlocks : [];
-    },
-    [pageState]
-  );
-
-  const applyPageGraphs = useCallback(
-    (pageId: string, graphBlocks: NotebookGraphBlock[], updatedAt: number) => {
-      latestGraphBlocksRef.current = { pageId, graphBlocks };
-      setPages((current) =>
-        current.map((page) => (page.id === pageId ? { ...page, graphBlocks, updatedAt } : page))
-      );
-    },
-    [setPages]
-  );
-
-  /*
-   * Shown at once and saved behind, through the image write queue: graphs and
-   * images are both single fields on the page, and one queue keeps two quick
-   * edits from landing in the wrong order. A refused write puts back what was
-   * there and says so, so callers do not report failures themselves.
-   */
-  const writePageGraphs = useCallback(
-    async (pageId: string, graphBlocks: NotebookGraphBlock[], failureMessage: string) => {
-      if (!user?.uid || !notebookId) return false;
-      const userId = user.uid;
-      const before = currentGraphBlocksFor(pageId);
-      applyPageGraphs(pageId, graphBlocks, Date.now());
-      const stillLatest = () => latestGraphBlocksRef.current?.graphBlocks === graphBlocks;
-      try {
-        await queueImageWrite(async () => {
-          const result = await updateNotebookPageGraphs(userId, { notebookId, pageId, graphBlocks });
-          // A newer edit already on screen is not replaced by this older one.
-          if (stillLatest()) applyPageGraphs(pageId, graphBlocks, result.updatedAt);
-        });
-        return true;
-      } catch (error) {
-        if (stillLatest()) applyPageGraphs(pageId, before, Date.now());
-        showThrownError(error, failureMessage);
-        return false;
-      }
-    },
-    [applyPageGraphs, currentGraphBlocksFor, notebookId, queueImageWrite, showThrownError, user?.uid]
-  );
-
-  const handleNotebookGraphsCommit = useCallback(
-    async (graphBlocks: NotebookGraphBlock[]) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (pageId) await writePageGraphs(pageId, graphBlocks, "That graph could not be changed. Try again.");
-    },
-    [pageState, writePageGraphs]
-  );
-
-  // One thing selected at a time, so the options showing belong to what was tapped last.
-  const handleSelectGraph = useCallback((graphId: string | null) => {
-    setSelectedGraphId(graphId);
-    if (graphId) setSelectedImageId(null);
-  }, []);
-
-  const handleSelectImage = useCallback((imageId: string | null) => {
-    setSelectedImageId(imageId);
-    if (imageId) setSelectedGraphId(null);
-  }, []);
-
-  const handleOpenNewGraph = useCallback(() => {
-    closeDrawingToolMenus();
-    setGraphEditorTarget("new");
-  }, [closeDrawingToolMenus]);
-
-  const selectPlacedGraph = useCallback(
-    (graphId: string) => {
-      if (isPhoneLayout) return;
-      // Selected and ready to move or resize, which is almost always next.
-      switchNotebookTool("select");
-      setSelectedGraphId(graphId);
-      setSelectedImageId(null);
-    },
-    [isPhoneLayout, switchNotebookTool]
-  );
-
-  const handleSaveGraph = useCallback(
-    (draft: NotebookGraphDraft) => {
-      const pageId = pageState.read().selectedPage?.id;
-      const target = graphEditorTarget;
-      setGraphEditorTarget(null);
-      if (!pageId || !target) return;
-      const current = currentGraphBlocksFor(pageId);
-      const existing = current.find((graph) => graph.id === target);
-      if (existing) {
-        const { id, x, y, width, height } = existing;
-        void writePageGraphs(
-          pageId,
-          current.map((graph) => (graph.id === id ? { id, x, y, width, height, ...draft } : graph)),
-          "That graph could not be saved. Try again."
-        );
-        selectPlacedGraph(id);
-        return;
-      }
-      if (current.length >= MAX_NOTEBOOK_GRAPHS) {
-        showError(`A page can hold up to ${MAX_NOTEBOOK_GRAPHS} graphs. Delete one to add another.`);
-        return;
-      }
-      const created = createNotebookGraphBlock(crypto.randomUUID(), draft);
-      void writePageGraphs(pageId, [...current, created], "That graph could not be added. Try again.");
-      selectPlacedGraph(created.id);
-    },
-    [currentGraphBlocksFor, graphEditorTarget, pageState, selectPlacedGraph, showError, writePageGraphs]
-  );
-
-  const handleDeleteGraph = useCallback(
-    (graphId: string) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!pageId) return;
-      setSelectedGraphId(null);
-      void writePageGraphs(
-        pageId,
-        currentGraphBlocksFor(pageId).filter((graph) => graph.id !== graphId),
-        "That graph could not be deleted. Try again."
-      );
-    },
-    [currentGraphBlocksFor, pageState, writePageGraphs]
-  );
-
-  const handleTutorGraphInsert = useCallback(
-    async (draft: NotebookGraphDraft) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!pageId) return false;
-      const current = currentGraphBlocksFor(pageId);
-      if (current.length >= MAX_NOTEBOOK_GRAPHS) {
-        showError(`A page can hold up to ${MAX_NOTEBOOK_GRAPHS} graphs. Delete one to add this one.`);
-        return false;
-      }
-      const created = createNotebookGraphBlock(crypto.randomUUID(), draft);
-      const added = await writePageGraphs(pageId, [...current, created], "That graph could not be added. Try again.");
-      if (!added) return false;
-      if (pageState.read().selectedPage?.id === pageId) selectPlacedGraph(created.id);
-      success("Graph added to this page.");
-      return true;
-    },
-    [currentGraphBlocksFor, pageState, selectPlacedGraph, showError, success, writePageGraphs]
-  );
+  });
 
   /** A Tutor answer, added to this page exactly as the Tutor showed it. */
   const handleTutorAnswerInsert = useCallback(
     (text: string) => {
       const { selectedPage: page, textBlocks: currentTextBlocks } = pageState.read();
       if (!page) return false;
-      if (!fullNotebookEditingEnabled || practicePaperEditingLocked) {
+      if (!pageEditingEnabled) {
         showError("This page can't be edited here, so the answer can't be added to it.");
         return false;
       }
@@ -2815,28 +810,23 @@ export default function NotebookEditorPage() {
     [
       currentGraphBlocksFor,
       currentImageRefsFor,
-      fullNotebookEditingEnabled,
       insertTextBlock,
+      pageEditingEnabled,
       pageState,
-      practicePaperEditingLocked,
       showError,
       success,
     ]
   );
 
-  useEffect(() => {
-    setSelectedGraphId(null);
-    setGraphEditorTarget(null);
-  }, [selectedPage?.id]);
-
-  useEffect(() => {
-    if (!movesPlacedItems(tool)) setSelectedGraphId(null);
-  }, [tool]);
-
   const handleToolbarUndo = useCallback(() => {
     closeDrawingToolMenus();
     handleUndo();
   }, [closeDrawingToolMenus, handleUndo]);
+
+  const handleToolbarRedo = useCallback(() => {
+    closeDrawingToolMenus();
+    handleRedo();
+  }, [closeDrawingToolMenus, handleRedo]);
 
   const handleSelectPageFromDrawer = useCallback(
     (pageId: string) => {
@@ -2847,38 +837,8 @@ export default function NotebookEditorPage() {
   );
 
   const handleCreatePageFromDrawer = useCallback(() => {
-    void createBlankPageAtEnd();
-  }, [createBlankPageAtEnd]);
-
-  const handleImportPagesFromDrawer = useCallback(() => {
-    setShowAddPagesDialog(true);
-  }, [setShowAddPagesDialog]);
-
-  const handleTextBlockTextChange = useCallback(
-    (blockId: string, text: string) => {
-      updateTextBlock(blockId, { text });
-    },
-    [updateTextBlock]
-  );
-
-  // A box growing to hold its text is part of the typing that caused it, so
-  // it goes through the same update as the typing does and never becomes an
-  // undo step of its own.
-  const handleTextBlockFitHeight = useCallback(
-    (blockId: string, height: number) => {
-      updateTextBlock(blockId, { height });
-    },
-    [updateTextBlock]
-  );
-
-  const handleRequestDeletePage = useCallback((page: NotebookPage) => {
-    setConfirmDialog({ kind: "delete-page", page });
-  }, [setConfirmDialog]);
-
-  const handleToolbarRedo = useCallback(() => {
-    closeDrawingToolMenus();
-    handleRedo();
-  }, [closeDrawingToolMenus, handleRedo]);
+    void createPageAtEnd();
+  }, [createPageAtEnd]);
 
   const {
     dock: toolbarDock,
@@ -2888,156 +848,109 @@ export default function NotebookEditorPage() {
     frameRef: pageFrameRef,
     frameSize,
     onDragStarted: closeDrawingToolMenus,
-    prefersReducedMotion: prefersReducedNotebookMotion,
+    prefersReducedMotion,
   });
 
-  if (loading) {
-    return (
-      <AppPage title="Notebook" backHref="/dashboard/folders" backLabel="Folders" width="3xl">
-        <div className="space-y-5">
-          <Skeleton className="h-40 rounded-2xl" />
-          <Skeleton className="h-[34rem] rounded-2xl" />
-        </div>
-      </AppPage>
-    );
-  }
+  const handleInkEditorReady = useCallback(() => {
+    inkReadyRef.current = true;
+    setInkReady(true);
+    requestHandoffCheck();
+  }, [inkReadyRef, requestHandoffCheck, setInkReady]);
 
-  if (!notebook && loadFailed) {
-    return (
-      <AppPage title="Notebook" backHref="/dashboard/folders" backLabel="Folders" width="xl">
-        <EmptyState
-          emoji="Notebook"
-          title="This notebook didn't open"
-          description="Jami couldn't reach your notebook just now. Check your connection and try again."
-          action={
-            <Button onClick={() => void reloadNotebook()}>
-              Try again
-            </Button>
-          }
-        />
-      </AppPage>
-    );
-  }
+  const handleInkEditorReadyError = useCallback(() => {
+    inkReadyRef.current = true;
+    showError("This page opened, but the ink editor could not start. Your saved writing is still visible.");
+    requestHandoffCheck();
+  }, [inkReadyRef, requestHandoffCheck, showError]);
 
-  if (!notebook) {
-    return (
-      <AppPage title="Notebook" backHref="/dashboard/folders" backLabel="Folders" width="xl">
-        <EmptyState
-          emoji="Notebook"
-          title="Notebook not found"
-          description="This notebook may have been removed or belongs to another workspace."
-          action={
-            <ButtonLink href="/dashboard/folders">
-              Back to folders
-            </ButtonLink>
-          }
-        />
-      </AppPage>
-    );
-  }
-
-  const pageSwipePreviewEnabled = isNotebookPageSwipePreviewEnabled(
-    viewportLayout.zoom
-  );
-  const previousViewportPreview: NotebookViewportPreview | null =
-    pageSwipePreviewEnabled && trackPreviousPage
-      ? {
-          key: trackPreviousPage.id,
-          className:
-            PAGE_COLOR_CLASS[
-              trackPreviousPage.pageColor ?? notebook.pageColor ?? "white"
-            ],
-          content: (
-            <NotebookPageStaticContent
-              page={trackPreviousPage}
-              notebook={notebook}
-              backgroundFile={trackPreviousBackground.file}
-              backgroundUrl={trackPreviousBackground.url}
-            />
-          ),
+  /** A stroke began or ended on the page. */
+  const handleInkEditorInteraction = useCallback(
+    (active: boolean) => {
+      handleInkInteractionChange(active);
+      if (active) {
+        // Only what is open: see clearPlacedSelection.
+        closeDrawingToolMenus();
+        if (pagesDrawerOpen) setPagesDrawerOpen(false);
+        clearPlacedSelection();
+        cancelInkUiSync();
+        cancelScheduledPersistence();
+      } else {
+        scheduleInkUiSync();
+        if (pageState.read().saveStatus === "unsaved") {
+          schedulePendingWork();
         }
-      : null;
-  const shouldShowNewPagePreview = shouldShowNotebookNewPagePreview({
-    previewEnabled: pageSwipePreviewEnabled,
-    hasNextPage: Boolean(trackNextPage),
-    createPageActive,
-    creatingPage,
-    motionKind: pageSwipeMotion?.kind ?? null,
-    fullEditingEnabled: fullNotebookEditingEnabled,
-    selectedPageIndex,
-    pageCount: pages.length,
-  });
-  const nextViewportPreview: NotebookViewportPreview | null =
-    pageSwipePreviewEnabled && trackNextPage
-    ? {
-        key: trackNextPage.id,
-        className:
-          PAGE_COLOR_CLASS[
-            trackNextPage.pageColor ?? notebook.pageColor ?? "white"
-          ],
-        content: (
-          <NotebookPageStaticContent
-            page={trackNextPage}
-            notebook={notebook}
-            backgroundFile={trackNextBackground.file}
-            backgroundUrl={trackNextBackground.url}
-          />
-        ),
       }
-    : shouldShowNewPagePreview
-      ? {
-          key: "new-page-preview",
-          className: PAGE_COLOR_CLASS[pageColor],
-          content: (
-            <div
-              aria-hidden="true"
-              className="absolute inset-0"
-              style={getNotebookPageStyleBackground(pageColor, pageStyle)}
-            />
-          ),
-        }
-      : null;
-  const notebookViewportGeometry = {
-    pageWidth: pageWidthPx,
-    pageHeight: pageHeightPx,
-    pageX: viewportLayout.pageOrigin.x,
-    pageY: viewportLayout.pageOrigin.y,
-    swipeTravel: pageTrackTravelDistance,
-  };
-  /*
-   * Only the sheet being written on is clipped. The adjacent sheets in the
-   * swipe track are only ever seen from the fitted view -- swiping is what one
-   * finger does when the page is not zoomed -- and a fitted sheet is painted
-   * whole anyway, so there is nothing here for them to gain.
-   */
-  const activeInkWindow = getNotebookInkRenderWindow({
-    sheetWidth: pageWidthPx,
-    sheetHeight: pageHeightPx,
-    pageX: viewportLayout.pageOrigin.x,
-    pageY: viewportLayout.pageOrigin.y,
-    frameWidth: viewportLayout.frameSize.width,
-    frameHeight: viewportLayout.frameSize.height,
+    },
+    [
+      cancelInkUiSync,
+      cancelScheduledPersistence,
+      clearPlacedSelection,
+      closeDrawingToolMenus,
+      handleInkInteractionChange,
+      pageState,
+      pagesDrawerOpen,
+      scheduleInkUiSync,
+      schedulePendingWork,
+      setPagesDrawerOpen,
+    ]
+  );
+
+  const { backgroundProps: liveBackgroundProps, inkEditorProps: liveInkEditorProps } =
+    useNotebookLiveInkLayer({
+      page: selectedPage,
+      paper: { pageColor, pageStyle },
+      background: {
+        file: activeNotebookFile,
+        url: activeNotebookFileUrl,
+        pdfRenderKey: activePdfRenderKey,
+        onImageSettled: markBackgroundSettled,
+        onPdfRenderStateChange: handleBackgroundRenderStateChange,
+        pdfCanvasTrackingRef: activePdfCanvasTrackingRef,
+      },
+      handingOff: pageSwipeMotion?.phase === "handoff",
+      viewport,
+      tool,
+      tools: drawingTools,
+      ink: {
+        onReady: handleInkEditorReady,
+        onReadyError: handleInkEditorReadyError,
+        onChange: handleInkChange,
+        onHistoryChange: handleInkHistoryChange,
+        onInteractionChange: handleInkEditorInteraction,
+      },
+      pointer: {
+        onPointerDown: handlePagePointerDown,
+        onPointerMove: handlePagePointerMove,
+        onPointerUp: handlePagePointerUp,
+        onPointerCancel: handlePagePointerCancel,
+      },
+    });
+
+  if (loading || !notebook) {
+    return (
+      <NotebookEditorFallback
+        state={loading ? "loading" : loadFailed ? "failed" : "missing"}
+        onRetry={() => void reloadNotebook()}
+      />
+    );
+  }
+
+  const swipePreviews = getNotebookSwipePreviews({
+    zoom: viewportLayout.zoom,
+    notebook,
+    previousPage: trackPreviousPage,
+    nextPage: trackNextPage,
+    resolveBackground: resolvePageBackground,
+    paper: { pageColor, pageStyle },
+    newPage: {
+      createPageActive,
+      creatingPage,
+      motionKind: pageSwipeMotion?.kind ?? null,
+      fullEditingEnabled: fullNotebookEditingEnabled,
+      selectedPageIndex,
+      pageCount: pages.length,
+    },
   });
-  /*
-   * The part of an imported PDF to draw again at full sharpness when zoomed.
-   * Tighter than the ink's window: a PDF slice is redrawn rarely, so it needs
-   * little room to pan into, and each extra point costs a whole canvas pixel
-   * per screen pixel. Nothing when the sheet is whole -- a fitted page is
-   * already drawn at full density.
-   */
-  const pdfDetailSlice = getNotebookInkRenderWindow({
-    sheetWidth: pageWidthPx,
-    sheetHeight: pageHeightPx,
-    pageX: viewportLayout.pageOrigin.x,
-    pageY: viewportLayout.pageOrigin.y,
-    frameWidth: viewportLayout.frameSize.width,
-    frameHeight: viewportLayout.frameSize.height,
-    overscan: 0.15,
-    grid: 64,
-  });
-  const activePdfDetailWindow = isWholeNotebookInkSheet(pdfDetailSlice)
-    ? null
-    : pdfDetailSlice;
 
   return (
     <main
@@ -3050,257 +963,104 @@ export default function NotebookEditorPage() {
       className="notebook-editor-shell fixed inset-0 z-[70] flex min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
     >
       <div className="flex h-full min-h-0 flex-col">
-        <header className="z-40 shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-e1 backdrop-blur-xl">
-          <div className="flex min-w-0 items-center gap-2">
-            <Link
-              href={`/dashboard/folders/${notebook.folderId}`}
-              onClick={(event) => void handleExitNotebook(event)}
-              aria-label="Back to folder"
-              title="Back to folder"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)]"
-            >
-              <NotebookIcon name="back" />
-            </Link>
-            <div data-tutorial-target="save-work" className="flex min-w-0 flex-1 items-center gap-2">
-              <div className="truncate text-sm font-semibold text-text-primary">{notebook.title}</div>
-              <NotebookSaveIndicator status={saveStatus} onRetry={handleRetryPageSave} />
-            </div>
-            <ToolbarIconButton
-              label="Pages"
-              icon="pages"
-              active={pagesDrawerOpen}
-              onClick={() => {
-                setPenMenuOpen(false);
-                setHighlighterMenuOpen(false);
-                setEraserMenuOpen(false);
-                const nextOpen = !pagesDrawerOpen;
-                setPagesDrawerOpen(nextOpen);
-                if (nextOpen) handleAssistantOpenChange(false);
-              }}
-            />
-            {!practicePaperTutorLocked ? (
-              <ToolbarIconButton
-                label={
-                  notebookSheets.sheets.length === 0
-                    ? "Keep a sheet beside the page"
-                    : notebookSheets.open
-                      ? notebookSheets.sheets.length > 1 ? "Hide sheets" : "Hide sheet"
-                      : notebookSheets.sheets.length > 1
-                        ? `Show ${notebookSheets.sheets.length} sheets`
-                        : `Show sheet: ${notebookSheets.sheets[0].sheet.title}`
-                }
-                icon="sheet"
-                active={notebookSheets.open}
-                pressed={notebookSheets.sheets.length > 0 ? notebookSheets.open : undefined}
-                onClick={() => {
-                  if (notebookSheets.sheets.length > 0) notebookSheets.setOpen(!notebookSheets.open);
-                  else setSheetPicker({ replaceSlot: null });
-                }}
-              >
-                {notebookSheets.sheets.length > 0 && !notebookSheets.open ? (
-                  // Kept but hidden: one tap brings them back.
-                  <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent" />
-                ) : null}
-              </ToolbarIconButton>
-            ) : null}
-            {!practicePaperTutorLocked ? (
-              <ToolbarIconButton
-                label="Ask Jami" icon="ai"
-                tutorialTarget="ask-tutor"
-                active={assistantOpen}
-                onClick={() => handleAssistantOpenChange(!assistantOpen)}
+        <NotebookEditorHeader
+          notebook={notebook}
+          userId={userId}
+          saveStatus={saveStatus}
+          onRetrySave={handleRetryPageSave}
+          onExit={handleExitNotebook}
+          pagesDrawerOpen={pagesDrawerOpen}
+          onTogglePages={() => {
+            closeDrawingToolMenus();
+            const nextOpen = !pagesDrawerOpen;
+            setPagesDrawerOpen(nextOpen);
+            if (nextOpen) handleAssistantOpenChange(false);
+          }}
+          tutorLocked={practicePaperTutorLocked}
+          sheets={sheetsBeside}
+          assistantOpen={assistantOpen}
+          onToggleAssistant={() => handleAssistantOpenChange(!assistantOpen)}
+          practicePaper={{
+            onStatusChange: handlePracticePaperStatusChange,
+            onBeforeSubmit: prepareForNavigation,
+            onRetake: handlePracticePaperRetake,
+            onEditingLockChange: setPracticePaperEditingLocked,
+            onTutorLockChange: setPracticePaperTutorLocked,
+          }}
+        />
+        <div className="relative isolate min-h-0 flex-1 overflow-hidden">
+          <NotebookToolSettingsPopover
+            dock={toolbarDock}
+            openMenu={openToolMenu}
+            pen={penToolSettings}
+            highlighter={highlighterToolSettings}
+            eraser={eraserToolSettings}
+          />
+
+          {feedback ? (
+            <div className="absolute left-3 right-3 top-3 z-50 mx-auto max-w-2xl">
+              <FeedbackBanner
+                type={feedback.type}
+                message={feedback.message}
+                onDismiss={() => clearFeedback()}
               />
-            ) : null}
-          </div>
-          {notebook.type === "practice_paper" && user?.uid ? (
-            <PracticePaperAttemptBar
-              userId={user.uid}
-              notebookId={notebook.id}
-              onStatusChange={handlePracticePaperStatusChange}
-              onBeforeSubmit={prepareCurrentPageForNavigation}
-              onRetake={handlePracticePaperRetake}
-              onEditingLockChange={setPracticePaperEditingLocked}
-              onTutorLockChange={setPracticePaperTutorLocked}
+            </div>
+          ) : null}
+
+          <NotebookAddPagesDialog {...addPagesDialog} />
+
+          <NotebookPhoneLayoutNotice
+            open={isPhoneLayout}
+            fullEditing={phoneFullEditing}
+            onToggleFullEditing={() => setPhoneFullEditing((value) => !value)}
+          />
+
+          {!practicePaperTutorLocked ? (
+            <JamiAssistantDrawer
+              userId={userId}
+              open={assistantOpen}
+              onOpenChange={handleAssistantOpenChange}
+              layout="floating"
+              // Keep one conversation across page turns; the current page is
+              // still resolved fresh for every message.
+              resetKey={`notebook:${notebook.id}`}
+              contextKey={`notebook:${notebook.id}`}
+              contextLabel="Current notebook page"
+              historyContextLabel={notebook.title}
+              getContext={getNotebookAssistantContext}
+              quickActions={notebookAssistantQuickActions}
+              settingsFolderIds={notebook.folderId ? [notebook.folderId] : []}
+              onBeforeIllustrationInsert={() => saveCurrentPage({ flush: true })}
+              onIllustrationInserted={handleIllustrationInserted}
+              onGraphInsert={handleTutorGraphInsert}
+              onDrawingInsert={handleAddImage}
+              onAnswerInsert={handleTutorAnswerInsert}
+              onKeepAttachmentBeside={sheetsBeside.keepAttachment}
             />
           ) : null}
-        </header>
-        <div className="relative isolate min-h-0 flex-1 overflow-hidden">
-        <NotebookToolSettingsPopover
-          dock={toolbarDock}
-          openMenu={openToolMenu}
-          pen={{
-            color: penColor,
-            thicknessPercent: penThicknessPercent,
-            onColorChange: (color) => {
-              setPenColor(color);
-              saveNotebookToolPreferences({ penColor: color });
-              switchNotebookTool("pen");
-            },
-            onThicknessChange: (value) => {
-              const thickness = clampNotebookThicknessPercent(value);
-              setPenThicknessPercent(thickness);
-              saveNotebookToolPreferences({ penThicknessPercent: thickness });
-              switchNotebookTool("pen");
-            },
-            settings: penSettings,
-            onSettingsChange: (value) => {
-              const next = clampNotebookPenSettings(value);
-              setPenSettings(next);
-              saveNotebookPenSettings(next);
-              switchNotebookTool("pen");
-            },
-            scribbleToErase,
-            onScribbleToEraseChange: (enabled) => {
-              setScribbleToErase(enabled);
-              saveNotebookScribbleErasePreference(enabled);
-            },
-          }}
-          highlighter={{
-            color: highlighterColor,
-            thicknessPercent: highlighterThicknessPercent,
-            onColorChange: (color) => {
-              setHighlighterColor(color);
-              saveNotebookToolPreferences({ highlighterColor: color });
-              switchNotebookTool("highlighter");
-            },
-            onThicknessChange: (value) => {
-              const thickness = clampNotebookThicknessPercent(value);
-              setHighlighterThicknessPercent(thickness);
-              saveNotebookToolPreferences({
-                highlighterThicknessPercent: thickness,
-              });
-              switchNotebookTool("highlighter");
-            },
-          }}
-          eraser={{
-            mode: eraserMode,
-            size: eraserWidth,
-            onModeChange: (mode) => {
-              setEraserMode(mode);
-              saveNotebookToolPreferences({ eraserMode: mode });
-              switchNotebookTool("eraser");
-            },
-            onSizeChange: (size) => {
-              setEraserWidth(size);
-              saveNotebookToolPreferences({ eraserSize: size });
-              switchNotebookTool("eraser");
-            },
-            canClearPage: inkHasContent,
-            onClearPage: () => {
-              setEraserMenuOpen(false);
-              setConfirmDialog({ kind: "clear-page" });
-            },
-          }}
-        />
-
-        {feedback ? (
-          <div className="absolute left-3 right-3 top-3 z-50 mx-auto max-w-2xl">
-            <FeedbackBanner
-              type={feedback.type}
-              message={feedback.message}
-              onDismiss={() => clearFeedback()}
+          <NotebookSheetsLayer sheets={sheetsBeside} hidden={practicePaperTutorLocked} />
+          <NotebookGraphEditorDialog
+            open={graphEditorTarget !== null}
+            graph={selectedPage?.graphBlocks.find((graph) => graph.id === graphEditorTarget) ?? null}
+            onCancel={() => setGraphEditorTarget(null)}
+            onSave={handleSaveGraph}
+          />
+          {pagesDrawerOpen ? (
+            <NotebookPagesDrawer
+              pages={pages}
+              notebook={notebook}
+              selectedPageId={selectedPage?.id ?? null}
+              deletingPageId={deletingPageId}
+              editingEnabled={pageEditingEnabled}
+              creatingPage={creatingPage}
+              navigationBusy={Boolean(pageSwipeMotion)}
+              resolvePageBackground={resolvePageBackground}
+              onSelectPage={handleSelectPageFromDrawer}
+              onCreatePage={handleCreatePageFromDrawer}
+              onImportPages={openAddPages}
+              onRequestDeletePage={requestDeletePage}
             />
-          </div>
-        ) : null}
-
-        <NotebookAddPagesDialog
-          open={showAddPagesDialog}
-          file={notebookFile}
-          adding={addingNotebookFile}
-          progress={notebookUploadProgress}
-          onFileChange={setNotebookFile}
-          onCancel={closeAddPagesDialog}
-          onConfirm={() => void handleAddNotebookFile()}
-        />
-
-        <NotebookPhoneLayoutNotice
-          open={isPhoneLayout}
-          fullEditing={phoneFullEditing}
-          onToggleFullEditing={() => setPhoneFullEditing((value) => !value)}
-        />
-
-        {!practicePaperTutorLocked ? (
-          <JamiAssistantDrawer
-            userId={user.uid}
-            open={assistantOpen}
-            onOpenChange={handleAssistantOpenChange}
-            layout="floating"
-            // Keep one conversation across page turns; the current page is
-            // still resolved fresh for every message.
-            resetKey={`notebook:${notebook.id}`}
-            contextKey={`notebook:${notebook.id}`}
-            contextLabel="Current notebook page"
-            historyContextLabel={notebook.title}
-            getContext={getNotebookAssistantContext}
-            quickActions={notebookAssistantQuickActions}
-            settingsFolderIds={notebook.folderId ? [notebook.folderId] : []}
-            onBeforeIllustrationInsert={() => saveCurrentPage({ flush: true })}
-            onIllustrationInserted={handleIllustrationInserted}
-            onGraphInsert={handleTutorGraphInsert}
-            onDrawingInsert={handleAddImage}
-            onAnswerInsert={handleTutorAnswerInsert}
-            onKeepAttachmentBeside={handleKeepAttachmentBeside}
-          />
-        ) : null}
-        {!practicePaperTutorLocked && notebookSheets.open
-          ? notebookSheets.sheets.map((kept) => (
-              <NotebookSheetPanel
-                key={kept.slot}
-                frame={sheetFrames[kept.slot]}
-                sheet={kept.sheet}
-                page={kept.page ?? 0}
-                sheetCount={notebookSheets.sheets.length}
-                onChange={() => setSheetPicker({ replaceSlot: kept.slot })}
-                onPageChange={(page) => notebookSheets.setPage(kept.slot, page)}
-                onAdd={
-                  notebookSheets.sheets.length < MAX_NOTEBOOK_SHEETS
-                    ? () => setSheetPicker({ replaceSlot: null })
-                    : undefined
-                }
-                onHide={() => notebookSheets.setOpen(false)}
-                onClose={() => notebookSheets.remove(kept.slot)}
-              />
-            ))
-          : null}
-        <NotebookSheetPicker
-          open={sheetPicker !== null && !practicePaperTutorLocked}
-          replacing={sheetPicker?.replaceSlot != null}
-          firstSheet={notebookSheets.sheets.length === 0}
-          notebookSheets={notebookSheetChoices}
-          folderSheets={folderSheetChoices.sheets}
-          folderLoading={folderSheetChoices.loading}
-          folderFailed={folderSheetChoices.failed}
-          keptPaths={notebookSheets.sheets.map((kept) => kept.sheet.storagePath)}
-          onPick={(sheet) => {
-            const replaceSlot = sheetPicker?.replaceSlot ?? null;
-            if (replaceSlot !== null) notebookSheets.replace(replaceSlot, sheet);
-            else keepSheetBeside(sheet);
-            setSheetPicker(null);
-          }}
-          onCancel={() => setSheetPicker(null)}
-        />
-        <NotebookGraphEditorDialog
-          open={graphEditorTarget !== null}
-          graph={selectedPage?.graphBlocks.find((graph) => graph.id === graphEditorTarget) ?? null}
-          onCancel={() => setGraphEditorTarget(null)}
-          onSave={handleSaveGraph}
-        />
-        {pagesDrawerOpen ? (
-          <NotebookPagesDrawer
-            pages={pages}
-            notebook={notebook}
-            selectedPageId={selectedPage?.id ?? null}
-            deletingPageId={deletingPageId}
-            editingEnabled={fullNotebookEditingEnabled && !practicePaperEditingLocked}
-            creatingPage={creatingPage}
-            navigationBusy={Boolean(pageSwipeMotion)}
-            resolvePageBackground={resolvePageBackground}
-            onSelectPage={handleSelectPageFromDrawer}
-            onCreatePage={handleCreatePageFromDrawer}
-            onImportPages={handleImportPagesFromDrawer}
-            onRequestDeletePage={handleRequestDeletePage}
-          />
-        ) : null}
+          ) : null}
 
           <NotebookViewport
             onFramePointerDown={handleFramePointerDown}
@@ -3308,12 +1068,18 @@ export default function NotebookEditorPage() {
             trackRef={pageTrackRef}
             previewLayerRef={pagePreviewLayerRef}
             activeRef={pageSurfaceRef}
-            geometry={notebookViewportGeometry}
-            previousPreview={previousViewportPreview}
-            nextPreview={nextViewportPreview}
+            geometry={{
+              pageWidth: pageWidthPx,
+              pageHeight: pageHeightPx,
+              pageX: viewportLayout.pageOrigin.x,
+              pageY: viewportLayout.pageOrigin.y,
+              swipeTravel: pageTrackTravelDistance,
+            }}
+            previousPreview={swipePreviews.previous}
+            nextPreview={swipePreviews.next}
             activeClassName={PAGE_COLOR_CLASS[pageColor]}
-            onTrackTransitionEnd={handlePageTrackTransitionEnd}
-            onTrackTransitionCancel={handlePageTrackTransitionEnd}
+            onTrackTransitionEnd={track.handleTransitionEnd}
+            onTrackTransitionCancel={track.handleTransitionEnd}
             onActivePointerMove={handlePageSurfaceTextGestureMove}
             onActivePointerUp={handlePageSurfaceTextGestureStop}
             onActivePointerCancel={handlePageSurfaceTextGestureStop}
@@ -3335,303 +1101,95 @@ export default function NotebookEditorPage() {
                         (selectedPage.strokeData?.strokes?.length ?? 0) > 0
                     )}
                     inkReady={inkReady}
-                    editingEnabled={
-                      fullNotebookEditingEnabled &&
-                      !practicePaperEditingLocked &&
-                      !selectedPageInkUnloaded
-                    }
+                    editingEnabled={pageEditingEnabled && !selectedPageInkUnloaded}
                     eraserWidth={eraserWidth}
                     inkEditorMountRevision={inkEditorMountRevision}
                     inkEditorRef={inkEditorRef}
                     swipeInkSnapshot={pageSwipeInkSnapshot}
-                    onSwipeInkSnapshotReady={markPageSwipeInkSnapshotReady}
-                    backgroundProps={{
-                      pageColor,
-                      pageStyle,
-                      backgroundFile: activeNotebookFile,
-                      backgroundUrl: activeNotebookFileUrl,
-                      pageIndex: selectedPage.pdfPageIndex ?? 0,
-                      imageStrategy: "next-image",
-                      imageRenderKey: activeNotebookFile
-                        ? `${selectedPage.id}:${activeNotebookFile.id}:image`
-                        : undefined,
-                      imageOnSettled: markActivePageBackgroundSettled,
-                      imageLoadingLabel: "Loading file...",
-                      imageSizes: "48rem",
-                      imageClassName: "object-contain",
-                      pdfRenderKey: activePdfRenderKey ?? undefined,
-                      pdfAriaHidden: false,
-                      pdfAriaLabel: activeNotebookFile
-                        ? `Notebook file: ${activeNotebookFile.fileName}, page ${
-                            (selectedPage.pdfPageIndex ?? 0) + 1
-                          }`
-                        : undefined,
-                      pdfFadeIn: pageSwipeMotion?.phase !== "handoff",
-                      pdfDetailWindow: activePdfDetailWindow,
-                      pdfOnRenderStateChange:
-                        handleActivePdfRenderStateChange,
-                      pdfOnCanvasReady: (canvas) => {
-                        activePdfCanvasTrackingRef.current =
-                          trackNotebookPdfCanvas({
-                            current: activePdfCanvasTrackingRef.current,
-                            renderKey: activePdfRenderKey,
-                            canvas,
-                          });
-                      },
-                    }}
-                    inkEditorProps={{
-                      onReady: () => {
-                        inkReadyRef.current = true;
-                        setInkReady(true);
-                        window.requestAnimationFrame(() =>
-                          maybeFinishPageHandoffRef.current()
-                        );
-                      },
-                      onReadyError: () => {
-                        inkReadyRef.current = true;
-                        showError("This page opened, but the ink editor could not start. Your saved writing is still visible.");
-                        window.requestAnimationFrame(() =>
-                          maybeFinishPageHandoffRef.current()
-                        );
-                      },
-                      activeTool: tool,
-                      inkWindow: activeInkWindow,
-                      eraserMode,
-                      scribbleToErase,
-                      penColor,
-                      penSettings,
-                      penThickness:
-                        getPenWidthFromPercent(penThicknessPercent),
-                      highlighterColor,
-                      highlighterThickness:
-                        getHighlighterWidthFromPercent(
-                          highlighterThicknessPercent
-                        ),
-                      onChange: handleInkChange,
-                      onHistoryChange: handleInkHistoryChange,
-                      onInteractionChange: (active) => {
-                        handleInkInteractionChange(active);
-                        if (active) {
-                          // Only what is open: see clearPlacedSelection.
-                          if (penMenuOpen) setPenMenuOpen(false);
-                          if (highlighterMenuOpen) setHighlighterMenuOpen(false);
-                          if (eraserMenuOpen) setEraserMenuOpen(false);
-                          if (pagesDrawerOpen) setPagesDrawerOpen(false);
-                          clearPlacedSelection();
-                          cancelInkUiSync();
-                          cancelScheduledPersistence();
-                        } else {
-                          scheduleInkUiSync();
-                          if (pageState.read().saveStatus === "unsaved") {
-                            schedulePendingWork();
-                          }
-                        }
-                      },
-                      onPointerDown: handlePagePointerDown,
-                      onPointerMove: handlePagePointerMove,
-                      onPointerUp: handlePagePointerUp,
-                      onPointerCancel: handlePagePointerCancel,
-                    }}
+                    onSwipeInkSnapshotReady={track.markInkSnapshotReady}
+                    backgroundProps={liveBackgroundProps}
+                    inkEditorProps={liveInkEditorProps}
                   />
                   <NotebookImageLayer
+                    {...imageLayerProps}
                     images={selectedPage.imageRefs}
-                    editingEnabled={
-                      movesPlacedItems(tool) &&
-                      fullNotebookEditingEnabled &&
-                      !isPhoneLayout &&
-                      !practicePaperEditingLocked
-                    }
-                    selectedImageId={selectedImageId}
-                    onSelect={handleSelectImage}
-                    onCommit={handleNotebookImagesCommit}
-                    onDelete={handleDeleteImage}
+                    editingEnabled={placedItemsEditingEnabled}
                   />
                   <NotebookGraphLayer
+                    {...graphLayerProps}
                     graphs={selectedPage.graphBlocks}
-                    editingEnabled={
-                      movesPlacedItems(tool) &&
-                      fullNotebookEditingEnabled &&
-                      !isPhoneLayout &&
-                      !practicePaperEditingLocked
-                    }
-                    selectedGraphId={selectedGraphId}
-                    onSelect={handleSelectGraph}
-                    onCommit={handleNotebookGraphsCommit}
-                    onEdit={setGraphEditorTarget}
-                    onDelete={handleDeleteGraph}
+                    editingEnabled={placedItemsEditingEnabled}
                   />
                   <NotebookTextBlockLayer
+                    {...textBlockLayerProps}
                     textBlocks={textBlocks}
                     pageColor={pageColor}
-                    editingEnabled={fullNotebookEditingEnabled && !practicePaperEditingLocked}
-                    selectedTextBlockId={selectedTextBlockId}
-                    editingTextBlockId={editingTextBlockId}
-                    activeTextGestureId={activeTextGestureId}
-                    openTextBlockOptionsId={openTextBlockOptionsId}
-                    onPointerDown={handleTextBlockPointerDown}
-                    onPointerMove={handleTextBlockPointerMove}
-                    onPointerUp={handleTextBlockPointerUp}
-                    onPointerCancel={handleTextBlockPointerCancel}
-                    onSelect={selectTextBlock}
-                    onSetOptionsOpen={setTextBlockOptionsOpen}
-                    onToggleOutline={toggleTextBlockOutline}
-                    onDelete={deleteTextBlock}
-                    onOptionsKeyDown={handleTextBlockOptionsKeyDown}
-                    onStartResize={startTextBlockResize}
-                    onStartMove={startTextBlockDrag}
-                    onResize={resizeTextBlock}
-                    onStopResize={stopTextBlockResize}
-                    onChangeText={handleTextBlockTextChange}
-                    onFitHeight={handleTextBlockFitHeight}
-                    onStopEditing={stopEditingTextBlock}
+                    editingEnabled={pageEditingEnabled}
                   />
                 </>
               ) : null
             }
           />
-            {createPageActive || creatingPage ? (
-              <div
-                ref={createPageAffordanceRef}
-                aria-hidden="true"
-                className="notebook-create-page-affordance pointer-events-none absolute right-[2.375rem] top-1/2 z-40 -translate-y-1/2 translate-x-1/2"
-                style={{
-                  opacity: creatingPage
-                    ? 1
-                    : Math.min(1, 0.2 + createPageProgress * 0.8),
-                }}
-              >
-                <div
-                  ref={createPageIndicatorRef}
-                  className={`grid h-16 w-16 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-e2 ${
-                    createPageBounce ? "notebook-create-page-pop" : ""
-                  }`}
-                  style={{
-                    transform: `scale(${
-                      creatingPage ? 1 : 0.72 + createPageProgress * 0.28
-                    })`,
-                  }}
-                >
-                  <svg viewBox="0 0 48 48" className="h-11 w-11 -rotate-90">
-                    <circle
-                      cx="24"
-                      cy="24"
-                      r="20"
-                      fill="none"
-                      stroke="var(--color-border)"
-                      strokeWidth="3.5"
-                    />
-                    <circle
-                      ref={createPageProgressCircleRef}
-                      cx="24"
-                      cy="24"
-                      r="20"
-                      fill="none"
-                      stroke="var(--color-selected-border)"
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                      strokeDasharray={2 * Math.PI * 20}
-                      strokeDashoffset={2 * Math.PI * 20 * (1 - createPageProgress)}
-                      style={{ transition: "stroke-dashoffset 80ms linear" }}
-                    />
-                    <path
-                      d="M24 15v18M15 24h18"
-                      fill="none"
-                      stroke="var(--color-selected-border)"
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </div>
-              </div>
-            ) : null}
-            {fullNotebookEditingEnabled && !practicePaperEditingLocked ? (
-              <NotebookDrawingToolbar
-                dock={toolbarDock}
-                toolbarRef={drawingToolbarRef}
-                dockBindings={toolbarBindings}
-                tool={tool}
-                penColor={penColor}
-                highlighterColor={highlighterColor}
-                openMenu={openToolMenu}
-                onSelectDrawingTool={handleSelectDrawingTool}
-                onToggleTextTool={handleToggleTextTool}
-
-                onAddImage={handleAddImage}
-                addingImage={addingImage}
-                onAddGraph={handleOpenNewGraph}
-                undoDepth={undoDepth}
-                redoDepth={redoDepth}
-                onUndo={handleToolbarUndo}
-                onRedo={handleToolbarRedo}
-              />
-            ) : null}
-            <NotebookPageNavigation
-              selectedPageIndex={selectedPageIndex}
-              pageCount={pages.length}
-              navigationBusy={Boolean(pageSwipeMotion)}
-              editingToolbarVisible={fullNotebookEditingEnabled && !practicePaperEditingLocked}
-              canCreatePage={selectedPageIndex >= 0 && selectedPageIndex >= pages.length - 1 && fullNotebookEditingEnabled && !practicePaperEditingLocked}
-              creatingPage={creatingPage}
-              onPrevious={() => void selectPageByOffset(-1)}
-              onNext={() => void selectPageByOffset(1)}
-              onCreate={() => void createBlankPageAtEnd()}
+          {createPageActive || creatingPage ? (
+            <NotebookCreatePageAffordance
+              affordanceRef={createPageAffordanceRef}
+              indicatorRef={createPageIndicatorRef}
+              progressCircleRef={createPageProgressCircleRef}
+              progress={createPageProgress}
+              creating={creatingPage}
+              bounce={createPageBounce}
             />
-            {touchInkHintVisible ? (
-              <div
-                className={`notebook-floating-control pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] px-3 py-1.5 text-xs font-semibold text-text-secondary ${
-                  toolbarDock === "bottom"
-                    ? "bottom-[calc(var(--notebook-control-bottom-inset)+6.35rem)]"
-                    : "bottom-[var(--notebook-control-bottom-inset)]"
-                }`}
-              >
-                Use Apple Pencil or stylus to write. Fingers move the page.
-              </div>
-            ) : null}
-            {selectedPageInkUnloaded &&
-            fullNotebookEditingEnabled &&
-            !practicePaperEditingLocked ? (
-              <div
-                role="status"
-                className={`notebook-floating-control pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] px-3 py-1.5 text-xs font-semibold text-text-secondary ${
-                  toolbarDock === "bottom"
-                    ? "bottom-[calc(var(--notebook-control-bottom-inset)+6.35rem)]"
-                    : "bottom-[var(--notebook-control-bottom-inset)]"
-                }`}
-              >
-                Loading this page&rsquo;s drawing. Writing is paused until it
-                arrives.
-              </div>
-            ) : null}
+          ) : null}
+          {pageEditingEnabled ? (
+            <NotebookDrawingToolbar
+              dock={toolbarDock}
+              toolbarRef={drawingToolbarRef}
+              dockBindings={toolbarBindings}
+              tool={tool}
+              penColor={penColor}
+              highlighterColor={highlighterColor}
+              openMenu={openToolMenu}
+              onSelectDrawingTool={handleSelectDrawingTool}
+              onToggleTextTool={handleToggleTextTool}
+              onAddImage={handleAddImage}
+              addingImage={addingImage}
+              onAddGraph={handleOpenNewGraph}
+              undoDepth={undoDepth}
+              redoDepth={redoDepth}
+              onUndo={handleToolbarUndo}
+              onRedo={handleToolbarRedo}
+            />
+          ) : null}
+          <NotebookPageNavigation
+            selectedPageIndex={selectedPageIndex}
+            pageCount={pages.length}
+            navigationBusy={Boolean(pageSwipeMotion)}
+            editingToolbarVisible={pageEditingEnabled}
+            canCreatePage={
+              selectedPageIndex >= 0 && selectedPageIndex >= pages.length - 1 && pageEditingEnabled
+            }
+            creatingPage={creatingPage}
+            onPrevious={() => void turnByOffset(-1)}
+            onNext={() => void turnByOffset(1)}
+            onCreate={() => void createPageAtEnd()}
+          />
+          {touchInkHintVisible ? (
+            <NotebookFloatingNotice toolbarDock={toolbarDock}>
+              Use Apple Pencil or stylus to write. Fingers move the page.
+            </NotebookFloatingNotice>
+          ) : null}
+          {selectedPageInkUnloaded && pageEditingEnabled ? (
+            <NotebookFloatingNotice toolbarDock={toolbarDock} role="status">
+              Loading this page&rsquo;s drawing. Writing is paused until it arrives.
+            </NotebookFloatingNotice>
+          ) : null}
         </div>
       </div>
-      <ConfirmDialog
-        open={confirmDialog !== null}
-        title={
-          confirmDialog?.kind === "delete-page"
-            ? `Delete page ${confirmDialog.page.pageNumber}?`
-            : "Clear ink from this page?"
-        }
-        description={
-          confirmDialog?.kind === "delete-page"
-            ? "This removes the page's writing and text boxes. The other pages are renumbered."
-            : "All handwriting and highlights on this page will be removed. Text boxes stay."
-        }
-        confirmLabel={
-          confirmDialog?.kind === "delete-page" ? "Delete page" : "Clear ink"
-        }
+      <NotebookEditorConfirmDialog
+        request={confirmRequest}
         busy={Boolean(deletingPageId)}
-        onConfirm={() => {
-          if (!confirmDialog) return;
-          if (confirmDialog.kind === "delete-page") {
-            const { page } = confirmDialog;
-            setConfirmDialog(null);
-            void handleDeletePage(page);
-            return;
-          }
-          performClearCurrentPage();
-          setConfirmDialog(null);
-        }}
-        onClose={() => setConfirmDialog(null)}
+        onConfirm={confirmPendingRequest}
+        onClose={dismissRequest}
       />
     </main>
   );

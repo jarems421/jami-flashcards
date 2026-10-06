@@ -6,6 +6,7 @@ import { classifyStudyTask } from "@/lib/study/learning-task";
 import {
   isStudyMode,
   type ResolvedExercise,
+  type StudyAnswerOutcome,
   type StudyMode,
   type StudyModePolicy,
 } from "@/lib/study/study-modes";
@@ -183,7 +184,7 @@ export type ModeResolutionContext = {
   /** Which presentation of this card this is. Rotates prepared variants. */
   presentation?: number;
   recentVariantIds?: string[];
-  recentOutcomes?: Array<"correct" | "partial" | "incorrect" | "uncertain">;
+  recentOutcomes?: StudyAnswerOutcome[];
 };
 
 export function getMultipleChoiceEligibility(

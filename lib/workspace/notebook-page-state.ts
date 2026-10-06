@@ -11,6 +11,18 @@ export type NotebookSaveStatus = "saved" | "unsaved" | "saving" | "failed";
 
 export type NotebookEditorTool = NotebookStrokeTool | "text" | "select";
 
+/*
+ * Whether images and graphs can be picked up and moved.
+ *
+ * There is no select button any more. Select is still where the notebook rests
+ * when no tool is on, but on an iPad without a keyboard nothing leads back to
+ * it once a pen is chosen -- so the text tool, the one non-drawing tool on the
+ * toolbar, moves placed things too.
+ */
+export function notebookToolMovesPlacedItems(tool: NotebookEditorTool) {
+  return tool === "select" || tool === "text";
+}
+
 /**
  * The notebook state every controller needs to agree on.
  *

@@ -14,9 +14,9 @@ import {
   mapPracticePaperData,
   type PracticePaper,
   type PracticePaperTimingMode,
-  mapPracticePaperAttemptData,
   type PracticePaperAttempt,
 } from "@/lib/practice/practice-papers";
+import { mapPracticePaperAttemptData } from "@/lib/practice/practice-paper-results";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import {
   updateNotebook,

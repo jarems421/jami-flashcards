@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ShootingStars from "@/components/constellation/ShootingStars";
 import { Button, Input } from "@/components/ui";
-import { MemoryMapEngine, MEMORY_KIND_COLOURS } from "@/components/ai/memory-map/engine";
+import { MemoryMapEngine } from "@/components/ai/memory-map/engine";
+import { MEMORY_KIND_COLOURS } from "@/components/ai/memory-map/world";
 import { buildMemoryMap, describeMemoryMapNote, type MemoryMapFolderInput } from "@/lib/ai/memory-map";
 import { MAX_TUTOR_MEMORY_TEXT_LENGTH, TUTOR_MEMORY_KIND_LABELS } from "@/lib/ai/tutor-memory";
 import type { TutorMemoryEntry } from "@/services/ai/tutor-memory";

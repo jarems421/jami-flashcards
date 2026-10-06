@@ -1,3 +1,12 @@
+import type { NotebookPage } from "@/lib/workspace/notebooks";
+
+/** The page list with `page` added (or replacing the copy already there), in page order. */
+export function withNotebookPage(pages: readonly NotebookPage[], page: NotebookPage) {
+  return [...pages.filter((entry) => entry.id !== page.id), page].sort(
+    (a, b) => a.pageNumber - b.pageNumber
+  );
+}
+
 export function getNotebookPageIdFromSearch(search: string) {
   const normalizedSearch = search.startsWith("?") ? search.slice(1) : search;
   return new URLSearchParams(normalizedSearch).get("page");

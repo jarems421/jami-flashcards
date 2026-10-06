@@ -8,6 +8,8 @@ import {
 
 export type FeedbackController = {
   feedback: Feedback | null;
+  /** Shows a notice another part of the page composed, or clears it with null. */
+  show: (next: Feedback | null) => void;
   success: (message: string) => void;
   showError: (message: string) => void;
   /**
@@ -33,6 +35,10 @@ export type FeedbackController = {
 export function useFeedback(): FeedbackController {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
+  const show = useCallback((next: Feedback | null) => {
+    setFeedback(next ? { type: next.type, message: next.message } : null);
+  }, []);
+
   const success = useCallback((message: string) => {
     setFeedback({ type: "success", message });
   }, []);
@@ -57,12 +63,13 @@ export function useFeedback(): FeedbackController {
   return useMemo(
     () => ({
       feedback,
+      show,
       success,
       showError,
       showThrownError,
       clear,
       clearIfShowing,
     }),
-    [clear, clearIfShowing, feedback, showError, showThrownError, success]
+    [clear, clearIfShowing, feedback, show, showError, showThrownError, success]
   );
 }

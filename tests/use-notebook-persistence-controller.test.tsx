@@ -7,9 +7,9 @@ import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInk
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
 import {
   useNotebookPersistenceController,
-  type NotebookPageSaveResult,
   type NotebookPersistenceController,
 } from "@/hooks/useNotebookPersistenceController";
+import type { NotebookPageSaveResult } from "@/lib/workspace/notebook-save-result";
 import type { NotebookPage } from "@/lib/workspace/notebooks";
 
 const saveNotebookPageSnapshot = vi.fn();

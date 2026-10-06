@@ -60,10 +60,6 @@ export function getTopicNameKey(value: string) {
   return normalizeTopicName(value).toLocaleLowerCase();
 }
 
-export function normalizeTopicIds(value: unknown, limit = MAX_LINKED_TOPICS) {
-  return normalizeStringArray(value, limit, 120);
-}
-
 export function normalizeTopicSubject(value: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, MAX_TOPIC_SUBJECT_LENGTH);
 }

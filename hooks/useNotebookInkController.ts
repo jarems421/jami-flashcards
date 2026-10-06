@@ -60,6 +60,8 @@ export type NotebookInkController = {
   undo: () => void;
   redo: () => void;
   clearHistory: () => void;
+  /** Wipes the open page's ink as one edit. Text boxes stay. */
+  clearInk: () => void;
   handleInkChange: () => void;
   handleInkHistoryChange: (undoDepth: number, redoDepth: number) => void;
   handleInteractionChange: (active: boolean) => void;
@@ -227,6 +229,12 @@ export function useNotebookInkController({
     setRedoDepth(0);
   }, [cancelUiCommit]);
 
+  const clearInk = useCallback(() => {
+    inkEditorRef.current?.clear();
+    setInkHasContent(false);
+    latestRef.current.onEdit();
+  }, [inkEditorRef]);
+
   const handleInkChange = useCallback(() => {
     const current = pendingUiRef.current;
     pendingUiRef.current = {
@@ -290,6 +298,7 @@ export function useNotebookInkController({
     undo,
     redo,
     clearHistory,
+    clearInk,
     handleInkChange,
     handleInkHistoryChange,
     handleInteractionChange,

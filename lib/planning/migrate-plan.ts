@@ -17,8 +17,6 @@ import { PLAN_WEEKDAYS, type PlanWeekday, type RevisionPlanSession } from "@/lib
  * half a collection converted.
  */
 
-export const LEGACY_PLAN_SCHEMA_VERSION = 1;
-
 type LegacyCadenceEntry = { weekday?: unknown; minutes?: unknown };
 
 /**

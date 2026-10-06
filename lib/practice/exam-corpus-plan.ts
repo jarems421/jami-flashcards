@@ -332,7 +332,3 @@ export const EXAM_CORPUS_TARGETS: readonly ExamCorpusTarget[] = [
   ...ENGLAND_MATHS_AND_SCIENCE,
   ...ENGLAND_HUMANITIES_AND_LANGUAGES,
 ];
-
-export function examCorpusTargetsForBoard(board: ExamBoardId) {
-  return EXAM_CORPUS_TARGETS.filter((target) => target.board === board);
-}

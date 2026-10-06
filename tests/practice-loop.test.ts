@@ -35,14 +35,14 @@ import {
 import {
   buildTypedContentFromTextBlocks,
   buildNotebookFilePayload,
-  buildNotebookPagePayload,
   buildNotebookPayload,
   getNotebookPagesAfterDelete,
   mapNotebookData,
   mapNotebookFileData,
   mapNotebookPageData,
-  resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
+import { buildNotebookPagePayload } from "@/lib/workspace/notebook-page-writes";
+import { resizeNotebookTextBlockFromEdge } from "@/lib/workspace/notebook-placement";
 import { buildNotebookStoragePath } from "@/services/study/notebook-files";
 
 describe("Jami notebook-first learning foundations", () => {

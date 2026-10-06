@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   detectExamAnswerParts,
+  examAnswerOpeningLayout,
   examAnswerPartLabelsIn,
   examAnswerPartMaxLength,
   joinExamAnswerParts,
@@ -49,5 +50,27 @@ describe("answers written by part", () => {
     expect(nextExamAnswerPartLabel(["(g)", "(h)"])).toBeNull();
     const parts = 3;
     expect(examAnswerPartMaxLength(parts) * parts + 8 * parts).toBeLessThanOrEqual(EXAM_ANSWER_MAX_LENGTH);
+  });
+});
+
+describe("examAnswerOpeningLayout", () => {
+  it("opens one box for a question that asks for no parts", () => {
+    expect(examAnswerOpeningLayout("Explain why.", "Because.")).toEqual({ labels: [], texts: [] });
+  });
+
+  const twoParts = ["(a) Find x.", "(b) Find y."].join("\n");
+
+  it("opens a box for each part a question asks for", () => {
+    expect(examAnswerOpeningLayout(twoParts, "")).toEqual({
+      labels: ["(a)", "(b)"],
+      texts: ["", ""],
+    });
+  });
+
+  it("puts an answer typed in one box into the first part to be moved", () => {
+    expect(examAnswerOpeningLayout(twoParts, "x = 2 and y = 3")).toEqual({
+      labels: ["(a)", "(b)"],
+      texts: ["x = 2 and y = 3", ""],
+    });
   });
 });

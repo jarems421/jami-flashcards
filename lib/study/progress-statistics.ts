@@ -3,15 +3,6 @@ import { formatStudyDayLabel, getStudyDayKey, shiftStudyDayKey } from "@/lib/stu
 
 export type ProgressTimeRange = "7d" | "30d" | "all";
 
-export const PROGRESS_TIME_RANGE_OPTIONS: Array<{
-  value: ProgressTimeRange;
-  label: string;
-}> = [
-  { value: "7d", label: "7 days" },
-  { value: "30d", label: "30 days" },
-  { value: "all", label: "All time" },
-];
-
 function getDaysAgoKey(daysAgo: number, now = Date.now()) {
   return shiftStudyDayKey(getStudyDayKey(now), -daysAgo);
 }
@@ -115,20 +106,6 @@ export function getAverageStudySessionMinutes(activity: DailyStudyActivity[]) {
   const totalMinutes =
     activity.reduce((sum, entry) => sum + entry.totalDurationMs, 0) / 60_000;
   return Math.round(totalMinutes / activeDays);
-}
-
-export function getAverageReviewsPerActiveDay(activity: DailyStudyActivity[]) {
-  const activeDays = countStudyActiveDays(activity);
-  if (activeDays === 0) {
-    return 0;
-  }
-
-  const reviews = activity.reduce((sum, entry) => sum + entry.reviewCount, 0);
-  return Math.round(reviews / activeDays);
-}
-
-export function getPercentage(part: number, total: number) {
-  return total > 0 ? Math.round((part / total) * 100) : 0;
 }
 
 type WorkspaceDraft = { contentStatus?: string };

@@ -33,9 +33,9 @@ import {
   getOcclusionPrompt,
   getOcclusionTargets,
   type CardOcclusion,
-  type OcclusionCrop,
   type OcclusionDiagram,
 } from "@/lib/study/image-occlusion";
+import type { OcclusionCrop } from "@/lib/study/image-occlusion-geometry";
 import type { DiagramSaveResult } from "@/services/study/image-occlusion";
 
 type Step = "picture" | "crop" | "kind" | "label";

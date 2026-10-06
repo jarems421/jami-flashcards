@@ -340,6 +340,42 @@ export function getNotebookViewportLayout(input: {
   };
 }
 
+/**
+ * Zooms a laid-out page about a point in its frame, keeping whatever is under
+ * that point still. The frame's middle when no point is given.
+ *
+ * Null when the zoom would not change. Zooming back to the fit returns the
+ * fitted page with no pan, so it opens centred the way it first did.
+ */
+export function zoomNotebookViewportAbout(input: {
+  layout: NotebookViewportLayout;
+  zoom: number;
+  focus?: NotebookViewportPoint;
+}): { zoom: number; pan: NotebookViewportPoint } | null {
+  const { layout } = input;
+  const zoom = clampNotebookViewportZoom(input.zoom);
+  if (Math.abs(zoom - layout.zoom) < 0.001) return null;
+  if (!isNotebookViewportZoomedIn(zoom)) return { zoom: 1, pan: { x: 0, y: 0 } };
+  const point = input.focus ?? {
+    x: layout.frameSize.width / 2,
+    y: layout.frameSize.height / 2,
+  };
+  const across = (point.x - layout.pageOrigin.x) / Math.max(1, layout.pageSize.width);
+  const down = (point.y - layout.pageOrigin.y) / Math.max(1, layout.pageSize.height);
+  const next = getNotebookViewportLayout({
+    frameWidth: layout.frameSize.width,
+    frameHeight: layout.frameSize.height,
+    pageWidth: layout.logicalPageSize.width,
+    pageHeight: layout.logicalPageSize.height,
+    zoom,
+    pan: {
+      x: point.x - across * layout.fitSize.width * zoom,
+      y: point.y - down * layout.fitSize.height * zoom,
+    },
+  });
+  return { zoom, pan: next.pageOrigin };
+}
+
 export function getNotebookInkViewportScale(input: {
   displayWidth: number;
   displayHeight: number;

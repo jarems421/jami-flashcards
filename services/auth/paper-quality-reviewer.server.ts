@@ -13,10 +13,6 @@ function reviewerUids() {
   );
 }
 
-export function paperQualityReviewerConfigured() {
-  return reviewerUids().size > 0;
-}
-
 export async function authenticatePaperQualityReviewer(request: NextRequest) {
   const allowed = reviewerUids();
   if (allowed.size === 0) return { ok: false as const, status: 503, code: "reviewer_not_configured" };

@@ -21,7 +21,6 @@ import {
 import {
   mapTopicData,
   getTopicNameKey,
-  MAX_LINKED_TOPICS,
   normalizeTopicName,
   normalizeTopicSubject,
   slugifyTopicName,
@@ -473,8 +472,4 @@ export async function deleteTopicEverywhere(userId: string, topicId: string) {
     invalidateDashboardData(normalizedUserId);
   };
   await commitBatches(operations, "Delete topic", invalidateTopicData);
-}
-
-export function canAddTopicIds(topicIds: string[]) {
-  return topicIds.length < MAX_LINKED_TOPICS;
 }

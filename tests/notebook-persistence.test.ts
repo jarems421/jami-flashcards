@@ -1,21 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { makeNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 import {
-  buildNotebookPagePayload,
-  createCenteredNotebookImageRef,
   MAX_NOTEBOOK_IMAGE_REFS,
   MAX_NOTEBOOK_INK_SVG_LENGTH,
   MAX_NOTEBOOK_STROKE_POINTS,
   MAX_NOTEBOOK_TEXT_BLOCKS,
   MAX_NOTEBOOK_TEXT_BLOCK_TEXT,
-  NotebookPagePersistenceError,
   mapNotebookPageData,
-  moveNotebookImageRef,
   normalizeNotebookImageRefs,
-  prepareNotebookPageSnapshotForPersistence,
-  resizeNotebookImageRef,
   type NotebookTextBlock,
 } from "@/lib/workspace/notebooks";
+import {
+  buildNotebookPagePayload,
+  NotebookPagePersistenceError,
+  prepareNotebookPageSnapshotForPersistence,
+} from "@/lib/workspace/notebook-page-writes";
+import {
+  createCenteredNotebookImageRef,
+  moveNotebookImageRef,
+  resizeNotebookImageRef,
+} from "@/lib/workspace/notebook-placement";
 
 function makeTextBlock(index: number, text = "Notes"): NotebookTextBlock {
   return {

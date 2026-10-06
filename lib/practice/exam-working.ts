@@ -107,6 +107,13 @@ export function compactExamWorkingPages(pages: readonly string[]): string[] {
  */
 export const EXAM_WORKING_ZOOM_STEPS = [1, 1.25, 1.5, 2, 2.5, 3] as const;
 
+/** The zoom step after this one, in or out, or undefined past the last. */
+export function nextExamWorkingZoomStep(zoom: number, direction: "in" | "out"): number | undefined {
+  return direction === "in"
+    ? EXAM_WORKING_ZOOM_STEPS.find((step) => step > zoom + 0.01)
+    : [...EXAM_WORKING_ZOOM_STEPS].reverse().find((step) => step < zoom - 0.01);
+}
+
 export type ExamWorkingSheetPage = {
   /** The page's own size, in the sheet's coordinates. */
   width: number;

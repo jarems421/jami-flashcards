@@ -1,11 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
 import { getBearerToken } from "@/lib/auth/bearer";
-import {
-  applyPracticePaperMarkCorrection,
-  mapPracticePaperData,
-  type PracticePaperAttempt,
-} from "@/lib/practice/practice-papers";
+import { mapPracticePaperData, type PracticePaperAttempt } from "@/lib/practice/practice-papers";
+import { applyPracticePaperMarkCorrection } from "@/lib/practice/practice-paper-results";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";

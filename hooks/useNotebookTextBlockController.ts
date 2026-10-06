@@ -3,23 +3,31 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
+import type { NotebookTextBlockLayerProps } from "@/components/workspace/NotebookTextBlockLayer";
 import type {
   NotebookTextBlock,
   NotebookTextBlockResizeEdge,
 } from "@/lib/workspace/notebooks";
+
+/** The text box layer's props that come from this controller rather than the page. */
+type NotebookTextBlockLayerControls = Omit<
+  NotebookTextBlockLayerProps,
+  "textBlocks" | "pageColor" | "editingEnabled"
+>;
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
 import {
   MAX_NOTEBOOK_TEXT_BLOCKS,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
-  resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
+import { resizeNotebookTextBlockFromEdge } from "@/lib/workspace/notebook-placement";
 import {
   clampNotebookTextBlock,
   getNotebookTextBlockOptionsElementId,
@@ -797,7 +805,73 @@ export function useNotebookTextBlockController({
     [stopTextBlockDrag, stopTextBlockResize]
   );
 
+  const changeTextBlockText = useCallback(
+    (blockId: string, text: string) => {
+      updateTextBlock(blockId, { text });
+    },
+    [updateTextBlock]
+  );
+
+  // A box growing to hold its text is part of the typing that caused it, so
+  // it goes through the same update as the typing does and never becomes an
+  // undo step of its own.
+  const fitTextBlockHeight = useCallback(
+    (blockId: string, height: number) => {
+      updateTextBlock(blockId, { height });
+    },
+    [updateTextBlock]
+  );
+
+  /** Everything the text box layer needs from here, kept stable for its memo. */
+  const layerProps = useMemo<NotebookTextBlockLayerControls>(
+    () => ({
+      selectedTextBlockId,
+      editingTextBlockId,
+      activeTextGestureId,
+      openTextBlockOptionsId,
+      onPointerDown: handleTextBlockPointerDown,
+      onPointerMove: handleTextBlockPointerMove,
+      onPointerUp: handleTextBlockPointerUp,
+      onPointerCancel: handleTextBlockPointerCancel,
+      onSelect: selectTextBlock,
+      onSetOptionsOpen: setTextBlockOptionsOpen,
+      onToggleOutline: toggleTextBlockOutline,
+      onDelete: deleteTextBlock,
+      onOptionsKeyDown: handleTextBlockOptionsKeyDown,
+      onStartResize: startTextBlockResize,
+      onStartMove: startTextBlockDrag,
+      onResize: resizeTextBlock,
+      onStopResize: stopTextBlockResize,
+      onChangeText: changeTextBlockText,
+      onFitHeight: fitTextBlockHeight,
+      onStopEditing: stopEditingTextBlock,
+    }),
+    [
+      activeTextGestureId,
+      changeTextBlockText,
+      deleteTextBlock,
+      editingTextBlockId,
+      fitTextBlockHeight,
+      handleTextBlockOptionsKeyDown,
+      handleTextBlockPointerCancel,
+      handleTextBlockPointerDown,
+      handleTextBlockPointerMove,
+      handleTextBlockPointerUp,
+      openTextBlockOptionsId,
+      resizeTextBlock,
+      selectTextBlock,
+      selectedTextBlockId,
+      setTextBlockOptionsOpen,
+      startTextBlockDrag,
+      startTextBlockResize,
+      stopEditingTextBlock,
+      stopTextBlockResize,
+      toggleTextBlockOutline,
+    ]
+  );
+
   return {
+    layerProps,
     selectedTextBlockId,
     editingTextBlockId,
     openTextBlockOptionsId,

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useParams } from "next/navigation";
 import {
@@ -22,7 +22,6 @@ import { getCardContentDuplicateCounts } from "@/lib/study/card-quality";
 import { applyOcclusionUpdates, mergeSavedDiagramCards } from "@/lib/study/image-occlusion";
 import { releaseDiagramLabels } from "@/services/study/image-occlusion";
 import { useUser } from "@/components/providers/UserProvider";
-import type { Feedback } from "@/lib/app/feedback";
 import type { Deck } from "@/lib/study/decks";
 import AppPage from "@/components/layout/AppPage";
 import CardCreationPanel from "@/components/decks/CardCreationPanel";
@@ -66,18 +65,11 @@ export default function DeckDetailPageClient() {
   const [loadingCards, setLoadingCards] = useState(false);
   const {
     feedback,
+    show: handlePanelFeedback,
     success,
     showError,
     clear: clearFeedback,
   } = useFeedback();
-
-  const handlePanelFeedback = useCallback(
-    (next: Feedback) => {
-      if (next.type === "success") success(next.message);
-      else showError(next.message);
-    },
-    [showError, success]
-  );
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");

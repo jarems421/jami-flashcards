@@ -34,7 +34,6 @@ vi.mock("@/services/study/folders", () => ({
 vi.mock("@/services/study/goals", () => ({
   createGoal: vi.fn(),
   getActiveGoalsWithCurrentStatuses: vi.fn().mockResolvedValue([]),
-  getCompletedGoalCount: vi.fn().mockResolvedValue(0),
   getGoalHistoryPage: vi.fn().mockResolvedValue({
     items: [],
     nextCursor: null,

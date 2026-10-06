@@ -9,6 +9,13 @@ import {
   type OcclusionPointerLine,
 } from "@/components/cards/OcclusionFigure";
 import type { DiagramSelection, DiagramTool } from "@/hooks/useDiagramEditor";
+import type {
+  OcclusionLabel,
+  OcclusionLabelMode,
+  OcclusionPoint,
+  OcclusionPointer,
+  OcclusionShape,
+} from "@/lib/study/image-occlusion";
 import {
   defaultShapeAt,
   findShapeAt,
@@ -18,13 +25,8 @@ import {
   resizeShape,
   shapeContainsPoint,
   shapeFromPoints,
-  type OcclusionLabel,
-  type OcclusionLabelMode,
-  type OcclusionPoint,
-  type OcclusionPointer,
-  type OcclusionShape,
   type ResizeHandle,
-} from "@/lib/study/image-occlusion";
+} from "@/lib/study/image-occlusion-geometry";
 import { midpointBend } from "@/lib/study/image-occlusion-editor";
 
 type DiagramCanvasProps = {

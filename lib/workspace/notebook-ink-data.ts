@@ -1,10 +1,10 @@
-import {
-  prepareNotebookPageSnapshotForPersistence,
-  type NotebookInkData,
-  type NotebookStroke,
-  type NotebookStrokeColor,
-  type NotebookStrokeTool,
+import type {
+  NotebookInkData,
+  NotebookStroke,
+  NotebookStrokeColor,
+  NotebookStrokeTool,
 } from "@/lib/workspace/notebooks";
+import { prepareNotebookPageSnapshotForPersistence } from "@/lib/workspace/notebook-page-writes";
 
 export const NOTEBOOK_INK_VERSION = 2;
 export const NOTEBOOK_INK_FORMAT = "js-draw-svg";

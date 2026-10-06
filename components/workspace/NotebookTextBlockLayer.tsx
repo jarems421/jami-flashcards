@@ -69,7 +69,7 @@ const RESIZE_HANDLES: Array<{
   },
 ];
 
-type Props = {
+export type NotebookTextBlockLayerProps = {
   textBlocks: NotebookTextBlock[];
   pageColor: NotebookPageColor;
   editingEnabled: boolean;
@@ -284,7 +284,7 @@ function NotebookTextBlockLayer({
   onChangeText,
   onFitHeight,
   onStopEditing,
-}: Props) {
+}: NotebookTextBlockLayerProps) {
   const onBlack = getNotebookPaperPalette(pageColor).isDark;
   const frameBorderClass = onBlack ? "border-white/55" : "border-slate-950/40";
 

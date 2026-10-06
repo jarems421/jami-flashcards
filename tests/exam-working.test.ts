@@ -8,6 +8,7 @@ import {
   examWorkingInkedPages,
   examWorkingPagesWithInk,
   examWorkingSheetLayout,
+  nextExamWorkingZoomStep,
   requireExamWorkingSnapshot,
 } from "@/lib/practice/exam-working";
 import { EXAM_SHEET_MAX_PAGES } from "@/lib/practice/exam-question-sheet";
@@ -250,5 +251,15 @@ describe("working must be known before submission", () => {
     expect(await requireExamWorkingSnapshot({ id: "a", status: "marking_failed" },
       { attemptId: "a", snapshot })).toBeUndefined();
     expect(snapshot).not.toHaveBeenCalled();
+  });
+});
+
+describe("the sheet's zoom steps", () => {
+  it("moves to the next step in or out, and stops at either end", () => {
+    expect(nextExamWorkingZoomStep(1, "in")).toBe(1.25);
+    expect(nextExamWorkingZoomStep(1.3, "in")).toBe(1.5);
+    expect(nextExamWorkingZoomStep(3, "in")).toBeUndefined();
+    expect(nextExamWorkingZoomStep(2, "out")).toBe(1.5);
+    expect(nextExamWorkingZoomStep(1, "out")).toBeUndefined();
   });
 });

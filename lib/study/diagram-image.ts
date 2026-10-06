@@ -1,6 +1,6 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { MAX_CARD_IMAGE_BYTES } from "@/lib/study/card-images";
-import type { OcclusionCrop } from "@/lib/study/image-occlusion";
+import type { OcclusionCrop } from "@/lib/study/image-occlusion-geometry";
 
 /**
  * Getting a picture ready to be a diagram, in the browser.

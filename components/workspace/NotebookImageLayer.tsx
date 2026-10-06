@@ -12,13 +12,12 @@ import {
 } from "react";
 import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
 import {
-  moveNotebookImageRef,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
-  resizeNotebookImageRef,
   type NotebookImageRef,
   type NotebookResizeHandle,
 } from "@/lib/workspace/notebooks";
+import { moveNotebookImageRef, resizeNotebookImageRef } from "@/lib/workspace/notebook-placement";
 import NotebookResizeHandles from "@/components/workspace/NotebookResizeHandles";
 import { getNotebookFileBytes } from "@/services/study/notebook-files";
 

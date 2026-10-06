@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildNotebookPagePayload,
   createNotebookTextBlocksFromTypedContent,
   mapNotebookPageData,
   normalizeNotebookTextBlocks,
-  resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
+import { buildNotebookPagePayload } from "@/lib/workspace/notebook-page-writes";
+import { resizeNotebookTextBlockFromEdge } from "@/lib/workspace/notebook-placement";
 
 const TEXT_BLOCK = {
   id: "block-1",

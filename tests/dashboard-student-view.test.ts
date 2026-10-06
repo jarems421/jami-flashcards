@@ -156,12 +156,12 @@ describe("home leads with the next step for everyone", () => {
     expect(source).not.toContain("StreakPredictionPanel");
     expect(source).not.toContain("predictStudyStreak");
 
-    const study = read("app/dashboard/study/page.tsx");
-    expect(study).toContain("computeStudyStreak");
-    // "days running" rather than a streak at risk of being lost.
-    expect(study).toMatch(/day\{[^}]*\}\s*running/);
+    const streak = read("hooks/useSessionStreak.ts");
+    expect(streak).toContain("computeStudyStreak");
     // Only for a session that actually reviewed something.
-    expect(study).toContain("reviewedThisSession === 0");
+    expect(streak).toContain("done && reviewedThisSession > 0");
+    // "days running" rather than a streak at risk of being lost.
+    expect(read("components/study/StudySessionComplete.tsx")).toMatch(/day\{[^}]*\}\s*running/);
   });
 
   it("does not open on a pair of zeros, whoever is reading it", () => {

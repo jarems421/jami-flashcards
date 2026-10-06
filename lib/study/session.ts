@@ -6,6 +6,7 @@ import type { CardRating } from "@/lib/study/scheduler";
 import {
   isStudyMode,
   SMART_STUDY_MODE_POLICY,
+  type StudyAnswerOutcome,
   type StudyMode,
   type StudyModePolicy,
   type StudyGap,
@@ -82,7 +83,7 @@ export type PersistedStudySession = {
   recentModes?: StudyMode[];
   draftResponses?: Record<string, string | Record<string, string>>;
   variantHistory?: Record<string, string[]>;
-  outcomeHistory?: Record<string, Array<"correct" | "partial" | "incorrect" | "uncertain">>;
+  outcomeHistory?: Record<string, StudyAnswerOutcome[]>;
 };
 
 export const ACTIVE_STUDY_SESSION_DOC_ID = "activeSession";
@@ -406,7 +407,7 @@ export function normalizePersistedStudySession(
   if (data.outcomeHistory && typeof data.outcomeHistory === "object" && !Array.isArray(data.outcomeHistory)) {
     for (const [cardId, outcomes] of Object.entries(data.outcomeHistory as Record<string, unknown>).slice(-100)) {
       if (!Array.isArray(outcomes)) continue;
-      const cleaned = outcomes.filter((outcome): outcome is "correct" | "partial" | "incorrect" | "uncertain" => outcome === "correct" || outcome === "partial" || outcome === "incorrect" || outcome === "uncertain").slice(-5);
+      const cleaned = outcomes.filter((outcome): outcome is StudyAnswerOutcome => outcome === "correct" || outcome === "partial" || outcome === "incorrect" || outcome === "uncertain").slice(-5);
       if (cleaned.length) outcomeHistory[cardId.slice(0, 120)] = cleaned;
     }
   }
@@ -767,7 +768,7 @@ export function buildPersistedStudySession({
   recentModes?: StudyMode[];
   draftResponses?: Record<string, string | Record<string, string>>;
   variantHistory?: Record<string, string[]>;
-  outcomeHistory?: Record<string, Array<"correct" | "partial" | "incorrect" | "uncertain">>;
+  outcomeHistory?: Record<string, StudyAnswerOutcome[]>;
 }): PersistedStudySession {
   const nextRevision = revision && revision > 0 ? Math.floor(revision) : 1;
   return {

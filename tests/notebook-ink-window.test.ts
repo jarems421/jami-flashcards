@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getNotebookInkRenderWindow,
+  getNotebookSheetRenderWindows,
   isWholeNotebookInkSheet,
   sameNotebookInkRenderWindow,
   NOTEBOOK_INK_WINDOW_GRID,
@@ -166,5 +167,24 @@ describe("notebook ink render window", () => {
       frameHeight: 0,
     });
     expect(isWholeNotebookInkSheet(unmeasuredFrame)).toBe(true);
+  });
+});
+
+describe("the open sheet's render windows", () => {
+  it("paints a fitted sheet whole, with no separate PDF detail pass", () => {
+    const windows = getNotebookSheetRenderWindows({ ...FITTED, ...FRAME, pageX: 32, pageY: 23 });
+    expect(isWholeNotebookInkSheet(windows.ink)).toBe(true);
+    expect(windows.pdfDetail).toBeNull();
+  });
+
+  it("clips a zoomed sheet, with a tighter PDF slice than the ink's", () => {
+    const zoomed = { sheetWidth: 960 * 4, sheetHeight: 1320 * 4 };
+    const windows = getNotebookSheetRenderWindows({ ...zoomed, ...FRAME, pageX: -1500, pageY: -2000 });
+    expect(isWholeNotebookInkSheet(windows.ink)).toBe(false);
+    const detail = windows.pdfDetail;
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+    expect(detail.width).toBeLessThanOrEqual(windows.ink.width);
+    expect(detail.height).toBeLessThanOrEqual(windows.ink.height);
   });
 });

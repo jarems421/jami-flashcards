@@ -2,11 +2,8 @@ import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 import { checkEvidenceGrounding } from "@/lib/ai/evidence-grounding";
 import { checkMarkConsistency } from "@/lib/practice/mark-consistency";
 import { schemeCriteria } from "@/lib/practice/mark-schemes";
-import {
-  normalizePracticePaperResult,
-  type PracticePaper,
-  type PracticePaperResult,
-} from "@/lib/practice/practice-papers";
+import type { PracticePaper, PracticePaperResult } from "@/lib/practice/practice-papers";
+import { normalizePracticePaperResult } from "@/lib/practice/practice-paper-results";
 import {
   calculatePracticePaperPercentage,
   getPracticePaperGradeLabel,

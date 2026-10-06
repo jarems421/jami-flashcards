@@ -273,7 +273,7 @@ describe("Jami's own mark", () => {
   it("is used at every place the tutor is offered", () => {
     const surfaces = [
       "components/ai/JamiAssistantDrawer.tsx",
-      "app/dashboard/study/page.tsx",
+      "components/study/StudyCardStage.tsx",
       "components/library/SourceWorkspace.tsx",
       "components/workspace/NotebookToolbarIconButton.tsx",
       "app/dashboard/tutor/page.tsx",

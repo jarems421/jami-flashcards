@@ -157,8 +157,3 @@ export function takeCompletedMission(now = Date.now()): MissionHandoff | null {
   write(null);
   return now - current.completedAt <= COMPLETION_TTL_MS ? current : null;
 }
-
-/** Forget a handoff outright, for a student who has declined or started something else. */
-export function clearMission() {
-  write(null);
-}

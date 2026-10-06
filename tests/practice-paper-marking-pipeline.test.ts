@@ -7,11 +7,11 @@ const countAiInputTokens = vi.hoisted(() => vi.fn(async () => 0));
 vi.mock("@/lib/ai/provider-router", () => ({ generateAiText, countAiInputTokens }));
 
 const {
-  buildMarkerRequest,
   markPracticePaperWithAudit,
   markSingleQuestionAdaptively,
   markerTimeoutMs,
 } = await import("@/services/ai/practice-paper-marking.server");
+const { buildMarkerRequest } = await import("@/services/ai/practice-paper-marking-request.server");
 
 const paper = mapPracticePaperData("paper-1", {
   notebookId: "paper-1",

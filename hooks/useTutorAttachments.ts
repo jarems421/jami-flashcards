@@ -145,5 +145,3 @@ export function useTutorAttachments(userId: string) {
     dismissNotice: () => setNotice(null),
   };
 }
-
-export type TutorAttachmentsController = ReturnType<typeof useTutorAttachments>;

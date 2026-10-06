@@ -12,7 +12,6 @@ export const MASTERY_RECENCY_HALF_LIFE_DAYS = DEFAULT_LEARNING_TUNING.masteryRec
  * worth of weight that starting point carries. See `tuning.ts`.
  */
 export const MASTERY_PRIOR = DEFAULT_LEARNING_TUNING.masteryPrior;
-export const MASTERY_PRIOR_WEIGHT = DEFAULT_LEARNING_TUNING.masteryPriorWeight;
 
 type ScoredObservation = Pick<
   LearningObservation,

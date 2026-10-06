@@ -1,8 +1,6 @@
 export type MasteryEventSourceType = "card" | "notebook" | "source" | "tutor" | "manual";
 export type MasteryEventWeight = "high" | "medium" | "low" | "neutral" | "negative";
 
-export const MASTERY_ALGORITHM_VERSION = "mvp-2026-05-23";
-
 export type MasteryEvent = {
   id: string;
   topicId: string;

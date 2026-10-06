@@ -223,22 +223,6 @@ function diagnostics(
   };
 }
 
-export async function countGeminiTokens(input: {
-  apiKey: string;
-  request: GeminiRequest;
-  modelName?: string;
-}) {
-  const ai = new GoogleGenAI({ apiKey: input.apiKey });
-  const result = await ai.models.countTokens({
-    model: input.modelName ?? DEFAULT_MODEL_NAMES[0],
-    contents: providerContents(input.request),
-    ...(input.request.systemInstruction?.trim()
-      ? { config: { systemInstruction: input.request.systemInstruction.trim() } }
-      : {}),
-  });
-  return result.totalTokens ?? 0;
-}
-
 export async function* streamGeminiText({
   apiKey,
   request,

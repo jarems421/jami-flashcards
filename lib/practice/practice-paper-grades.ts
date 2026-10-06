@@ -1,11 +1,6 @@
-import { normalizeOptionalString } from "@/lib/material/content";
+import { normalizeNonNegativeInteger, normalizeOptionalString } from "@/lib/material/content";
 import type { PracticePaperGradeGuidance } from "@/lib/practice/practice-papers";
 
-function finiteInteger(value: unknown, fallback = 0) {
-  return typeof value === "number" && Number.isFinite(value)
-    ? Math.max(0, Math.round(value))
-    : fallback;
-}
 /**
  * Grade boundaries, and the percentage they are compared against.
  *
@@ -31,7 +26,7 @@ export function normalizePracticePaperGradeGuidance(
           label,
           minimumPercentage: Math.max(
             0,
-            Math.min(100, finiteInteger(boundary.minimumPercentage))
+            Math.min(100, normalizeNonNegativeInteger(boundary.minimumPercentage))
           ),
         }];
       })

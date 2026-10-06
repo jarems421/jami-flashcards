@@ -20,8 +20,6 @@ const POINTS: readonly (readonly [number, number])[] = [
 
 const VIEW_BOX = "0 0 104 42";
 
-export const CONSTELLATION_TRAIL_LENGTH = POINTS.length;
-
 type ConstellationTrailProps = {
   /** How many of the seven are finished. */
   completed: number;

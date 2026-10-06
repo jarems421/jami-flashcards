@@ -1,4 +1,30 @@
+import type { NotebookPage, NotebookTextBlock } from "@/lib/workspace/notebooks";
+
 type NotebookPromptAction = { label: string; prompt: string };
+
+/**
+ * Whether the open page has anything on it to check: typed notes, text
+ * boxes with words in them, ink (on the editor now or saved before), images
+ * or graphs.
+ */
+export function notebookPageHasWork(input: {
+  page: NotebookPage | null;
+  /** The page's text boxes as they are being edited, ahead of the saved page. */
+  textBlocks: readonly NotebookTextBlock[];
+  /** The ink editor's own answer, which knows about strokes not yet saved. */
+  inkHasContent: boolean;
+}) {
+  const { page } = input;
+  return Boolean(
+    page?.typedContent?.trim() ||
+      input.textBlocks.some((block) => block.text.trim()) ||
+      input.inkHasContent ||
+      page?.inkData?.svg ||
+      (page?.strokeData?.strokes.length ?? 0) > 0 ||
+      (page?.imageRefs.length ?? 0) > 0 ||
+      (page?.graphBlocks.length ?? 0) > 0
+  );
+}
 
 const MARK_MY_WORK_ACTION = {
   label: "Mark my work",

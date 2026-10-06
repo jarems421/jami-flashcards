@@ -4,10 +4,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
 import { getAdminDb } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
+import { isStudyVariantReportReason } from "@/lib/study/study-modes";
 
 export const runtime = "nodejs";
-
-const REASONS = new Set(["multiple-correct", "wrong-grade", "poor-gap", "unrelated-options", "other"]);
 
 export async function POST(request: NextRequest) {
   if (!featureFlags.enableStudyModes) return Response.json({ error: "Not found", code: "not_found" }, { status: 404 });
@@ -16,7 +15,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const cardId = typeof body?.cardId === "string" ? body.cardId.trim().slice(0, 120) : "";
   const variantId = typeof body?.variantId === "string" ? body.variantId.trim().slice(0, 120) : "";
-  const reason = typeof body?.reason === "string" && REASONS.has(body.reason) ? body.reason : "other";
+  const reason = isStudyVariantReportReason(body?.reason) ? body.reason : "other";
   const bundleVersion = typeof body?.bundleVersion === "number" && Number.isInteger(body.bundleVersion) ? body.bundleVersion : 0;
   if (!cardId || !variantId || bundleVersion < 1) return Response.json({ error: "Invalid report", code: "invalid_request" }, { status: 400 });
 

@@ -97,6 +97,9 @@ export const NOTEBOOK_TOOL_DOUBLE_PRESS_MS = 400;
 
 export type NotebookToolPress = { tool: string; at: number };
 
+/** Which tool's options popover is open, if any. The three never show together. */
+export type NotebookToolMenu = "pen" | "highlighter" | "eraser" | null;
+
 /** Whether this press, following the last one, completes a double press. */
 export function isNotebookToolDoublePress(
   previous: NotebookToolPress | null,

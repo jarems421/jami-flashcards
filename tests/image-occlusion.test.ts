@@ -4,9 +4,6 @@ import { getCardDuplicateKey, mapCardData, type Card } from "@/lib/study/cards";
 import {
   applyOcclusionUpdates,
   cleanDiagramLabels,
-  cropLabels,
-  defaultShapeAt,
-  findShapeAt,
   getDiagramDistractorPool,
   getDiagramDraftError,
   getDiagramTargets,
@@ -17,16 +14,21 @@ import {
   getWalkthroughMasks,
   groupDiagramCards,
   mergeSavedDiagramCards,
-  moveShape,
   normalizeCardOcclusion,
   planDiagramCleanup,
   planDiagramSave,
-  resizeShape,
-  shapeFromPoints,
   type CardOcclusion,
   type OcclusionDiagram,
   type OcclusionLabel,
 } from "@/lib/study/image-occlusion";
+import {
+  cropLabels,
+  defaultShapeAt,
+  findShapeAt,
+  moveShape,
+  resizeShape,
+  shapeFromPoints,
+} from "@/lib/study/image-occlusion-geometry";
 
 const USER = "user-1";
 const IMAGE: CardImage = { storagePath: `users/${USER}/cardImages/file-1/heart.png`, width: 1000, height: 800 };

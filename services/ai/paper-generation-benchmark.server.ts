@@ -12,7 +12,8 @@ import {
 } from "@/lib/practice/practice-papers";
 import { markArithmeticIssues, practicePaperFormatContext } from "@/lib/practice/exam-formats";
 import { buildStudyFolderPayload } from "@/lib/workspace/study-folders";
-import { buildNotebookPagePayload, buildNotebookPayload } from "@/lib/workspace/notebooks";
+import { buildNotebookPayload } from "@/lib/workspace/notebooks";
+import { buildNotebookPagePayload } from "@/lib/workspace/notebook-page-writes";
 import {
   PAPER_GENERATION_BENCHMARK_BLOCKERS,
   PAPER_GENERATION_BENCHMARK_DEFINITIONS,

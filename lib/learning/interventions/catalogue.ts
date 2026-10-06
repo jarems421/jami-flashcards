@@ -1,4 +1,4 @@
-import type { LearningAction, LearningTopicSource, LearningTopicState } from "@/lib/learning/types";
+import type { LearningTopicSource, LearningTopicState } from "@/lib/learning/types";
 
 /**
  * The things Jami can actually do about a learning need.
@@ -389,14 +389,3 @@ export function selectIntervention(
       return undefined;
   }
 }
-
-/** Every decision the engine can reach, so a new one cannot be silently unhandled. */
-export const INTERVENTION_DECISIONS: readonly LearningAction[] = [
-  "diagnose",
-  "teach",
-  "practice",
-  "retrieve",
-  "review",
-  "reinforce",
-  "leave_alone",
-];

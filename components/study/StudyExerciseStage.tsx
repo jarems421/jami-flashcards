@@ -25,7 +25,9 @@ import type { CardRating } from "@/lib/study/scheduler";
 import {
   resolveAttemptOutcome,
   type ResolvedExercise,
+  type StudyAnswerOutcome,
   type StudyMode,
+  type StudyVariantReportReason,
 } from "@/lib/study/study-modes";
 
 type StudyExerciseStageProps = {
@@ -47,7 +49,7 @@ type StudyExerciseStageProps = {
    * wrong and never seeing it again is the one outcome that teaches nothing.
    */
   onCommit: (rating: CardRating, options?: StudyCommitOptions) => void | Promise<void>;
-  onModeAnswered: (mode: StudyMode, verdict: "correct" | "partial" | "incorrect" | "uncertain", assisted: boolean) => void;
+  onModeAnswered: (mode: StudyMode, verdict: StudyAnswerOutcome, assisted: boolean) => void;
   onRevisitAfterHint?: () => void;
   /**
    * Ask a semantic marker about prose the local tiers could not decide.
@@ -61,7 +63,7 @@ type StudyExerciseStageProps = {
     missingConcepts?: string[];
     gapResults?: MarkedAnswer["gapResults"];
   } | null>;
-  onReportExercise?: (reason: "multiple-correct" | "wrong-grade" | "poor-gap" | "unrelated-options" | "other") => void;
+  onReportExercise?: (reason: StudyVariantReportReason) => void;
   draftResponse?: string | Record<string, string>;
   onDraftChange?: (response: string | Record<string, string>) => void;
   viewState?: PresentationViewState;

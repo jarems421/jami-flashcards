@@ -10,7 +10,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { Editor as JsDrawEditor, Point2 } from "js-draw";
-import type { NotebookStroke } from "@/lib/workspace/notebooks";
 import {
   getContinuousNotebookEraserSamples,
   getNotebookEraserCursorDiameter,
@@ -111,10 +110,6 @@ export type NotebookInkEditorHandle = {
   serializeWarm(): string | null;
   setEraserMode(mode: NotebookEraserMode): void;
   undo(): void;
-};
-
-export type PreparedNotebookStroke = NotebookStroke & {
-  pathData?: string;
 };
 
 type Props = NotebookInkStyle & {

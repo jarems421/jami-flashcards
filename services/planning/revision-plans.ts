@@ -1,6 +1,5 @@
 import {
   collection,
-  deleteDoc,
   deleteField,
   doc,
   getDocs,
@@ -229,14 +228,6 @@ export async function archiveRevisionPlan(uid: string, planId: string) {
     updatedAt: Date.now(),
     serverUpdatedAt: serverTimestamp(),
   });
-}
-
-export async function deleteRevisionPlan(uid: string, planId: string) {
-  // The day entries go with it; they mean nothing without the plan that shaped
-  // them, and leaving them behind would quietly keep a deleted plan's ticks.
-  const entries = await getDocs(query(entriesPath(uid, planId), limit(400)));
-  await Promise.all(entries.docs.map((entry) => deleteDoc(entry.ref)));
-  await deleteDoc(planPath(uid, planId));
 }
 
 /**

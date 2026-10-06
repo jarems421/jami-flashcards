@@ -1,7 +1,7 @@
 import type { Card } from "@/lib/study/cards";
 import { buildDeterministicExercise, resolveExerciseMode } from "@/lib/study/mode-eligibility";
 import type { PersistedStudyExercise } from "@/lib/study/session";
-import { getCardContentHash, type ResolvedExercise, type StudyMode, type StudyModePolicy } from "@/lib/study/study-modes";
+import { getCardContentHash, type ResolvedExercise, type StudyAnswerOutcome, type StudyMode, type StudyModePolicy } from "@/lib/study/study-modes";
 
 /**
  * The questions still ahead in a session, snapshotted so a resume redraws them.
@@ -29,7 +29,7 @@ export function buildSessionExerciseSnapshots(input: {
   presentationId?: string;
   sessionId?: string;
   variantHistory?: Record<string, string[]>;
-  outcomeHistory?: Record<string, Array<"correct" | "partial" | "incorrect" | "uncertain">>;
+  outcomeHistory?: Record<string, StudyAnswerOutcome[]>;
 }): PersistedStudyExercise[] {
   const snapshots: PersistedStudyExercise[] = [];
   const counts = { ...(input.modeCounts ?? {}) };

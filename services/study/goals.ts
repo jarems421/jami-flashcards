@@ -3,7 +3,6 @@ import {
   collection,
   doc,
   documentId,
-  getCountFromServer,
   getDocs,
   limit,
   orderBy,
@@ -124,13 +123,6 @@ export async function getActiveGoalsWithCurrentStatuses(
   return currentGoals
     .filter((goal) => goal.status === "active")
     .sort((left, right) => right.createdAt - left.createdAt);
-}
-
-export async function getCompletedGoalCount(userId: string) {
-  const snapshot = await getCountFromServer(
-    query(goalsCollection(userId), where("status", "==", "completed"))
-  );
-  return snapshot.data().count;
 }
 
 export async function getGoalHistoryPage(

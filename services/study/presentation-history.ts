@@ -1,12 +1,12 @@
 import { doc, getDoc, runTransaction } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
-import { getCardContentHash, isStudyMode, type StudyMode } from "@/lib/study/study-modes";
+import { getCardContentHash, isStudyMode, type StudyAnswerOutcome, type StudyMode } from "@/lib/study/study-modes";
 import type { Card } from "@/lib/study/cards";
 import { withTimeout } from "@/services/firebase/firestore";
 
 export type PresentationHistoryEntry = {
   id: string; sourceHash: string; mode: StudyMode; variantId?: string;
-  outcome: "correct" | "partial" | "incorrect" | "uncertain";
+  outcome: StudyAnswerOutcome;
   assisted: boolean; at: number;
 };
 

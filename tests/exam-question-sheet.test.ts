@@ -5,12 +5,16 @@ import {
   EXAM_SHEET_MAX_PAGES,
   EXAM_SHEET_PAGE_WIDTH,
   examSheetContinuationRoom,
+  examSheetCorner,
+  examSheetInlineFrameHeight,
   examSheetOpeningContinuations,
   examSheetPageAssetId,
   examSheetPageAssetNumber,
   examSheetPageCaption,
   examSheetPages,
   examSheetPrintedPages,
+  examSheetReopening,
+  examSheetTallestPage,
 } from "@/lib/practice/exam-question-sheet";
 import {
   answerSpacePagesAfter,
@@ -23,6 +27,7 @@ import {
   EXAM_WORKING_IMAGE_DESCRIPTION,
 } from "@/lib/practice/single-question-paper";
 import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
+import { getNotebookViewportInset } from "@/lib/workspace/notebook-viewport";
 
 function pageAsset(number: number, size: { width: number; height: number }) {
   return {
@@ -269,5 +274,55 @@ describe("slices of one page", () => {
       { page: 4, fromRatio: 0, toRatio: 0.5 },
     ];
     expect(mergeAdjacentRegions(regions)).toEqual(regions);
+  });
+});
+
+describe("a stored sheet reopening", () => {
+  it("lays each stored page back at the index it was written on", () => {
+    const printed = [pageAsset(1, A4), pageAsset(2, A4)];
+    const reopened = examSheetReopening({ stored: ["<svg>1</svg>", "", "<svg>3</svg>"], printedPages: printed });
+
+    expect(reopened.continuationCount).toBe(1);
+    expect(reopened.pages).toEqual(["<svg>1</svg>", "", "<svg>3</svg>"]);
+  });
+
+  it("opens with the board's allowance when less was written", () => {
+    const reopened = examSheetReopening({ stored: [], printedPages: [pageAsset(1, A4)], answerSpacePages: 2 });
+
+    expect(reopened.continuationCount).toBe(2);
+    expect(reopened.pages).toEqual(["", "", ""]);
+  });
+
+  it("never reopens with more sheets than the paper has room for", () => {
+    const stored = Array.from({ length: EXAM_SHEET_MAX_PAGES + 4 }, () => "<svg/>");
+    const reopened = examSheetReopening({ stored, printedPages: [pageAsset(1, A4)] });
+
+    expect(reopened.continuationCount).toBe(examSheetContinuationRoom(1));
+    expect(reopened.pages).toHaveLength(1 + examSheetContinuationRoom(1));
+  });
+});
+
+describe("the sheet's frame", () => {
+  it("is as tall as the page that needs the most height for its width", () => {
+    const pages = examSheetPages({
+      printedPages: [pageAsset(1, A4), pageAsset(2, { width: 1428, height: 400 })],
+      continuationCount: 0,
+    });
+
+    expect(examSheetTallestPage(pages)).toBe(pages[0]);
+    expect(examSheetTallestPage([])).toMatchObject({ kind: "continuation", width: EXAM_SHEET_PAGE_WIDTH });
+  });
+
+  it("fills the column's width inline, with the notebook's margin round the page", () => {
+    const height = examSheetInlineFrameHeight(600, EXAM_SHEET_PAGE_WIDTH, EXAM_SHEET_A4_PAGE_HEIGHT);
+
+    const inset = getNotebookViewportInset(600, height);
+    expect((height - inset * 2) / (600 - inset * 2)).toBeCloseTo(EXAM_SHEET_A4_PAGE_HEIGHT / EXAM_SHEET_PAGE_WIDTH, 2);
+    expect(examSheetInlineFrameHeight(0, EXAM_SHEET_PAGE_WIDTH, EXAM_SHEET_A4_PAGE_HEIGHT)).toBe(0);
+  });
+
+  it("rounds the paper within a range that reads as paper", () => {
+    expect(examSheetCorner(100)).toEqual({ radius: 6, bleed: 2 });
+    expect(examSheetCorner(2000)).toEqual({ radius: 14, bleed: 5 });
   });
 });
