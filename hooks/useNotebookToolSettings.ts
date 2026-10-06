@@ -6,7 +6,7 @@ import type { NotebookToolSettingsPopoverProps } from "@/components/workspace/No
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
 import type { NotebookDrawingToolState } from "@/hooks/useNotebookWorkspaceState";
 import { clampNotebookThicknessPercent } from "@/lib/workspace/notebook-inking";
-import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
+import { getNotebookPaperPalette, getVisibleNibColor } from "@/lib/workspace/notebook-paper-palette";
 import {
   clampNotebookPenSettings,
   readNotebookPenSettings,
@@ -87,14 +87,8 @@ export function useNotebookToolSettings({
   useEffect(() => {
     // An effect rather than an adjustment while rendering, because it has to
     // run on mount too, straight after the restore above.
-    setPenColor((current) => {
-      // Keep the nib visible when the paper changes under it: a black pen on
-      // black paper, or a white one on white or cream, writes nothing.
-      const paper = getNotebookPaperPalette(pageColor);
-      if (paper.isDark && current === "black") return "white";
-      if (!paper.isDark && current === "white") return "black";
-      return current;
-    });
+    // Keep the nib visible when the paper changes under it.
+    setPenColor((current) => getVisibleNibColor(current, getNotebookPaperPalette(pageColor).isDark));
   }, [pageColor, setPenColor]);
 
   // Push the precision/stroke selection straight to the ink editor whenever it

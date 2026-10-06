@@ -11,6 +11,7 @@ import {
   NOTEBOOK_VIEWPORT_MIN_VISIBLE_PAGE,
   NOTEBOOK_VIEWPORT_MIN_ZOOM,
   NOTEBOOK_VIEWPORT_SWIPE_GAP,
+  zoomNotebookViewportAbout,
 } from "@/lib/workspace/notebook-viewport";
 
 describe("notebook viewport layout", () => {
@@ -341,5 +342,34 @@ describe("notebook ink viewport", () => {
 
     expect(scale.x).toBe(1);
     expect(scale.y).toBeCloseTo(1.15, 2);
+  });
+});
+
+describe("zooming about a point", () => {
+  const fitted = getNotebookViewportLayout({ frameWidth: 800, frameHeight: 1000 });
+
+  it("keeps whatever is under the point where it was", () => {
+    const focus = { x: 300, y: 400 };
+    const zoomed = zoomNotebookViewportAbout({ layout: fitted, zoom: 2, focus });
+    expect(zoomed?.zoom).toBe(2);
+    const next = getNotebookViewportLayout({ frameWidth: 800, frameHeight: 1000, zoom: 2, pan: zoomed?.pan });
+
+    const before = (focus.x - fitted.pageOrigin.x) / fitted.pageSize.width;
+    const after = (focus.x - next.pageOrigin.x) / next.pageSize.width;
+    expect(after).toBeCloseTo(before, 5);
+  });
+
+  it("zooms about the middle of the frame when no point is given", () => {
+    const zoomed = zoomNotebookViewportAbout({ layout: fitted, zoom: 1.5 });
+    const next = getNotebookViewportLayout({ frameWidth: 800, frameHeight: 1000, zoom: 1.5, pan: zoomed?.pan });
+
+    expect(next.pageOrigin.x + next.pageSize.width / 2).toBeCloseTo(400, 3);
+  });
+
+  it("returns to the fitted page, and does nothing when the zoom would not change", () => {
+    const zoomedIn = getNotebookViewportLayout({ frameWidth: 800, frameHeight: 1000, zoom: 2 });
+
+    expect(zoomNotebookViewportAbout({ layout: zoomedIn, zoom: 1 })).toEqual({ zoom: 1, pan: { x: 0, y: 0 } });
+    expect(zoomNotebookViewportAbout({ layout: fitted, zoom: 1 })).toBeNull();
   });
 });

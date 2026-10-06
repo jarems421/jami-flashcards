@@ -1,4 +1,5 @@
 import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
+import { getNotebookViewportInset } from "@/lib/workspace/notebook-viewport";
 
 /**
  * A question as a sheet of paper to write on, rather than a picture beside a
@@ -164,7 +165,7 @@ export function examSheetContinuationRoom(printedPageCount: number) {
  * The pages of one question's sheet: what is printed, then room to carry on.
  */
 export function examSheetPages(input: {
-  printedPages: PracticePaperQuestionAsset[];
+  printedPages: readonly PracticePaperQuestionAsset[];
   continuationCount: number;
 }): ExamSheetPage[] {
   const printed = input.printedPages
@@ -200,4 +201,76 @@ export function examSheetPageCaption(input: {
   return input.printedPageCount > 1
     ? `${label} — written on printed page ${input.page.number} of ${input.printedPageCount}`
     : `${label} — written on the printed page`;
+}
+
+/**
+ * A stored sheet, laid back down the way it was written.
+ *
+ * A page's position on the sheet is what says where its ink was written, so
+ * the stored pages go back at the index they were saved at rather than packed
+ * to the front. Saving drops blank pages off the end, so a sheet reopens with
+ * the board's own allowance again, or with however many pages the student had
+ * written on -- whichever is more.
+ */
+export function examSheetReopening(input: {
+  stored: readonly string[];
+  printedPages: readonly PracticePaperQuestionAsset[];
+  answerSpacePages?: number;
+}): { continuationCount: number; pages: string[] } {
+  const printedPageCount = input.printedPages.length;
+  const opening = examSheetOpeningContinuations({
+    answerSpacePages: input.answerSpacePages,
+    printedPageCount,
+  });
+  const written = Math.max(0, input.stored.length - printedPageCount);
+  const continuationCount = Math.min(
+    Math.max(opening, written),
+    examSheetContinuationRoom(printedPageCount)
+  );
+  const sheet = examSheetPages({ printedPages: input.printedPages, continuationCount });
+  return {
+    continuationCount,
+    pages: Array.from({ length: sheet.length }, (_unused, index) => input.stored[index] ?? ""),
+  };
+}
+
+/** The page whose shape needs the most height for its width. */
+export function examSheetTallestPage(pages: readonly ExamSheetPage[]): ExamSheetPage {
+  return pages.reduce(
+    (tallest, page) => (page.height / page.width > tallest.height / tallest.width ? page : tallest),
+    pages[0] ?? continuationPage(1)
+  );
+}
+
+/**
+ * How tall a frame has to be for a page to fill its width, inline.
+ *
+ * Inline the sheet flows with the practice page: its width is the column's and
+ * its height follows from the paper. The notebook's viewport maths works from
+ * a frame, so the frame is sized to the page rather than the other way round,
+ * with the notebook's own margin either side of it.
+ *
+ * The margin depends on whether the frame is wider than it is tall, which
+ * depends on the margin, so it is settled in two steps: once from the width
+ * alone, and once more from the height that gives.
+ */
+export function examSheetInlineFrameHeight(width: number, pageWidth: number, pageHeight: number) {
+  if (width <= 0 || pageWidth <= 0 || pageHeight <= 0) return 0;
+  const fitted = (inset: number) => (width - inset * 2) * (pageHeight / pageWidth) + inset * 2;
+  const provisional = fitted(getNotebookViewportInset(width, 0));
+  return Math.ceil(fitted(getNotebookViewportInset(width, provisional)));
+}
+
+/**
+ * A sheet's corner, and how far its paper reaches past the page to round it.
+ * Scaled with the page on screen, within a range that reads as paper rather
+ * than as a card at any size.
+ *
+ * The reach is what keeps the print whole: a square corner sits inside a
+ * rounded one of radius r only if it is set in by r(1 - 1/sqrt 2), a little
+ * under a third of the radius.
+ */
+export function examSheetCorner(pageWidthOnScreen: number) {
+  const radius = Math.max(6, Math.min(14, pageWidthOnScreen * 0.016));
+  return { radius, bleed: Math.ceil(radius * 0.3) };
 }

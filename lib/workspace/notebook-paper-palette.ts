@@ -1,4 +1,4 @@
-import type { NotebookPageColor } from "@/lib/workspace/notebooks";
+import type { NotebookPageColor, NotebookStrokeColor } from "@/lib/workspace/notebooks";
 
 /**
  * Everything that follows from what colour a page is, in one place.
@@ -77,6 +77,19 @@ export function getNotebookPaperPalette(
   pageColor: NotebookPageColor | undefined
 ): NotebookPaperPalette {
   return (pageColor && PALETTES[pageColor]) || PALETTES.white;
+}
+
+/**
+ * Keeps the nib visible on the paper under it.
+ *
+ * The pen is remembered from wherever it was last used, and a black pen on
+ * black paper, or a white one on white or cream, writes nothing. Every other
+ * colour is left as it was chosen.
+ */
+export function getVisibleNibColor(color: NotebookStrokeColor, paperIsDark: boolean): NotebookStrokeColor {
+  if (paperIsDark && color === "black") return "white";
+  if (!paperIsDark && color === "white") return "black";
+  return color;
 }
 
 /**
