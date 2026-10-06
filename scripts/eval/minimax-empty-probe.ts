@@ -5,7 +5,7 @@ import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
 import { adaptRecordToPaper } from "@/lib/evaluation/practice-paper-adapter";
 import { getAiTokenCap } from "@/lib/ai/budgets";
 import { generateAiText } from "@/lib/ai/provider-router";
-import { buildMarkerRequest } from "@/services/ai/practice-paper-marking.server";
+import { buildMarkerRequest } from "@/services/ai/practice-paper-marking-request.server";
 import { exemplarsToParts } from "@/lib/evaluation/practice-paper-adapter";
 
 /**

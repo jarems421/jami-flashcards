@@ -10,7 +10,7 @@ import { getAiTokenCap } from "@/lib/ai/budgets";
 import { generateAiText } from "@/lib/ai/provider-router";
 import { classifyMarkingParseFailure } from "@/lib/ai/marking-parse-failure";
 import { parsePracticePaperMarkingModelAnswer } from "@/lib/ai/practice-paper-marking";
-import { buildMarkerRequest } from "@/services/ai/practice-paper-marking.server";
+import { buildMarkerRequest } from "@/services/ai/practice-paper-marking-request.server";
 
 /**
  * What about the exemplar block stops MiniMax answering?
