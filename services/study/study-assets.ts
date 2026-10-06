@@ -105,14 +105,6 @@ export async function prepareStudyAssets(input: {
   return data;
 }
 
-export async function getStudyAssetJob(jobId: string) {
-  const response = await fetch(`/api/ai/study-assets/jobs/${jobId}`, {
-    headers: await authHeaders(),
-  });
-  if (!response.ok) return null;
-  return (await response.json()) as StudyAssetPreparation;
-}
-
 /**
  * Read the prepared assets for a set of cards.
  *

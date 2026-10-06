@@ -9,8 +9,6 @@ import {
   normalizeCardContentInput,
 } from "@/lib/study/cards";
 
-export const MIN_NOTES_FOR_CARD_GENERATION = 80;
-export const MAX_NOTES_FOR_CARD_GENERATION = 12_000;
 export const MIN_GENERATED_CARDS = 3;
 export const MAX_GENERATED_CARDS = 24;
 
@@ -18,15 +16,6 @@ export type GeneratedCardDraft = {
   front: string;
   back: string;
 };
-
-function clampGeneratedCardCount(value: unknown) {
-  const count = typeof value === "number" && Number.isFinite(value) ? value : 8;
-  return Math.max(MIN_GENERATED_CARDS, Math.min(MAX_GENERATED_CARDS, Math.round(count)));
-}
-
-export function getGeneratedCardCount(value: unknown) {
-  return clampGeneratedCardCount(value);
-}
 
 function normalizeGeneratedDraft(value: unknown): GeneratedCardDraft | null {
   if (!value || typeof value !== "object") {

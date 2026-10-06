@@ -5,7 +5,6 @@ import type { AiContentPart } from "@/lib/ai/content-parts";
 import { buildJamiAssistantReferenceParts } from "@/lib/ai/jami-assistant";
 import { questionIdsForPdfPage } from "@/lib/practice/paper-pdf-layout";
 import {
-  mapPracticePaperData,
   type PracticePaper,
   type PracticePaperEvidenceIssue,
   type PracticePaperEvidenceManifest,
@@ -574,8 +573,4 @@ export async function loadPracticePaperForEvidence(uid: string, paperId: string)
   const snapshot = await getAdminDb().collection("users").doc(uid).collection("pastPapers").doc(paperId).get();
   if (!snapshot.exists) throw new Error("Practice paper not found.");
   return loadPracticePaperWithSecret({ uid, paperId, paperData: snapshot.data() ?? {} });
-}
-
-export function mapPublicPracticePaperFromSnapshot(id: string, data: Record<string, unknown>) {
-  return mapPracticePaperData(id, data);
 }

@@ -103,32 +103,3 @@ export function computeStudyStreak(
 
   return streak;
 }
-
-export function computeLongestStreak(activity: DailyStudyActivity[]) {
-  const reviewDays = new Set(
-    activity
-      .filter((entry) => entry.reviewCount > 0)
-      .map((entry) => entry.dayKey)
-  );
-  if (reviewDays.size === 0) {
-    return 0;
-  }
-
-  const sortedDays = Array.from(reviewDays).sort();
-  let longest = 1;
-  let current = 1;
-
-  for (let i = 1; i < sortedDays.length; i += 1) {
-    const prev = sortedDays[i - 1];
-    const expectedNext = shiftStudyDayKey(prev, 1);
-
-    if (sortedDays[i] === expectedNext) {
-      current += 1;
-      longest = Math.max(longest, current);
-    } else {
-      current = 1;
-    }
-  }
-
-  return longest;
-}

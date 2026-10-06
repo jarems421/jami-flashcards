@@ -53,17 +53,6 @@ export function invitesTutorCardSuggestions(input: {
   return input.readableSourceCount > 0 && CARD_REQUEST_PATTERN.test(input.message);
 }
 
-export const TUTOR_CARD_INSTRUCTION = [
-  "The student wants flashcards. Put them in the \"cards\" field, three to six unless they asked",
-  "for a number, never more than eight. Each card tests one idea. The front is a question or",
-  "prompt that makes the student retrieve or apply the idea -- why, how, what happens when,",
-  "compare -- rather than a sentence with a word missing. The back is the shortest complete",
-  "answer, in your own words. Never copy a sentence from a source onto a card; a card that only",
-  "tests whether a sentence looks familiar is a bad card. Use each source's own notation and",
-  "terms. Set each card's sourceRef to the S-reference it draws on most. In the answer, say in",
-  "a sentence or two what the cards cover and why those ideas; do not repeat the cards there.",
-].join(" ");
-
 function normalizeCardText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().replace(/\s+\n/g, "\n").slice(0, maxLength) : "";
 }

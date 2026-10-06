@@ -7,8 +7,6 @@ import type { LearningEvidenceKind, LearningObservation, LearningTrend } from "@
 export const TREND_MIN_PER_WINDOW = 3;
 /** The recent window is at most this many answers, so an old run of work cannot hide a recent change. */
 export const TREND_MAX_WINDOW = 10;
-/** A change smaller than this, in accuracy, is noise rather than a trend. See `tuning.ts`. */
-export const TREND_THRESHOLD = DEFAULT_LEARNING_TUNING.trendThreshold;
 
 export type TrendMeasurement = {
   trend: LearningTrend;

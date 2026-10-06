@@ -30,11 +30,6 @@ export function getSourceTypeLabel(type: SourceType) {
   return SOURCE_TYPE_LABELS[type] ?? "Source";
 }
 
-/** A single letter for the bubble, since a 40px circle fits nothing else. */
-export function getSourceTypeMark(type: SourceType) {
-  return type === "link" ? "↗" : type === "file" ? "▤" : "✎";
-}
-
 /**
  * What a draft is asking, in its own words.
  *

@@ -70,9 +70,6 @@ import {
 
 export { parseJsonObject } from "@/services/ai/practice-paper-generation-passes.server";
 
-export const runtime = "nodejs";
-export const maxDuration = 300;
-
 export async function runPracticePaperGenerationRequest(
   request: NextRequest,
   trustedAuth?: GenerationAuth,

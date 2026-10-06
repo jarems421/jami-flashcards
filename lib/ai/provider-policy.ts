@@ -65,26 +65,6 @@ export type AiCapability = {
   };
 };
 
-export type AiUsage = {
-  role: AiGenerationRole;
-  provider: AiProvider;
-  modelId: string;
-  providerEndpoint?: string;
-  promptTokens?: number;
-  completionTokens?: number;
-  totalTokens?: number;
-  estimatedCostUsd?: number;
-  latencyMs: number;
-};
-
-export type AiFailure = {
-  role: AiGenerationRole;
-  provider: AiProvider;
-  code: "not_configured" | "timeout" | "provider_error" | "invalid_response";
-  retryable: boolean;
-  status?: number;
-};
-
 export type AiProviderAttempt = {
   provider: AiProvider;
   role: AiGenerationRole;

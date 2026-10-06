@@ -6,7 +6,6 @@ import {
   documentId,
   getDoc,
   getDocs,
-  increment,
   limit,
   orderBy,
   query,
@@ -521,102 +520,6 @@ export async function createNotebookPages(
   await withTimeout(batch.commit(), WRITE_MS, "Create notebook pages");
   invalidateDashboardData(normalizedUserId);
   return entries.map(({ id, payload }) => mapNotebookPageData(id, payload));
-}
-
-export async function updateNotebookPage(
-  userId: string,
-  pageId: string,
-  input: Partial<{
-    title: string;
-    pageType: NotebookPageType;
-    typedContent: string;
-    textBlocks: NotebookTextBlock[];
-    inkData: NotebookInkData | null;
-    strokeData: NotebookStrokeData | null;
-    pageColor: NotebookPageColor;
-    pageStyle: NotebookPageStyle;
-    status: NotebookPageStatus;
-    questionPrompt: string;
-    questionAssets: import("@/lib/practice/practice-papers").PracticePaperQuestionAsset[];
-    linkedQuestionId: string;
-    linkedSourceId: string;
-    linkedPastPaperId: string;
-    backgroundFileId: string;
-    pdfPageIndex: number;
-  }>
-) {
-  const normalizedUserId = userId.trim();
-  const normalizedPageId = pageId.trim();
-  if (!normalizedUserId) {
-    throw new Error("Missing userId.");
-  }
-  if (!normalizedPageId) {
-    throw new Error("Missing pageId.");
-  }
-
-  const updates: Record<string, unknown> = {
-    updatedAt: Date.now(),
-  };
-
-  const changesPageContent =
-    input.typedContent !== undefined ||
-    input.textBlocks !== undefined ||
-    input.inkData !== undefined ||
-    input.strokeData !== undefined ||
-    input.pageColor !== undefined ||
-    input.pageStyle !== undefined ||
-    input.status !== undefined;
-  if (
-    input.typedContent !== undefined ||
-    input.textBlocks !== undefined ||
-    input.inkData !== undefined
-  ) {
-    prepareNotebookPageSnapshotForPersistence({
-      typedContent: input.typedContent ?? "",
-      textBlocks: input.textBlocks ?? [],
-      inkData: input.inkData ?? undefined,
-      pageColor: input.pageColor ?? "white",
-      pageStyle: input.pageStyle ?? "plain",
-      status: input.status ?? "blank",
-    });
-  }
-
-  if (input.title !== undefined) updates.title = input.title.trim().slice(0, 120) || null;
-  if (input.pageType !== undefined) updates.pageType = input.pageType;
-  if (input.typedContent !== undefined) updates.typedContent = input.typedContent.trim() || null;
-  if (input.textBlocks !== undefined) updates.textBlocks = input.textBlocks;
-  if (input.inkData !== undefined) updates.inkData = input.inkData;
-  if (input.strokeData !== undefined) updates.strokeData = input.strokeData;
-  if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
-  if (input.pageStyle !== undefined) updates.pageStyle = input.pageStyle;
-  if (input.status !== undefined) updates.status = input.status;
-  if (input.questionPrompt !== undefined) updates.questionPrompt = input.questionPrompt.trim().slice(0, 4_000) || null;
-  if (input.linkedQuestionId !== undefined) updates.linkedQuestionId = input.linkedQuestionId.trim().slice(0, 160) || null;
-  if (input.linkedSourceId !== undefined) updates.linkedSourceId = input.linkedSourceId.trim().slice(0, 160) || null;
-  if (input.linkedPastPaperId !== undefined) updates.linkedPastPaperId = input.linkedPastPaperId.trim().slice(0, 160) || null;
-  if (input.backgroundFileId !== undefined) {
-    updates.backgroundFileId = input.backgroundFileId.trim().slice(0, 160) || null;
-  }
-  if (input.pdfPageIndex !== undefined) {
-    updates.pdfPageIndex =
-      Number.isFinite(input.pdfPageIndex) && input.pdfPageIndex >= 0
-        ? Math.round(input.pdfPageIndex)
-        : null;
-  }
-  if (changesPageContent) updates.contentRevision = increment(1);
-
-  await withTimeout(
-    updateDoc(doc(db, "users", normalizedUserId, "notebookPages", normalizedPageId), updates),
-    WRITE_MS,
-    "Update notebook page"
-  );
-  invalidateDashboardData(normalizedUserId);
-  const hasSavedWork =
-    Boolean(input.typedContent?.trim()) ||
-    Boolean(input.textBlocks?.length) ||
-    Boolean(input.inkData?.svg?.trim()) ||
-    (input.status !== undefined && input.status !== "blank");
-  if (hasSavedWork) reportTutorialAction("save-work");
 }
 
 /**

@@ -21,7 +21,3 @@ export const EXAM_SOURCE_CONNECTORS: readonly ExamSourceConnector[] = [
   { board: "oxford_aqa", label: "OxfordAQA", priority: 6, catalogueUrls: ["https://www.oxfordaqa.com/qualifications/"] },
   { board: "ib", label: "IB", priority: 7, catalogueUrls: ["https://www.ibo.org/programmes/assessment-and-exams/"] },
 ];
-
-export function getExamSourceConnector(board: ExamBoardId) {
-  return EXAM_SOURCE_CONNECTORS.find((connector) => connector.board === board);
-}

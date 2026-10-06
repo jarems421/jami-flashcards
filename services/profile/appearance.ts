@@ -58,11 +58,6 @@ export async function syncAppearance(userId: string, accountCreatedAt: number) {
   if (resolved.save) await writeAccountAppearance(userId, resolved.choice);
 }
 
-/** Signing out leaves the device in Jami's own look, owned by nobody. */
-export function resetDeviceAppearance() {
-  applyAppearanceToDevice(DEFAULT_APPEARANCE, null);
-}
-
 /**
  * Record which sky, if any, is the account's background.
  *

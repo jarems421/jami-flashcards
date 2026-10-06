@@ -1,5 +1,4 @@
 import {
-  PLAN_MAX_HORIZON_DAYS,
   PLAN_MAX_ITEMS_PER_DAY,
   PLAN_MAX_SESSIONS_PER_DAY,
   PLAN_MAX_SLOTS_PER_DAY,
@@ -47,17 +46,6 @@ export function planDaysBetween(fromDayKey: string, toDayKey: string) {
     return Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1);
   };
   return Math.round((at(toDayKey) - at(fromDayKey)) / (24 * 60 * 60 * 1000));
-}
-
-/** Every day key from start to end inclusive, bounded so a typo cannot run away. */
-export function planDayKeys(startDayKey: string, endDayKey: string) {
-  const span = planDaysBetween(startDayKey, endDayKey);
-  if (span < 0) return [];
-  const keys: string[] = [];
-  for (let offset = 0; offset <= Math.min(span, PLAN_MAX_HORIZON_DAYS - 1); offset += 1) {
-    keys.push(shiftStudyDayKey(startDayKey, offset));
-  }
-  return keys;
 }
 
 export function isWithinPlanHorizon(plan: Pick<RevisionPlan, "startDayKey" | "endDayKey">, dayKey: string) {

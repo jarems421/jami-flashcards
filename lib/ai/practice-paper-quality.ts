@@ -63,13 +63,6 @@ export function markSchemeIssues(
   return issues;
 }
 
-export type PracticePaperQualityIssue = {
-  code: string;
-  severity: "warning" | "error";
-  detail: string;
-  questionId?: string;
-};
-
 export function isCompletePracticePaperCandidate(
   paper: ParsedPracticePaperModelAnswer
 ) {

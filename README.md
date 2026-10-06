@@ -271,7 +271,6 @@ a signed-in Playwright suite against the Firebase emulators.
 | Documents | `pdfjs-dist` to read, `pdfkit` and `svg-to-pdfkit` to write paper PDFs, `mammoth`, `officeparser` and `cheerio` for imports, `sql.js` for Anki packages |
 | Images | `sharp`, `@napi-rs/canvas` |
 | Rich text and maths | `react-markdown`, `remark-math`, `rehype-katex`, KaTeX, MathJax |
-| Charts | `recharts` |
 | Notifications | Web Push (`web-push`), sent by Vercel Cron |
 | AI | OpenRouter role routing, Google GenAI specialists |
 | Monitoring | Sentry |

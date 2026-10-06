@@ -307,18 +307,3 @@ export function shouldPauseDailyReviewStateRefresh(
       state.studyDayKey === activeSession.studyDayKey
   );
 }
-
-export function isDailyReviewRequiredComplete(state: DailyReviewState | null) {
-  if (!state) {
-    return false;
-  }
-
-  const doneCardIds = new Set([
-    ...state.completedRequiredCardIds,
-    ...state.parkedRequiredCardIds,
-  ]);
-
-  return state.requiredCardIds.every((cardId) =>
-    doneCardIds.has(cardId)
-  );
-}

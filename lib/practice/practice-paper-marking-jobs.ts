@@ -40,9 +40,3 @@ export function canCancelPracticePaperMarkingJob(
 ) {
   return status === "queued" || status === "running" || status === "paused";
 }
-
-export function isTerminalPracticePaperMarkingJobStatus(
-  status: PracticePaperMarkingJobStatus
-) {
-  return status === "ready" || status === "failed" || status === "cancelled";
-}

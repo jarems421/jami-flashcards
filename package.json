@@ -75,7 +75,6 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^9.0.1",
-    "recharts": "^3.8.1",
     "rehype-katex": "^7.0.0",
     "remark-gfm": "^4.0.0",
     "remark-math": "^6.0.0",
@@ -90,7 +89,6 @@
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
     "@playwright/test": "^1.62.0",
-    "@types/katex": "^0.16.7",
     "@types/node": "^22",
     "@types/nodemailer": "^8.0.2",
     "@types/pdfkit": "^0.17.6",

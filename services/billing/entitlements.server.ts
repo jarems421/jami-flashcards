@@ -53,8 +53,3 @@ export async function getEntitlement(uid: string, now = Date.now()): Promise<Ent
     now,
   });
 }
-
-/** Tests only. */
-export function clearEntitlementCacheForTests() {
-  accountCreatedAtCache.clear();
-}

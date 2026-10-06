@@ -6,7 +6,6 @@ export { default as ConfirmDialog } from "./ConfirmDialog";
 export { default as ConstellationTrail } from "./ConstellationTrail";
 export { default as DateField } from "./DateField";
 export type { DateFieldProps } from "./DateField";
-export { CONSTELLATION_TRAIL_LENGTH } from "./ConstellationTrail";
 export {
   Dialog,
   DialogBackdrop,
@@ -17,7 +16,6 @@ export {
 export type { DialogDismissReason } from "./Dialog";
 export { default as EmptyState } from "./EmptyState";
 export { default as FileField } from "./FileField";
-export { default as FormSection } from "./FormSection";
 export { default as OptionMenu } from "./OptionMenu";
 export type { OptionMenuOption } from "./OptionMenu";
 export { default as OptionSwitch } from "./OptionSwitch";
@@ -27,11 +25,7 @@ export { default as FeedbackBanner } from "./FeedbackBanner";
 export { default as IconBubble } from "./IconBubble";
 export { default as Input } from "./Input";
 export { default as JamiTutorIcon } from "./JamiTutorIcon";
-export {
-  NORTHERN_STAR_FACET_PATH,
-  NORTHERN_STAR_PATH,
-  northernStarTransform,
-} from "./NorthernStar";
+export { NORTHERN_STAR_PATH } from "./NorthernStar";
 export { default as PageHero } from "./PageHero";
 export { default as Textarea } from "./Textarea";
 export { AUTO_GROW_TEXTAREA_STYLE, useAutoGrowTextarea } from "./useAutoGrowTextarea";
@@ -46,4 +40,3 @@ export { default as Skeleton } from "./Skeleton";
 export { default as SymbolKeyboard } from "./SymbolKeyboard";
 export { default as StatTile } from "./StatTile";
 export { default as StudyText } from "./StudyText";
-export { default as StudyTextSegments } from "./StudyTextSegments";

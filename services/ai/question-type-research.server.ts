@@ -15,6 +15,7 @@ import {
   dedupeQuestionTypeRules,
   missingRuleFields,
   normalizeQuestionTypeRule,
+  parseRulesReply,
   ruleCoversMarks,
   subjectKey,
   type QuestionTypeRule,
@@ -69,35 +70,6 @@ Rules for what you write:
 Return JSON only: {"rules":[{"id":"kebab-case","name":"...","tariffs":[6],"commandWords":["..."],"cues":["..."],"marking":"levels","answerShape":"...","examinerRules":["..."],"pitfalls":["..."],"extraMarks":"","sourceIndexes":[0]}]}`;
 
 type Extraction = { rules: QuestionTypeRule[]; dropped: string[] };
-
-/**
- * The rules out of a reply, in any of the shapes it arrives in.
- *
- * Asked for {"rules": [...]}, the model sometimes returns the bare array, and
- * that was read as "no rules": Biology, Chemistry and Geography lost every rule
- * read from AQA's website and Business lost everything, while the log said the
- * extraction had returned none. A reply wrapped in prose is cut to its JSON.
- */
-export function parseRulesReply(reply: string): { rules: unknown[] } | null {
-  const cleaned = reply.trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
-  const attempt = (text: string) => {
-    try {
-      const value = JSON.parse(text) as unknown;
-      if (Array.isArray(value)) return { rules: value };
-      if (value && typeof value === "object" && Array.isArray((value as { rules?: unknown }).rules)) {
-        return { rules: (value as { rules: unknown[] }).rules };
-      }
-      return { rules: [] };
-    } catch {
-      return null;
-    }
-  };
-  const direct = attempt(cleaned);
-  if (direct) return direct;
-  const start = cleaned.search(/[[{]/);
-  const end = Math.max(cleaned.lastIndexOf("]"), cleaned.lastIndexOf("}"));
-  return start >= 0 && end > start ? attempt(cleaned.slice(start, end + 1)) : null;
-}
 
 async function extractRules(input: {
   subjectLabel: string;

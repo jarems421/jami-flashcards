@@ -5,7 +5,6 @@ import {
   normalizePracticePaperMarkScheme,
   toPublicPracticePaperMarkScheme,
   type PracticePaper,
-  type PracticePaperMarkScheme,
 } from "@/lib/practice/practice-papers";
 import { getAdminDb } from "@/services/firebase/admin";
 
@@ -15,24 +14,6 @@ export function practicePaperSecretRef(uid: string, paperId: string) {
     .doc(uid)
     .collection("practicePaperSecrets")
     .doc(paperId);
-}
-
-export async function savePracticePaperSecret(input: {
-  uid: string;
-  paperId: string;
-  markScheme: PracticePaperMarkScheme;
-  now?: number;
-}) {
-  const now = input.now ?? Date.now();
-  await practicePaperSecretRef(input.uid, input.paperId).set(
-    {
-      paperId: input.paperId,
-      markScheme: input.markScheme,
-      createdAt: now,
-      updatedAt: now,
-    },
-    { merge: true }
-  );
 }
 
 export async function loadPracticePaperWithSecret(input: {

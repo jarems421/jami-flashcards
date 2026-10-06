@@ -6,13 +6,6 @@ export type ContentOrigin =
 
 export type ContentStatus = "draft" | "approved" | "rejected" | "archived";
 
-export type ContentProvenance = {
-  origin: ContentOrigin;
-  contentStatus: ContentStatus;
-  reviewedAt?: number;
-  reviewedBy?: string;
-};
-
 export function isContentOrigin(value: unknown): value is ContentOrigin {
   return (
     value === "user-authored" ||

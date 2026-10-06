@@ -69,18 +69,6 @@ export const PRACTICE_PAPER_JOB_STAGE_LABELS: Record<
   ready: "Ready",
 };
 
-export function isTerminalPracticePaperJobStatus(
-  status: PracticePaperJobStatus
-) {
-  return (
-    status === "ready" ||
-    status === "needs_confirmation" ||
-    status === "needs_clarification" ||
-    status === "failed" ||
-    status === "cancelled"
-  );
-}
-
 export function canCancelPracticePaperJob(status: PracticePaperJobStatus) {
   return (
     status === "queued" ||

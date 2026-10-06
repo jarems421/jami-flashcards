@@ -2,7 +2,6 @@ import { APP_BUILD } from "@/lib/app/app-build";
 import type { Card } from "@/lib/study/cards";
 import type { Source } from "@/lib/material/sources";
 import {
-  clearDeviceCopies,
   readDeviceCopy,
   writeDeviceCopy,
 } from "@/services/cache/device-store";
@@ -187,8 +186,4 @@ export function keepTodayDeviceCopy(input: {
   const copy = toTodayDeviceCopy({ ...input, now: input.now ?? Date.now() });
   if (!copy) return Promise.resolve();
   return writeDeviceCopy(keyFor(input.userId), copy);
-}
-
-export function clearTodayDeviceCopies() {
-  return clearDeviceCopies(KEY_PREFIX);
 }

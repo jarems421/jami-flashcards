@@ -218,8 +218,3 @@ export function uniqueSetTextIn(
   const labels = new Set(found.map((text) => comparable(text.label)));
   return labels.size === 1 ? found[0] : undefined;
 }
-
-/** The same, against the texts this course may actually offer. */
-export function uniqueExamSetText(specificationId: string, passage: string) {
-  return uniqueSetTextIn(servableExamSetTexts(specificationId), passage);
-}

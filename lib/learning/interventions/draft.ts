@@ -40,10 +40,6 @@ export type InterventionDraft = {
   generatedAt: number;
 };
 
-export function draftKind(draft: InterventionDraft): InterventionDraftKind {
-  return draft.payload.kind;
-}
-
 /** How many pieces of material a draft proposes. */
 export function draftSize(draft: InterventionDraft) {
   return draft.payload.kind === "create_flashcards"
