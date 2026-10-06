@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { REDUCED_MOTION_QUERY } from "@/lib/ui/reduced-motion";
 
 /*
  * The questions, answers and marks below are written for this page. They are
@@ -581,18 +583,6 @@ export function LandingDemoScene({ example, clock }: { example: LandingExample; 
   );
 }
 
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return reduced;
-}
-
 /**
  * The landing page's picture of Jami, played rather than posed, as the loop it
  * is: an answer is written and marked point by point, the missed mark becomes
@@ -609,7 +599,7 @@ function usePrefersReducedMotion() {
  * described in one sentence instead, since the made-up question is not content.
  */
 export default function LandingPreview() {
-  const reducedMotion = usePrefersReducedMotion();
+  const reducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
   // One piece of state, so the clock can roll over into the next example in
   // the same update that advances it. `step` is only used with reduced motion,
   // where a chosen step is shown finished rather than played.

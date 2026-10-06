@@ -46,6 +46,7 @@ import { getPendingGeneratedContentDrafts } from "@/services/study/generated-con
 import { getActiveSources } from "@/services/study/sources";
 import type { RevisionPlan } from "@/lib/planning/types";
 import { loadActiveRevisionPlan } from "@/services/planning/revision-plans";
+import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
 
 /** Enough of the queue to act on without turning the page into a list. */
 const MAX_PENDING_DRAFTS = 20;
@@ -181,8 +182,7 @@ export default function TutorPage() {
   useEffect(() => {
     const area = askAreaRef.current;
     if (!chatOpen || !area || area.getBoundingClientRect().top >= 0) return;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    area.scrollIntoView({ block: "start", behavior: reduced ? "auto" : "smooth" });
+    area.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
   }, [chatOpen, chat.key]);
 
   return (
