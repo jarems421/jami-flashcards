@@ -31,10 +31,8 @@ import { mapSourceData } from "@/lib/material/sources";
 import { mapTopicData, type Topic } from "@/lib/material/topics";
 import { servableExamSpecificationConcepts } from "@/lib/practice/exam-specification-concepts";
 import { servableExamSpecificationTopics } from "@/lib/practice/exam-specification-topics";
-import {
-  mapPracticePaperAttemptData,
-  mapPracticePaperData,
-} from "@/lib/practice/practice-papers";
+import { mapPracticePaperData } from "@/lib/practice/practice-papers";
+import { mapPracticePaperAttemptData } from "@/lib/practice/practice-paper-results";
 import { mapCardData } from "@/lib/study/cards";
 import { mapNotebookData } from "@/lib/workspace/notebooks";
 import { mapStudyFolderData, type StudyFolder } from "@/lib/workspace/study-folders";

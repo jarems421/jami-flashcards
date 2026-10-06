@@ -25,6 +25,11 @@ export function normalizeOptionalString(value: unknown, maxLength = 10_000) {
   return normalized ? normalized.slice(0, maxLength) : undefined;
 }
 
+/** A count or size read from stored data: a whole number, never negative, else the fallback. */
+export function normalizeNonNegativeInteger(value: unknown, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : fallback;
+}
+
 export function normalizeStringArray(value: unknown, maxItems = 20, maxLength = 120) {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();

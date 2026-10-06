@@ -59,9 +59,10 @@ describe("useExamAnswerDrafts", () => {
   it("sends what was typed during a slow save once it lands, never out of order", async () => {
     let finishFirst: () => void = () => undefined;
     vi.mocked(saveExamAnswerDraft).mockImplementationOnce(
-      () => new Promise<void>((resolve) => {
-        finishFirst = resolve;
-      })
+      () =>
+        new Promise((resolve) => {
+          finishFirst = () => resolve({});
+        })
     );
 
     act(() => drafts.handleDraft("a1", "First", ""));
