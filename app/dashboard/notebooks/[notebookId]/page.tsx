@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   useCallback,
@@ -13,7 +12,6 @@ import {
 } from "react";
 import AppPage from "@/components/layout/AppPage";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
-import PracticePaperAttemptBar from "@/components/practice/PracticePaperAttemptBar";
 import NotebookQuestionOverlay from "@/components/workspace/NotebookQuestionOverlay";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayers";
@@ -27,13 +25,13 @@ import NotebookPageNavigation from "@/components/workspace/NotebookPageNavigatio
 import NotebookDrawingToolbar from "@/components/workspace/NotebookDrawingToolbar";
 import NotebookAddPagesDialog from "@/components/workspace/NotebookAddPagesDialog";
 import NotebookEditorConfirmDialog from "@/components/workspace/NotebookEditorConfirmDialog";
+import NotebookEditorHeader from "@/components/workspace/NotebookEditorHeader";
+import NotebookSheetsLayer, {
+  useNotebookSheetsBeside,
+} from "@/components/workspace/NotebookSheetsBeside";
 import NotebookPhoneLayoutNotice from "@/components/workspace/NotebookPhoneLayoutNotice";
-import NotebookSaveIndicator from "@/components/workspace/NotebookSaveIndicator";
 import NotebookToolSettingsPopover from "@/components/workspace/NotebookToolSettingsPopover";
 import NotebookTextBlockLayer from "@/components/workspace/NotebookTextBlockLayer";
-import ToolbarIconButton, {
-  NotebookIcon,
-} from "@/components/workspace/NotebookToolbarIconButton";
 import NotebookViewport, {
   type NotebookViewportPreview,
 } from "@/components/workspace/NotebookViewport";
@@ -55,6 +53,7 @@ import { useNotebookLoader } from "@/hooks/useNotebookLoader";
 import { useNotebookInkController } from "@/hooks/useNotebookInkController";
 import { useNotebookPageManagement } from "@/hooks/useNotebookPageManagement";
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
+import { useNotebookPageHydration } from "@/hooks/useNotebookPageHydration";
 import { useNotebookPageTrack } from "@/hooks/useNotebookPageTrack";
 import {
   useNotebookPersistenceController,
@@ -74,17 +73,6 @@ import {
   useNotebookPanelState,
 } from "@/hooks/useNotebookWorkspaceState";
 import { useNotebookAssistantContext } from "@/hooks/useNotebookAssistantContext";
-import { useFolderSheetChoices, useNotebookSheets } from "@/hooks/useNotebookSheet";
-import NotebookSheetPanel, { useNotebookSheetFrames } from "@/components/workspace/NotebookSheetPanel";
-import NotebookSheetPicker from "@/components/workspace/NotebookSheetPicker";
-import { onScreenFloatingRects } from "@/components/ai/JamiFloatingTutor";
-import {
-  MAX_NOTEBOOK_SHEETS,
-  notebookSheetFromAttachment,
-  notebookSheetsFromNotebookFiles,
-  type NotebookSheet,
-} from "@/lib/workspace/notebook-sheet";
-import type { TutorAttachment } from "@/lib/ai/tutor-attachments";
 import type {
   NotebookFile,
   NotebookPage,
@@ -197,9 +185,6 @@ export default function NotebookEditorPage() {
   const { store: pageState, state: pageSnapshot } = useNotebookPageState();
   const { textBlocks, pageColor, pageStyle, saveStatus, tool } = pageSnapshot;
   const {
-    setTextBlocks, setPageColor, setPageStyle, setSaveStatus, setTool,
-  } = pageState;
-  const {
     feedback,
     success,
     showError,
@@ -221,6 +206,32 @@ export default function NotebookEditorPage() {
     },
     [clearFeedback, showError, success]
   );
+
+  const drawingTools = useNotebookDrawingToolState();
+  const {
+    penColor, penThicknessPercent, highlighterColor, highlighterThicknessPercent,
+    eraserMode, eraserWidth, scribbleToErase, penSettings,
+    openMenu: openToolMenu, closeMenus: closeDrawingToolMenus,
+    touchInkHintVisible, setTouchInkHintVisible,
+  } = drawingTools;
+  const {
+    pageZoom, setPageZoom, pagePan, setPagePan,
+    frameSize, setFrameSize, pageSwipeMotion, setPageSwipeMotion,
+    pageSwipeInkSnapshot, setPageSwipeInkSnapshot,
+  } = useNotebookNavigationState();
+  const {
+    createPageActive, setCreatePageActive, createPageProgress, setCreatePageProgress,
+    creatingPage, setCreatingPage, createPageBounce, setCreatePageBounce,
+    inkEditorMountRevision, setInkEditorMountRevision,
+  } = useNotebookPageCreationState();
+  const {
+    assistantOpen, setAssistantOpen, pagesDrawerOpen, setPagesDrawerOpen,
+    phoneFullEditing, setPhoneFullEditing,
+  } = useNotebookPanelState();
+  const isPhoneLayout = useMediaQuery(PHONE_LAYOUT_QUERY);
+  const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
+  /** Bumped on every edit; save results older than the newest are discarded. */
+  const editorRevisionRef = useRef(0);
 
   const {
     notebook,
@@ -253,38 +264,12 @@ export default function NotebookEditorPage() {
     onDraftRestored: () => setInkEditorMountRevision((current) => current + 1),
   });
 
-  /*
-   * Sheets kept beside the page -- question sheets or mark schemes to work
-   * from without swiping away -- up to three, and the picker for choosing one.
-   */
-  const notebookSheets = useNotebookSheets(notebookId ?? "");
-  const sheetFrames = useNotebookSheetFrames(
-    notebookSheets.open,
-    Array.from({ length: MAX_NOTEBOOK_SHEETS }, (_, slot) =>
-      notebookSheets.sheets.some((kept) => kept.slot === slot)
-    )
-  );
-  /** What the picker is choosing for: another sheet (no slot), or a different one in a panel. */
-  const [sheetPicker, setSheetPicker] = useState<{ replaceSlot: number | null } | null>(null);
-  const folderSheetChoices = useFolderSheetChoices({
+  const sheetsBeside = useNotebookSheetsBeside({
+    notebookId: notebookId ?? "",
     userId,
     folderId: notebook?.folderId ?? "",
-    enabled: sheetPicker !== null,
+    files,
   });
-  const notebookSheetChoices = useMemo(() => notebookSheetsFromNotebookFiles(files), [files]);
-  const keepSheetBeside = (sheet: NotebookSheet) => {
-    // Measured before the new panel exists, so it lands clear of the Tutor
-    // card, pinned answers and the other sheets rather than on top of one.
-    const onScreen = onScreenFloatingRects();
-    const { slot, added } = notebookSheets.add(sheet);
-    if (added && onScreen.length > 0) sheetFrames[slot].moveClearOf(onScreen);
-  };
-  const handleKeepAttachmentBeside = (attachment: TutorAttachment) => {
-    const sheet = notebookSheetFromAttachment(attachment);
-    if (sheet) keepSheetBeside(sheet);
-  };
-
-  const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
 
   const {
     inkReadyRef,
@@ -318,28 +303,6 @@ export default function NotebookEditorPage() {
       clearFeedbackIfShowing("Could not autosave this page."),
   });
 
-  const drawingTools = useNotebookDrawingToolState();
-  const {
-    penColor, penThicknessPercent, highlighterColor, highlighterThicknessPercent,
-    eraserMode, eraserWidth, scribbleToErase, penSettings,
-    openMenu: openToolMenu, closeMenus: closeDrawingToolMenus,
-    touchInkHintVisible, setTouchInkHintVisible,
-  } = drawingTools;
-  const {
-    pageZoom, setPageZoom, pagePan, setPagePan,
-    frameSize, setFrameSize, pageSwipeMotion, setPageSwipeMotion,
-    pageSwipeInkSnapshot, setPageSwipeInkSnapshot,
-  } = useNotebookNavigationState();
-  const {
-    createPageActive, setCreatePageActive, createPageProgress, setCreatePageProgress,
-    creatingPage, setCreatingPage, createPageBounce, setCreatePageBounce,
-    inkEditorMountRevision, setInkEditorMountRevision,
-  } = useNotebookPageCreationState();
-  const {
-    assistantOpen, setAssistantOpen, pagesDrawerOpen, setPagesDrawerOpen,
-    phoneFullEditing, setPhoneFullEditing,
-  } = useNotebookPanelState();
-  const isPhoneLayout = useMediaQuery(PHONE_LAYOUT_QUERY);
   const { practicePaperStatus, handlePracticePaperStatusChange } =
     usePracticePaperStatus(setAssistantOpen);
   const [practicePaperEditingLocked, setPracticePaperEditingLocked] = useState(false);
@@ -366,8 +329,6 @@ export default function NotebookEditorPage() {
   const createPageIndicatorRef = useRef<HTMLDivElement | null>(null);
   const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
   const pageSwipeRef = useRef<PageSwipeState | null>(null);
-  const inkMountedUnloadedPageIdRef = useRef<string | null>(null);
-  const editorRevisionRef = useRef(0);
   const ignoredTouchInkCountRef = useRef(0);
   const touchInkHintTimeoutRef = useRef<number | null>(null);
   const isPageNavigationLocked = useCallback(
@@ -401,13 +362,6 @@ export default function NotebookEditorPage() {
     [notebookPageHasWork]
   );
 
-  // Each time the page changes, the ink editor remounts and re-deserializes the
-  // SVG. Mark ink as not-yet-ready so the static ink underlay shows until the
-  // editor paints, then NotebookInkEditor's onReady clears it — no blank flash.
-  useEffect(() => {
-    inkReadyRef.current = false;
-    setInkReady(false);
-  }, [inkReadyRef, selectedPage?.id, setInkReady]);
   const hasMappedBackgroundPages = useMemo(
     () => pages.some((page) => Boolean(page.backgroundFileId)),
     [pages]
@@ -602,12 +556,6 @@ export default function NotebookEditorPage() {
     editorRevisionRef,
   });
 
-  // `selectedPage` is derived from the pages list, so the store has to be told
-  // about it. Handlers read the open page through `pageState.read()`.
-  useEffect(() => {
-    pageState.selectPage(selectedPage);
-  }, [pageState, selectedPage]);
-
   useEffect(() => {
     activePdfCanvasTrackingRef.current = {
       canvas: null,
@@ -794,7 +742,7 @@ export default function NotebookEditorPage() {
   // With js-draw as the single ink engine, switching tools only updates the
   // desired style; NotebookInkEditor defers applying it while a pointer is
   // still down, so no flush/commit step is needed.
-  const switchNotebookTool = setTool;
+  const switchNotebookTool = pageState.setTool;
 
   const commitTextBlockHistory = useCallback(
     (previous: NotebookTextBlock[], next: NotebookTextBlock[]) => {
@@ -938,88 +886,30 @@ export default function NotebookEditorPage() {
     onRequestClearPage: requestClearPage,
   });
 
-  useEffect(() => {
-    if (!selectedPage) {
-      setTextBlocks([]);
-      resetTextBlockInteraction();
-      clearInkHistory();
-      setInkHasContent(false);
-      pageState.resetHydration();
-      return;
-    }
-
-    if (pageState.read().hydratedPageId === selectedPage.id) {
-      return;
-    }
-
-    setTextBlocks(selectedPage.textBlocks);
-    resetTextBlockInteraction();
-    clearInkHistory();
-    setInkHasContent(
-      Boolean(selectedPage.inkData?.svg) || (selectedPage.strokeData?.strokes.length ?? 0) > 0
-    );
-    setPageColor(selectedPage.pageColor ?? notebook?.pageColor ?? "white");
-    setPageStyle(selectedPage.pageStyle ?? notebook?.pageStyle ?? "plain");
-    // Remember when the editor is mounting without this page's real ink, so the
-    // canvas can be rebuilt from it once the fetch lands.
-    inkMountedUnloadedPageIdRef.current = pageHasUnloadedInk(selectedPage)
-      ? selectedPage.id
-      : null;
-    pageState.hydratePage(selectedPage.id, selectedPage.contentRevision);
-    const recoveredDraft = takeRecoveredDraft(selectedPage.id);
-    if (recoveredDraft) {
-      editorRevisionRef.current = Math.max(1, recoveredDraft.localRevision);
-      setSaveStatus("unsaved");
-      success("Recovered unsaved work from this device. Syncing it now.");
-      schedulePendingWork();
-    } else {
-      editorRevisionRef.current = 0;
-      setSaveStatus("saved");
-    }
+  const markPageHydrated = useCallback(() => {
     window.requestAnimationFrame(() => maybeFinishPageHandoffRef.current());
-  }, [
-    cancelInkUiSync,
-    clearInkHistory,
-    notebook?.pageColor,
-    notebook?.pageStyle,
-    pageState,
-    resetTextBlockInteraction,
-    schedulePendingWork,
-    selectedPage,
-    setInkHasContent,
-    setPageColor,
-    setPageStyle,
-    setSaveStatus,
-    setTextBlocks,
-    success,
-    takeRecoveredDraft,
-  ]);
-
-  /**
-   * Rebuilds a canvas that mounted before its ink arrived.
-   *
-   * `NotebookInkEditor` reads `initialSvg` once, at mount, so ink that lands
-   * afterwards would never reach it — and the next autosave would write that
-   * empty canvas over the saved drawing. Remounting discards js-draw's undo
-   * stack, so this only runs while there is demonstrably nothing to lose, which
-   * the read-only gate on an unhydrated page guarantees.
-   */
-  useEffect(() => {
-    const pendingPageId = inkMountedUnloadedPageIdRef.current;
-    if (
-      !selectedPage ||
-      pendingPageId !== selectedPage.id ||
-      pageHasUnloadedInk(selectedPage)
-    ) {
-      return;
-    }
-    inkMountedUnloadedPageIdRef.current = null;
-    const inkEditor = inkEditorRef.current;
-    if (inkEditor?.hasInk() || (inkEditor?.getHistoryState().undoDepth ?? 0) > 0) {
-      return;
-    }
+  }, []);
+  const announceRecoveredDraft = useCallback(() => {
+    success("Recovered unsaved work from this device. Syncing it now.");
+  }, [success]);
+  const remountInkEditor = useCallback(() => {
     setInkEditorMountRevision((current) => current + 1);
-  }, [selectedPage, setInkEditorMountRevision]);
+  }, [setInkEditorMountRevision]);
+
+  useNotebookPageHydration({
+    selectedPage,
+    notebook,
+    pageState,
+    ink: { inkReadyRef, setInkReady, clearHistory: clearInkHistory, setInkHasContent },
+    inkEditorRef,
+    persistence: { schedulePendingWork },
+    editorRevisionRef,
+    takeRecoveredDraft,
+    resetTextBlockInteraction,
+    onDraftRecovered: announceRecoveredDraft,
+    onHydrated: markPageHydrated,
+    remountInkEditor,
+  });
 
   useNotebookEditorShell();
 
@@ -2278,78 +2168,31 @@ export default function NotebookEditorPage() {
       className="notebook-editor-shell fixed inset-0 z-[70] flex min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
     >
       <div className="flex h-full min-h-0 flex-col">
-        <header className="z-40 shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-e1 backdrop-blur-xl">
-          <div className="flex min-w-0 items-center gap-2">
-            <Link
-              href={`/dashboard/folders/${notebook.folderId}`}
-              onClick={(event) => void handleExitNotebook(event)}
-              aria-label="Back to folder"
-              title="Back to folder"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)]"
-            >
-              <NotebookIcon name="back" />
-            </Link>
-            <div data-tutorial-target="save-work" className="flex min-w-0 flex-1 items-center gap-2">
-              <div className="truncate text-sm font-semibold text-text-primary">{notebook.title}</div>
-              <NotebookSaveIndicator status={saveStatus} onRetry={handleRetryPageSave} />
-            </div>
-            <ToolbarIconButton
-              label="Pages"
-              icon="pages"
-              active={pagesDrawerOpen}
-              onClick={() => {
-                closeDrawingToolMenus();
-                const nextOpen = !pagesDrawerOpen;
-                setPagesDrawerOpen(nextOpen);
-                if (nextOpen) handleAssistantOpenChange(false);
-              }}
-            />
-            {!practicePaperTutorLocked ? (
-              <ToolbarIconButton
-                label={
-                  notebookSheets.sheets.length === 0
-                    ? "Keep a sheet beside the page"
-                    : notebookSheets.open
-                      ? notebookSheets.sheets.length > 1 ? "Hide sheets" : "Hide sheet"
-                      : notebookSheets.sheets.length > 1
-                        ? `Show ${notebookSheets.sheets.length} sheets`
-                        : `Show sheet: ${notebookSheets.sheets[0].sheet.title}`
-                }
-                icon="sheet"
-                active={notebookSheets.open}
-                pressed={notebookSheets.sheets.length > 0 ? notebookSheets.open : undefined}
-                onClick={() => {
-                  if (notebookSheets.sheets.length > 0) notebookSheets.setOpen(!notebookSheets.open);
-                  else setSheetPicker({ replaceSlot: null });
-                }}
-              >
-                {notebookSheets.sheets.length > 0 && !notebookSheets.open ? (
-                  // Kept but hidden: one tap brings them back.
-                  <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent" />
-                ) : null}
-              </ToolbarIconButton>
-            ) : null}
-            {!practicePaperTutorLocked ? (
-              <ToolbarIconButton
-                label="Ask Jami" icon="ai"
-                tutorialTarget="ask-tutor"
-                active={assistantOpen}
-                onClick={() => handleAssistantOpenChange(!assistantOpen)}
-              />
-            ) : null}
-          </div>
-          {notebook.type === "practice_paper" && userId ? (
-            <PracticePaperAttemptBar
-              userId={userId}
-              notebookId={notebook.id}
-              onStatusChange={handlePracticePaperStatusChange}
-              onBeforeSubmit={prepareCurrentPageForNavigation}
-              onRetake={handlePracticePaperRetake}
-              onEditingLockChange={setPracticePaperEditingLocked}
-              onTutorLockChange={setPracticePaperTutorLocked}
-            />
-          ) : null}
-        </header>
+        <NotebookEditorHeader
+          notebook={notebook}
+          userId={userId}
+          saveStatus={saveStatus}
+          onRetrySave={handleRetryPageSave}
+          onExit={handleExitNotebook}
+          pagesDrawerOpen={pagesDrawerOpen}
+          onTogglePages={() => {
+            closeDrawingToolMenus();
+            const nextOpen = !pagesDrawerOpen;
+            setPagesDrawerOpen(nextOpen);
+            if (nextOpen) handleAssistantOpenChange(false);
+          }}
+          tutorLocked={practicePaperTutorLocked}
+          sheets={sheetsBeside}
+          assistantOpen={assistantOpen}
+          onToggleAssistant={() => handleAssistantOpenChange(!assistantOpen)}
+          practicePaper={{
+            onStatusChange: handlePracticePaperStatusChange,
+            onBeforeSubmit: prepareCurrentPageForNavigation,
+            onRetake: handlePracticePaperRetake,
+            onEditingLockChange: setPracticePaperEditingLocked,
+            onTutorLockChange: setPracticePaperTutorLocked,
+          }}
+        />
         <div className="relative isolate min-h-0 flex-1 overflow-hidden">
         <NotebookToolSettingsPopover
           dock={toolbarDock}
@@ -2397,46 +2240,10 @@ export default function NotebookEditorPage() {
             onGraphInsert={handleTutorGraphInsert}
             onDrawingInsert={handleAddImage}
             onAnswerInsert={handleTutorAnswerInsert}
-            onKeepAttachmentBeside={handleKeepAttachmentBeside}
+            onKeepAttachmentBeside={sheetsBeside.keepAttachment}
           />
         ) : null}
-        {!practicePaperTutorLocked && notebookSheets.open
-          ? notebookSheets.sheets.map((kept) => (
-              <NotebookSheetPanel
-                key={kept.slot}
-                frame={sheetFrames[kept.slot]}
-                sheet={kept.sheet}
-                page={kept.page ?? 0}
-                sheetCount={notebookSheets.sheets.length}
-                onChange={() => setSheetPicker({ replaceSlot: kept.slot })}
-                onPageChange={(page) => notebookSheets.setPage(kept.slot, page)}
-                onAdd={
-                  notebookSheets.sheets.length < MAX_NOTEBOOK_SHEETS
-                    ? () => setSheetPicker({ replaceSlot: null })
-                    : undefined
-                }
-                onHide={() => notebookSheets.setOpen(false)}
-                onClose={() => notebookSheets.remove(kept.slot)}
-              />
-            ))
-          : null}
-        <NotebookSheetPicker
-          open={sheetPicker !== null && !practicePaperTutorLocked}
-          replacing={sheetPicker?.replaceSlot != null}
-          firstSheet={notebookSheets.sheets.length === 0}
-          notebookSheets={notebookSheetChoices}
-          folderSheets={folderSheetChoices.sheets}
-          folderLoading={folderSheetChoices.loading}
-          folderFailed={folderSheetChoices.failed}
-          keptPaths={notebookSheets.sheets.map((kept) => kept.sheet.storagePath)}
-          onPick={(sheet) => {
-            const replaceSlot = sheetPicker?.replaceSlot ?? null;
-            if (replaceSlot !== null) notebookSheets.replace(replaceSlot, sheet);
-            else keepSheetBeside(sheet);
-            setSheetPicker(null);
-          }}
-          onCancel={() => setSheetPicker(null)}
-        />
+        <NotebookSheetsLayer sheets={sheetsBeside} hidden={practicePaperTutorLocked} />
         <NotebookGraphEditorDialog
           open={graphEditorTarget !== null}
           graph={selectedPage?.graphBlocks.find((graph) => graph.id === graphEditorTarget) ?? null}
