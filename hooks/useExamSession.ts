@@ -8,9 +8,13 @@ export type ExamSessionData = Awaited<ReturnType<typeof loadPastPaperPracticeSes
 /**
  * A past-paper session and its attempts, as the server last reported them.
  *
- * Read on opening, and again whenever the page asks. While an answer is being
- * marked or its mark checked, it keeps reading by itself until that settles.
+ * Read on opening, and again whenever the page asks -- which, while an answer
+ * is being marked or its mark checked, `useExamSessionWatch` does by itself.
  */
+function loadFailureMessage(reason: unknown) {
+  return reason instanceof Error ? reason.message : "This session could not be loaded.";
+}
+
 export function useExamSession(sessionId: string) {
   const [data, setData] = useState<ExamSessionData | null>(null);
   const [error, setError] = useState("");
@@ -19,13 +23,24 @@ export function useExamSession(sessionId: string) {
     try {
       setData(await loadPastPaperPracticeSession(sessionId));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "This session could not be loaded.");
+      setError(loadFailureMessage(reason));
     }
   }, [sessionId]);
 
+  // The first read, dropped if the page has moved to another session by the time it lands.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let active = true;
+    loadPastPaperPracticeSession(sessionId)
+      .then((loaded) => {
+        if (active) setData(loaded);
+      })
+      .catch((reason: unknown) => {
+        if (active) setError(loadFailureMessage(reason));
+      });
+    return () => {
+      active = false;
+    };
+  }, [sessionId]);
 
   return { data, setData, error, setError, refresh };
 }
