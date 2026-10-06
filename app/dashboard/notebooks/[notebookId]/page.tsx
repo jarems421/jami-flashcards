@@ -25,9 +25,7 @@ import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground"
 import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
 import NotebookPagesDrawer from "@/components/workspace/NotebookPagesDrawer";
 import NotebookPageNavigation from "@/components/workspace/NotebookPageNavigation";
-import NotebookDrawingToolbar, {
-  type NotebookToolMenu,
-} from "@/components/workspace/NotebookDrawingToolbar";
+import NotebookDrawingToolbar from "@/components/workspace/NotebookDrawingToolbar";
 import NotebookAddPagesDialog from "@/components/workspace/NotebookAddPagesDialog";
 import NotebookPhoneLayoutNotice from "@/components/workspace/NotebookPhoneLayoutNotice";
 import NotebookSaveIndicator from "@/components/workspace/NotebookSaveIndicator";
@@ -50,6 +48,9 @@ import {
 import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
+import { PHONE_LAYOUT_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
+import { useNotebookEditorShell, useNotebookPageUrl } from "@/hooks/useNotebookEditorShell";
+import { useNotebookKeyboardShortcuts } from "@/hooks/useNotebookKeyboardShortcuts";
 import { useNotebookLoader } from "@/hooks/useNotebookLoader";
 import { useNotebookInkController } from "@/hooks/useNotebookInkController";
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
@@ -58,6 +59,7 @@ import {
   useNotebookPersistenceController,
   type NotebookPageSaveResult,
 } from "@/hooks/useNotebookPersistenceController";
+import { useNotebookPlacedItems } from "@/hooks/useNotebookPlacedItems";
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
 import { useNotebookViewportController } from "@/hooks/useNotebookViewportController";
@@ -83,9 +85,7 @@ import {
 import type { TutorAttachment } from "@/lib/ai/tutor-attachments";
 import type {
   NotebookFile,
-  NotebookImageRef,
   NotebookPage,
-  NotebookStrokeTool,
   NotebookTextBlock,
 } from "@/lib/workspace/notebooks";
 import {
@@ -107,13 +107,8 @@ import {
 import {
   clearNotebookNativeSelection,
   installNotebookStylusTouchListeners,
-  installNotebookViewportZoomBlock,
-  isNotebookSelectableTextTarget,
-  isNotebookTextEditingTarget,
-  NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
   safelyReleasePointerCapture,
   safelySetPointerCapture,
-  shouldSuppressNotebookNativeEvent,
 } from "@/lib/workspace/notebook-interaction-lock";
 import {
   clampNotebookPagePan,
@@ -140,27 +135,14 @@ import {
   isWholeNotebookInkSheet,
 } from "@/lib/workspace/notebook-ink-window";
 import {
-  createNotebookGraphBlock,
-  MAX_NOTEBOOK_GRAPHS,
-  type NotebookGraphBlock,
-  type NotebookGraphDraft,
-} from "@/lib/workspace/notebook-graphs";
-import {
   createNotebookPage,
   deleteNotebookPage,
-  updateNotebookPageGraphs,
-  updateNotebookPageImages,
 } from "@/services/study/notebooks";
-import {
-  addUploadedImageToNotebookPage,
-  deleteUploadedNotebookImageFile,
-} from "@/services/study/notebook-page-images";
 import { appendUploadedFileToNotebook } from "@/services/study/notebook-import";
 import {
   legacyStrokesToJsDrawSvg,
 } from "@/lib/workspace/notebook-ink-data";
 import {
-  buildNotebookPageSearch,
   prepareNotebookExit,
 } from "@/lib/workspace/notebook-navigation";
 import { setUnsavedWork } from "@/lib/app/app-build";
@@ -188,21 +170,11 @@ import {
   type NotebookPdfCanvasTracking,
 } from "@/lib/workspace/notebook-pdf-canvas";
 import { getNotebookPaperPalette } from "@/lib/workspace/notebook-paper-palette";
+import {
+  notebookToolMovesPlacedItems,
+} from "@/lib/workspace/notebook-page-state";
 
 type Point = { x: number; y: number };
-type EditorTool = NotebookStrokeTool | "text" | "select";
-
-/*
- * Whether images and graphs can be picked up and moved.
- *
- * There is no select button any more. Select is still where the notebook rests
- * when no tool is on, but on an iPad without a keyboard nothing leads back to
- * it once a pen is chosen -- so the text tool, the one non-drawing tool on the
- * toolbar, moves placed things too.
- */
-function movesPlacedItems(tool: EditorTool) {
-  return tool === "select" || tool === "text";
-}
 type PageSwipeState = {
   pointerId: number;
   startX: number;
@@ -220,8 +192,6 @@ const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
 /** How recently the Pencil was writing for a touch to count as the palm holding it. */
 const RECENT_PENCIL_MS = 5_000;
-// Each edge keeps a generous 32px invisible hit area, but the visible
-// affordance is a slim grip bar sitting on the border, not a bubble.
 
 export default function NotebookEditorPage() {
   const { user } = useUser();
@@ -365,6 +335,8 @@ export default function NotebookEditorPage() {
     eraserMode, setEraserMode, eraserWidth, setEraserWidth,
     penMenuOpen, setPenMenuOpen, highlighterMenuOpen, setHighlighterMenuOpen,
     eraserMenuOpen, setEraserMenuOpen,
+    openMenu: openToolMenu, setMenuOpen: setToolMenuOpen,
+    closeMenus: closeDrawingToolMenus,
     touchInkHintVisible, setTouchInkHintVisible,
     scribbleToErase, setScribbleToErase,
     penSettings, setPenSettings,
@@ -385,16 +357,13 @@ export default function NotebookEditorPage() {
   } = useNotebookPageCreationState();
   const {
     assistantOpen, setAssistantOpen, pagesDrawerOpen, setPagesDrawerOpen,
-    isPhoneLayout, setIsPhoneLayout, phoneFullEditing, setPhoneFullEditing,
+    phoneFullEditing, setPhoneFullEditing,
   } = useNotebookPanelState();
+  const isPhoneLayout = useMediaQuery(PHONE_LAYOUT_QUERY);
   const { practicePaperStatus, handlePracticePaperStatusChange } =
     usePracticePaperStatus(setAssistantOpen);
   const [practicePaperEditingLocked, setPracticePaperEditingLocked] = useState(false);
   const [practicePaperTutorLocked, setPracticePaperTutorLocked] = useState(false);
-  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
-  const [selectedGraphId, setSelectedGraphId] = useState<string | null>(null);
-  /** The id of the graph open in the editor, "new" while one is being made, or null. */
-  const [graphEditorTarget, setGraphEditorTarget] = useState<string | null>(null);
   const handlePracticePaperRetake = usePracticePaperRetake(pageState, setPages, setInkEditorMountRevision);
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
@@ -700,15 +669,7 @@ export default function NotebookEditorPage() {
     selectedPage?.id,
   ]);
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !selectedPage?.id) return;
-    const nextSearch = buildNotebookPageSearch(
-      window.location.search,
-      selectedPage.id
-    );
-    const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
-    window.history.replaceState(window.history.state, "", nextUrl);
-  }, [selectedPage?.id]);
+  useNotebookPageUrl(selectedPage?.id);
 
   // Push the precision/stroke selection straight to the ink editor whenever it
   // changes. This bypasses the deferred style application (which can stall if a
@@ -824,124 +785,44 @@ export default function NotebookEditorPage() {
     scheduleUiCommit: scheduleInkUiSync,
   });
 
-  /*
-   * Image writes run one at a time, and each starts from the list the one
-   * before it left. Two quick moves used to overlap, the second was rejected,
-   * and its image jumped back to where the drag began.
-   */
-  const imageWriteChainRef = useRef<Promise<unknown>>(Promise.resolve());
-  /** The last image list written or asked for, per page, ahead of `pages`. */
-  const latestImageRefsRef = useRef<{ pageId: string; imageRefs: NotebookImageRef[] } | null>(
-    null
-  );
-  const [addingImage, setAddingImage] = useState(false);
-
-  const queueImageWrite = useCallback(<T,>(task: () => Promise<T>) => {
-    const run = imageWriteChainRef.current.then(task, task);
-    imageWriteChainRef.current = run.catch(() => undefined);
-    return run;
-  }, []);
-
-  const currentImageRefsFor = useCallback(
-    (pageId: string) => {
-      const latest = latestImageRefsRef.current;
-      if (latest?.pageId === pageId) return latest.imageRefs;
-      const selected = pageState.read().selectedPage;
-      return selected?.id === pageId ? selected.imageRefs : [];
-    },
-    [pageState]
-  );
-
-  const applyPageImages = useCallback(
-    (pageId: string, imageRefs: NotebookImageRef[], updatedAt: number) => {
-      latestImageRefsRef.current = { pageId, imageRefs };
-      setPages((current) =>
-        current.map((page) =>
-          page.id === pageId ? { ...page, imageRefs, updatedAt } : page
-        )
-      );
-    },
-    [setPages]
-  );
-
-  const handleIllustrationInserted = useCallback(
-    (input: { imageRef: NotebookImageRef; contentRevision: number }) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!pageId) return;
-      const latest = latestImageRefsRef.current;
-      if (
-        latest?.pageId === pageId &&
-        !latest.imageRefs.some((image) => image.sourceAssetId === input.imageRef.sourceAssetId)
-      ) {
-        latestImageRefsRef.current = { pageId, imageRefs: [...latest.imageRefs, input.imageRef] };
-      }
-      setPages((current) =>
-        current.map((page) =>
-          page.id === pageId
-            ? {
-                ...page,
-                imageRefs: page.imageRefs.some(
-                  (image) => image.sourceAssetId === input.imageRef.sourceAssetId
-                )
-                  ? page.imageRefs
-                  : [...page.imageRefs, input.imageRef],
-                contentRevision: input.contentRevision,
-                updatedAt: Date.now(),
-              }
-            : page
-        )
-      );
-      pageState.setContentRevision(input.contentRevision);
-      setSelectedImageId(input.imageRef.id);
-      if (!isPhoneLayout) setTool("select");
-      setSaveStatus("saved");
-      success("Visual added to this page.");
-    },
-    [isPhoneLayout, pageState, setPages, setSaveStatus, setTool, success]
-  );
-
-  /*
-   * Images are their own field, so a move no longer flushes the page first or
-   * touches its revision -- the flush was there to dodge a conflict the image
-   * write itself was causing, and it put a save round-trip in front of every
-   * drop.
-   */
-  const handleNotebookImagesCommit = useCallback(
-    (imageRefs: NotebookImageRef[]) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!user?.uid || !notebookId || !pageId) return Promise.resolve();
-      const userId = user.uid;
-      latestImageRefsRef.current = { pageId, imageRefs };
-      return queueImageWrite(async () => {
-        const result = await updateNotebookPageImages(userId, {
-          notebookId,
-          pageId,
-          imageRefs,
-        });
-        applyPageImages(pageId, imageRefs, result.updatedAt);
-      }).catch((error: unknown) => {
-        latestImageRefsRef.current = null;
-        showThrownError(error, "That image could not be moved. Try again.");
-        throw error;
-      });
-    },
-    [applyPageImages, notebookId, pageState, queueImageWrite, showThrownError, user?.uid]
-  );
-
-  useEffect(() => {
-    setSelectedImageId(null);
-  }, [selectedPage?.id]);
-
-  useEffect(() => {
-    if (!movesPlacedItems(tool)) setSelectedImageId(null);
-  }, [tool]);
+  const {
+    selectedImageId,
+    selectedGraphId,
+    graphEditorTarget,
+    setGraphEditorTarget,
+    addingImage,
+    clearSelection: clearPlacedItemSelection,
+    currentImageRefsFor,
+    currentGraphBlocksFor,
+    handleIllustrationInserted,
+    handleImagesCommit,
+    handleAddImage,
+    handleDeleteImage,
+    handleGraphsCommit,
+    handleSelectGraph,
+    handleSelectImage,
+    handleOpenNewGraph,
+    handleSaveGraph,
+    handleDeleteGraph,
+    handleTutorGraphInsert,
+  } = useNotebookPlacedItems({
+    userId: user?.uid,
+    notebookId,
+    pageState,
+    setPages,
+    openPageId: selectedPage?.id,
+    tool,
+    isPhoneLayout,
+    closeToolMenus: closeDrawingToolMenus,
+    success,
+    showError,
+    showThrownError,
+  });
 
   // With js-draw as the single ink engine, switching tools only updates the
   // desired style; NotebookInkEditor defers applying it while a pointer is
   // still down, so no flush/commit step is needed.
-  const switchNotebookTool = useCallback((nextTool: EditorTool) => {
-    setTool(nextTool);
-  }, [setTool]);
+  const switchNotebookTool = setTool;
 
   const commitTextBlockHistory = useCallback(
     (previous: NotebookTextBlock[], next: NotebookTextBlock[]) => {
@@ -1031,26 +912,14 @@ export default function NotebookEditorPage() {
     ) {
       clearTextBlockSelection();
     }
-    if (selectedImageId !== null) setSelectedImageId(null);
-    if (selectedGraphId !== null) setSelectedGraphId(null);
+    clearPlacedItemSelection();
   }, [
+    clearPlacedItemSelection,
     clearTextBlockSelection,
     editingTextBlockId,
     openTextBlockOptionsId,
-    selectedGraphId,
-    selectedImageId,
     selectedTextBlockId,
   ]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mediaQuery = window.matchMedia("(max-width: 767px)");
-    const update = () => setIsPhoneLayout(mediaQuery.matches);
-    update();
-    mediaQuery.addEventListener("change", update);
-    return () => mediaQuery.removeEventListener("change", update);
-  }, [setIsPhoneLayout]);
 
   useEffect(() => {
     setScribbleToErase(readNotebookScribbleErasePreference());
@@ -1169,64 +1038,7 @@ export default function NotebookEditorPage() {
     });
   }, [pageColor, setPenColor]);
 
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-
-    const root = document.documentElement;
-    const themeColorMeta = document.querySelector<HTMLMetaElement>(
-      'meta[name="theme-color"]'
-    );
-    const previousRootBackground = root.style.background;
-    const previousBodyBackground = document.body.style.background;
-    const previousThemeColor = themeColorMeta?.content;
-    const notebookSurfaceColor =
-      window
-        .getComputedStyle(root)
-        .getPropertyValue("--color-surface-base")
-        .trim() || "#0d1018";
-
-    root.style.background = notebookSurfaceColor;
-    document.body.style.background = notebookSurfaceColor;
-    if (themeColorMeta) {
-      themeColorMeta.content = notebookSurfaceColor;
-    }
-    document.body.classList.add(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
-
-    const preventIfOutsideTextEditor = (event: Event) => {
-      if (!shouldSuppressNotebookNativeEvent(event.target)) return;
-      event.preventDefault();
-      clearNotebookNativeSelection(document);
-    };
-    const clearSelectionIfOutsideTextEditor = () => {
-      if (isNotebookTextEditingTarget(document.activeElement)) return;
-      // A selection being made in the Tutor's answers, to copy them.
-      if (isNotebookSelectableTextTarget(document.getSelection()?.anchorNode ?? null)) return;
-      clearNotebookNativeSelection(document);
-    };
-
-    const nativeEditingEvents =
-      ["selectstart", "contextmenu", "dragstart", "copy", "cut", "paste"];
-    for (const type of nativeEditingEvents) {
-      document.addEventListener(type, preventIfOutsideTextEditor, true);
-    }
-    document.addEventListener("selectionchange", clearSelectionIfOutsideTextEditor);
-    // The browser's own pinch zoom would otherwise run alongside the sheet's.
-    const releaseViewportZoomBlock = installNotebookViewportZoomBlock(document);
-
-    return () => {
-      releaseViewportZoomBlock();
-      document.body.classList.remove(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
-      root.style.background = previousRootBackground;
-      document.body.style.background = previousBodyBackground;
-      if (themeColorMeta && previousThemeColor !== undefined) {
-        themeColorMeta.content = previousThemeColor;
-      }
-      for (const type of nativeEditingEvents) {
-        document.removeEventListener(type, preventIfOutsideTextEditor, true);
-      }
-      document.removeEventListener("selectionchange", clearSelectionIfOutsideTextEditor);
-    };
-  }, []);
+  useNotebookEditorShell();
 
   useEffect(() => {
     const clearActiveInteractions = () => {
@@ -2344,19 +2156,6 @@ export default function NotebookEditorPage() {
     setNotebookUploadProgress(null);
   };
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const search = new URLSearchParams(window.location.search);
-    if (!search.has("settings")) return;
-    search.delete("settings");
-    const query = search.toString();
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`
-    );
-  }, []);
-
   const handleAddNotebookFile = async () => {
     if (!user?.uid || !notebook || !notebookFile) return;
     setAddingNotebookFile(true);
@@ -2409,95 +2208,17 @@ export default function NotebookEditorPage() {
     markPageUnsaved();
   };
 
-  useEffect(() => {
-    if (!fullNotebookEditingEnabled) return;
-
-    const handleShortcut = (event: KeyboardEvent) => {
-      if (isNotebookTextEditingTarget(event.target)) return;
-      const key = event.key.toLowerCase();
-
-      if ((event.ctrlKey || event.metaKey) && key === "z") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          handleRedo();
-        } else {
-          handleUndo();
-        }
-        return;
-      }
-      // Windows' own redo, which the practice sheet already answered to.
-      if ((event.ctrlKey || event.metaKey) && key === "y") {
-        event.preventDefault();
-        handleRedo();
-        return;
-      }
-
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (key === "t") {
-        switchNotebookTool(pageState.read().tool === "text" ? "select" : "text");
-      }
-      if (key === "p") {
-        switchNotebookTool(pageState.read().tool === "pen" ? "select" : "pen");
-      }
-      if (key === "h") {
-        switchNotebookTool(
-          pageState.read().tool === "highlighter" ? "select" : "highlighter"
-        );
-      }
-      if (key === "e") {
-        switchNotebookTool(
-          pageState.read().tool === "eraser" ? "select" : "eraser"
-        );
-      }
-      if (key === "v") {
-        switchNotebookTool("select");
-      }
-      if (key === "escape") {
-        switchNotebookTool("select");
-        setPenMenuOpen(false);
-        setHighlighterMenuOpen(false);
-        setEraserMenuOpen(false);
-        clearPlacedSelection();
-      }
-    };
-
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, [
-    clearPlacedSelection,
-    fullNotebookEditingEnabled,
-    handleRedo,
-    handleUndo,
-    pageState,
-    setEraserMenuOpen,
-    setHighlighterMenuOpen,
-    setPenMenuOpen,
-    switchNotebookTool,
-  ]);
-
-  const closeDrawingToolMenus = useCallback(() => {
-    setPenMenuOpen(false);
-    setHighlighterMenuOpen(false);
-    setEraserMenuOpen(false);
-  }, [setEraserMenuOpen, setHighlighterMenuOpen, setPenMenuOpen]);
-
-  /** Which tool options popover is showing. The three are mutually exclusive. */
-  const openToolMenu: NotebookToolMenu = penMenuOpen
-    ? "pen"
-    : highlighterMenuOpen
-      ? "highlighter"
-      : eraserMenuOpen
-        ? "eraser"
-        : null;
-
-  const setToolMenuOpen = useCallback(
-    (menu: Exclude<NotebookToolMenu, null>, open: boolean) => {
-      setPenMenuOpen(menu === "pen" && open);
-      setHighlighterMenuOpen(menu === "highlighter" && open);
-      setEraserMenuOpen(menu === "eraser" && open);
+  useNotebookKeyboardShortcuts({
+    enabled: fullNotebookEditingEnabled,
+    readTool: () => pageState.read().tool,
+    switchTool: switchNotebookTool,
+    undo: handleUndo,
+    redo: handleRedo,
+    onEscape: () => {
+      closeDrawingToolMenus();
+      clearPlacedSelection();
     },
-    [setEraserMenuOpen, setHighlighterMenuOpen, setPenMenuOpen]
-  );
+  });
 
   const lastToolPressRef = useRef<NotebookToolPress | null>(null);
 
@@ -2568,224 +2289,6 @@ export default function NotebookEditorPage() {
     takeToolDoublePress,
   ]);
 
-
-  /** Resolves true once the image is on the page; failures are shown here. */
-  const handleAddImage = useCallback(
-    (file: File): Promise<boolean> => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!user?.uid || !notebookId || !pageId) return Promise.resolve(false);
-      const userId = user.uid;
-      closeDrawingToolMenus();
-      setAddingImage(true);
-      return queueImageWrite(async () => {
-        const result = await addUploadedImageToNotebookPage({
-          userId,
-          notebookId,
-          pageId,
-          file,
-          currentImageRefs: currentImageRefsFor(pageId),
-        });
-        applyPageImages(pageId, result.imageRefs, result.updatedAt);
-        if (pageState.read().selectedPage?.id === pageId) {
-          // Selected and ready to move, which is almost always the next thing.
-          switchNotebookTool("select");
-          setSelectedImageId(result.imageRef.id);
-        }
-        return true;
-      })
-        .catch((error: unknown) => {
-          showThrownError(error, "That image could not be added. Try again.");
-          return false;
-        })
-        .finally(() => setAddingImage(false));
-    },
-    [
-      applyPageImages,
-      closeDrawingToolMenus,
-      currentImageRefsFor,
-      notebookId,
-      pageState,
-      queueImageWrite,
-      showThrownError,
-      switchNotebookTool,
-      user?.uid,
-    ]
-  );
-
-  const handleDeleteImage = useCallback(
-    (imageId: string) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!user?.uid || !notebookId || !pageId) return;
-      const userId = user.uid;
-      const before = currentImageRefsFor(pageId);
-      const removed = before.find((image) => image.id === imageId);
-      if (!removed) return;
-      const imageRefs = before.filter((image) => image.id !== imageId);
-      setSelectedImageId(null);
-      // Gone at once; put back only if the page write is refused.
-      applyPageImages(pageId, imageRefs, Date.now());
-      void queueImageWrite(async () => {
-        await updateNotebookPageImages(userId, { notebookId, pageId, imageRefs });
-        await deleteUploadedNotebookImageFile(removed);
-      }).catch((error: unknown) => {
-        applyPageImages(pageId, before, Date.now());
-        showThrownError(error, "That image could not be deleted. Try again.");
-      });
-    },
-    [applyPageImages, currentImageRefsFor, notebookId, pageState, queueImageWrite, showThrownError, user?.uid]
-  );
-
-  /** The last graph list written or asked for, per page, ahead of `pages`. */
-  const latestGraphBlocksRef = useRef<{ pageId: string; graphBlocks: NotebookGraphBlock[] } | null>(
-    null
-  );
-
-  const currentGraphBlocksFor = useCallback(
-    (pageId: string) => {
-      const latest = latestGraphBlocksRef.current;
-      if (latest?.pageId === pageId) return latest.graphBlocks;
-      const selected = pageState.read().selectedPage;
-      return selected?.id === pageId ? selected.graphBlocks : [];
-    },
-    [pageState]
-  );
-
-  const applyPageGraphs = useCallback(
-    (pageId: string, graphBlocks: NotebookGraphBlock[], updatedAt: number) => {
-      latestGraphBlocksRef.current = { pageId, graphBlocks };
-      setPages((current) =>
-        current.map((page) => (page.id === pageId ? { ...page, graphBlocks, updatedAt } : page))
-      );
-    },
-    [setPages]
-  );
-
-  /*
-   * Shown at once and saved behind, through the image write queue: graphs and
-   * images are both single fields on the page, and one queue keeps two quick
-   * edits from landing in the wrong order. A refused write puts back what was
-   * there and says so, so callers do not report failures themselves.
-   */
-  const writePageGraphs = useCallback(
-    async (pageId: string, graphBlocks: NotebookGraphBlock[], failureMessage: string) => {
-      if (!user?.uid || !notebookId) return false;
-      const userId = user.uid;
-      const before = currentGraphBlocksFor(pageId);
-      applyPageGraphs(pageId, graphBlocks, Date.now());
-      const stillLatest = () => latestGraphBlocksRef.current?.graphBlocks === graphBlocks;
-      try {
-        await queueImageWrite(async () => {
-          const result = await updateNotebookPageGraphs(userId, { notebookId, pageId, graphBlocks });
-          // A newer edit already on screen is not replaced by this older one.
-          if (stillLatest()) applyPageGraphs(pageId, graphBlocks, result.updatedAt);
-        });
-        return true;
-      } catch (error) {
-        if (stillLatest()) applyPageGraphs(pageId, before, Date.now());
-        showThrownError(error, failureMessage);
-        return false;
-      }
-    },
-    [applyPageGraphs, currentGraphBlocksFor, notebookId, queueImageWrite, showThrownError, user?.uid]
-  );
-
-  const handleNotebookGraphsCommit = useCallback(
-    async (graphBlocks: NotebookGraphBlock[]) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (pageId) await writePageGraphs(pageId, graphBlocks, "That graph could not be changed. Try again.");
-    },
-    [pageState, writePageGraphs]
-  );
-
-  // One thing selected at a time, so the options showing belong to what was tapped last.
-  const handleSelectGraph = useCallback((graphId: string | null) => {
-    setSelectedGraphId(graphId);
-    if (graphId) setSelectedImageId(null);
-  }, []);
-
-  const handleSelectImage = useCallback((imageId: string | null) => {
-    setSelectedImageId(imageId);
-    if (imageId) setSelectedGraphId(null);
-  }, []);
-
-  const handleOpenNewGraph = useCallback(() => {
-    closeDrawingToolMenus();
-    setGraphEditorTarget("new");
-  }, [closeDrawingToolMenus]);
-
-  const selectPlacedGraph = useCallback(
-    (graphId: string) => {
-      if (isPhoneLayout) return;
-      // Selected and ready to move or resize, which is almost always next.
-      switchNotebookTool("select");
-      setSelectedGraphId(graphId);
-      setSelectedImageId(null);
-    },
-    [isPhoneLayout, switchNotebookTool]
-  );
-
-  const handleSaveGraph = useCallback(
-    (draft: NotebookGraphDraft) => {
-      const pageId = pageState.read().selectedPage?.id;
-      const target = graphEditorTarget;
-      setGraphEditorTarget(null);
-      if (!pageId || !target) return;
-      const current = currentGraphBlocksFor(pageId);
-      const existing = current.find((graph) => graph.id === target);
-      if (existing) {
-        const { id, x, y, width, height } = existing;
-        void writePageGraphs(
-          pageId,
-          current.map((graph) => (graph.id === id ? { id, x, y, width, height, ...draft } : graph)),
-          "That graph could not be saved. Try again."
-        );
-        selectPlacedGraph(id);
-        return;
-      }
-      if (current.length >= MAX_NOTEBOOK_GRAPHS) {
-        showError(`A page can hold up to ${MAX_NOTEBOOK_GRAPHS} graphs. Delete one to add another.`);
-        return;
-      }
-      const created = createNotebookGraphBlock(crypto.randomUUID(), draft);
-      void writePageGraphs(pageId, [...current, created], "That graph could not be added. Try again.");
-      selectPlacedGraph(created.id);
-    },
-    [currentGraphBlocksFor, graphEditorTarget, pageState, selectPlacedGraph, showError, writePageGraphs]
-  );
-
-  const handleDeleteGraph = useCallback(
-    (graphId: string) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!pageId) return;
-      setSelectedGraphId(null);
-      void writePageGraphs(
-        pageId,
-        currentGraphBlocksFor(pageId).filter((graph) => graph.id !== graphId),
-        "That graph could not be deleted. Try again."
-      );
-    },
-    [currentGraphBlocksFor, pageState, writePageGraphs]
-  );
-
-  const handleTutorGraphInsert = useCallback(
-    async (draft: NotebookGraphDraft) => {
-      const pageId = pageState.read().selectedPage?.id;
-      if (!pageId) return false;
-      const current = currentGraphBlocksFor(pageId);
-      if (current.length >= MAX_NOTEBOOK_GRAPHS) {
-        showError(`A page can hold up to ${MAX_NOTEBOOK_GRAPHS} graphs. Delete one to add this one.`);
-        return false;
-      }
-      const created = createNotebookGraphBlock(crypto.randomUUID(), draft);
-      const added = await writePageGraphs(pageId, [...current, created], "That graph could not be added. Try again.");
-      if (!added) return false;
-      if (pageState.read().selectedPage?.id === pageId) selectPlacedGraph(created.id);
-      success("Graph added to this page.");
-      return true;
-    },
-    [currentGraphBlocksFor, pageState, selectPlacedGraph, showError, success, writePageGraphs]
-  );
-
   /** A Tutor answer, added to this page exactly as the Tutor showed it. */
   const handleTutorAnswerInsert = useCallback(
     (text: string) => {
@@ -2823,15 +2326,6 @@ export default function NotebookEditorPage() {
       success,
     ]
   );
-
-  useEffect(() => {
-    setSelectedGraphId(null);
-    setGraphEditorTarget(null);
-  }, [selectedPage?.id]);
-
-  useEffect(() => {
-    if (!movesPlacedItems(tool)) setSelectedGraphId(null);
-  }, [tool]);
 
   const handleToolbarUndo = useCallback(() => {
     closeDrawingToolMenus();
@@ -3436,27 +2930,27 @@ export default function NotebookEditorPage() {
                   <NotebookImageLayer
                     images={selectedPage.imageRefs}
                     editingEnabled={
-                      movesPlacedItems(tool) &&
+                      notebookToolMovesPlacedItems(tool) &&
                       fullNotebookEditingEnabled &&
                       !isPhoneLayout &&
                       !practicePaperEditingLocked
                     }
                     selectedImageId={selectedImageId}
                     onSelect={handleSelectImage}
-                    onCommit={handleNotebookImagesCommit}
+                    onCommit={handleImagesCommit}
                     onDelete={handleDeleteImage}
                   />
                   <NotebookGraphLayer
                     graphs={selectedPage.graphBlocks}
                     editingEnabled={
-                      movesPlacedItems(tool) &&
+                      notebookToolMovesPlacedItems(tool) &&
                       fullNotebookEditingEnabled &&
                       !isPhoneLayout &&
                       !practicePaperEditingLocked
                     }
                     selectedGraphId={selectedGraphId}
                     onSelect={handleSelectGraph}
-                    onCommit={handleNotebookGraphsCommit}
+                    onCommit={handleGraphsCommit}
                     onEdit={setGraphEditorTarget}
                     onDelete={handleDeleteGraph}
                   />

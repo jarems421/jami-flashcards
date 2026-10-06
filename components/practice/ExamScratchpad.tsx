@@ -12,7 +12,7 @@ import {
 } from "react";
 import { Button, ConfirmDialog } from "@/components/ui";
 import { BLANK_PAGE, pagesToPng } from "@/lib/practice/exam-working-snapshot";
-import type { NotebookToolMenu } from "@/components/workspace/NotebookDrawingToolbar";
+import type { NotebookToolMenu } from "@/lib/workspace/notebook-toolbar";
 import NotebookToolSettingsPopover from "@/components/workspace/NotebookToolSettingsPopover";
 import ToolbarIconButton from "@/components/workspace/NotebookToolbarIconButton";
 

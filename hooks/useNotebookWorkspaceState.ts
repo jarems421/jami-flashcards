@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { NotebookPageSwipeMotion } from "@/lib/workspace/notebook-carousel";
 import type {
   NotebookEraserMode,
   NotebookEraserSize,
 } from "@/lib/workspace/notebook-eraser";
 import type { NotebookPagePan } from "@/lib/workspace/notebook-inking";
+import type { NotebookToolMenu } from "@/lib/workspace/notebook-toolbar";
 import {
   NOTEBOOK_PEN_SETTINGS_DEFAULT,
   type NotebookPenSettings,
@@ -43,7 +44,33 @@ export function useNotebookDrawingToolState() {
   const [penSettings, setPenSettings] = useState<NotebookPenSettings>(
     NOTEBOOK_PEN_SETTINGS_DEFAULT
   );
+
+  /** Which options popover is showing. The three are mutually exclusive. */
+  const openMenu: NotebookToolMenu = penMenuOpen
+    ? "pen"
+    : highlighterMenuOpen
+      ? "highlighter"
+      : eraserMenuOpen
+        ? "eraser"
+        : null;
+  const setMenuOpen = useCallback(
+    (menu: Exclude<NotebookToolMenu, null>, open: boolean) => {
+      setPenMenuOpen(menu === "pen" && open);
+      setHighlighterMenuOpen(menu === "highlighter" && open);
+      setEraserMenuOpen(menu === "eraser" && open);
+    },
+    []
+  );
+  const closeMenus = useCallback(() => {
+    setPenMenuOpen(false);
+    setHighlighterMenuOpen(false);
+    setEraserMenuOpen(false);
+  }, []);
+
   return {
+    openMenu,
+    setMenuOpen,
+    closeMenus,
     penSettings,
     setPenSettings,
     penColor,
@@ -144,7 +171,6 @@ export function useNotebookPageCreationState() {
 export function useNotebookPanelState() {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [pagesDrawerOpen, setPagesDrawerOpen] = useState(false);
-  const [isPhoneLayout, setIsPhoneLayout] = useState(false);
   const [phoneFullEditing, setPhoneFullEditing] = useState(false);
 
   return {
@@ -152,8 +178,6 @@ export function useNotebookPanelState() {
     setAssistantOpen,
     pagesDrawerOpen,
     setPagesDrawerOpen,
-    isPhoneLayout,
-    setIsPhoneLayout,
     phoneFullEditing,
     setPhoneFullEditing,
   };

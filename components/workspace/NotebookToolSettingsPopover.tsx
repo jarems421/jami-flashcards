@@ -1,10 +1,8 @@
 "use client";
 
 import InkColorPicker from "@/components/workspace/NotebookInkColorPicker";
-import {
-  NOTEBOOK_TOOL_SETTINGS_ID,
-  type NotebookToolMenu,
-} from "@/components/workspace/NotebookDrawingToolbar";
+import { NOTEBOOK_TOOL_SETTINGS_ID } from "@/components/workspace/NotebookDrawingToolbar";
+import type { NotebookToolMenu } from "@/lib/workspace/notebook-toolbar";
 import NotebookPenAdvancedSettings from "@/components/workspace/NotebookPenAdvancedSettings";
 import SettingSwitch from "@/components/ui/SettingSwitch";
 import SmoothingSlider from "@/components/workspace/NotebookSmoothingSlider";

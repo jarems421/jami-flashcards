@@ -7,12 +7,11 @@ import { getNotebookStrokePaintColor } from "@/lib/workspace/notebook-page-conte
 import {
   isNotebookToolbarSideDock,
   type NotebookToolbarDock,
+  type NotebookToolMenu,
 } from "@/lib/workspace/notebook-toolbar";
 import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
 import type { NotebookEditorTool } from "@/lib/workspace/notebook-page-state";
 
-/** Which tool's options popover is open, if any. */
-export type NotebookToolMenu = "pen" | "highlighter" | "eraser" | null;
 export const NOTEBOOK_TOOL_SETTINGS_ID = "notebook-tool-settings";
 
 /** Position per dock edge. Side docks respect the device safe-area inset. */

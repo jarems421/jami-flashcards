@@ -3,11 +3,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  NotebookDrawingToolbar,
-  type NotebookToolMenu,
-} from "@/components/workspace/NotebookDrawingToolbar";
-import type { NotebookToolbarDock } from "@/lib/workspace/notebook-toolbar";
+import { NotebookDrawingToolbar } from "@/components/workspace/NotebookDrawingToolbar";
+import type { NotebookToolbarDock, NotebookToolMenu } from "@/lib/workspace/notebook-toolbar";
 import type { NotebookEditorTool } from "@/lib/workspace/notebook-page-state";
 
 let container: HTMLDivElement;
