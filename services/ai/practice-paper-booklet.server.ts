@@ -2,7 +2,8 @@ import "server-only";
 
 import type { PracticePaperPdfLayout } from "@/lib/practice/paper-pdf-layout";
 import type { GeneratedPracticePaper } from "@/lib/practice/practice-papers";
-import { buildNotebookFilePayload, buildNotebookPagePayload } from "@/lib/workspace/notebooks";
+import { buildNotebookFilePayload } from "@/lib/workspace/notebooks";
+import { buildNotebookPagePayload } from "@/lib/workspace/notebook-page-writes";
 import { getAdminStorageBucket } from "@/services/firebase/admin";
 import { renderPracticePaperPdf } from "@/services/practice/practice-paper-pdf.server";
 

@@ -1,9 +1,7 @@
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import { doc, setDoc } from "firebase/firestore";
-import {
-  buildNotebookPagePayload,
-  buildNotebookPayload,
-} from "@/lib/workspace/notebooks";
+import { buildNotebookPayload } from "@/lib/workspace/notebooks";
+import { buildNotebookPagePayload } from "@/lib/workspace/notebook-page-writes";
 import { buildStudyFolderPayload } from "@/lib/workspace/study-folders";
 import { seedExamPractice } from "./exam-fixtures";
 import {

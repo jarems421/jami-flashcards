@@ -24,7 +24,6 @@ import {
   type CachedReadOptions,
 } from "@/services/cache/read-through";
 import {
-  buildNotebookPagePayload,
   buildNotebookPayload,
   buildNotebookFilePayload,
   mapNotebookData,
@@ -36,7 +35,6 @@ import {
   normalizeNotebookStrokeData,
   normalizeNotebookTitle,
   normalizeNotebookPreviewSvg,
-  prepareNotebookPageSnapshotForPersistence,
   MAX_NOTEBOOK_IMAGE_REFS,
   type Notebook,
   type NotebookFile,
@@ -51,6 +49,10 @@ import {
   type NotebookTextBlock,
   type NotebookType,
 } from "@/lib/workspace/notebooks";
+import {
+  buildNotebookPagePayload,
+  prepareNotebookPageSnapshotForPersistence,
+} from "@/lib/workspace/notebook-page-writes";
 import {
   isNotebookInkRecordWithinLimits,
   mergeNotebookPageInk,

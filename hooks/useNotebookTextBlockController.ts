@@ -26,8 +26,8 @@ import {
   MAX_NOTEBOOK_TEXT_BLOCKS,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
-  resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
+import { resizeNotebookTextBlockFromEdge } from "@/lib/workspace/notebook-placement";
 import {
   clampNotebookTextBlock,
   getNotebookTextBlockOptionsElementId,

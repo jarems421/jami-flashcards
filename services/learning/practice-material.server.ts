@@ -1,6 +1,7 @@
 import "server-only";
 
-import { buildNotebookPagePayload, buildNotebookPayload } from "@/lib/workspace/notebooks";
+import { buildNotebookPayload } from "@/lib/workspace/notebooks";
+import { buildNotebookPagePayload } from "@/lib/workspace/notebook-page-writes";
 import { buildPracticePaperPayload } from "@/lib/practice/practice-papers";
 import { practiceToStore } from "@/lib/learning/interventions/practice-store";
 import type { PracticeQuestionDraft } from "@/lib/learning/interventions/practice-request";

@@ -5,11 +5,8 @@ import {
 } from "@/services/firebase/storage-files";
 import { buildNotebookStoragePath } from "@/services/study/notebook-files";
 import { updateNotebookPageImages } from "@/services/study/notebooks";
-import {
-  createCenteredNotebookImageRef,
-  MAX_NOTEBOOK_IMAGE_REFS,
-  type NotebookImageRef,
-} from "@/lib/workspace/notebooks";
+import { MAX_NOTEBOOK_IMAGE_REFS, type NotebookImageRef } from "@/lib/workspace/notebooks";
+import { createCenteredNotebookImageRef } from "@/lib/workspace/notebook-placement";
 import {
   getNotebookPageImageDisplaySize,
   validateNotebookPageImage,

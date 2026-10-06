@@ -7,11 +7,8 @@ import {
   normalizeAssistantIllustrations,
   type AssistantImageIllustration,
 } from "@/lib/ai/jami-assistant";
-import {
-  createCenteredNotebookImageRef,
-  MAX_NOTEBOOK_IMAGE_REFS,
-  normalizeNotebookImageRefs,
-} from "@/lib/workspace/notebooks";
+import { MAX_NOTEBOOK_IMAGE_REFS, normalizeNotebookImageRefs } from "@/lib/workspace/notebooks";
+import { createCenteredNotebookImageRef } from "@/lib/workspace/notebook-placement";
 import {
   assistantAssetError,
   authenticateAssistantAssetRequest,

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
-import { buildNotebookPagePayload, type NotebookImageRef } from "@/lib/workspace/notebooks";
+import type { NotebookImageRef } from "@/lib/workspace/notebooks";
+import { buildNotebookPagePayload } from "@/lib/workspace/notebook-page-writes";
 import { EXAM_ID_PATTERN, type ExamAttempt, type ExamQuestion, type ExamSession } from "@/lib/practice/exam-questions";
 import { normalizeQuestionAssets, type PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
