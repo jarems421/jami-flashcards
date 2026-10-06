@@ -91,3 +91,20 @@ export function splitExamAnswerParts(text: string, labels: readonly string[]): s
 export function examAnswerPartMaxLength(partCount: number) {
   return Math.floor(EXAM_ANSWER_MAX_LENGTH / Math.max(1, partCount)) - LABEL_OVERHEAD;
 }
+
+/**
+ * How a typed answer opens: in one box, or in a box for each part it was
+ * written in. A question that asks for parts opens by part even over an
+ * answer typed in one box before it could; that answer goes into the first
+ * part, to be moved.
+ */
+export function examAnswerOpeningLayout(prompt: string, text: string): { labels: string[]; texts: string[] } {
+  const asked = detectExamAnswerParts(prompt);
+  const labels = asked.length > 0 ? asked : examAnswerPartLabelsIn(text);
+  if (labels.length === 0) return { labels, texts: [] };
+  const texts = splitExamAnswerParts(text, labels);
+  if (texts) return { labels, texts };
+  return asked.length > 0
+    ? { labels, texts: [text.trim(), ...labels.slice(1).map(() => "")] }
+    : { labels: [], texts: [] };
+}

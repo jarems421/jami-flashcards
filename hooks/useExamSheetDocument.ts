@@ -74,7 +74,8 @@ export function useExamSheetDocument({
   editorRef: RefObject<NotebookInkEditorHandle | null>;
   isInking: () => boolean;
   onHandle(handle: ExamScratchpadHandle | null): void;
-  onInkChange?(hasInk: boolean): void;
+  /** Whether the sheet has ink, named by attempt so a report from a sheet being left is never read as the next one's. */
+  onInkChange?(hasInk: boolean, attemptId: string): void;
 }) {
   const mountedRef = useRef(true);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -149,7 +150,7 @@ export function useExamSheetDocument({
         loadedRef.current = true;
         setPageIndex(0);
         setPageSvgs(reopened.pages);
-        onInkChange?.(pageInkRef.current.some(Boolean));
+        onInkChange?.(pageInkRef.current.some(Boolean), attemptId);
       })
       // An empty sheet after a failed read is not an empty sheet: writing to it
       // would replace working that is still there. Offer a retry instead.
@@ -183,7 +184,7 @@ export function useExamSheetDocument({
        * stroke and erasing it leaves history behind and no ink, and the sheet
        * would still have claimed it was being sent with the answer.
        */
-      onInkChange?.(pageInkRef.current.some(Boolean));
+      onInkChange?.(pageInkRef.current.some(Boolean), attemptId);
       try {
         await saveExamScratchpad(userId, attemptId, compactExamWorkingPages(pages));
         if (mountedRef.current) setSaveProblem("");
@@ -314,8 +315,8 @@ export function useExamSheetDocument({
     const otherPagesHaveInk = pageInkRef.current.some(
       (hasInk, index) => hasInk && index !== pageIndexRef.current
     );
-    onInkChange?.(undo > 0 || otherPagesHaveInk);
-  }, [onInkChange]);
+    onInkChange?.(undo > 0 || otherPagesHaveInk, attemptId);
+  }, [attemptId, onInkChange]);
 
   const scheduleUiSync = useCallback(() => {
     if (uiSyncTimer.current) clearTimeout(uiSyncTimer.current);

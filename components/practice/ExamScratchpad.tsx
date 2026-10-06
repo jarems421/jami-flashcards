@@ -89,7 +89,7 @@ function ExamScratchpad({
   /** Where a printed page's image is fetched from, given its asset id. */
   assetPath(assetId: string): string;
   onHandle(handle: ExamScratchpadHandle | null): void;
-  onInkChange?(hasInk: boolean): void;
+  onInkChange?(hasInk: boolean, attemptId: string): void;
 }) {
   const editorRef = useRef<NotebookInkEditorHandle | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
