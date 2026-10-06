@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   cleanDiagramLabels,
-  cropLabels,
   describeOcclusionMask,
   getOcclusionPrompt,
-  getPointerLine,
   normalizeCardOcclusion,
   type OcclusionLabel,
   type OcclusionMaskLook,
 } from "@/lib/study/image-occlusion";
+import { cropLabels, getPointerLine } from "@/lib/study/image-occlusion-geometry";
 import { createDiagramEditorState, diagramEditorReducer } from "@/lib/study/image-occlusion-editor";
 
 const slot: OcclusionLabel = {

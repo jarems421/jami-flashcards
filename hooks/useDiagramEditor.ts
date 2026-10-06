@@ -8,17 +8,15 @@ import {
   MAX_DIAGRAM_GROUPS,
   MAX_DIAGRAM_LABELS,
   MAX_SHAPES_PER_LABEL,
-  cropLabels,
   getDiagramDraftError,
   isWholeDiagramGroupId,
-  moveShape,
   type OcclusionCardStyle,
-  type OcclusionCrop,
   type OcclusionLabel,
   type OcclusionLabelMode,
   type OcclusionPointer,
   type OcclusionShape,
 } from "@/lib/study/image-occlusion";
+import { cropLabels, moveShape, type OcclusionCrop } from "@/lib/study/image-occlusion-geometry";
 import {
   createDiagramEditorState,
   diagramEditorReducer,

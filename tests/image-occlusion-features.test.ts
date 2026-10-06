@@ -8,22 +8,24 @@ import { findConfusedLabel, summariseDiagramConfusions } from "@/lib/study/diagr
 import { labelsFromDetections, parseDetectedLabels } from "@/lib/study/diagram-label-detection";
 import {
   cleanAcceptedAnswers,
-  cropLabels,
   getDiagramDistractorPool,
   getDiagramDraftError,
   getOcclusionMasks,
   getOcclusionPrompt,
-  getPointerLine,
   normalizeCardOcclusion,
   planDiagramCleanup,
   planDiagramSave,
-  polygonShapeFromPath,
-  resizeShape,
-  shapeContainsPoint,
   type OcclusionDiagram,
   type OcclusionLabel,
   type OcclusionShape,
 } from "@/lib/study/image-occlusion";
+import {
+  cropLabels,
+  getPointerLine,
+  polygonShapeFromPath,
+  resizeShape,
+  shapeContainsPoint,
+} from "@/lib/study/image-occlusion-geometry";
 import { createDiagramEditorState, diagramEditorReducer } from "@/lib/study/image-occlusion-editor";
 import { buildMultipleChoiceQuestion } from "@/lib/study/mcq";
 import { getClassicEligibility, getMultipleChoiceEligibility, getTypeAnswerEligibility } from "@/lib/study/mode-eligibility";

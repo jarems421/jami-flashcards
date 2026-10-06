@@ -8,7 +8,6 @@ import {
   getOcclusionLabel,
   getOcclusionMasks,
   getOcclusionTargets,
-  getPointerLine,
   type CardOcclusion,
   type OcclusionDiagram,
   type OcclusionMask,
@@ -17,6 +16,7 @@ import {
   type OcclusionPointer,
   type OcclusionShape,
 } from "@/lib/study/image-occlusion";
+import { getPointerLine } from "@/lib/study/image-occlusion-geometry";
 
 const percent = (value: number) => `${value * 100}%`;
 
