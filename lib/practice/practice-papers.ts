@@ -215,15 +215,7 @@ export type PracticePaperGradeGuidance = {
   };
 };
 
-export type {
-  PracticePaperMarkSchemeItem,
-  PracticePaperMarkingModel,
-  PracticePaperMarkPoint,
-  PracticePaperMarkBand,
-  PracticePaperMarkTrait,
-  PracticePaperCompetency,
-  PracticePaperExpectedValue,
-} from "@/lib/practice/mark-schemes";
+export type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
 
 export type PracticePaperMarkScheme = {
   kind: PracticePaperMarkSchemeKind;

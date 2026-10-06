@@ -1,6 +1,5 @@
 import type { GeneratedCardDraft } from "@/lib/ai/card-generation";
 import type { PracticeQuestionDraft } from "@/lib/learning/interventions/practice-request";
-import type { InterventionType } from "@/lib/learning/interventions/catalogue";
 
 /**
  * Material Jami has written and nobody has agreed to yet.
@@ -17,11 +16,6 @@ import type { InterventionType } from "@/lib/learning/interventions/catalogue";
  * scored, and the only thing that turns it into material is a person saying
  * yes.
  */
-
-export type InterventionDraftKind = Extract<
-  InterventionType,
-  "create_flashcards" | "create_practice"
->;
 
 /** What the student is being shown, by kind. */
 export type InterventionDraftPayload =
