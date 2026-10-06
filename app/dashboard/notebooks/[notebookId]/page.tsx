@@ -70,12 +70,15 @@ import {
   useNotebookPanelState,
 } from "@/hooks/useNotebookWorkspaceState";
 import { useNotebookAssistantContext } from "@/hooks/useNotebookAssistantContext";
-import { useFolderSheetChoices, useNotebookSheet } from "@/hooks/useNotebookSheet";
-import NotebookSheetPanel from "@/components/workspace/NotebookSheetPanel";
+import { useFolderSheetChoices, useNotebookSheets } from "@/hooks/useNotebookSheet";
+import NotebookSheetPanel, { useNotebookSheetFrames } from "@/components/workspace/NotebookSheetPanel";
 import NotebookSheetPicker from "@/components/workspace/NotebookSheetPicker";
+import { onScreenFloatingRects } from "@/components/ai/JamiFloatingTutor";
 import {
+  MAX_NOTEBOOK_SHEETS,
   notebookSheetFromAttachment,
   notebookSheetsFromNotebookFiles,
+  type NotebookSheet,
 } from "@/lib/workspace/notebook-sheet";
 import type { TutorAttachment } from "@/lib/ai/tutor-attachments";
 import type {
@@ -288,25 +291,35 @@ export default function NotebookEditorPage() {
   });
 
   /*
-   * A sheet kept beside the page -- a question sheet or mark scheme to work
-   * from without swiping away -- and the picker for choosing one.
+   * Sheets kept beside the page -- question sheets or mark schemes to work
+   * from without swiping away -- up to three, and the picker for choosing one.
    */
-  const notebookSheet = useNotebookSheet(notebookId ?? "");
-  const [sheetPickerOpen, setSheetPickerOpen] = useState(false);
+  const notebookSheets = useNotebookSheets(notebookId ?? "");
+  const sheetFrames = useNotebookSheetFrames(
+    notebookSheets.open,
+    Array.from({ length: MAX_NOTEBOOK_SHEETS }, (_, slot) =>
+      notebookSheets.sheets.some((kept) => kept.slot === slot)
+    )
+  );
+  /** What the picker is choosing for: another sheet (no slot), or a different one in a panel. */
+  const [sheetPicker, setSheetPicker] = useState<{ replaceSlot: number | null } | null>(null);
   const folderSheetChoices = useFolderSheetChoices({
     userId: user?.uid ?? "",
     folderId: notebook?.folderId ?? "",
-    enabled: sheetPickerOpen,
+    enabled: sheetPicker !== null,
   });
   const notebookSheetChoices = useMemo(() => notebookSheetsFromNotebookFiles(files), [files]);
-  const keepSheet = notebookSheet.keep;
-  const handleKeepAttachmentBeside = useCallback(
-    (attachment: TutorAttachment) => {
-      const sheet = notebookSheetFromAttachment(attachment);
-      if (sheet) keepSheet(sheet);
-    },
-    [keepSheet]
-  );
+  const keepSheetBeside = (sheet: NotebookSheet) => {
+    // Measured before the new panel exists, so it lands clear of the Tutor
+    // card, pinned answers and the other sheets rather than on top of one.
+    const onScreen = onScreenFloatingRects();
+    const { slot, added } = notebookSheets.add(sheet);
+    if (added && onScreen.length > 0) sheetFrames[slot].moveClearOf(onScreen);
+  };
+  const handleKeepAttachmentBeside = (attachment: TutorAttachment) => {
+    const sheet = notebookSheetFromAttachment(attachment);
+    if (sheet) keepSheetBeside(sheet);
+  };
 
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
   const isPageNavigationLocked = useCallback(
@@ -3068,22 +3081,24 @@ export default function NotebookEditorPage() {
             {!practicePaperTutorLocked ? (
               <ToolbarIconButton
                 label={
-                  !notebookSheet.sheet
+                  notebookSheets.sheets.length === 0
                     ? "Keep a sheet beside the page"
-                    : notebookSheet.open
-                      ? "Hide sheet"
-                      : `Show sheet: ${notebookSheet.sheet.title}`
+                    : notebookSheets.open
+                      ? notebookSheets.sheets.length > 1 ? "Hide sheets" : "Hide sheet"
+                      : notebookSheets.sheets.length > 1
+                        ? `Show ${notebookSheets.sheets.length} sheets`
+                        : `Show sheet: ${notebookSheets.sheets[0].sheet.title}`
                 }
                 icon="sheet"
-                active={Boolean(notebookSheet.sheet && notebookSheet.open)}
-                pressed={notebookSheet.sheet ? notebookSheet.open : undefined}
+                active={notebookSheets.open}
+                pressed={notebookSheets.sheets.length > 0 ? notebookSheets.open : undefined}
                 onClick={() => {
-                  if (notebookSheet.sheet) notebookSheet.setOpen(!notebookSheet.open);
-                  else setSheetPickerOpen(true);
+                  if (notebookSheets.sheets.length > 0) notebookSheets.setOpen(!notebookSheets.open);
+                  else setSheetPicker({ replaceSlot: null });
                 }}
               >
-                {notebookSheet.sheet && !notebookSheet.open ? (
-                  // Kept but hidden: one tap brings it back.
+                {notebookSheets.sheets.length > 0 && !notebookSheets.open ? (
+                  // Kept but hidden: one tap brings them back.
                   <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent" />
                 ) : null}
               </ToolbarIconButton>
@@ -3227,27 +3242,42 @@ export default function NotebookEditorPage() {
             onKeepAttachmentBeside={handleKeepAttachmentBeside}
           />
         ) : null}
-        {!practicePaperTutorLocked ? (
-          <NotebookSheetPanel
-            sheet={notebookSheet.sheet}
-            open={notebookSheet.open}
-            onChange={() => setSheetPickerOpen(true)}
-            onHide={() => notebookSheet.setOpen(false)}
-            onClose={notebookSheet.close}
-          />
-        ) : null}
+        {!practicePaperTutorLocked && notebookSheets.open
+          ? notebookSheets.sheets.map((kept) => (
+              <NotebookSheetPanel
+                key={kept.slot}
+                frame={sheetFrames[kept.slot]}
+                sheet={kept.sheet}
+                page={kept.page ?? 0}
+                sheetCount={notebookSheets.sheets.length}
+                onChange={() => setSheetPicker({ replaceSlot: kept.slot })}
+                onPageChange={(page) => notebookSheets.setPage(kept.slot, page)}
+                onAdd={
+                  notebookSheets.sheets.length < MAX_NOTEBOOK_SHEETS
+                    ? () => setSheetPicker({ replaceSlot: null })
+                    : undefined
+                }
+                onHide={() => notebookSheets.setOpen(false)}
+                onClose={() => notebookSheets.remove(kept.slot)}
+              />
+            ))
+          : null}
         <NotebookSheetPicker
-          open={sheetPickerOpen && !practicePaperTutorLocked}
+          open={sheetPicker !== null && !practicePaperTutorLocked}
+          replacing={sheetPicker?.replaceSlot != null}
+          firstSheet={notebookSheets.sheets.length === 0}
           notebookSheets={notebookSheetChoices}
           folderSheets={folderSheetChoices.sheets}
           folderLoading={folderSheetChoices.loading}
           folderFailed={folderSheetChoices.failed}
-          currentPath={notebookSheet.sheet?.storagePath ?? null}
+          keptPaths={notebookSheets.sheets.map((kept) => kept.sheet.storagePath)}
           onPick={(sheet) => {
-            notebookSheet.keep(sheet);
-            setSheetPickerOpen(false);
+            const replaceSlot = sheetPicker?.replaceSlot ?? null;
+            if (replaceSlot !== null) notebookSheets.replace(replaceSlot, sheet);
+            else keepSheetBeside(sheet);
+            setSheetPicker(null);
           }}
-          onCancel={() => setSheetPickerOpen(false)}
+          onCancel={() => setSheetPicker(null)}
         />
         <NotebookGraphEditorDialog
           open={graphEditorTarget !== null}

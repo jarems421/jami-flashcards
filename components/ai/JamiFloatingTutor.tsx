@@ -86,6 +86,22 @@ export function floatingTutorPanelClass(frame: FloatingFrame) {
   }`;
 }
 
+/**
+ * Every floating panel on screen -- the Tutor card, pinned answers, sheets
+ * kept beside the page -- so a new one can be placed clear of them all. Each
+ * marks itself with `data-floating-panel`; `kind` narrows to one sort.
+ */
+export function onScreenFloatingRects(kind?: "tutor" | "tutor-pin" | "sheet"): FloatingRect[] {
+  if (typeof document === "undefined") return [];
+  const selector = kind ? `[data-floating-panel="${kind}"]` : "[data-floating-panel]";
+  return [...document.querySelectorAll<HTMLElement>(selector)].flatMap((element) => {
+    const box = element.getBoundingClientRect();
+    return box.width > 0 && box.height > 0
+      ? [{ x: box.left, y: box.top, width: box.width, height: box.height }]
+      : [];
+  });
+}
+
 export function floatingRectStyle(rect: FloatingRect) {
   return { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
 }
@@ -197,6 +213,7 @@ export function FloatingTutorPinnedAnswer({
     <FloatingLayer>
       <aside
         aria-label="Pinned answer from Jami"
+        data-floating-panel="tutor-pin"
         className={`fixed flex flex-col overflow-hidden rounded-2xl border shadow-shell transition-[border-color,box-shadow] duration-fast ${
           frame.activeGesture ? "border-accent/70 ring-2 ring-accent/25" : "border-accent/35"
         }`}

@@ -107,6 +107,7 @@ import {
   floatingTutorPanelClass,
   isCompactFloatingCard,
   MAX_PINNED_ANSWERS,
+  onScreenFloatingRects,
   useFloatingTutorFrames,
 } from "@/components/ai/JamiFloatingTutor";
 import { featureFlags } from "@/lib/app/feature-flags";
@@ -424,13 +425,14 @@ export default function JamiAssistantDrawer({
     const slot = occupiedSlots.findIndex((taken) => !taken);
     const nextSlot = slot === -1 ? pinnedAnswers[0].slot : slot;
     setPinnedAnswers([...kept, { slot: nextSlot, text }]);
-    // Placed clear of the card and of every pin still on screen, never over one.
+    // Placed clear of the card, of every pin still on screen and of any sheet beside the page, never over one.
     const obstacles = [
       ...(open && card.rect ? [card.rect] : []),
       ...kept.flatMap((answer) => {
         const rect = pins[answer.slot].rect;
         return rect ? [rect] : [];
       }),
+      ...onScreenFloatingRects("sheet"),
     ];
     if (obstacles.length > 0) pins[nextSlot].moveClearOf(obstacles);
   };
@@ -1122,6 +1124,7 @@ export default function JamiAssistantDrawer({
       }
       panelProps={{
         "data-notebook-text-editor": "true",
+        ...(floating ? { "data-floating-panel": "tutor" } : {}),
         className: floating
           ? floatingTutorPanelClass(card)
           : fullPage

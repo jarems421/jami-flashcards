@@ -22,17 +22,66 @@ export default function SourcePdfReader({
   storagePath,
   title,
   fallback,
-  compact = false,
 }: {
   storagePath: string;
   title: string;
   /** Shown when the file cannot be opened. */
   fallback: React.ReactNode;
-  /** Tight margins, for a sheet kept in a small panel beside a page. */
-  compact?: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
+  const current = useSourcePdfDocument(storagePath);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setWidth(Math.round(entry?.contentRect.width ?? host.clientWidth));
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  if (current?.failed) return <>{fallback}</>;
+
+  const pageCount = current?.pageCount ?? 0;
+
+  return (
+    <div
+      ref={hostRef}
+      role="document"
+      aria-label={`${title} PDF`}
+      className="flex w-full flex-col items-center gap-3 px-3 py-4 sm:gap-4 sm:px-6 sm:py-6"
+    >
+      {!current?.pdf || width === 0 ? (
+        <div
+          role="status"
+          className="grid min-h-[22rem] w-full place-items-center text-sm font-semibold text-text-muted"
+        >
+          Loading PDF…
+        </div>
+      ) : (
+        Array.from({ length: pageCount }, (_, index) => (
+          <SourcePdfPage
+            key={index}
+            pdf={current.pdf!}
+            pageNumber={index + 1}
+            pageCount={pageCount}
+            // The page's own column, not the whole panel, on a wide screen.
+            width={Math.min(width - 24, 880)}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+/**
+ * A student's own PDF, opened with pdf.js. Null while it loads; `failed` once
+ * it cannot be opened. Shared by the Library reader and a sheet kept beside a
+ * notebook page.
+ */
+export function useSourcePdfDocument(storagePath: string) {
   const [loaded, setLoaded] = useState<{
     path: string;
     pdf: PDFDocumentProxy | null;
@@ -61,64 +110,28 @@ export default function SourcePdfReader({
     };
   }, [storagePath]);
 
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const observer = new ResizeObserver(([entry]) => {
-      setWidth(Math.round(entry?.contentRect.width ?? host.clientWidth));
-    });
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
-
-  if (current?.failed) return <>{fallback}</>;
-
-  const pageCount = Math.min(current?.pdf?.numPages ?? 0, MAX_NOTEBOOK_PDF_PAGES);
-
-  return (
-    <div
-      ref={hostRef}
-      role="document"
-      aria-label={`${title} PDF`}
-      className={`flex w-full flex-col items-center ${
-        compact ? "gap-2 p-2" : "gap-3 px-3 py-4 sm:gap-4 sm:px-6 sm:py-6"
-      }`}
-    >
-      {!current?.pdf || width === 0 ? (
-        <div
-          role="status"
-          className={`grid w-full place-items-center text-sm font-semibold text-text-muted ${
-            compact ? "min-h-[10rem]" : "min-h-[22rem]"
-          }`}
-        >
-          Loading PDF…
-        </div>
-      ) : (
-        Array.from({ length: pageCount }, (_, index) => (
-          <SourcePdfPage
-            key={index}
-            pdf={current.pdf!}
-            pageNumber={index + 1}
-            pageCount={pageCount}
-            // The page's own column, not the whole panel, on a wide screen.
-            width={Math.min(width - (compact ? 16 : 24), 880)}
-          />
-        ))
-      )}
-    </div>
-  );
+  return current
+    ? { ...current, pageCount: Math.min(current.pdf?.numPages ?? 0, MAX_NOTEBOOK_PDF_PAGES) }
+    : null;
 }
 
-function SourcePdfPage({
+/**
+ * One page, drawn once it comes near the screen. Inside a sideways track of
+ * pages, `observerRoot` is that track, so the neighbours either side are
+ * drawn ahead of a swipe.
+ */
+export function SourcePdfPage({
   pdf,
   pageNumber,
   pageCount,
   width,
+  observerRoot = null,
 }: {
   pdf: PDFDocumentProxy;
   pageNumber: number;
   pageCount: number;
   width: number;
+  observerRoot?: Element | null;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -134,11 +147,12 @@ function SourcePdfPage({
       ([entry]) => {
         if (entry?.isIntersecting) setNear(true);
       },
-      { rootMargin: "800px 0px" }
+      // Down a scrolling column, the next screenful; across a track, a page either side.
+      observerRoot ? { root: observerRoot, rootMargin: "0px 100%" } : { rootMargin: "800px 0px" }
     );
     observer.observe(host);
     return () => observer.disconnect();
-  }, []);
+  }, [observerRoot]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

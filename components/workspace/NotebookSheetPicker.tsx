@@ -21,24 +21,41 @@ import type { NotebookSheet } from "@/lib/workspace/notebook-sheet";
  */
 export default function NotebookSheetPicker({
   open,
+  replacing,
+  firstSheet,
   notebookSheets,
   folderSheets,
   folderLoading,
   folderFailed,
-  currentPath,
+  keptPaths,
   onPick,
   onCancel,
 }: {
   open: boolean;
+  /** Choosing a different sheet for a panel already open, rather than another one. */
+  replacing: boolean;
+  /** Nothing is beside the page yet, so this is where the feature is explained. */
+  firstSheet: boolean;
   notebookSheets: readonly NotebookSheet[];
   folderSheets: readonly NotebookSheet[];
   folderLoading: boolean;
   folderFailed: boolean;
-  currentPath: string | null;
+  /** The sheets already beside the page. */
+  keptPaths: readonly string[];
   onPick: (sheet: NotebookSheet) => void;
   onCancel: () => void;
 }) {
   const nothing = notebookSheets.length === 0 && folderSheets.length === 0 && !folderLoading;
+  const title = replacing
+    ? "Change this sheet"
+    : firstSheet
+      ? "Keep a sheet beside your page"
+      : "Keep another sheet beside your page";
+  const description = firstSheet
+    ? "Work from a question sheet or mark scheme without swiping away from your working. Drag it anywhere, resize it, and it stays as you turn pages. Up to three at once."
+    : replacing
+      ? "The new sheet opens where this one is."
+      : "It opens clear of what is already on screen. Up to three at once.";
   return (
     <Dialog
       open={open}
@@ -52,19 +69,14 @@ export default function NotebookSheetPicker({
             <NotebookIcon name="sheet" />
           </span>
           <div className="min-w-0">
-            <DialogTitle className="text-sm font-semibold text-text-primary">
-              Keep a sheet beside your page
-            </DialogTitle>
-            <DialogDescription className="mt-0.5 text-xs leading-5 text-text-muted">
-              Work from a question sheet or mark scheme without swiping away from your working. Drag it
-              anywhere, resize it, and it stays as you turn pages.
-            </DialogDescription>
+            <DialogTitle className="text-sm font-semibold text-text-primary">{title}</DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs leading-5 text-text-muted">{description}</DialogDescription>
           </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--color-border)] px-2 py-2">
           {notebookSheets.length > 0 ? (
-            <SheetGroup label="In this notebook" sheets={notebookSheets} currentPath={currentPath} onPick={onPick} />
+            <SheetGroup label="In this notebook" sheets={notebookSheets} keptPaths={keptPaths} onPick={onPick} />
           ) : null}
           {folderLoading ? (
             <div className="space-y-2 px-2 py-2" aria-label="Loading this folder's files">
@@ -72,7 +84,7 @@ export default function NotebookSheetPicker({
               <Skeleton className="h-12 w-full rounded-xl" />
             </div>
           ) : folderSheets.length > 0 ? (
-            <SheetGroup label="In this folder" sheets={folderSheets} currentPath={currentPath} onPick={onPick} />
+            <SheetGroup label="In this folder" sheets={folderSheets} keptPaths={keptPaths} onPick={onPick} />
           ) : null}
           {folderFailed ? (
             <p className="px-2 py-2 text-xs text-text-muted">This folder’s files could not be loaded just now.</p>
@@ -100,12 +112,12 @@ export default function NotebookSheetPicker({
 function SheetGroup({
   label,
   sheets,
-  currentPath,
+  keptPaths,
   onPick,
 }: {
   label: string;
   sheets: readonly NotebookSheet[];
-  currentPath: string | null;
+  keptPaths: readonly string[];
   onPick: (sheet: NotebookSheet) => void;
 }) {
   return (
@@ -113,7 +125,7 @@ function SheetGroup({
       <h3 className="px-2 pb-1 pt-1.5 text-2xs font-semibold uppercase tracking-[0.08em] text-text-muted">{label}</h3>
       <ul className="space-y-0.5">
         {sheets.map((sheet) => {
-          const current = sheet.storagePath === currentPath;
+          const current = keptPaths.includes(sheet.storagePath);
           return (
             <li key={sheet.storagePath}>
               <button

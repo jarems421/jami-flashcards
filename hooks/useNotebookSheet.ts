@@ -2,65 +2,85 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  addNotebookSheet,
+  EMPTY_NOTEBOOK_SHEETS,
   notebookSheetsFromSources,
   notebookSheetStorageKey,
-  parseStoredNotebookSheet,
+  parseStoredNotebookSheets,
+  removeNotebookSheet,
+  replaceNotebookSheet,
+  setNotebookSheetPage,
   type NotebookSheet,
-  type StoredNotebookSheet,
+  type NotebookSheets,
 } from "@/lib/workspace/notebook-sheet";
 import { getNotebookFileDownloadUrl } from "@/services/study/notebook-files";
 import { getSourceFileDownloadUrl } from "@/services/study/source-files";
 import { getActiveSourcesForFolderPage } from "@/services/study/sources";
 
-function readStored(notebookId: string): StoredNotebookSheet | null {
-  if (typeof window === "undefined" || !notebookId) return null;
+function readStored(notebookId: string): NotebookSheets {
+  if (typeof window === "undefined" || !notebookId) return EMPTY_NOTEBOOK_SHEETS;
   try {
     const raw = window.localStorage.getItem(notebookSheetStorageKey(notebookId));
-    return raw ? parseStoredNotebookSheet(JSON.parse(raw)) : null;
+    return raw ? parseStoredNotebookSheets(JSON.parse(raw)) : EMPTY_NOTEBOOK_SHEETS;
   } catch {
-    return null;
+    return EMPTY_NOTEBOOK_SHEETS;
   }
 }
 
-function writeStored(notebookId: string, value: StoredNotebookSheet | null) {
+function writeStored(notebookId: string, value: NotebookSheets) {
   try {
     const key = notebookSheetStorageKey(notebookId);
-    if (value) window.localStorage.setItem(key, JSON.stringify(value));
+    if (value.sheets.length > 0) window.localStorage.setItem(key, JSON.stringify(value));
     else window.localStorage.removeItem(key);
   } catch {
-    // A private window keeps the sheet for this visit only.
+    // A private window keeps the sheets for this visit only.
   }
 }
 
 /**
- * The sheet kept beside this notebook's pages, remembered on this device so it
- * is still there the next time the notebook opens.
+ * The sheets kept beside this notebook's pages, remembered on this device so
+ * they are still there the next time the notebook opens.
  */
-export function useNotebookSheet(notebookId: string) {
+export function useNotebookSheets(notebookId: string) {
   const [state, setState] = useState(() => ({ notebookId, value: readStored(notebookId) }));
-  // Another notebook opened in the same editor reads its own sheet.
+  // Another notebook opened in the same editor reads its own sheets.
   const current = state.notebookId === notebookId ? state.value : readStored(notebookId);
 
   const update = useCallback(
-    (value: StoredNotebookSheet | null) => {
+    (value: NotebookSheets) => {
       writeStored(notebookId, value);
       setState({ notebookId, value });
     },
     [notebookId]
   );
-  const setOpen = useCallback(
-    (open: boolean) => {
-      if (current) update({ ...current, open });
-    },
-    [current, update]
-  );
 
   return {
-    sheet: current?.sheet ?? null,
-    open: Boolean(current?.open),
-    keep: useCallback((sheet: NotebookSheet) => update({ sheet, open: true }), [update]),
-    setOpen,
-    close: useCallback(() => update(null), [update]),
+    sheets: current.sheets,
+    open: current.open && current.sheets.length > 0,
+    /** Keeps a sheet and shows them all; says which panel it is in and whether that panel is new. */
+    add: useCallback(
+      (sheet: NotebookSheet) => {
+        const { next, slot, added } = addNotebookSheet(current, sheet);
+        update(next);
+        return { slot, added };
+      },
+      [current, update]
+    ),
+    replace: useCallback(
+      (slot: number, sheet: NotebookSheet) => update(replaceNotebookSheet(current, slot, sheet)),
+      [current, update]
+    ),
+    remove: useCallback((slot: number) => update(removeNotebookSheet(current, slot)), [current, update]),
+    setPage: useCallback(
+      (slot: number, page: number) => update(setNotebookSheetPage(current, slot, page)),
+      [current, update]
+    ),
+    setOpen: useCallback(
+      (open: boolean) => {
+        if (current.sheets.length > 0) update({ ...current, open });
+      },
+      [current, update]
+    ),
   };
 }
 
