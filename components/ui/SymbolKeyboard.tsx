@@ -165,6 +165,28 @@ function rowsOf<T>(items: readonly T[], size: number) {
  * its selection, and every character lands at the end of the answer instead of
  * where the caret was. With it the field never loses focus at all.
  */
+/**
+ * The room above and below an element that can actually be drawn in: the
+ * window, cut down by every ancestor that clips its overflow.
+ *
+ * Measuring the window alone opened the palette upward into the top edge of
+ * the card around the field -- Card is `overflow-hidden` -- where most of it
+ * was cut off, group tabs included.
+ */
+function roomAround(element: HTMLElement) {
+  const bounds = element.getBoundingClientRect();
+  let top = 0;
+  let bottom = window.innerHeight;
+  for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if (!overflow || overflow === "visible") continue;
+    const box = node.getBoundingClientRect();
+    top = Math.max(top, box.top);
+    bottom = Math.min(bottom, box.bottom);
+  }
+  return { above: bounds.top - top, below: bottom - bounds.bottom };
+}
+
 export default function SymbolKeyboard({
   targetRef,
   className = "",
@@ -203,10 +225,10 @@ export default function SymbolKeyboard({
       if (wasOpen) return false;
       // A field near the bottom of a phone would otherwise put the keyboard
       // under the fold.
-      const bounds = rootRef.current?.getBoundingClientRect();
-      if (bounds) {
-        const below = window.innerHeight - bounds.bottom;
-        setOpenUpward(below < 280 && bounds.top > below);
+      const root = rootRef.current;
+      if (root) {
+        const { above, below } = roomAround(root);
+        setOpenUpward(below < 280 && above > below);
       }
       return true;
     });
