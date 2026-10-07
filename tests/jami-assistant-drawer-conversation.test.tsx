@@ -590,6 +590,28 @@ describe("JamiAssistantDrawer saved chats", () => {
     expect(bodyText()).not.toContain("Carrying on a saved chat");
   });
 
+  it("lets the student write again after opening a saved chat mid-answer", async () => {
+    mocks.getThreads.mockResolvedValue([here, elsewhere]);
+    mocks.getThreadMessages.mockResolvedValue([
+      stored({ id: "q1", role: "user", text: "What happens in prophase?", threadId: "thread-elsewhere" }),
+      stored({ id: "a1", role: "assistant", text: "Chromosomes condense.", threadId: "thread-elsewhere" }),
+    ]);
+    const call = deferredSend();
+    await render(drawer());
+    await settle();
+    await ask("A question still being answered");
+
+    await click(button("Open Jami chat history"));
+    const open = [...document.querySelectorAll<HTMLButtonElement>("section[aria-label='Jami chat history'] button")].find(
+      (candidate) => candidate.textContent?.startsWith("Mitosis card")
+    );
+    await click(open);
+
+    expect(call.signal?.aborted).toBe(true);
+    expect(bodyText()).toContain("Chromosomes condense.");
+    expect(field().disabled).toBe(false);
+  });
+
   it("says when a saved chat cannot be opened", async () => {
     mocks.getThreads.mockResolvedValue([here]);
     mocks.getThreadMessages.mockRejectedValue(new Error("That chat is unavailable."));

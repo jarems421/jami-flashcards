@@ -37,6 +37,7 @@ export function useTutorChatHistory({
     setHistoryNotice,
     setHistoryOpen,
     setThreadLoading,
+    setLoading,
     abandonActiveRequest,
   } = conversation;
 
@@ -80,7 +81,11 @@ export function useTutorChatHistory({
         setHistoryError("Sign in again to open your saved chats.");
         return;
       }
+      // The answer being written belongs to the chat being left. Stopping it
+      // is not enough on its own: an abandoned request never ends as the
+      // current one, so nothing else would let the composer go again.
       abandonActiveRequest();
+      setLoading(false);
       setThreadLoading(true);
       setHistoryError(null);
       setError(null);
@@ -105,6 +110,7 @@ export function useTutorChatHistory({
       setHistoryError,
       setHistoryNotice,
       setHistoryOpen,
+      setLoading,
       setMessages,
       setThreadLoading,
     ]
