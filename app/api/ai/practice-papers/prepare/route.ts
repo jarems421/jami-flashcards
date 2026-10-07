@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { buildJamiAssistantReferenceParts } from "@/lib/ai/jami-assistant";
 import { parsePracticePaperModelAnswer } from "@/lib/ai/practice-paper-generation";
 import {
@@ -15,7 +16,6 @@ import {
 } from "@/lib/ai/provider-router";
 import type { AiGenerationRole } from "@/lib/ai/provider-policy";
 import { prepareSourceForTutor } from "@/lib/ai/source-ingestion";
-import { getBearerToken } from "@/lib/auth/bearer";
 import { mapSourceData } from "@/lib/material/sources";
 import {
   mapPracticePaperData,
@@ -30,7 +30,6 @@ import {
 } from "@/services/ai/budgets";
 import { practicePaperSecretRef } from "@/services/ai/practice-paper-secrets.server";
 import {
-  getAdminAuth,
   getAdminDb,
   getAdminStorageBucket,
 } from "@/services/firebase/admin";
@@ -45,19 +44,9 @@ function responseError(error: string, status: number, code: string) {
   return Response.json({ error, code }, { status });
 }
 
-async function authenticate(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try {
-    return (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(request: NextRequest) {
   if (!isAnyAiProviderConfigured()) return responseError("AI features are not configured", 503, "not_configured");
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return responseError("Unauthorized", 401, "unauthorized");
   let notebookId = "";
   try {

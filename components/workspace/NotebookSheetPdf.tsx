@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SourcePdfPage, useSourcePdfDocument } from "@/components/library/SourcePdfReader";
+import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
 
 /** Quiet time after a swipe before the page it settled on counts as the page. */
 const SETTLE_MS = 110;
@@ -92,8 +93,7 @@ export default function NotebookSheetPdf({
     const track = trackRef.current;
     if (!track) return;
     const next = Math.max(0, Math.min(pageCount - 1, target));
-    const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    track.scrollTo({ left: next * track.clientWidth, behavior: smooth ? "smooth" : "auto" });
+    track.scrollTo({ left: next * track.clientWidth, behavior: prefersReducedMotion() ? "auto" : "smooth" });
   };
 
   if (pdfFile?.failed) return <>{fallback}</>;

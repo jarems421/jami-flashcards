@@ -22,7 +22,6 @@ export {
   MAX_QUESTION_MARKS,
   readPracticeDrafts,
   type PracticeDraftRejection,
-  type PracticeDraftResult,
   type PracticeQuestionDraft,
 } from "@/lib/learning/interventions/practice-question-shape";
 

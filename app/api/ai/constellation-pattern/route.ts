@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
-import { getBearerToken } from "@/lib/auth/bearer";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { isGeminiTimeoutError } from "@/lib/ai/gemini";
 import {
   generateAiText,
@@ -32,7 +32,7 @@ import {
   refundAiBudget,
 } from "@/services/ai/budgets";
 import { aiSpendContextFor } from "@/services/ai/spend.server";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 
@@ -60,18 +60,9 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "AI features are not configured" }, { status: 503 });
   }
 
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let uid: string;
-  try {
-    uid = (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    // Expired, malformed and forged tokens must look the same from outside.
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // Missing, expired, malformed and forged tokens must look the same from outside.
+  const uid = await authenticateRequest(request);
+  if (!uid) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const startedAt = Date.now();
   const log = createLogger({ route: "ai.constellation-pattern", requestId: randomUUID(), uid });

@@ -1,14 +1,14 @@
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { FieldValue } from "firebase-admin/firestore";
 import {
   ANALYTICS_SCHEMA_VERSION,
   getAnalyticsDayKey,
   sanitiseAnalyticsBatch,
 } from "@/lib/analytics/events";
-import { getBearerToken } from "@/lib/auth/bearer";
 import { createRateLimiter } from "@/lib/http/rate-limit";
 import { createLogger } from "@/lib/observability/logger";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 
@@ -34,15 +34,8 @@ const batches = createRateLimiter({ limit: 60, windowMs: 60_000 });
  * name, attach an arbitrary field, or record against another user.
  */
 export async function POST(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-  let uid: string;
-  try {
-    uid = (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const uid = await authenticateRequest(request);
+  if (!uid) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const limit = batches.check(uid);
   if (!limit.allowed) {

@@ -3,6 +3,7 @@ import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import sharp from "sharp";
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import {
   buildTutorIllustrationPrompt,
   getAssistantImageExtension,
@@ -23,10 +24,7 @@ import {
 import { generateGeminiImage } from "@/lib/ai/gemini";
 import { chargeAllowance } from "@/services/billing/allowances.server";
 import { createLogger } from "@/lib/observability/logger";
-import {
-  assistantAssetError,
-  authenticateAssistantAssetRequest,
-} from "@/services/ai/assistant-assets.server";
+import { assistantAssetError } from "@/services/ai/assistant-assets.server";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
@@ -41,7 +39,7 @@ export const maxDuration = 180;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
-  const uid = await authenticateAssistantAssetRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return assistantAssetError("Unauthorized", 401, "unauthorized");
 
   let parsed;

@@ -7,9 +7,11 @@ const mocks = vi.hoisted(() => ({
   doc: vi.fn(),
 }));
 
+vi.mock("@/services/auth/authenticate-request.server", () => ({
+  authenticateRequest: vi.fn(),
+}));
 vi.mock("@/services/ai/assistant-assets.server", () => ({
   authenticateAssistantWriter: mocks.writer,
-  authenticateAssistantAssetRequest: vi.fn(),
   assistantAssetError: (message: string, status: number, code: string) =>
     Response.json({ error: message, code }, { status }),
 }));

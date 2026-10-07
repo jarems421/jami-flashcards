@@ -1,11 +1,11 @@
 import type { NextRequest } from "next/server";
-import { getBearerToken } from "@/lib/auth/bearer";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { buildPlanSummary } from "@/lib/billing/summary";
 import { getAllowancePeriod } from "@/lib/billing/plans";
 import { createLogger } from "@/lib/observability/logger";
 import { allowanceUsageRef, readAllowanceUsage } from "@/services/billing/allowances.server";
 import { getEntitlement } from "@/services/billing/entitlements.server";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,14 +16,8 @@ export const dynamic = "force-dynamic";
  * shows nothing about plans until they exist.
  */
 export async function GET(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  let uid: string;
-  try {
-    uid = (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const uid = await authenticateRequest(request);
+  if (!uid) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const log = createLogger({ route: "billing.summary", uid });
   try {
     const now = Date.now();

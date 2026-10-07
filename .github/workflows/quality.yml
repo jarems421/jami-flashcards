@@ -116,7 +116,11 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run signed-in browser smoke tests
-        run: npm run test:e2e
+        # The smoke specs only. The full browser suite -- walkthroughs, visual
+        # and screenshot specs written for review by eye -- takes over half an
+        # hour, so this job hit its timeout on every run and reported nothing.
+        # `npm run test:e2e` still runs everything locally.
+        run: npm run test:e2e:smoke
 
       - name: Upload browser diagnostics
         if: failure()

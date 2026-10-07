@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import {
   getAssistantImageExtension,
   isOwnedAssistantImagePath,
@@ -9,20 +10,28 @@ import {
 } from "@/lib/ai/jami-assistant";
 import { MAX_NOTEBOOK_IMAGE_REFS, normalizeNotebookImageRefs } from "@/lib/workspace/notebooks";
 import { createCenteredNotebookImageRef } from "@/lib/workspace/notebook-placement";
-import {
-  assistantAssetError,
-  authenticateAssistantAssetRequest,
-} from "@/services/ai/assistant-assets.server";
+import { assistantAssetError } from "@/services/ai/assistant-assets.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
+import { createLogger } from "@/lib/observability/logger";
 
 export const runtime = "nodejs";
+
+const log = createLogger({ route: "assistant.illustrations.insert" });
+
+/**
+ * Why the visual could not go on the page, in words for the student. Anything
+ * else that fails -- the copy, the transaction -- is logged, and the student
+ * is told only that it did not work: storage and database errors name paths
+ * and internals that are not theirs to read.
+ */
+class InsertRefused extends Error {}
 
 function id(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 160) : "";
 }
 
 export async function POST(request: NextRequest) {
-  const uid = await authenticateAssistantAssetRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return assistantAssetError("Unauthorized", 401, "unauthorized");
   let body: Record<string, unknown>;
   try {
@@ -104,7 +113,7 @@ export async function POST(request: NextRequest) {
     const result = await db.runTransaction(async (transaction) => {
       const latest = await transaction.get(pageRef);
       if (!latest.exists || latest.data()?.notebookId !== notebookId) {
-        throw new Error("Notebook page no longer exists.");
+        throw new InsertRefused("Notebook page no longer exists.");
       }
       const current = normalizeNotebookImageRefs(latest.data()?.imageRefs);
       const existing = current.find((item) => item.sourceAssetId === assetId);
@@ -114,7 +123,7 @@ export async function POST(request: NextRequest) {
           : 0;
       if (existing) return { imageRef: existing, contentRevision: remoteRevision };
       if (current.length >= MAX_NOTEBOOK_IMAGE_REFS) {
-        throw new Error(`This page can hold up to ${MAX_NOTEBOOK_IMAGE_REFS} images.`);
+        throw new InsertRefused(`This page can hold up to ${MAX_NOTEBOOK_IMAGE_REFS} images.`);
       }
       const contentRevision = remoteRevision + 1;
       transaction.update(pageRef, {
@@ -141,8 +150,9 @@ export async function POST(request: NextRequest) {
         .delete({ ignoreNotFound: true })
         .catch(() => undefined);
     }
+    if (!(error instanceof InsertRefused)) log.error("insert_failed", { error });
     return assistantAssetError(
-      error instanceof Error ? error.message : "That visual could not be added to this page.",
+      error instanceof InsertRefused ? error.message : "That visual could not be added to this page.",
       409,
       "insert_failed"
     );

@@ -55,14 +55,24 @@ const SKIP = new Set(["node_modules", ".next", "dist", "build"]);
  * is the actual fix and is now overdue.
  */
 const EXCEPTIONS = new Map([
-  // Pre-existing oversized files found when the integrated release first ran
-  // this gate. Recording their current sizes makes the existing debt visible
-  // and restores the ratchet: none can grow another line without failing CI.
-  ["components/workspace/NotebookInkEditor.tsx", 1301],
+  /*
+   * Added on 2026-10-07, with a reason, so CI runs again. A failure here stops
+   * the verify job before its tests and build, so while these two sat over the
+   * limit CI reported file sizes and nothing else.
+   *
+   * Both are Tutor files that the unmerged branches tutor-learning-engine and
+   * tutor-app-knowledge edit throughout. They are left whole until those
+   * branches land or are dropped, because splitting them first would turn both
+   * merges into rewrites. The numbers are their current sizes: neither may grow.
+   */
+  ["app/api/ai/assistant/route.ts", 1804],
+  ["components/ai/JamiAssistantDrawer.tsx", 1824],
   // Removed on 2026-09-15: practice-paper generation was split into its stages.
   // Removed on 2026-10-06: the notebook page became a composition root over
   // its controller hooks (3,638 -> 1,196 lines), and the study page over its
   // session, exercise and queue hooks (2,431 -> 687 lines).
+  // Removed on 2026-10-07: the notebook ink editor became a composition over
+  // its editor, pointer-input and snapshot hooks (1,733 -> 315 lines).
 ]);
 
 function* sourceFiles(dir) {

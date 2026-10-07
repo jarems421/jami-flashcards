@@ -1,19 +1,13 @@
 import type { NextRequest } from "next/server";
-import { getBearerToken } from "@/lib/auth/bearer";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { mapPracticePaperMarkingJobData } from "@/lib/practice/practice-papers";
 import {
   enqueuePracticePaperMarking,
   PracticePaperMarkingQueueError,
 } from "@/services/ai/practice-paper-marking-jobs.server";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
-
-async function authenticate(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try { return (await getAdminAuth().verifyIdToken(token)).uid; } catch { return null; }
-}
 
 function failure(error: string, status: number, code: string, retryAfterSeconds?: number) {
   return Response.json(
@@ -23,7 +17,7 @@ function failure(error: string, status: number, code: string, retryAfterSeconds?
 }
 
 export async function GET(request: NextRequest) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const snapshot = await getAdminDb().collection("users").doc(uid)
     .collection("practicePaperMarkingJobs").orderBy("updatedAt", "desc").limit(12).get();
@@ -35,7 +29,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
   let body: Record<string, unknown>;
   try { body = await request.json() as Record<string, unknown>; } catch {

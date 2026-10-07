@@ -13,13 +13,7 @@ import {
 import { practicePaperSourceRole } from "@/lib/ai/practice-paper-generation";
 import type { Source } from "@/lib/material/sources";
 import { MAX_PRACTICE_PAPER_SOURCE_IDS } from "@/lib/practice/practice-papers";
-
-/** Past papers and schemes first, then notes: what a new paper starts with. */
-export function defaultPaperMaterial(sources: readonly Source[]) {
-  const papers = sources.filter((source) => practicePaperSourceRole(source) !== "notes");
-  const notes = sources.filter((source) => practicePaperSourceRole(source) === "notes");
-  return [...papers, ...notes].slice(0, MAX_PRACTICE_PAPER_SOURCE_IDS).map((source) => source.id);
-}
+import { splitPaperMaterial } from "@/lib/practice/practice-paper-request";
 
 const UPLOAD_ACCEPT =
   "application/pdf,image/jpeg,image/png,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,.pdf,.docx,.pptx,.txt";
@@ -261,8 +255,7 @@ export default function PaperMaterialPicker({
   disabled?: boolean;
 }) {
   const [libraryOpen, setLibraryOpen] = useState(false);
-  const papers = sources.filter((source) => practicePaperSourceRole(source) !== "notes");
-  const notes = sources.filter((source) => practicePaperSourceRole(source) === "notes");
+  const { papers, notes } = splitPaperMaterial(sources);
   const toggle = (id: string) =>
     onChange(
       selectedIds.includes(id)

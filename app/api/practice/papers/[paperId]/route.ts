@@ -1,12 +1,12 @@
 import type { NextRequest } from "next/server";
-import { getBearerToken } from "@/lib/auth/bearer";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { mapPracticePaperData } from "@/lib/practice/practice-papers";
 import { migrateLegacyPracticePaperSecret } from "@/services/ai/practice-paper-secrets.server";
 import {
   deletePracticePaperWithAdmin,
   PracticePaperDeletionError,
 } from "@/services/ai/practice-paper-deletion.server";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 
@@ -14,21 +14,11 @@ function failure(error: string, status: number, code: string) {
   return Response.json({ error, code }, { status });
 }
 
-async function authenticate(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try {
-    return (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    return null;
-  }
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ paperId: string }> }
 ) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const { paperId } = await params;
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(paperId)) {
@@ -59,7 +49,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ paperId: string }> }
 ) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const { paperId } = await params;
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(paperId)) {

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import { Timestamp } from "firebase-admin/firestore";
-import { getBearerToken } from "@/lib/auth/bearer";
 import {
   canCancelPracticePaperJob,
 } from "@/lib/practice/practice-paper-jobs";
@@ -13,22 +13,12 @@ import {
   cleanPracticePaperWorkflowRemnants,
   cleanTemporaryPracticePaperSources,
 } from "@/services/ai/practice-paper-workflow.server";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 
 function failure(error: string, status: number, code: string) {
   return Response.json({ error, code }, { status });
-}
-
-async function authenticate(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try {
-    return (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    return null;
-  }
 }
 
 function validJobId(value: string) {
@@ -39,7 +29,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const { jobId } = await params;
   if (!validJobId(jobId)) return failure("Job not found", 404, "job_not_found");
@@ -57,7 +47,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const { jobId } = await params;
   if (!validJobId(jobId)) return failure("Job not found", 404, "job_not_found");
@@ -106,7 +96,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const { jobId } = await params;
   if (!validJobId(jobId)) return failure("Job not found", 404, "job_not_found");

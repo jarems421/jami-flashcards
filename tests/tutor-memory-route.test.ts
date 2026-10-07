@@ -10,9 +10,11 @@ const mocks = vi.hoisted(() => ({
   stored: { current: null as TutorMemoryState | null },
 }));
 
+vi.mock("@/services/auth/authenticate-request.server", () => ({
+  authenticateRequest: mocks.reader,
+}));
 vi.mock("@/services/ai/assistant-assets.server", () => ({
   authenticateAssistantWriter: mocks.writer,
-  authenticateAssistantAssetRequest: mocks.reader,
   assistantAssetError: (message: string, status: number, code: string) =>
     Response.json({ error: message, code }, { status }),
 }));

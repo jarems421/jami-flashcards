@@ -1,16 +1,16 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { start } from "workflow/api";
 import { parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
 import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
-import { getBearerToken } from "@/lib/auth/bearer";
 import { mapPracticePaperJobData } from "@/lib/practice/practice-papers";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
   refundAiBudget,
 } from "@/services/ai/budgets";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getAdminDb } from "@/services/firebase/admin";
 import { generatePracticePaperWorkflow } from "@/workflows/practice-paper-generation";
 
 export const runtime = "nodejs";
@@ -19,16 +19,6 @@ const RETENTION_MS = 30 * 24 * 60 * 60_000;
 
 function failure(error: string, status: number, code: string) {
   return Response.json({ error, code }, { status });
-}
-
-async function authenticate(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try {
-    return (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -46,7 +36,7 @@ export async function POST(
   if (!isAnyAiProviderConfigured()) {
     return failure("AI features are not configured", 503, "not_configured");
   }
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const { jobId } = await params;
   if (!/^[A-Za-z0-9_-]{16,160}$/.test(jobId)) {

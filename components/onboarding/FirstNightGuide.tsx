@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import { Sparkle } from "@/components/onboarding/FirstNightSky";
+import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
 import {
   easeOutCubic,
   guideThread,
@@ -65,10 +66,6 @@ function boxOf(element: HTMLElement | null): GuideBox | null {
 
 function inView(box: GuideBox) {
   return box.top >= 0 && box.left >= 0 && box.top + box.height <= window.innerHeight && box.left + box.width <= window.innerWidth;
-}
-
-function prefersReducedMotion() {
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
 /**

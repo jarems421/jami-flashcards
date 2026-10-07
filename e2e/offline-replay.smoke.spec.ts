@@ -78,10 +78,10 @@ test("a review graded offline syncs once the browser reconnects", async ({
     .toBe(1);
   expect((await queuedReviews(page))[0]?.cardId).toBe(cardId);
 
-  // And the page says so rather than failing quietly.
-  await expect(
-    page.getByText(/will sync when the browser is online/i)
-  ).toBeVisible({ timeout: 20_000 });
+  // And the page says so rather than failing quietly. The count of waiting
+  // answers appears only once one has sat unsent past the sync grace period,
+  // so an answer moments old is covered by the offline notice itself.
+  await expect(page.getByText("Offline study is active")).toBeVisible({ timeout: 20_000 });
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));

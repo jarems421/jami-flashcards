@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import type { NextRequest } from "next/server";
-import { getBearerToken } from "@/lib/auth/bearer";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { createLogger } from "@/lib/observability/logger";
 import {
   checkAiBudget,
@@ -12,21 +12,10 @@ import {
   deleteSourceIndex,
   rebuildSourceIndex,
 } from "@/services/ai/source-index.server";
-import { getAdminAuth } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 /** A whole lecture pack: hundreds of pages to read, cut and embed. */
 export const maxDuration = 300;
-
-async function authenticate(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try {
-    return (await getAdminAuth().verifyIdToken(token)).uid;
-  } catch {
-    return null;
-  }
-}
 
 async function sourceIdFrom(request: NextRequest) {
   try {
@@ -40,7 +29,7 @@ async function sourceIdFrom(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const sourceId = await sourceIdFrom(request);
   if (!sourceId) return Response.json({ error: "Source is required" }, { status: 400 });
@@ -84,7 +73,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const uid = await authenticate(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const sourceId = await sourceIdFrom(request);
   if (!sourceId) return Response.json({ error: "Source is required" }, { status: 400 });

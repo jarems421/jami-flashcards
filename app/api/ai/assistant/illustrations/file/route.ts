@@ -1,9 +1,7 @@
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { isOwnedAssistantImagePath } from "@/lib/ai/assistant-illustrations";
-import {
-  assistantAssetError,
-  authenticateAssistantAssetRequest,
-} from "@/services/ai/assistant-assets.server";
+import { assistantAssetError } from "@/services/ai/assistant-assets.server";
 import { getAdminStorageBucket } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
@@ -12,7 +10,7 @@ const CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export async function GET(request: NextRequest) {
-  const uid = await authenticateAssistantAssetRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return assistantAssetError("Unauthorized", 401, "unauthorized");
   const storagePath = request.nextUrl.searchParams.get("path")?.trim() ?? "";
   if (!isOwnedAssistantImagePath(storagePath, uid)) {

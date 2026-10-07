@@ -145,7 +145,7 @@ not sufficiently cover, the scribble is simply drawn as ordinary ink.
 
 The gesture is evaluated on `pointerup`, **before the up event reaches
 js-draw**. All the samples are already in our own buffer in
-`NotebookInkEditor.forwardInkPointer`. If it is a scribble we dispatch
+`forwardInkPointer` (`hooks/useNotebookInkPointerInput.ts`). If it is a scribble we dispatch
 `GestureCancelEvt` — `cancelEditorGesture()` already does exactly this, and
 js-draw's `Pen.onGestureCancel` discards the in-progress builder without
 committing — and then dispatch our own `Erase(covered)`.
@@ -207,7 +207,7 @@ GoodNotes; the thresholds above are what make that defensible.
 - `lib/workspace/notebook-scribble-erase.ts` — new, pure: detection + coverage.
 - `lib/workspace/notebook-scribble-gesture.ts` — new: the js-draw side (candidate
   lookup, `Erase` dispatch), sibling to `notebook-precision-eraser.ts`.
-- `components/workspace/NotebookInkEditor.tsx` — bounded per-pointer sample
+- `hooks/useNotebookInkPointerInput.ts` (then in `NotebookInkEditor.tsx`) — bounded per-pointer sample
   buffer (cap ~512, reuse arrays; this is a hot handler), evaluation before the
   `pointerup` forward.
 - `components/workspace/NotebookToolSettingsPopover.tsx` +
@@ -251,7 +251,7 @@ commits.
 
 The save path's `pageHasUnloadedInk(page)` guard stops the write **while** ink
 is missing. But `NotebookInkEditor` reads `initialSvg` once at mount into
-`initialSvgRef`, and `inkEditorMountRevision` is only bumped on draft restore —
+`initialSvgRef` (now in `useNotebookJsDrawEditor`), and `inkEditorMountRevision` is only bumped on draft restore —
 so when hydration lands, the real ink never reaches the mounted-empty editor,
 `pageHasUnloadedInk` goes false, and the next autosave writes the blank canvas
 over the student's drawing. That is the overwrite this feature guards against.

@@ -1,10 +1,8 @@
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { isOwnedAssistantImagePath } from "@/lib/ai/assistant-illustrations";
 import { normalizeAssistantIllustrations } from "@/lib/ai/jami-assistant";
-import {
-  assistantAssetError,
-  authenticateAssistantAssetRequest,
-} from "@/services/ai/assistant-assets.server";
+import { assistantAssetError } from "@/services/ai/assistant-assets.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
@@ -19,7 +17,7 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ threadId: string }> }
 ) {
-  const uid = await authenticateAssistantAssetRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return assistantAssetError("Unauthorized", 401, "unauthorized");
   const threadId = (await context.params).threadId.trim().slice(0, 160);
   let body: Record<string, unknown>;
@@ -49,7 +47,7 @@ export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ threadId: string }> }
 ) {
-  const uid = await authenticateAssistantAssetRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return assistantAssetError("Unauthorized", 401, "unauthorized");
   const threadId = (await context.params).threadId.trim().slice(0, 160);
   if (!threadId) return assistantAssetError("Invalid chat.", 400, "invalid_request");

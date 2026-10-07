@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { start } from "workflow/api";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { getBearerToken } from "@/lib/auth/bearer";
 import {
   CARD_SOURCE_MAX_BYTES,
   CARD_SOURCE_TEXT_MAX_LENGTH,
@@ -14,16 +14,11 @@ import {
 } from "@/lib/ai/video-card-jobs";
 import { isSourceFileMimeType } from "@/lib/material/source-files";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
-import { getAdminAuth, getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
+import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { generateVideoCardWorkflow } from "@/workflows/video-card-generation";
 
 export const runtime = "nodejs";
 
-async function authenticate(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try { return (await getAdminAuth().verifyIdToken(token)).uid; } catch { return null; }
-}
 function failure(error: string, status: number, code: string) { return Response.json({ error, code }, { status }); }
 function jobId(value: string | null) { const safe = value?.trim() ?? ""; return /^[A-Za-z0-9_-]{16,120}$/.test(safe) ? safe : randomUUID(); }
 function youtubeId(value: string) {
@@ -79,13 +74,13 @@ async function sweepExpiredImports(db: ReturnType<typeof getAdminDb>, uid: strin
 }
 
 export async function GET(request: NextRequest) {
-  const uid = await authenticate(request); if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  const uid = await authenticateRequest(request); if (!uid) return failure("Unauthorized", 401, "unauthorized");
   const snapshot = await getAdminDb().collection("users").doc(uid).collection("videoCardJobs").orderBy("updatedAt", "desc").limit(10).get();
   return Response.json({ jobs: snapshot.docs.map((doc) => mapVideoCardJobData(doc.id, doc.data())) });
 }
 
 export async function POST(request: NextRequest) {
-  const uid = await authenticate(request); if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  const uid = await authenticateRequest(request); if (!uid) return failure("Unauthorized", 401, "unauthorized");
   let body: Record<string, unknown>; try { body = await request.json(); } catch { return failure("Invalid request", 400, "invalid_request"); }
   const coverage = parseVideoCoverage(body.coverage); const maxCards = parseVideoCardLimit(body.maxCards); const deckId = typeof body.deckId === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(body.deckId) ? body.deckId : "";
   const topics = Array.isArray(body.topicIds) ? body.topicIds.filter((v): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(v)).slice(0, 20) : [];

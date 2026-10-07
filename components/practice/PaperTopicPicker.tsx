@@ -4,21 +4,7 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui";
 import { servableExamSpecificationTopics } from "@/lib/practice/exam-specification-topics";
 import { servableExamSpecificationConcepts } from "@/lib/practice/exam-specification-concepts";
-
-export type PaperTopicSelection = {
-  /** Whole topics in the paper. */
-  topicIds: string[];
-  /** Single subtopics chosen inside topics that are not in whole. */
-  conceptIds: string[];
-};
-
-/** Every topic of the course, which is what a new paper starts with. */
-export function wholeCourseSelection(specificationId: string): PaperTopicSelection {
-  return {
-    topicIds: (servableExamSpecificationTopics(specificationId)?.topics ?? []).map((topic) => topic.id),
-    conceptIds: [],
-  };
-}
+import type { PaperTopicSelection } from "@/lib/practice/paper-topic-scope";
 
 /**
  * What goes in the paper, from the course's own checked topic list.

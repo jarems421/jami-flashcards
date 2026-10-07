@@ -7,6 +7,7 @@ import { MemoryMapEngine } from "@/components/ai/memory-map/engine";
 import { MEMORY_KIND_COLOURS } from "@/components/ai/memory-map/world";
 import { buildMemoryMap, describeMemoryMapNote, type MemoryMapFolderInput } from "@/lib/ai/memory-map";
 import { MAX_TUTOR_MEMORY_TEXT_LENGTH, TUTOR_MEMORY_KIND_LABELS } from "@/lib/ai/tutor-memory";
+import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
 import type { TutorMemoryEntry } from "@/services/ai/tutor-memory";
 
 type TutorMemoryMapProps = {
@@ -97,7 +98,7 @@ export default function TutorMemoryMap({ items, folders, onEdit, onForget, compa
       canvas,
       overlay,
       card,
-      reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      reducedMotion: prefersReducedMotion(),
       onFocus: setFocusId,
       onSelect: (id) => {
         setSelectedId(id);
