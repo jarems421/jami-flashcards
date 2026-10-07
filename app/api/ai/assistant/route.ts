@@ -161,6 +161,21 @@ export async function POST(request: NextRequest) {
   }
   // Captured here so the refund below keeps the narrowing this check performed.
   const budgetGrant = budgetDecision.grant;
+
+  /**
+   * Hands the charged request back. Every path that leaves the student with
+   * nothing goes through here: a request that produced no answer should not
+   * also cost one of the day's allowance.
+   */
+  const refundRequest = async (why: string) => {
+    try {
+      await refundAiBudget(budgetGrant);
+    } catch (error) {
+      // A refund that fails costs the student one request; failing the response
+      // over it would cost them the answer as well.
+      log.warn("budget.refund_failed", { why, error });
+    }
+  };
   const { deadlineAt, preAnswerDeadlineAt } = tutorTurnDeadlines(startedAt);
   /*
    * What the student referred back to -- earlier in a long chat, or in another
@@ -193,7 +208,12 @@ export async function POST(request: NextRequest) {
     log,
   });
   const { readable, readableAttachments } = material;
-  if (material.combinedSourceBytes > MAX_COMBINED_SOURCE_BYTES) return sourcesTooLarge();
+  if (material.combinedSourceBytes > MAX_COMBINED_SOURCE_BYTES) {
+    // Charged already: only reading the sources showed how large they are.
+    cancellation.release();
+    await refundRequest("sources_too_large");
+    return sourcesTooLarge();
+  }
 
   const research = await researchTutorTurn({
     uid,
@@ -286,21 +306,6 @@ export async function POST(request: NextRequest) {
     plan.guidance.maxOutputTokens
   );
 
-  /**
-   * Hands the charged request back. Every path that leaves the student with
-   * nothing goes through here: a request that produced no answer should not
-   * also cost one of the day's allowance.
-   */
-  const refundRequest = async (why: string) => {
-    try {
-      await refundAiBudget(budgetGrant);
-    } catch (error) {
-      // A refund that fails costs the student one request; failing the response
-      // over it would cost them the answer as well.
-      log.warn("budget.refund_failed", { why, error });
-    }
-  };
-
   if (
     await exceedsTutorInputCap({
       role: route.role,
@@ -311,6 +316,7 @@ export async function POST(request: NextRequest) {
       log,
     })
   ) {
+    cancellation.release();
     await refundRequest("input_too_large");
     return tutorFailureResponse(
       "That is more material than Jami can read at once. Choose fewer sources and ask again.",
