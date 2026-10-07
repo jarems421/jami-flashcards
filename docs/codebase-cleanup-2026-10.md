@@ -94,6 +94,9 @@ Practice paper builder
 - A folder still loading, or that failed to load, could show and send another
   folder's material.
 - Supporting files were sent even after they stopped being offered.
+- A file still being added when the student switched folders reset the folder
+  they switched to once it finished: its material showed as loading and their
+  choice of material was lost.
 
 Removed outright: `updateNotebookPage`, a page write that bypassed the
 revision check every real save uses.
@@ -113,7 +116,8 @@ revision check every real save uses.
   Tutor's "could not read this source", passed raw storage and transaction
   errors (bucket names, paths) to the page. Only reasons worded for the student
   are shown now (`SourceReadError`); the rest is logged, and the logger records
-  a wrapped error's cause without its message.
+  a wrapped error's cause without its message (three levels deep at most, so a
+  cyclic chain cannot loop).
 
 Reviewed and sound as they stand: ownership (every id route reads under
 `users/{uid}`), the cron secret (constant-time, fails closed), the Stripe
@@ -129,7 +133,7 @@ allowlist), and the response headers (enforced CSP, HSTS, frame denial).
 
 ## Tests
 
-5,785 → 5,802 unit tests, plus a rules test for the new Storage guard.
+5,785 → 5,804 unit tests, plus a rules test for the new Storage guard.
 
 The browser suite had not given a result in CI for weeks: the job ran all 54
 specs, which take over half an hour, under a 20-minute limit, so every run was

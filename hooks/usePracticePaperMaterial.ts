@@ -9,6 +9,15 @@ import { getActiveSources, getActiveSourcesForFolderPage, updateSource } from "@
 
 const FOLDER_SOURCE_PAGE_SIZE = 100;
 
+/**
+ * Replaces one folder's state, unless the student has moved to another folder
+ * whose state has taken its place meanwhile. An add that finishes after the
+ * student switched folders then updates only the folder it was made in.
+ */
+function forFolder<T extends { folderId: string }>(next: T) {
+  return (current: T | null) => (current && current.folderId !== next.folderId ? current : next);
+}
+
 type Feedback = {
   clear: () => void;
   showError: (message: string) => void;
@@ -91,11 +100,13 @@ export function usePracticePaperMaterial({
     const page = await getActiveSourcesForFolderPage(userId, forFolderId, {
       pageSize: FOLDER_SOURCE_PAGE_SIZE,
     }).catch(() => null);
-    if (page) setLoaded({ folderId: forFolderId, items: page.items });
-    setChosen({
-      folderId: forFolderId,
-      ids: [...startingIds, ...added].slice(0, MAX_PRACTICE_PAPER_SOURCE_IDS),
-    });
+    if (page) setLoaded(forFolder({ folderId: forFolderId, items: page.items }));
+    setChosen(
+      forFolder({
+        folderId: forFolderId,
+        ids: [...startingIds, ...added].slice(0, MAX_PRACTICE_PAPER_SOURCE_IDS),
+      })
+    );
   };
 
   const uploadMaterial = async (files: File[], kind: "paper" | "notes") => {

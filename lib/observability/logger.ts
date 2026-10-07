@@ -102,6 +102,9 @@ function truncate(value: string, max: number) {
     : `${value.slice(0, max)}…(+${value.length - max})`;
 }
 
+/** How far a chain of wrapped errors is followed, so a cyclic one cannot loop. */
+const MAX_CAUSE_DEPTH = 3;
+
 /**
  * Unpacks a thrown value into fields worth searching on.
  *
@@ -109,7 +112,7 @@ function truncate(value: string, max: number) {
  * and an Error without its status, which is exactly the detail needed to tell
  * a provider outage from a rate limit.
  */
-function describeError(error: unknown): LogFields {
+function describeError(error: unknown, causeDepth = 0): LogFields {
   if (error instanceof Error) {
     const status = (error as { status?: unknown }).status;
     const code = (error as { code?: unknown }).code;
@@ -129,7 +132,9 @@ function describeError(error: unknown): LogFields {
       ...(typeof status === "number" ? { status } : {}),
       ...(typeof code === "string" ? { code } : {}),
       // An error wrapped to be shown safely keeps what actually failed here.
-      ...(error.cause !== undefined ? { cause: describeError(error.cause) } : {}),
+      ...(error.cause !== undefined && causeDepth < MAX_CAUSE_DEPTH
+        ? { cause: describeError(error.cause, causeDepth + 1) }
+        : {}),
     };
   }
 
