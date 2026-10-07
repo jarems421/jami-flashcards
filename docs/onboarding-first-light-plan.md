@@ -105,7 +105,7 @@ gagnera ensuite via les goals. Un seul langage visuel du début à la fin.
 - `create-deck` → `app/dashboard/decks/page.tsx`
 - `create-card` → `components/decks/CardCreationPanel.tsx`
 - `complete-review` → `app/dashboard/study/page.tsx`
-- `ask-tutor` → `components/ai/JamiAssistantDrawer.tsx` (reportTutorialAction)
+- `ask-tutor` → `hooks/useTutorChatSend.ts` (reportTutorialAction)
 
 Cibles à ajouter en Pass 2 :
 - `add-source` → bouton « Add source » de `app/dashboard/library/page.tsx`
