@@ -10,6 +10,10 @@ const pageSource = [
   // moving the code that carries it out of the page file.
   "hooks/useConstellationLineEditing.ts",
   "hooks/useSkyPattern.ts",
+  "hooks/useStarArranging.ts",
+  "hooks/useStarGestureLock.ts",
+  "hooks/useConstellationLinking.ts",
+  "components/constellation/SkyCanvas.tsx",
 ]
   .map((file) => readFileSync(path.join(process.cwd(), file), "utf8"))
   .join("\n");
