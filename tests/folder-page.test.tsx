@@ -332,6 +332,36 @@ describe("a study folder", () => {
     expect(container.textContent).toContain("Sources added to this folder.");
   });
 
+  it("does not call the sources empty while they are still loading", async () => {
+    services.getActiveSourcesForFolderPage.mockReturnValue(new Promise(() => undefined));
+    await renderPage();
+    await click(buttonByText("Sources"));
+
+    expect(container.querySelector(".animate-pulse")).not.toBeNull();
+    expect(container.textContent).not.toContain("No sources in this folder yet");
+  });
+
+  it("shows a tab as loading, not empty, when the student comes back to it mid-load", async () => {
+    let finishDecks: (page: { items: Deck[]; nextCursor: null }) => void = () => undefined;
+    services.getDecksForFolderPage.mockReturnValue(
+      new Promise((resolve) => {
+        finishDecks = resolve;
+      })
+    );
+    services.getActiveSourcesForFolderPage.mockReturnValue(new Promise(() => undefined));
+    await renderPage();
+    await click(buttonByText("Decks"));
+    await click(buttonByText("Sources"));
+    await click(buttonByText("Decks"));
+
+    expect(container.textContent).not.toContain("No decks in this folder yet");
+    await act(async () => {
+      finishDecks({ items: [deck("d1", "Cell biology", [FOLDER_ID])], nextCursor: null });
+    });
+    await settle();
+    expect(container.textContent).toContain("Cell biology");
+  });
+
   it("says when a tab's list could not load", async () => {
     services.getDecksForFolderPage.mockRejectedValueOnce(new Error("offline"));
     await renderPage();
