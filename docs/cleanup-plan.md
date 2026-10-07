@@ -5,6 +5,10 @@ with a codebase-wide review. Written 2026-07-30.
 
 ## Status — all phases complete
 
+> Continued in October 2026 by `docs/codebase-cleanup-2026-10.md`, which split
+> the remaining large files -- including the notebook swipe navigation this plan
+> left in place, once it could take whole controller objects instead of loose refs.
+
 The notebook page went **4,525 → 2,933 lines**; the Vitest suite went
 **704 → 1,008**; the browser suite went from one notebook spec to fourteen
 signed-in flows across notebook, study, browse, and offline replay.
