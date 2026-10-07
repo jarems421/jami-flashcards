@@ -14,6 +14,8 @@
 /coverage
 /playwright-report
 /test-results
+# Screenshots the visual browser specs write for review.
+/e2e-screens
 /artifacts/ai-benchmark-report*.json
 # Derived corpus records. Never committed: they carry third-party dataset
 # content whose licences have not all been verified.

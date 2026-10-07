@@ -87,13 +87,16 @@ test("Today recommends testing a topic the student has material on, and the link
 
   await signIn(page);
 
-  const recommendation = page.getByRole("link", {
-    name: new RegExp(`Test yourself on ${E2E_TOPIC.name}`),
-  });
+  // The recommendation names the topic, and its action is "Test yourself".
+  const recommendation = page
+    .getByRole("listitem")
+    .filter({ hasText: E2E_TOPIC.name })
+    .getByRole("link", { name: "Test yourself", exact: true });
   await expect(recommendation).toBeVisible({ timeout: 60_000 });
+  // A diagnostic session on that topic; what follows the topic says why it was suggested.
   await expect(recommendation).toHaveAttribute(
     "href",
-    `/dashboard/study?mode=custom&topics=${E2E_TOPIC.id}`
+    new RegExp(`^/dashboard/study\\?mode=custom&topics=${E2E_TOPIC.id}&focus=diagnose&`)
   );
 
   await recommendation.click();

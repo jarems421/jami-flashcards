@@ -151,11 +151,12 @@ test("Cards lists seeded cards and searches their fronts", async ({ page }) => {
   await expect(page.getByText(E2E_CARDS[1].front)).toHaveCount(0);
 
   await page.getByRole("button", { name: "From notes or file" }).click();
-  await expect(page.getByText("Turn study material into a draft deck")).toBeVisible();
   await expect(page.getByText("PDF, PowerPoint, Word, text or image · under 20 MB")).toBeVisible();
-  await expect(page.getByText("Key points")).toBeVisible();
-  await expect(page.getByText("Standard")).toBeVisible();
-  await expect(page.getByText("Thorough")).toBeVisible();
+  // How much of the material becomes cards is a choice of coverage, not a count.
+  const coverage = page.getByRole("radiogroup", { name: "Coverage" });
+  await expect(coverage.getByRole("radio", { name: /^Key points/ })).toBeVisible();
+  await expect(coverage.getByRole("radio", { name: /^Standard/ })).toBeChecked();
+  await expect(coverage.getByRole("radio", { name: /^Thorough/ })).toBeVisible();
   await expect(page.getByLabel("Most cards to make (optional)")).toHaveCount(0);
 
   expect(errors).toEqual([]);
@@ -202,20 +203,20 @@ test("Goals lists an active goal", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("Progress renders its charts rather than failing to load them", async ({
+test("Progress renders its sections rather than failing to load them", async ({
   page,
 }) => {
   await signIn(page);
   const errors = await openScreen(page, "/dashboard/progress", "Progress");
 
-  // The charts are loaded on demand, so a broken dynamic import would leave
-  // the range control on screen with nothing under it.
-  await expect(page.getByLabel("Statistics time range")).toBeVisible({
+  // Progress shows numbers rather than charts now; each section is read
+  // separately, so one failing would leave a gap rather than an error.
+  await expect(page.getByRole("heading", { name: "How well you remember" })).toBeVisible({
     timeout: 45_000,
   });
-  await expect(
-    page.locator('[role="img"][aria-label*="Accuracy chart"]')
-  ).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByRole("heading", { name: "Deck health" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: /^Browser smoke deck: remembering/ })).toBeVisible();
 
   expect(errors).toEqual([]);
 });
