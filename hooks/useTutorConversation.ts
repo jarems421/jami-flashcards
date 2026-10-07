@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import type { TutorChatMessage } from "@/lib/ai/tutor-chat-messages";
 
@@ -40,6 +40,14 @@ export function useTutorConversation({ startInHistory }: { startInHistory: boole
     requestAbortRef.current?.abort();
     requestAbortRef.current = null;
   }, []);
+
+  /*
+   * Leaving stops the answer too. The drawer unmounts when its surface goes --
+   * navigating away, or the Tutor page remounting it for a new choice of
+   * sources -- and an answer nobody can see any more should not go on being
+   * written and charged.
+   */
+  useEffect(() => abandonActiveRequest, [abandonActiveRequest]);
 
   /** Starts the next answer, or nothing while one is still being written. */
   const beginRequest = useCallback((): TutorChatRequest | null => {

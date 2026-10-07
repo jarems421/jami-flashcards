@@ -501,6 +501,16 @@ describe("JamiAssistantDrawer while an answer is written", () => {
     expect(bodyText()).not.toContain("About this card");
   });
 
+  it("stops the answer when the drawer goes away", async () => {
+    const call = deferredSend();
+    await render(drawer());
+    await ask("A question nobody will see answered");
+    act(() => root.unmount());
+    expect(call.signal?.aborted).toBe(true);
+    // afterEach unmounts a root, so leave it a fresh one.
+    root = createRoot(container);
+  });
+
   it("keeps writing the answer while the drawer is put away", async () => {
     const call = deferredSend();
     await render(drawer());
