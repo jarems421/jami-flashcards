@@ -227,42 +227,50 @@ function MissionCard({
     );
   }
 
+  /*
+   * The position lives on a wrapper, not on the Card. Card is `relative`
+   * itself, and `relative` comes later in the stylesheet than `fixed`, so this
+   * card used to sit in the page's flow instead of floating in the corner --
+   * in a notebook, right over the Ask Jami button its own mission points at.
+   */
   return (
-    <Card
+    <div
       data-testid="tutorial-quest"
-      className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+6.4rem)] left-3 right-3 z-[70] ml-auto max-w-sm p-4 shadow-nav-shell md:bottom-5 md:left-auto md:right-5"
+      className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+6.4rem)] left-3 right-3 z-[70] ml-auto max-w-sm md:bottom-5 md:left-auto md:right-5"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-            Mission {completed + 1} of {MISSION_COUNT}
+      <Card padding="none" className="p-4 shadow-nav-shell">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+              Mission {completed + 1} of {MISSION_COUNT}
+            </div>
+            <h2 className="mt-1 text-base font-semibold text-text-primary">
+              {mission.title}
+            </h2>
           </div>
-          <h2 className="mt-1 text-base font-semibold text-text-primary">
-            {mission.title}
-          </h2>
+          <button
+            type="button"
+            aria-label="Collapse walkthrough mission"
+            onClick={() => setCollapsed(true)}
+            className="app-chip grid h-8 w-8 shrink-0 place-items-center rounded-md text-text-muted"
+          >
+            <span aria-hidden="true">&minus;</span>
+          </button>
         </div>
-        <button
-          type="button"
-          aria-label="Collapse walkthrough mission"
-          onClick={() => setCollapsed(true)}
-          className="app-chip grid h-8 w-8 shrink-0 place-items-center rounded-md text-text-muted"
-        >
-          <span aria-hidden="true">&minus;</span>
-        </button>
-      </div>
-      <p className="mt-2 text-sm leading-5 text-text-secondary">{mission.detail}</p>
-      <div className="mt-3 text-text-primary">
-        <ConstellationTrail completed={completed} size="md" />
-      </div>
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <Button size="sm" onClick={onGo}>
-          {mission.actionLabel}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onPause}>
-          Pause
-        </Button>
-      </div>
-    </Card>
+        <p className="mt-2 text-sm leading-5 text-text-secondary">{mission.detail}</p>
+        <div className="mt-3 text-text-primary">
+          <ConstellationTrail completed={completed} size="md" />
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <Button size="sm" onClick={onGo}>
+            {mission.actionLabel}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onPause}>
+            Pause
+          </Button>
+        </div>
+      </Card>
+    </div>
   );
 }
 
