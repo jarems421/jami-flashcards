@@ -23,7 +23,7 @@ test("symbol palette walkthrough", async ({ page }) => {
     page.evaluate(() => {
       const panel = document.querySelector('[role="tabpanel"]');
       return {
-        trigger: document.querySelectorAll('[aria-label="Insert a symbol"]').length,
+        trigger: document.querySelectorAll('button[aria-label="Maths symbols"]').length,
         open: Boolean(panel),
         groups: [
           ...document.querySelectorAll('[aria-label="Symbol groups"] [role="tab"]'),
@@ -45,7 +45,7 @@ test("symbol palette walkthrough", async ({ page }) => {
   log("signed in");
 
   await page.goto(`/dashboard/decks/${E2E_DECK_ID}`);
-  const trigger = page.getByLabel("Insert a symbol").first();
+  const trigger = page.getByRole("button", { name: "Maths symbols" }).first();
   await trigger.waitFor({ state: "visible", timeout: 120_000 });
   log("deck page:", JSON.stringify(await describe()));
 
@@ -56,7 +56,7 @@ test("symbol palette walkthrough", async ({ page }) => {
   ]) {
     await page.setViewportSize({ width, height });
     await page.waitForTimeout(500);
-    await page.getByLabel("Insert a symbol").first().click();
+    await page.getByRole("button", { name: "Maths symbols" }).first().click();
     await page.waitForTimeout(400);
     const state = await describe();
     seen[name] = state;

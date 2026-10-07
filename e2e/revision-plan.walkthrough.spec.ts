@@ -1,6 +1,7 @@
 import { initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { expect, test, type Page } from "@playwright/test";
 import { deleteDoc, doc, setDoc } from "firebase/firestore";
+import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import { E2E_FOLDER_ID, E2E_PROJECT_ID, E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./fixtures";
 
 /**
@@ -16,10 +17,17 @@ import { E2E_FOLDER_ID, E2E_PROJECT_ID, E2E_USER_EMAIL, E2E_USER_PASSWORD } from
 
 const PLAN_ID = "e2e-plan";
 
+/*
+ * The app's day, not the calendar's: a study day runs from 4pm to 4pm London
+ * time. Seeding from the calendar put "today's" session on the wrong day for
+ * any run between midnight and 4pm in London.
+ */
 function studyDayKey(offsetDays = 0) {
-  const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return shiftStudyDayKey(getStudyDayKey(), offsetDays);
+}
+
+function studyWeekday() {
+  return new Date(`${getStudyDayKey()}T12:00:00Z`).getUTCDay();
 }
 
 async function uidFor(email: string, password: string) {
@@ -37,7 +45,7 @@ let uid: string;
 test.beforeAll(async () => {
   environment = await initializeTestEnvironment({ projectId: E2E_PROJECT_ID });
   uid = await uidFor(E2E_USER_EMAIL, E2E_USER_PASSWORD);
-  const weekday = new Date().getDay();
+  const weekday = studyWeekday();
   await environment.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), "users", uid, "revisionPlans", PLAN_ID), {
       schemaVersion: 2,
@@ -94,7 +102,7 @@ test("the plan leads Home and the planner at every width", async ({ page }) => {
   await page.getByRole("button", { name: "Add a task" }).first().click();
   await page.getByLabel(/Add your own task to/).fill("Redo question 3 from Monday's paper");
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Today's plan", level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today’s plan", level: 2 })).toBeVisible();
   await expect(page.getByText("Redo question 3 from Monday's paper").first()).toBeVisible();
   await expect(page.getByText("You added").first()).toBeVisible();
   await expectNoHorizontalOverflow(page, 1440);
@@ -126,7 +134,7 @@ test("the plan leads Home and the planner at every width", async ({ page }) => {
   // Tomorrow: its session shows, and Jami's part of it is decided on the day.
   const days = page.locator("button[aria-pressed]");
   await expect(days).toHaveCount(7);
-  const todayIndex = (new Date().getDay() + 6) % 7;
+  const todayIndex = (studyWeekday() + 6) % 7;
   // On a Sunday, tomorrow is next week and not in this row.
   if (todayIndex < 6) {
     await days.nth(todayIndex + 1).click();

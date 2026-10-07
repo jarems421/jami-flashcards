@@ -5,10 +5,12 @@ import { E2E_USER_EMAIL, E2E_USER_PASSWORD } from "./fixtures";
 const screenshotDirectory = "test-results/tutor-settings";
 
 /**
- * The Tutor settings drawer, at the three widths the design system asks about.
+ * Personalise Jami, at the three widths the design system asks about.
  *
- * This runs whenever Tutor personalisation is enabled (the default). It proves
- * the drawer opens, both views render, and nothing overflows a phone.
+ * Tutor's settings were a drawer on the Tutor page; they are a page of their
+ * own now, opened from it. This runs whenever Tutor personalisation is enabled
+ * (the default). It proves the page opens from Tutor, its settings arrive
+ * loaded, and nothing overflows a phone.
  */
 
 /*
@@ -28,7 +30,7 @@ async function signIn(page: Page) {
   await page.waitForURL(/\/dashboard$/, { timeout: 45_000 });
 }
 
-test("the Tutor settings drawer holds up at every width", async ({ page }) => {
+test("Personalise Jami holds up at every width", async ({ page }) => {
   mkdirSync(screenshotDirectory, { recursive: true });
 
   const errors: Error[] = [];
@@ -40,17 +42,16 @@ test("the Tutor settings drawer holds up at every width", async ({ page }) => {
     page.getByRole("heading", { name: "Jami", level: 1 })
   ).toBeVisible({ timeout: 45_000 });
 
-  await page.getByRole("button", { name: "Open Jami settings" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Tutor settings" })
-  ).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("link", { name: "Personalise Jami" }).click();
+  await page.waitForURL(/\/dashboard\/tutor\/personalise$/, { timeout: 45_000 });
+  await expect(page.getByText("How Jami teaches you")).toBeVisible({ timeout: 45_000 });
 
-  // The preferences form is the default view and must arrive loaded, not as a
-  // permanent skeleton: a settings screen that never resolves looks identical
-  // to one that is slow.
-  await expect(page.getByRole("radio", { name: "Adaptive" }).first()).toBeVisible({
+  // The settings must arrive loaded, not as a permanent skeleton: a settings
+  // screen that never resolves looks identical to one that is slow.
+  await expect(page.getByText("How Jami teaches", { exact: true })).toBeVisible({
     timeout: 60_000,
   });
+  await expect(page.getByText("What each subject needs", { exact: true })).toBeVisible();
 
   for (const [name, width, height] of [
     ["desktop", 1280, 1000],
@@ -60,27 +61,15 @@ test("the Tutor settings drawer holds up at every width", async ({ page }) => {
     await page.setViewportSize({ width, height });
     await page.waitForTimeout(400);
     await page.screenshot({
-      path: `${screenshotDirectory}/preferences-${name}.png`,
+      path: `${screenshotDirectory}/personalise-${name}.png`,
+      fullPage: true,
     });
 
-    const panel = page.getByRole("tabpanel");
-    const box = await panel.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.width).toBeLessThanOrEqual(width);
+    const scrollWidth = await page.evaluate(() =>
+      Math.max(document.body.scrollWidth, document.documentElement.scrollWidth)
+    );
+    expect(scrollWidth, `${name}: no sideways scroll`).toBeLessThanOrEqual(width + 1);
   }
-
-  await page.setViewportSize({ width: 1280, height: 1000 });
-  await page.getByRole("tab", { name: "Folder instructions" }).click();
-  await page.waitForTimeout(600);
-  await page.screenshot({
-    path: `${screenshotDirectory}/folders-desktop.png`,
-  });
-
-  await page.setViewportSize({ width: 390, height: 900 });
-  await page.waitForTimeout(400);
-  await page.screenshot({
-    path: `${screenshotDirectory}/folders-phone.png`,
-  });
 
   expect(errors).toEqual([]);
 });

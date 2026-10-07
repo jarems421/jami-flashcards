@@ -99,12 +99,16 @@ test("card editor walkthrough", async ({ page }) => {
   await page.screenshot({ path: `${OUT}/card-editor-desktop.png` });
 
   await page.keyboard.press("Escape");
+  // The pointer is still on the card whose menu it opened, and a hovered card
+  // lifts 2px by design. That is not the grid moving, so measure without it.
+  await page.mouse.move(0, 0);
   await page.waitForTimeout(400);
   seen["desktop-closed"] = await shape();
   log("desktop closed:", JSON.stringify(seen["desktop-closed"]));
 
-  // The surface the report came from: editing a result inside a search.
-  await page.getByLabel("Search card fronts").fill("card");
+  // The surface the report came from: editing a result inside a search. Search
+  // matches the start of a front, so this finds both seeded smoke cards.
+  await page.getByLabel("Search card fronts").fill("Smoke card");
   await page.waitForTimeout(900);
   seen["search-grid"] = await shape();
   log("search grid:", JSON.stringify(seen["search-grid"]));
@@ -123,6 +127,7 @@ test("card editor walkthrough", async ({ page }) => {
     { name: "phone", width: 390, height: 844 },
   ]) {
     await page.setViewportSize({ width, height });
+    await page.mouse.move(0, 0);
     await page.waitForTimeout(500);
     seen[`${name}-grid`] = await shape();
     await openEditor();
