@@ -202,6 +202,7 @@ export async function sendJamiAssistantMessage(
   const citations = normalizeAssistantCitations(data?.citations);
   const suggestedCards = normalizeSuggestedCards(data?.suggestedCards);
   const practiceOffer = normalizeTutorPracticeOffer(data?.practiceOffer);
+  const nextStepOffer = normalizeTutorPracticeOffer(data?.nextStepOffer);
   const savedThreadData =
     data?.savedThread &&
     typeof data.savedThread === "object" &&
@@ -223,6 +224,7 @@ export async function sendJamiAssistantMessage(
     ...(citations.length > 0 ? { citations } : {}),
     ...(suggestedCards.length > 0 ? { suggestedCards } : {}),
     ...(practiceOffer ? { practiceOffer } : {}),
+    ...(nextStepOffer ? { nextStepOffer } : {}),
     ...(data?.canIllustrate === true ? { canIllustrate: true } : {}),
     ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
     ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),

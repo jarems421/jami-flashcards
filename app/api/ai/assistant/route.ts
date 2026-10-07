@@ -60,6 +60,12 @@ import {
 import { getAiInputTokenCap } from "@/lib/ai/budgets";
 import { buildAssistantResponseSchema } from "./response-schema";
 import { recordNotebookMarking } from "@/services/learning/notebook-markings.server";
+import { recordTutorCheck } from "@/services/learning/tutor-checks.server";
+import {
+  readPendingTutorCheck,
+  readTutorCheckProposal,
+  type PendingTutorCheck,
+} from "@/lib/learning/events/tutor-check";
 import { applyTutorMemoryFromAnswer } from "@/services/ai/tutor-memory.server";
 import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
 import { TUTOR_VOICE_INSTRUCTION } from "@/lib/ai/tutor-voice";
@@ -176,6 +182,45 @@ const ANSWER_STALL_TIMEOUT_MS = 30_000;
 /** Optional work before the answer: reading, routing, research, a second opinion. */
 const PRE_ANSWER_BUDGET_MS = 20_000;
 const REQUEST_DEADLINE_MS = PRE_ANSWER_BUDGET_MS + REQUEST_TIMEOUT_MS;
+
+/**
+ * When Tutor may ask a quick check, offered only where one can count.
+ *
+ * Most of it is about restraint: a chat that turns every answer into a test is
+ * worse tutoring, and a check asked straight after explaining the idea mostly
+ * measures whether the explanation was followed.
+ */
+const QUICK_CHECK_INSTRUCTION = [
+  "You may end your answer with one quick check: a single short question the student answers",
+  "from memory, in a sentence or two, on the topic in front of them. Ask one when the learner",
+  "profile suggests a quick check or a short diagnostic question, when the student asks to be",
+  "tested, or when they say they understand something you taught earlier in this chat. Do not",
+  "ask one after every answer, never in the same answer that first explains the idea, and",
+  "never answer it yourself. When you ask one, also return \"quickCheck\" with one to four points",
+  "a correct answer must make, in your own words; otherwise leave \"quickCheck\" out.",
+].join(" ");
+
+/**
+ * The check asked last turn, for this turn's marking.
+ *
+ * The points are the model's own earlier words, read back from server-written
+ * state, and still placed inside data markers: they are what to mark against,
+ * never instructions.
+ */
+function buildCheckMarkingInstruction(check: PendingTutorCheck) {
+  const boundary = randomUUID();
+  return [
+    "Your previous answer ended with a quick check. These are the points you fixed for it:",
+    `--- BEGIN CHECK POINTS ${boundary} ---`,
+    ...check.points.map((point, index) => `${index + 1}. ${JSON.stringify(point.criterion)}`),
+    `--- END CHECK POINTS ${boundary} ---`,
+    "If the student's message is their answer to it, return \"checkMarking\" with attempted true and",
+    "one true or false per point, in order, judged strictly against what they actually wrote. An",
+    "answer of \"I don't know\" counts as attempted, with every point false. If they asked for a hint,",
+    "asked something else, or changed the subject, set attempted false. Either way, respond to them",
+    "naturally: say briefly what they got right and what was missing.",
+  ].join("\n");
+}
 /**
  * The answer's reserved share of the deadline.
  *
@@ -385,6 +430,13 @@ export async function POST(request: NextRequest) {
       ? (routeStateSnapshot.data() as Record<string, unknown>)
       : null;
   }
+  /*
+   * A quick check Tutor asked last turn, waiting for this message to answer it.
+   * Read only from server-written route state, so a client cannot invent one.
+   */
+  const pendingCheck = featureFlags.enableTutorChecks
+    ? readPendingTutorCheck(trustedRouteState?.pendingCheck, startedAt)
+    : null;
 
   const responseGuidance = getJamiAssistantResponseGuidance({
     message: parsedRequest.message,
@@ -906,6 +958,13 @@ export async function POST(request: NextRequest) {
       log.warn("attachment.folders_unavailable", { error });
     }
   }
+  /**
+   * Whether Tutor may set a quick check this turn: only where the server has
+   * somewhere to count it, and never while marking a page, which is already
+   * the assessment the student asked for.
+   */
+  const checkInvited = Boolean(resolved.checkTarget) && !markingInvited;
+  const nextStepAvailable = Boolean(resolved.learningContext && resolved.nextStepOffer);
   const responseSchema = buildAssistantResponseSchema(
     allowedSourceRefs,
     markingInvited,
@@ -914,7 +973,12 @@ export async function POST(request: NextRequest) {
     resolved.memoryWritable === true,
     studyMaterialKinds,
     readableAttachments.length > 0,
-    getTutorSuggestionKinds(practiceSetsAvailable)
+    getTutorSuggestionKinds(practiceSetsAvailable),
+    {
+      checkInvited,
+      ...(pendingCheck ? { pendingCheckPoints: pendingCheck.points.length } : {}),
+      nextStepAvailable,
+    }
   );
   const attachmentInstruction = buildTutorAttachmentInstruction({
     attachmentCount: readableAttachments.length > 0 ? attachments.length : 0,
@@ -949,6 +1013,8 @@ ${movedFromSurface ? `${describeMovedChat(movedFromSurface, savedContext.surface
 sourceRefs must contain only references that materially informed the response. It may be empty. Set each used boolean truthfully.
 
 ${markingInvited ? MARKING_INSTRUCTION : ""}
+${pendingCheck ? buildCheckMarkingInstruction(pendingCheck) : ""}
+${checkInvited ? QUICK_CHECK_INSTRUCTION : ""}
 ${buildTutorStudyMaterialInstruction({
   requested: requestedStudyMaterial === "practice" && !practiceSetsAvailable ? null : requestedStudyMaterial,
   practiceAvailable: practiceSetsAvailable,
@@ -1340,6 +1406,10 @@ ${responseGuidance.instruction}`;
       used,
       ...(followUps.length > 0 ? { followUps } : {}),
       ...(resolved.practiceOffer ? { practiceOffer: resolved.practiceOffer } : {}),
+      // The engine's action, attached only when the model read the turn as "what next?".
+      ...(nextStepAvailable && parsedAnswer.offerNextStep && resolved.nextStepOffer
+        ? { nextStepOffer: resolved.nextStepOffer }
+        : {}),
       ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
       ...(parsedAnswer.usedWebResearch && webResearch.ok
         ? { citations: webResearch.citations.slice(0, 8) }
@@ -1617,13 +1687,53 @@ ${responseGuidance.instruction}`;
           ...(payload.studyMaterialFocus ? { studyMaterialFocus: payload.studyMaterialFocus } : {}),
           createdAt: now + 1,
         });
+        /*
+         * A quick check asked in this answer, placed by the server. Route state
+         * is replaced every turn, so a check is answerable on the next message
+         * only, and an unanswered one simply lapses.
+         */
+        const newCheck =
+          checkInvited && resolved.checkTarget && parsedAnswer.quickCheck !== undefined
+            ? readTutorCheckProposal({
+                proposal: parsedAnswer.quickCheck,
+                id: randomUUID(),
+                topicKeys: resolved.checkTarget.topicKeys,
+                scope: resolved.checkTarget.scope,
+                askedAt: now,
+              })
+            : null;
+        if (parsedAnswer.quickCheck !== undefined) {
+          log.info(newCheck ? "tutor_check.asked" : "tutor_check.proposal_rejected", {
+            ...(newCheck ? { points: newCheck.points.length } : {}),
+          });
+        }
         batch.set(userRef.collection("assistantRouteState").doc(threadRef.id), {
           lastRole: responseRole,
           lastTurnChallenged: routingSignals.priorAnswerChallenged,
           lastAssistantMessageId: assistantMessageRef.id,
+          ...(newCheck ? { pendingCheck: newCheck } : {}),
           updatedAt: now,
         });
         await batch.commit();
+
+        /*
+         * Mark the answer to last turn's check, if this message was one.
+         * Outside the batch like notebook marking: a check that fails to save
+         * costs the student nothing.
+         */
+        if (pendingCheck) {
+          try {
+            const outcome =
+              parsedAnswer.checkMarking === undefined
+                ? null
+                : await recordTutorCheck({ uid, pending: pendingCheck, verdict: parsedAnswer.checkMarking, markedAt: now });
+            if (!outcome) log.info("tutor_check.not_marked");
+            else if (outcome.recorded) log.info("tutor_check.recorded");
+            else log.info("tutor_check.rejected", { reason: outcome.reason });
+          } catch (error) {
+            log.warn("tutor_check.write_failed", { error });
+          }
+        }
 
         /*
          * Record Tutor's verdict, if it actually produced one.

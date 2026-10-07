@@ -46,6 +46,7 @@ import { buildStudyActions } from "@/lib/learning/actions/study-actions";
 import {
   materialTopicKeys,
   practiceActionForMaterial,
+  nextStudyAction,
 } from "@/lib/learning/actions/practice-for-material";
 import { buildTutorPracticeOffer, type TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
 import { describeStudyAction } from "@/lib/dashboard/today-plan";
@@ -55,6 +56,7 @@ import {
 } from "@/services/learning/study-actions.server";
 import { loadStudyActionHistory } from "@/services/learning/study-action-history.server";
 import { learnerProfileTelemetry } from "@/lib/learning/telemetry";
+import type { TutorCheckScope } from "@/lib/learning/events/tutor-check";
 import { createLogger } from "@/lib/observability/logger";
 import { loadLearnerProfile } from "@/services/learning/learner-profile.server";
 import { loadRecentResultText } from "@/services/learning/recent-result-text.server";
@@ -298,6 +300,19 @@ async function loadTutorMemoryContext(input: {
 }
 
 /**
+ * The one folder, or failing that the deck, that Tutor's learning context is
+ * scoped to -- and so where a quick check asked about this material counts.
+ */
+function tutorLearningScope(
+  folderIds: readonly string[],
+  deckId: string | undefined
+): TutorCheckScope | null {
+  const unique = Array.from(new Set(folderIds.filter(Boolean)));
+  if (unique.length === 1 && unique[0]) return { folderId: unique[0] };
+  return deckId ? { deckId } : null;
+}
+
+/**
  * What the Learning Engine currently believes about the student, for the
  * material in front of them, written for Tutor.
  *
@@ -315,15 +330,12 @@ async function loadTutorLearningContext(input: {
   deckId?: string;
   /** Where the material in front of the student sits in the engine's concept space. */
   materialKeys: readonly string[];
-}): Promise<{ learningContext: string; practiceOffer?: TutorPracticeOffer } | undefined> {
+}): Promise<
+  | { learningContext: string; practiceOffer?: TutorPracticeOffer; nextStepOffer?: TutorPracticeOffer }
+  | undefined
+> {
   if (!featureFlags.enableLearnerProfile) return undefined;
-  const folderIds = Array.from(new Set(input.folderIds.filter(Boolean)));
-  const scope =
-    folderIds.length === 1
-      ? { folderId: folderIds[0] }
-      : input.deckId
-        ? { deckId: input.deckId }
-        : null;
+  const scope = tutorLearningScope(input.folderIds, input.deckId);
   if (!scope) return undefined;
 
   const scopeKind = "folderId" in scope ? "folder" : "deck";
@@ -335,11 +347,12 @@ async function loadTutorLearningContext(input: {
    * What turning the profile into actions needs, read beside it rather than
    * after it: the folder, for whether its course can be practised, and the
    * student's history with this advice, so resting advice stays at rest. Both
-   * are small, and either failing costs the offer and nothing else.
+   * are small, and either failing costs the offers and nothing else. Read even
+   * with no material open, for the folder's next step.
    */
   const actionFolderId = "folderId" in scope ? scope.folderId : undefined;
   const actionInputs =
-    actionFolderId && featureFlags.enableStudyActions && input.materialKeys.length > 0
+    actionFolderId && featureFlags.enableStudyActions
       ? Promise.all([
           loadStudyFolderForActions(input.uid, actionFolderId),
           loadStudyActionHistory({ uid: input.uid }),
@@ -376,15 +389,22 @@ async function loadTutorLearningContext(input: {
       return undefined;
     }
     const [folder, history] = inputs ?? [null, null];
-    const practiceAction = folder
-      ? practiceActionForMaterial(
-          buildStudyActions(profile, studyActionContextFor(folder), history?.history),
-          input.materialKeys
-        )
-      : undefined;
+    const actions = folder
+      ? buildStudyActions(profile, studyActionContextFor(folder), history?.history)
+      : [];
+    const practiceAction = practiceActionForMaterial(actions, input.materialKeys);
     const practiceOffer = practiceAction
       ? buildTutorPracticeOffer(practiceAction, describeStudyAction(practiceAction))
       : undefined;
+    /*
+     * The folder's next step, for "what should I do next?". Left out when it is
+     * the practice already offered: one action is never offered twice.
+     */
+    const nextAction = nextStudyAction(actions);
+    const nextStepOffer =
+      nextAction && nextAction.id !== practiceOffer?.actionId
+        ? buildTutorPracticeOffer(nextAction, describeStudyAction(nextAction))
+        : undefined;
     /*
      * The words of the cards and questions in the recent results, so Tutor can
      * name the one the student got wrong. Within what is left of the budget;
@@ -407,12 +427,16 @@ async function loadTutorLearningContext(input: {
             },
           }
         : {}),
+      ...(nextStepOffer
+        ? { nextStep: { title: nextStepOffer.title, description: nextStepOffer.description } }
+        : {}),
     });
     log.info("learner_profile.completed", {
       consumer: "tutor",
       outcome: learningContext ? "included" : "insufficient_evidence",
       latencyMs,
       practiceOffered: Boolean(learningContext && practiceOffer),
+      nextStepAvailable: Boolean(learningContext && nextStepOffer),
       // Counts only: how many items were listed, and how many could be named.
       recentResults: profile.recentResults?.length ?? 0,
       recentResultsNamed: recentItemText.size,
@@ -420,7 +444,11 @@ async function loadTutorLearningContext(input: {
     });
     if (!learningContext) return undefined;
     // Offered only alongside the profile that tells the model it is there.
-    return { learningContext, ...(practiceOffer ? { practiceOffer } : {}) };
+    return {
+      learningContext,
+      ...(practiceOffer ? { practiceOffer } : {}),
+      ...(nextStepOffer ? { nextStepOffer } : {}),
+    };
   } catch (error) {
     log.warn("learner_profile.failed", {
       consumer: "tutor",
@@ -1036,6 +1064,18 @@ export async function resolveJamiAssistantContext(input: {
   // After the current page's own parts, so the page asked about is read first.
   const currentParts = [...resolved.currentParts, ...neighbourParts];
   /*
+   * Where a quick check on this material would count: the material's own
+   * concepts, in the engine's scope for it. Chosen here, never by the model.
+   */
+  const checkScope = tutorLearningScope(resolved.relations.folderIds, deckId);
+  const checkTarget =
+    featureFlags.enableTutorChecks &&
+    featureFlags.enableLearnerProfile &&
+    checkScope &&
+    materialKeys.length > 0
+      ? { topicKeys: materialKeys, scope: checkScope }
+      : undefined;
+  /*
    * Course documents are searched like sources the student chose, so a rubric
    * is consulted on every question rather than only when its wording happens
    * to match the question's.
@@ -1065,6 +1105,8 @@ export async function resolveJamiAssistantContext(input: {
     personalisationContext: preferences.personalisationContext,
     ...(learning ? { learningContext: learning.learningContext } : {}),
     ...(learning?.practiceOffer ? { practiceOffer: learning.practiceOffer } : {}),
+    ...(learning?.nextStepOffer ? { nextStepOffer: learning.nextStepOffer } : {}),
+    ...(checkTarget ? { checkTarget } : {}),
     ...(courseContext ? { courseContext } : {}),
     /**
      * The Topics this material is filed under.

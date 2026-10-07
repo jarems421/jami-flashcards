@@ -75,6 +75,7 @@ const TREND_GROUP: Record<LearningEvidenceKind, "recall" | "application" | "note
   // Marked by a model like notebook working, so it shares that window rather
   // than either scheme-marked one.
   revision: "notebook",
+  "tutor-check": "notebook",
 };
 
 /**

@@ -13,7 +13,8 @@ export type FeatureFlagKey =
   | "enableConceptRelations"
   | "enableTutorMemory"
   | "enableTutorChatRecall"
-  | "enableBilling";
+  | "enableBilling"
+  | "enableTutorChecks";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
@@ -100,6 +101,12 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    * allowances, and every account made before BILLING_LAUNCH_AT is Lifetime.
    */
   enableBilling: false,
+  /*
+   * Tutor's quick checks: one short question in chat, marked on the reply
+   * against points fixed when it was asked, kept as weak evidence. Off stops
+   * Tutor asking them and the engine reading them, without deleting any.
+   */
+  enableTutorChecks: true,
 };
 
 /**
@@ -125,6 +132,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableTutorMemory: process.env.NEXT_PUBLIC_ENABLE_TUTOR_MEMORY,
   enableTutorChatRecall: process.env.NEXT_PUBLIC_ENABLE_TUTOR_CHAT_RECALL,
   enableBilling: process.env.NEXT_PUBLIC_ENABLE_BILLING,
+  enableTutorChecks: process.env.NEXT_PUBLIC_ENABLE_TUTOR_CHECKS,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -155,4 +163,5 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableTutorMemory: isFeatureEnabled("enableTutorMemory"),
   enableTutorChatRecall: isFeatureEnabled("enableTutorChatRecall"),
   enableBilling: isFeatureEnabled("enableBilling"),
+  enableTutorChecks: isFeatureEnabled("enableTutorChecks"),
 };
