@@ -12,9 +12,10 @@ import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
 import DeckEditorDialog, { type DeckDraft } from "@/components/decks/DeckEditorDialog";
 import ImportDeckDialog, { type DeckImportInput } from "@/components/study/ImportDeckDialog";
-import { CardBatchCreateError, createCardsInBatches, loadUserCards } from "@/services/study/cards";
+import { CardBatchCreateError, createCardsInBatches } from "@/services/study/cards";
 import { importAnkiDiagrams } from "@/services/study/image-occlusion";
-import { getDeckCardCounts, type DeckCounts } from "@/lib/study/deck-counts";
+import { describeDeckCardCount } from "@/lib/study/deck-counts";
+import { useDeckCardCounts, type DeckCardCountRequest } from "@/hooks/useDeckCardCounts";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
@@ -38,7 +39,8 @@ export default function DecksPage() {
   const { user } = useUser();
   const [decks, setDecks] = useState<Deck[]>([]);
   const [folders, setFolders] = useState<StudyFolder[]>([]);
-  const [deckCounts, setDeckCounts] = useState<DeckCounts>({});
+  const [countRequest, setCountRequest] = useState<DeckCardCountRequest | null>(null);
+  const deckCounts = useDeckCardCounts(user.uid, countRequest);
   const [hasSuccessfulLoad, setHasSuccessfulLoad] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -59,28 +61,25 @@ export default function DecksPage() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const lastForegroundRefreshAtRef = useRef(0);
 
+  /*
+   * The decks and their folders, and nothing about the cards in them. Each
+   * deck's count is asked of the server once the list is on screen, so a
+   * student with thousands of cards is not left waiting on all of them -- or,
+   * past the read's time limit, shown no decks at all.
+   */
   const loadDeckData = useCallback(async (reads: DashboardDataLoadOptions = {}) => {
-    const [nextDecks, nextFolders, nextCards] = await Promise.all([
+    const [nextDecks, nextFolders] = await Promise.all([
       getDecks(user.uid, reads),
       getActiveStudyFolders(user.uid, reads),
-      loadUserCards(user.uid, reads),
     ]);
-    return {
-      decks: nextDecks,
-      folders: nextFolders,
-      counts: getDeckCardCounts(
-        nextDecks.map((deck) => deck.id),
-        nextCards,
-        Date.now()
-      ),
-    };
+    return { decks: nextDecks, folders: nextFolders, force: Boolean(reads.force) };
   }, [user.uid]);
 
   const applyDeckData = useCallback(
     (data: Awaited<ReturnType<typeof loadDeckData>>) => {
       setDecks(data.decks);
       setFolders(data.folders);
-      setDeckCounts(data.counts);
+      setCountRequest({ deckIds: data.decks.map((deck) => deck.id), force: data.force });
       setHasSuccessfulLoad(true);
       setLoadError(null);
     },
@@ -448,7 +447,7 @@ export default function DecksPage() {
           // arrives in order instead of all at once.
           <div className="app-rise grid gap-3 sm:gap-4 lg:grid-cols-2">
             {decks.map((deck, index) => {
-              const counts = deckCounts[deck.id] ?? { due: 0, total: 0 };
+              const countLine = describeDeckCardCount(deckCounts[deck.id]);
               const deckColor = getDeckColorPreset(deck.colorPreset);
               const folderName =
                 deck.folderIds.length === 1
@@ -469,8 +468,7 @@ export default function DecksPage() {
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-medium leading-5" title={deck.name}>{deck.name}</div>
                           <div className="mt-1 text-sm text-text-muted">
-                            {counts.total} cards, {counts.due} due
-                            {folderName ? `, ${folderName}` : ""}
+                            {[countLine, folderName].filter(Boolean).join(", ")}
                           </div>
                         </div>
                       </Link>

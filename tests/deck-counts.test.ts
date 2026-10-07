@@ -1,74 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { getDeckCardCounts } from "@/lib/study/deck-counts";
-import type { Card } from "@/lib/study/cards";
+import { describeDeckCardCount, dueFromCounts } from "@/lib/study/deck-counts";
 
-const NOW = 1_700_000_000_000;
-
-function makeCard(overrides: Partial<Card>): Card {
-  return {
-    id: "card-1",
-    deckId: "deck-1",
-    userId: "user-1",
-    front: "Front",
-    back: "Back",
-    tags: [],
-    topicIds: [],
-    createdAt: NOW - 1000,
-    ...overrides,
-  } as Card;
-}
-
-describe("getDeckCardCounts", () => {
-  it("returns zeroed counts for a deck with no cards", () => {
-    expect(getDeckCardCounts(["deck-1"], [], NOW)).toEqual({
-      "deck-1": { due: 0, total: 0 },
-    });
+describe("dueFromCounts", () => {
+  it("counts every card not scheduled for later as due, including never-scheduled ones", () => {
+    expect(dueFromCounts(10, 4)).toBe(6);
+    expect(dueFromCounts(10, 0)).toBe(10);
+    expect(dueFromCounts(0, 0)).toBe(0);
   });
 
-  it("counts a card with no dueDate as due", () => {
-    const counts = getDeckCardCounts(
-      ["deck-1"],
-      [makeCard({ dueDate: undefined })],
-      NOW
-    );
-    expect(counts["deck-1"]).toEqual({ due: 1, total: 1 });
+  it("never goes below zero when the two counts were taken a moment apart", () => {
+    expect(dueFromCounts(3, 5)).toBe(0);
+  });
+});
+
+describe("describeDeckCardCount", () => {
+  it("says the deck is being counted until the count arrives", () => {
+    expect(describeDeckCardCount(undefined)).toBe("Counting cards…");
   });
 
-  it("counts a past-due card as due and a future card as not due", () => {
-    const counts = getDeckCardCounts(
-      ["deck-1"],
-      [
-        makeCard({ id: "past", dueDate: NOW - 1 }),
-        makeCard({ id: "exactly-now", dueDate: NOW }),
-        makeCard({ id: "future", dueDate: NOW + 1 }),
-      ],
-      NOW
-    );
-    expect(counts["deck-1"]).toEqual({ due: 2, total: 3 });
+  it("shows the total and how many are due", () => {
+    expect(describeDeckCardCount({ total: 12, due: 3 })).toBe("12 cards, 3 due");
+    expect(describeDeckCardCount({ total: 1, due: 1 })).toBe("1 card, 1 due");
+    expect(describeDeckCardCount({ total: 0, due: 0 })).toBe("0 cards, 0 due");
   });
 
-  it("ignores cards whose deck is not in the list", () => {
-    const counts = getDeckCardCounts(
-      ["deck-1"],
-      [makeCard({ deckId: "deleted-deck" }), makeCard({ deckId: "" })],
-      NOW
-    );
-    expect(counts["deck-1"]).toEqual({ due: 0, total: 0 });
+  it("shows the total alone when only the total could be counted", () => {
+    expect(describeDeckCardCount({ total: 40, due: null })).toBe("40 cards");
   });
 
-  it("splits counts across decks", () => {
-    const counts = getDeckCardCounts(
-      ["deck-1", "deck-2"],
-      [
-        makeCard({ id: "a", deckId: "deck-1", dueDate: NOW + 60_000 }),
-        makeCard({ id: "b", deckId: "deck-2" }),
-        makeCard({ id: "c", deckId: "deck-2", dueDate: NOW - 60_000 }),
-      ],
-      NOW
-    );
-    expect(counts).toEqual({
-      "deck-1": { due: 0, total: 1 },
-      "deck-2": { due: 2, total: 2 },
-    });
+  it("says nothing rather than a wrong number when the deck could not be counted", () => {
+    expect(describeDeckCardCount(null)).toBe("");
   });
 });

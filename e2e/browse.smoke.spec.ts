@@ -185,6 +185,11 @@ test("Decks lists the seeded deck", async ({ page }) => {
   await expect(page.getByText(E2E_DECK_NAME).first()).toBeVisible({
     timeout: 45_000,
   });
+  // Each deck's count is asked of the server once the list is shown, rather
+  // than worked out from every card the student owns; the seeded deck has two.
+  await expect(page.getByText(/^2 cards\b/).first()).toBeVisible({
+    timeout: 45_000,
+  });
   // The create field is the page's main action; losing it makes the screen
   // read-only without anything failing.
   await expect(page.getByPlaceholder("Deck name")).toBeVisible();

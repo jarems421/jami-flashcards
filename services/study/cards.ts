@@ -4,12 +4,18 @@ import {
   deleteField,
   deleteDoc,
   doc,
+  documentId,
   getDocs,
   increment,
+  limit,
+  orderBy,
   query,
+  startAfter,
   updateDoc,
   where,
   writeBatch,
+  type QueryDocumentSnapshot,
+  type QuerySnapshot,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
@@ -30,6 +36,8 @@ import type { CardOcclusion } from "@/lib/study/image-occlusion";
 import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const LOAD_MS = 30_000;
+/** Cards per read request: small enough that one request is never the slow part of a large account. */
+const CARD_READ_PAGE_SIZE = 1_000;
 
 /** Firestore caps a batch at 500 writes; 450 leaves room and matches the app's other bulk writes. */
 const CARD_WRITE_BATCH_SIZE = 450;
@@ -131,9 +139,9 @@ export function getCardWrite(card: Card): CardWrite {
  * Every card the student owns.
  *
  * Six pages ask for this. `docs/data-access-audit.md` records why the complete
- * set is required rather than paged -- FSRS state, due queues and duplicate
- * warnings are all functions of the whole -- so the fix for asking six times is
- * to ask once and share it.
+ * set is required rather than a page of it -- FSRS state, due queues and
+ * duplicate warnings are all functions of the whole -- so the fix for asking six
+ * times is to ask once and share it.
  *
  * Anything that grades, edits or schedules a card must pass `{ force: true }`:
  * a card's next state is computed from its current one, and a stale copy would
@@ -150,15 +158,38 @@ export async function loadUserCards(
   );
 }
 
+/**
+ * The whole set, fetched a page at a time.
+ *
+ * One request for every card held a student with thousands of them to a single
+ * time limit, which their cards outgrew: past thirty seconds every page that
+ * needed the cards failed to load, though nothing was wrong. In pages, each
+ * request is a fixed size with its own limit, so a large account takes longer
+ * rather than failing. The result is the same complete set as before.
+ */
 async function loadUserCardsFromServer(userId: string): Promise<Card[]> {
-  const snapshot = await withTimeout(
-    getDocs(query(collection(db, "cards"), where("userId", "==", userId))),
-    LOAD_MS,
-    "Load study cards"
-  );
-  return snapshot.docs.map((cardDoc) =>
-    mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
-  );
+  const cards: Card[] = [];
+  let after: QueryDocumentSnapshot | null = null;
+  for (;;) {
+    const page: QuerySnapshot = await withTimeout(
+      getDocs(
+        query(
+          collection(db, "cards"),
+          where("userId", "==", userId),
+          orderBy(documentId()),
+          ...(after ? [startAfter(after)] : []),
+          limit(CARD_READ_PAGE_SIZE)
+        )
+      ),
+      LOAD_MS,
+      "Load study cards"
+    );
+    for (const cardDoc of page.docs) {
+      cards.push(mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>));
+    }
+    if (page.docs.length < CARD_READ_PAGE_SIZE) return cards;
+    after = page.docs[page.docs.length - 1];
+  }
 }
 
 /** Cards in one deck, unsorted; callers order them for their own display. */

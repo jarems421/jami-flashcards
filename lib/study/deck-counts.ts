@@ -1,34 +1,34 @@
-import type { Card } from "@/lib/study/cards";
-
-export type DeckCounts = Record<string, { due: number; total: number }>;
+/**
+ * A deck's card count, as the deck list shows it under the deck's name.
+ *
+ * Counted on the server rather than from the cards themselves. The deck list
+ * used to download every card the student owned to work these two numbers out,
+ * so a student with thousands of cards waited on all of them, and past the
+ * read's thirty seconds the whole list failed to load.
+ *
+ * `due` is null when only the total could be counted.
+ */
+export type DeckCardCount = { total: number; due: number | null };
 
 /**
- * Per-deck due/total counts for the deck list. A card with no due date has
- * never been scheduled, so it counts as due; cards pointing at a deck outside
- * `deckIds` (deleted, or another user's) are ignored.
+ * Due cards, from the two numbers the server can count.
+ *
+ * A card with no due date has never been scheduled, so it counts as due: due
+ * is every card in the deck except those scheduled for later.
  */
-export function getDeckCardCounts(
-  deckIds: readonly string[],
-  cards: readonly Card[],
-  now: number
-): DeckCounts {
-  const counts: DeckCounts = {};
+export function dueFromCounts(total: number, scheduledLater: number) {
+  return Math.max(0, total - scheduledLater);
+}
 
-  for (const deckId of deckIds) {
-    counts[deckId] = { due: 0, total: 0 };
-  }
-
-  for (const card of cards) {
-    const deckCounts = counts[card.deckId];
-    if (!deckCounts) {
-      continue;
-    }
-
-    deckCounts.total += 1;
-    if (card.dueDate === undefined || card.dueDate <= now) {
-      deckCounts.due += 1;
-    }
-  }
-
-  return counts;
+/**
+ * The line under a deck's name: "12 cards, 3 due".
+ *
+ * Undefined is still being counted, and null could not be counted, which says
+ * nothing rather than a number that would be wrong.
+ */
+export function describeDeckCardCount(count: DeckCardCount | null | undefined) {
+  if (count === undefined) return "Counting cards…";
+  if (count === null) return "";
+  const cards = `${count.total} ${count.total === 1 ? "card" : "cards"}`;
+  return count.due === null ? cards : `${cards}, ${count.due} due`;
 }
