@@ -96,6 +96,8 @@ import {
 import TutorSettingsPanel from "@/components/ai/TutorSettingsPanel";
 import TutorStudyMaterialPanel from "@/components/ai/TutorStudyMaterialPanel";
 import TutorStudyMaterialSetupCard from "@/components/ai/TutorStudyMaterialSetupCard";
+import TutorAppActions from "@/components/ai/TutorAppActions";
+import type { JamiAppScope, TutorAppActionProposal } from "@/lib/ai/jami-app-guide";
 import FloatingTutorHeader from "@/components/ai/JamiFloatingTutorHeader";
 import {
   FloatingTutorPill,
@@ -190,6 +192,12 @@ type JamiAssistantDrawerProps = {
   onAnswerInsert?: (text: string) => boolean;
   /** Keeps a PDF or picture sent in this chat open beside the notebook page. */
   onKeepAttachmentBeside?: (attachment: TutorAttachment) => void;
+  /**
+   * Adds blank pages to the end of the open notebook when Tutor is asked to,
+   * and resolves to how many it added. Only a notebook supplies it, so only
+   * there can Tutor add pages.
+   */
+  onAddNotebookPages?: (count: number) => Promise<number>;
   /**
    * The folders this conversation's material belongs to, when the surface
    * knows.
@@ -303,6 +311,9 @@ type DrawerMessage = {
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
   /** Tutor asked what to make first; the card under the answer is filled in here. */
   studyMaterialSetup?: TutorStudyMaterialSetup;
+  /** Things Tutor offered to do, or was asked to do, in the app. */
+  appActions?: TutorAppActionProposal[];
+  appScope?: JamiAppScope;
   /** Answered in this sitting, so material Tutor agreed to is made straight away. */
   fresh?: boolean;
   /** Files the student sent with this message. */
@@ -345,6 +356,7 @@ export default function JamiAssistantDrawer({
   onDrawingInsert,
   onAnswerInsert,
   onKeepAttachmentBeside,
+  onAddNotebookPages,
   settingsFolderIds,
   contextControls,
   initialMessage,
@@ -967,6 +979,8 @@ export default function JamiAssistantDrawer({
           nextStepOffer: response.nextStepOffer,
           canIllustrate: response.canIllustrate,
           studyMaterialRequest: response.studyMaterialRequest,
+          appActions: response.appActions,
+          appScope: response.appScope,
           studyMaterialOffers: response.studyMaterialOffers,
           studyMaterialSetup: response.studyMaterialSetup,
           sourceSaveOffer: response.sourceSaveOffer,
@@ -1487,6 +1501,19 @@ export default function JamiAssistantDrawer({
                               />
                             ))
                           : null}
+                        {message.id && message.appActions?.length ? (
+                          <TutorAppActions
+                            userId={userId}
+                            messageKey={message.id}
+                            actions={message.appActions}
+                            scope={message.appScope ?? {}}
+                            fresh={Boolean(message.fresh)}
+                            readOnly={viewingForeignThread}
+                            onAddNotebookPages={
+                              contextKey.startsWith("notebook:") ? onAddNotebookPages : undefined
+                            }
+                          />
+                        ) : null}
                         {index === messages.length - 1 && !loading
                           ? (() => {
                               const offers =

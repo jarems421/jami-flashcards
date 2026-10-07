@@ -115,6 +115,14 @@ import {
   type TutorSuggestion,
 } from "@/lib/ai/tutor-suggestion";
 import {
+  availableTutorAppActions,
+  buildTutorAppInstruction,
+  jamiDestinations,
+  readTutorAppActions,
+  resolveTutorAppLinks,
+  type JamiAppScope,
+} from "@/lib/ai/jami-app-guide";
+import {
   retrieveTutorEvidence,
   type TutorEvidence,
 } from "@/services/ai/source-index.server";
@@ -965,6 +973,17 @@ export async function POST(request: NextRequest) {
    */
   const checkInvited = Boolean(resolved.checkTarget) && !markingInvited;
   const nextStepAvailable = Boolean(resolved.learningContext && resolved.nextStepOffer);
+  /**
+   * Where this conversation sits in the app, for the places Tutor can link to
+   * and the things it can do there: a notebook's pages, a folder's notebooks.
+   */
+  const appScope: JamiAppScope = {
+    ...(resolved.folderIds?.length === 1 ? { folderId: resolved.folderIds[0] } : {}),
+    ...(resolved.deckId ? { deckId: resolved.deckId } : {}),
+    ...(savedContext.surface === "notebook" ? { notebookId: savedContext.notebookId } : {}),
+  };
+  const appDestinations = jamiDestinations(appScope);
+  const appActionTypes = availableTutorAppActions({ context: parsedRequest.context, scope: appScope });
   const responseSchema = buildAssistantResponseSchema(
     allowedSourceRefs,
     markingInvited,
@@ -978,6 +997,7 @@ export async function POST(request: NextRequest) {
       checkInvited,
       ...(pendingCheck ? { pendingCheckPoints: pendingCheck.points.length } : {}),
       nextStepAvailable,
+      appActions: { types: appActionTypes, destinationKeys: appDestinations.map((destination) => destination.key) },
     }
   );
   const attachmentInstruction = buildTutorAttachmentInstruction({
@@ -1021,6 +1041,7 @@ ${buildTutorStudyMaterialInstruction({
   askFirst: askStudyMaterialFirst,
 })}
 ${buildTutorSuggestionInstruction({ practiceAvailable: practiceSetsAvailable, previous: previousSuggestions })}
+${buildTutorAppInstruction({ destinations: appDestinations, available: appActionTypes })}
 ${getJsonAnswerFormatPrompt("answer")}
 
 ${responseGuidance.instruction}`;
@@ -1342,11 +1363,20 @@ ${responseGuidance.instruction}`;
 
     // Graphs and diagrams go in after cleaning, so a reply that is only a figure
     // is not taken for a wrapped code block and unwrapped into raw JSON.
+    // In-app links resolved from their place keys, and any that point nowhere dropped.
     const reply = placeTutorDiagrams(
-      placeTutorGraphs(cleanAiResponseText(parsedAnswer.answer), parsedAnswer.graphs),
+      placeTutorGraphs(
+        resolveTutorAppLinks(cleanAiResponseText(parsedAnswer.answer), appDestinations),
+        parsedAnswer.graphs
+      ),
       parsedAnswer.diagrams
     );
     if (!reply) return null;
+    const appActions = readTutorAppActions(parsedAnswer.appActions, {
+      available: appActionTypes,
+      destinations: appDestinations,
+      message: parsedRequest.message,
+    });
 
     const studyMaterialSetup =
       askStudyMaterialFirst && requestedStudyMaterial
@@ -1426,6 +1456,7 @@ ${responseGuidance.instruction}`;
       ...(studyMaterialSetup ? { studyMaterialSetup } : {}),
       ...(parsedAnswer.studyMaterialFocus ? { studyMaterialFocus: parsedAnswer.studyMaterialFocus } : {}),
       ...(sourceSaveOffer ? { sourceSaveOffer } : {}),
+      ...(appActions.length > 0 ? { appActions, appScope } : {}),
     };
   };
 
@@ -1685,6 +1716,8 @@ ${responseGuidance.instruction}`;
           ...(payload.studyMaterialSetup ? { studyMaterialSetup: payload.studyMaterialSetup } : {}),
           // What an offer would be made on, kept server-side for when it is taken up.
           ...(payload.studyMaterialFocus ? { studyMaterialFocus: payload.studyMaterialFocus } : {}),
+          // Kept so a reopened chat still shows them; they run again only on a press.
+          ...(payload.appActions ? { appActions: payload.appActions, appScope: payload.appScope } : {}),
           createdAt: now + 1,
         });
         /*

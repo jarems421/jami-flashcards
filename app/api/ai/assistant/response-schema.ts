@@ -200,6 +200,29 @@ function memorySchema(): Schema {
   };
 }
 
+function appActionsSchema(types: readonly string[], destinationKeys: readonly string[]): Schema {
+  return {
+    type: Type.ARRAY,
+    description:
+      "Things to do in Jami for the student: open a place, add notebook pages, make a deck or notebook. An empty array when none.",
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: [...types], description: "Which action." },
+        destination: {
+          type: Type.STRING,
+          format: "enum",
+          enum: [...destinationKeys],
+          description: "For open: the place key.",
+        },
+        count: { type: Type.INTEGER, description: "For add_pages: how many pages, 1 to 20." },
+        name: { type: Type.STRING, description: "For create_deck or create_notebook: its name, at most 80 characters." },
+      },
+      required: ["type"],
+    },
+  };
+}
+
 /**
  * A quick check's marking points, fixed when the question is asked.
  *
@@ -263,6 +286,12 @@ export type AssistantResponseExtras = {
   pendingCheckPoints?: number;
   /** Whether the engine has a next step Tutor may attach. */
   nextStepAvailable?: boolean;
+  /**
+   * What Tutor may do in the app this turn, and the places it may open. Only
+   * these are offered, so the model cannot propose an action or a page that is
+   * not there.
+   */
+  appActions?: { types: readonly string[]; destinationKeys: readonly string[] } | null;
 };
 
 export function buildAssistantResponseSchema(
@@ -372,6 +401,9 @@ export function buildAssistantResponseSchema(
                 "Next steps to suggest under the answer. Almost always empty: one only when it would clearly help this student now, several only when each would on its own.",
             },
           }
+        : {}),
+      ...(extras.appActions && extras.appActions.types.length > 0
+        ? { appActions: appActionsSchema(extras.appActions.types, extras.appActions.destinationKeys) }
         : {}),
       answer: {
         type: Type.STRING,

@@ -12,6 +12,11 @@ import { auth } from "@/services/firebase/client";
 import { notifyAllowanceSpent } from "@/services/billing/plan-summary-store";
 import { mapJamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import {
+  jamiDestinations,
+  normalizeJamiAppScope,
+  normalizeTutorAppActions,
+} from "@/lib/ai/jami-app-guide";
+import {
   normalizeTutorStudyMaterialOffers,
   normalizeTutorStudyMaterialRequest,
   normalizeTutorStudyMaterialSetup,
@@ -216,6 +221,8 @@ export async function sendJamiAssistantMessage(
   const studyMaterialOffers = normalizeTutorStudyMaterialOffers(data?.studyMaterialOffers);
   const studyMaterialSetup = normalizeTutorStudyMaterialSetup(data?.studyMaterialSetup);
   const sourceSaveOffer = normalizeTutorSourceSaveOffer(data?.sourceSaveOffer);
+  const appScope = normalizeJamiAppScope(data?.appScope);
+  const appActions = normalizeTutorAppActions(data?.appActions, jamiDestinations(appScope));
   return {
     reply,
     used,
@@ -230,6 +237,7 @@ export async function sendJamiAssistantMessage(
     ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
     ...(studyMaterialSetup ? { studyMaterialSetup } : {}),
     ...(sourceSaveOffer ? { sourceSaveOffer } : {}),
+    ...(appActions.length > 0 ? { appActions, appScope } : {}),
     ...(savedThread ? { savedThread } : {}),
   };
 }

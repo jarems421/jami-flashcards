@@ -1036,6 +1036,7 @@ export default function NotebookEditorPage() {
               onDrawingInsert={handleAddImage}
               onAnswerInsert={handleTutorAnswerInsert}
               onKeepAttachmentBeside={sheetsBeside.keepAttachment}
+              onAddNotebookPages={pageEditingEnabled ? turn.appendBlankPages : undefined}
             />
           ) : null}
           <NotebookSheetsLayer sheets={sheetsBeside} hidden={practicePaperTutorLocked} />
