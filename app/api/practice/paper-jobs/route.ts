@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
-import { authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { start } from "workflow/api";
 import { parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
 import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
@@ -15,10 +15,6 @@ import { generatePracticePaperWorkflow } from "@/workflows/practice-paper-genera
 
 export const runtime = "nodejs";
 
-function failure(error: string, status: number, code: string) {
-  return Response.json({ error, code }, { status });
-}
-
 function normalizeIdempotencyKey(value: string | null) {
   const normalized = value?.trim() ?? "";
   return /^[A-Za-z0-9_-]{16,120}$/.test(normalized)
@@ -28,7 +24,7 @@ function normalizeIdempotencyKey(value: string | null) {
 
 export async function GET(request: NextRequest) {
   const uid = await authenticateRequest(request);
-  if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const snapshot = await getAdminDb()
     .collection("users")
     .doc(uid)
@@ -45,10 +41,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!isAnyAiProviderConfigured()) {
-    return failure("AI features are not configured", 503, "not_configured");
+    return apiFailure("AI features are not configured", 503, "not_configured");
   }
   const uid = await authenticateRequest(request);
-  if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   let parsedRequest;
   let temporarySourceIds: string[] = [];
@@ -63,13 +59,13 @@ export async function POST(request: NextRequest) {
         ))).slice(0, MAX_PRACTICE_PAPER_SOURCE_IDS)
       : [];
   } catch {
-    return failure("Invalid request body", 400, "invalid_request");
+    return apiFailure("Invalid request body", 400, "invalid_request");
   }
   if (!parsedRequest) {
-    return failure("Invalid practice paper request", 400, "invalid_request");
+    return apiFailure("Invalid practice paper request", 400, "invalid_request");
   }
   if (temporarySourceIds.some((sourceId) => !parsedRequest.sourceIds.includes(sourceId))) {
-    return failure("Temporary sources must be included in the selected source list.", 400, "invalid_request");
+    return apiFailure("Temporary sources must be included in the selected source list.", 400, "invalid_request");
   }
 
   const db = getAdminDb();
@@ -78,7 +74,7 @@ export async function POST(request: NextRequest) {
     .collection("studyFolders")
     .doc(parsedRequest.folderId)
     .get();
-  if (!folder.exists) return failure("Folder not found", 404, "folder_not_found");
+  if (!folder.exists) return apiFailure("Folder not found", 404, "folder_not_found");
   if (temporarySourceIds.length > 0) {
     const temporarySources = await Promise.all(
       temporarySourceIds.map((sourceId) => userRef.collection("sources").doc(sourceId).get())
@@ -95,7 +91,7 @@ export async function POST(request: NextRequest) {
         data.storagePath.startsWith(`users/${uid}/sourceFiles/${source.id}/`);
     });
     if (!valid) {
-      return failure("One or more temporary files are invalid.", 400, "invalid_temporary_source");
+      return apiFailure("One or more temporary files are invalid.", 400, "invalid_temporary_source");
     }
   }
 
@@ -116,7 +112,7 @@ export async function POST(request: NextRequest) {
       skipBurstLimit: true,
     });
   } catch {
-    return failure(
+    return apiFailure(
       "AI usage limits are temporarily unavailable.",
       503,
       "budget_unavailable"
@@ -189,7 +185,7 @@ export async function POST(request: NextRequest) {
         updatedAt: Date.now(),
       }),
     ]);
-    return failure(
+    return apiFailure(
       "Jami could not queue that paper just now.",
       503,
       "workflow_start_failed"

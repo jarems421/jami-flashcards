@@ -1,6 +1,6 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
-import { authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { start } from "workflow/api";
 import { parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
 import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
@@ -17,10 +17,6 @@ export const runtime = "nodejs";
 
 const RETENTION_MS = 30 * 24 * 60 * 60_000;
 
-function failure(error: string, status: number, code: string) {
-  return Response.json({ error, code }, { status });
-}
-
 /**
  * Builds a failed paper again on the same job, from the request it was
  * created with.
@@ -34,13 +30,13 @@ export async function POST(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   if (!isAnyAiProviderConfigured()) {
-    return failure("AI features are not configured", 503, "not_configured");
+    return apiFailure("AI features are not configured", 503, "not_configured");
   }
   const uid = await authenticateRequest(request);
-  if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { jobId } = await params;
   if (!/^[A-Za-z0-9_-]{16,160}$/.test(jobId)) {
-    return failure("Job not found", 404, "job_not_found");
+    return apiFailure("Job not found", 404, "job_not_found");
   }
 
   const db = getAdminDb();
@@ -49,17 +45,17 @@ export async function POST(
   const artifactRef = userRef.collection("practicePaperJobArtifacts").doc(jobId);
 
   const snapshot = await jobRef.get();
-  if (!snapshot.exists) return failure("Job not found", 404, "job_not_found");
+  if (!snapshot.exists) return apiFailure("Job not found", 404, "job_not_found");
   const data = snapshot.data() ?? {};
   if (data.status !== "failed") {
     // A second press after the first retry queued gets the same job back.
     return data.status === "queued" || data.status === "running"
       ? Response.json(mapPracticePaperJobData(jobId, data))
-      : failure("Only a paper that failed can be tried again.", 409, "job_not_failed");
+      : apiFailure("Only a paper that failed can be tried again.", 409, "job_not_failed");
   }
   const originalRequest = parsePracticePaperGenerationRequest(data.request);
   if (!originalRequest) {
-    return failure(
+    return apiFailure(
       "The original request for this paper is unavailable. Start a new paper instead.",
       409,
       "request_unavailable"
@@ -83,7 +79,7 @@ export async function POST(
       skipBurstLimit: true,
     });
   } catch {
-    return failure(
+    return apiFailure(
       "AI usage limits are temporarily unavailable.",
       503,
       "budget_unavailable"
@@ -149,7 +145,7 @@ export async function POST(
         updatedAt: now,
       }),
     ]);
-    return failure(
+    return apiFailure(
       "Jami could not queue that paper just now.",
       503,
       "workflow_start_failed"

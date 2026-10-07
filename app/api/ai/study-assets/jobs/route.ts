@@ -5,7 +5,7 @@ import { isStudyAssetRecordCurrent } from "@/lib/study/study-asset-cache";
 import type { NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/services/firebase/admin";
-import { authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
@@ -59,10 +59,6 @@ type OwnedCard = {
   studySettings?: Record<string, unknown>;
 };
 
-function failure(error: string, status: number, code: string) {
-  return Response.json({ error, code }, { status });
-}
-
 /**
  * Prepare the AI half of the study modes for one deck.
  *
@@ -81,14 +77,14 @@ function failure(error: string, status: number, code: string) {
  */
 export async function POST(request: NextRequest) {
   if (!featureFlags.enableStudyModes) {
-    return failure("Study modes are not enabled.", 404, "not_enabled");
+    return apiFailure("Study modes are not enabled.", 404, "not_enabled");
   }
 
   const uid = await authenticateWriteRequest(request);
-  if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   if (!isAnyAiProviderConfigured("worker")) {
-    return failure(
+    return apiFailure(
       "Jami cannot prepare study modes just now.",
       503,
       "provider_unavailable"
@@ -112,10 +108,10 @@ export async function POST(request: NextRequest) {
       : [];
     wantsMultipleChoice = body.purpose === "multiple-choice";
     if (!deckId || cardIds.length === 0) {
-      return failure("deckId and cardIds are required", 400, "invalid_request");
+      return apiFailure("deckId and cardIds are required", 400, "invalid_request");
     }
   } catch {
-    return failure("Invalid request body", 400, "invalid_request");
+    return apiFailure("Invalid request body", 400, "invalid_request");
   }
 
   const db = getAdminDb();
@@ -127,7 +123,7 @@ export async function POST(request: NextRequest) {
   const deckOwner =
     typeof deckData.userId === "string" ? deckData.userId.trim() : "";
   if (!deckSnapshot.exists || deckOwner !== uid) {
-    return failure("Deck not found", 404, "deck_not_found");
+    return apiFailure("Deck not found", 404, "deck_not_found");
   }
 
   const cardSnapshots = await db.getAll(
@@ -154,7 +150,7 @@ export async function POST(request: NextRequest) {
     });
   }
   if (cards.length === 0) {
-    return failure("No owned cards to prepare", 404, "no_cards");
+    return apiFailure("No owned cards to prepare", 404, "no_cards");
   }
 
   // Deterministic analysis before spending anything: a card whose asset is
@@ -223,7 +219,7 @@ export async function POST(request: NextRequest) {
     enterAiSpendContext(aiSpendContextFor(uid, "studyAssetGeneration"));
   } catch (error) {
     log.error("budget.check_failed", { error });
-    return failure(
+    return apiFailure(
       "AI usage limits are temporarily unavailable.",
       503,
       "budget_unavailable"

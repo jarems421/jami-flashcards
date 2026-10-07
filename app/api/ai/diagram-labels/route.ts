@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { enterAiSpendContext } from "@/lib/ai/spend-context";
-import { authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
@@ -28,10 +28,6 @@ const REQUEST_DEADLINE_MS = 45_000;
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
-function failure(error: string, status: number, code: string) {
-  return Response.json({ error, code }, { status });
-}
-
 function typeFromPath(path: string) {
   const extension = path.split(".").pop()?.toLowerCase();
   return extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : "image/jpeg";
@@ -48,13 +44,13 @@ function typeFromPath(path: string) {
  */
 export async function POST(request: NextRequest) {
   if (!featureFlags.enableFlashcardAi) {
-    return failure("Finding labels with Jami is switched off.", 403, "disabled");
+    return apiFailure("Finding labels with Jami is switched off.", 403, "disabled");
   }
   if (!isAnyAiProviderConfigured("documentVision")) {
-    return failure("Finding labels with Jami is not available in this deployment.", 503, "not_configured");
+    return apiFailure("Finding labels with Jami is not available in this deployment.", 503, "not_configured");
   }
   const uid = await authenticateWriteRequest(request);
-  if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   const startedAt = Date.now();
   const log = createLogger({ route: "ai.diagram-labels", requestId: randomUUID(), uid });
@@ -68,25 +64,25 @@ export async function POST(request: NextRequest) {
       mimeType = typeof image.mimeType === "string" ? image.mimeType : "";
       data = typeof image.data === "string" ? image.data : "";
       if (!IMAGE_TYPES.has(mimeType) || !data || (data.length * 3) / 4 > MAX_IMAGE_BYTES) {
-        return failure("Send a JPEG, PNG or WebP picture under 6 MB.", 400, "invalid_image");
+        return apiFailure("Send a JPEG, PNG or WebP picture under 6 MB.", 400, "invalid_image");
       }
     } else {
       const storagePath = typeof body.storagePath === "string" ? body.storagePath.trim() : "";
       // Only the student's own card pictures, however the path is written.
       if (!storagePath.startsWith(cardImageStoragePrefix(uid)) || storagePath.includes("..")) {
-        return failure("Picture not found.", 404, "not_found");
+        return apiFailure("Picture not found.", 404, "not_found");
       }
       const file = getAdminStorageBucket().file(storagePath);
       const [bytes] = await file.download();
       if (bytes.length > MAX_IMAGE_BYTES * 2) {
-        return failure("That picture is too large to read.", 413, "too_large");
+        return apiFailure("That picture is too large to read.", 413, "too_large");
       }
       mimeType = typeFromPath(storagePath);
       data = bytes.toString("base64");
     }
   } catch (error) {
     log.warn("request.invalid", { error });
-    return failure("The picture could not be read.", 400, "invalid_request");
+    return apiFailure("The picture could not be read.", 400, "invalid_request");
   }
 
   let budgetDecision;
@@ -95,7 +91,7 @@ export async function POST(request: NextRequest) {
     enterAiSpendContext(aiSpendContextFor(uid, "diagramLabelDetection"));
   } catch (error) {
     log.error("budget.check_failed", { error });
-    return failure("AI usage limits are temporarily unavailable. Try again shortly.", 503, "budget_unavailable");
+    return apiFailure("AI usage limits are temporarily unavailable. Try again shortly.", 503, "budget_unavailable");
   }
   if (!budgetDecision.allowed) {
     return createAiBudgetLimitResponse("diagramLabelDetection", budgetDecision);
@@ -137,6 +133,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     await refund("provider_failed");
     log.error("labels.failed", { error, latencyMs: Date.now() - startedAt });
-    return failure("Jami could not read the labels just now. Try again, or draw the boxes yourself.", 502, "provider_failed");
+    return apiFailure("Jami could not read the labels just now. Try again, or draw the boxes yourself.", 502, "provider_failed");
   }
 }

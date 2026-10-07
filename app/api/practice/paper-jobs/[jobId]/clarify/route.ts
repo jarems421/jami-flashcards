@@ -1,6 +1,6 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
-import { authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { start } from "workflow/api";
 import { appendToPracticePaperRequest, parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
 import { mapPracticePaperJobData } from "@/lib/practice/practice-papers";
@@ -11,29 +11,25 @@ export const runtime = "nodejs";
 
 const RETENTION_MS = 30 * 24 * 60 * 60_000;
 
-function failure(error: string, status: number, code: string) {
-  return Response.json({ error, code }, { status });
-}
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   const uid = await authenticateRequest(request);
-  if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { jobId } = await params;
   if (!/^[A-Za-z0-9_-]{16,160}$/.test(jobId)) {
-    return failure("Job not found", 404, "job_not_found");
+    return apiFailure("Job not found", 404, "job_not_found");
   }
   let answer = "";
   try {
     const body = await request.json() as Record<string, unknown>;
     answer = typeof body.answer === "string" ? body.answer.trim().slice(0, 800) : "";
   } catch {
-    return failure("Invalid request body", 400, "invalid_request");
+    return apiFailure("Invalid request body", 400, "invalid_request");
   }
   if (answer.length < 2) {
-    return failure("Add the detail Jami asked for.", 400, "clarification_required");
+    return apiFailure("Add the detail Jami asked for.", 400, "clarification_required");
   }
 
   const db = getAdminDb();
@@ -91,9 +87,9 @@ export async function POST(
     }
     return { conflict: false as const, data: { ...data, request: nextRequest, updatedAt: now } };
   });
-  if (!reset) return failure("Job not found", 404, "job_not_found");
+  if (!reset) return apiFailure("Job not found", 404, "job_not_found");
   if (reset.conflict) {
-    return failure("This paper no longer needs clarification.", 409, "job_not_waiting");
+    return apiFailure("This paper no longer needs clarification.", 409, "job_not_waiting");
   }
 
   try {
@@ -110,6 +106,6 @@ export async function POST(
       completedAt: now,
       updatedAt: now,
     });
-    return failure("Jami could not resume that paper just now.", 503, "workflow_start_failed");
+    return apiFailure("Jami could not resume that paper just now.", 503, "workflow_start_failed");
   }
 }

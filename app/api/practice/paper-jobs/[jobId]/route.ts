@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import type { AiBudgetGrant } from "@/lib/ai/budgets";
 import { Timestamp } from "firebase-admin/firestore";
 import {
@@ -17,10 +17,6 @@ import { getAdminDb } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 
-function failure(error: string, status: number, code: string) {
-  return Response.json({ error, code }, { status });
-}
-
 function validJobId(value: string) {
   return /^[A-Za-z0-9_-]{16,160}$/.test(value);
 }
@@ -30,16 +26,16 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   const uid = await authenticateRequest(request);
-  if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { jobId } = await params;
-  if (!validJobId(jobId)) return failure("Job not found", 404, "job_not_found");
+  if (!validJobId(jobId)) return apiFailure("Job not found", 404, "job_not_found");
   const snapshot = await getAdminDb()
     .collection("users")
     .doc(uid)
     .collection("practicePaperJobs")
     .doc(jobId)
     .get();
-  if (!snapshot.exists) return failure("Job not found", 404, "job_not_found");
+  if (!snapshot.exists) return apiFailure("Job not found", 404, "job_not_found");
   return Response.json(mapPracticePaperJobData(jobId, snapshot.data() ?? {}));
 }
 
@@ -48,9 +44,9 @@ export async function DELETE(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   const uid = await authenticateRequest(request);
-  if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { jobId } = await params;
-  if (!validJobId(jobId)) return failure("Job not found", 404, "job_not_found");
+  if (!validJobId(jobId)) return apiFailure("Job not found", 404, "job_not_found");
   const db = getAdminDb();
   const jobRef = db
     .collection("users")
@@ -83,7 +79,7 @@ export async function DELETE(
       updatedAt: now,
     });
   });
-  if (!result) return failure("Job not found", 404, "job_not_found");
+  if (!result) return apiFailure("Job not found", 404, "job_not_found");
   if (grant) await refundAiBudget(grant);
   await Promise.all([
     cleanPracticePaperWorkflowRemnants(uid, jobId),
@@ -97,16 +93,16 @@ export async function PATCH(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   const uid = await authenticateRequest(request);
-  if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { jobId } = await params;
-  if (!validJobId(jobId)) return failure("Job not found", 404, "job_not_found");
+  if (!validJobId(jobId)) return apiFailure("Job not found", 404, "job_not_found");
   const ref = getAdminDb()
     .collection("users")
     .doc(uid)
     .collection("practicePaperJobs")
     .doc(jobId);
   const snapshot = await ref.get();
-  if (!snapshot.exists) return failure("Job not found", 404, "job_not_found");
+  if (!snapshot.exists) return apiFailure("Job not found", 404, "job_not_found");
   const data = snapshot.data() ?? {};
   // Acknowledging a ready paper clears its notice; acknowledging a failed one
   // dismisses it from the Practice paper builder.
