@@ -1,8 +1,10 @@
 # Codebase cleanup — October 2026
 
-Run 6–7 October 2026 on the `codebase-cleanup` branch. The first half was
-merged into main as `225771dd`; the rest follows on the same branch. Baseline
-is `55d26a26`, the last main commit before the campaign.
+Run 6–7 October 2026. The first pass, on the `codebase-cleanup` branch, is in
+main (the first half merged as `225771dd`). A second pass, on
+`claude/awesome-wright-9p4vao` from main at `ecc82d18`, is described under
+[Second pass](#second-pass--7-october). Baseline is `55d26a26`, the last main
+commit before the campaign.
 
 The brief was production-grade structure without changing what the app does:
 break up the files nobody could review, remove code that no longer runs, and
@@ -154,7 +156,134 @@ The full suite (`npm run test:e2e`) was run once here: 43 of 54 pass. All 11
 failures fail identically on the pre-campaign commit, so none comes from this
 campaign. They are walkthrough, visual and screenshot specs whose screens have
 moved on, and one real overlap: on the release walkthrough the floating
-tutorial card covers the notebook's "Ask Jami" button.
+tutorial card covers the notebook's "Ask Jami" button. All 54 pass now; see
+the second pass, below.
+
+## Second pass — 7 October
+
+### Screens that sat on the gate
+
+| File | Before | After |
+| --- | ---: | ---: |
+| `app/dashboard/constellation/page.tsx` | 1,198 | 312 |
+| `app/dashboard/folders/[folderId]/page.tsx` | 1,139 | 279 |
+| `lib/ai/provider-router.ts` | 658 | 566 |
+
+Both screens got characterization tests first, committed on their own and run
+against the old screen as well as the new one.
+
+- **Stars** became hooks for the skies, arranging, the touch lock, drawing
+  lines, renaming, and starting and finishing a sky, plus five components.
+  The React Compiler lint, analysing it for the first time, moved the
+  background choice to `useSyncExternalStore` (it now follows a change made
+  in another tab) and gave the rename field its own ref instead of one read
+  during render.
+- **The folder page**'s decks and sources were two copies of the same five
+  operations; they are one shelf hook (`useFolderAssetShelf`) and one section,
+  configured per kind. Fixed on the way: the Sources tab showed "No sources in
+  this folder yet" under its own loading placeholders.
+
+### Duplication
+
+A clone scan (jscpd, 12 lines or more) put duplication at 0.11%. The copies
+worth removing are gone:
+
+- **The AI router** built each provider's request three times. One copy had
+  drifted: streaming skipped `resolveProviderAllowlist`, so a model override
+  would have been ignored there and an unapproved one not refused. No caller
+  sends one today; every path shares the check now. Characterization tests for
+  what each provider is sent, diagnostics and streaming came first.
+- **Deck and notebook cards** shared 75 lines of press-and-hold for their
+  phone actions: `useObjectCardActions`.
+- **Source and video card imports** shared resuming, polling and the progress
+  panels: `useCardImportJob` and `CardImportProgress`.
+- **Thirteen API routes** each defined their own copy of `apiFailure`. Three
+  local helpers stay, because they differ: one adds a `Retry-After` header and
+  two send no error code. The Tutor route keeps its own too, since it is held
+  back (see the end).
+
+### Fixes
+
+- **"Try again" on the error page did nothing.** It called `unstable_retry`,
+  which Next does not pass; it is `retry`. There was also no
+  `global-error.tsx`, so an error in the root layout fell through to Next's
+  bare default page. The new one brings its own document and keeps to system
+  colours, since the stylesheet may be what failed.
+- **The walkthrough card covered the page.** Its `fixed` position sat on a
+  Card, which is `relative` itself, and `relative` comes later in the
+  stylesheet, so the card stayed in the page's flow. In a notebook it landed
+  on the Ask Jami button its own last mission asks the student to press. It
+  floats in the corner now.
+- **"2 from From your Tutor chats".** The drafts queue joined each group's
+  count to its title, and the title of drafts with no source already starts
+  with "From".
+- **A card's actions menu opened behind the search bar.** The `slide-up`
+  entrance held its last frame (`both`), which left a transform on the card
+  grid for good; a transform makes a stacking context, so a menu opened
+  upward could not rise above the sticky bar. It now fills `backwards`: the
+  same entrance, with nothing held afterwards.
+- **The maths symbols palette was cut off.** Near the bottom of the window it
+  opens upward, judged against the window alone; inside the Add cards panel,
+  which clips its overflow, most of it was hidden. It now measures the room
+  inside any clipping ancestor, with a test that fails on the old code.
+
+### Dependencies
+
+Production advisories went from 40 (2 critical, 22 high) to 29 (none
+critical; the 13 high all come from workflow's exact pin of `devalue`):
+
+- `next` 16.3.4 → 16.3.8: remote code execution in `next/og`.
+- `nodemailer` 7 → 10: thirteen advisories, two of them denial of service in
+  the parser that reads the address typed at sign-up. Only `createTransport`
+  and `sendMail` are used, which the breaking changes do not touch. It ships
+  its own types, so `@types/nodemailer` went.
+- `sharp` 0.35.5, and the `@grpc/grpc-js` and `fast-uri` security pins raised
+  to their patched releases.
+
+Left as they are: `devalue`, pinned exactly by `@workflow/core` in every
+release up to 5.1.0, in functions workflow does not call; `firebase-admin`'s
+one `uuid` advisory, on an argument the Google libraries never pass and fixed
+only in the next major; and `mammoth`'s and KaTeX's, in a command-line
+dependency and in a trust option Jami keeps off.
+
+### Demo mode
+
+The four demo variables left `.env.example` and the README, and the Security
+section above now describes the demo claim as it stands.
+
+### Tests
+
+The unit suite stands at 5,862 tests in 553 files, all passing. New in this
+pass: characterization tests for Stars, the folder page and what the AI
+router sends, and tests for the press-and-hold actions, the card import job,
+the error pages, the drafts label and the palette's placement.
+
+### Browser suite
+
+The full suite was run again at the start of this pass: 47 of 54 passed. The
+seven failures were specs behind the screens they check, and four real bugs
+(the walkthrough card, the drafts label, the actions menu, the palette), all
+fixed:
+
+- The Tutor settings drawer is a page now (Personalise Jami); the spec opens
+  it from Tutor and checks it at three widths.
+- The symbols button is called "Maths symbols"; card search matches the start
+  of a front; the drafts row reads "2 from your Tutor chats".
+- Study modes: ending a session restored from an earlier spec left the
+  builder on that spec's deck, so the walkthrough reopens its own link. Its
+  deck's wrong answers were seeded on the cards, a field Learn never reads
+  (see the end), so they are now seeded as the prepared study assets Jami
+  writes. And it presses "Start now" on the preparing screen, as a student
+  would, since the emulator has no AI provider.
+- The revision plan seeded "today" from the calendar rather than the study
+  day, which runs 4pm to 4pm London time, so before 4pm its session landed on
+  the wrong day; and it looked for "Today's plan" with a straight apostrophe.
+- The card editor walkthrough measured the grid with the pointer still on a
+  card, which lifts 2px on hover by design, and read that as the grid moving.
+
+The last full run passed 53 of 54, in seven minutes; the one left was the
+study modes walkthrough, fixed by seeding its prepared questions, and it now
+passes run straight after the offline spec whose session used to leak into it.
 
 ## Left for the owner
 
@@ -182,9 +311,23 @@ tutorial card covers the notebook's "Ask Jami" button.
   outside the Learning Engine. Dropping the read changes which topics Today
   lists for students who used that early practice loop, so it is a data
   decision.
-- **The 11 failing walkthrough, visual and screenshot specs** listed in the
-  test notes above need their selectors brought up to date by someone who
-  knows how those screens are meant to read now; they are review aids rather
-  than gates. The tutorial card covering "Ask Jami" is worth a look on its own.
+- **Two more copies of the token check.** Tutor's memory and personalisation
+  routes call `authenticateAssistantWriter`, and paper generation its own
+  `authenticate`; both read the demo claim in their own way. Folding them into
+  `authenticateRequest` / `authenticateWriteRequest` changes code that refuses
+  the demo account, so it belongs with closing that account, when those
+  checks can go altogether.
+- **A card's own study settings never reach Learn.** `Card.studySettings`
+  (an author's wrong answers, accepted answers, pinned gaps, modes turned off)
+  is honoured throughout the study modes, and the server's answer check and
+  preparation read it from the card document, but `mapCardData` never copies
+  it, and no screen has ever written it. No student is affected today. Either
+  map it (validated) for a future card-editor feature, or remove the author
+  half; it should not stay half-wired, because a card that did carry it would
+  have its prepared questions fingerprinted differently by server and client,
+  and never load.
+- **Two files sit just under the gate**: the notebook page (1,196) and the
+  memory map's engine (1,189). The next change of any size to either will
+  fail CI, so split it before adding to it.
 - About 800 exports are used only inside their own file. They are not dead
   code, and un-exporting them would touch hundreds of files for little gain.
