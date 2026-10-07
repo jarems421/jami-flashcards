@@ -2,14 +2,18 @@ import {
   addDoc,
   collection,
   doc,
+  documentId,
   getDoc,
   getDocs,
   limit,
   orderBy,
   query,
+  startAfter,
   updateDoc,
   where,
   writeBatch,
+  type QueryDocumentSnapshot,
+  type QuerySnapshot,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
@@ -39,7 +43,41 @@ import {
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;
 const BATCH_WRITE_LIMIT = 400;
+/** Cards per read while migrating, so a large account is read in several bounded requests. */
+const MIGRATION_CARD_PAGE_SIZE = 1_000;
 export const TOPICS_MIGRATION_VERSION = 1;
+
+/**
+ * Every card the student owns, a page at a time.
+ *
+ * The migration read them all in one request held to a thirty-second limit. A
+ * student with thousands of tagged cards outgrew it, so their migration never
+ * finished: it ran again on every visit, held the dashboard behind its spinner
+ * meanwhile, and the download it abandoned kept the connection busy until the
+ * page's own reads -- Learn's queue, its topics -- timed out behind it.
+ */
+async function getAllCardSnapshots(userId: string) {
+  const snapshots: QueryDocumentSnapshot[] = [];
+  let after: QueryDocumentSnapshot | null = null;
+  for (;;) {
+    const page: QuerySnapshot = await withTimeout(
+      getDocs(
+        query(
+          collection(db, "cards"),
+          where("userId", "==", userId),
+          orderBy(documentId()),
+          ...(after ? [startAfter(after)] : []),
+          limit(MIGRATION_CARD_PAGE_SIZE)
+        )
+      ),
+      LOAD_MS,
+      "Load cards for topic migration"
+    );
+    snapshots.push(...page.docs);
+    if (page.docs.length < MIGRATION_CARD_PAGE_SIZE) return snapshots;
+    after = page.docs[page.docs.length - 1];
+  }
+}
 
 /** Whether this browser already saw the topic migration finish for this account. */
 export function topicMigrationKnownSettled(userId: string) {
@@ -273,12 +311,8 @@ export async function migrateCardTagsToTopics(userId: string) {
     return { migratedCards: 0, createdTopics: 0 };
   }
 
-  const [cardsSnapshot, topicsSnapshot, foldersSnapshot] = await Promise.all([
-    withTimeout(
-      getDocs(query(collection(db, "cards"), where("userId", "==", normalizedUserId))),
-      LOAD_MS,
-      "Load cards for topic migration"
-    ),
+  const [cardSnapshots, topicsSnapshot, foldersSnapshot] = await Promise.all([
+    getAllCardSnapshots(normalizedUserId),
     withTimeout(getDocs(topicsCollection(normalizedUserId)), LOAD_MS, "Load topics for migration"),
     withTimeout(
       getDocs(collection(db, "users", normalizedUserId, "studyFolders")),
@@ -287,7 +321,7 @@ export async function migrateCardTagsToTopics(userId: string) {
     ),
   ]);
   const cardsById = new Map(
-    cardsSnapshot.docs.map((cardDoc) => [
+    cardSnapshots.map((cardDoc) => [
       cardDoc.id,
       cardDoc,
     ])
