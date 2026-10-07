@@ -607,6 +607,14 @@ describe("handing the request back", () => {
     expect(mocks.streamText).not.toHaveBeenCalled();
   });
 
+  it("streams the answer at the reasoning level the student chose", async () => {
+    mocks.resolveContext.mockResolvedValueOnce(resolved({ reasoningEffort: "high" }));
+
+    await events(await postAssistant(request(body())));
+
+    expect(mocks.streamText).toHaveBeenCalledWith(expect.objectContaining({ reasoningEffort: "high" }));
+  });
+
   it("refuses sources that turn out too large once read", async () => {
     mocks.prepareSource.mockResolvedValueOnce({
       sourceId: "source-1",
@@ -622,6 +630,8 @@ describe("handing the request back", () => {
     expect(response.status).toBe(413);
     await expect(response.json()).resolves.toMatchObject({ code: "sources_too_large" });
     expect(mocks.streamText).not.toHaveBeenCalled();
+    // The request was charged before the sources were read; a refused turn gives it back.
+    expect(mocks.refundBudget).toHaveBeenCalledTimes(1);
   });
 
   it("says plainly when no AI provider is configured", async () => {

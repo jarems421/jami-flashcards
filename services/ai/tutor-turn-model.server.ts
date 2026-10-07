@@ -76,6 +76,9 @@ export type TutorAnswerCall = {
 export function streamTutorAnswer(call: TutorAnswerCall, maxOutputTokens: number) {
   const { providerDiagnostics, log } = call;
   return streamAiText({
+    // The level the student chose is for the answer they read, which is this
+    // one; the buffered retries below already carried it.
+    reasoningEffort: call.reasoningEffort,
     role: call.role,
     routeReason: call.routeReason,
     timeoutMs: REQUEST_TIMEOUT_MS,
