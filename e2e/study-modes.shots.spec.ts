@@ -23,7 +23,7 @@ const OUT = "test-results/shots";
 const log = (...parts: unknown[]) => console.log("·", ...parts);
 
 test("study modes walkthrough", async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(420_000);
   mkdirSync(OUT, { recursive: true });
 
   const shoot = async (name: string) => {
@@ -82,6 +82,13 @@ test("study modes walkthrough", async ({ page }) => {
       await endSession.click();
       await page.waitForTimeout(3_000);
       log("ended a restored session");
+      // Ending it leaves the builder on that session's decks -- another
+      // spec's, usually the offline deck -- so open this walk's own link again.
+      await page.goto(`/dashboard/study?decks=${DECK}`);
+      await page
+        .locator("[data-study-mode-picker]")
+        .first()
+        .waitFor({ state: "visible", timeout: 90_000 });
       log("study screen:", JSON.stringify(await describeStudyScreen()));
     }
 
@@ -132,7 +139,18 @@ test("study modes walkthrough", async ({ page }) => {
         continue;
       }
       await start.click();
-      await page.waitForTimeout(4_000);
+      // A mode that needs questions written first shows a preparing screen.
+      // The emulator has no AI provider, so nothing will arrive: start now,
+      // the way a student would, instead of waiting out the budget.
+      const startNow = page.getByRole("button", { name: "Start now" });
+      await startNow.waitFor({ state: "visible", timeout: 4_000 }).catch(() => undefined);
+      if (await startNow.count()) {
+        await startNow.click();
+        log(`${mode}: started without waiting for preparation`);
+      }
+      await expect(page.locator("[data-study-preparing]")).toHaveCount(0, { timeout: 30_000 });
+      await expect(page.locator("[data-study-current-card-id]")).toBeVisible({ timeout: 45_000 });
+      await page.waitForTimeout(1_000);
       const modeState = await describeStudyScreen();
       seen[mode] = modeState;
       log(mode, JSON.stringify(modeState));

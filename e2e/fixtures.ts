@@ -78,8 +78,8 @@ export const E2E_MODES_DECK_NAME = "Browser smoke modes deck";
  * `mcqDistractors` stands in for what Jami writes during preparation, which the
  * browser suite has no provider to produce. Multiple choice refuses to build a
  * question without them -- that is the point of the mode now -- so a fixture
- * deck with none would exercise the refusal and nothing else. Card three has
- * none on purpose: a numeric answer makes its own wrong options.
+ * deck with none would exercise the refusal and nothing else. A numeric answer
+ * needs them as well: wrong numbers are no longer made up from the right one.
  */
 export const E2E_MODES_CARDS = [
   {
@@ -110,6 +110,9 @@ export const E2E_MODES_CARDS = [
     id: "e2e-modes-card-3",
     front: "What is the acceleration due to gravity on Earth?",
     back: "9.8 m/s",
+    studySettings: {
+      mcqDistractors: ["1.6 m/s", "3.7 m/s", "24.8 m/s"],
+    },
   },
   {
     id: "e2e-modes-card-4",
