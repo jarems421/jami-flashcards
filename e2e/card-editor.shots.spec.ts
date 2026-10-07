@@ -103,8 +103,10 @@ test("card editor walkthrough", async ({ page }) => {
   seen["desktop-closed"] = await shape();
   log("desktop closed:", JSON.stringify(seen["desktop-closed"]));
 
-  // The surface the report came from: editing a result inside a search.
-  await page.getByLabel("Search card fronts").fill("card");
+  // The surface the report came from: editing a result inside a search. A
+  // search matches the start of a front as it is typed, so this finds the two
+  // seeded smoke cards.
+  await page.getByLabel("Search card fronts").fill("Smoke");
   await page.waitForTimeout(900);
   seen["search-grid"] = await shape();
   log("search grid:", JSON.stringify(seen["search-grid"]));
