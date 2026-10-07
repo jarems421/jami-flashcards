@@ -103,4 +103,25 @@ describe("loadDashboardStudyActivity", () => {
     expect(activity).toHaveLength(6);
     expect(firestore.getDocs).toHaveBeenCalledOnce();
   });
+
+  it("reads the whole history when the newest-first index is missing", async () => {
+    const todayKey = getStudyDayKey(NOW);
+    firestore.setDocuments([0, 1, 3].map((offset) => ({ id: shiftStudyDayKey(todayKey, -offset) })));
+    firestore.getDocs.mockRejectedValueOnce(
+      Object.assign(new Error("Firestore does not support descending key scans"), { code: "failed-precondition" })
+    );
+
+    const activity = await loadDashboardStudyActivity("user-1", NOW);
+
+    expect(activity.map((entry) => entry.dayKey)).toEqual(
+      [3, 1, 0].map((offset) => shiftStudyDayKey(todayKey, -offset))
+    );
+    expect(firestore.getDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it("still reports any other failure", async () => {
+    firestore.getDocs.mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "unavailable" }));
+
+    await expect(loadDashboardStudyActivity("user-1", NOW)).rejects.toThrow("offline");
+  });
 });

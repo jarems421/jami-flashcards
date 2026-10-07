@@ -103,15 +103,42 @@ export async function loadStudyActivity(userId: string): Promise<DailyStudyActiv
 const DASHBOARD_ACTIVITY_PAGE_SIZE = 32;
 
 /**
+ * Whether Firestore refused a query for want of an index rather than failing
+ * to run it.
+ */
+function isMissingIndexError(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "failed-precondition";
+}
+
+/**
  * Today needs the trailing week plus the complete current streak. Pages are
  * read newest-first until the first missing study day proves the streak has
  * ended. A long unbroken streak therefore remains exact without turning every
  * dashboard visit into an all-history scan. Progress deliberately keeps its
  * separate all-time loader.
+ *
+ * Newest-first by document id is served by the descending `__name__` index in
+ * firestore.indexes.json. Where that index is missing -- a project the indexes
+ * were never deployed to, or the emulator, which cannot scan keys backwards at
+ * all -- Firestore refuses the query, and Today falls back to reading the whole
+ * history: one small document per day studied, and the same week and streak,
+ * rather than no activity at all.
  */
 export async function loadDashboardStudyActivity(
   userId: string,
   now = Date.now()
+): Promise<DailyStudyActivity[]> {
+  try {
+    return await loadRecentStudyActivityNewestFirst(userId, now);
+  } catch (error) {
+    if (isMissingIndexError(error)) return loadStudyActivity(userId);
+    throw error;
+  }
+}
+
+async function loadRecentStudyActivityNewestFirst(
+  userId: string,
+  now: number
 ): Promise<DailyStudyActivity[]> {
   const activityCollection = collection(db, "users", userId, "studyActivity");
   const todayKey = getStudyDayKey(now);
