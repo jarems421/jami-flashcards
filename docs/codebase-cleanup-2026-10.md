@@ -106,12 +106,14 @@ revision check every real save uses.
 - **One token check.** Twenty-two copies of "the caller's uid, or null" were
   spread across 28 routes; all now call `authenticateRequest`
   (`services/auth/authenticate-request.server.ts`). Responses are unchanged.
-- **The shared demo account.** Rules refuse it every write, but server routes
-  write with the Admin SDK, past the rules. Account deletion now refuses it
-  (one visitor could otherwise delete it for everyone), and profile photos,
-  the one Storage write without the guard and publicly readable, refuse it
-  too. **`storage.rules` must be deployed** (`npm run firebase:rules:deploy`)
-  for the second part to apply.
+- **The demo claim.** The public demo was retired on 15 July 2026
+  (`ca28fa91`), and nothing has issued a demo sign-in since. The account it
+  used still holds its `demo` claim, though, and a browser signed in before
+  then can keep refreshing tokens that carry it. Rules refuse that claim every
+  write, but server routes write with the Admin SDK, past the rules. Account
+  deletion now refuses it, and so do profile photos, the one Storage write
+  without the guard and publicly readable. **`storage.rules` must be deployed**
+  (`npm run firebase:rules:deploy`) for the second part to apply.
 - **Errors shown to students.** Adding a Tutor illustration to a page, and
   Tutor's "could not read this source", passed raw storage and transaction
   errors (bucket names, paths) to the page. Only reasons worded for the student
@@ -161,19 +163,25 @@ tutorial card covers the notebook's "Ask Jami" button.
   gate. The unmerged branches `tutor-learning-engine` and
   `tutor-app-knowledge` both edit them; splitting them first would make those
   merges far harder.
-- **What the demo account may do through server routes.** These accept it
-  today, though the rules refuse it the same writes from the client: paper
-  generation, paper marking and re-marking, paper deletion and paper actions,
-  video-card jobs (create, approve, edit, delete), source indexing, card
-  autocomplete and source drafts, billing checkout and portal. Switching them
-  to `authenticateWriteRequest` is a one-line change each, but it changes what
-  a demo visitor can try, so it is a product decision.
+- **Closing the retired demo account for good.** Disabling or deleting the
+  demo user in Firebase Authentication (or revoking its refresh tokens) ends
+  any session left from before July. Until then, a few server routes still
+  accept its claim, though the rules refuse it the same writes from the
+  client: paper generation, marking and re-marking, paper deletion and
+  actions, video-card jobs, source indexing, card autocomplete and source
+  drafts, billing checkout and portal. Once the account is closed, the demo
+  checks in the rules and routes can go as well.
 - **Four functions that look planned rather than abandoned**, kept unwired:
   `reviewDrawnFigure`, `cleanPracticePaperMarkingJobArtifacts` (marking-job
   checkpoints are never deleted), `loadCoverageWithLazyBanks` and
   `loadDiagramConfusionEvents`.
-- **Today still reads the legacy `masteryEvents` collection** on every load,
-  though nothing writes to it any more; dropping the read is a data decision.
+- **Today still reads the legacy `masteryEvents` collection** on every load.
+  Its last writer went in May (`d0c3477a`), but the read sums every event a
+  topic ever had, and Today lists a topic whose sum is negative as "Recent
+  practice showed difficulty" -- about practice at least four months old, and
+  outside the Learning Engine. Dropping the read changes which topics Today
+  lists for students who used that early practice loop, so it is a data
+  decision.
 - **The 11 failing walkthrough, visual and screenshot specs** listed in the
   test notes above need their selectors brought up to date by someone who
   knows how those screens are meant to read now; they are review aids rather
