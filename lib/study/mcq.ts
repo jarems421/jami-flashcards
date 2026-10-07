@@ -112,8 +112,8 @@ function shapeDistance(answer: string, option: string) {
  * Build a multiple-choice question, or refuse.
  *
  * One source: wrong options written *for this card* -- by Jami during
- * preparation, or by the student in the card editor. (A diagram's labels are
- * the exception, below.) A numeric answer is prepared like any other: moving
+ * preparation, or by its author in the card's own settings (no screen writes
+ * those yet). (A diagram's labels are the exception, below.) A numeric answer is prepared like any other: moving
  * its number about made generic wrong answers rather than ones written for
  * the question, so that is no longer done.
  *

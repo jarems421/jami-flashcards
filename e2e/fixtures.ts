@@ -75,56 +75,53 @@ export const E2E_OFFLINE_CARDS = [
 export const E2E_MODES_DECK_ID = "e2e-deck-modes";
 export const E2E_MODES_DECK_NAME = "Browser smoke modes deck";
 /*
- * `mcqDistractors` stands in for what Jami writes during preparation, which the
- * browser suite has no provider to produce. Multiple choice refuses to build a
- * question without them -- that is the point of the mode now -- so a fixture
- * deck with none would exercise the refusal and nothing else. A numeric answer
- * needs them as well: wrong numbers are no longer made up from the right one.
+ * `preparedDistractors` stands in for what Jami writes during preparation,
+ * which the browser suite has no provider to produce. Global setup stores them
+ * as each card's prepared study asset, where the app reads them -- a wrong
+ * answer kept on the card itself never reaches Learn. Without them Multiple
+ * Choice has no question for these cards, and the walkthrough would see only
+ * the wait for one.
  */
 export const E2E_MODES_CARDS = [
   {
     id: "e2e-modes-card-1",
     front: "Which organelle releases energy in a cell?",
     back: "The mitochondrion releases usable energy inside every cell",
-    studySettings: {
-      mcqDistractors: [
-        "The nucleus stores the cell's genetic instructions",
-        "The ribosome assembles proteins from amino acids",
-        "The chloroplast captures light for photosynthesis",
-      ],
-    },
+    answerShape: "prose",
+    preparedDistractors: [
+      "The nucleus stores the cell's genetic instructions",
+      "The ribosome assembles proteins from amino acids",
+      "The chloroplast captures light for photosynthesis",
+    ],
   },
   {
     id: "e2e-modes-card-2",
     front: "What is the powerhouse molecule of the cell?",
     back: "Adenosine triphosphate",
-    studySettings: {
-      mcqDistractors: [
-        "Adenosine diphosphate",
-        "Deoxyribonucleic acid",
-        "Pyruvic acid",
-      ],
-    },
+    answerShape: "short",
+    preparedDistractors: [
+      "Adenosine diphosphate",
+      "Deoxyribonucleic acid",
+      "Pyruvic acid",
+    ],
   },
   {
     id: "e2e-modes-card-3",
     front: "What is the acceleration due to gravity on Earth?",
     back: "9.8 m/s",
-    studySettings: {
-      mcqDistractors: ["1.6 m/s", "3.7 m/s", "24.8 m/s"],
-    },
+    answerShape: "numeric",
+    preparedDistractors: ["1.6 m/s", "3.7 m/s", "24.8 m/s"],
   },
   {
     id: "e2e-modes-card-4",
     front: "Which structure builds proteins?",
     back: "The ribosome assembles amino acids into proteins",
-    studySettings: {
-      mcqDistractors: [
-        "The mitochondrion releases energy from glucose",
-        "The lysosome breaks down worn-out cell parts",
-        "The vacuole stores water and keeps the cell firm",
-      ],
-    },
+    answerShape: "prose",
+    preparedDistractors: [
+      "The mitochondrion releases energy from glucose",
+      "The lysosome breaks down worn-out cell parts",
+      "The vacuole stores water and keeps the cell firm",
+    ],
   },
 ] as const;
 
