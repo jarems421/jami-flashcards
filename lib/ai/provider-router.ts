@@ -12,6 +12,7 @@ import {
 import {
   generateOpenRouterText,
   streamOpenRouterText,
+  type OpenRouterCallOptions,
   type OpenRouterUsage,
 } from "@/lib/ai/openrouter";
 import {
@@ -286,70 +287,93 @@ function resolveProviderAllowlist(
   return permitted;
 }
 
-async function runBufferedAttempt(
+/**
+ * What an OpenRouter attempt is sent, whether its answer is awaited or streamed.
+ *
+ * Reports usage and the endpoint that served it to `usage`, which turns them
+ * into the call's diagnostics once the answer is complete.
+ */
+function openRouterRequest(
   attempt: AiProviderAttempt,
   options: AiRouterOptions,
-  timeoutMs: number
-) {
-  const startedAt = Date.now();
-  // Watching for a stall needs tokens as they arrive; the caller still gets
-  // one whole, trimmed response exactly as the buffered call returns it.
-  if (attempt.provider === "openrouter" && options.stallTimeoutMs !== undefined) {
-    return (await runStreamBufferedAttempt(attempt, options, timeoutMs)).trim();
-  }
-  if (attempt.provider === "openrouter") {
-    const sampling = optionalSamplingParameters(attempt, options.generationConfig);
-    let usage: OpenRouterUsage = {};
-    let providerEndpoint: string | undefined;
-    const text = await generateOpenRouterText({
-      apiKey: process.env.OPENROUTER_API_KEY?.trim() ?? "",
-      model: attempt.model,
-      providerAllowlist: resolveProviderAllowlist(attempt, options),
-      quantizations: attempt.quantizations,
-      request: options.request,
-      timeoutMs,
-      signal: options.signal,
-      reasoning: attempt.thinking,
-      reasoningEffort: options.reasoningEffort ?? attempt.reasoningEffort,
-      temperature: sampling.temperature,
-      topP: sampling.topP,
-      maxOutputTokens: cappedOutputTokens(
-        options.generationConfig?.maxOutputTokens,
-        attempt
-      ),
-      json: options.generationConfig?.responseMimeType === "application/json",
-      jsonSchema: options.generationConfig?.responseSchema,
-      onUsage: (value) => { usage = value; },
-      onProvider: (value) => { providerEndpoint = value; },
-    });
-    const diagnostics: AiResponseDiagnostics = {
-      provider: "openrouter",
-      role: attempt.role,
-      routeReason: attempt.routeReason,
-      modelName: attempt.model,
-      ...(providerEndpoint ? { providerEndpoint } : {}),
-      latencyMs: Date.now() - startedAt,
-      promptTokenCount: usage.promptTokens,
-      candidatesTokenCount: usage.completionTokens,
-      totalTokenCount: usage.totalTokens,
-      estimatedCostUsd: usage.estimatedCostUsd,
-    };
-    recordUsage(diagnostics);
-    options.onResponse?.(diagnostics);
-    return text;
-  }
+  timeoutMs: number,
+  usage: OpenRouterUsageTracker
+): OpenRouterCallOptions {
+  const sampling = optionalSamplingParameters(attempt, options.generationConfig);
+  return {
+    apiKey: process.env.OPENROUTER_API_KEY?.trim() ?? "",
+    model: attempt.model,
+    providerAllowlist: resolveProviderAllowlist(attempt, options),
+    quantizations: attempt.quantizations,
+    request: options.request,
+    timeoutMs,
+    signal: options.signal,
+    reasoning: attempt.thinking,
+    reasoningEffort: options.reasoningEffort ?? attempt.reasoningEffort,
+    temperature: sampling.temperature,
+    topP: sampling.topP,
+    maxOutputTokens: cappedOutputTokens(options.generationConfig?.maxOutputTokens, attempt),
+    json: options.generationConfig?.responseMimeType === "application/json",
+    jsonSchema: options.generationConfig?.responseSchema,
+    onUsage: usage.onUsage,
+    onProvider: usage.onProvider,
+  };
+}
 
-  return generateGeminiText({
+type OpenRouterUsageTracker = ReturnType<typeof trackOpenRouterUsage>;
+
+/** Collects what OpenRouter reports about one call, then records it. */
+function trackOpenRouterUsage(
+  attempt: AiProviderAttempt,
+  options: AiRouterOptions,
+  startedAt: number
+) {
+  let usage: OpenRouterUsage = {};
+  let providerEndpoint: string | undefined;
+  return {
+    onUsage: (value: OpenRouterUsage) => {
+      usage = value;
+    },
+    onProvider: (value: string) => {
+      providerEndpoint = value;
+    },
+    report() {
+      const diagnostics: AiResponseDiagnostics = {
+        provider: "openrouter",
+        role: attempt.role,
+        routeReason: attempt.routeReason,
+        modelName: attempt.model,
+        ...(providerEndpoint ? { providerEndpoint } : {}),
+        latencyMs: Date.now() - startedAt,
+        promptTokenCount: usage.promptTokens,
+        candidatesTokenCount: usage.completionTokens,
+        totalTokenCount: usage.totalTokens,
+        estimatedCostUsd: usage.estimatedCostUsd,
+      };
+      recordUsage(diagnostics);
+      options.onResponse?.(diagnostics);
+    },
+  };
+}
+
+/**
+ * What a Gemini attempt is sent, whether its answer is awaited or streamed.
+ * Gemini reports its own diagnostics once the answer is complete.
+ */
+function geminiRequest(
+  attempt: AiProviderAttempt,
+  options: AiRouterOptions,
+  timeoutMs: number,
+  startedAt: number
+): GeminiGenerateOptions {
+  return {
     apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
     request: options.request as GeminiGenerateOptions["request"],
     timeoutMs,
     deadlineAt: options.deadlineAt,
     generationConfig: {
       ...options.generationConfig,
-      maxOutputTokens: cappedOutputTokens(
-        options.generationConfig?.maxOutputTokens,
-        attempt
-      ),
+      maxOutputTokens: cappedOutputTokens(options.generationConfig?.maxOutputTokens, attempt),
     },
     modelNames: [attempt.model],
     signal: options.signal,
@@ -370,7 +394,46 @@ async function runBufferedAttempt(
       recordUsage(info);
       options.onResponse?.(info);
     },
-  });
+  };
+}
+
+async function runBufferedAttempt(
+  attempt: AiProviderAttempt,
+  options: AiRouterOptions,
+  timeoutMs: number
+) {
+  // Watching for a stall needs tokens as they arrive; the caller still gets
+  // one whole, trimmed response exactly as the buffered call returns it.
+  if (attempt.provider === "openrouter" && options.stallTimeoutMs !== undefined) {
+    return (await runStreamBufferedAttempt(attempt, options, timeoutMs)).trim();
+  }
+  const startedAt = Date.now();
+  if (attempt.provider === "openrouter") {
+    const usage = trackOpenRouterUsage(attempt, options, startedAt);
+    const text = await generateOpenRouterText(openRouterRequest(attempt, options, timeoutMs, usage));
+    usage.report();
+    return text;
+  }
+  return generateGeminiText(geminiRequest(attempt, options, timeoutMs, startedAt));
+}
+
+/** One attempt's answer as it arrives, recorded once it is complete. */
+async function* streamAttempt(
+  attempt: AiProviderAttempt,
+  options: AiRouterOptions,
+  timeoutMs: number
+): AsyncGenerator<string, void, unknown> {
+  const startedAt = Date.now();
+  if (attempt.provider === "openrouter") {
+    const usage = trackOpenRouterUsage(attempt, options, startedAt);
+    yield* streamOpenRouterText({
+      ...openRouterRequest(attempt, options, timeoutMs, usage),
+      stallTimeoutMs: options.stallTimeoutMs,
+    });
+    usage.report();
+    return;
+  }
+  yield* streamGeminiText(geminiRequest(attempt, options, timeoutMs, startedAt));
 }
 
 /**
@@ -386,93 +449,51 @@ async function runStreamBufferedAttempt(
   options: AiRouterOptions,
   timeoutMs: number
 ) {
-  const startedAt = Date.now();
   const chunks: string[] = [];
-  if (attempt.provider === "openrouter") {
-    const sampling = optionalSamplingParameters(attempt, options.generationConfig);
-    let usage: OpenRouterUsage = {};
-    let providerEndpoint: string | undefined;
-    for await (const chunk of streamOpenRouterText({
-      apiKey: process.env.OPENROUTER_API_KEY?.trim() ?? "",
-      stallTimeoutMs: options.stallTimeoutMs,
-      model: attempt.model,
-      providerAllowlist: resolveProviderAllowlist(attempt, options),
-      quantizations: attempt.quantizations,
-      request: options.request,
-      timeoutMs,
-      signal: options.signal,
-      reasoning: attempt.thinking,
-      reasoningEffort: options.reasoningEffort ?? attempt.reasoningEffort,
-      temperature: sampling.temperature,
-      topP: sampling.topP,
-      maxOutputTokens: cappedOutputTokens(
-        options.generationConfig?.maxOutputTokens,
-        attempt
-      ),
-      json: options.generationConfig?.responseMimeType === "application/json",
-      jsonSchema: options.generationConfig?.responseSchema,
-      onUsage: (value) => { usage = value; },
-      onProvider: (value) => { providerEndpoint = value; },
-    })) {
-      chunks.push(chunk);
-    }
-    const diagnostics: AiResponseDiagnostics = {
-      provider: "openrouter",
-      role: attempt.role,
-      routeReason: attempt.routeReason,
-      modelName: attempt.model,
-      ...(providerEndpoint ? { providerEndpoint } : {}),
-      latencyMs: Date.now() - startedAt,
-      promptTokenCount: usage.promptTokens,
-      candidatesTokenCount: usage.completionTokens,
-      totalTokenCount: usage.totalTokens,
-      estimatedCostUsd: usage.estimatedCostUsd,
-    };
-    recordUsage(diagnostics);
-    options.onResponse?.(diagnostics);
-    return chunks.join("");
-  }
-
-  for await (const chunk of streamGeminiText({
-    apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
-    request: options.request as GeminiGenerateOptions["request"],
-    timeoutMs,
-    deadlineAt: options.deadlineAt,
-    generationConfig: {
-      ...options.generationConfig,
-      maxOutputTokens: cappedOutputTokens(
-        options.generationConfig?.maxOutputTokens,
-        attempt
-      ),
-    },
-    modelNames: [attempt.model],
-    signal: options.signal,
-    onResponse: (diagnostics) => {
-      const info: AiResponseDiagnostics = {
-        provider: "gemini",
-        role: attempt.role,
-        routeReason: attempt.routeReason,
-        modelName: diagnostics.modelName,
-        latencyMs: Date.now() - startedAt,
-        promptTokenCount: diagnostics.promptTokenCount,
-        candidatesTokenCount: diagnostics.candidatesTokenCount,
-        totalTokenCount: diagnostics.totalTokenCount,
-        thoughtsTokenCount: diagnostics.thoughtsTokenCount,
-        toolUsePromptTokenCount: diagnostics.toolUsePromptTokenCount,
-        finishReason: diagnostics.finishReason,
-      };
-      recordUsage(info);
-      options.onResponse?.(info);
-    },
-  })) {
+  for await (const chunk of streamAttempt(attempt, options, timeoutMs)) {
     chunks.push(chunk);
   }
   return chunks.join("");
 }
 
-export async function generateAiText(options: AiRouterOptions) {
+function planOrThrow(options: AiRouterOptions) {
   const plan = planFor(options);
   if (plan.length === 0) throw new Error("AI providers are not configured");
+  return plan;
+}
+
+/**
+ * Records a failed attempt and announces the next one, or rethrows when the
+ * plan has nothing left to try.
+ */
+function failOver(
+  plan: AiProviderAttempt[],
+  index: number,
+  error: unknown,
+  options: AiRouterOptions,
+  startedAt: number
+) {
+  const attempt = plan[index];
+  recordFailure(attempt, error, Date.now() - startedAt);
+  const next = plan[index + 1];
+  if (!next) throw error;
+  options.onRetry?.({
+    error,
+    provider: attempt.provider,
+    role: attempt.role,
+    modelName: attempt.model,
+    nextProvider: next.provider,
+    nextRole: next.role,
+    nextModelName: next.model,
+  });
+}
+
+/** Works through the plan until an attempt answers, the deadline passes or it runs out. */
+async function withFailover(
+  options: AiRouterOptions,
+  run: (attempt: AiProviderAttempt, timeoutMs: number) => Promise<string>
+) {
+  const plan = planOrThrow(options);
   let lastError: unknown = null;
   for (let index = 0; index < plan.length; index += 1) {
     const attempt = plan[index];
@@ -480,63 +501,37 @@ export async function generateAiText(options: AiRouterOptions) {
     if (timeoutMs <= 0) break;
     const startedAt = Date.now();
     try {
-      return await runBufferedAttempt(attempt, options, timeoutMs);
+      return await run(attempt, timeoutMs);
     } catch (error) {
       if (options.signal?.aborted) throw error;
-      recordFailure(attempt, error, Date.now() - startedAt);
       lastError = error;
-      const next = plan[index + 1];
-      if (!next) throw error;
-      options.onRetry?.({
-        error,
-        provider: attempt.provider,
-        role: attempt.role,
-        modelName: attempt.model,
-        nextProvider: next.provider,
-        nextRole: next.role,
-        nextModelName: next.model,
-      });
+      failOver(plan, index, error, options, startedAt);
     }
   }
   throw lastError ?? new Error("Request timed out");
+}
+
+export async function generateAiText(options: AiRouterOptions) {
+  return withFailover(options, (attempt, timeoutMs) =>
+    runBufferedAttempt(attempt, options, timeoutMs)
+  );
 }
 
 export async function generateAiTextBufferedStream(options: AiRouterOptions) {
-  const plan = planFor(options);
-  if (plan.length === 0) throw new Error("AI providers are not configured");
-  let lastError: unknown = null;
-  for (let index = 0; index < plan.length; index += 1) {
-    const attempt = plan[index];
-    const timeoutMs = budgetFor(attempt, options);
-    if (timeoutMs <= 0) break;
-    const startedAt = Date.now();
-    try {
-      return await runStreamBufferedAttempt(attempt, options, timeoutMs);
-    } catch (error) {
-      if (options.signal?.aborted) throw error;
-      recordFailure(attempt, error, Date.now() - startedAt);
-      lastError = error;
-      const next = plan[index + 1];
-      if (!next) throw error;
-      options.onRetry?.({
-        error,
-        provider: attempt.provider,
-        role: attempt.role,
-        modelName: attempt.model,
-        nextProvider: next.provider,
-        nextRole: next.role,
-        nextModelName: next.model,
-      });
-    }
-  }
-  throw lastError ?? new Error("Request timed out");
+  return withFailover(options, (attempt, timeoutMs) =>
+    runStreamBufferedAttempt(attempt, options, timeoutMs)
+  );
 }
 
+/**
+ * The answer as it arrives. An attempt that fails before saying anything hands
+ * over to the next one; once part of an answer has been shown, a failure ends
+ * the call, because the student has already read the start of it.
+ */
 export async function* streamAiText(
   options: AiRouterOptions
 ): AsyncGenerator<string, void, unknown> {
-  const plan = planFor(options);
-  if (plan.length === 0) throw new Error("AI providers are not configured");
+  const plan = planOrThrow(options);
   let lastError: unknown = null;
   for (let index = 0; index < plan.length; index += 1) {
     const attempt = plan[index];
@@ -545,102 +540,15 @@ export async function* streamAiText(
     let yielded = false;
     const startedAt = Date.now();
     try {
-      if (attempt.provider === "openrouter") {
-        const sampling = optionalSamplingParameters(attempt, options.generationConfig);
-        let usage: OpenRouterUsage = {};
-        let providerEndpoint: string | undefined;
-        for await (const chunk of streamOpenRouterText({
-          apiKey: process.env.OPENROUTER_API_KEY?.trim() ?? "",
-          stallTimeoutMs: options.stallTimeoutMs,
-          model: attempt.model,
-          providerAllowlist: attempt.providerAllowlist,
-          quantizations: attempt.quantizations,
-          request: options.request,
-          timeoutMs,
-          signal: options.signal,
-          reasoning: attempt.thinking,
-          reasoningEffort: options.reasoningEffort ?? attempt.reasoningEffort,
-          temperature: sampling.temperature,
-          topP: sampling.topP,
-          maxOutputTokens: cappedOutputTokens(
-            options.generationConfig?.maxOutputTokens,
-            attempt
-          ),
-          json: options.generationConfig?.responseMimeType === "application/json",
-          jsonSchema: options.generationConfig?.responseSchema,
-          onUsage: (value) => { usage = value; },
-          onProvider: (value) => { providerEndpoint = value; },
-        })) {
-          yielded = true;
-          yield chunk;
-        }
-        const diagnostics: AiResponseDiagnostics = {
-          provider: "openrouter",
-          role: attempt.role,
-          routeReason: attempt.routeReason,
-          modelName: attempt.model,
-          ...(providerEndpoint ? { providerEndpoint } : {}),
-          latencyMs: Date.now() - startedAt,
-          promptTokenCount: usage.promptTokens,
-          candidatesTokenCount: usage.completionTokens,
-          totalTokenCount: usage.totalTokens,
-          estimatedCostUsd: usage.estimatedCostUsd,
-        };
-        recordUsage(diagnostics);
-        options.onResponse?.(diagnostics);
-      } else {
-        for await (const chunk of streamGeminiText({
-          apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
-          request: options.request as GeminiGenerateOptions["request"],
-          timeoutMs,
-          deadlineAt: options.deadlineAt,
-          generationConfig: {
-            ...options.generationConfig,
-            maxOutputTokens: cappedOutputTokens(
-              options.generationConfig?.maxOutputTokens,
-              attempt
-            ),
-          },
-          modelNames: [attempt.model],
-          signal: options.signal,
-          onResponse: (diagnostics) => {
-            const info: AiResponseDiagnostics = {
-              provider: "gemini",
-              role: attempt.role,
-              routeReason: attempt.routeReason,
-              modelName: diagnostics.modelName,
-              latencyMs: Date.now() - startedAt,
-              promptTokenCount: diagnostics.promptTokenCount,
-              candidatesTokenCount: diagnostics.candidatesTokenCount,
-              totalTokenCount: diagnostics.totalTokenCount,
-              thoughtsTokenCount: diagnostics.thoughtsTokenCount,
-              toolUsePromptTokenCount: diagnostics.toolUsePromptTokenCount,
-              finishReason: diagnostics.finishReason,
-            };
-            recordUsage(info);
-            options.onResponse?.(info);
-          },
-        })) {
-          yielded = true;
-          yield chunk;
-        }
+      for await (const chunk of streamAttempt(attempt, options, timeoutMs)) {
+        yielded = true;
+        yield chunk;
       }
       return;
     } catch (error) {
       if (options.signal?.aborted || yielded) throw error;
-      recordFailure(attempt, error, Date.now() - startedAt);
       lastError = error;
-      const next = plan[index + 1];
-      if (!next) throw error;
-      options.onRetry?.({
-        error,
-        provider: attempt.provider,
-        role: attempt.role,
-        modelName: attempt.model,
-        nextProvider: next.provider,
-        nextRole: next.role,
-        nextModelName: next.model,
-      });
+      failOver(plan, index, error, options, startedAt);
     }
   }
   throw lastError ?? new Error("Request timed out");
