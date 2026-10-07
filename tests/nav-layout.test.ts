@@ -272,7 +272,8 @@ describe("Jami's own mark", () => {
 
   it("is used at every place the tutor is offered", () => {
     const surfaces = [
-      "components/ai/JamiAssistantDrawer.tsx",
+      // The drawer's header, split out of JamiAssistantDrawer.tsx.
+      "components/ai/TutorChatHeader.tsx",
       "components/study/StudyCardStage.tsx",
       "components/library/SourceWorkspace.tsx",
       "components/workspace/NotebookToolbarIconButton.tsx",
