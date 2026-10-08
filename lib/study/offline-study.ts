@@ -80,21 +80,28 @@ function writeJson<T>(key: string, value: T) {
   }
 }
 
-export function saveOfflineStudySnapshot(
-  userId: string,
-  snapshot: Pick<OfflineStudySnapshot, "cards" | "decks">
-) {
-  writeJson<OfflineStudySnapshot>(getSnapshotKey(userId), {
-    userId,
-    savedAt: Date.now(),
-    cards: snapshot.cards,
-    decks: snapshot.decks,
-  });
+/*
+ * The offline snapshot lives in IndexedDB now (services/study/offline-study-
+ * snapshot). These read, write and clear the copy older versions kept here,
+ * and stand in on a device with no IndexedDB at all.
+ */
+export function saveLegacyOfflineStudySnapshot(snapshot: OfflineStudySnapshot) {
+  writeJson<OfflineStudySnapshot>(getSnapshotKey(snapshot.userId), snapshot);
 }
 
-export function loadOfflineStudySnapshot(userId: string) {
+export function loadLegacyOfflineStudySnapshot(userId: string) {
   const snapshot = readJson<OfflineStudySnapshot | null>(getSnapshotKey(userId), null);
   return snapshot?.userId === userId ? snapshot : null;
+}
+
+/** Frees the space a whole card set took here, which the queued answers need more. */
+export function forgetLegacyOfflineStudySnapshot(userId: string) {
+  if (!canUseLocalStorage()) return;
+  try {
+    window.localStorage.removeItem(getSnapshotKey(userId));
+  } catch {
+    // Nothing to free.
+  }
 }
 
 /**

@@ -31,9 +31,9 @@ import {
   getOfflineQueuedReviews,
   queueOfflineStudyReview,
   removeOfflineQueuedReviews,
-  saveOfflineStudySnapshot,
   type OfflineQueuedReview,
 } from "@/lib/study/offline-study";
+import { keepOfflineStudySnapshot } from "@/services/study/offline-study-snapshot";
 import type { StudySessionKind, StudySessionStats } from "@/lib/study/session";
 import {
   getAnswerFeedback,
@@ -409,7 +409,7 @@ export function useStudyExerciseController(
       queueOfflineStudyReview(queuedReviewFor(card, attempt, kind, outcome));
       refreshPendingOfflineReviews();
       if (outcome.updatesCards) {
-        saveOfflineStudySnapshot(userId, {
+        keepOfflineStudySnapshot(userId, {
           cards: cards.map((entry) => (entry.id === card.id ? outcome.nextCard : entry)),
           decks,
         });
@@ -443,7 +443,7 @@ export function useStudyExerciseController(
       const ratingForStats: CardRating = result === "correct" ? "good" : "again";
 
       setCards(nextCardsSnapshot);
-      saveOfflineStudySnapshot(userId, { cards: nextCardsSnapshot, decks });
+      keepOfflineStudySnapshot(userId, { cards: nextCardsSnapshot, decks });
       if (result === "correct") {
         setSessionCards((prev) =>
           prev.map((entry) => (entry.id === card.id ? nextCard : entry))

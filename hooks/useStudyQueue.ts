@@ -5,7 +5,8 @@ import { useStudyDataState } from "@/hooks/useStudyWorkspaceState";
 import type { Topic } from "@/lib/material/topics";
 import { buildDailyReviewQueues, DAILY_REVIEW_STATE_DOC_ID, sortCardsByStudyPriority } from "@/lib/study/daily-review";
 import { getStudyDayKey } from "@/lib/study/day";
-import { getStuckOfflineReviews, loadOfflineStudySnapshot, saveOfflineStudySnapshot } from "@/lib/study/offline-study";
+import { getStuckOfflineReviews } from "@/lib/study/offline-study";
+import { keepOfflineStudySnapshot, readOfflineStudySnapshot } from "@/services/study/offline-study-snapshot";
 import { keepCardPicturesForOffline } from "@/services/study/card-images";
 import { loadUserCards } from "@/services/study/cards";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
@@ -99,7 +100,7 @@ export function useStudyQueue({
       setCards(sortedCards);
       setTopics(nextTopics);
       setDailyReviewState(nextDailyReviewState);
-      saveOfflineStudySnapshot(userId, { cards: sortedCards, decks: nextDecks });
+      keepOfflineStudySnapshot(userId, { cards: sortedCards, decks: nextDecks });
       // Their pictures too, once the page has settled: diagram cards are no use offline without them.
       window.setTimeout(() => keepCardPicturesForOffline(sortedCards), 4_000);
       setOfflineMode(false);
@@ -117,7 +118,10 @@ export function useStudyQueue({
         return;
       }
 
-      const snapshot = loadOfflineStudySnapshot(userId);
+      const snapshot = await readOfflineStudySnapshot(userId);
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
 
       if (snapshot) {
         const now = Date.now();
