@@ -76,9 +76,13 @@ export default function SettingSwitch({
             : "border-[var(--color-border-strong)] bg-[var(--color-glass-subtle)]"
         }`}
       >
+        {/*
+          On, the knob takes the colour opposite the track: on a dark theme the
+          track is near-white, and a white knob on it could not be seen.
+        */}
         <span
-          className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white transition-[left] ${
-            checked ? "left-[1.25rem]" : "left-[0.15rem]"
+          className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full transition-[left] ${
+            checked ? "left-[1.25rem] bg-[var(--color-text-inverse)]" : "left-[0.15rem] bg-white"
           }`}
         />
       </span>

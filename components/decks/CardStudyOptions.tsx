@@ -127,7 +127,7 @@ export default function CardStudyOptions({
           onChange={(wrongAnswers) => set({ wrongAnswers })}
           max={MAX_OWN_WRONG_ANSWERS}
           maxLength={MAX_OWN_ANSWER_LENGTH}
-          placeholder="A believable wrong answer"
+          placeholder="A wrong answer"
           disabled={disabled}
           status={
             !isOn("multiple-choice") ? (
@@ -159,7 +159,7 @@ export default function CardStudyOptions({
           onChange={(pinnedGaps) => set({ pinnedGaps })}
           max={MAX_OWN_PINNED_GAPS}
           maxLength={MAX_OWN_ANSWER_LENGTH}
-          placeholder="A word or phrase from the answer"
+          placeholder="Words from the answer"
           disabled={disabled}
           status={
             !gaps ? null : (
