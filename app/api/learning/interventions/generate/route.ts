@@ -4,7 +4,7 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
 import { servableExamSpecificationConcepts } from "@/lib/practice/exam-specification-concepts";
 import { createLogger } from "@/lib/observability/logger";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     return apiFailure("AI features are not configured.", 503, "ai_unavailable");
   }
 
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   let input: ReturnType<typeof readBody>;

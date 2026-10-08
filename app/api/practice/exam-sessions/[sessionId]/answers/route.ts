@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { EXAM_MARKING_CHECKPOINT_VERSION } from "@/lib/practice/exam-questions";
 import { randomUUID } from "node:crypto";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { EXAM_ANSWER_MAX_LENGTH, EXAM_ID_PATTERN, EXAM_AI_JOB_DEADLINE_MS, examDocument, type ExamAttempt, type ExamMarkingJob, type ExamSession, examOperationIsLive } from "@/lib/practice/exam-questions";
@@ -32,7 +32,7 @@ export const maxDuration = 30;
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   if (!featureFlags.enablePastPaperPractice) return apiFailure("Not found", 404, "not_found");
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { sessionId } = await params;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;

@@ -38,7 +38,6 @@ export async function loadTutorChatRecall(input: {
   currentThreadId?: string;
   earlierInThread: readonly TutorRecallMessage[];
   currentThreadTitle?: string;
-  includeOtherChats: boolean;
   deadlineAt: number;
   log: ReturnType<typeof createLogger>;
 }): Promise<TutorChatRecall | null> {
@@ -48,7 +47,7 @@ export async function loadTutorChatRecall(input: {
   if (budget <= 0) return null;
 
   const loading =
-    input.includeOtherChats && featureFlags.enableTutorMemory
+    featureFlags.enableTutorMemory
       ? loadOtherChats(input.uid, input.currentThreadId)
       : Promise.resolve({ messages: [] as TutorRecallMessage[], threads: [] as TutorRecallThread[] });
   loading.catch(() => undefined);

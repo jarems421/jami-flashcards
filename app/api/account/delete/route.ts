@@ -57,20 +57,6 @@ export async function DELETE(request: NextRequest) {
   try {
     const decoded = await getAdminAuth().verifyIdToken(token, true);
     uid = decoded.uid;
-    /*
-     * The demo account is shared, and Firestore rules refuse it every delete.
-     * This route deletes with the Admin SDK, past those rules, so it has to
-     * refuse it here -- otherwise one visitor could delete it for everyone.
-     */
-    if (decoded.demo === true) {
-      return json(
-        {
-          error: "The demo account is shared, so it can't be deleted.",
-          code: "account/demo-account",
-        },
-        403
-      );
-    }
     if (!hasRecentAuthentication(decoded.auth_time)) {
       return json(
         {

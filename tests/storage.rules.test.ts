@@ -49,12 +49,9 @@ describe("Storage security rules", () => {
     await assertSucceeds(deleteObject(fileRef));
   });
 
-  it("blocks other users and demo sessions from deleting notebook files", async () => {
+  it("blocks other users from deleting notebook files", async () => {
     const aliceStorage = testEnv.authenticatedContext("alice").storage();
     const bobStorage = testEnv.authenticatedContext("bob").storage();
-    const demoStorage = testEnv
-      .authenticatedContext("alice", { demo: true })
-      .storage();
     const filePath =
       "users/alice/notebookFiles/notebook-1/file-1-biology-notes.pdf";
 
@@ -62,7 +59,6 @@ describe("Storage security rules", () => {
       uploadBytes(ref(aliceStorage, filePath), blob("application/pdf"))
     );
     await assertFails(deleteObject(ref(bobStorage, filePath)));
-    await assertFails(deleteObject(ref(demoStorage, filePath)));
   });
 
   it("blocks other users and guests from notebook files", async () => {
@@ -77,25 +73,20 @@ describe("Storage security rules", () => {
     await assertFails(uploadBytes(ref(bobStorage, filePath), blob("application/pdf")));
   });
 
-  it("lets an owner set a public profile photo, but not the shared demo account", async () => {
+  it("lets an owner set a public profile photo", async () => {
     const aliceStorage = testEnv.authenticatedContext("alice").storage();
     const bobStorage = testEnv.authenticatedContext("bob").storage();
     const guestStorage = testEnv.unauthenticatedContext().storage();
-    const demoStorage = testEnv.authenticatedContext("demo-user", { demo: true }).storage();
 
     await assertSucceeds(uploadBytes(ref(aliceStorage, "profilePhotos/alice/photo.png"), blob("image/png")));
     await assertSucceeds(getBytes(ref(guestStorage, "profilePhotos/alice/photo.png")));
     await assertFails(uploadBytes(ref(bobStorage, "profilePhotos/alice/other.png"), blob("image/png")));
     await assertFails(uploadBytes(ref(aliceStorage, "profilePhotos/alice/notes.pdf"), blob("application/pdf")));
-    await assertFails(uploadBytes(ref(demoStorage, "profilePhotos/demo-user/photo.png"), blob("image/png")));
   });
 
   it("keeps card images private to their owner, and images only", async () => {
     const aliceStorage = testEnv.authenticatedContext("alice").storage();
     const bobStorage = testEnv.authenticatedContext("bob").storage();
-    const demoStorage = testEnv
-      .authenticatedContext("alice", { demo: true })
-      .storage();
     const imagePath = "users/alice/cardImages/file-1/heart.png";
 
     await assertSucceeds(uploadBytes(ref(aliceStorage, imagePath), blob("image/png")));
@@ -110,19 +101,12 @@ describe("Storage security rules", () => {
         blob("application/pdf")
       )
     );
-    await assertFails(
-      uploadBytes(ref(demoStorage, "users/alice/cardImages/file-4/x.png"), blob("image/png"))
-    );
-    await assertFails(deleteObject(ref(demoStorage, imagePath)));
     await assertSucceeds(deleteObject(ref(aliceStorage, imagePath)));
   });
 
   it("keeps a photo background private to its owner, and images only", async () => {
     const aliceStorage = testEnv.authenticatedContext("alice").storage();
     const bobStorage = testEnv.authenticatedContext("bob").storage();
-    const demoStorage = testEnv
-      .authenticatedContext("alice", { demo: true })
-      .storage();
     const photoPath = "users/alice/appBackgrounds/file-1/background.jpg";
 
     await assertSucceeds(uploadBytes(ref(aliceStorage, photoPath), blob("image/jpeg")));
@@ -134,23 +118,7 @@ describe("Storage security rules", () => {
     await assertFails(
       uploadBytes(ref(aliceStorage, "users/alice/appBackgrounds/file-3/notes.pdf"), blob("application/pdf"))
     );
-    await assertFails(
-      uploadBytes(ref(demoStorage, "users/alice/appBackgrounds/file-4/background.jpg"), blob("image/jpeg"))
-    );
-    await assertFails(deleteObject(ref(demoStorage, photoPath)));
     await assertSucceeds(deleteObject(ref(aliceStorage, photoPath)));
-  });
-
-  it("blocks shared demo accounts from notebook uploads", async () => {
-    const demoStorage = testEnv
-      .authenticatedContext("alice", { demo: true })
-      .storage();
-    const fileRef = ref(
-      demoStorage,
-      "users/alice/notebookFiles/notebook-1/file-1-biology-notes.pdf"
-    );
-
-    await assertFails(uploadBytes(fileRef, blob("application/pdf")));
   });
 
   it("rejects unsupported notebook file types", async () => {
@@ -212,18 +180,6 @@ describe("Storage security rules", () => {
     await assertFails(uploadBytes(ref(bobStorage, filePath), blob("application/pdf")));
   });
 
-  it("blocks shared demo accounts from source uploads", async () => {
-    const demoStorage = testEnv
-      .authenticatedContext("alice", { demo: true })
-      .storage();
-    const fileRef = ref(
-      demoStorage,
-      "users/alice/sourceFiles/source-1/reference.pdf"
-    );
-
-    await assertFails(uploadBytes(fileRef, blob("application/pdf")));
-  });
-
   it("rejects unsupported source file types", async () => {
     const aliceStorage = testEnv.authenticatedContext("alice").storage();
     const fileRef = ref(aliceStorage, "users/alice/sourceFiles/source-1/file-1-script.js");
@@ -242,12 +198,10 @@ describe("Storage security rules", () => {
     await assertSucceeds(deleteObject(ref(aliceStorage, filePath)));
   });
 
-  it("rejects unsafe video-card uploads and demo writers", async () => {
+  it("rejects unsafe video-card uploads", async () => {
     const aliceStorage = testEnv.authenticatedContext("alice").storage();
-    const demoStorage = testEnv.authenticatedContext("alice", { demo: true }).storage();
     const root = "users/alice/videoCardImports/job-123456789012";
     await assertFails(uploadBytes(ref(aliceStorage, `${root}/script.js`), blob("application/javascript")));
-    await assertFails(uploadBytes(ref(demoStorage, `${root}/video.webm`), blob("video/webm")));
   });
 
   it("allows private temporary card-source files but rejects unsafe types", async () => {

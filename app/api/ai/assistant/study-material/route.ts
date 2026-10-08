@@ -15,7 +15,7 @@ import {
 import { createLogger } from "@/lib/observability/logger";
 import {
   apiFailure,
-  authenticateWriteRequest,
+  authenticateRequest,
 } from "@/services/auth/authenticate-request.server";
 import {
   JamiAssistantContextError,
@@ -51,7 +51,7 @@ export const maxDuration = 300;
  * even sweep of a whole source, which is all the Create panel could do.
  */
 export async function POST(request: NextRequest) {
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   let body: Record<string, unknown>;

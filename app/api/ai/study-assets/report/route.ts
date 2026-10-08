@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { getAdminDb } from "@/services/firebase/admin";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { isStudyVariantReportReason } from "@/lib/study/study-modes";
@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   if (!featureFlags.enableStudyModes) return Response.json({ error: "Not found", code: "not_found" }, { status: 404 });
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return Response.json({ error: "Unauthorized", code: "unauthorized" }, { status: 401 });
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const cardId = typeof body?.cardId === "string" ? body.cardId.trim().slice(0, 120) : "";

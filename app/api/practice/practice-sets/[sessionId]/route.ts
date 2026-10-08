@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { EXAM_ID_PATTERN } from "@/lib/practice/exam-questions";
 import { PracticeSetError, updatePracticeSet } from "@/services/practice/practice-sets.server";
@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 /** Keeps a practice set, or turns it down. */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   if (!featureFlags.enablePastPaperPractice) return apiFailure("Not found", 404, "not_found");
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { sessionId } = await params;
   if (!EXAM_ID_PATTERN.test(sessionId)) return apiFailure("Practice set not found.", 404, "not_found");

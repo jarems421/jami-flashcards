@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { missionCopy } from "@/lib/learning/interventions/explain";
 import { createLogger } from "@/lib/observability/logger";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { loadStudyActions } from "@/services/learning/study-actions.server";
 import {
   loadRevisionOptions,
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   const unavailable = revisionSessionsUnavailable();
   if (unavailable) return unavailable;
 
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   let actionId = "";

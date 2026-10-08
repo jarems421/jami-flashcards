@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import type { ExamAttempt, ExamReviewJob, ExamSession } from "@/lib/practice/exam-questions";
 import {
   EXAM_AI_JOB_DEADLINE_MS,
@@ -31,7 +31,7 @@ export const maxDuration = 30;
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   if (!featureFlags.enablePastPaperPractice) return apiFailure("Not found", 404, "not_found");
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { sessionId } = await params;
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;

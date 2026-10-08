@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { EXAM_ID_PATTERN, examOperationIsLive } from "@/lib/practice/exam-questions";
 import { featureFlags } from "@/lib/app/feature-flags";
@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   if (!featureFlags.enablePastPaperPractice) return apiFailure("Not found", 404, "not_found");
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { sessionId } = await params;
   if (!EXAM_ID_PATTERN.test(sessionId)) return apiFailure("Session not found.", 404, "session_not_found");

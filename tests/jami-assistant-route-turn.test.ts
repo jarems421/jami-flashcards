@@ -896,7 +896,6 @@ describe("what a turn reads", () => {
         uid: "user-1",
         message: "Do you remember what we did last time?",
         earlierInThread: [],
-        includeOtherChats: true,
         deadlineAt: NOW + 20_000,
       })
     );

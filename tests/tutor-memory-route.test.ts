@@ -5,7 +5,6 @@ import type { TutorMemoryState } from "@/lib/ai/tutor-memory";
 const NOW = Date.now();
 
 const mocks = vi.hoisted(() => ({
-  writer: vi.fn(),
   reader: vi.fn(),
   stored: { current: null as TutorMemoryState | null },
 }));
@@ -14,7 +13,6 @@ vi.mock("@/services/auth/authenticate-request.server", () => ({
   authenticateRequest: mocks.reader,
 }));
 vi.mock("@/services/ai/assistant-assets.server", () => ({
-  authenticateAssistantWriter: mocks.writer,
   assistantAssetError: (message: string, status: number, code: string) =>
     Response.json({ error: message, code }, { status }),
 }));
@@ -44,7 +42,6 @@ function patch(body: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.writer.mockResolvedValue({ uid: "student-1", isDemo: false });
   mocks.reader.mockResolvedValue("student-1");
   mocks.stored.current = {
     enabled: true,
@@ -118,10 +115,10 @@ describe("the student's changes", () => {
     expect(mocks.stored.current?.items).toEqual([]);
   });
 
-  it.each([null, { uid: "demo", isDemo: true }])("blocks unauthenticated and demo changes", async (writer) => {
-    mocks.writer.mockResolvedValue(writer);
+  it("blocks changes from anyone not signed in", async () => {
+    mocks.reader.mockResolvedValue(null);
     const response = await PATCH(patch({ target: "forget-all" }));
-    expect(response.status).toBe(writer ? 403 : 401);
+    expect(response.status).toBe(401);
     expect(mocks.stored.current?.items).toHaveLength(3);
   });
 

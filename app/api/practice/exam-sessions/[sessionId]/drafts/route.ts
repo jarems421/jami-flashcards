@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { getAdminDb } from "@/services/firebase/admin";
 import { EXAM_ANSWER_MAX_LENGTH, EXAM_ID_PATTERN, type ExamSession } from "@/lib/practice/exam-questions";
 import { featureFlags } from "@/lib/app/feature-flags";
@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   if (!featureFlags.enablePastPaperPractice) return apiFailure("Not found", 404, "not_found");
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { sessionId } = await params;
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;

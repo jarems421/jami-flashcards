@@ -2,7 +2,6 @@ import type { NextRequest } from "next/server";
 import { practicePaperSourceRole, rankPracticePaperSources } from "@/lib/ai/practice-paper-generation";
 import { generateAiText } from "@/lib/ai/provider-router";
 import { prepareSourceForTutor } from "@/lib/ai/source-ingestion";
-import { getBearerToken } from "@/lib/auth/bearer";
 import { mapSourceData, type Source } from "@/lib/material/sources";
 import type { Logger } from "@/lib/observability/logger";
 import { MAX_PRACTICE_PAPER_SOURCE_TEXT, type PracticePaperJobStage } from "@/lib/practice/practice-papers";
@@ -11,11 +10,8 @@ import {
   getStudyLevelTutorLabel,
   normalizeStudyLevel,
 } from "@/lib/profile/study-level";
-import {
-  getAdminAuth,
-  getAdminDb,
-  getAdminStorageBucket,
-} from "@/services/firebase/admin";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 import { retrieveSourceChunks } from "@/services/ai/source-index.server";
 
 /**
@@ -81,13 +77,8 @@ export type GenerationContextOverride = {
 export class PracticePaperJobCancelledError extends Error {}
 
 export async function authenticate(request: NextRequest): Promise<GenerationAuth | null> {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try {
-    return { uid: (await getAdminAuth().verifyIdToken(token)).uid };
-  } catch {
-    return null;
-  }
+  const uid = await authenticateRequest(request);
+  return uid ? { uid } : null;
 }
 
 export async function updateInternalJobStage(

@@ -9,12 +9,6 @@ service firebase.storage {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isDemoAccount() {
-      return isSignedIn() &&
-        ('demo' in request.auth.token) &&
-        request.auth.token.demo == true;
-    }
-
     function isAllowedNotebookFile() {
       return request.resource.size < 20 * 1024 * 1024 &&
         request.resource.contentType.matches('(application/pdf|image/jpeg|image/png|image/webp)');
@@ -39,27 +33,24 @@ service firebase.storage {
 
     match /profilePhotos/{userId}/{fileName} {
       allow read: if true;
-      // Readable by anyone, so the shared demo account must not be able to put
-      // a picture here for every later visitor to see.
       allow write: if request.auth != null
         && request.auth.uid == userId
-        && !isDemoAccount()
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp)');
     }
 
     match /users/{userId}/notebookFiles/{notebookId}/{fileName} {
       allow read: if isSelf(userId);
-      allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedNotebookFile();
-      allow delete: if isSelf(userId) && !isDemoAccount();
+      allow create, update: if isSelf(userId) && isAllowedNotebookFile();
+      allow delete: if isSelf(userId);
     }
 
     // Pictures a student puts on the front or back of a card. Private, images
     // only, and removed by the app when the card or the image on it goes.
     match /users/{userId}/cardImages/{fileId}/{fileName} {
       allow read: if isSelf(userId);
-      allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedCardImage();
-      allow delete: if isSelf(userId) && !isDemoAccount();
+      allow create, update: if isSelf(userId) && isAllowedCardImage();
+      allow delete: if isSelf(userId);
     }
 
     // A photo a student chose as the app's background, resized to a JPEG in the
@@ -67,16 +58,16 @@ service firebase.storage {
     // the download URL the app resolves while they are signed in.
     match /users/{userId}/appBackgrounds/{fileId}/{fileName} {
       allow read: if isSelf(userId);
-      allow create, update: if isSelf(userId) && !isDemoAccount() &&
+      allow create, update: if isSelf(userId) &&
         request.resource.size <= 15 * 1024 * 1024 &&
         request.resource.contentType.matches('image/(jpeg|png|webp)');
-      allow delete: if isSelf(userId) && !isDemoAccount();
+      allow delete: if isSelf(userId);
     }
 
     match /users/{userId}/sourceFiles/{sourceId}/{fileName} {
       allow read: if isSelf(userId);
-      allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedSourceFile();
-      allow delete: if isSelf(userId) && !isDemoAccount();
+      allow create, update: if isSelf(userId) && isAllowedSourceFile();
+      allow delete: if isSelf(userId);
     }
 
     // An uploaded video is kept until the import is approved or discarded, so
@@ -99,16 +90,16 @@ service firebase.storage {
     // else under users/ is safe to delete on age.
     match /users/{userId}/videoCardImports/{jobId}/{fileName} {
       allow read: if isSelf(userId);
-      allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedVideoImport();
-      allow delete: if isSelf(userId) && !isDemoAccount();
+      allow create, update: if isSelf(userId) && isAllowedVideoImport();
+      allow delete: if isSelf(userId);
     }
 
     // Files used to create flashcard drafts are temporary. The server deletes
     // them when the student approves or discards the generated batch.
     match /users/{userId}/cardSourceImports/{jobId}/{fileName} {
       allow read: if isSelf(userId);
-      allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedSourceFile();
-      allow delete: if isSelf(userId) && !isDemoAccount();
+      allow create, update: if isSelf(userId) && isAllowedSourceFile();
+      allow delete: if isSelf(userId);
     }
 
     // AI-created images are written and deleted only by server routes using

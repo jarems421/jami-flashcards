@@ -4,7 +4,7 @@ import { readPracticeDrafts } from "@/lib/learning/interventions/practice-reques
 import { servableExamSpecificationConcepts } from "@/lib/practice/exam-specification-concepts";
 import { mapStudyFolderData } from "@/lib/workspace/study-folders";
 import { createLogger } from "@/lib/observability/logger";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { getAdminDb } from "@/services/firebase/admin";
 import { storeInterventionPractice } from "@/services/learning/practice-material.server";
 
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   if (!featureFlags.enableLearnerProfile || !featureFlags.enableStudyActions) {
     return apiFailure("Not found", 404, "not_found");
   }
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   let body: Record<string, unknown>;

@@ -9,12 +9,6 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isDemoAccount() {
-      return isSignedIn() &&
-        ('demo' in request.auth.token) &&
-        request.auth.token.demo == true;
-    }
-
     function isOwnedByRequestAuth(data) {
       return isSignedIn() &&
         (('userId' in data) || ('uid' in data)) &&
@@ -55,9 +49,9 @@ service cloud.firestore {
 
     match /decks/{deckId} {
       allow read: if canReadOwnedData(resource.data);
-      allow create: if !isDemoAccount() && createsOwnDeck();
-      allow update: if !isDemoAccount() && ownsDeck() && updatesOwnDeck();
-      allow delete: if !isDemoAccount() && ownsDeck();
+      allow create: if createsOwnDeck();
+      allow update: if ownsDeck() && updatesOwnDeck();
+      allow delete: if ownsDeck();
 
       function ownsDeck() {
         return isOwnedByRequestAuth(resource.data);
@@ -90,26 +84,12 @@ service cloud.firestore {
 
     match /cards/{cardId} {
       allow read: if canReadOwnedData(resource.data);
-      allow create: if !isDemoAccount() &&
-        isOwnedByRequestAuth(request.resource.data) &&
+      allow create: if isOwnedByRequestAuth(request.resource.data) &&
         deckExistsAndIsOwned(request.resource.data.deckId);
       allow update: if isOwnedByRequestAuth(resource.data) &&
         isOwnedByRequestAuth(request.resource.data) &&
-        request.resource.data.deckId == resource.data.deckId &&
-        (
-          !isDemoAccount() ||
-          (
-            request.resource.data.front == resource.data.front &&
-            request.resource.data.back == resource.data.back &&
-            request.resource.data.get('frontImage', null) == resource.data.get('frontImage', null) &&
-            request.resource.data.get('backImage', null) == resource.data.get('backImage', null) &&
-            request.resource.data.get('occlusion', null) == resource.data.get('occlusion', null) &&
-            request.resource.data.tags == resource.data.tags &&
-            request.resource.data.createdAt == resource.data.createdAt &&
-            request.resource.data.userId == resource.data.userId
-          )
-        );
-      allow delete: if !isDemoAccount() && isOwnedByRequestAuth(resource.data);
+        request.resource.data.deckId == resource.data.deckId;
+      allow delete: if isOwnedByRequestAuth(resource.data);
     }
 
     // Official format profiles, imports, held-out papers, model output, spend
@@ -174,12 +154,12 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSelf(userId);
-      allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      allow create, update, delete: if isSelf(userId);
 
       match /onboarding/{documentId} {
         allow read: if isSelf(userId);
-        allow create, update: if isSelf(userId) && !isDemoAccount();
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update: if isSelf(userId);
+        allow delete: if isSelf(userId);
       }
 
       // Plans, allowances and stardust (docs/plans-and-stardust.md §6). The
@@ -197,46 +177,46 @@ service cloud.firestore {
 
       match /goals/{goalId} {
         allow read: if isSelf(userId);
-        allow create, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, delete: if isSelf(userId);
         allow update: if isSelf(userId);
       }
 
       match /stars/{starId} {
         allow read: if isSelf(userId);
         allow create, update: if isSelf(userId);
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow delete: if isSelf(userId);
       }
 
       match /studyActivity/{dayKey} {
         allow read, create, update: if isSelf(userId);
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow delete: if isSelf(userId);
       }
 
       match /studyState/{documentId} {
         allow read, create, update: if isSelf(userId);
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow delete: if isSelf(userId);
       }
 
       match /constellations/{constellationId} {
         allow read: if isSelf(userId);
         allow create, update: if isSelf(userId);
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow delete: if isSelf(userId);
       }
 
       match /constellationState/{stateId} {
         allow read: if isSelf(userId);
         allow create, update: if isSelf(userId);
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow delete: if isSelf(userId);
       }
 
       match /notificationPreferences/{documentId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /topics/{topicId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /questions/{questionId} {
@@ -249,12 +229,12 @@ service cloud.firestore {
 
       match /tutorThreads/{threadId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /tutorMessages/{messageId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /assistantThreads/{threadId} {
@@ -275,19 +255,18 @@ service cloud.firestore {
 
       match /masteryEvents/{eventId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       // Append-only learning history: one compact record per flashcard answer,
       // holding ids, a time and a result -- never card or response text. Written
       // once by the study flow and never edited; read by its owner and by the
-      // server-side Learning Engine. Allowed for demo accounts, like the rest of
-      // study activity, because it only describes their own studying.
+      // server-side Learning Engine.
       match /flashcardReviewEvents/{eventId} {
         allow read: if isSelf(userId);
         allow create: if isSelf(userId) && isFlashcardReviewEvent(request.resource.data);
         allow update: if false;
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow delete: if isSelf(userId);
 
         function isFlashcardReviewEvent(data) {
           return data.keys().hasOnly(['schemaVersion', 'cardId', 'deckId', 'reviewedAt', 'studyDayKey', 'correct', 'rating', 'interventionId', 'confusedWithLabelId', 'createdAt']) &&
@@ -318,7 +297,7 @@ service cloud.firestore {
       match /notebookMarkings/{markingId} {
         allow read: if isSelf(userId);
         allow create, update: if false;
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow delete: if isSelf(userId);
       }
 
       /*
@@ -328,7 +307,7 @@ service cloud.firestore {
       match /tutorChecks/{checkId} {
         allow read: if isSelf(userId);
         allow create, update: if false;
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow delete: if isSelf(userId);
       }
 
       /*
@@ -340,7 +319,7 @@ service cloud.firestore {
        */
       match /revisionShelf/{itemId} {
         allow read: if isSelf(userId);
-        allow create: if isSelf(userId) && !isDemoAccount() && isRevisionShelfItem(request.resource.data);
+        allow create: if isSelf(userId) && isRevisionShelfItem(request.resource.data);
         allow update: if false;
         allow delete: if isSelf(userId);
 
@@ -370,7 +349,7 @@ service cloud.firestore {
        */
       match /revisionSessions/{sessionId} {
         allow read, create, update: if false;
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow delete: if isSelf(userId);
       }
 
       /*
@@ -384,7 +363,7 @@ service cloud.firestore {
         allow read: if isSelf(userId);
         allow create: if isSelf(userId) && isStudyActionEvent(request.resource.data);
         allow update: if false;
-        allow delete: if isSelf(userId) && !isDemoAccount();
+        allow delete: if isSelf(userId);
 
         function isStudyActionEvent(data) {
           return data.keys().hasOnly(['schemaVersion', 'actionId', 'reason', 'targetKey', 'folderId', 'deckId', 'outcome', 'at', 'studyDayKey', 'createdAt']) &&
@@ -409,27 +388,27 @@ service cloud.firestore {
       // time was set aside -- never that anything was learned.
       match /revisionPlans/{planId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
 
         match /entries/{dayKey} {
           allow read: if isSelf(userId);
-          allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+          allow create, update, delete: if isSelf(userId);
         }
       }
 
       match /generatedContentDrafts/{draftId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /sources/{sourceId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /studyFolders/{folderId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       // Saved Tutor teaching preferences. Readable by the student who set
@@ -442,12 +421,12 @@ service cloud.firestore {
 
       match /notebooks/{notebookId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /notebookPages/{pageId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       // Full-fidelity page ink, split out of the page record so opening a
@@ -455,17 +434,17 @@ service cloud.firestore {
       // access as the page it belongs to.
       match /notebookPageInk/{pageId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /notebookFiles/{fileId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /practiceSets/{practiceSetId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /examSessions/{sessionId} {
@@ -503,7 +482,7 @@ service cloud.firestore {
           return attempt.status == 'draft' && session.status == 'active' && !('answersDeletedAt' in session);
         }
         allow read: if isSelf(userId);
-        allow create, update: if isSelf(userId) && !isDemoAccount() &&
+        allow create, update: if isSelf(userId) &&
           editableAttempt() &&
           request.resource.data.keys().hasOnly(['inkSvg', 'pages', 'updatedAt']) &&
           request.resource.data.inkSvg is string &&
@@ -516,7 +495,7 @@ service cloud.firestore {
           (!('pages' in request.resource.data) ||
             (request.resource.data.pages is list &&
               request.resource.data.pages.size() <= 15));
-        allow delete: if isSelf(userId) && !isDemoAccount() && editableAttempt();
+        allow delete: if isSelf(userId) && editableAttempt();
       }
 
       match /pastPapers/{pastPaperId} {
@@ -524,7 +503,7 @@ service cloud.firestore {
           containsOnlyPublicPracticePaperData(resource.data);
         // Upload creation may originate in the browser, but no assessment
         // definition, answer-bearing guide, result or timing transition does.
-        allow create: if isSelf(userId) && !isDemoAccount() &&
+        allow create: if isSelf(userId) &&
           containsOnlyPublicPracticePaperData(request.resource.data) &&
           request.resource.data.origin == 'uploaded' &&
           request.resource.data.status == 'ready' &&
@@ -602,20 +581,18 @@ service cloud.firestore {
 
       match /pushSubscriptions/{subscriptionId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if isSelf(userId);
       }
 
       match /decks/{deckId} {
         allow read, delete: if isSelf(userId);
         allow create, update: if isSelf(userId) &&
-          !isDemoAccount() &&
           request.resource.data.deckId == deckId &&
           deckExistsAndIsOwned(deckId);
 
         match /attempts/{attemptId} {
           allow read, delete: if isSelf(userId);
           allow create, update: if isSelf(userId) &&
-            !isDemoAccount() &&
             request.resource.data.deckId == deckId &&
             deckExistsAndIsOwned(deckId);
         }

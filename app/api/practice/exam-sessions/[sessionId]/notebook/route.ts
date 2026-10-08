@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import type { NotebookImageRef } from "@/lib/workspace/notebooks";
 import { buildNotebookPagePayload } from "@/lib/workspace/notebook-page-writes";
 import { EXAM_ID_PATTERN, type ExamAttempt, type ExamQuestion, type ExamSession } from "@/lib/practice/exam-questions";
@@ -32,7 +32,7 @@ function compactFeedback(attempt: ExamAttempt) {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ sessionId: string }> }) {
   if (!featureFlags.enablePastPaperPractice) return apiFailure("Not found", 404, "not_found");
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { sessionId } = await params;
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;

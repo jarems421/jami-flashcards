@@ -131,22 +131,12 @@ describe("Firestore security rules", () => {
     await assertFails(deleteDoc(doc(aliceDb, ...settingsPath)));
   });
 
-  it("keeps onboarding progress private and blocks demo writes", async () => {
+  it("keeps onboarding progress private", async () => {
     const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
     const bobDb = testEnv.authenticatedContext(BOB).firestore();
     const guestDb = testEnv.unauthenticatedContext().firestore();
-    const demoDb = testEnv
-      .authenticatedContext("demo-user", { demo: true })
-      .firestore();
 
     const aliceProgress = doc(aliceDb, "users", ALICE, "onboarding", "release-1");
-    const demoProgress = doc(
-      demoDb,
-      "users",
-      "demo-user",
-      "onboarding",
-      "release-1"
-    );
 
     await assertSucceeds(
       setDoc(aliceProgress, { status: "active", completedMissionIds: [] })
@@ -162,7 +152,6 @@ describe("Firestore security rules", () => {
     await assertFails(
       getDoc(doc(guestDb, "users", ALICE, "onboarding", "release-1"))
     );
-    await assertFails(setDoc(demoProgress, { status: "active" }));
     await assertSucceeds(deleteDoc(aliceProgress));
   });
 
@@ -605,7 +594,6 @@ describe("Firestore security rules", () => {
 
     const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
     const bobDb = testEnv.authenticatedContext(BOB).firestore();
-    const demoDb = testEnv.authenticatedContext(ALICE, { demo: true }).firestore();
     const activeSessionData = {
       version: 1,
       userId: ALICE,
@@ -642,16 +630,6 @@ describe("Firestore security rules", () => {
     await assertFails(
       setDoc(doc(bobDb, "users", ALICE, "studyState", "activeSession"), activeSessionData)
     );
-
-    await assertSucceeds(
-      setDoc(doc(demoDb, "users", ALICE, "studyState", "activeSession"), {
-        ...activeSessionData,
-        status: "ended",
-        endReason: "user-ended",
-        endedAt: 2,
-        savedAt: 2,
-      })
-    );
   });
 
   it("restricts new learning-loop collections to the caller", async () => {
@@ -659,7 +637,6 @@ describe("Firestore security rules", () => {
 
     const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
     const bobDb = testEnv.authenticatedContext(BOB).firestore();
-    const demoDb = testEnv.authenticatedContext(ALICE, { demo: true }).firestore();
 
     const topicRef = doc(aliceDb, "users", ALICE, "topics", "topic-1");
     await assertSucceeds(
@@ -961,98 +938,6 @@ describe("Firestore security rules", () => {
         createdAt: 1,
       })
     );
-
-    await assertFails(
-      setDoc(doc(demoDb, "users", ALICE, "topics", "demo-topic"), {
-        name: "Demo topic",
-        slug: "demo-topic",
-        subject: "Demo",
-        status: "active",
-        createdBy: "user",
-        createdAt: 1,
-        updatedAt: 1,
-      })
-    );
-
-    await assertFails(
-      setDoc(doc(demoDb, "users", ALICE, "sources", "demo-source"), {
-        title: "Demo source",
-        type: "manual_note",
-        topicIds: [],
-        contentText: "Demo should not write real Library data.",
-        status: "active",
-        createdBy: ALICE,
-        createdAt: 1,
-        updatedAt: 1,
-      })
-    );
-
-    await assertFails(
-      setDoc(
-        doc(demoDb, "users", ALICE, "assistantThreads", "demo-assistant-thread"),
-        {
-          title: "Demo chat",
-          surface: "learn",
-          contextKey: "learn:card-1",
-          contextLabel: "Flashcard",
-          context: { surface: "learn", cardId: "card-1" },
-          createdAt: 1,
-          updatedAt: 1,
-        }
-      )
-    );
-
-    await assertFails(
-      setDoc(doc(demoDb, "users", ALICE, "studyFolders", "demo-folder"), {
-        name: "Demo folder",
-        topicIds: [],
-        archived: false,
-        createdAt: 1,
-        updatedAt: 1,
-      })
-    );
-
-    await assertFails(
-      setDoc(doc(demoDb, "users", ALICE, "notebooks", "demo-notebook"), {
-        folderId: "folder-linear-algebra",
-        title: "Demo notebook",
-        type: "free_working",
-        createdAt: 1,
-        updatedAt: 1,
-      })
-    );
-
-    await assertFails(
-      setDoc(doc(demoDb, "users", ALICE, "notebookFiles", "demo-file"), {
-        notebookId: "demo-notebook",
-        folderId: "folder-linear-algebra",
-        fileName: "demo.pdf",
-        fileType: "application/pdf",
-        storagePath: "users/alice/notebookFiles/demo-notebook/demo-file-demo.pdf",
-        uploadedAt: 1,
-        createdAt: 1,
-        updatedAt: 1,
-      })
-    );
-
-    await assertFails(
-      setDoc(doc(demoDb, "users", ALICE, "practiceSets", "demo-set"), {
-        folderId: "folder-linear-algebra",
-        title: "Demo practice set",
-        type: "manual",
-        createdAt: 1,
-        updatedAt: 1,
-      })
-    );
-
-    await assertFails(
-      setDoc(doc(demoDb, "users", ALICE, "pastPapers", "demo-paper"), {
-        folderId: "folder-linear-algebra",
-        title: "Demo past paper",
-        createdAt: 1,
-        updatedAt: 1,
-      })
-    );
   });
 
   it("keeps deadline evidence immutable and source embeddings server-only", async () => {
@@ -1127,28 +1012,6 @@ describe("Firestore security rules", () => {
     const memoryRef = doc(aliceDb, "users", ALICE, "tutorMemory", "state");
     await assertFails(getDoc(memoryRef));
     await assertFails(setDoc(memoryRef, { enabled: true, items: [{ id: "m", kind: "goal", text: "planted" }] }));
-  });
-
-  it("blocks demo accounts from mutating decks and notification setup", async () => {
-    await seedData();
-
-    const demoDb = testEnv.authenticatedContext(ALICE, { demo: true }).firestore();
-
-    await assertFails(
-      setDoc(doc(demoDb, "decks", "demo-deck"), {
-        name: "Demo deck",
-        userId: ALICE,
-        createdAt: 1,
-      })
-    );
-
-    await assertFails(
-      setDoc(doc(demoDb, "users", ALICE, "notificationPreferences", "config"), {
-        enabled: true,
-        mode: "smart",
-        updatedAt: 1,
-      })
-    );
   });
 
   it("keeps durable practice-paper job internals server-only", async () => {
@@ -1369,113 +1232,6 @@ describe("Firestore security rules", () => {
         createdAt: 1,
         updatedAt: 1,
       })
-    );
-  });
-
-  it("allows demo accounts to update study-safe card scheduling fields only", async () => {
-    await seedData();
-
-    const demoDb = testEnv.authenticatedContext(ALICE, { demo: true }).firestore();
-
-    await assertSucceeds(
-      setDoc(
-        doc(demoDb, "cards", "alice-card"),
-        {
-          deckId: ALICE_DECK_ID,
-          userId: ALICE,
-          front: "Question",
-          back: "Answer",
-          tags: ["biology"],
-          createdAt: 1,
-          dueDate: 200,
-          stability: 3,
-          difficulty: 5,
-          fsrsState: 2,
-          lapses: 1,
-          reps: 3,
-        },
-        { merge: false }
-      )
-    );
-
-    await assertFails(
-      setDoc(
-        doc(demoDb, "cards", "alice-card"),
-        {
-          deckId: ALICE_DECK_ID,
-          userId: ALICE,
-          front: "Changed question",
-          back: "Answer",
-          tags: ["biology"],
-          createdAt: 1,
-          dueDate: 200,
-          stability: 3,
-          difficulty: 5,
-          fsrsState: 2,
-          lapses: 1,
-          reps: 3,
-        },
-        { merge: false }
-      )
-    );
-
-    // A picture is card content like the words are.
-    await assertFails(
-      setDoc(
-        doc(demoDb, "cards", "alice-card"),
-        {
-          deckId: ALICE_DECK_ID,
-          userId: ALICE,
-          front: "Question",
-          back: "Answer",
-          frontImage: {
-            storagePath: `users/${ALICE}/cardImages/file-1/heart.png`,
-            width: 640,
-            height: 480,
-          },
-          tags: ["biology"],
-          createdAt: 1,
-          dueDate: 200,
-          stability: 3,
-          difficulty: 5,
-          fsrsState: 2,
-          lapses: 1,
-          reps: 3,
-        },
-        { merge: false }
-      )
-    );
-
-    // So is a diagram and its boxes.
-    await assertFails(
-      setDoc(
-        doc(demoDb, "cards", "alice-card"),
-        {
-          deckId: ALICE_DECK_ID,
-          userId: ALICE,
-          front: "Question",
-          back: "Answer",
-          occlusion: {
-            labelId: "a",
-            diagram: {
-              id: "diagram-1",
-              image: { storagePath: `users/${ALICE}/cardImages/file-1/heart.png`, width: 640, height: 480 },
-              labelMode: "cover",
-              hideOthers: true,
-              labels: [{ id: "a", answer: "Answer", shapes: [{ kind: "rect", x: 0.1, y: 0.1, width: 0.2, height: 0.1 }] }],
-            },
-          },
-          tags: ["biology"],
-          createdAt: 1,
-          dueDate: 200,
-          stability: 3,
-          difficulty: 5,
-          fsrsState: 2,
-          lapses: 1,
-          reps: 3,
-        },
-        { merge: false }
-      )
     );
   });
 });

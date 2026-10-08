@@ -2,16 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
-  writer: vi.fn(),
+  reader: vi.fn(),
   set: vi.fn(),
   doc: vi.fn(),
 }));
 
 vi.mock("@/services/auth/authenticate-request.server", () => ({
-  authenticateRequest: vi.fn(),
+  authenticateRequest: mocks.reader,
 }));
 vi.mock("@/services/ai/assistant-assets.server", () => ({
-  authenticateAssistantWriter: mocks.writer,
   assistantAssetError: (message: string, status: number, code: string) =>
     Response.json({ error: message, code }, { status }),
 }));
@@ -34,7 +33,7 @@ function request(body: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.writer.mockResolvedValue({ uid: "student-1", isDemo: false });
+  mocks.reader.mockResolvedValue("student-1");
   mocks.doc.mockReturnValue({ set: mocks.set });
   mocks.set.mockResolvedValue(undefined);
 });
@@ -74,10 +73,10 @@ describe("study profile writes", () => {
     expect(mocks.set).toHaveBeenCalled();
   });
 
-  it.each([null, { uid: "demo", isDemo: true }])("blocks unauthenticated and demo writes", async (writer) => {
-    mocks.writer.mockResolvedValue(writer);
+  it("blocks writes from anyone not signed in", async () => {
+    mocks.reader.mockResolvedValue(null);
     const response = await PATCH(request({ target: "study-profile", studyLevel: null, studySubjects: [] }));
-    expect(response.status).toBe(writer ? 403 : 401);
+    expect(response.status).toBe(401);
     expect(mocks.set).not.toHaveBeenCalled();
   });
 });

@@ -6,7 +6,7 @@ import { isStudyAssetRecordCurrent } from "@/lib/study/study-asset-cache";
 import type { NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/services/firebase/admin";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     return apiFailure("Study modes are not enabled.", 404, "not_enabled");
   }
 
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   if (!isAnyAiProviderConfigured("worker")) {

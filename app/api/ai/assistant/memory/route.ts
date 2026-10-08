@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { authenticateRequest } from "@/services/auth/authenticate-request.server";
-import { assistantAssetError, authenticateAssistantWriter } from "@/services/ai/assistant-assets.server";
+import { assistantAssetError } from "@/services/ai/assistant-assets.server";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { createLogger } from "@/lib/observability/logger";
 import {
@@ -59,11 +59,8 @@ export async function PATCH(request: NextRequest) {
   if (!featureFlags.enableTutorMemory) {
     return assistantAssetError("Not found", 404, "not_found");
   }
-  const writer = await authenticateAssistantWriter(request);
-  if (!writer) return assistantAssetError("Unauthorized", 401, "unauthorized");
-  if (writer.isDemo) {
-    return assistantAssetError("The demo account cannot change Jami settings.", 403, "demo_account");
-  }
+  const uid = await authenticateRequest(request);
+  if (!uid) return assistantAssetError("Unauthorized", 401, "unauthorized");
 
   let body: Record<string, unknown>;
   try {
@@ -82,7 +79,7 @@ export async function PATCH(request: NextRequest) {
       return assistantAssetError("Invalid setting", 400, "invalid_request");
     }
     const enabled = body.enabled;
-    const saved = await updateTutorMemory(writer.uid, (state) =>
+    const saved = await updateTutorMemory(uid, (state) =>
       state.enabled === enabled ? null : { ...state, enabled, updatedAt: now }
     );
     log.info("memory.toggled", { enabled });
@@ -100,7 +97,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
     let found = false;
-    const saved = await updateTutorMemory(writer.uid, (state) => {
+    const saved = await updateTutorMemory(uid, (state) => {
       found = state.items.some((item) => item.id === id);
       return found
         ? {
@@ -122,7 +119,7 @@ export async function PATCH(request: NextRequest) {
 
   if (body.target === "forget") {
     if (!id) return assistantAssetError("Choose a memory to forget.", 400, "invalid_request");
-    const saved = await updateTutorMemory(writer.uid, (state) =>
+    const saved = await updateTutorMemory(uid, (state) =>
       state.items.some((item) => item.id === id)
         ? {
             ...state,
@@ -137,7 +134,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (body.target === "forget-all") {
-    const saved = await updateTutorMemory(writer.uid, (state) =>
+    const saved = await updateTutorMemory(uid, (state) =>
       state.items.length > 0 ? { ...state, items: [], updatedAt: now } : null
     );
     log.info("memory.cleared");

@@ -47,9 +47,9 @@ export async function tutorSettingsHeaders(json = false) {
 /**
  * The message to show, preferring what the route said over a generic failure.
  *
- * The two refusals a student can actually cause -- a demo account, and a folder
- * deleted in another tab -- both explain themselves, and repeating "something
- * went wrong" over them would throw that away.
+ * A refusal a student can actually cause, such as a folder deleted in another
+ * tab, explains itself, and repeating "something went wrong" over it would
+ * throw that away.
  */
 export async function tutorSettingsFailureMessage(response: Response, fallback: string) {
   try {

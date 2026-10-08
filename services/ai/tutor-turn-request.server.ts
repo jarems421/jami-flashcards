@@ -5,9 +5,8 @@ import type { NextRequest } from "next/server";
 import { parseJamiAssistantRequest, type JamiAssistantRequest } from "@/lib/ai/jami-assistant";
 import { describeUnmetAiProviderRequirements } from "@/lib/ai/provider-policy";
 import { isAnyAiProviderConfigured } from "@/lib/ai/provider-router";
-import { getBearerToken } from "@/lib/auth/bearer";
 import { createLogger, type Logger } from "@/lib/observability/logger";
-import { getAdminAuth } from "@/services/firebase/admin";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 
 /**
  * The gate a Tutor turn passes before anything is read or charged: an AI
@@ -19,22 +18,9 @@ export function tutorFailureResponse(error: string, status: number, code: string
   return Response.json({ error, code }, { status });
 }
 
-async function getAuthenticatedUser(request: NextRequest) {
-  const token = getBearerToken(request.headers.get("authorization"));
-  if (!token) return null;
-  try {
-    const claims = await getAdminAuth().verifyIdToken(token);
-    return { uid: claims.uid, isDemo: claims.demo === true };
-  } catch {
-    // An expired, malformed and forged token must all read as "not signed in";
-    // the caller learns nothing about which it was.
-    return null;
-  }
-}
-
 /** A turn that passed the gate: who is asking, when, and what. */
 export type OpenedTutorTurn = {
-  caller: { uid: string; isDemo: boolean };
+  caller: { uid: string };
   startedAt: number;
   log: Logger;
   parsedRequest: JamiAssistantRequest;
@@ -66,9 +52,8 @@ export async function openTutorTurn(request: NextRequest): Promise<OpenedTutorTu
     );
   }
 
-  const caller = await getAuthenticatedUser(request);
-  if (!caller) return tutorFailureResponse("Unauthorized", 401, "unauthorized");
-  const uid = caller.uid;
+  const uid = await authenticateRequest(request);
+  if (!uid) return tutorFailureResponse("Unauthorized", 401, "unauthorized");
 
   const startedAt = Date.now();
   const log = createLogger({
@@ -88,5 +73,5 @@ export async function openTutorTurn(request: NextRequest): Promise<OpenedTutorTu
   if (!parsedRequest) {
     return tutorFailureResponse("Invalid assistant request", 400, "invalid_request");
   }
-  return { caller, startedAt, log, parsedRequest };
+  return { caller: { uid }, startedAt, log, parsedRequest };
 }

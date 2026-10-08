@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { aiSpendContextFor } from "@/services/ai/spend.server";
 import { enterAiSpendContext } from "@/lib/ai/spend-context";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
   if (!isAnyAiProviderConfigured("documentVision")) {
     return apiFailure("Finding labels with Jami is not available in this deployment.", 503, "not_configured");
   }
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   const startedAt = Date.now();

@@ -159,8 +159,8 @@ What is **never** stored: anything the student typed, the model's feedback
 text, or a transcript. An answer is marked in memory and discarded — the same
 rule as `/api/ai/study-answer/check`.
 
-Rules: read by the owner; no client create, update or delete except delete by a
-non-demo owner. Generated lesson content is teaching material, not learner
+Rules: read by the owner; no client create or update, and only the owner may
+delete. Generated lesson content is teaching material, not learner
 data, and it is removed at completion either way.
 
 One active session per student: starting a new one abandons the old one and

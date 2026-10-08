@@ -11,7 +11,7 @@ import {
 import type { RevisionSessionRecord, RevisionStepRecord } from "@/lib/revision/types";
 import { revisionTaskFor } from "@/lib/revision/view";
 import { createLogger } from "@/lib/observability/logger";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import {
   MAX_REVISION_ANSWER_LENGTH,
   markRevisionAnswer,
@@ -91,7 +91,7 @@ export async function POST(
 ) {
   const unavailable = revisionSessionsUnavailable();
   if (unavailable) return unavailable;
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { sessionId } = await params;
 

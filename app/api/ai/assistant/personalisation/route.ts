@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { FieldValue } from "firebase-admin/firestore";
-import { assistantAssetError, authenticateAssistantWriter } from "@/services/ai/assistant-assets.server";
+import { assistantAssetError } from "@/services/ai/assistant-assets.server";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { createLogger } from "@/lib/observability/logger";
 import {
@@ -150,16 +150,8 @@ export async function PATCH(request: NextRequest) {
   if (!featureFlags.enableTutorPersonalisation) {
     return assistantAssetError("Not found", 404, "not_found");
   }
-  const writer = await authenticateAssistantWriter(request);
-  if (!writer) return assistantAssetError("Unauthorized", 401, "unauthorized");
-  if (writer.isDemo) {
-    return assistantAssetError(
-      "The demo account cannot change Jami settings.",
-      403,
-      "demo_account"
-    );
-  }
-  const uid = writer.uid;
+  const uid = await authenticateRequest(request);
+  if (!uid) return assistantAssetError("Unauthorized", 401, "unauthorized");
 
   let body: Record<string, unknown>;
   try {
@@ -194,8 +186,8 @@ export async function PATCH(request: NextRequest) {
    * They live here now because they are the same decision as everything else on
    * this screen -- what Jami should assume about you -- and because a level set
    * two pages away from the tutor that uses it was being left unset. Written
-   * through this route rather than straight from the client so the demo-account
-   * guard above covers them like every other setting here.
+   * through this route, like every other setting here, so the checks above
+   * cover them too.
    */
   if (body.target === "study-profile") {
     if (

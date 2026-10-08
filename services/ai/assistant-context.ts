@@ -1004,8 +1004,6 @@ export async function resolveJamiAssistantContext(input: {
   threadId?: string;
   /** Whether this is the chat's first message. */
   firstTurn?: boolean;
-  /** False for an account that must not remember anyone, such as the shared demo. */
-  useMemory?: boolean;
 }): Promise<ResolvedJamiAssistantContext> {
   const uid = input.uid.trim();
   if (!uid) {
@@ -1051,15 +1049,13 @@ export async function resolveJamiAssistantContext(input: {
     }),
     loadTutorCourse({ uid, folderIds: resolved.relations.folderIds }),
     "neighbourParts" in resolved ? resolved.neighbourParts : Promise.resolve([]),
-    input.useMemory === false
-      ? Promise.resolve(undefined)
-      : loadTutorMemoryContext({
-          uid,
-          folderIds: resolved.relations.folderIds,
-          topicIds: resolved.relations.topicIds,
-          ...(input.threadId ? { currentThreadId: input.threadId } : {}),
-          firstTurn: input.firstTurn ?? true,
-        }),
+    loadTutorMemoryContext({
+      uid,
+      folderIds: resolved.relations.folderIds,
+      topicIds: resolved.relations.topicIds,
+      ...(input.threadId ? { currentThreadId: input.threadId } : {}),
+      firstTurn: input.firstTurn ?? true,
+    }),
   ]);
   // After the current page's own parts, so the page asked about is read first.
   const currentParts = [...resolved.currentParts, ...neighbourParts];

@@ -5,7 +5,7 @@ import {
   RESTORE_MAX_INPUT_BYTES,
 } from "@/lib/app/photo-background-restore";
 import { createLogger } from "@/lib/observability/logger";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     return apiFailure("Photo sharpening is not available.", 503, "not_configured");
   }
 
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   const size = readPhotoRestoreSize(Object.fromEntries(request.nextUrl.searchParams));

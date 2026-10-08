@@ -298,7 +298,6 @@ describe("universal Jami assistant route", () => {
       context: { surface: "learn", cardId: "card-1", phase: "answer" },
       useRelatedSources: true,
       firstTurn: true,
-      useMemory: true,
     });
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1048,7 +1047,7 @@ describe("universal Jami assistant route", () => {
 
     expect(terminal).toMatchObject({ type: "done", reply: "Let's work through one together." });
     expect(mocks.resolveContext).toHaveBeenCalledWith(
-      expect.objectContaining({ firstTurn: true, useMemory: true })
+      expect.objectContaining({ firstTurn: true })
     );
     const call = mocks.streamText.mock.calls[0]?.[0] as {
       request: { systemInstruction: string };
@@ -1088,14 +1087,6 @@ describe("universal Jami assistant route", () => {
     expect(call.generationConfig.responseSchema.required).not.toContain("memory");
     expect(call.request.systemInstruction).not.toContain('"memory":[]');
     expect(mocks.applyMemory).not.toHaveBeenCalled();
-  });
-
-  it("never remembers anything for the shared demo account", async () => {
-    mocks.verifyIdToken.mockResolvedValueOnce({ uid: "user-1", demo: true } as { uid: string });
-
-    await readStream(await postAssistant(request(validBody())));
-
-    expect(mocks.resolveContext).toHaveBeenCalledWith(expect.objectContaining({ useMemory: false }));
   });
 
   it("hands a request for flashcards to the study-material panel instead of writing cards inline", async () => {

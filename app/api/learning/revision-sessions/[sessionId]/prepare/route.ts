@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { enterAiSpendContext } from "@/lib/ai/spend-context";
 import { createLogger } from "@/lib/observability/logger";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { prepareRevisionLesson } from "@/services/ai/revision-session.server";
 import {
   checkAiBudget,
@@ -41,7 +41,7 @@ export async function POST(
 ) {
   const unavailable = revisionSessionsUnavailable();
   if (unavailable) return unavailable;
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { sessionId } = await params;
 

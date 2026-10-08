@@ -9,7 +9,7 @@ import {
 } from "@/lib/ai/study-material-brief";
 import { mapSourceData } from "@/lib/material/sources";
 import { createLogger } from "@/lib/observability/logger";
-import { apiFailure, authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } from "@/services/ai/budgets";
 import { getAdminDb } from "@/services/firebase/admin";
 
@@ -28,7 +28,7 @@ const SOURCE_PREVIEW_CHARACTERS = 6_000;
  */
 export async function POST(request: NextRequest) {
   if (!isAnyAiProviderConfigured()) return apiFailure("AI features are not configured", 503, "not_configured");
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
 
   let body: Record<string, unknown>;

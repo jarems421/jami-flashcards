@@ -2,7 +2,6 @@ import type { NextRequest } from "next/server";
 import {
   apiFailure,
   authenticateRequest,
-  authenticateWriteRequest,
 } from "@/services/auth/authenticate-request.server";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { normalizeSourceDraftDepth } from "@/lib/ai/source-draft-quality";
@@ -58,7 +57,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   if (!featureFlags.enablePastPaperPractice) return apiFailure("Not found", 404, "not_found");
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   let body: Record<string, unknown>;
   try {

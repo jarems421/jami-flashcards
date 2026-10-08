@@ -115,8 +115,6 @@ export async function POST(request: NextRequest) {
       useRelatedSources: parsedRequest.useRelatedSources,
       ...(existingThread ? { threadId: existingThread.id } : {}),
       firstTurn: conversationHistory.length === 0,
-      // The demo account is shared, so it must remember nobody.
-      useMemory: !caller.isDemo,
     });
   } catch (error) {
     if (error instanceof JamiAssistantContextError) {
@@ -180,8 +178,8 @@ export async function POST(request: NextRequest) {
   /*
    * What the student referred back to -- earlier in a long chat, or in another
    * one -- found by searching their saved chats. Only when their words point
-   * back, and started now so the read overlaps the source search. The demo
-   * account is shared, so it never searches beyond the chat in front of it.
+   * back, and started now so the read overlaps the source search. Other chats
+   * are searched only while the student's memory is on.
    */
   const recallLoading = isTutorChatRecallRequest(parsedRequest.message)
     ? loadTutorChatRecall({
@@ -189,7 +187,6 @@ export async function POST(request: NextRequest) {
         message: parsedRequest.message,
         ...(existingThread ? { currentThreadId: existingThread.id, currentThreadTitle: existingThread.title } : {}),
         earlierInThread: thread.earlierInThread,
-        includeOtherChats: !caller.isDemo,
         deadlineAt: preAnswerDeadlineAt,
         log,
       })

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { getAdminDb } from "@/services/firebase/admin";
-import { authenticateWriteRequest } from "@/services/auth/authenticate-request.server";
+import { authenticateRequest } from "@/services/auth/authenticate-request.server";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ verdict: "needs-self-grade" }, { status: 200 });
   }
 
-  const uid = await authenticateWriteRequest(request);
+  const uid = await authenticateRequest(request);
   if (!uid) return Response.json({ error: "Unauthorized", code: "unauthorized" }, { status: 401 });
 
   let cardId: string;
