@@ -290,22 +290,6 @@ export async function runPracticePaperGenerationRequest(
       maxEstimatedCostUsd: generationCostCeilingUsd(),
     });
 
-    await updateInternalJobStage(uid, auth.internalJobId, "designing");
-    const draft = await designPracticePaper({
-      runPass,
-      refund,
-      log,
-      sourceRefs,
-      parsedRequest,
-      systemInstruction,
-      contents,
-      prepared,
-      expectedTotalMarks,
-      expectedSections,
-    });
-    if (draft instanceof Response) return draft;
-
-    await updateInternalJobStage(uid, auth.internalJobId, "building_mark_scheme");
     /*
      * Mark schemes and the paper checks run on the worker by default.
      *
@@ -324,6 +308,24 @@ export async function runPracticePaperGenerationRequest(
       process.env.PRACTICE_PAPER_AUDIT_WORKER_ENABLED === "false"
         ? "supervisor"
         : "worker";
+
+    await updateInternalJobStage(uid, auth.internalJobId, "designing");
+    const draft = await designPracticePaper({
+      runPass,
+      refund,
+      log,
+      sourceRefs,
+      parsedRequest,
+      systemInstruction,
+      contents,
+      prepared,
+      expectedTotalMarks,
+      expectedSections,
+      figureCheckRole: paperCheckRole,
+    });
+    if (draft instanceof Response) return draft;
+
+    await updateInternalJobStage(uid, auth.internalJobId, "building_mark_scheme");
     const schemeCandidate = await buildPracticePaperMarkScheme({
       runPass,
       refund,

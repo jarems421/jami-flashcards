@@ -1,78 +1,64 @@
-import { generateGroundedResearch } from "@/lib/ai/gemini";
-import { drawnFigureIssues } from "@/lib/practice/drawn-figure";
+import type { AiGenerationRole } from "@/lib/ai/provider-policy";
+import type { Logger } from "@/lib/observability/logger";
+import type { AssetRoutingIssue } from "@/lib/practice/asset-routing";
+import {
+  FIGURE_REVIEW_SYSTEM_INSTRUCTION,
+  figureReviewRequest,
+  figuresForReview,
+  parseFigureReview,
+} from "@/lib/practice/figure-review";
+import type { GenerationPassRunner } from "@/services/ai/practice-paper-generation-passes.server";
 
 /**
- * A second pair of eyes on a drawn figure.
+ * A second pair of eyes on a paper's drawn figures, before anything else is
+ * paid for.
  *
- * A sanitised SVG is safe and well-formed. Neither says it is the right
- * picture: a triangle can be drawn cleanly with its three marked angles summing
- * to 190, a scattergram can plot points that contradict the table beside it,
- * and an axis can be labelled in the wrong units. The generator that wrote the
- * figure is not the one to ask.
+ * A sanitised SVG is safe and well formed, and neither says it is the right
+ * picture. The checks that need no model run in code; this asks one whether
+ * each figure answers its question, and it is not the model that drew them:
+ * it runs on the paper-check role, the worker unless that is switched back.
  *
- * Two checks, because they catch different things and only one of them needs a
- * model.
+ * One call for the whole paper, with the figures as they will be printed, and
+ * bounded -- at most twelve, none over 8,000 characters -- so a paper with
+ * many figures costs one short pass, not one per figure.
  *
- * The arithmetic is done here. Angles in a triangle, marked lengths against a
- * stated scale, plotted points against a stated table -- these are stated in
- * the markup and are therefore checkable without asking anyone. A model asked
- * to add up three numbers is a worse adder than the code around it, and this is
- * the class of error a picture is most likely to carry.
+ * A review that cannot run returns nothing to fix, and is logged as skipped
+ * rather than passed: it must not read as approval, and it must never cost
+ * the paper either. Its faults buy a redraw; they never refuse a paper.
  *
- * Whether the picture answers the question is a judgement, and that is what the
- * model is for: a correctly drawn right-angled triangle is still wrong if the
- * question is about a circle.
+ * On by default; `PRACTICE_PAPER_FIGURE_REVIEW_ENABLED=false` turns it off.
  */
-
-export type DiagramReview = {
-  questionId: string;
-  assetId: string;
-  issues: { code: string; detail: string }[];
-};
-
-/**
- * Ask Gemini whether the picture answers the question.
- *
- * Off unless web research is on, because it uses the same role and the same
- * gate. Returning no issues when it cannot run is deliberate: a review that
- * cannot be performed must not read as a review that passed, but it must also
- * not block a paper, so callers log the difference rather than treating silence
- * as approval.
- */
-export async function reviewDrawnFigure(input: {
-  questionId: string;
-  assetId: string;
-  prompt: string;
-  altText: string;
-  svg: string;
-  timeoutMs?: number;
-}): Promise<{ ran: boolean; issues: { code: string; detail: string }[] }> {
-  const arithmetic = drawnFigureIssues(input);
-  if (arithmetic.some((issue) => issue.code === "diagram_unusable")) {
-    return { ran: false, issues: arithmetic };
+export async function reviewPaperFigures(input: {
+  runPass: GenerationPassRunner;
+  role: AiGenerationRole;
+  log: Logger;
+  questions: Parameters<typeof figuresForReview>[0];
+  alreadyFaulted: readonly AssetRoutingIssue[];
+}): Promise<{ ran: boolean; issues: AssetRoutingIssue[] }> {
+  if (process.env.PRACTICE_PAPER_FIGURE_REVIEW_ENABLED === "false") return { ran: false, issues: [] };
+  const figures = figuresForReview(input.questions, input.alreadyFaulted);
+  if (figures.length === 0) return { ran: false, issues: [] };
+  try {
+    const pass = await input.runPass({
+      name: "paper_design_figure_review",
+      reasoningEffort: "low",
+      taskClass: "important",
+      role: input.role,
+      systemInstruction: FIGURE_REVIEW_SYSTEM_INSTRUCTION,
+      contents: [{ role: "user", parts: [{ text: figureReviewRequest(figures) }] }],
+      temperature: 0,
+      maxOutputTokens: 3_000,
+      timeoutMs: 45_000,
+    });
+    const issues = parseFigureReview(pass.text, figures);
+    if (!issues) {
+      input.log.warn("paper_design.figure_review_skipped", { figureCount: figures.length, reason: "unreadable" });
+      return { ran: false, issues: [] };
+    }
+    input.log.info("paper_design.figure_review", { figureCount: figures.length, faultCount: issues.length });
+    return { ran: true, issues };
+  } catch (error) {
+    input.log.warn("paper_design.figure_review_skipped", { figureCount: figures.length, reason: "failed", error });
+    return { ran: false, issues: [] };
   }
-
-  const asked = await generateGroundedResearch({
-    sanitizedQuery:
-      `Does this exam figure answer its question? Question: ${input.prompt.slice(0, 200)}. ` +
-      `The figure is described as: ${input.altText.slice(0, 200)}. ` +
-      "Reply with the single word YES, or NO followed by one sentence saying what is wrong.",
-    timeoutMs: input.timeoutMs ?? 45_000,
-  });
-  if (!asked.ok) return { ran: false, issues: arithmetic };
-
-  const verdict = String(asked.brief ?? "").trim();
-  if (/^\s*no\b/i.test(verdict)) {
-    return {
-      ran: true,
-      issues: [
-        ...arithmetic,
-        {
-          code: "diagram_does_not_answer",
-          detail: verdict.replace(/^\s*no[:,\s-]*/i, "").slice(0, 300),
-        },
-      ],
-    };
-  }
-  return { ran: true, issues: arithmetic };
 }

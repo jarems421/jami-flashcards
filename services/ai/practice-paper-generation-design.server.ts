@@ -6,8 +6,11 @@ import {
 } from "@/lib/ai/practice-paper-generation";
 import { isCompletePracticePaperCandidate } from "@/lib/ai/practice-paper-quality";
 import type { Source } from "@/lib/material/sources";
+import type { AiGenerationRole } from "@/lib/ai/provider-policy";
 import { paperFigureIssues } from "@/lib/practice/asset-routing";
 import { sectionMarkIssues } from "@/lib/practice/exam-formats";
+import { redrawKeptPaper } from "@/lib/practice/figure-review";
+import { reviewPaperFigures } from "@/services/ai/diagram-review.server";
 import {
   parseJsonObject,
   type GenerationContents,
@@ -80,6 +83,8 @@ export async function designPracticePaper(
     prepared: readonly { reference: string; source: Source }[];
     expectedTotalMarks?: number;
     expectedSections?: readonly { id: string; title?: string; marks: number }[];
+    /** Who checks the drawn figures: never the designer that drew them. */
+    figureCheckRole: AiGenerationRole;
   }
 ): Promise<Response | ReadyPracticePaper> {
   const {
@@ -93,6 +98,7 @@ export async function designPracticePaper(
     prepared,
     expectedTotalMarks,
     expectedSections,
+    figureCheckRole,
   } = input;
   let paperPass = await runPass({
     name: "paper_design",
@@ -160,6 +166,15 @@ export async function designPracticePaper(
    * before an image is paid for rather than after.
    */
   let routing = paperFigureIssues(draft.questions, { rasterEnabled: paperRasterEnabled() });
+  // And whether each drawn figure answers its question, asked of another model.
+  const review = await reviewPaperFigures({
+    runPass,
+    role: figureCheckRole,
+    log,
+    questions: draft.questions,
+    alreadyFaulted: routing,
+  });
+  const figureFaults = [...routing, ...review.issues];
   /*
    * Once more with the faults named, before giving up on the paper.
    *
@@ -167,12 +182,12 @@ export async function designPracticePaper(
    * one graph written as SVG or one diagram with no description used to cost
    * the whole paper. The redesign keeps everything else and fixes the figures.
    */
-  if (routing.length > 0) {
+  if (figureFaults.length > 0) {
     const figureRetry = await runPass({
       name: "paper_design_figure_retry",
       taskClass: "important",
       role: "supervisor",
-      systemInstruction: `${systemInstruction}\nThe previous paper's figures had faults. Return the same complete paper as one JSON object with every fault fixed and nothing else changed: ${routing
+      systemInstruction: `${systemInstruction}\nThe previous paper's figures had faults. Return the same complete paper as one JSON object with every fault fixed and nothing else changed: ${figureFaults
         .slice(0, 12)
         .map((issue) => `${issue.questionId}: ${issue.detail}`)
         .join(" ")}`,
@@ -186,8 +201,19 @@ ${paperPass.text}` }] }],
       length: parsedRequest.length,
     });
     if (retried?.status === "ready") {
-      draft = retried;
-      routing = paperFigureIssues(draft.questions, { rasterEnabled: paperRasterEnabled() });
+      const retriedRouting = paperFigureIssues(retried.questions, { rasterEnabled: paperRasterEnabled() });
+      /*
+       * A redraw asked for on the reviewer's word alone is kept only when it
+       * passes every check in code and changed nothing else. Otherwise the
+       * first draft, which already passed them, goes on: a judgement can buy
+       * a better figure, never cost the paper.
+       */
+      if (routing.length > 0 || (retriedRouting.length === 0 && redrawKeptPaper(draft, retried))) {
+        draft = retried;
+        routing = retriedRouting;
+      } else {
+        log.warn("paper_design.figure_redraw_set_aside", { faultCount: review.issues.length });
+      }
     }
   }
   if (routing.length > 0) {
