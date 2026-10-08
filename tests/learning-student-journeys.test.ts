@@ -164,7 +164,6 @@ function studentSees(input: Partial<LearnerEvidence>) {
     decks: [],
     cards: [],
     topics: [],
-    masteryEvents: [],
     drafts: [],
     studyActions: actions,
     studyActionFolders: [{ id: FOLDER, name: "Maths" }],

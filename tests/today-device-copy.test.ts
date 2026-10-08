@@ -22,7 +22,6 @@ const READY = {
   goals: "ready",
   activity: "ready",
   topics: "ready",
-  mastery: "ready",
   drafts: "ready",
   sources: "ready",
   folders: "ready",
@@ -79,7 +78,6 @@ function snapshot(overrides: Partial<DashboardSnapshot> = {}): DashboardSnapshot
     studyActivity: [],
     cards,
     topics: [],
-    masteryEvents: [],
     drafts: [],
     sources: [source()],
     studyFolders: [],
@@ -117,7 +115,7 @@ describe("the device copy of Today", () => {
   });
 
   it("keeps no copy of a snapshot that came back with gaps", () => {
-    const degraded = snapshot({ sections: { ...READY, mastery: "stale" } });
+    const degraded = snapshot({ sections: { ...READY, topics: "stale" } });
     expect(
       toTodayDeviceCopy({ snapshot: degraded, userId: USER, dayKey: DAY, now: NOW, build: BUILD })
     ).toBeNull();

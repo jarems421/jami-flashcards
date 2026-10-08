@@ -5,7 +5,6 @@ import type { Card } from "@/lib/study/cards";
 import type { Deck } from "@/lib/study/decks";
 import type { Goal } from "@/lib/study/goals";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
-import type { MasteryEvent } from "@/lib/material/mastery";
 import type { Source } from "@/lib/material/sources";
 import type { Topic } from "@/lib/material/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
@@ -21,7 +20,6 @@ import { getDecks } from "@/services/study/decks";
 import { getActiveStudyFoldersPage } from "@/services/study/folders";
 import { getPendingGeneratedContentDrafts } from "@/services/study/generated-content";
 import { getDashboardGoalSummary } from "@/services/study/goals";
-import { getMasteryEvents } from "@/services/study/mastery";
 import { getRecentActiveNotebooks } from "@/services/study/notebooks";
 import { loadRemoteActiveStudySession } from "@/services/study/session";
 import { getActiveSourcesForDashboard } from "@/services/study/sources";
@@ -49,7 +47,6 @@ export type DashboardSection =
   | "goals"
   | "activity"
   | "topics"
-  | "mastery"
   | "drafts"
   | "sources"
   | "folders"
@@ -67,7 +64,6 @@ export type DashboardSnapshot = {
   studyActivity: DailyStudyActivity[];
   cards: Card[];
   topics: Topic[];
-  masteryEvents: MasteryEvent[];
   drafts: GeneratedContentDraft[];
   sources: Source[];
   studyFolders: StudyFolder[];
@@ -130,7 +126,6 @@ const SECTION_LABELS: Record<keyof DashboardSnapshot["sections"], string> = {
   goals: "your goals",
   activity: "your activity",
   topics: "your topics",
-  mastery: "your progress",
   drafts: "your drafts",
   sources: "your sources",
   folders: "your folders",
@@ -171,9 +166,9 @@ async function fetchDashboardSnapshot(
    * when the slowest of the first round does.
    *
    * The review queue needs only cards and the session, and the sources only
-   * the drafts. Both used to wait for all eleven first reads -- every mastery
-   * event the student has ever earned among them -- so the slowest unrelated
-   * read set the start of the second round trip on every visit to Today.
+   * the drafts. Both used to wait for every first read, so the slowest
+   * unrelated read set the start of the second round trip on every visit to
+   * Today.
    */
   const reviewStateRequest = Promise.all([cardsRequest, sessionRequest]).then(
     ([cardsResult, sessionResult]) =>
@@ -212,7 +207,6 @@ async function fetchDashboardSnapshot(
     goalsResult,
     activityResult,
     topicsResult,
-    masteryResult,
     draftsResult,
     foldersResult,
     notebooksResult,
@@ -225,7 +219,6 @@ async function fetchDashboardSnapshot(
     settle(getDashboardGoalSummary(userId, now)),
     settle(loadDashboardStudyActivity(userId)),
     settle(getActiveTopics(userId, reads)),
-    settle(getMasteryEvents(userId)),
     draftsRequest,
     settle(
       getActiveStudyFoldersPage(userId, { pageSize: 1 }).then(
@@ -270,11 +263,6 @@ async function fetchDashboardSnapshot(
     result: topicsResult,
     previous: previous?.topics,
     empty: [] as Topic[],
-  });
-  const mastery = resolveSection({
-    result: masteryResult,
-    previous: previous?.masteryEvents,
-    empty: [] as MasteryEvent[],
   });
   const drafts = resolveSection({
     result: draftsResult,
@@ -347,7 +335,6 @@ async function fetchDashboardSnapshot(
     goals: goalsState,
     activity: activity.state,
     topics: topics.state,
-    mastery: mastery.state,
     drafts: drafts.state,
     sources: sources.state,
     folders: folders.state,
@@ -382,7 +369,6 @@ async function fetchDashboardSnapshot(
     studyActivity: activity.value,
     cards: cards.value,
     topics: topics.value,
-    masteryEvents: mastery.value,
     drafts: drafts.value,
     sources: sources.value,
     studyFolders: folders.value,

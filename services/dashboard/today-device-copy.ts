@@ -112,7 +112,6 @@ const SNAPSHOT_LISTS = [
   "cards",
   "dueCardIds",
   "topics",
-  "masteryEvents",
   "drafts",
   "sources",
   "studyFolders",

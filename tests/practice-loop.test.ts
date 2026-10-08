@@ -7,7 +7,6 @@ import {
   getDeckStudyRouteHref,
 } from "@/lib/app/routes";
 import { mapCardData } from "@/lib/study/cards";
-import { getMasteryScoreDelta } from "@/lib/material/mastery";
 import { buildTopicProgress } from "@/lib/material/progress";
 import { mapTopicData, slugifyTopicName } from "@/lib/material/topics";
 import {
@@ -105,10 +104,9 @@ describe("Jami notebook-first learning foundations", () => {
 
     expect(topic.slug).toBe("cold-war-causes");
     expect(topic.subject).toBe("History");
-    expect(getMasteryScoreDelta("negative")).toBe(-2);
   });
 
-  it("builds progress from cards, folders, notebooks, sources, and mastery events", () => {
+  it("builds progress from cards, folders, notebooks and sources", () => {
     const topic = mapTopicData("topic-1", {
       name: "Photosynthesis",
       subject: "Biology",
@@ -153,18 +151,6 @@ describe("Jami notebook-first learning foundations", () => {
       cards: [card],
       sources: [source],
       notebooks: [notebook],
-      masteryEvents: [
-        {
-          id: "event-1",
-          topicId: "topic-1",
-          sourceType: "manual",
-          weight: "negative",
-          scoreDelta: -2,
-          reason: "Notebook page marked needs review",
-          algorithmVersion: "test",
-          createdAt: 2,
-        },
-      ],
       now: 10,
     });
 
@@ -174,7 +160,6 @@ describe("Jami notebook-first learning foundations", () => {
       dueCardCount: 1,
       notebookCount: 1,
       sourceCount: 1,
-      masteryScore: -2,
     });
   });
 

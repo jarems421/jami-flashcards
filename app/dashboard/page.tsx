@@ -15,7 +15,6 @@ import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, FeedbackBanner, ProgressBar, Skeleton } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import type { Topic } from "@/lib/material/topics";
-import type { MasteryEvent } from "@/lib/material/mastery";
 import type { Source } from "@/lib/material/sources";
 import {
   buildTodayPlan,
@@ -126,7 +125,6 @@ export default function DashboardHome() {
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [cards, setCards] = useState<StudyCard[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [masteryEvents, setMasteryEvents] = useState<MasteryEvent[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [studyFolders, setStudyFolders] = useState<StudyFolder[]>([]);
@@ -139,7 +137,6 @@ export default function DashboardHome() {
     goals: "unavailable",
     activity: "unavailable",
     topics: "unavailable",
-    mastery: "unavailable",
     drafts: "unavailable",
     sources: "unavailable",
     folders: "unavailable",
@@ -173,7 +170,6 @@ export default function DashboardHome() {
     setStudyActivity(snapshot.studyActivity);
     setCards(snapshot.cards);
     setTopics(snapshot.topics);
-    setMasteryEvents(snapshot.masteryEvents);
     setDrafts(snapshot.drafts);
     setSources(snapshot.sources);
     setStudyFolders(snapshot.studyFolders);
@@ -344,7 +340,6 @@ export default function DashboardHome() {
         cards,
         dueCards,
         topics,
-        masteryEvents,
         drafts,
         sources,
         studyFolders,
@@ -364,7 +359,6 @@ export default function DashboardHome() {
       drafts,
       notebooks,
       dueCards,
-      masteryEvents,
       progressVisited,
       hasEarnedStars,
       hasActiveStudySession,
@@ -428,7 +422,6 @@ export default function DashboardHome() {
     "goals",
     "activity",
     "topics",
-    "mastery",
     "drafts",
     "sources",
     "folders",
@@ -649,7 +642,8 @@ export default function DashboardHome() {
         ),
       });
     }
-    if (sectionStates.topics !== "unavailable" && sectionStates.mastery !== "unavailable") {
+    // A weak topic is read from its cards, so both have to be there to name one.
+    if (sectionStates.topics !== "unavailable" && sectionStates.cards !== "unavailable") {
       for (const topic of todayPlan.weakTopics.slice(0, 3)) {
         anytimeItems.push({
           id: `topic-${topic.topicId}`,

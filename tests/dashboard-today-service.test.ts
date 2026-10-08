@@ -10,7 +10,6 @@ const mocks = vi.hoisted(() => ({
   getDashboardGoalSummary: vi.fn(),
   loadDashboardStudyActivity: vi.fn(),
   getActiveTopics: vi.fn(),
-  getMasteryEvents: vi.fn(),
   getPendingGeneratedContentDrafts: vi.fn(),
   getActiveSourcesForDashboard: vi.fn(),
   getActiveStudyFoldersPage: vi.fn(),
@@ -39,9 +38,6 @@ vi.mock("@/services/study/activity", () => ({
 }));
 vi.mock("@/services/study/topics", () => ({
   getActiveTopics: mocks.getActiveTopics,
-}));
-vi.mock("@/services/study/mastery", () => ({
-  getMasteryEvents: mocks.getMasteryEvents,
 }));
 vi.mock("@/services/study/generated-content", () => ({
   getPendingGeneratedContentDrafts: mocks.getPendingGeneratedContentDrafts,
@@ -84,7 +80,6 @@ function resetSuccessfulLoads() {
   });
   mocks.loadDashboardStudyActivity.mockResolvedValue([]);
   mocks.getActiveTopics.mockResolvedValue([]);
-  mocks.getMasteryEvents.mockResolvedValue([]);
   mocks.getPendingGeneratedContentDrafts.mockResolvedValue([]);
   mocks.getActiveSourcesForDashboard.mockResolvedValue([]);
   mocks.getActiveStudyFoldersPage.mockResolvedValue({
@@ -206,12 +201,12 @@ describe("Today data coordinator", () => {
   });
 
   it("starts the second round of reads as soon as its own inputs are in", async () => {
-    // Every mastery event a student has earned can be the slowest read of
-    // all, and neither the review queue nor the sources need it.
-    let finishMastery!: (value: unknown[]) => void;
-    mocks.getMasteryEvents.mockReturnValue(
+    // A long study history can be the slowest read of all, and neither the
+    // review queue nor the sources need it.
+    let finishActivity!: (value: unknown[]) => void;
+    mocks.loadDashboardStudyActivity.mockReturnValue(
       new Promise((resolve) => {
-        finishMastery = resolve;
+        finishActivity = resolve;
       })
     );
 
@@ -220,7 +215,7 @@ describe("Today data coordinator", () => {
       expect(mocks.ensureDailyReviewState).toHaveBeenCalledOnce();
       expect(mocks.getActiveSourcesForDashboard).toHaveBeenCalledOnce();
     });
-    finishMastery([]);
+    finishActivity([]);
 
     const result = await loading;
     expect(result.snapshot.sections.dailyReview).toBe("ready");

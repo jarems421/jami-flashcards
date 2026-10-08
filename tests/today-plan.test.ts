@@ -73,7 +73,6 @@ function basePlanInput() {
     ],
     dueCards: [],
     topics: [topic],
-    masteryEvents: [],
     drafts: [],
     studyFolders: [folder],
     notebooks: [],
@@ -215,21 +214,19 @@ describe("today plan", () => {
     expect(plan.drafts[1].front).toBe("Explain photosynthesis.");
   });
 
-  it("uses weak topic summaries from cards, notebooks, sources, and mastery events", () => {
+  it("uses weak topic summaries from the cards linked to each topic", () => {
     const plan = buildTodayPlan({
       ...basePlanInput(),
       notebooks: [],
-      masteryEvents: [
-        {
-          id: "event-1",
-          topicId: topic.id,
-          sourceType: "manual",
-          weight: "negative",
-          scoreDelta: -2,
-          reason: "Notebook page marked needs review.",
-          algorithmVersion: "test",
-          createdAt: 2,
-        },
+      cards: [
+        card({
+          id: "card-due",
+          deckId: "deck-a",
+          front: "Where does photosynthesis happen?",
+          back: "In the chloroplasts.",
+          topicIds: [topic.id],
+          dueDate: NOW - 1,
+        }),
       ],
     });
 

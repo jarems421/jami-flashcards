@@ -3,7 +3,6 @@ import { DAILY_REVIEW_MISSION_ID } from "@/lib/learning/mission-handoff";
 import type { StudyAction, StudyActionDestinationKind } from "@/lib/learning/actions/study-actions";
 import type { LearningRecommendationReason } from "@/lib/learning/types";
 import { buildTopicProgress, type TopicProgressSummary } from "@/lib/material/progress";
-import type { MasteryEvent } from "@/lib/material/mastery";
 import type { Topic } from "@/lib/material/topics";
 import { getGoalDisplayName, type Goal } from "@/lib/study/goals";
 import type { Card } from "@/lib/study/cards";
@@ -175,7 +174,6 @@ export type BuildTodayPlanInput = {
   cards: Card[];
   dueCards?: Card[];
   topics: Topic[];
-  masteryEvents: MasteryEvent[];
   drafts: TodayDraftInput[];
   sources?: Source[];
   studyFolders?: StudyFolder[];
@@ -283,28 +281,18 @@ function buildWeakTopics(input: BuildTodayPlanInput, now: number) {
   const topicProgress = buildTopicProgress({
     topics: input.topics,
     cards: input.cards,
-    masteryEvents: input.masteryEvents,
     sources: input.sources,
     notebooks: input.notebooks,
     now,
   });
 
   const weakTopics = topicProgress
-    .filter(
-      (summary) =>
-        summary.weakCardCount > 0 ||
-        summary.dueCardCount > 0 ||
-        summary.masteryScore < 0
-    )
+    .filter((summary) => summary.weakCardCount > 0 || summary.dueCardCount > 0)
     .map((summary) => {
-      let reason = "Recent study evidence suggests this Topic needs another pass.";
-      if (summary.weakCardCount > 0) {
-        reason = `${pluralize(summary.weakCardCount, "weak card")} linked to this topic.`;
-      } else if (summary.dueCardCount > 0) {
-        reason = `${pluralize(summary.dueCardCount, "due card")} linked to this topic.`;
-      } else if (summary.masteryScore < 0) {
-        reason = "Recent practice showed difficulty in this Topic.";
-      }
+      const reason =
+        summary.weakCardCount > 0
+          ? `${pluralize(summary.weakCardCount, "weak card")} linked to this topic.`
+          : `${pluralize(summary.dueCardCount, "due card")} linked to this topic.`;
 
       return {
         topicId: summary.topic.id,

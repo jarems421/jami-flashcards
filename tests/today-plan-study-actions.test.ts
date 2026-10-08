@@ -60,7 +60,6 @@ function planInput(overrides: Partial<BuildTodayPlanInput> = {}): BuildTodayPlan
     decks: [{ id: "deck-1", name: "Deck" }],
     cards: [],
     topics: [],
-    masteryEvents: [],
     drafts: [],
     studyFolders: [folder],
     notebooks: [notebook],
