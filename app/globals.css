@@ -2405,6 +2405,25 @@
     color: #d98313;
   }
 
+  /* A key beside a label's name, drawn the way its box is outlined on the picture. */
+  .occlusion-key {
+    display: inline-block;
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+    border-radius: 0.25rem;
+  }
+
+  .occlusion-key--target {
+    border: 2.5px solid var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+
+  .occlusion-key--confused {
+    border: 2.5px dashed #d98313;
+    background: rgba(217, 131, 19, 0.1);
+  }
+
   .occlusion-trace {
     fill: color-mix(in srgb, var(--color-accent) 18%, transparent);
     stroke: var(--color-accent);

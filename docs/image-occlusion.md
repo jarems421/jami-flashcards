@@ -67,7 +67,9 @@ Each diagram on the deck page has *Preview*, the same card preview as any
 other card, and *Edit*. The old *Go over it* walkthrough (with *Show strength*
 and *Uncover one*) and *Label again* were removed: studying the card is how a
 diagram is gone over, and editing is how it is changed. Diagrams already saved
-by *Label again* share their stored picture and keep working.
+by *Label again* share their stored picture and keep working. Below the
+diagrams, *Your mix-ups* lists the labels the student keeps giving for each
+other (see *Studying*).
 
 Works on phone, iPad and desktop. On a phone the list sits under the picture,
 and on a large screen beside it.
@@ -136,6 +138,18 @@ however many words it shares with the right one ("right atrium" for the left
 atrium). The reveal outlines the label the student named in amber, next to the
 one asked, and says which is which. The review event records the other label's
 id as `confusedWithLabelId` (see *Data model*).
+
+**Your mix-ups** on the deck page lists the pairs of labels a student has given
+for each other, across the deck's diagrams: most often first, then most recent,
+each with how many times and when last ("3 times, last yesterday"). It appears
+only once there is a mix-up, and nothing on the page waits for it. *Compare*
+opens the pair on its diagram, the first label outlined in purple and the other
+in amber as the study reveal does, every other label as the picture shows it,
+with each label's name and note below. *Cover both* hides the two and a tap
+uncovers each, to check which is which. Like the rest of the deck page this is
+practice only: it never changes a schedule or the Learning Engine. Only cards
+that ask one label and have been answered are read (at most 600, the most
+studied first), since only they can record a mix-up.
 
 **Strength** (`lib/study/card-strength.ts`) is one of four words, from the card's
 own schedule: *strong* (green), *building* (amber), *needs focus* (red) or *not
@@ -228,10 +242,9 @@ its picture is useless.
 - **Mix-up evidence:** a flashcard review event may carry `confusedWithLabelId`,
   an id and nothing else, and only when the answer was wrong. `firestore.rules`
   enforces both (at most 64 characters, only with `correct == false`).
-  `loadDiagramConfusionEvents` reads a diagram's mix-ups with the
-  `cardId` + `confusedWithLabelId` index in `firestore.indexes.json`, which has
-  to be deployed. Nothing shows them since the *Go over it* walkthrough was
-  removed; the evidence is still recorded.
+  `loadDiagramConfusionEvents` reads a deck's mix-ups for *Your mix-ups*, as
+  ids and times only, with the `cardId` + `confusedWithLabelId` index in
+  `firestore.indexes.json` (deployed).
 
 Limits: 60 labels, 12 groups and 6 boxes per label per diagram; 64 points per
 outline; 120 characters per label, 60 per accepted answer, 80 per group name

@@ -4,6 +4,7 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import {
   FLASHCARD_REVIEW_EVENTS_COLLECTION,
   buildFlashcardReviewEventWrite,
+  decodeFlashcardReviewEvent,
   flashcardReviewEventId,
 } from "@/lib/learning/events/flashcard-review-event";
 import type { OfflineQueuedReview } from "@/lib/study/offline-study";
@@ -54,7 +55,8 @@ const CONFUSIONS_PER_CHUNK = 200;
 
 /**
  * The recorded mix-ups on some diagram cards: which card was asked, which
- * other label was given instead. Ids only; nothing a student wrote.
+ * other label was given instead, and when. Ids and times only; nothing a
+ * student wrote.
  *
  * Best effort, like everything the Learning Engine reads for display: an
  * empty list is what a failure looks like, and nothing about studying waits
@@ -84,9 +86,9 @@ export async function loadDiagramConfusionEvents(
     );
     return snapshots.flatMap((snapshot) =>
       snapshot.docs.flatMap((eventDoc) => {
-        const data = eventDoc.data() as { cardId?: unknown; confusedWithLabelId?: unknown };
-        return typeof data.cardId === "string" && typeof data.confusedWithLabelId === "string"
-          ? [{ cardId: data.cardId, confusedWithLabelId: data.confusedWithLabelId }]
+        const event = decodeFlashcardReviewEvent(eventDoc.id, eventDoc.data());
+        return event?.confusedWithLabelId
+          ? [{ cardId: event.cardId, confusedWithLabelId: event.confusedWithLabelId, reviewedAt: event.reviewedAt }]
           : [];
       })
     );

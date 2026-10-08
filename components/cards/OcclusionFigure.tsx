@@ -266,6 +266,8 @@ type OcclusionPictureProps = {
   /** A thumbnail: boxes only, no words or question marks. */
   compact?: boolean;
   onMaskActivate?: (labelId: string) => void;
+  /** With `onMaskActivate`, the only labels that can be tapped; every drawn one when absent. */
+  activatableLabelIds?: ReadonlySet<string>;
   /** Colour each label by how well it is known. */
   tintByLabelId?: ReadonlyMap<string, CardStrength>;
   /** Offers a magnifier in the corner, for a closer look. */
@@ -290,6 +292,7 @@ export function OcclusionPicture({
   maxHeight,
   compact = false,
   onMaskActivate,
+  activatableLabelIds,
   tintByLabelId,
   onZoom,
   imageUrl,
@@ -345,7 +348,7 @@ export function OcclusionPicture({
           drawing={drawings[position]}
           compact={compact}
           tint={tintByLabelId?.get(mask.label.id)}
-          onActivate={onMaskActivate}
+          onActivate={!activatableLabelIds || activatableLabelIds.has(mask.label.id) ? onMaskActivate : undefined}
         />
       ))}
       {/* The asked label's line goes over everything, so no neighbour's name can hide where it points. */}

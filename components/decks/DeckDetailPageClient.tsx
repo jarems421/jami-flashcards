@@ -28,6 +28,7 @@ import CardCreationPanel from "@/components/decks/CardCreationPanel";
 import CardActionsMenu from "@/components/decks/CardActionsMenu";
 import CardFaceSummary from "@/components/decks/CardFaceSummary";
 import DeckDiagramsSection from "@/components/decks/diagram/DeckDiagramsSection";
+import DiagramMixUpsSection from "@/components/decks/diagram/DiagramMixUpsSection";
 import DiagramEditorDialog, {
   type DiagramEditorStart,
 } from "@/components/decks/diagram/DiagramEditorDialog";
@@ -626,6 +627,7 @@ export default function DeckDetailPageClient() {
             onEdit={startEditingCard}
             onPreview={(card) => setPreviewCardId(card.id)}
           />
+          <DiagramMixUpsSection userId={user.uid} cards={cards} />
 
           {filteredCards.length === 0 ? (
             <EmptyState
