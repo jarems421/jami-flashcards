@@ -10,11 +10,13 @@ import {
   buildStoredPushSubscription,
   createPushSubscriptionId,
   DEFAULT_NOTIFICATION_PREFERENCES,
+  getDeviceTimeZone,
   getNotificationPermissionState,
   isPushSupported,
   isStandaloneApp,
   normalizeNotificationPreferences,
   type NotificationPreferences,
+  type NotificationSettings,
   urlBase64ToUint8Array,
 } from "@/lib/app/notifications";
 
@@ -102,6 +104,7 @@ async function ensureNotificationPreferencesDocument(userId: string) {
   await withTimeout(
     setDoc(preferencesRef, {
       ...DEFAULT_NOTIFICATION_PREFERENCES,
+      timeZone: getDeviceTimeZone(),
       updatedAt: Date.now(),
     }),
     SAVE_MS,
@@ -126,6 +129,7 @@ export async function loadNotificationPreferences(userId: string) {
   if (!snapshot.exists()) {
     const nextPreferences = {
       ...DEFAULT_NOTIFICATION_PREFERENCES,
+      timeZone: getDeviceTimeZone(),
       updatedAt: Date.now(),
     } satisfies NotificationPreferences;
 
@@ -139,33 +143,53 @@ export async function loadNotificationPreferences(userId: string) {
     return nextPreferences;
   }
 
-  return normalizeNotificationPreferences(
+  const preferences = normalizeNotificationPreferences(
     snapshot.data() as Record<string, unknown>
   );
+  // Nudges follow the student's own clock, so a device in another time zone
+  // -- or a move -- updates where 4pm is.
+  const deviceTimeZone = getDeviceTimeZone();
+  if (deviceTimeZone && deviceTimeZone !== preferences.timeZone) {
+    await saveNotificationPreferences(userId, { ...preferences, timeZone: deviceTimeZone });
+    return { ...preferences, timeZone: deviceTimeZone };
+  }
+  return preferences;
 }
 
+/**
+ * Saves what the student chose, and only that.
+ *
+ * The same document holds the server's record of the nudges it has sent.
+ * Writing the whole preferences object back put a settings page's stale copy of
+ * that record over the server's, so a page opened before today's nudge and
+ * saved after it could have it sent twice.
+ */
 export async function saveNotificationPreferences(
   userId: string,
-  preferences: NotificationPreferences
+  settings: NotificationSettings
 ) {
   await ensureUserProfileDocument(userId);
 
-  const nextPreferences: NotificationPreferences = {
-    ...normalizeNotificationPreferences(preferences),
+  const normalized = normalizeNotificationPreferences(settings);
+  const nextSettings = {
+    enabled: normalized.enabled,
+    mode: normalized.mode,
+    timeZone: normalized.timeZone ?? getDeviceTimeZone(),
+    eveningReminder: normalized.eveningReminder,
     updatedAt: Date.now(),
   };
 
   await withTimeout(
     setDoc(
       doc(db, "users", userId, "notificationPreferences", "config"),
-      nextPreferences,
+      nextSettings,
       { merge: true }
     ),
     SAVE_MS,
     "Save notification preferences"
   );
 
-  return nextPreferences;
+  return nextSettings;
 }
 
 export async function getCurrentDevicePushSubscription() {

@@ -41,6 +41,9 @@ function createFakeDigestDb(fixtures: Record<string, UserFixture>) {
       deletedSubscriptions.push(path);
       documents.delete(path);
     },
+    set: async (data: StoredDocument, options?: { merge?: boolean }) => {
+      documents.set(path, options?.merge ? { ...(documents.get(path) ?? {}), ...data } : data);
+    },
   });
 
   const makeDoc = (path: string, id: string, data: StoredDocument) => ({
@@ -259,7 +262,7 @@ function run(
 ) {
   let claimSequence = 0;
   return runNotificationDigest(
-    { now, studyDayKey, ...(overrides.input as object) },
+    { now, ...(overrides.input as object) },
     {
       adminDb: fake.db as never,
       clock: () => now + 1_000,
@@ -288,6 +291,29 @@ describe("notification digest orchestration", () => {
 
     expect(summary).toMatchObject({ considered: 205, skipped: 205, failed: 0 });
     expect(fake.queryGetCount).toBe(3);
+  });
+
+  it("marks a student with nowhere to send as checked for the day, so later runs do not read their cards again", async () => {
+    const fake = createFakeDigestDb({ alone: { preferences: preferences() } });
+
+    await run(fake);
+
+    expect(fake.documents.get("users/alone/notificationPreferences/config")).toMatchObject({
+      lastDigestStudyDayKey: studyDayKey,
+    });
+  });
+
+  it("leaves a student alone outside their own nudge times", async () => {
+    // 15:05 UTC is 11:05 in New York: nothing is due there yet.
+    const fake = createFakeDigestDb({
+      faraway: { preferences: preferences({ timeZone: "America/New_York" }), subscriptions: [subscription()] },
+    });
+    const sendPush = vi.fn(async () => undefined);
+
+    const summary = await run(fake, sendPush);
+
+    expect(sendPush).not.toHaveBeenCalled();
+    expect(summary).toMatchObject({ considered: 1, skipped: 1, sent: 0 });
   });
 
   it("never processes more than five users concurrently", async () => {
@@ -489,7 +515,7 @@ describe("notification digest orchestration", () => {
     const clockValues = [now, now + 11, now + 12];
 
     await runNotificationDigest(
-      { now, studyDayKey, durationWarningMs: 10 },
+      { now, durationWarningMs: 10 },
       {
         adminDb: fake.db as never,
         clock: () => clockValues.shift() ?? now + 12,

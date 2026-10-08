@@ -1,8 +1,4 @@
 import type { NextRequest } from "next/server";
-import {
-  getStudyDayKey,
-  isWithinDailyDigestWindow,
-} from "@/lib/study/day";
 import { getCronAuthorizationStatus } from "@/services/auth/cron-authorization";
 import { runNotificationDigest } from "@/services/notifications/digest";
 import { createLogger } from "@/lib/observability/logger";
@@ -12,6 +8,11 @@ export const maxDuration = 300;
 
 const log = createLogger({ route: "notifications.digest" });
 
+/**
+ * Called every hour. Each student's nudges follow their own clock -- 4pm, and
+ * 7pm while Daily Review is waiting -- so every run looks at everyone and sends
+ * only what is due where they are.
+ */
 export async function GET(request: NextRequest) {
   const authorizationStatus = getCronAuthorizationStatus({
     authorizationHeader: request.headers.get("authorization"),
@@ -28,26 +29,11 @@ export async function GET(request: NextRequest) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const now = Date.now();
-  const studyDayKey = getStudyDayKey(now);
-  if (!isWithinDailyDigestWindow(now, 20 * 60 * 1000)) {
-    return Response.json({
-      ok: true,
-      skipped: true,
-      reason: "outside-study-window",
-      studyDayKey,
-    });
-  }
-
   try {
-    const summary = await runNotificationDigest({ now, studyDayKey });
-    return Response.json({
-      ok: true,
-      studyDayKey,
-      ...summary,
-    });
+    const summary = await runNotificationDigest({ now: Date.now() });
+    return Response.json({ ok: true, ...summary });
   } catch (error) {
-    log.error("digest.failed", { studyDayKey, error });
+    log.error("digest.failed", { error });
     return Response.json(
       { ok: false, error: "Notification digest could not be completed." },
       { status: 500 }

@@ -38,9 +38,18 @@ describe("notification helpers", () => {
     ).toEqual({
       enabled: false,
       mode: "always",
+      // Kept from the early `timezone` field, so the nudge follows their clock from the first run.
+      timeZone: "America/New_York",
+      eveningReminder: true,
       updatedAt: 123,
       lastDigestStudyDayKey: "2026-04-04",
       lastDigestSentAt: 456,
+      lastEveningReminderDayKey: null,
+      lastEveningReminderSentAt: null,
     });
+  });
+
+  it("ignores a time zone the runtime does not know", () => {
+    expect(normalizeNotificationPreferences({ timeZone: "Nowhere/Special" }).timeZone).toBeNull();
   });
 });

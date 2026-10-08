@@ -9,8 +9,6 @@ const STUDY_TIME_ZONE = "Europe/London";
  * the evening it started in.
  */
 const STUDY_DAY_BOUNDARY_HOUR = 4;
-/** When the daily nudge goes out: after school, whatever time the day turns over. */
-const DAILY_DIGEST_HOUR = 16;
 
 type ZonedDateParts = {
   year: number;
@@ -27,19 +25,29 @@ export type StudyDayWindow = {
   end: number;
 };
 
-const zonedDateFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: STUDY_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
-});
+/** One formatter per time zone: building them is the slow part of reading a zoned time. */
+const zonedDateFormatters = new Map<string, Intl.DateTimeFormat>();
 
-function getZonedDateParts(timestamp: number): ZonedDateParts {
-  const parts = zonedDateFormatter.formatToParts(new Date(timestamp));
+function zonedDateFormatter(timeZone: string) {
+  let formatter = zonedDateFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+    zonedDateFormatters.set(timeZone, formatter);
+  }
+  return formatter;
+}
+
+function getZonedDateParts(timestamp: number, timeZone = STUDY_TIME_ZONE): ZonedDateParts {
+  const parts = zonedDateFormatter(timeZone).formatToParts(new Date(timestamp));
   const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]));
 
   return {
@@ -100,8 +108,15 @@ function localDateTimeToUtcTimestamp(
   return guess;
 }
 
-export function getStudyDayKey(timestamp = Date.now()) {
-  const parts = getZonedDateParts(timestamp);
+/**
+ * The study day `timestamp` falls in, as "YYYY-MM-DD".
+ *
+ * The app keeps every student's days in study time (London). A time zone is
+ * passed only where the student's own clock is what matters: a nudge goes out
+ * at 4pm where they are, once per day of theirs.
+ */
+export function getStudyDayKey(timestamp = Date.now(), timeZone = STUDY_TIME_ZONE) {
+  const parts = getZonedDateParts(timestamp, timeZone);
   const boundaryDate =
     parts.hour >= STUDY_DAY_BOUNDARY_HOUR
       ? { year: parts.year, month: parts.month, day: parts.day }
@@ -142,14 +157,21 @@ export function getMsUntilNextStudyBoundary(timestamp = Date.now()) {
   return Math.max(0, getStudyDayWindow(timestamp).end - timestamp);
 }
 
-/** Whether `timestamp` is within `windowMs` after 4pm study time, when the daily nudge goes out. */
-export function isWithinDailyDigestWindow(
-  timestamp = Date.now(),
-  windowMs = 60 * 60 * 1000
-) {
-  const parts = getZonedDateParts(timestamp);
-  const start = localDateTimeToUtcTimestamp(parts.year, parts.month, parts.day, DAILY_DIGEST_HOUR);
-  return timestamp >= start && timestamp < start + windowMs;
+/** Minutes since local midnight at `timestamp` in `timeZone`: 16:30 is 990. */
+export function getMinutesIntoLocalDay(timestamp: number, timeZone = STUDY_TIME_ZONE) {
+  const parts = getZonedDateParts(timestamp, timeZone);
+  return parts.hour * 60 + parts.minute;
+}
+
+/** Whether `value` names a time zone this runtime knows, such as "Asia/Kolkata". */
+export function isKnownTimeZone(value: unknown): value is string {
+  if (typeof value !== "string" || !value || value.length > 64) return false;
+  try {
+    zonedDateFormatter(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function formatStudyDayLabel(dayKey: string) {

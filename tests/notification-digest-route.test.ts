@@ -60,21 +60,18 @@ describe("notification digest cron route", () => {
     expect(mocks.runDigest).not.toHaveBeenCalled();
   });
 
-  it("skips an authenticated invocation outside the study boundary", async () => {
-    vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
+  it("runs every hour: each student's own clock decides what is due, not the route", async () => {
+    vi.setSystemTime(new Date("2026-07-01T03:00:00.000Z"));
 
     const response = await getDigest(request("cron-secret"));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: true,
-      skipped: true,
-      reason: "outside-study-window",
-    });
-    expect(mocks.runDigest).not.toHaveBeenCalled();
+    expect(mocks.runDigest).toHaveBeenCalledWith(
+      expect.objectContaining({ now: new Date("2026-07-01T03:00:00.000Z").getTime() })
+    );
   });
 
-  it("returns the bounded runner summary inside the study window", async () => {
+  it("returns the bounded runner summary", async () => {
     const response = await getDigest(request("cron-secret"));
 
     expect(response.status).toBe(200);
@@ -104,12 +101,16 @@ describe("notification digest cron route", () => {
     });
   });
 
-  it("gives the winter alias the same explicit duration budget", async () => {
-    const winterRoute = await import(
-      "@/app/api/notifications/digest-winter/route"
-    );
+  it("is scheduled once in every hour of the day, as daily jobs a Hobby plan accepts", async () => {
+    const { readFileSync } = await import("node:fs");
+    const config = JSON.parse(readFileSync("vercel.json", "utf8")) as {
+      crons: { path: string; schedule: string }[];
+    };
+    const digestRuns = config.crons.filter((cron) => cron.path.startsWith("/api/notifications/digest"));
 
-    expect(winterRoute.maxDuration).toBe(300);
-    expect(winterRoute.GET).toBe(getDigest);
+    expect(digestRuns.map((cron) => cron.schedule).sort()).toEqual(
+      Array.from({ length: 24 }, (_, hour) => `0 ${hour} * * *`).sort()
+    );
+    expect(new Set(digestRuns.map((cron) => cron.path)).size).toBe(24);
   });
 });

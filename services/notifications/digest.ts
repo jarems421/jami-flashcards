@@ -4,6 +4,7 @@ import {
   normalizeNotificationPreferences,
   type NotificationMode,
 } from "@/lib/app/notifications";
+import { getDueNudge, type NudgeKind } from "@/lib/app/notification-schedule";
 import { buildDailyReviewQueues } from "@/lib/study/daily-review";
 import { getStudyDayWindow } from "@/lib/study/day";
 import { mapCardData } from "@/lib/study/cards";
@@ -54,21 +55,50 @@ function emptyUserResult(): UserDigestResult {
   };
 }
 
-function getDigestClaim(data: Record<string, unknown>) {
+/**
+ * Where each kind of nudge keeps its claim and its record of being sent, so the
+ * digest and the evening reminder are each sent at most once a day without
+ * either one blocking the other.
+ */
+const NUDGE_FIELDS = {
+  digest: {
+    claimDayKey: "digestClaimStudyDayKey",
+    legacyClaimDayKey: "digestClaimDayKey",
+    claimId: "digestClaimId",
+    claimedAt: "digestClaimedAt",
+    lastDayKey: "lastDigestStudyDayKey",
+    legacyLastDayKey: "lastDigestDayKey",
+    lastSentAt: "lastDigestSentAt",
+  },
+  evening: {
+    claimDayKey: "eveningClaimDayKey",
+    legacyClaimDayKey: null,
+    claimId: "eveningClaimId",
+    claimedAt: "eveningClaimedAt",
+    lastDayKey: "lastEveningReminderDayKey",
+    legacyLastDayKey: null,
+    lastSentAt: "lastEveningReminderSentAt",
+  },
+} as const satisfies Record<NudgeKind, Record<string, string | null>>;
+
+function readString(data: Record<string, unknown>, field: string | null) {
+  const value = field ? data[field] : undefined;
+  return typeof value === "string" ? value : null;
+}
+
+function getNudgeClaim(data: Record<string, unknown>, kind: NudgeKind) {
+  const fields = NUDGE_FIELDS[kind];
+  const claimedAt = data[fields.claimedAt];
   return {
-    studyDayKey:
-      typeof data.digestClaimStudyDayKey === "string"
-        ? data.digestClaimStudyDayKey
-        : typeof data.digestClaimDayKey === "string"
-          ? data.digestClaimDayKey
-          : null,
-    claimId: typeof data.digestClaimId === "string" ? data.digestClaimId : null,
-    claimedAt:
-      typeof data.digestClaimedAt === "number" &&
-      Number.isFinite(data.digestClaimedAt)
-        ? data.digestClaimedAt
-        : null,
+    dayKey: readString(data, fields.claimDayKey) ?? readString(data, fields.legacyClaimDayKey),
+    claimId: readString(data, fields.claimId),
+    claimedAt: typeof claimedAt === "number" && Number.isFinite(claimedAt) ? claimedAt : null,
   };
+}
+
+function lastNudgeDayKey(data: Record<string, unknown>, kind: NudgeKind) {
+  const fields = NUDGE_FIELDS[kind];
+  return readString(data, fields.lastDayKey) ?? readString(data, fields.legacyLastDayKey);
 }
 
 function buildDigestPayload(
@@ -116,32 +146,46 @@ function buildDigestPayload(
   };
 }
 
-async function claimDigestWindow(
+/** The evening nudge, only while there is still something waiting. */
+function buildEveningReminderPayload(requiredDailyCount: number) {
+  if (requiredDailyCount <= 0) return null;
+  return {
+    title: "Daily Review is still waiting",
+    body: `${requiredDailyCount} card${requiredDailyCount === 1 ? "" : "s"} left today. A few minutes now keeps it from piling up.`,
+    url: "/dashboard/study?mode=daily",
+    tag: "evening-reminder",
+    icon: "/icons/notification-icon-192.png",
+    badge: "/icons/notification-icon-192.png",
+  };
+}
+
+async function claimNudge(
   adminDb: ReturnType<typeof getAdminDb>,
   preferencesRef: FirebaseFirestore.DocumentReference,
-  studyDayKey: string,
+  kind: NudgeKind,
+  dayKey: string,
   claimId: string,
   now: number
 ) {
+  const fields = NUDGE_FIELDS[kind];
   return adminDb.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(preferencesRef);
     const data = (snapshot.data() as Record<string, unknown> | undefined) ?? {};
-    const preferences = normalizeNotificationPreferences(data);
-    const digestClaim = getDigestClaim(data);
+    const claim = getNudgeClaim(data, kind);
 
-    if (!preferences.enabled) {
+    if (!normalizeNotificationPreferences(data).enabled) {
       return "disabled" as const;
     }
 
-    if (preferences.lastDigestStudyDayKey === studyDayKey) {
+    if (lastNudgeDayKey(data, kind) === dayKey) {
       return "already-sent" as const;
     }
 
     if (
-      digestClaim.studyDayKey === studyDayKey &&
-      digestClaim.claimId &&
-      digestClaim.claimedAt !== null &&
-      now - digestClaim.claimedAt < DIGEST_CLAIM_TTL_MS
+      claim.dayKey === dayKey &&
+      claim.claimId &&
+      claim.claimedAt !== null &&
+      now - claim.claimedAt < DIGEST_CLAIM_TTL_MS
     ) {
       return "already-claimed" as const;
     }
@@ -149,10 +193,10 @@ async function claimDigestWindow(
     transaction.set(
       preferencesRef,
       {
-        digestClaimStudyDayKey: studyDayKey,
-        digestClaimDayKey: null,
-        digestClaimId: claimId,
-        digestClaimedAt: now,
+        [fields.claimDayKey]: dayKey,
+        ...(fields.legacyClaimDayKey ? { [fields.legacyClaimDayKey]: null } : {}),
+        [fields.claimId]: claimId,
+        [fields.claimedAt]: now,
         updatedAt: now,
       },
       { merge: true }
@@ -162,41 +206,35 @@ async function claimDigestWindow(
   });
 }
 
-async function finalizeDigestWindow(
+async function finalizeNudge(
   adminDb: ReturnType<typeof getAdminDb>,
   preferencesRef: FirebaseFirestore.DocumentReference,
-  studyDayKey: string,
+  kind: NudgeKind,
+  dayKey: string,
   claimId: string,
   now: number,
   markSent: boolean
 ) {
+  const fields = NUDGE_FIELDS[kind];
   return adminDb.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(preferencesRef);
     const data = (snapshot.data() as Record<string, unknown> | undefined) ?? {};
-    const digestClaim = getDigestClaim(data);
+    const claim = getNudgeClaim(data, kind);
 
-    if (
-      digestClaim.studyDayKey !== studyDayKey ||
-      digestClaim.claimId !== claimId
-    ) {
+    if (claim.dayKey !== dayKey || claim.claimId !== claimId) {
       return false;
     }
 
+    const lastSentAt = data[fields.lastSentAt];
     transaction.set(
       preferencesRef,
       {
-        digestClaimStudyDayKey: null,
-        digestClaimDayKey: null,
-        digestClaimId: null,
-        digestClaimedAt: null,
-        lastDigestStudyDayKey: markSent
-          ? studyDayKey
-          : data.lastDigestStudyDayKey ?? data.lastDigestDayKey ?? null,
-        lastDigestSentAt: markSent
-          ? now
-          : typeof data.lastDigestSentAt === "number"
-            ? data.lastDigestSentAt
-            : null,
+        [fields.claimDayKey]: null,
+        ...(fields.legacyClaimDayKey ? { [fields.legacyClaimDayKey]: null } : {}),
+        [fields.claimId]: null,
+        [fields.claimedAt]: null,
+        [fields.lastDayKey]: markSent ? dayKey : lastNudgeDayKey(data, kind),
+        [fields.lastSentAt]: markSent ? now : typeof lastSentAt === "number" ? lastSentAt : null,
         updatedAt: now,
       },
       { merge: true }
@@ -204,6 +242,19 @@ async function finalizeDigestWindow(
 
     return true;
   });
+}
+
+/**
+ * Records that a nudge was looked at for the day and had nothing to say, or
+ * nowhere to go, so the hourly runs that follow do not read the student's
+ * cards again for it.
+ */
+async function markNudgeChecked(
+  preferencesRef: FirebaseFirestore.DocumentReference,
+  kind: NudgeKind,
+  dayKey: string
+) {
+  await preferencesRef.set({ [NUDGE_FIELDS[kind].lastDayKey]: dayKey }, { merge: true });
 }
 
 async function countRequiredDailyReviewCards(
@@ -319,7 +370,7 @@ function addUserResult(
 
 async function processPreference(
   preferencesDoc: FirebaseFirestore.QueryDocumentSnapshot,
-  input: { now: number; studyDayKey: string },
+  input: { now: number },
   dependencies: Required<
     Pick<
       DigestDependencies,
@@ -341,10 +392,18 @@ async function processPreference(
   let claimOpen = false;
   let markedSent = false;
 
+  const preferences = normalizeNotificationPreferences(
+    preferencesDoc.data() as Record<string, unknown>
+  );
+  // Most runs reach most students outside their own nudge times; those cost
+  // nothing beyond the preferences already read.
+  const due = getDueNudge(preferences, input.now);
+  if (!due) {
+    result.skipped = 1;
+    return result;
+  }
+
   try {
-    const preferences = normalizeNotificationPreferences(
-      preferencesDoc.data() as Record<string, unknown>
-    );
     const [requiredDailyCount, urgentGoalCount, subscriptionsSnapshot] =
       await Promise.all([
         countRequiredDailyReviewCards(
@@ -352,29 +411,30 @@ async function processPreference(
           userId,
           input.now
         ),
-        countUrgentGoals(dependencies.adminDb, userId, input.now),
+        due.kind === "digest" ? countUrgentGoals(dependencies.adminDb, userId, input.now) : 0,
         dependencies.adminDb
           .collection("users")
           .doc(userId)
           .collection("pushSubscriptions")
           .get(),
       ]);
-    const payload = buildDigestPayload(
-      requiredDailyCount,
-      urgentGoalCount,
-      preferences.mode
-    );
+    const payload =
+      due.kind === "digest"
+        ? buildDigestPayload(requiredDailyCount, urgentGoalCount, preferences.mode)
+        : buildEveningReminderPayload(requiredDailyCount);
 
     if (!payload || subscriptionsSnapshot.empty) {
+      await markNudgeChecked(preferencesDoc.ref, due.kind, due.dayKey);
       result.skipped = 1;
       return result;
     }
 
     claimId = dependencies.createClaimId();
-    const claimResult = await claimDigestWindow(
+    const claimResult = await claimNudge(
       dependencies.adminDb,
       preferencesDoc.ref,
-      input.studyDayKey,
+      due.kind,
+      due.dayKey,
       claimId,
       input.now
     );
@@ -401,10 +461,11 @@ async function processPreference(
         result.sent += 1;
 
         if (!markedSent) {
-          const finalized = await finalizeDigestWindow(
+          const finalized = await finalizeNudge(
             dependencies.adminDb,
             preferencesDoc.ref,
-            input.studyDayKey,
+            due.kind,
+            due.dayKey,
             claimId,
             dependencies.clock(),
             true
@@ -434,10 +495,11 @@ async function processPreference(
   } finally {
     if (claimOpen && claimId && !markedSent) {
       try {
-        await finalizeDigestWindow(
+        await finalizeNudge(
           dependencies.adminDb,
           preferencesDoc.ref,
-          input.studyDayKey,
+          due.kind,
+          due.dayKey,
           claimId,
           dependencies.clock(),
           false
@@ -452,10 +514,13 @@ async function processPreference(
   return result;
 }
 
+/**
+ * One hourly run: every student with notifications on gets whichever nudge is
+ * due by their own clock, if any.
+ */
 export async function runNotificationDigest(
   input: {
     now: number;
-    studyDayKey: string;
     durationWarningMs?: number;
   },
   dependencies: DigestDependencies = {}

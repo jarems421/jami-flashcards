@@ -20,7 +20,7 @@ import {
 } from "@/services/notifications";
 import { auth } from "@/services/firebase/client";
 import { getNotificationPermissionState } from "@/lib/app/notifications";
-import { Button, Card, SectionHeader } from "@/components/ui";
+import { Button, Card, SectionHeader, SettingSwitch } from "@/components/ui";
 
 type FeedbackSection = "install" | "notifications";
 
@@ -212,10 +212,10 @@ export default function NotificationSettingsCard({
 
     return {
       label: "On",
-      detail: "Next reminder at 4:00 PM, Europe/London.",
+      detail: `Next reminder at 4:00 PM, ${preferences.timeZone ?? "Europe/London"}.`,
       dotClassName: "bg-[var(--color-success-text)]",
     };
-  }, [hasSubscription, isSupported, permission, preferences.enabled]);
+  }, [hasSubscription, isSupported, permission, preferences.enabled, preferences.timeZone]);
 
   const persistPreferences = async (
     updates: Partial<NotificationPreferences>,
@@ -225,11 +225,11 @@ export default function NotificationSettingsCard({
     setFeedback(null);
 
     try {
-      const nextPreferences = await saveNotificationPreferences(userId, {
+      const savedSettings = await saveNotificationPreferences(userId, {
         ...preferences,
         ...updates,
       });
-      setPreferences(nextPreferences);
+      setPreferences((current) => ({ ...current, ...savedSettings }));
     } catch (error) {
       console.error("Failed to save notification preferences.", error);
       setFeedback({
@@ -416,7 +416,7 @@ export default function NotificationSettingsCard({
         <SectionHeader
           eyebrow="Reminders"
           title="Study reminders"
-          description="One optional nudge at 4pm London. Jami can wait until work is ready, or remind you every day."
+          description="A nudge at 4pm your time, and another at 7pm while Daily Review is still waiting. Jami can wait until work is ready, or remind you every day."
         />
         <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
           <span className="text-sm font-medium text-text-secondary">
@@ -514,6 +514,16 @@ export default function NotificationSettingsCard({
               Saving reminder mode...
             </p>
           ) : null}
+          <SettingSwitch
+            className="mt-4"
+            label="Evening reminder"
+            description="At 7pm your time, only if Daily Review is still waiting."
+            checked={preferences.eveningReminder}
+            disabled={loading || savingField === "eveningReminder"}
+            onChange={(checked) =>
+              void persistPreferences({ eveningReminder: checked }, "eveningReminder")
+            }
+          />
         </div>
       ) : null}
 
