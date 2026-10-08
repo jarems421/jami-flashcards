@@ -103,9 +103,6 @@ export function codeRefusedResponse(
 
 /**
  * Makes a code, emails it, and says how that went.
- *
- * The email is built against the origin this request arrived on, so the icon
- * in it loads from the deployment that sent it.
  */
 export async function deliverEmailCode(
   request: NextRequest,
@@ -134,10 +131,7 @@ export async function deliverEmailCode(
     );
   }
 
-  const message = buildCodeEmail({
-    code: issue.code,
-    appOrigin: new URL(request.url).origin,
-  });
+  const message = buildCodeEmail({ code: issue.code });
 
   try {
     await sendEmail({ to: email, ...message });

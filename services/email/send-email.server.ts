@@ -78,7 +78,7 @@ export async function sendEmail(email: OutgoingEmail): Promise<"sent" | "logged"
     socketTimeout: 20_000,
   });
 
-  await transporter.sendMail({
+  const info = await transporter.sendMail({
     from: {
       name: process.env.EMAIL_FROM_NAME?.trim() || "Jami",
       address: credentials.user,
@@ -87,7 +87,21 @@ export async function sendEmail(email: OutgoingEmail): Promise<"sent" | "logged"
     subject: email.subject,
     html: email.html,
     text: email.text,
+    headers: {
+      // Says what this is to the receiving server: an automatic message, not
+      // one a person wrote, and nothing to send an out-of-office reply to.
+      "Auto-Submitted": "auto-generated",
+      "X-Auto-Response-Suppress": "All",
+    },
   });
+  // What Gmail made of it, without the address: a refusal shows up here, where
+  // before a code that never arrived left no trace but the Sent folder.
+  log.info("email.sent", {
+    accepted: info.accepted?.length ?? 0,
+    rejected: info.rejected?.length ?? 0,
+    response: String(info.response ?? "").slice(0, 12),
+  });
+  if ((info.accepted?.length ?? 0) === 0) throw new Error("The mail server accepted no recipient.");
 
   return "sent";
 }

@@ -169,28 +169,16 @@ describe("which accounts may use AI", () => {
 
 describe("the code email", () => {
   it("puts the code in the subject, the body and the plain-text part", () => {
-    const email = buildCodeEmail({
-      code: "042917",
-      appOrigin: "https://jami.example",
-    });
+    const email = buildCodeEmail({ code: "042917" });
     expect(email.subject).toBe("042917 is your Jami code");
     expect(email.html).toContain(">042917<");
     expect(email.text).toContain("042917");
-    expect(email.html).toContain("https://jami.example/icons/icon-192.png");
     expect(email.html).toContain("Welcome to Jami");
   });
 
-  it("still reads without the icon when no origin is known", () => {
-    const email = buildCodeEmail({ code: "111111", appOrigin: null });
-    expect(email.html).toContain("111111");
-    expect(email.html).not.toContain("<img");
-  });
-
-  it("leaves the icon out rather than trusting an odd origin", () => {
-    const email = buildCodeEmail({
-      code: "111111",
-      appOrigin: "javascript:alert(1)",
-    });
-    expect(email.html).not.toContain("<img");
+  it("carries no link and no image, which mail filters read as phishing from a hosting domain", () => {
+    const email = buildCodeEmail({ code: "111111" });
+    expect(email.html).not.toMatch(/<img|<a\s|href=|src=|https?:\/\//i);
+    expect(email.text).not.toMatch(/https?:\/\//i);
   });
 });

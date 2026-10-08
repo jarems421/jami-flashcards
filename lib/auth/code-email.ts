@@ -9,6 +9,13 @@ import { EMAIL_CODE_TTL_MS } from "@/lib/auth/email-code";
  * Gmail or Outlook strips. Every colour is set as `bgcolor` as well as CSS, so
  * a client that drops one still has the other, and the sparkles are ordinary
  * characters rather than images, so they arrive even with images blocked.
+ *
+ * No links and no images at all. It once loaded Jami's icon from the app's
+ * `*.vercel.app` address, and that hosting domain is so often used for
+ * phishing that mail filters (Microsoft's especially, which most university
+ * mail runs on) treat a link to it as a sign of one: a code email from a
+ * personal Gmail address pointing there was quarantined before the student
+ * saw it. The star is the mark instead.
  */
 
 type CodeEmail = { subject: string; html: string; text: string };
@@ -36,26 +43,10 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-/** Only an http(s) origin is used for the icon; anything else leaves it out. */
-function iconUrl(appOrigin: string | null) {
-  if (!appOrigin) return null;
-  try {
-    const url = new URL("/icons/icon-192.png", appOrigin);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
-export function buildCodeEmail(input: {
-  code: string;
-  /** Where the icon is served from: the origin the request came in on. */
-  appOrigin: string | null;
-}): CodeEmail {
+export function buildCodeEmail(input: { code: string }): CodeEmail {
   const minutes = Math.round(EMAIL_CODE_TTL_MS / 60_000);
   const expiry = `This code expires in ${minutes} minutes.`;
   const subject = `${input.code} is your Jami code`;
-  const icon = iconUrl(input.appOrigin);
   const code = escapeHtml(input.code);
 
   const text = [
@@ -93,11 +84,6 @@ export function buildCodeEmail(input: {
 <span style="color:#b9a6ff;">&#10023;</span>
 <span style="color:#5f5883;">&middot;</span>
 </td></tr>
-${
-  icon
-    ? `<tr><td align="center" style="padding:0 0 22px;"><img src="${escapeHtml(icon)}" width="60" height="60" alt="Jami" style="display:block;width:60px;height:60px;border:0;border-radius:16px;"></td></tr>`
-    : ""
-}
 <tr><td bgcolor="#110c24" style="background-color:#110c24;background-image:linear-gradient(180deg,#1a1336 0%,#110c24 55%,#0c081b 100%);border:1px solid #2e2656;border-radius:24px;padding:36px 30px 30px;text-align:center;">
 <p style="margin:0 0 14px;font-family:${SANS};font-size:11px;line-height:16px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#b9a6ff;">&#10022;&nbsp; ${escapeHtml(COPY.eyebrow)} &nbsp;&#10022;</p>
 <h1 style="margin:0 0 12px;font-family:${SERIF};font-size:32px;line-height:38px;font-style:italic;font-weight:400;color:#fff8ff;">${escapeHtml(COPY.heading)}</h1>

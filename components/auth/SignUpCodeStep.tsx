@@ -188,7 +188,9 @@ export default function SignUpCodeStep({
 
       <p className="text-center text-xs leading-5 text-text-muted">
         The code works for {Math.round(EMAIL_CODE_TTL_MS / 60_000)} minutes. Can&apos;t
-        see it? Check your spam or promotions folder.
+        see it? Check your spam or junk folder. School and university email can
+        hold it back where you can&apos;t see it, so a personal address, or
+        continuing with Google, is quicker.
       </p>
     </form>
   );
