@@ -14,6 +14,14 @@ export async function markPracticePaperWorkflow(uid: string, jobId: string) {
     if (marked === "paused") return { status: "paused" as const };
     if (await markingJobIsCancelled(uid, jobId)) return { status: "cancelled" as const };
     await finalizeMarking(uid, jobId);
+    /*
+     * The checkpoint holds the stages already paid for, so a job that pauses,
+     * fails or is cancelled can be retried without paying for them again. A
+     * finished job is never retried, so its checkpoint goes -- in a step of its
+     * own, after finalizing is recorded, so a retried finalize still finds it,
+     * and a failed cleanup can never undo a finished mark.
+     */
+    await cleanMarkingCheckpoint(uid, jobId).catch(() => undefined);
     return { status: "ready" as const };
   } catch {
     if (await markingJobIsCancelled(uid, jobId)) {
@@ -100,4 +108,10 @@ async function failMarking(uid: string, jobId: string) {
   "use step";
   const service = await import("@/services/ai/practice-paper-marking-workflow.server");
   return service.markPracticePaperMarkingJobFailed(uid, jobId);
+}
+
+async function cleanMarkingCheckpoint(uid: string, jobId: string) {
+  "use step";
+  const service = await import("@/services/ai/practice-paper-marking-workflow.server");
+  return service.cleanPracticePaperMarkingJobArtifacts(uid, jobId);
 }
