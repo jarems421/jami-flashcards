@@ -14,18 +14,13 @@
  */
 
 import type { TutorMemoryKind } from "@/lib/ai/tutor-memory";
+import { memoryMapHash, type MemoryMapModel } from "@/lib/ai/memory-map";
+import { drawAurora, type AuroraFrame } from "@/components/ai/memory-map/aurora-draw";
+import { buildMapSystem } from "@/components/ai/memory-map/build";
+import { createStarField, drawStarField, type FieldStar } from "@/components/ai/memory-map/starfield";
 import {
-  memoryMapHash,
-  memoryMapRandom,
-  type MemoryMapModel,
-  type MemoryMapSystem,
-} from "@/lib/ai/memory-map";
-import {
-  CORE_SPRITE_SHARE,
   GALAXY_ARM_SHARE,
-  TAU,
   clamp,
-  cloudSprite,
   dotSprite,
   lerp,
   mix,
@@ -34,11 +29,8 @@ import {
 } from "@/components/ai/memory-map/sprites";
 import {
   MEMORY_KIND_COLOURS,
-  WHITE,
   buildAurora,
   rgb,
-  systemPictures,
-  systemStars,
   type Aurora,
   type MapNote,
   type MapSystem,
@@ -108,7 +100,7 @@ export class MemoryMapEngine {
   private hoverNote: MapNote | null = null;
   private hoverSystem: MapSystem | null = null;
 
-  private starField: { x: number; y: number; d: number; s: number; b: number; sp: number; ph: number; bright: boolean }[] = [];
+  private readonly starField: FieldStar[] = createStarField();
   private background: HTMLCanvasElement | null = null;
   private vignette: CanvasGradient | null = null;
   private whiteDot: HTMLCanvasElement;
@@ -136,16 +128,6 @@ export class MemoryMapEngine {
       Object.entries(MEMORY_KIND_COLOURS).map(([kind, colour]) => [kind, dotSprite(colour)])
     ) as Record<TutorMemoryKind, HTMLCanvasElement>;
 
-    const random = memoryMapRandom(11);
-    for (const layer of [{ d: 0.03, n: 260, s: [0.5, 1] }, { d: 0.12, n: 150, s: [0.6, 1.4] }, { d: 0.28, n: 70, s: [0.9, 2] }]) {
-      for (let i = 0; i < layer.n; i++) {
-        this.starField.push({
-          x: random() - 0.5, y: random() - 0.5, d: layer.d, s: lerp(layer.s[0], layer.s[1], random()),
-          b: 0.25 + random() * 0.75, sp: 0.4 + random() * 1.8, ph: random() * TAU, bright: layer.d > 0.2,
-        });
-      }
-    }
-
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.root);
     this.intersection = new IntersectionObserver((entries) => {
@@ -171,7 +153,15 @@ export class MemoryMapEngine {
       system.label.remove();
       system.pointer.remove();
     }
-    this.systems = model.systems.map((system) => this.buildSystem(system));
+    this.systems = model.systems.map((system) =>
+      buildMapSystem(system, {
+        overlay: this.overlay,
+        onOpen: (id) => this.openSystem(id),
+        onHover: (id) => {
+          this.hoverSystem = id ? this.systems.find((entry) => entry.id === id) ?? null : null;
+        },
+      })
+    );
     this.notes = this.systems.flatMap((system) => system.notes);
     const byId = new Map(this.notes.map((note) => [note.id, note]));
     this.links = model.links.flatMap((link) => {
@@ -236,89 +226,6 @@ export class MemoryMapEngine {
       system.label.remove();
       system.pointer.remove();
     }
-  }
-
-  // -------------------------------------------------------------------------
-  // Building.
-  // -------------------------------------------------------------------------
-
-  private buildSystem(source: MemoryMapSystem): MapSystem {
-    const { arms, pictures, clouds } = systemPictures(source);
-    const { dust, fine, mist } = systemStars(source, arms);
-
-    const label = document.createElement("button");
-    label.type = "button";
-    label.className = "memory-map-label";
-    label.style.setProperty("--glow", rgba(source.tint, 0.85));
-    const count = source.notes.length;
-    const name = document.createElement("span");
-    name.className = "memory-map-label-name";
-    name.textContent = source.name;
-    const meta = document.createElement("span");
-    meta.className = "memory-map-label-meta";
-    meta.textContent = source.core ? "Every subject" : `${count} ${count === 1 ? "note" : "notes"}`;
-    label.append(name, meta);
-    label.setAttribute("aria-label", `Fly into ${source.name}, ${count} ${count === 1 ? "note" : "notes"}`);
-    label.addEventListener("click", () => this.openSystem(source.id));
-    label.addEventListener("mouseenter", () => { this.hoverSystem = this.systems.find((entry) => entry.id === source.id) ?? null; });
-    label.addEventListener("mouseleave", () => { this.hoverSystem = null; });
-    this.overlay.appendChild(label);
-
-    const pointer = document.createElement("button");
-    pointer.type = "button";
-    pointer.className = "memory-map-pointer";
-    pointer.style.setProperty("--glow", rgba(source.tint, 0.85));
-    // A small picture of the galaxy it leads to, drawn from the galaxy itself.
-    const icon = document.createElement("canvas");
-    icon.className = "memory-map-pointer-galaxy";
-    icon.width = icon.height = 96;
-    const iconCtx = icon.getContext("2d");
-    if (iconCtx) {
-      iconCtx.translate(48, 48);
-      iconCtx.rotate(source.tilt);
-      iconCtx.scale(1, source.core ? 1 : source.squash);
-      const share = source.core ? CORE_SPRITE_SHARE : GALAXY_ARM_SHARE;
-      const size = 44 / share;
-      iconCtx.drawImage(pictures.sprite, -size / 2, -size / 2, size, size);
-    }
-    const pointerName = document.createElement("span");
-    pointerName.className = "memory-map-pointer-name";
-    pointerName.textContent = source.name;
-    const pointerMeta = document.createElement("span");
-    pointerMeta.className = "memory-map-pointer-meta";
-    pointer.append(icon, pointerName, pointerMeta);
-    pointer.addEventListener("click", () => this.openSystem(source.id));
-    this.overlay.appendChild(pointer);
-
-    const system: MapSystem = {
-      ...source,
-      notes: [],
-      arms,
-      sprite: pictures.sprite,
-      inner: pictures.inner,
-      outer: pictures.outer,
-      point: dotSprite(mix(source.tint, WHITE, 0.35)),
-      mistSprite: cloudSprite(mix(source.tint, WHITE, 0.1), memoryMapHash(source.id)),
-      clouds,
-      dust,
-      fine,
-      mist,
-      spin: 0,
-      spinIn: 0,
-      noteSpin: 0,
-      label,
-      pointer,
-      pointerMeta,
-    };
-    system.notes = source.notes.map((note) => ({
-      ...note,
-      system,
-      r0: Math.hypot(note.u, note.v),
-      a0: Math.atan2(note.v, note.u),
-      sx: 0, sy: 0, px: 0,
-      variant: Math.floor(note.seed) % 2,
-    }));
-    return system;
   }
 
   // -------------------------------------------------------------------------
@@ -614,29 +521,17 @@ export class MemoryMapEngine {
   // -------------------------------------------------------------------------
 
   private drawStars() {
-    const ctx = this.ctx;
-    const Fw = this.W * 1.35, Fh = this.H * 1.35;
-    const bc = Math.cos(this.cam.r * 0.5), bs = Math.sin(this.cam.r * 0.5);
-    for (const star of this.starField) {
-      const e = Math.pow(this.cam.z / this.universeZ, star.d);
-      let px = star.x * Fw - this.cam.x * this.universeZ * star.d * 2.2;
-      let py = star.y * Fh - this.cam.y * this.universeZ * star.d * 2.2;
-      px = ((((px + Fw / 2) % Fw) + Fw) % Fw) - Fw / 2;
-      py = ((((py + Fh / 2) % Fh) + Fh) % Fh) - Fh / 2;
-      const ox = px * e, oy = py * e;
-      const sx = this.cx + ox * bc - oy * bs, sy = this.cy + ox * bs + oy * bc;
-      if (sx < -20 || sy < -20 || sx > this.W + 20 || sy > this.H + 20) continue;
-      const alpha = star.b * (this.reduced ? 1 : 0.55 + 0.45 * Math.sin(this.T * star.sp + star.ph));
-      if (star.bright) {
-        ctx.globalAlpha = alpha;
-        const D = star.s * 7;
-        ctx.drawImage(this.whiteDot, sx - D / 2, sy - D / 2, D, D);
-        ctx.globalAlpha = 1;
-      } else {
-        ctx.fillStyle = `rgba(225,218,255,${alpha})`;
-        ctx.fillRect(sx, sy, star.s, star.s);
-      }
-    }
+    drawStarField(this.ctx, this.starField, {
+      width: this.W,
+      height: this.H,
+      centreX: this.cx,
+      centreY: this.cy,
+      camera: this.cam,
+      universeZoom: this.universeZ,
+      time: this.T,
+      reducedMotion: this.reduced,
+      dot: this.whiteDot,
+    });
   }
 
   /** Plain dotted lines from the centre to every galaxy: what is about you goes everywhere. */
@@ -666,111 +561,31 @@ export class MemoryMapEngine {
     ctx.globalAlpha = 1;
   }
 
-  private quad(p: Aurora, t: number): [number, number] {
-    const a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
-    return [a * p.p0[0] + b * p.p1[0] + c * p.p2[0], a * p.p0[1] + b * p.p1[1] + c * p.p2[1]];
-  }
-
-  private quadTangent(p: Aurora, t: number): [number, number] {
-    const x = 2 * (1 - t) * (p.p1[0] - p.p0[0]) + 2 * t * (p.p2[0] - p.p1[0]);
-    const y = 2 * (1 - t) * (p.p1[1] - p.p0[1]) + 2 * t * (p.p2[1] - p.p1[1]);
-    const d = Math.hypot(x, y) || 1;
-    return [x / d, y / d];
-  }
-
-  /** Slow, smooth wobble between 0 and 1: only long waves, so nothing spikes. */
-  private swell(x: number) {
-    return 0.5 + 0.5 * (0.6 * Math.sin(x) + 0.4 * Math.sin(x * 1.73 + 1.1));
-  }
-
   /**
-   * An aurora: a glowing thread along its foot, up to three curtains rising
-   * from it, and tiny sparkles caught in it. Its foot stays visible from
-   * inside a galaxy, because a link to another subject leaves along it.
+   * The auroras between linked subjects, each brighter while the selected
+   * note is linked across it.
    */
   private drawAuroras() {
-    const ctx = this.ctx;
     const curtain = 1 - this.level * 0.85;
-    const footAlpha = Math.max(curtain, 0.55 * this.level);
+    const frame: AuroraFrame = {
+      w2s: (x, y) => this.w2s(x, y),
+      time: this.T,
+      zoom: this.cam.z,
+      universeZoom: this.universeZ,
+      rotation: this.cam.r,
+      dpr: this.DPR,
+      reducedMotion: this.reduced,
+      curtain,
+      footAlpha: Math.max(curtain, 0.55 * this.level),
+      footDot: this.kindDots.strength,
+      sparkleDot: this.whiteDot,
+    };
+    const sel = this.selected;
     for (const p of this.auroras) {
-      let k = p.glow;
-      const sel = this.selected;
-      if (sel && this.links.some((link) => link.cross && (link.a === sel || link.b === sel) && (link.a.system === p.A || link.a.system === p.B) && (link.b.system === p.A || link.b.system === p.B))) k *= 1.2;
-      const a = curtain * k;
-      const ph = p.seed;
-      const [ax, ay] = this.w2s(p.p0[0], p.p0[1]), [bx, by] = this.w2s(p.p2[0], p.p2[1]);
-      const lenPx = Math.hypot(bx - ax, by - ay) * 1.15;
-      const N = Math.round(clamp(lenPx / 2.6, 40, 170));
-      const pts: { x: number; y: number; sx: number; sy: number; nx: number; ny: number; env: number; t: number }[] = [];
-      for (let i = 0; i < N; i++) {
-        const t = i / (N - 1);
-        const env = Math.pow(Math.sin(Math.PI * t), 1.1);
-        const P = this.quad(p, t), Tn = this.quadTangent(p, t);
-        let nx = -Tn[1], ny = Tn[0];
-        if (nx * P[0] + ny * P[1] < 0) { nx = -nx; ny = -ny; }
-        const F = p.fold;
-        const sway = env * F.amp * (Math.sin(t * TAU * F.f1 + this.T * F.speed + ph) + 0.38 * Math.sin(t * TAU * F.f2 - this.T * F.speed * 1.6 + ph * 1.7));
-        const x = P[0] + nx * sway, y = P[1] + ny * sway;
-        const [sx, sy] = this.w2s(x, y);
-        pts.push({ x, y, sx, sy, nx, ny, env, t });
-      }
-
-      const thread = new Path2D();
-      pts.forEach((q, i) => (i ? thread.lineTo(q.sx, q.sy) : thread.moveTo(q.sx, q.sy)));
-      const glow = ctx.createLinearGradient(ax, ay, bx, by);
-      const cA = mix(p.A.tint, p.palette.body, 0.5), cB = mix(p.B.tint, p.palette.body, 0.5);
-      glow.addColorStop(0, rgba(cA, 0.55)); glow.addColorStop(0.15, rgba(cA, 1));
-      glow.addColorStop(0.5, rgba(mix(p.palette.body, WHITE, 0.3), 1));
-      glow.addColorStop(0.85, rgba(cB, 1)); glow.addColorStop(1, rgba(cB, 0.55));
-      ctx.strokeStyle = glow;
-      ctx.lineJoin = "round";
-      ctx.lineCap = "round";
-      const zs = Math.min(3, Math.sqrt(this.cam.z / this.universeZ));
-      for (const [w, al] of [[24, 0.03], [10, 0.05], [3, 0.08], [1.2, 0.12]]) {
-        ctx.globalAlpha = clamp(footAlpha * k * al, 0, 1);
-        ctx.lineWidth = w * zs * p.thick;
-        ctx.stroke(thread);
-      }
-      for (const q of [pts[0], pts[N - 1]]) {
-        ctx.globalAlpha = clamp(footAlpha * k * 0.55, 0, 1);
-        const D = 16 * zs;
-        ctx.drawImage(this.kindDots.strength, q.sx - D / 2, q.sy - D / 2, D, D);
-      }
-      if (a <= 0.01) continue;
-
-      for (let strand = 0; strand < p.layers; strand++) {
-        const step = strand ? 2 : 1;
-        const hMul = [1, 0.66, 0.45][strand], aMul = [1, 0.6, 0.45][strand], lift = [0, 10, -8][strand], ph2 = ph + strand * 2.4;
-        const slice = Math.max(6, (lenPx / N) * 4.4 * step);
-        for (let i = 0; i < N; i += step) {
-          const q = pts[i];
-          if (q.env < 0.03) continue;
-          const h = p.height * hMul * q.env * (0.5 + 0.5 * this.swell(q.t * 5 + this.T * 0.25 + ph2));
-          const hp = h * this.cam.z;
-          if (hp < 2) continue;
-          const rays = 0.62 + 0.38 * this.swell(q.t * 34 + this.T * 0.12 + ph2 * 3);
-          ctx.globalAlpha = clamp(a * aMul * q.env * 0.5 * rays * (0.6 + 0.4 * this.swell(q.t * 7 - this.T * 0.3 + ph2 * 1.3)), 0, 1);
-          const [sx, sy] = lift ? this.w2s(q.x + q.nx * lift, q.y + q.ny * lift) : [q.sx, q.sy];
-          const angle = Math.atan2(q.nx, -q.ny) + this.cam.r;
-          const c = Math.cos(angle), s = Math.sin(angle);
-          ctx.setTransform(this.DPR * c, this.DPR * s, -this.DPR * s, this.DPR * c, this.DPR * sx, this.DPR * sy);
-          ctx.drawImage(p.rays[Math.round(q.t * 6)], -slice / 2, -hp * 0.9, slice, hp);
-        }
-      }
-      ctx.setTransform(this.DPR, 0, 0, this.DPR, 0, 0);
-
-      for (const sparkle of p.sparkles) {
-        const q = pts[Math.round(sparkle.t * (N - 1))];
-        if (q.env < 0.05) continue;
-        const h = p.height * q.env * (0.5 + 0.5 * this.swell(q.t * 5 + this.T * 0.25 + ph)) * sparkle.h;
-        const [sx, sy] = this.w2s(q.x + q.nx * h, q.y + q.ny * h);
-        const tw = this.reduced ? 0.7 : 0.5 + 0.5 * Math.sin(this.T * sparkle.sp + sparkle.ph);
-        ctx.globalAlpha = clamp(a * q.env * tw * tw, 0, 1);
-        const D = 2 + sparkle.sz * 2.4;
-        ctx.drawImage(this.whiteDot, sx - D / 2, sy - D / 2, D, D);
-      }
+      const linked = Boolean(sel) && this.links.some((link) => link.cross && (link.a === sel || link.b === sel) && (link.a.system === p.A || link.a.system === p.B) && (link.b.system === p.A || link.b.system === p.B));
+      drawAurora(this.ctx, p, linked ? p.glow * 1.2 : p.glow, frame);
     }
-    ctx.globalAlpha = 1;
+    this.ctx.globalAlpha = 1;
   }
 
   private drawGalaxy(system: MapSystem) {
