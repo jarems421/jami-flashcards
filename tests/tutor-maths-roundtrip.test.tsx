@@ -16,6 +16,8 @@ const CORPUS: string[] = [
   "Use $\\tan\\theta = \\frac{\\text{opp}}{\\text{adj}}$, so $\\theta = \\tan^{-1}\\left(\\frac{3}{4}\\right) = 36.9^\\circ$.",
   "Since $\\beta$ is the angle, $\\binom{5}{2} = 10$ and the answer is $\\boxed{10}$.",
   "$$\\int_{0}^{2} (3x^2 - 2x)\\,dx = \\left[x^3 - x^2\\right]_0^2 = 4$$",
+  // A display after words on its line, which once printed "$$ 0 \times A" as written.
+  "By the **right distributive law**, \\[0 \\times A = (0 + 0) \\times A = 0 \\times A + 0 \\times A\\].",
   "Speed: $v = f\\lambda$, so $\\lambda = \\frac{v}{f} = \\frac{340}{170} = 2\\text{ m}$.",
   "For a wave, $\\nu$ is frequency and $\\rho$ is density; $x \\neq 0$ and $y \\ne 3$.",
   "Note $\\nabla \\cdot \\mathbf{E} = \\frac{\\rho}{\\varepsilon_0}$ and $a \\notin B$.",

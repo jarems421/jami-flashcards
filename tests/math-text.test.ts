@@ -141,7 +141,24 @@ describe("normalizeMathDelimiters", () => {
   it("handles multiple math blocks", () => {
     expect(
       normalizeMathDelimiters("Inline \\(x\\) and display \\[y\\] plus $$z$$")
-    ).toBe("Inline $x$ and display $\\displaystyle y$ plus $$\nz\n$$");
+    ).toBe("Inline $x$ and display $\\displaystyle y$ plus \n\n$$\nz\n$$");
+  });
+
+  it("starts a display after words on its line in a paragraph of its own", () => {
+    // "$$" mid-line is not read as maths: the student saw "$$ 0 \times A = 0." as written.
+    expect(normalizeMathDelimiters("By the law, \\[0 \\times A = 0\\].")).toBe(
+      "By the law, \n\n$$\n0 \\times A = 0.\n$$"
+    );
+  });
+
+  it("leaves two prices as prices, and still finds the maths after them", () => {
+    expect(normalizeMathDelimiters("It costs $5 and $10, but $x$ is unknown.")).toBe(
+      "It costs \\$5 and \\$10, but $x$ is unknown."
+    );
+    expect(normalizeMathDelimiters("It costs $5 and $x$ is unknown.")).toBe(
+      "It costs \\$5 and $x$ is unknown."
+    );
+    expect(splitMathRichText("$5 and $10")).toEqual([{ type: "text", value: "$5 and $10" }]);
   });
 
   it("keeps a display that shares its line with words on that line, at display size", () => {

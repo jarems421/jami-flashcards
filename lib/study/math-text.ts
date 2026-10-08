@@ -18,16 +18,58 @@ export function normalizeLegacyJamiMathText(text: string) {
     .replace(/\b(?:Bigl|Bigr|bigl|bigr|Bigm|bigm)\b\s*/g, "");
 }
 
+/**
+ * Two prices, not maths: "$5 and $10". Read as a pair, everything between the
+ * dollars became one formula, and maths ignores spaces, so the student saw
+ * "5and10" -- or, with a bold phrase or a command between them, a run of words
+ * with no spaces and the stars and backslashes printed as they were written. A
+ * closing dollar right before a digit opens the next price; a pair that starts
+ * with a digit and ends in a space is a price and the words after it.
+ */
+function isCurrencyPair(text: string, match: RegExpExecArray) {
+  const inline = match[4];
+  if (inline === undefined) return false;
+  const after = text[match.index + match[0].length] ?? "";
+  return /\d/.test(after) || (/^\d/.test(inline) && /\s$/.test(inline));
+}
+
+type MathDelimiterMatch =
+  | { kind: "math"; index: number; match: RegExpExecArray }
+  /** A dollar that opens a price, not maths. */
+  | { kind: "currency"; index: number };
+
+/**
+ * Every maths delimiter in the text, in order, for the splitter and the
+ * Markdown preparation alike, so the two can never disagree about what is
+ * maths. An escaped delimiter is skipped, and a price is reported so the search
+ * carries on from the dollar after it: in "$5 and $x$" the maths is `$x$`.
+ */
+function* mathDelimiterMatches(text: string): Generator<MathDelimiterMatch> {
+  const pattern = new RegExp(MATH_DELIMITER_PATTERN.source, "g");
+  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+    const { index } = match;
+    if (index > 0 && text[index - 1] === "\\") {
+      pattern.lastIndex = index + 1;
+      continue;
+    }
+    if (isCurrencyPair(text, match)) {
+      yield { kind: "currency", index };
+      pattern.lastIndex = index + 1;
+      continue;
+    }
+    yield { kind: "math", index, match };
+  }
+}
+
 export function splitMathRichText(text: string): MathRichTextSegment[] {
   if (!text) return [{ type: "text", value: "" }];
 
   const segments: MathRichTextSegment[] = [];
   let cursor = 0;
 
-  for (const match of text.matchAll(MATH_DELIMITER_PATTERN)) {
-    const index = match.index ?? -1;
-    if (index < 0) continue;
-    if (index > 0 && text[index - 1] === "\\") continue;
+  for (const found of mathDelimiterMatches(text)) {
+    if (found.kind === "currency") continue;
+    const { index, match } = found;
 
     const value = (match[1] ?? match[2] ?? match[3] ?? match[4] ?? "").trim();
     if (!value) continue;
@@ -131,11 +173,14 @@ export function normalizeMathDelimiters(text: string): string {
   const result: string[] = [];
   let cursor = 0;
 
-  for (const match of text.matchAll(MATH_DELIMITER_PATTERN)) {
-    const index = match.index ?? -1;
-    if (index < 0) continue;
-    // Skip escaped delimiters such as \$...\$
-    if (index > 0 && text[index - 1] === "\\") continue;
+  for (const found of mathDelimiterMatches(text)) {
+    if (found.kind === "currency") {
+      // Escaped, so the Markdown maths reader cannot pair it either.
+      result.push(text.slice(cursor, found.index), "\\$");
+      cursor = found.index + 1;
+      continue;
+    }
+    const { index, match } = found;
 
     result.push(text.slice(cursor, index));
 
@@ -158,7 +203,10 @@ export function normalizeMathDelimiters(text: string): string {
       ) {
         result.push(`$\\displaystyle ${display.trim().replace(/\s*\n\s*/g, " ")}$`);
       } else {
-        result.push(`$$\n${display.trim()}${closing}\n$$`);
+        // A display after words on its line starts a paragraph of its own:
+        // "$$" in the middle of a line is not read as maths, and the student
+        // saw "$$ 0 \times A = 0." printed as it was written.
+        result.push(`${hasTextBefore(text, index) ? "\n\n" : ""}$$\n${display.trim()}${closing}\n$$`);
         cursor = end + after.length;
         continue;
       }
