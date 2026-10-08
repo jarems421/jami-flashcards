@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { getCardContentHash } from "@/lib/study/study-modes";
+import { normalizeCardStudySettings } from "@/lib/study/card-study-settings";
+import { getCardContentHash, type CardStudySettings } from "@/lib/study/study-modes";
 import { STUDY_ASSET_VALIDATOR_VERSION } from "@/lib/study/study-asset-versions";
 import { isStudyAssetRecordCurrent } from "@/lib/study/study-asset-cache";
 import type { NextRequest } from "next/server";
@@ -56,7 +57,7 @@ type OwnedCard = {
   id: string;
   front: string;
   back: string;
-  studySettings?: Record<string, unknown>;
+  studySettings?: CardStudySettings;
 };
 
 /**
@@ -139,15 +140,9 @@ export async function POST(request: NextRequest) {
     // Preparation reads words and cannot see a picture, so a card carrying one
     // is never prepared, whatever a client asks for.
     if (data.frontImage || data.backImage || data.occlusion) continue;
-    cards.push({
-      id: snapshot.id,
-      front,
-      back,
-      studySettings:
-        data.studySettings && typeof data.studySettings === "object"
-          ? (data.studySettings as Record<string, unknown>)
-          : undefined,
-    });
+    // Read as the browser reads them, so both fingerprint the card alike.
+    const studySettings = normalizeCardStudySettings(data.studySettings);
+    cards.push({ id: snapshot.id, front, back, ...(studySettings ? { studySettings } : {}) });
   }
   if (cards.length === 0) {
     return apiFailure("No owned cards to prepare", 404, "no_cards");
@@ -160,7 +155,7 @@ export async function POST(request: NextRequest) {
     cacheKey: getStudyAssetCacheKey({
       front: card.front,
       back: card.back,
-      studySettings: card.studySettings as never,
+      studySettings: card.studySettings,
     }),
   }));
   const existing = await db.getAll(

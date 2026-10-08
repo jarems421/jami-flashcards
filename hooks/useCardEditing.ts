@@ -13,6 +13,12 @@ import {
 } from "@/hooks/useInlineRowEditing";
 import { cardImageDraftFrom, type CardImageDraft } from "@/lib/study/card-images";
 import {
+  EMPTY_STUDY_SETTINGS_DRAFT,
+  studySettingsChange,
+  studySettingsDraftFrom,
+  type StudySettingsDraft,
+} from "@/lib/study/card-study-settings";
+import {
   getCardFacesError,
   normalizeCardContentInput,
   type Card,
@@ -33,13 +39,23 @@ export type CardDraft = {
   topicIds: string[];
   frontImage?: CardImageDraft;
   backImage?: CardImageDraft;
+  /** Other right answers, wrong answers, words to blank, ways not to ask it. */
+  studySettings: StudySettingsDraft;
 };
 
 const EMPTY_CARD_DRAFT: CardDraft = {
   front: "",
   back: "",
   topicIds: [],
+  studySettings: EMPTY_STUDY_SETTINGS_DRAFT,
 };
+
+/** A card with new settings in place of its old ones, or none left. */
+function withStudySettings(card: Card, settings: Card["studySettings"]): Card {
+  const { studySettings: _previous, ...rest } = card;
+  void _previous;
+  return settings ? { ...rest, studySettings: settings } : rest;
+}
 
 type CardEditingFeedback = {
   clear: () => void;
@@ -127,6 +143,7 @@ export function useCardEditing({
         topicIds: card.topicIds ?? [],
         frontImage: cardImageDraftFrom(card.frontImage),
         backImage: cardImageDraftFrom(card.backImage),
+        studySettings: studySettingsDraftFrom(card.studySettings),
       });
       setError(null);
       feedback.clear();
@@ -149,6 +166,7 @@ export function useCardEditing({
         return;
       }
       const previous = cards.find((card) => card.id === cardId);
+      const settings = studySettingsChange(previous?.studySettings, draft.studySettings);
 
       rows.setSaving(cardId);
       setError(null);
@@ -164,22 +182,23 @@ export function useCardEditing({
               back: nextBack,
               topicIds: draft.topicIds,
               ...images,
+              ...(settings ? { studySettings: settings.next ?? null } : {}),
             }),
         });
         setCards((current) =>
-          current.map((card) =>
-            card.id === cardId
-              ? {
-                  ...card,
-                  front: nextFront,
-                  back: nextBack,
-                  frontImage,
-                  backImage,
-                  topicIds: draft.topicIds,
-                  tags: [],
-                }
-              : card
-          )
+          current.map((card) => {
+            if (card.id !== cardId) return card;
+            const edited: Card = {
+              ...card,
+              front: nextFront,
+              back: nextBack,
+              frontImage,
+              backImage,
+              topicIds: draft.topicIds,
+              tags: [],
+            };
+            return settings ? withStudySettings(edited, settings.next) : edited;
+          })
         );
         cancel();
         feedback.success("Card updated.");

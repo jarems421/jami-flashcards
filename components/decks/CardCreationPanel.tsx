@@ -15,12 +15,18 @@ import {
 } from "@/lib/study/cards";
 import type { CardImageDraft } from "@/lib/study/card-images";
 import {
+  applyStudySettingsDraft,
+  EMPTY_STUDY_SETTINGS_DRAFT,
+  type StudySettingsDraft,
+} from "@/lib/study/card-study-settings";
+import {
   cardSaveErrorMessage,
   commitCardImageDrafts,
   releaseCardImageDraft,
 } from "@/services/study/card-images";
 import CardFaceImage from "@/components/cards/CardFaceImage";
 import CardImageField from "@/components/decks/CardImageField";
+import CardStudyOptions from "@/components/decks/CardStudyOptions";
 import type { Feedback } from "@/lib/app/feedback";
 import type { Topic } from "@/lib/material/topics";
 import { createCard } from "@/services/study/cards";
@@ -36,7 +42,7 @@ import DiagramEditorDialog, {
 } from "@/components/decks/diagram/DiagramEditorDialog";
 import DiagramPictureSource from "@/components/decks/diagram/DiagramPictureSource";
 import type { DiagramPicture } from "@/lib/study/diagram-image";
-import { Button, Input, SectionHeader, StudyText } from "@/components/ui";
+import { Button, FormDisclosure, Input, SectionHeader, StudyText } from "@/components/ui";
 
 type CreationMode = "single" | "diagram" | "source" | "video";
 
@@ -104,6 +110,9 @@ export default function CardCreationPanel({
   const [singleFrontImage, setSingleFrontImage] = useState<CardImageDraft>();
   const [singleBackImage, setSingleBackImage] = useState<CardImageDraft>();
   const [singleTopicIds, setSingleTopicIds] = useState<string[]>([]);
+  const [singleStudySettings, setSingleStudySettings] = useState<StudySettingsDraft>(EMPTY_STUDY_SETTINGS_DRAFT);
+  /** Bumped per card added, so the folded sections start the next card empty. */
+  const [singleCardCount, setSingleCardCount] = useState(0);
   const [addingSingleCard, setAddingSingleCard] = useState(false);
   const [diagramStart, setDiagramStart] = useState<DiagramEditorStart | null>(null);
   /** The page the last diagram was cut from, to cut another from it straight away. */
@@ -171,6 +180,8 @@ export default function CardCreationPanel({
     }
 
     setAddingSingleCard(true);
+    // A picture answer is only ever turned over, so its options would never be read.
+    const studySettings = singleBackImage ? undefined : applyStudySettingsDraft(undefined, singleStudySettings);
 
     try {
       const { result: card } = await commitCardImageDrafts({
@@ -185,6 +196,7 @@ export default function CardCreationPanel({
             topicIds: singleTopicIds,
             ...(images.frontImage ? { frontImage: images.frontImage } : {}),
             ...(images.backImage ? { backImage: images.backImage } : {}),
+            ...(studySettings ? { studySettings } : {}),
           }),
       });
 
@@ -195,6 +207,8 @@ export default function CardCreationPanel({
       setSingleFrontImage(undefined);
       setSingleBackImage(undefined);
       setSingleTopicIds([]);
+      setSingleStudySettings(EMPTY_STUDY_SETTINGS_DRAFT);
+      setSingleCardCount((count) => count + 1);
       onCardsCreated([card], { source: "single", selectCreated: false });
       onFeedback({
         type: "success",
@@ -354,21 +368,32 @@ export default function CardCreationPanel({
               </div>
             </div>
           ) : null}
-          <details className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
-            <summary className="cursor-pointer text-sm font-medium text-text-secondary">
-              Topics <span className="font-normal text-text-muted">(optional)</span>
-            </summary>
-            <div className="mt-4">
-              <TopicPicker
-                userId={userId}
-                topics={topics}
-                selectedTopicIds={singleTopicIds}
-                onChange={setSingleTopicIds}
-                onTopicsChange={onTopicsChange}
-                disabled={addingSingleCard}
-              />
-            </div>
-          </details>
+          <FormDisclosure
+            title="Topics"
+            summary={
+              singleTopicIds.length === 0
+                ? "Optional"
+                : `${singleTopicIds.length} ${singleTopicIds.length === 1 ? "topic" : "topics"}`
+            }
+          >
+            <TopicPicker
+              userId={userId}
+              topics={topics}
+              selectedTopicIds={singleTopicIds}
+              onChange={setSingleTopicIds}
+              onTopicsChange={onTopicsChange}
+              disabled={addingSingleCard}
+            />
+          </FormDisclosure>
+          <CardStudyOptions
+            key={singleCardCount}
+            front={singleFront}
+            back={singleBack}
+            hasBackImage={Boolean(singleBackImage)}
+            value={singleStudySettings}
+            onChange={setSingleStudySettings}
+            disabled={addingSingleCard}
+          />
           <Button
             type="button"
             data-tutorial-target="create-card"

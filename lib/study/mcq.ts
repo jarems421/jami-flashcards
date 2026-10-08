@@ -109,11 +109,59 @@ function shapeDistance(answer: string, option: string) {
 }
 
 /**
+ * The wrong options that can stand beside `correctAnswer`: short enough to be an
+ * option, and neither a repeat nor another way of saying the right answer or
+ * one the card accepts.
+ */
+function usableDistractors(card: Card, correctAnswer: string, written: readonly string[]) {
+  const seen = new Set([normalizeAnswerText(correctAnswer)]);
+  const accepted = getCardAcceptedAnswers(card);
+  const distractors: string[] = [];
+  for (const text of written) {
+    const trimmed = text.trim();
+    if (!trimmed || trimmed.length > MAX_OPTION_LENGTH) continue;
+    const key = normalizeAnswerText(trimmed);
+    if (!key || seen.has(key) || equivalentOption(trimmed, correctAnswer) ||
+      accepted.some((alias) => equivalentOption(trimmed, alias))) continue;
+    seen.add(key);
+    distractors.push(trimmed);
+  }
+  return distractors;
+}
+
+/** What Learn will make of a card's own wrong answers, for the card editor to say. */
+export type AuthorMultipleChoiceStatus =
+  | { kind: "none" }
+  | { kind: "ready" }
+  | { kind: "needs-more"; usable: number; needed: number }
+  | { kind: "answer-too-long" }
+  | { kind: "answer-stands-out" };
+
+/**
+ * Whether the author's own wrong answers make a question, and if not, why.
+ *
+ * Asked exactly as Learn asks it: wrong answers of the author's own replace
+ * anything Jami prepared, so these are judged alone. Three are needed that are
+ * not the answer said another way, and the four options must not give the
+ * answer away by looking different from the rest.
+ */
+export function describeAuthorMultipleChoice(card: Card): AuthorMultipleChoiceStatus {
+  const own = card.studySettings?.mcqDistractors;
+  if (!own || own.length === 0 || card.occlusion) return { kind: "none" };
+  const answer = card.back.trim();
+  if (answer.length > MAX_OPTION_LENGTH) return { kind: "answer-too-long" };
+  const usable = usableDistractors(card, answer, own).length;
+  if (usable < REQUIRED_DISTRACTORS) return { kind: "needs-more", usable, needed: REQUIRED_DISTRACTORS };
+  const authorOnly = { ...card, studySettings: { ...card.studySettings, generatedStudy: undefined } };
+  return buildMultipleChoiceQuestion({ card: authorOnly }) ? { kind: "ready" } : { kind: "answer-stands-out" };
+}
+
+/**
  * Build a multiple-choice question, or refuse.
  *
  * One source: wrong options written *for this card* -- by Jami during
- * preparation, or by its author in the card's own settings (no screen writes
- * those yet). (A diagram's labels are the exception, below.) A numeric answer is prepared like any other: moving
+ * preparation, or by its author in the card editor's study options. (A
+ * diagram's labels are the exception, below.) A numeric answer is prepared like any other: moving
  * its number about made generic wrong answers rather than ones written for
  * the question, so that is no longer done.
  *
@@ -180,19 +228,6 @@ export function buildMultipleChoiceQuestion(input: {
    */
   if (correctAnswer.length > MAX_OPTION_LENGTH) return null;
 
-  const seen = new Set([normalizeAnswerText(correctAnswer)]);
-  const distractors: string[] = [];
-
-  const push = (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || trimmed.length > MAX_OPTION_LENGTH) return;
-    const key = normalizeAnswerText(trimmed);
-    if (!key || seen.has(key) || equivalentOption(trimmed, correctAnswer) ||
-      getCardAcceptedAnswers(card).some((alias) => equivalentOption(trimmed, alias))) return;
-    seen.add(key);
-    distractors.push(trimmed);
-  };
-
   /*
    * A diagram label's wrong options are the diagram's other labels -- the one
    * place borrowing answers is right, for the reason `getDiagramDistractorPool`
@@ -201,9 +236,7 @@ export function buildMultipleChoiceQuestion(input: {
   const written = card.occlusion
     ? getDiagramDistractorPool(card.occlusion)
     : variant?.distractors ?? card.studySettings?.mcqDistractors ?? [];
-  for (const text of written) {
-    push(text);
-  }
+  const distractors = usableDistractors(card, correctAnswer, written);
 
   if (distractors.length < REQUIRED_DISTRACTORS) return null;
 

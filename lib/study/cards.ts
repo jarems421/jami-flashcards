@@ -10,6 +10,7 @@ import {
 } from "@/lib/study/image-occlusion";
 import { normalizeStudyTextInput } from "@/lib/study/display-text";
 import { normalizeOptionalString, normalizeStringArray } from "@/lib/material/content";
+import { normalizeCardStudySettings } from "@/lib/study/card-study-settings";
 import type { CardStudySettings } from "@/lib/study/study-modes";
 
 export const MAX_FRONT_LENGTH = 400;
@@ -72,7 +73,11 @@ export type Card = {
   simpleStudyCorrectCount?: number;
   simpleStudyLastResult?: "correct" | "wrong";
   simpleStudyLastReviewedAt?: number;
-  /** Optional author overrides for the typed and gapped study modes. */
+  /**
+   * The author's own settings: other accepted answers, wrong answers for
+   * multiple choice, words to blank, ways not to ask it. Always read through
+   * `normalizeCardStudySettings`.
+   */
   studySettings?: CardStudySettings;
 };
 
@@ -555,6 +560,7 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
   const frontImage = normalizeCardImage(data.frontImage, userId);
   const backImage = normalizeCardImage(data.backImage, userId);
   const occlusion = normalizeCardOcclusion(data.occlusion, userId);
+  const studySettings = normalizeCardStudySettings(data.studySettings);
   return {
     id,
     deckId: typeof data.deckId === "string" ? data.deckId : "",
@@ -564,6 +570,7 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
     ...(frontImage ? { frontImage } : {}),
     ...(backImage ? { backImage } : {}),
     ...(occlusion ? { occlusion } : {}),
+    ...(studySettings ? { studySettings } : {}),
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     tags: normalizeCardTags(data.tags),
     topicIds: normalizeStringArray(data.topicIds, MAX_CARD_LEGACY_TOPIC_IDS, 120),

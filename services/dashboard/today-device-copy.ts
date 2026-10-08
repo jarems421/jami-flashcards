@@ -33,7 +33,7 @@ const KEY_PREFIX = "today:";
 /** Beyond the study day check, a ceiling for a clock that has been moved. */
 const MAX_AGE_MS = 20 * 60 * 60 * 1000;
 
-type CardWithoutContent = Omit<Card, "front" | "back" | "frontImage" | "backImage" | "occlusion">;
+type CardWithoutContent = Omit<Card, "front" | "back" | "frontImage" | "backImage" | "occlusion" | "studySettings">;
 type SourceWithoutContent = Omit<Source, "contentText">;
 
 export type TodayDeviceCopy = {
@@ -57,9 +57,11 @@ function withoutContent(card: Card): CardWithoutContent {
     frontImage: _frontImage,
     backImage: _backImage,
     occlusion: _occlusion,
+    // An author's own answers and wrong answers are what the card says, too.
+    studySettings: _studySettings,
     ...kept
   } = card;
-  void [_front, _back, _frontImage, _backImage, _occlusion];
+  void [_front, _back, _frontImage, _backImage, _occlusion, _studySettings];
   return kept;
 }
 

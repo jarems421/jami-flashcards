@@ -2,25 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useCardEditing } from "@/hooks/useCardEditing";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useParams } from "next/navigation";
 import {
   exportCardsToSeparatedText,
   getCardDuplicateKey,
-  getCardFacesError,
-  normalizeCardContentInput,
   type Card,
 } from "@/lib/study/cards";
-import { cardImageDraftFrom, type CardImageDraft } from "@/lib/study/card-images";
-import {
-  cardSaveErrorMessage,
-  commitCardImageDrafts,
-  deleteCardImageFiles,
-  releaseCardImageDraft,
-} from "@/services/study/card-images";
 import { getCardContentDuplicateCounts } from "@/lib/study/card-quality";
-import { applyOcclusionUpdates, mergeSavedDiagramCards } from "@/lib/study/image-occlusion";
-import { releaseDiagramLabels } from "@/services/study/image-occlusion";
+import { mergeSavedDiagramCards } from "@/lib/study/image-occlusion";
 import { useUser } from "@/components/providers/UserProvider";
 import type { Deck } from "@/lib/study/decks";
 import AppPage from "@/components/layout/AppPage";
@@ -40,12 +31,7 @@ import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import { getDeckById } from "@/services/study/decks";
-import {
-  deleteCard,
-  getCardsForDeck,
-  setCardTopicsInBulk,
-  updateCardContent,
-} from "@/services/study/cards";
+import { getCardsForDeck, setCardTopicsInBulk } from "@/services/study/cards";
 import { getActiveTopics } from "@/services/study/topics";
 import { MAX_LINKED_TOPICS, type Topic } from "@/lib/material/topics";
 import { getDeckStudyHref } from "@/lib/app/routes";
@@ -71,26 +57,26 @@ export default function DeckDetailPageClient() {
     showError,
     clear: clearFeedback,
   } = useFeedback();
-  const [editingCardId, setEditingCardId] = useState<string | null>(null);
-  const [editingFront, setEditingFront] = useState("");
-  const [editingBack, setEditingBack] = useState("");
-  const [editingFrontImage, setEditingFrontImage] = useState<CardImageDraft>();
-  const [editingBackImage, setEditingBackImage] = useState<CardImageDraft>();
-  const [editingTopicIds, setEditingTopicIds] = useState<string[]>([]);
-  // The card editor floats above the page, so its own failures belong beside
-  // its fields rather than in the page banner hidden behind it.
-  const [cardEditError, setCardEditError] = useState<string | null>(null);
-  const [savingCardId, setSavingCardId] = useState<string | null>(null);
-  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
-  const [previewCardId, setPreviewCardId] = useState<string | null>(null);
-  const [cardPendingDeleteId, setCardPendingDeleteId] = useState<string | null>(
-    null
-  );
   const [diagramStart, setDiagramStart] = useState<DiagramEditorStart | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [bulkTopicIds, setBulkTopicIds] = useState<string[]>([]);
   const [applyingBulkTopics, setApplyingBulkTopics] = useState(false);
+  // Editing, previewing and deleting one card at a time, the same way as the
+  // Cards page: the editor floats above the page and keeps its own errors.
+  const editingFeedback = useMemo(
+    () => ({ clear: clearFeedback, showError, success }),
+    [clearFeedback, showError, success]
+  );
+  const editing = useCardEditing({
+    cards,
+    setCards,
+    onCardDeleted: (cardId) =>
+      setSelectedCardIds((prev) => prev.filter((selectedId) => selectedId !== cardId)),
+    feedback: editingFeedback,
+    // A diagram label is edited with its whole diagram.
+    onEditDiagram: (card) => setDiagramStart({ kind: "edit", card }),
+  });
 
   useEffect(() => {
     if (!deckId) {
@@ -160,36 +146,6 @@ export default function DeckDetailPageClient() {
     };
   }, [clearFeedback, deckId, showError, user.uid]);
 
-  const resetEditingCard = () => {
-    releaseCardImageDraft(editingFrontImage);
-    releaseCardImageDraft(editingBackImage);
-    setEditingCardId(null);
-    setEditingFront("");
-    setEditingBack("");
-    setEditingFrontImage(undefined);
-    setEditingBackImage(undefined);
-    setEditingTopicIds([]);
-    setSavingCardId(null);
-    setCardEditError(null);
-  };
-
-  const startEditingCard = (card: Card) => {
-    // A diagram label is edited with its whole diagram.
-    if (card.occlusion) {
-      clearFeedback();
-      setDiagramStart({ kind: "edit", card });
-      return;
-    }
-    setEditingCardId(card.id);
-    setEditingFront(card.front);
-    setEditingBack(card.back);
-    setEditingFrontImage(cardImageDraftFrom(card.frontImage));
-    setEditingBackImage(cardImageDraftFrom(card.backImage));
-    setEditingTopicIds(card.topicIds ?? []);
-    setCardEditError(null);
-    clearFeedback();
-  };
-
   const addCreatedCardsToList = (createdCards: Card[]) => {
     if (createdCards.length === 0) {
       return;
@@ -242,100 +198,6 @@ export default function DeckDetailPageClient() {
     );
   };
 
-  const handleSaveCard = async (cardId: string) => {
-    const nextFront = normalizeCardContentInput(editingFront);
-    const nextBack = normalizeCardContentInput(editingBack);
-    const problem = getCardFacesError({
-      front: nextFront,
-      back: nextBack,
-      hasFrontImage: Boolean(editingFrontImage),
-      hasBackImage: Boolean(editingBackImage),
-    });
-
-    if (problem) {
-      setCardEditError(problem);
-      return;
-    }
-
-    const nextTopicIds = editingTopicIds;
-    const previous = cards.find((card) => card.id === cardId);
-
-    setSavingCardId(cardId);
-    setCardEditError(null);
-    clearFeedback();
-
-    try {
-      const { frontImage, backImage } = await commitCardImageDrafts({
-        userId: user.uid,
-        drafts: { frontImage: editingFrontImage, backImage: editingBackImage },
-        previous,
-        write: (images) =>
-          updateCardContent(cardId, {
-            front: nextFront,
-            back: nextBack,
-            topicIds: nextTopicIds,
-            ...images,
-          }),
-      });
-
-      setCards((prev) =>
-        prev.map((card) =>
-          card.id === cardId
-            ? {
-                ...card,
-                front: nextFront,
-                back: nextBack,
-                frontImage,
-                backImage,
-                tags: [],
-                topicIds: nextTopicIds,
-              }
-            : card
-        )
-      );
-      resetEditingCard();
-      success("Card updated.");
-    } catch (error) {
-      console.error(error);
-      setSavingCardId(null);
-      setCardEditError(cardSaveErrorMessage(error, "Failed to update card."));
-    }
-  };
-
-  const handleDeleteCard = async (cardId: string) => {
-    setDeletingCardId(cardId);
-    clearFeedback();
-
-    try {
-      const deleted = cards.find((card) => card.id === cardId);
-      await deleteCard(cardId);
-      if (deleted?.frontImage || deleted?.backImage) {
-        await deleteCardImageFiles([deleted.frontImage, deleted.backImage]);
-      }
-      const diagramCleanup = deleted
-        ? await releaseDiagramLabels(user.uid, [deleted])
-        : { updates: [], deletedCardIds: [] };
-      setCards((prev) =>
-        applyOcclusionUpdates(
-          prev.filter((card) => card.id !== cardId),
-          diagramCleanup.updates,
-          diagramCleanup.deletedCardIds
-        )
-      );
-      setSelectedCardIds((prev) => prev.filter((selectedId) => selectedId !== cardId));
-      if (editingCardId === cardId) {
-        resetEditingCard();
-      }
-      setCardPendingDeleteId(null);
-      success("Card deleted.");
-    } catch (error) {
-      console.error(error);
-      showError("Failed to delete card.");
-    } finally {
-      setDeletingCardId(null);
-    }
-  };
-
   const deckTopicCount = new Set(cards.flatMap((card) => card.topicIds ?? [])).size;
   const topicsById = useMemo(() => new Map(topics.map((topic) => [topic.id, topic])), [topics]);
   const filteredCards = useMemo(() => {
@@ -374,8 +236,9 @@ export default function DeckDetailPageClient() {
     () => getBulkTopicCapacity(selectedCards),
     [selectedCards]
   );
-  const previewCard = cards.find((card) => card.id === previewCardId) ?? null;
-  const editingCard = cards.find((card) => card.id === editingCardId) ?? null;
+  const previewCard = editing.preview.card;
+  const editingCard = editing.card;
+  const pendingDeleteId = editing.deletion.pendingCardId;
   const topicNamesById = useMemo(
     () => Object.fromEntries(topics.map((topic) => [topic.id, topic.name])),
     [topics]
@@ -444,22 +307,17 @@ export default function DeckDetailPageClient() {
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} />
       ) : null}
       <ConfirmDialog
-        open={cardPendingDeleteId !== null}
+        open={pendingDeleteId !== null}
         title="Delete this card?"
         description={
-          cards.find((card) => card.id === cardPendingDeleteId)?.occlusion
+          cards.find((card) => card.id === pendingDeleteId)?.occlusion
             ? "This removes this label from its diagram, with its review history. The diagram's other labels stay. This cannot be undone."
             : "This permanently removes the card from this deck and its review queue. This cannot be undone."
         }
         confirmLabel="Delete card"
-        busy={
-          cardPendingDeleteId !== null &&
-          deletingCardId === cardPendingDeleteId
-        }
-        onClose={() => setCardPendingDeleteId(null)}
-        onConfirm={() => {
-          if (cardPendingDeleteId) void handleDeleteCard(cardPendingDeleteId);
-        }}
+        busy={pendingDeleteId !== null && editing.rows.isDeleting(pendingDeleteId)}
+        onClose={editing.deletion.close}
+        onConfirm={() => void editing.deletion.confirm()}
       />
 
       {deck ? (
@@ -624,8 +482,8 @@ export default function DeckDetailPageClient() {
 
           <DeckDiagramsSection
             cards={cards}
-            onEdit={startEditingCard}
-            onPreview={(card) => setPreviewCardId(card.id)}
+            onEdit={editing.start}
+            onPreview={(card) => editing.preview.open(card.id)}
           />
           <DiagramMixUpsSection userId={user.uid} cards={cards} />
 
@@ -654,7 +512,7 @@ export default function DeckDetailPageClient() {
                           frontImage={card.frontImage}
                           backImage={card.backImage}
                           occlusion={card.occlusion}
-                          onPreview={() => setPreviewCardId(card.id)}
+                          onPreview={() => editing.preview.open(card.id)}
                         />
                       </div>
                       <div className="flex shrink-0 items-center gap-0.5">
@@ -670,10 +528,10 @@ export default function DeckDetailPageClient() {
                           />
                         </label>
                         <CardActionsMenu
-                          deleting={deletingCardId === card.id}
-                          disabled={deletingCardId === card.id}
-                          onEdit={() => startEditingCard(card)}
-                          onDelete={() => setCardPendingDeleteId(card.id)}
+                          deleting={editing.rows.isDeleting(card.id)}
+                          disabled={editing.rows.isDeleting(card.id)}
+                          onEdit={() => editing.start(card)}
+                          onDelete={() => editing.deletion.request(card.id)}
                         />
                       </div>
                     </div>
@@ -696,11 +554,8 @@ export default function DeckDetailPageClient() {
           const topic = topicsById.get(topicId);
           return topic ? [topic.name] : [];
         })}
-        onClose={() => setPreviewCardId(null)}
-        onEdit={(card) => {
-          setPreviewCardId(null);
-          startEditingCard(card);
-        }}
+        onClose={editing.preview.close}
+        onEdit={editing.preview.edit}
       />
       <DiagramEditorDialog
         start={diagramStart}
@@ -727,13 +582,7 @@ export default function DeckDetailPageClient() {
       />
       <CardEditorDialog
         card={editingCard}
-        draft={{
-          front: editingFront,
-          back: editingBack,
-          topicIds: editingTopicIds,
-          frontImage: editingFrontImage,
-          backImage: editingBackImage,
-        }}
+        draft={editing.draft}
         userId={user.uid}
         topics={topics}
         topicNamesById={topicNamesById}
@@ -743,21 +592,13 @@ export default function DeckDetailPageClient() {
             ? duplicateCounts.get(getCardDuplicateKey(editingCard))
             : undefined
         }
-        saving={editingCard ? savingCardId === editingCard.id : false}
-        error={cardEditError}
-        onDraftChange={(patch) => {
-          if (patch.front !== undefined) setEditingFront(patch.front);
-          if (patch.back !== undefined) setEditingBack(patch.back);
-          if (patch.topicIds !== undefined) setEditingTopicIds(patch.topicIds);
-          // Removing an image is a patch whose value is undefined, so these
-          // ask whether the side was mentioned rather than what it holds.
-          if ("frontImage" in patch) setEditingFrontImage(patch.frontImage);
-          if ("backImage" in patch) setEditingBackImage(patch.backImage);
-        }}
+        saving={editingCard ? editing.rows.isSaving(editingCard.id) : false}
+        error={editing.error}
+        onDraftChange={editing.rows.updateDraft}
         onTopicsChange={setTopics}
-        onCancel={resetEditingCard}
+        onCancel={editing.cancel}
         onSave={() => {
-          if (editingCard) void handleSaveCard(editingCard.id);
+          if (editingCard) void editing.save(editingCard.id);
         }}
       />
     </AppPage>

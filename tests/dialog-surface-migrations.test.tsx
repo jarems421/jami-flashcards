@@ -9,6 +9,7 @@ import InAppNotice from "@/components/layout/InAppNotice";
 import { SourceWorkspaceDrawer } from "@/components/library/SourceWorkspace";
 import NotebookAddPagesDialog from "@/components/workspace/NotebookAddPagesDialog";
 import ObjectActionsSheet from "@/components/workspace/ObjectActionsSheet";
+import { EMPTY_STUDY_SETTINGS_DRAFT } from "@/lib/study/card-study-settings";
 import type { Card } from "@/lib/study/cards";
 
 const loadActiveInAppNotice = vi.fn();
@@ -230,7 +231,7 @@ describe("migrated dialog surfaces", () => {
     }) => (
       <CardEditorDialog
         card={card}
-        draft={draft}
+        draft={{ ...draft, studySettings: EMPTY_STUDY_SETTINGS_DRAFT }}
         userId="user-1"
         topics={[]}
         topicNamesById={{}}

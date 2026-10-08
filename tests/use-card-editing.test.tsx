@@ -101,7 +101,48 @@ describe("useCardEditing", () => {
       front: "Question",
       back: "Answer",
       topicIds: ["topic-1"],
+      studySettings: { acceptedAnswers: [], wrongAnswers: [], pinnedGaps: [], disabledModes: [] },
     });
+  });
+
+  it("saves a card's own study settings only when they changed, keeping what the editor does not show", async () => {
+    const withSettings: Card = {
+      ...startingCard,
+      studySettings: { acceptedAnswers: ["Reply"], requireUnits: true, disabledModes: ["classic", "gap-fill"] },
+    };
+    act(() => root.render(<Harness key="with-settings" initial={[withSettings]} />));
+
+    // Saved untouched, the settings are not written at all.
+    act(() => editing.start(withSettings));
+    expect(editing.draft.studySettings).toEqual({
+      acceptedAnswers: ["Reply"],
+      wrongAnswers: [],
+      pinnedGaps: [],
+      disabledModes: ["gap-fill"],
+    });
+    await act(async () => editing.save("card-1"));
+    expect(mocks.updateCardContent.mock.calls[0]?.[1]).not.toHaveProperty("studySettings");
+
+    act(() => editing.start(renderedCards[0]!));
+    act(() =>
+      editing.rows.updateDraft({
+        studySettings: { acceptedAnswers: [], wrongAnswers: ["Riddle", "Rumour", "Rhyme"], pinnedGaps: [], disabledModes: [] },
+      })
+    );
+    await act(async () => editing.save("card-1"));
+    const written = { requireUnits: true, disabledModes: ["classic"], mcqDistractors: ["Riddle", "Rumour", "Rhyme"] };
+    expect(mocks.updateCardContent.mock.calls[1]?.[1]).toMatchObject({ studySettings: written });
+    expect(renderedCards[0]?.studySettings).toEqual(written);
+
+    // Emptied entirely, they are removed rather than saved empty.
+    act(() =>
+      root.render(<Harness key="one-answer" initial={[{ ...startingCard, studySettings: { acceptedAnswers: ["Reply"] } }]} />)
+    );
+    act(() => editing.start(renderedCards[0]!));
+    act(() => editing.rows.updateDraft({ studySettings: { acceptedAnswers: [], wrongAnswers: [], pinnedGaps: [], disabledModes: [] } }));
+    await act(async () => editing.save("card-1"));
+    expect(mocks.updateCardContent.mock.calls[2]?.[1]).toMatchObject({ studySettings: null });
+    expect(renderedCards[0]).not.toHaveProperty("studySettings");
   });
 
   it("validates and saves a normalized card draft", async () => {

@@ -15,6 +15,7 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { createLogger } from "@/lib/observability/logger";
 import { getCardContentHash } from "@/lib/study/study-modes";
 import { normalizeCardImage } from "@/lib/study/card-images";
+import { normalizeCardStudySettings } from "@/lib/study/card-study-settings";
 import { normalizeCardOcclusion } from "@/lib/study/image-occlusion";
 import { getStudyAssetCacheKey } from "@/lib/ai/study-assets";
 import { selectClozeGaps } from "@/lib/study/gap-fill";
@@ -121,10 +122,13 @@ export async function POST(request: NextRequest) {
   // would be refused as stale.
   const frontImage = normalizeCardImage(card.frontImage, uid);
   const occlusion = normalizeCardOcclusion(card.occlusion, uid);
+  // Read as the browser reads them, or a card with settings would fingerprint
+  // differently here and every check on it would be refused as stale.
+  const studySettings = normalizeCardStudySettings(card.studySettings);
   const currentSourceHash = getCardContentHash({
     front,
     back: expectedAnswer,
-    studySettings: card.studySettings,
+    studySettings,
     frontImage,
     backImage: normalizeCardImage(card.backImage, uid),
     occlusion,
@@ -138,30 +142,27 @@ export async function POST(request: NextRequest) {
 
   const assetSnapshot = await db.collection("cardStudyAssets").doc(cardId).get();
   const storedAsset = assetSnapshot.data();
-  const expectedAssetKey = getStudyAssetCacheKey({ front, back: expectedAnswer, studySettings: card.studySettings });
+  const expectedAssetKey = getStudyAssetCacheKey({ front, back: expectedAnswer, studySettings });
   if (assetKey && (!bundleRevision || storedAsset?.bundleRevision !== bundleRevision || storedAsset?.validatorVersion !== STUDY_ASSET_VALIDATOR_VERSION || storedAsset?.generationFailed || assetKey !== expectedAssetKey || storedAsset?.cacheKey !== assetKey || storedAsset?.sourceFingerprint !== currentSourceHash)) {
     return Response.json({ verdict: "needs-self-grade", reason: "stale-exercise" }, { status: 409 });
   }
   // No prepared bundle was displayed: later generation must not add requirements.
   const assetData = assetKey ? storedAsset : undefined;
-  const authorSettings = card.studySettings && typeof card.studySettings === "object" && !Array.isArray(card.studySettings)
-    ? card.studySettings as Record<string, unknown>
-    : {};
-  const requiredConcepts: string[] = Array.isArray(authorSettings.requiredConcepts)
-    ? (authorSettings.requiredConcepts as unknown[]).filter((item): item is string => typeof item === "string").slice(0, 5)
+  const requiredConcepts: string[] = studySettings?.requiredConcepts
+    ? studySettings.requiredConcepts.slice(0, 5)
     : assetData?.userId === uid && assetData?.cacheKey === expectedAssetKey && Array.isArray(assetData?.asset?.requiredConcepts)
       ? (assetData.asset.requiredConcepts as string[]).slice(0, 5)
       : [];
-  const acceptedAnswers: string[] = Array.isArray(authorSettings.acceptedAnswers)
-    ? (authorSettings.acceptedAnswers as unknown[]).filter((item): item is string => typeof item === "string").slice(0, 6)
+  const acceptedAnswers: string[] = studySettings?.acceptedAnswers
+    ? studySettings.acceptedAnswers.slice(0, 6)
     : assetData?.userId === uid && assetData?.cacheKey === expectedAssetKey && Array.isArray(assetData?.asset?.acceptedAliases)
       ? (assetData.asset.acceptedAliases as string[]).slice(0, 6)
       : [];
   const assetGapVariants = assetData?.userId === uid && assetData?.cacheKey === expectedAssetKey && Array.isArray(assetData?.asset?.gapVariants)
     ? assetData.asset.gapVariants as Array<{ id: string; gaps: Array<{ id?: string; answer: string; acceptedAnswers?: string[]; concept?: string }> }>
     : [];
-  const authorGaps = variantId === "author-pinned" && Array.isArray(authorSettings.pinnedGaps)
-    ? selectClozeGaps({ front, back: expectedAnswer, settings: authorSettings })
+  const authorGaps = variantId === "author-pinned" && studySettings?.pinnedGaps
+    ? selectClozeGaps({ front, back: expectedAnswer, settings: studySettings })
     : [];
   const gapVariant = gapResponses && variantId
     ? variantId === "author-pinned" && authorGaps.length > 0
@@ -254,10 +255,10 @@ export async function POST(request: NextRequest) {
                     expectedAnswer,
                     acceptedAlternatives: acceptedAnswers,
                     requiredIdeas: requiredConcepts,
-                    caseSensitive: authorSettings.caseSensitive === true,
-                    requireUnits: authorSettings.requireUnits,
-                    numericTolerance: authorSettings.numericTolerance,
-                    listOrder: authorSettings.listOrder,
+                    caseSensitive: studySettings?.caseSensitive === true,
+                    requireUnits: studySettings?.requireUnits,
+                    numericTolerance: studySettings?.numericTolerance,
+                    listOrder: studySettings?.listOrder,
                   },
                   studentResponse: response,
                   gaps: gapVariant?.gaps.map((gap, index) => {

@@ -38,6 +38,7 @@ import {
 } from "@/lib/study/cards";
 import type { CardImage } from "@/lib/study/card-images";
 import type { CardOcclusion } from "@/lib/study/image-occlusion";
+import type { CardStudySettings } from "@/lib/study/study-modes";
 import { reportTutorialAction } from "@/lib/onboarding/tutorial";
 
 const LOAD_MS = 30_000;
@@ -59,6 +60,8 @@ type CreateCardInput = {
   createdAt?: number;
   /** The recommendation that asked for this card, when Jami wrote it. */
   createdByInterventionId?: string;
+  /** The author's own settings, from `applyStudySettingsDraft`. */
+  studySettings?: CardStudySettings;
 };
 
 type CreateCardsInBatchesInput = {
@@ -75,7 +78,7 @@ type CardWrite = Pick<
   Card,
   "deckId" | "userId" | "front" | "back" | "tags" | "topicIds" | "createdAt"
 > &
-  Partial<Pick<Card, "frontImage" | "backImage" | "occlusion" | "createdByInterventionId">>;
+  Partial<Pick<Card, "frontImage" | "backImage" | "occlusion" | "createdByInterventionId" | "studySettings">>;
 
 export class CardBatchCreateError extends Error {
   readonly createdCards: Card[];
@@ -116,6 +119,7 @@ export function buildNewCard(
     ...(input.createdByInterventionId
       ? { createdByInterventionId: input.createdByInterventionId }
       : {}),
+    ...(input.studySettings ? { studySettings: input.studySettings } : {}),
     tags: [],
     topicIds: [...(input.topicIds ?? [])],
     createdAt,
@@ -134,6 +138,7 @@ export function getCardWrite(card: Card): CardWrite {
     ...(card.createdByInterventionId
       ? { createdByInterventionId: card.createdByInterventionId }
       : {}),
+    ...(card.studySettings ? { studySettings: card.studySettings } : {}),
     tags: card.tags,
     topicIds: card.topicIds,
     createdAt: card.createdAt,
@@ -282,6 +287,8 @@ export async function updateCardContent(
     /** Only sides that changed: an image to set, or null to remove it. */
     frontImage?: CardImage | null;
     backImage?: CardImage | null;
+    /** Only when they changed: the author's own settings, or null to clear them. */
+    studySettings?: CardStudySettings | null;
   }
 ) {
   await updateDoc(doc(db, "cards", cardId), {
@@ -294,6 +301,9 @@ export async function updateCardContent(
       : {}),
     ...(input.backImage !== undefined
       ? { backImage: input.backImage ?? deleteField() }
+      : {}),
+    ...(input.studySettings !== undefined
+      ? { studySettings: input.studySettings ?? deleteField() }
       : {}),
   });
   invalidateAllDashboardData();

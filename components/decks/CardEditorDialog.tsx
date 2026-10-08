@@ -5,6 +5,7 @@ import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import CardImageField from "@/components/decks/CardImageField";
+import CardStudyOptions from "@/components/decks/CardStudyOptions";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import TopicPicker from "@/components/topics/TopicPicker";
 import {
@@ -21,6 +22,7 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import type { Topic } from "@/lib/material/topics";
 import { getCardQualityWarnings } from "@/lib/study/card-quality";
 import { isUnchangedCardImageDraft } from "@/lib/study/card-images";
+import { studySettingsChange } from "@/lib/study/card-study-settings";
 import {
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
@@ -83,7 +85,8 @@ export default function CardEditorDialog({
       draft.back !== card.back ||
       !isUnchangedCardImageDraft(draft.frontImage, card.frontImage) ||
       !isUnchangedCardImageDraft(draft.backImage, card.backImage) ||
-      !hasSameTopics(draft.topicIds, card.topicIds ?? [])
+      !hasSameTopics(draft.topicIds, card.topicIds ?? []) ||
+      studySettingsChange(card.studySettings, draft.studySettings) !== null
     : false;
 
   return (
@@ -194,6 +197,15 @@ export default function CardEditorDialog({
                 selectedTopicIds={draft.topicIds}
                 onChange={(topicIds) => onDraftChange({ topicIds })}
                 onTopicsChange={onTopicsChange}
+                disabled={saving}
+              />
+              <CardStudyOptions
+                front={draft.front}
+                back={draft.back}
+                hasBackImage={Boolean(draft.backImage)}
+                saved={card.studySettings}
+                value={draft.studySettings}
+                onChange={(studySettings) => onDraftChange({ studySettings })}
                 disabled={saving}
               />
             </div>

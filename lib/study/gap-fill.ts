@@ -16,6 +16,58 @@ function validPreparedGap(back: string, gap: StudyGap, ranges: Array<[number, nu
     !overlapsProtected(ranges, gap.start, gap.end);
 }
 
+/** Why an author's words to blank give no gaps, for the card editor to say. */
+export type AuthorGapProblem =
+  | { kind: "answer-too-short" }
+  | { kind: "not-in-answer" }
+  | { kind: "too-many"; allowed: number }
+  | { kind: "too-much-hidden" };
+
+/**
+ * An author's words to blank, as gaps.
+ *
+ * Each is found in the answer exactly, in order, outside maths and code; a word
+ * that is not there is skipped and reported as `missing`. The rest are kept only
+ * if the answer has room for that many -- one gap up to twelve words, two up to
+ * thirty-five, three beyond -- and no more than a third of it is hidden. A list
+ * that fails that gives no gaps at all, which turns Gap Fill off for the card,
+ * and so does an explicitly empty one.
+ */
+export function pinAuthorGaps(
+  back: string,
+  pins: readonly string[]
+): { gaps: StudyGap[]; missing: string[]; problem: AuthorGapProblem | null } {
+  const ranges = protectedRanges(back);
+  const pinned: StudyGap[] = [];
+  const missing: string[] = [];
+  let cursor = 0;
+  for (const raw of pins.slice(0, 3)) {
+    const answer = raw.trim();
+    const start = answer ? back.indexOf(answer, cursor) : -1;
+    if (start < 0 || overlapsProtected(ranges, start, start + answer.length)) {
+      if (answer) missing.push(answer);
+      continue;
+    }
+    pinned.push({ id: `author-${start}`, start, end: start + answer.length, answer, acceptedAnswers: [], concept: answer });
+    cursor = start + answer.length;
+  }
+  const totalWords = back.trim().split(/\s+/).filter(Boolean).length;
+  const maxGaps = totalWords < 4 ? 0 : totalWords <= 12 ? 1 : totalWords <= 35 ? 2 : 3;
+  const hiddenWords = pinned.reduce((sum, gap) => sum + gap.answer.split(/\s+/).filter(Boolean).length, 0);
+  if (pinned.length > 0 && pinned.length <= maxGaps && hiddenWords / Math.max(1, totalWords) <= 1 / 3) {
+    return { gaps: pinned, missing, problem: null };
+  }
+  const problem: AuthorGapProblem | null =
+    pinned.length === 0
+      ? missing.length > 0 ? { kind: "not-in-answer" } : null
+      : maxGaps === 0
+        ? { kind: "answer-too-short" }
+        : pinned.length > maxGaps
+          ? { kind: "too-many", allowed: maxGaps }
+          : { kind: "too-much-hidden" };
+  return { gaps: [], missing, problem };
+}
+
 /**
  * Resolve one stable, validated set of one to three gaps. Prepared variants are
  * rotated by presentation; author-pinned spans come next; the conservative
@@ -56,23 +108,7 @@ export function selectClozeGaps(input: {
   }
 
   const pins = input.settings?.pinnedGaps;
-  if (pins !== undefined) {
-    const pinned: StudyGap[] = [];
-    let cursor = 0;
-    for (const raw of pins.slice(0, 3)) {
-      const answer = raw.trim();
-      const start = answer ? back.indexOf(answer, cursor) : -1;
-      if (start < 0 || overlapsProtected(ranges, start, start + answer.length)) continue;
-      pinned.push({ id: `author-${start}`, start, end: start + answer.length, answer, acceptedAnswers: [], concept: answer });
-      cursor = start + answer.length;
-    }
-    const totalWords = back.trim().split(/\s+/).filter(Boolean).length;
-    const maxGaps = totalWords < 4 ? 0 : totalWords <= 12 ? 1 : totalWords <= 35 ? 2 : 3;
-    const hiddenWords = pinned.reduce((sum, gap) => sum + gap.answer.split(/\s+/).filter(Boolean).length, 0);
-    // An explicitly empty or structurally unsafe author list disables gaps.
-    if (pinned.length > 0 && pinned.length <= maxGaps && hiddenWords / Math.max(1, totalWords) <= 1 / 3) return pinned;
-    return [];
-  }
+  if (pins !== undefined) return pinAuthorGaps(back, pins).gaps;
 
   /*
    * Nothing prepared and nothing pinned: choose one gap here.

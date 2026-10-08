@@ -37,6 +37,7 @@ function card(id: string, overrides: Partial<Card> = {}): Card {
     front: `What is written on ${id}`,
     back: `The answer on ${id}`,
     frontImage: { storagePath: `users/${USER}/${id}.png`, width: 10, height: 10 } as Card["frontImage"],
+    studySettings: { acceptedAnswers: [`Another answer on ${id}`], mcqDistractors: [`A wrong answer on ${id}`] },
     createdAt: 1,
     tags: [],
     topicIds: ["topic-1"],
@@ -97,6 +98,7 @@ describe("the device copy of Today", () => {
     const kept = JSON.stringify(copy);
     expect(kept).not.toContain("What is written on");
     expect(kept).not.toContain("The answer on");
+    expect(kept).not.toContain("answer on");
     expect(kept).not.toContain("storagePath");
     expect(kept).not.toContain("Everything the lecture said");
     // The scheduling that decides what is due and what is at risk stays.
