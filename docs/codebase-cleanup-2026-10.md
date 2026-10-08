@@ -276,8 +276,9 @@ fixed:
   writes. And it presses "Start now" on the preparing screen, as a student
   would, since the emulator has no AI provider.
 - The revision plan seeded "today" from the calendar rather than the study
-  day, which runs 4pm to 4pm London time, so before 4pm its session landed on
-  the wrong day; and it looked for "Today's plan" with a straight apostrophe.
+  day, which then ran 4pm to 4pm London time (4am to 4am since 7 October), so
+  before 4pm its session landed on the wrong day; and it looked for "Today's
+  plan" with a straight apostrophe.
 - The card editor walkthrough measured the grid with the pointer still on a
   card, which lifts 2px on hover by design, and read that as the grid moving.
 
@@ -285,49 +286,48 @@ The last full run passed 53 of 54, in seven minutes; the one left was the
 study modes walkthrough, fixed by seeding its prepared questions, and it now
 passes run straight after the offline spec whose session used to leak into it.
 
+## The owner's decisions — 8 October
+
+- **The retired demo accounts are closed.** All four were disabled in Firebase
+  Authentication and their refresh tokens revoked, so no session from before
+  July can call anything.
+- **Today no longer reads the legacy `masteryEvents` collection.** Production
+  held one event, on a two-card account. Before the read went, the heaviest
+  account (thousands of cards on many Topics, last studied in May) was checked:
+  its Topics reach the Learning Engine through each card's own review history,
+  not through those events, so nothing a student sees on Topics or Progress
+  changes. The read, its device copy and the route that summed it are gone.
+- **Marking-job checkpoints are cleared** once a mark is finished, in a step of
+  its own after finalizing; a job that pauses, fails or is cancelled keeps its
+  checkpoint for the retry.
+- **A second model checks drawn paper figures** (`reviewPaperFigures`): one
+  short paper-check pass a paper, whose faults buy one redraw and never
+  refuse a paper. `PRACTICE_PAPER_FIGURE_REVIEW_ENABLED=false` turns it off.
+- **Your mix-ups** on the deck page shows the diagram labels a student gives
+  for each other, from `loadDiagramConfusionEvents` (see
+  `docs/image-occlusion.md`).
+- **A card's own study settings** are written by the card editor and the
+  single-card creator (other right answers, wrong answers for multiple choice,
+  words to blank, ways to ask it), and read through one normaliser on the
+  server and in the browser, so both fingerprint a card alike. The deck page
+  now edits cards through the same hook as the Cards page.
+- **The notebook page and the memory map's engine were split**: 1,197 to 1,073
+  and 1,189 to 1,004 lines. The Tutor route and drawer had already been split
+  on 7 October.
+
 ## Left for the owner
 
-- **The Tutor route and drawer** (`app/api/ai/assistant/route.ts`,
-  `components/ai/JamiAssistantDrawer.tsx`) are the two files still over the
-  gate. The unmerged branches `tutor-learning-engine` and
-  `tutor-app-knowledge` both edit them; splitting them first would make those
-  merges far harder.
-- **Closing the retired demo account for good.** Disabling or deleting the
-  demo user in Firebase Authentication (or revoking its refresh tokens) ends
-  any session left from before July. Until then, a few server routes still
-  accept its claim, though the rules refuse it the same writes from the
-  client: paper generation, marking and re-marking, paper deletion and
-  actions, video-card jobs, source indexing, card autocomplete and source
-  drafts, billing checkout and portal. Once the account is closed, the demo
-  checks in the rules and routes can go as well.
-- **Four functions that look planned rather than abandoned**, kept unwired:
-  `reviewDrawnFigure`, `cleanPracticePaperMarkingJobArtifacts` (marking-job
-  checkpoints are never deleted), `loadCoverageWithLazyBanks` and
-  `loadDiagramConfusionEvents`.
-- **Today still reads the legacy `masteryEvents` collection** on every load.
-  Its last writer went in May (`d0c3477a`), but the read sums every event a
-  topic ever had, and Today lists a topic whose sum is negative as "Recent
-  practice showed difficulty" -- about practice at least four months old, and
-  outside the Learning Engine. Dropping the read changes which topics Today
-  lists for students who used that early practice loop, so it is a data
-  decision.
-- **Two more copies of the token check.** Tutor's memory and personalisation
-  routes call `authenticateAssistantWriter`, and paper generation its own
-  `authenticate`; both read the demo claim in their own way. Folding them into
-  `authenticateRequest` / `authenticateWriteRequest` changes code that refuses
-  the demo account, so it belongs with closing that account, when those
-  checks can go altogether.
-- **A card's own study settings never reach Learn.** `Card.studySettings`
-  (an author's wrong answers, accepted answers, pinned gaps, modes turned off)
-  is honoured throughout the study modes, and the server's answer check and
-  preparation read it from the card document, but `mapCardData` never copies
-  it, and no screen has ever written it. No student is affected today. Either
-  map it (validated) for a future card-editor feature, or remove the author
-  half; it should not stay half-wired, because a card that did carry it would
-  have its prepared questions fingerprinted differently by server and client,
-  and never load.
-- **Two files sit just under the gate**: the notebook page (1,196) and the
-  memory map's engine (1,189). The next change of any size to either will
-  fail CI, so split it before adding to it.
+- **The demo checks in the rules and routes** can go now the accounts are
+  closed, with the two copies of the token check that read the demo claim in
+  their own way (`authenticateAssistantWriter` for Tutor's memory and
+  personalisation, and paper generation's `authenticate`).
+- **`loadCoverageWithLazyBanks`** stays unwired, for Learning Engine Phase 3.
+- **The notebook page is not React Compiler clean.** The compiler is not on in
+  the build, but its lint rules are, and today something in the page's
+  frame-measuring effects makes it skip the page. Moved out, it reads the
+  whole page and reports thirteen hand-memoised callbacks it cannot keep
+  stable through the controllers' return objects. Turning the compiler on, or
+  moving those effects, means reworking how the controllers hand callbacks to
+  one another first.
 - About 800 exports are used only inside their own file. They are not dead
   code, and un-exporting them would touch hundreds of files for little gain.
