@@ -10,6 +10,7 @@ import {
   resolveSourceFileMimeType,
   validateSourceFile,
 } from "@/lib/material/source-files";
+import { createSource, deleteSource, updateSource } from "@/services/study/sources";
 
 export function validateSourceUploadFile(file: File) {
   const fileType = resolveSourceFileMimeType(file.name, file.type);
@@ -63,6 +64,49 @@ export async function uploadSourceFile(input: {
     };
   } catch (error) {
     throw new Error(getStorageUploadErrorMessage(error, "source file"));
+  }
+}
+
+/**
+ * A file added to a student's sources: the source, its upload and the file
+ * attached to it, undone together if any step fails so no half-made source is
+ * left behind. Shared by the Sources page and the sheets beside a notebook page.
+ */
+export async function createFileSource(input: {
+  userId: string;
+  file: File;
+  title: string;
+  folderIds: string[];
+  topicIds?: string[];
+  onProgress?: (progress: number) => void;
+}) {
+  const { userId, file, onProgress } = input;
+  const fileType = validateSourceUploadFile(file) ?? file.type;
+  let sourceId = "";
+  let storagePath = "";
+  try {
+    sourceId = await createSource(userId, {
+      title: input.title.trim() || file.name,
+      type: "file",
+      topicIds: input.topicIds ?? [],
+      folderIds: input.folderIds,
+      fileName: file.name,
+      fileType,
+    });
+    const upload = await uploadSourceFile({ userId, sourceId, file, onProgress });
+    storagePath = upload.storagePath;
+    await updateSource(userId, sourceId, {
+      fileName: upload.fileName,
+      fileType: upload.fileType,
+      storagePath: upload.storagePath,
+      sizeBytes: upload.sizeBytes,
+    });
+    return { sourceId, ...upload };
+  } catch (error) {
+    // Best-effort rollback; the original failure is what the student is told.
+    if (storagePath) await deleteSourceFile(storagePath).catch(() => undefined);
+    if (sourceId) await deleteSource(userId, sourceId).catch(() => undefined);
+    throw error;
   }
 }
 

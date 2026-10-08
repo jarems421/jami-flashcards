@@ -8,10 +8,12 @@ import {
   floatingRectStyle,
   type FloatingFrame,
 } from "@/components/ai/JamiFloatingTutor";
+import { SheetControlsBar, SheetZoomControls } from "@/components/workspace/NotebookSheetControls";
 import NotebookSheetPdf from "@/components/workspace/NotebookSheetPdf";
 import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
 import { useFloatingPanel } from "@/hooks/useFloatingPanel";
 import { useNotebookSheetImageUrl } from "@/hooks/useNotebookSheet";
+import { useSheetZoom } from "@/hooks/useSheetZoom";
 import type { NotebookSheet } from "@/lib/workspace/notebook-sheet";
 
 /*
@@ -215,13 +217,28 @@ function SheetBody({
   }
   if (image.failed) return unavailable;
   return image.url ? (
-    <div className="min-h-0 flex-1 overflow-y-auto p-2">
-      {/* eslint-disable-next-line @next/next/no-img-element -- a signed URL for the student's own file */}
-      <img src={image.url} alt={sheet.title} className="block w-full rounded-sm bg-white shadow-card" />
-    </div>
+    <PictureSheet key={sheet.storagePath} url={image.url} title={sheet.title} />
   ) : (
     <div role="status" className="grid min-h-[10rem] place-items-center text-sm font-semibold text-text-muted">
       Loading…
+    </div>
+  );
+}
+
+/** A picture kept beside the page, fitted to the panel's width and zoomed like a PDF sheet. */
+function PictureSheet({ url, title }: { url: string; title: string }) {
+  const { setHost, setScroller, zoom } = useSheetZoom();
+  return (
+    <div ref={setHost} className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={setScroller} className="min-h-0 flex-1 overflow-auto overscroll-contain p-2 pb-12">
+        <div style={{ width: `${zoom.level * 100}%`, ...zoom.contentStyle }}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- a signed URL for the student's own file */}
+          <img src={url} alt={title} className="block w-full rounded-sm bg-white shadow-card" />
+        </div>
+      </div>
+      <SheetControlsBar>
+        <SheetZoomControls zoom={zoom} />
+      </SheetControlsBar>
     </div>
   );
 }

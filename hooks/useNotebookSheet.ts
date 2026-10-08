@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import {
   addNotebookSheet,
   EMPTY_NOTEBOOK_SHEETS,
+  isNotebookSheetFileType,
+  notebookSheetFromUploadedSource,
   notebookSheetsFromSources,
+  notebookSheetTitleForFile,
   notebookSheetStorageKey,
   parseStoredNotebookSheets,
   removeNotebookSheet,
@@ -14,7 +17,7 @@ import {
   type NotebookSheets,
 } from "@/lib/workspace/notebook-sheet";
 import { getNotebookFileDownloadUrl } from "@/services/study/notebook-files";
-import { getSourceFileDownloadUrl } from "@/services/study/source-files";
+import { createFileSource, getSourceFileDownloadUrl } from "@/services/study/source-files";
 import { getActiveSourcesForFolderPage } from "@/services/study/sources";
 
 function readStored(notebookId: string): NotebookSheets {
@@ -113,6 +116,51 @@ export function useFolderSheetChoices(input: { userId: string; folderId: string;
     sheets: current?.sheets ?? [],
     loading: input.enabled && current === null,
     failed: current?.failed ?? false,
+  };
+}
+
+export type NotebookSheetUpload = { progress: number | null; error: string | null };
+
+/**
+ * Uploading a sheet from the picker. The file is added to the folder's sources,
+ * like any file a student adds there, so it is offered again from the folder
+ * and can be used beyond this notebook. A notebook's own files are not the
+ * place: in a notebook with no file of its own, the newest one is drawn behind
+ * every page.
+ */
+export function useNotebookSheetUpload({ userId, folderId }: { userId: string; folderId: string }) {
+  const [upload, setUpload] = useState<NotebookSheetUpload | null>(null);
+  const start = useCallback(
+    async (file: File, onUploaded: (sheet: NotebookSheet) => void) => {
+      if (!isNotebookSheetFileType(file.type)) {
+        setUpload({ progress: null, error: "Choose a PDF, or a JPEG, PNG or WebP picture." });
+        return;
+      }
+      setUpload({ progress: 0, error: null });
+      try {
+        const created = await createFileSource({
+          userId,
+          file,
+          title: notebookSheetTitleForFile(file.name),
+          folderIds: folderId ? [folderId] : [],
+          onProgress: (progress) => setUpload({ progress, error: null }),
+        });
+        const sheet = notebookSheetFromUploadedSource(created);
+        setUpload(null);
+        if (sheet) onUploaded(sheet);
+      } catch (error) {
+        setUpload({
+          progress: null,
+          error: error instanceof Error ? error.message : "That file could not be uploaded. Try again.",
+        });
+      }
+    },
+    [folderId, userId]
+  );
+  return {
+    upload,
+    start,
+    clear: useCallback(() => setUpload(null), []),
   };
 }
 

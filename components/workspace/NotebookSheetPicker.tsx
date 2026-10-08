@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import {
   Button,
   Dialog,
@@ -10,11 +11,13 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
-import type { NotebookSheet } from "@/lib/workspace/notebook-sheet";
+import type { NotebookSheetUpload } from "@/hooks/useNotebookSheet";
+import { NOTEBOOK_SHEET_FILE_TYPES, type NotebookSheet } from "@/lib/workspace/notebook-sheet";
 
 /**
- * Choosing a sheet to keep beside the page: the files imported into this
- * notebook and the folder's own PDFs and pictures.
+ * Choosing a sheet to keep beside the page: a PDF or picture uploaded here,
+ * the files imported into this notebook, and the folder's own PDFs and
+ * pictures. An upload joins the folder's sources, and the picker says so.
  *
  * Says once, up front, what a kept sheet does, because nothing else on the
  * page explains it. A file sent to Jami is kept from the chat itself.
@@ -28,6 +31,9 @@ export default function NotebookSheetPicker({
   folderLoading,
   folderFailed,
   keptPaths,
+  upload,
+  canUpload,
+  onUpload,
   onPick,
   onCancel,
 }: {
@@ -42,9 +48,15 @@ export default function NotebookSheetPicker({
   folderFailed: boolean;
   /** The sheets already beside the page. */
   keptPaths: readonly string[];
+  /** A file being uploaded from here, or the reason the last one failed. */
+  upload: NotebookSheetUpload | null;
+  /** Whether this notebook has a folder an upload can join. */
+  canUpload: boolean;
+  onUpload: (file: File) => void;
   onPick: (sheet: NotebookSheet) => void;
   onCancel: () => void;
 }) {
+  const uploading = upload?.progress != null;
   const nothing = notebookSheets.length === 0 && folderSheets.length === 0 && !folderLoading;
   const title = replacing
     ? "Change this sheet"
@@ -60,7 +72,10 @@ export default function NotebookSheetPicker({
     <Dialog
       open={open}
       className="fixed inset-0 flex items-start justify-center overflow-y-auto p-3 sm:items-center sm:p-4"
-      onDismiss={() => onCancel()}
+      // An upload under way finishes as a sheet beside the page, so it is not walked away from.
+      onDismiss={() => {
+        if (!uploading) onCancel();
+      }}
     >
       <DialogBackdrop className="absolute inset-0 bg-black/45 backdrop-blur-sm" />
       <DialogPanel className="app-panel relative my-4 flex max-h-[min(40rem,calc(100dvh-2rem))] w-full max-w-md flex-col overflow-hidden rounded-xl backdrop-blur-md sm:rounded-2xl">
@@ -75,6 +90,7 @@ export default function NotebookSheetPicker({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--color-border)] px-2 py-2">
+          {canUpload ? <UploadRow upload={upload} onUpload={onUpload} /> : null}
           {notebookSheets.length > 0 ? (
             <SheetGroup label="In this notebook" sheets={notebookSheets} keptPaths={keptPaths} onPick={onPick} />
           ) : null}
@@ -93,19 +109,80 @@ export default function NotebookSheetPicker({
             <div className="px-4 py-8 text-center">
               <p className="text-sm font-semibold text-text-primary">No PDFs or pictures yet</p>
               <p className="mt-1 text-xs leading-5 text-text-muted">
-                Add one to this folder’s sources, or send it to Jami and keep it from the chat.
+                {canUpload
+                  ? "Upload one above, or send it to Jami and keep it from the chat."
+                  : "Add one to this folder’s sources, or send it to Jami and keep it from the chat."}
               </p>
             </div>
           ) : null}
         </div>
 
         <div className="flex justify-end border-t border-[var(--color-border)] px-4 py-3">
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          <Button type="button" variant="ghost" size="sm" disabled={uploading} onClick={onCancel}>
             Cancel
           </Button>
         </div>
       </DialogPanel>
     </Dialog>
+  );
+}
+
+/** Uploading a PDF or picture from here: it joins the folder's sources and opens beside the page. */
+function UploadRow({ upload, onUpload }: { upload: NotebookSheetUpload | null; onUpload: (file: File) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const progress = upload?.progress ?? null;
+  return (
+    <section className="px-1 pb-1 pt-1">
+      <input
+        ref={inputRef}
+        type="file"
+        accept={NOTEBOOK_SHEET_FILE_TYPES.join(",")}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          // Cleared, so choosing the same file again after a failure still uploads it.
+          event.target.value = "";
+          if (file) onUpload(file);
+        }}
+      />
+      <button
+        type="button"
+        disabled={progress !== null}
+        className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-dashed border-[var(--color-border-strong)] px-3 py-2 text-left transition duration-fast hover:border-accent/55 hover:bg-[var(--color-glass-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-progress disabled:hover:border-[var(--color-border-strong)] disabled:hover:bg-transparent"
+        onClick={() => inputRef.current?.click()}
+      >
+        <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent/15 text-accent">
+          <NotebookIcon name="plus" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-text-primary">
+            {progress !== null ? `Uploading… ${progress}%` : "Upload a PDF or picture"}
+          </span>
+          <span className="block text-2xs leading-4 text-text-muted">
+            Up to 20 MB. It is added to this folder’s sources too.
+          </span>
+        </span>
+      </button>
+      {progress !== null ? (
+        <div
+          role="progressbar"
+          aria-label="Uploading the sheet"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress}
+          className="mx-1 mt-1.5 h-1 overflow-hidden rounded-full bg-[var(--color-glass-medium)]"
+        >
+          <div className="h-full rounded-full bg-accent transition-[width] duration-fast" style={{ width: `${progress}%` }} />
+        </div>
+      ) : null}
+      {upload?.error ? (
+        <p role="alert" className="px-1 pt-1.5 text-xs leading-5 text-[var(--color-error-text)]">
+          {upload.error}
+        </p>
+      ) : null}
+    </section>
   );
 }
 

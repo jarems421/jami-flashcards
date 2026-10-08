@@ -6,6 +6,7 @@ import {
   EMPTY_NOTEBOOK_SHEETS,
   MAX_NOTEBOOK_SHEETS,
   notebookSheetFromAttachment,
+  notebookSheetFromUploadedSource,
   notebookSheetsFromNotebookFiles,
   notebookSheetsFromSources,
   parseStoredNotebookSheets,
@@ -89,6 +90,19 @@ describe("sheets kept beside a notebook page", () => {
         fileType: "text/plain",
         sizeBytes: 10,
       })
+    ).toBeNull();
+  });
+
+  it("opens a file uploaded from the picker as one of the folder's sheets", () => {
+    expect(
+      notebookSheetFromUploadedSource({
+        storagePath: "users/u1/sourceFiles/s1/f1-Paper 1.pdf",
+        fileName: "Paper 1.pdf",
+        fileType: "application/pdf",
+      })
+    ).toEqual({ storagePath: "users/u1/sourceFiles/s1/f1-Paper 1.pdf", title: "Paper 1", fileType: "application/pdf", origin: "folder" });
+    expect(
+      notebookSheetFromUploadedSource({ storagePath: "users/u1/sourceFiles/s2/f2-notes.docx", fileName: "notes.docx", fileType: "application/msword" })
     ).toBeNull();
   });
 

@@ -12,12 +12,8 @@ import {
   type SourceComposerKind,
 } from "@/lib/study/source-composer";
 import { useFeedback } from "@/hooks/useFeedback";
-import { createSource, deleteSource, updateSource } from "@/services/study/sources";
-import {
-  deleteSourceFile,
-  uploadSourceFile,
-  validateSourceUploadFile,
-} from "@/services/study/source-files";
+import { createSource } from "@/services/study/sources";
+import { createFileSource } from "@/services/study/source-files";
 import TopicPicker from "@/components/topics/TopicPicker";
 import WorkspaceActionDialog from "@/components/workspace/WorkspaceActionDialog";
 import { Button, FeedbackBanner, Input, Textarea } from "@/components/ui";
@@ -123,43 +119,28 @@ export default function SourceComposerDialog({
     setSaving(true);
     setUploadProgress(null);
     clear();
-    let createdSourceId = "";
-    let uploadedStoragePath = "";
     try {
-      if (sourceType === "file" && !sourceFile) {
-        showError("Choose a file to upload.");
-        return;
-      }
-      const validatedFileType = sourceFile
-        ? validateSourceUploadFile(sourceFile)
-        : "";
-      const modeContent = buildSourceComposerContent(composerKind, {
-        contentText,
-        externalUrl,
-        fileName: sourceFile?.name ?? fileName,
-        fileType: validatedFileType || sourceFile?.type || fileType,
-      });
-      const sourceId = await createSource(userId, {
-        title: title.trim() || sourceFile?.name || title,
-        type: sourceType,
-        topicIds: selectedTopicIds,
-        folderIds: selectedFolderIds,
-        ...modeContent,
-      });
-      createdSourceId = sourceId;
-      if (sourceType === "file" && sourceFile) {
-        const upload = await uploadSourceFile({
+      let sourceId: string;
+      if (sourceType === "file") {
+        if (!sourceFile) {
+          showError("Choose a file to upload.");
+          return;
+        }
+        ({ sourceId } = await createFileSource({
           userId,
-          sourceId,
           file: sourceFile,
+          title: title.trim() || sourceFile.name,
+          folderIds: selectedFolderIds,
+          topicIds: selectedTopicIds,
           onProgress: setUploadProgress,
-        });
-        uploadedStoragePath = upload.storagePath;
-        await updateSource(userId, sourceId, {
-          fileName: upload.fileName,
-          fileType: upload.fileType,
-          storagePath: upload.storagePath,
-          sizeBytes: upload.sizeBytes,
+        }));
+      } else {
+        sourceId = await createSource(userId, {
+          title: title.trim() || title,
+          type: sourceType,
+          topicIds: selectedTopicIds,
+          folderIds: selectedFolderIds,
+          ...buildSourceComposerContent(composerKind, { contentText, externalUrl, fileName, fileType }),
         });
       }
 
@@ -170,14 +151,6 @@ export default function SourceComposerDialog({
         sourceType === "file" ? "File uploaded to Sources." : "Source saved."
       );
     } catch (error) {
-      if (uploadedStoragePath) {
-        // Best-effort rollback: surface the original save failure to the user.
-        await deleteSourceFile(uploadedStoragePath).catch(() => undefined);
-      }
-      if (createdSourceId) {
-        // Best-effort rollback: surface the original save failure to the user.
-        await deleteSource(userId, createdSourceId).catch(() => undefined);
-      }
       showThrownError(error, "Could not save source.");
     } finally {
       setSaving(false);

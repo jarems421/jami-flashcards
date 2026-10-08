@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SourcePdfPage, useSourcePdfDocument } from "@/components/library/SourcePdfReader";
+import {
+  SheetBarButton,
+  SheetBarDivider,
+  SheetControlsBar,
+  SheetZoomControls,
+} from "@/components/workspace/NotebookSheetControls";
+import { useSheetZoom } from "@/hooks/useSheetZoom";
 import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
 
 /** Quiet time after a swipe before the page it settled on counts as the page. */
@@ -15,6 +22,9 @@ const SETTLE_MS = 110;
  * time, and a long column of pages loses the student's place every time the
  * panel is resized. The track snaps to a page per swipe; the arrows do the
  * same for a mouse or a keyboard, and the counter says where they are.
+ *
+ * Zoomed in, the page is drawn larger and moved around by scrolling, so a
+ * sideways swipe pans the page rather than turning it, and the arrows turn it.
  */
 export default function NotebookSheetPdf({
   storagePath,
@@ -32,6 +42,8 @@ export default function NotebookSheetPdf({
   onPageChange?: (page: number) => void;
 }) {
   const pdfFile = useSourcePdfDocument(storagePath);
+  const { setHost, setScroller, zoom } = useSheetZoom();
+  const zoomed = zoom.level > 1;
   const trackRef = useRef<HTMLDivElement | null>(null);
   // The same element, as state: the pages watch it to draw their neighbours.
   const [observerRoot, setObserverRoot] = useState<HTMLDivElement | null>(null);
@@ -99,26 +111,32 @@ export default function NotebookSheetPdf({
   if (pdfFile?.failed) return <>{fallback}</>;
 
   return (
-    <div role="document" aria-label={`${title} PDF`} className="relative flex h-full min-h-0 flex-col">
+    <div ref={setHost} role="document" aria-label={`${title} PDF`} className="relative flex h-full min-h-0 flex-col">
       <div
         ref={setTrack}
-        className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className={`flex min-h-0 flex-1 snap-x snap-mandatory overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+          zoomed ? "overflow-x-hidden" : "overflow-x-auto"
+        }`}
         onScroll={handleScroll}
       >
         {pdfFile?.pdf && width > 0 ? (
           Array.from({ length: pageCount }, (_, index) => (
             <div
               key={index}
+              ref={index === shownPage ? setScroller : undefined}
               aria-hidden={index !== shownPage}
-              className="flex h-full w-full shrink-0 snap-center snap-always justify-center overflow-y-auto p-2 pb-12"
+              className="h-full w-full shrink-0 snap-center snap-always overflow-auto overscroll-contain p-2 pb-12"
             >
-              <SourcePdfPage
-                pdf={pdfFile.pdf!}
-                pageNumber={index + 1}
-                pageCount={pageCount}
-                width={Math.max(0, width - 16)}
-                observerRoot={observerRoot}
-              />
+              {/* Centred by its margins, not by flex: a page wider than the panel then scrolls to both edges. */}
+              <div className="mx-auto w-fit" style={index === shownPage ? zoom.contentStyle : undefined}>
+                <SourcePdfPage
+                  pdf={pdfFile.pdf!}
+                  pageNumber={index + 1}
+                  pageCount={pageCount}
+                  width={Math.round(Math.max(0, width - 16) * zoom.level)}
+                  observerRoot={observerRoot}
+                />
+              </div>
             </div>
           ))
         ) : (
@@ -127,48 +145,25 @@ export default function NotebookSheetPdf({
           </div>
         )}
       </div>
-      {ready && pageCount > 1 ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
-          <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-0.5 shadow-e1">
-            <PageButton label="Previous page" disabled={shownPage === 0} onClick={() => goTo(shownPage - 1)}>
-              <path d="m12.5 5-5 5 5 5" />
-            </PageButton>
-            <span className="min-w-[3.25rem] px-1 text-center text-2xs font-semibold tabular-nums text-text-secondary" aria-live="polite">
-              {shownPage + 1} / {pageCount}
-            </span>
-            <PageButton label="Next page" disabled={shownPage >= pageCount - 1} onClick={() => goTo(shownPage + 1)}>
-              <path d="m7.5 5 5 5-5 5" />
-            </PageButton>
-          </div>
-        </div>
+      {ready ? (
+        <SheetControlsBar>
+          <SheetZoomControls zoom={zoom} />
+          {pageCount > 1 ? (
+            <>
+              <SheetBarDivider />
+              <SheetBarButton label="Previous page" disabled={shownPage === 0} onClick={() => goTo(shownPage - 1)}>
+                <path d="m12.5 5-5 5 5 5" />
+              </SheetBarButton>
+              <span className="min-w-[3.25rem] shrink-0 px-1 text-center text-2xs font-semibold tabular-nums text-text-secondary" aria-live="polite">
+                {shownPage + 1} / {pageCount}
+              </span>
+              <SheetBarButton label="Next page" disabled={shownPage >= pageCount - 1} onClick={() => goTo(shownPage + 1)}>
+                <path d="m7.5 5 5 5-5 5" />
+              </SheetBarButton>
+            </>
+          ) : null}
+        </SheetControlsBar>
       ) : null}
     </div>
-  );
-}
-
-function PageButton({
-  label,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string;
-  disabled: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      className="inline-grid h-8 w-8 place-items-center rounded-full text-text-secondary transition duration-fast hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:opacity-35 disabled:hover:bg-transparent"
-      onClick={onClick}
-    >
-      <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-        {children}
-      </svg>
-    </button>
   );
 }

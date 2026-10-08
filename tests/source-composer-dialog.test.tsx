@@ -7,23 +7,14 @@ import SourceComposerDialog from "@/components/library/SourceComposerDialog";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 
 const createSource = vi.fn();
-const updateSource = vi.fn();
-const deleteSource = vi.fn();
-const uploadSourceFile = vi.fn();
-const deleteSourceFile = vi.fn();
-const validateSourceUploadFile = vi.fn();
+const createFileSource = vi.fn();
 
 vi.mock("@/services/study/sources", () => ({
   createSource: (...args: unknown[]) => createSource(...args),
-  updateSource: (...args: unknown[]) => updateSource(...args),
-  deleteSource: (...args: unknown[]) => deleteSource(...args),
 }));
 
 vi.mock("@/services/study/source-files", () => ({
-  uploadSourceFile: (...args: unknown[]) => uploadSourceFile(...args),
-  deleteSourceFile: (...args: unknown[]) => deleteSourceFile(...args),
-  validateSourceUploadFile: (...args: unknown[]) =>
-    validateSourceUploadFile(...args),
+  createFileSource: (...args: unknown[]) => createFileSource(...args),
 }));
 
 vi.mock("@/components/topics/TopicPicker", () => ({
@@ -104,11 +95,7 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
     true;
   createSource.mockReset().mockResolvedValue("source-1");
-  updateSource.mockReset().mockResolvedValue(undefined);
-  deleteSource.mockReset().mockResolvedValue(undefined);
-  uploadSourceFile.mockReset().mockResolvedValue({});
-  deleteSourceFile.mockReset().mockResolvedValue(undefined);
-  validateSourceUploadFile.mockReset();
+  createFileSource.mockReset().mockResolvedValue({ sourceId: "source-2" });
   onClose.mockReset();
   onCreated.mockReset().mockResolvedValue(undefined);
   container = document.createElement("div");
@@ -168,6 +155,7 @@ describe("SourceComposerDialog", () => {
     });
 
     expect(createSource).not.toHaveBeenCalled();
+    expect(createFileSource).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Choose a file to upload.");
     expect(onClose).not.toHaveBeenCalled();
   });

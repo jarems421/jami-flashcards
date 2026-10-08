@@ -33,7 +33,8 @@ export function isNotebookSheetFileType(value: unknown): value is NotebookSheetF
   return typeof value === "string" && (NOTEBOOK_SHEET_FILE_TYPES as readonly string[]).includes(value);
 }
 
-function titleFromFileName(fileName: string) {
+/** A sheet's name from its file's: the file name without the extension. */
+export function notebookSheetTitleForFile(fileName: string) {
   return fileName.replace(/\.[a-z0-9]{1,5}$/i, "").trim() || fileName;
 }
 
@@ -41,7 +42,7 @@ function titleFromFileName(fileName: string) {
 export function notebookSheetsFromNotebookFiles(files: readonly NotebookFile[]): NotebookSheet[] {
   return files.flatMap((file) =>
     file.storagePath && isNotebookSheetFileType(file.fileType)
-      ? [{ storagePath: file.storagePath, title: titleFromFileName(file.fileName), fileType: file.fileType, origin: "notebook" as const }]
+      ? [{ storagePath: file.storagePath, title: notebookSheetTitleForFile(file.fileName), fileType: file.fileType, origin: "notebook" as const }]
       : []
   );
 }
@@ -50,9 +51,25 @@ export function notebookSheetsFromNotebookFiles(files: readonly NotebookFile[]):
 export function notebookSheetsFromSources(sources: readonly Source[]): NotebookSheet[] {
   return sources.flatMap((source) =>
     source.status === "active" && source.type === "file" && source.storagePath && isNotebookSheetFileType(source.fileType)
-      ? [{ storagePath: source.storagePath, title: source.title.trim() || titleFromFileName(source.fileName ?? ""), fileType: source.fileType, origin: "folder" as const }]
+      ? [{ storagePath: source.storagePath, title: source.title.trim() || notebookSheetTitleForFile(source.fileName ?? ""), fileType: source.fileType, origin: "folder" as const }]
       : []
   );
+}
+
+/** A file just uploaded from the sheet picker, which became one of the folder's sources. */
+export function notebookSheetFromUploadedSource(upload: {
+  storagePath: string;
+  fileName: string;
+  fileType: string;
+}): NotebookSheet | null {
+  return isNotebookSheetFileType(upload.fileType)
+    ? {
+        storagePath: upload.storagePath,
+        title: notebookSheetTitleForFile(upload.fileName),
+        fileType: upload.fileType,
+        origin: "folder",
+      }
+    : null;
 }
 
 /** A file sent to Tutor, when it is one that can be shown as a sheet. */
@@ -60,7 +77,7 @@ export function notebookSheetFromAttachment(attachment: TutorAttachment): Notebo
   return isNotebookSheetFileType(attachment.fileType)
     ? {
         storagePath: attachment.storagePath,
-        title: titleFromFileName(attachment.fileName),
+        title: notebookSheetTitleForFile(attachment.fileName),
         fileType: attachment.fileType,
         origin: "chat",
       }

@@ -5,7 +5,7 @@ import { onScreenFloatingRects } from "@/components/ai/JamiFloatingTutor";
 import NotebookSheetPanel, { useNotebookSheetFrames } from "@/components/workspace/NotebookSheetPanel";
 import NotebookSheetPicker from "@/components/workspace/NotebookSheetPicker";
 import ToolbarIconButton from "@/components/workspace/NotebookToolbarIconButton";
-import { useFolderSheetChoices, useNotebookSheets } from "@/hooks/useNotebookSheet";
+import { useFolderSheetChoices, useNotebookSheets, useNotebookSheetUpload } from "@/hooks/useNotebookSheet";
 import type { TutorAttachment } from "@/lib/ai/tutor-attachments";
 import {
   MAX_NOTEBOOK_SHEETS,
@@ -42,6 +42,7 @@ export function useNotebookSheetsBeside({
   const [picker, setPicker] = useState<{ replaceSlot: number | null } | null>(null);
   const folderChoices = useFolderSheetChoices({ userId, folderId, enabled: picker !== null });
   const notebookChoices = useMemo(() => notebookSheetsFromNotebookFiles(files), [files]);
+  const sheetUpload = useNotebookSheetUpload({ userId, folderId });
 
   const keep = (sheet: NotebookSheet) => {
     // Measured before the new panel exists, so it lands clear of the Tutor
@@ -49,6 +50,14 @@ export function useNotebookSheetsBeside({
     const onScreen = onScreenFloatingRects();
     const { slot, added } = kept.add(sheet);
     if (added && onScreen.length > 0) frames[slot].moveClearOf(onScreen);
+  };
+
+  /** What the picker was opened for, done with `sheet`: a new panel, or this panel's sheet changed. */
+  const choose = (sheet: NotebookSheet) => {
+    const replaceSlot = picker?.replaceSlot ?? null;
+    if (replaceSlot !== null) kept.replace(replaceSlot, sheet);
+    else keep(sheet);
+    setPicker(null);
   };
 
   return {
@@ -59,6 +68,9 @@ export function useNotebookSheetsBeside({
     folderChoices,
     notebookChoices,
     keep,
+    choose,
+    sheetUpload,
+    canUpload: Boolean(folderId),
     /** A file sent to the Tutor, kept beside the page from the chat itself. */
     keepAttachment: (attachment: TutorAttachment) => {
       const sheet = notebookSheetFromAttachment(attachment);
@@ -108,7 +120,7 @@ export default function NotebookSheetsLayer({
   sheets: NotebookSheetsBesideController;
   hidden: boolean;
 }) {
-  const { kept, frames, picker, setPicker, folderChoices, notebookChoices, keep } = sheets;
+  const { kept, frames, picker, setPicker, folderChoices, notebookChoices, choose, sheetUpload, canUpload } = sheets;
   return (
     <>
       {!hidden && kept.open
@@ -140,13 +152,14 @@ export default function NotebookSheetsLayer({
         folderLoading={folderChoices.loading}
         folderFailed={folderChoices.failed}
         keptPaths={kept.sheets.map((entry) => entry.sheet.storagePath)}
-        onPick={(sheet) => {
-          const replaceSlot = picker?.replaceSlot ?? null;
-          if (replaceSlot !== null) kept.replace(replaceSlot, sheet);
-          else keep(sheet);
+        upload={sheetUpload.upload}
+        canUpload={canUpload}
+        onUpload={(file) => void sheetUpload.start(file, choose)}
+        onPick={choose}
+        onCancel={() => {
+          sheetUpload.clear();
           setPicker(null);
         }}
-        onCancel={() => setPicker(null)}
       />
     </>
   );
