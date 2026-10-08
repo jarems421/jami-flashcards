@@ -103,6 +103,27 @@ describe("provider router", () => {
     }
   });
 
+  it("gives a model that thinks room to think on top of the answer it was capped for", async () => {
+    await generateAiText({ role: "supervisor", request, timeoutMs: 5_000, generationConfig: { maxOutputTokens: 1_500 } });
+    await generateAiText({ role: "worker", request, timeoutMs: 5_000, generationConfig: { maxOutputTokens: 1_500 } });
+
+    expect(mocks.generateOpenRouterText.mock.calls.map((call) => call[0].maxOutputTokens)).toEqual([5_500, 1_500]);
+  });
+
+  it("never lets a caller's effort drop below what the role needs, and passes thinking off through", async () => {
+    await generateAiText({ role: "juror", routeReason: "second_correction", request, timeoutMs: 5_000, reasoningEffort: "low" });
+    await generateAiText({ role: "worker", request, timeoutMs: 5_000, reasoningEffort: "high" });
+    await generateAiText({ role: "worker", request, timeoutMs: 5_000 });
+    await generateAiText({ role: "supervisor", request, timeoutMs: 5_000, reasoningEffort: "none" });
+
+    expect(mocks.generateOpenRouterText.mock.calls.map((call) => call[0].reasoningEffort)).toEqual([
+      "high",
+      "high",
+      "low",
+      "none",
+    ]);
+  });
+
   it("retries the worker on its independent endpoint before escalating without downgrading supervisor work", async () => {
     mocks.generateOpenRouterText
       .mockRejectedValueOnce(new Error("worker unavailable"))
@@ -119,7 +140,7 @@ describe("provider router", () => {
       "z-ai/glm-5.3-flash",
       "z-ai/glm-5.3-flash",
     ]);
-    expect(mocks.generateOpenRouterText.mock.calls[2][0].providerAllowlist).toEqual(["coreweave", "baseten"]);
+    expect(mocks.generateOpenRouterText.mock.calls[2][0].providerAllowlist).toEqual(["near-ai", "inceptron"]);
 
     mocks.generateOpenRouterText.mockReset();
     mocks.generateOpenRouterText.mockRejectedValue(new Error("supervisor unavailable"));

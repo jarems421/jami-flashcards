@@ -9,9 +9,13 @@
  * hard proof will happily wait, and the same student looking up a definition
  * will not.
  *
- * The route already picks a level from the difficulty of the request. This only
- * ever raises it: a preference cannot make a disputed mark cheaper to
- * adjudicate than the juror needs it to be.
+ * For a Tutor answer the level chooses the model, because effort alone does not
+ * separate them (`applyTutorReasoningPreference`): Low answers on the fast
+ * worker, High on the supervisor, and Medium lets the difficulty of the request
+ * decide. A challenged answer keeps its stronger route at every level, and the
+ * effort each model is asked for never drops below what its role needs: a
+ * preference cannot make a disputed mark cheaper to adjudicate than the juror
+ * needs it to be.
  */
 export const REASONING_EFFORT_OPTIONS = [
   {

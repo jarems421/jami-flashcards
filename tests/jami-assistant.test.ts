@@ -14,13 +14,15 @@ import {
   stripJamiAssistantReferenceMarkers,
   parseJamiAssistantModelAnswer,
   parseJamiAssistantRequest,
-  parseTutorRoutingPreflight,
   sanitizeTutorResearchQuery,
   shouldOfferTutorIllustration,
   isExplicitTutorGraphRequest,
   isTutorGraphRequest,
-  shouldRunTutorRoutingPreflight,
 } from "@/lib/ai/jami-assistant";
+import {
+  parseTutorRoutingPreflight,
+  shouldRunTutorRoutingPreflight,
+} from "@/lib/ai/tutor-routing-preflight";
 import {
   rankJamiAssistantSources,
   scoreJamiAssistantSource,
@@ -267,6 +269,17 @@ describe("Jami automatic routing and privacy helpers", () => {
         routineNotebookMarking: false,
       })
     ).toBe(true);
+    // Low and High have already chosen the model: nothing is left to ask, and Low is not kept waiting.
+    for (const reasoningEffort of ["low", "high"] as const) {
+      expect(
+        shouldRunTutorRoutingPreflight({
+          message: "Can you help me decide the best way to approach this?",
+          routeRole: "worker",
+          routineNotebookMarking: false,
+          reasoningEffort,
+        })
+      ).toBe(false);
+    }
     expect(
       parseTutorRoutingPreflight(
         '{"role":"supervisor","confidence":"low","insufficientReasoning":true}'

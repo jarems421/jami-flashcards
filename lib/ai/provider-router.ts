@@ -19,6 +19,7 @@ import {
   type AiReasoningEffort,
   buildAiProviderPlan,
   failoverProvidersFor,
+  getReasoningEffort,
   hasVisualAiInput,
   resolveAiProviderPolicy,
   type AiGenerationRole,
@@ -169,13 +170,41 @@ export function isAnyAiProviderConfigured(
     : policy.geminiReady;
 }
 
+/**
+ * Room to think, on top of the answer, for an attempt on a model that thinks.
+ *
+ * A caller sizes its cap to the answer it wants, and a thinking model spends
+ * from the same budget. The supervisor's endpoints think for 2,600 to 3,300
+ * tokens whatever effort they are asked for, so a brief Tutor answer capped at
+ * 1,500 that reached the supervisor ran out mid-sentence, failed to parse, and
+ * was asked for again in one piece: the student watched it stop, then
+ * reappear whole twenty seconds later. The headroom is only ever spent by a
+ * model that thinks, and the role's own ceiling still applies.
+ */
+const THINKING_HEADROOM_TOKENS = 4_000;
+
 function cappedOutputTokens(
   requested: number | undefined,
   attempt: AiProviderAttempt
 ) {
   const roleLimit = resolveAiProviderPolicy(process.env)
     .capabilities[attempt.role].maxOutputTokens;
-  return requested === undefined ? roleLimit : Math.min(requested, roleLimit);
+  if (requested === undefined) return roleLimit;
+  return Math.min(attempt.thinking ? requested + THINKING_HEADROOM_TOKENS : requested, roleLimit);
+}
+
+/**
+ * The effort an attempt asks for: the caller's, but never below what the
+ * attempt's role needs. A Tutor turn carries the student's level onto every
+ * attempt, the supervisor and juror included, and a student choosing Low must
+ * not make their own disputed mark cheaper to settle. Off is the caller's to
+ * ask for outright.
+ */
+function attemptReasoningEffort(attempt: AiProviderAttempt, options: AiRouterOptions) {
+  if (options.reasoningEffort === "none") return "none";
+  return options.reasoningEffort
+    ? getReasoningEffort(attempt.role, options.reasoningEffort)
+    : attempt.reasoningEffort;
 }
 
 function optionalSamplingParameters(
@@ -309,7 +338,7 @@ function openRouterRequest(
     timeoutMs,
     signal: options.signal,
     reasoning: attempt.thinking,
-    reasoningEffort: options.reasoningEffort ?? attempt.reasoningEffort,
+    reasoningEffort: attemptReasoningEffort(attempt, options),
     temperature: sampling.temperature,
     topP: sampling.topP,
     maxOutputTokens: cappedOutputTokens(options.generationConfig?.maxOutputTokens, attempt),

@@ -9,13 +9,16 @@ import {
   getTutorRoutingSignals,
   isRoutineNotebookMarkMyWork,
   JAMI_ASSISTANT_ROUTING_HISTORY_MESSAGES,
-  parseTutorRoutingPreflight,
-  shouldRunTutorRoutingPreflight,
   type JamiAssistantContext,
   type JamiAssistantHistoryMessage,
 } from "@/lib/ai/jami-assistant";
 import type { JamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import {
+  parseTutorRoutingPreflight,
+  shouldRunTutorRoutingPreflight,
+} from "@/lib/ai/tutor-routing-preflight";
+import {
+  applyTutorReasoningPreference,
   decideTutorRoute,
   type AiGenerationRole,
   type AiRouteReason,
@@ -79,29 +82,32 @@ export async function routeTutorTurn(input: {
       trustedRouteState?.lastAssistantMessageId ===
         existingThread.lastAssistantMessageId
   );
-  const routeDecision = decideTutorRoute({
-    message: input.message,
-    sourceCount: input.sources.length,
-    repeatedConcept: routingSignals.repeatedConcept,
-    priorAnswerChallenged: routingSignals.priorAnswerChallenged,
-    repeatedSupervisorChallenge: trustedRepeatedSupervisorChallenge,
-  });
   const routineNotebookMarking = isRoutineNotebookMarkMyWork({
     message: input.message,
     context: input.context,
   });
-  let responseRole: AiGenerationRole = routineNotebookMarking
-    ? "worker"
-    : routeDecision.role;
-  let responseRouteReason: AiRouteReason = routineNotebookMarking
-    ? "routine"
-    : routeDecision.reason;
+  // What the request needs, then the level the student chose applied to it.
+  const routeDecision = applyTutorReasoningPreference(
+    routineNotebookMarking
+      ? { role: "worker", reason: "routine", taskClass: "standard" }
+      : decideTutorRoute({
+          message: input.message,
+          sourceCount: input.sources.length,
+          repeatedConcept: routingSignals.repeatedConcept,
+          priorAnswerChallenged: routingSignals.priorAnswerChallenged,
+          repeatedSupervisorChallenge: trustedRepeatedSupervisorChallenge,
+        }),
+    input.reasoningEffort
+  );
+  let responseRole: AiGenerationRole = routeDecision.role;
+  let responseRouteReason: AiRouteReason = routeDecision.reason;
 
   if (
     shouldRunTutorRoutingPreflight({
       message: input.message,
       routeRole: routeDecision.role,
       routineNotebookMarking,
+      reasoningEffort: input.reasoningEffort,
     })
   ) {
     try {
@@ -110,6 +116,9 @@ export async function routeTutorTurn(input: {
           reasoningEffort: input.reasoningEffort,
           role: "worker",
           routeReason: "routing_preflight",
+          // A one-line classification. Escalated to a model that thinks for
+          // thousands of tokens it cannot finish in its cap or its seven seconds.
+          allowRoleEscalation: false,
           timeoutMs: 7_000,
           deadlineAt: preAnswerDeadlineAt,
           signal: input.signal,

@@ -54,6 +54,29 @@ pauses with its evidence and completed provider checkpoints intact; raising the
 ceiling or retrying after an operational review does not consume another daily
 allowance.
 
+## Tutor thinking levels
+
+The student's Low / Medium / High setting chooses which model writes a Tutor
+answer, because effort alone does not separate them. The supervisor's endpoints
+think for about 2,600 tokens at every effort, about eighteen seconds before the
+first word, while the worker starts in under two
+(`applyTutorReasoningPreference` in `lib/ai/provider-policy.ts`):
+
+- **Low**: the worker, with no routing preflight.
+- **Medium**: the request decides. Routine questions go to the worker; long,
+  many-source or proof-style ones go to the supervisor, and an ambiguous one gets
+  a short preflight (which never escalates).
+- **High**: the supervisor.
+
+A challenged answer keeps its stronger route at every level, and no attempt is
+sent less effort than its role needs. A model that thinks gets 4,000 tokens of
+headroom on top of the answer's cap, so its thinking cannot cut a reply off
+mid-sentence and force the whole answer to be asked for again.
+
+A Tutor answer that is slow on Low almost always means the worker's endpoints
+are refusing it: look for `provider.model_fallback` warnings and a supervisor
+`modelName` on routine turns, then run `npm run check:ai-release`.
+
 ## Content-free telemetry
 
 Aggregate only these fields from `ai.provider` events:

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildAiCapabilityRegistry,
+  applyTutorReasoningPreference,
   buildAiProviderPlan,
   classifyTutorTaskClass,
   decideTutorRoute,
@@ -41,7 +42,7 @@ describe("AI provider policy", () => {
     expect(registry.worker).toMatchObject({
       provider: "openrouter",
       modelId: "z-ai/glm-5.3-flash",
-      providerAllowlist: ["z-ai", "novita", "modal"],
+      providerAllowlist: ["baseten", "morph"],
       quantizations: ["fp32", "fp16", "bf16", "fp8"],
     });
     expect(registry.supervisor).toMatchObject({
@@ -85,7 +86,7 @@ describe("AI provider policy", () => {
     ]);
     expect(plan[2]).toMatchObject({
       routeReason: "provider_failover",
-      providerAllowlist: ["coreweave", "baseten"],
+      providerAllowlist: ["near-ai", "inceptron"],
     });
     expect(plan[3].routeReason).toBe("provider_escalation");
   });
@@ -421,6 +422,24 @@ describe("reasoning effort scales with the work", () => {
     // mark cheaper than the juror requires.
     expect(getReasoningEffort("juror", "low")).toBe("high");
     expect(getReasoningEffort("supervisor", "low")).toBe("medium");
+  });
+
+  it("chooses the model a Tutor answer goes to, because effort alone does not separate the levels", () => {
+    const routine = decideTutorRoute({ message: "What is osmosis?", sourceCount: 0 });
+    const hard = decideTutorRoute({ message: "Prove that root 2 is irrational.", sourceCount: 0 });
+    expect(applyTutorReasoningPreference(hard, "low")).toMatchObject({ role: "worker", reason: "student_preference" });
+    expect(applyTutorReasoningPreference(routine, "high")).toMatchObject({ role: "supervisor", reason: "student_preference" });
+    expect(applyTutorReasoningPreference(hard, "medium")).toBe(hard);
+    expect(applyTutorReasoningPreference(routine, "medium")).toBe(routine);
+    expect(applyTutorReasoningPreference(routine, undefined)).toBe(routine);
+  });
+
+  it("keeps a challenged answer on its stronger route at every level", () => {
+    const challenged = decideTutorRoute({ message: "That's wrong, check again.", sourceCount: 0 });
+    const disputed = decideTutorRoute({ message: "Still wrong.", sourceCount: 0, repeatedSupervisorChallenge: true });
+    expect(applyTutorReasoningPreference(challenged, "low")).toBe(challenged);
+    expect(applyTutorReasoningPreference(disputed, "low")).toBe(disputed);
+    expect(applyTutorReasoningPreference(disputed, "high")).toBe(disputed);
   });
 
   it("carries the role's level on every attempt in a plan", () => {

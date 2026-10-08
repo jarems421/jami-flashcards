@@ -15,6 +15,16 @@ and provider allowlists in `.env.example`. Every OpenRouter request also sets
 Zero Data Retention, denies data collection, and requires the selected endpoint
 to support every requested parameter. No unapproved endpoint is a fallback.
 
+`npm run check:ai-release` checks each allowlist against what its role is
+actually sent. The worker must offer reasoning and strict structured output
+(`structured_outputs`), not only `response_format`: Tutor sends a strict JSON
+schema. In October 2026 the worker's endpoints offered only the plain format,
+so every Tutor answer was refused in a tenth of a second and fell through to
+the supervisor, and Low took eighteen seconds. A production allowlist set in
+Vercel overrides the defaults in `lib/ai/provider-policy.ts`, so a stale
+variable there outlives a fixed default: run the check against production’s
+values, and remove a variable that only repeats the default.
+
 ## Privacy gate
 
 Before `OPENROUTER_PRIVACY_APPROVED` is enabled:
@@ -23,8 +33,8 @@ Before `OPENROUTER_PRIVACY_APPROVED` is enabled:
 - disable prompt logging, data discounts, and response caching;
 - restrict the key to the approved model IDs and hosting endpoints for each
   role (defaults in `lib/ai/provider-policy.ts`, overridable from the variables
-  in `.env.example`; currently Z.ai GLM for the worker, Qwen for the supervisor
-  and Moonshot Kimi for the standby and juror);
+  in `.env.example`; currently GLM 5.3 Flash on BaseTen and Morph for the
+  worker, Qwen for the supervisor and Moonshot Kimi for the standby and juror);
 - set a provider-side budget and alert;
 - complete the DPIA and processor/subprocessor review for OpenRouter, each
   approved model developer and hosting endpoint, and Google;

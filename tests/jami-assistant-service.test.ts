@@ -79,6 +79,27 @@ describe("Jami assistant client service", () => {
     );
   });
 
+  it("settles on the answer as soon as it is done, while the route finishes its own bookkeeping", async () => {
+    const encoder = new TextEncoder();
+    let closeStream = () => {};
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`${JSON.stringify({ type: "text", value: "Done already." })}\n`));
+        controller.enqueue(
+          encoder.encode(
+            `${JSON.stringify({ type: "done", reply: "Done already.", used: [{ kind: "general-knowledge", label: "general knowledge" }] })}\n`
+          )
+        );
+        // Left open, as the route leaves it while it updates Tutor memory.
+        closeStream = () => controller.close();
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status: 200 })));
+
+    await expect(sendJamiAssistantMessage(input)).resolves.toMatchObject({ reply: "Done already." });
+    closeStream();
+  });
+
   it("does not turn a provider failure into an assistant message", async () => {
     vi.stubGlobal(
       "fetch",

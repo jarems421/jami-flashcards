@@ -47,7 +47,6 @@
     "firebase:login": "firebase login",
     "firebase:projects": "firebase projects:list",
     "firebase:rules:deploy": "firebase deploy --only firestore:rules,firestore:indexes,storage",
-    "audit:ai-endpoints": "node --env-file-if-exists=.env.local scripts/audit-ai-endpoints.mjs",
     "report:ai-spend": "node --env-file-if-exists=.env.local scripts/ai-spend-report.mjs",
     "audit:legacy-shapes": "node --env-file-if-exists=.env.local scripts/audit-legacy-shapes.mjs",
     "report:analytics": "node --env-file-if-exists=.env.local scripts/analytics-report.mjs",

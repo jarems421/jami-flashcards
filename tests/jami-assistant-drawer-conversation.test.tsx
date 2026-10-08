@@ -406,7 +406,8 @@ describe("JamiAssistantDrawer while an answer is written", () => {
     await render(drawer());
     await ask("Why does ice float?");
     expect(bodyText()).toContain("Jami is locking in");
-    expect(field().disabled).toBe(true);
+    // The next question can be typed while this one is answered; only sending waits.
+    expect(field().disabled).toBe(false);
     expect(button("Send message to Jami")?.disabled).toBe(true);
 
     await act(async () => call.onChunk("Ice is less"));

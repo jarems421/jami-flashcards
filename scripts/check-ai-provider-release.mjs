@@ -22,7 +22,14 @@ const ROLES = [
     minimumContext: 1_048_576,
     requiresImageInput: true,
     acceptableQuantizations: ["fp8", "bf16", "fp16", "fp32"],
-    requiredParameters: ["max_tokens", "response_format"],
+    /*
+     * What the worker is actually sent. Every call carries a reasoning effort,
+     * and Tutor asks for a strict JSON schema, which an endpoint offering plain
+     * `response_format` refuses. Requiring only that let Z.ai and Novita pass
+     * this gate in October 2026 while every Tutor answer they were sent came
+     * back "No endpoints found" and fell through to the supervisor.
+     */
+    requiredParameters: ["reasoning", "max_tokens", "response_format", "structured_outputs"],
   },
   {
     name: "supervisor",
@@ -99,7 +106,7 @@ const ROLES = [
  * failover runs the same model for the same work.
  */
 const FAILOVERS = [
-  { of: "worker", providersKey: "OPENROUTER_WORKER_FAILOVER_PROVIDERS", fallbackProviders: ["coreweave", "baseten"] },
+  { of: "worker", providersKey: "OPENROUTER_WORKER_FAILOVER_PROVIDERS", fallbackProviders: ["near-ai", "inceptron"] },
   { of: "supervisor", providersKey: "OPENROUTER_SUPERVISOR_FAILOVER_PROVIDERS", fallbackProviders: ["parasail"] },
 ];
 

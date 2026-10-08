@@ -27,6 +27,7 @@ export type AiRouteReason =
   | "student_correction"
   | "second_correction"
   | "repeated_concept"
+  | "student_preference"
   | "routing_preflight"
   | "low_confidence"
   | "insufficient_reasoning"
@@ -146,13 +147,19 @@ const DEFAULT_PROVIDERS = {
    * in DEFAULT_FAILOVER_PROVIDERS instead, which is only reached after a parsed
    * reply comes back empty -- never after a request that fails outright.
    *
-   * Parasail is deliberately absent even though it serves this model: its
-   * endpoint is deranked (`status: -2`) at the time of writing, and the release
-   * check refuses an allowlist naming an endpoint that is not currently
-   * healthy. Add it back when it recovers, or do not -- three healthy endpoints
-   * is already two more than the role had.
+   * It happened again in October 2026, more quietly. Z.ai and Novita serve the
+   * model at fp8 but only plain `response_format`, not the strict JSON schema
+   * Tutor sends, and Modal moved to nvfp4 -- so every worker call was refused in
+   * a tenth of a second and every Tutor answer fell through to the supervisor,
+   * which thinks for 2,600 tokens whatever effort it is asked for. "Low"
+   * answered in eighteen seconds. The release check let it through because it
+   * did not require `structured_outputs` of the worker; it does now.
+   *
+   * BaseTen and Morph pass every rule the request sets: fp8, strict structured
+   * output, reasoning, full context, zero retention. Measured on a Tutor-sized
+   * answer at effort low, the first words arrived in 1.4 to 1.6 seconds.
    */
-  worker: ["z-ai", "novita", "modal"],
+  worker: ["baseten", "morph"],
   /*
    * Four endpoints, and a model measured against the job rather than assumed.
    *
@@ -229,11 +236,12 @@ const DEFAULT_STANDBY = {
  * than quietly used.
  */
 const DEFAULT_FAILOVER_PROVIDERS = {
-  // Not Novita, Z.ai or Modal: those carry the worker's normal traffic, and a
-  // failover naming one is the same endpoint twice. And no longer DeepInfra,
-  // which serves GLM 5.3 Flash only at fp4 -- below the fp8 floor the request
-  // itself demands, so every call routed there came back "No endpoints found".
-  worker: ["coreweave", "baseten"],
+  // Not BaseTen or Morph: those carry the worker's normal traffic, and a
+  // failover naming one is the same endpoint twice. Not DeepInfra or CoreWeave,
+  // which serve GLM 5.3 Flash at fp4 and nvfp4 -- below the fp8 floor the
+  // request itself demands, so every call routed there came back "No endpoints
+  // found". Near AI and Inceptron are slower, and pass every rule.
+  worker: ["near-ai", "inceptron"],
   // Parasail serves the supervisor's model compliantly but is held out of the
   // primary list for the same reason: kept in reserve, not in rotation.
   supervisor: ["parasail"],
@@ -506,6 +514,35 @@ export function decideTutorRoute(input: {
     return { role: "supervisor", reason: "complex_request", taskClass: "important" };
   }
   return { role: "worker", reason: "routine", taskClass: "standard" };
+}
+
+/**
+ * The student's thinking level, applied to the model a Tutor answer goes to.
+ *
+ * Effort alone does not separate the levels. Measured on a Tutor-sized answer,
+ * the supervisor thought for 2,600 to 3,100 tokens at low, medium and high
+ * alike, and took eighteen seconds to its first word each time; the worker at
+ * every effort answered in under two. What the level changes is which of them
+ * answers: Low keeps the answer on the worker, High gives it to the supervisor,
+ * and Medium leaves it to the request itself.
+ *
+ * A student challenging an answer keeps the route that gives at every level, the
+ * juror included: a preference cannot make their own dispute cheaper to settle.
+ */
+export function applyTutorReasoningPreference(
+  decision: AiRouteDecision,
+  preference: AiReasoningEffort | undefined
+): AiRouteDecision {
+  if (!preference || preference === "medium") return decision;
+  if (decision.role === "juror" || decision.reason === "student_correction") return decision;
+  if (preference === "low") {
+    return decision.role === "worker"
+      ? decision
+      : { role: "worker", reason: "student_preference", taskClass: "standard" };
+  }
+  return decision.role === "supervisor"
+    ? decision
+    : { role: "supervisor", reason: "student_preference", taskClass: "important" };
 }
 
 /** Compatibility wrapper for existing callers while they adopt route roles. */

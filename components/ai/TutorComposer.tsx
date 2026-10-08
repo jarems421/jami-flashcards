@@ -12,7 +12,7 @@ type TutorComposerProps = {
   userId: string;
   /** A card sized to a page margin: one line to type in, and no second row. */
   compact: boolean;
-  /** An answer is being written: nothing new can be sent or attached. */
+  /** An answer is being written: the next question can be typed, but not sent or attached. */
   loading: boolean;
   /** Where a chat begun elsewhere started, while it is carried on here. */
   foreignThreadPlace: string | null;
@@ -70,7 +70,7 @@ export default function TutorComposer({
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      onSubmit();
+      if (!loading) onSubmit();
     }
   };
 
@@ -133,7 +133,6 @@ export default function TutorComposer({
           data-notebook-text-editor="true"
           rows={compact ? 1 : 2}
           value={input}
-          disabled={loading}
           placeholder="Ask Jami..."
           className={`${compact ? "min-h-[3rem]" : "min-h-[5.75rem]"} w-full resize-none bg-transparent pb-2 pl-4 pr-4 pt-3 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82]`}
           onChange={(event) => onInputChange(event.target.value)}

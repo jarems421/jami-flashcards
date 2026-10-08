@@ -84,6 +84,18 @@ function normalizeSourceFailures(value: unknown): JamiAssistantSourceFailure[] {
   return normalized;
 }
 
+/** Reads what is left of a stream whose answer has already been settled, and drops it. */
+async function drainAssistantStream(reader: ReadableStreamDefaultReader<Uint8Array>) {
+  try {
+    for (;;) {
+      const { done } = await reader.read();
+      if (done) return;
+    }
+  } catch {
+    // The answer is already shown; a stream that fails after it changes nothing.
+  }
+}
+
 /**
  * Reads the newline-delimited stream the assistant route returns.
  *
@@ -141,6 +153,17 @@ async function readAssistantStream(
     const lines = pending.split("\n");
     pending = lines.pop() ?? "";
     lines.forEach(handleLine);
+    /*
+     * The answer is settled once "done" arrives. The route keeps the stream
+     * open after it only to finish its own bookkeeping -- updating the
+     * student's Tutor memory -- and waiting for that kept the reply box locked
+     * after the answer was already on screen. The rest is still read, so the
+     * route is never cut off mid-write, but nobody waits for it.
+     */
+    if (result) {
+      void drainAssistantStream(reader);
+      return result;
+    }
   }
   handleLine(pending);
 
