@@ -28,6 +28,7 @@ import {
   type CachedReadOptions,
 } from "@/services/cache/read-through";
 import { keepDeviceCardSet, readDeviceCardSet } from "@/services/study/card-device-copy";
+import { isRecord, readOwnDataRoute, signedInStudent } from "@/services/study/own-data-route";
 import {
   mapCardData,
   normalizeCardContentInput,
@@ -177,7 +178,48 @@ async function loadAndKeepUserCards(userId: string) {
 }
 
 /**
- * The whole set, fetched a page at a time.
+ * The student's whole set, fresh from the server.
+ *
+ * Read through Jami's own route (`/api/study/cards`), which reads beside the
+ * database and sends the cards as one compressed response per few thousand.
+ * The browser's own Firestore read of the same cards stays as the fallback,
+ * for when the route cannot be reached.
+ */
+async function loadUserCardsFromServer(userId: string): Promise<Card[]> {
+  const student = signedInStudent(userId);
+  if (!student) return loadUserCardsFromFirestore(userId);
+  try {
+    return await loadUserCardsThroughRoute(student);
+  } catch (error) {
+    console.warn("Reading cards through the server failed; reading them directly.", error);
+    return loadUserCardsFromFirestore(userId);
+  }
+}
+
+/**
+ * Every page of the route's answer, checked card by card.
+ *
+ * Five thousand cards through the browser's Firestore connection took fifteen
+ * to thirty seconds on a phone over 4G. The route sends the same cards in a
+ * fraction of the bytes.
+ */
+async function loadUserCardsThroughRoute(student: NonNullable<ReturnType<typeof signedInStudent>>) {
+  const cards: Card[] = [];
+  let after: string | null = null;
+  do {
+    const path: string = after ? `/api/study/cards?after=${encodeURIComponent(after)}` : "/api/study/cards";
+    const page = await readOwnDataRoute(student, path, "Load study cards");
+    if (!Array.isArray(page.cards)) throw new Error("Load study cards: the route answered without cards.");
+    for (const card of page.cards) {
+      if (isRecord(card) && typeof card.id === "string") cards.push(mapCardData(card.id, card));
+    }
+    after = typeof page.nextCursor === "string" && page.nextCursor ? page.nextCursor : null;
+  } while (after);
+  return cards;
+}
+
+/**
+ * The whole set, fetched a page at a time by the browser itself.
  *
  * One request for every card held a student with thousands of them to a single
  * time limit, which their cards outgrew: past thirty seconds every page that
@@ -185,7 +227,7 @@ async function loadAndKeepUserCards(userId: string) {
  * request is a fixed size with its own limit, so a large account takes longer
  * rather than failing. The result is the same complete set as before.
  */
-async function loadUserCardsFromServer(userId: string): Promise<Card[]> {
+async function loadUserCardsFromFirestore(userId: string): Promise<Card[]> {
   const cards: Card[] = [];
   let after: QueryDocumentSnapshot | null = null;
   for (;;) {
