@@ -3,6 +3,7 @@ import {
   invalidateAllCachedReads,
   invalidateCachedReads,
 } from "@/services/cache/read-through";
+import { forgetDeviceCardSets } from "@/services/study/card-device-copy";
 
 type DashboardCacheEntry<T> = {
   value: T;
@@ -70,6 +71,9 @@ export function clearDashboardInFlight(userId: string, request: Promise<unknown>
 export function invalidateDashboardData(userId: string) {
   userRevisions.set(userId, (userRevisions.get(userId) ?? 0) + 1);
   invalidateCachedReads(userId);
+  // The device's copy of their cards is out of date too, and a page drawn from
+  // it would show this write undone until the server's set arrived.
+  void forgetDeviceCardSets(userId);
   const entry = entries.get(userId);
   if (!entry) return;
   entries.set(userId, { ...entry, invalidated: true });
@@ -79,6 +83,7 @@ export function invalidateDashboardData(userId: string) {
 export function invalidateAllDashboardData() {
   globalRevision += 1;
   invalidateAllCachedReads();
+  void forgetDeviceCardSets();
   entries.forEach((entry, userId) => {
     entries.set(userId, { ...entry, invalidated: true });
   });

@@ -259,6 +259,47 @@ export function invalidateAllCachedReads() {
   globalRevision += 1;
 }
 
+/** Changes whenever a write invalidates this user's reads, so a read can tell it raced one. */
+export function getCachedReadRevision(userId: string) {
+  return revisionOf(userId);
+}
+
+/** How long a page drawn from the device waits before asking the server, so its own reads go first. */
+export const DEVICE_COPY_REFRESH_DELAY_MS = 4_000;
+
+/**
+ * Answers `key` from a copy kept on the device for the moment, and replaces it
+ * with the server's value shortly afterwards.
+ *
+ * Fresh for now, so every read of it on the page is answered at once. The
+ * server is asked a few seconds later rather than straight away: on a large
+ * account this refresh is the biggest download the page makes, and every other
+ * read on the page waited behind it. Listeners hear when the refresh lands. A
+ * write in the meantime supersedes the copy as it would anything else, and the
+ * copy is never laid over a value this page already holds.
+ */
+export function seedCachedRead<T>(
+  key: CachedReadKey,
+  value: T,
+  load: () => Promise<T>,
+  options: { now?: number; refreshDelayMs?: number } = {}
+) {
+  const cacheKey = getCachedReadKey(key);
+  if (entries.has(cacheKey)) return;
+  entries.set(cacheKey, {
+    value,
+    fetchedAt: options.now ?? Date.now(),
+    revision: revisionOf(key.userId),
+    userId: key.userId,
+  });
+  setTimeout(() => {
+    void readThroughCache(key, load, { force: true }).then(
+      () => announceRefresh(key.userId),
+      () => undefined
+    );
+  }, options.refreshDelayMs ?? DEVICE_COPY_REFRESH_DELAY_MS);
+}
+
 /** Drops a user's cached data outright, as sign-out must. */
 export function clearCachedReads(userId: string) {
   for (const [cacheKey, entry] of entries) {

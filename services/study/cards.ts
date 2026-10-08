@@ -21,9 +21,13 @@ import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateAllDashboardData, invalidateDashboardData } from "@/services/dashboard/cache";
 import {
+  getCachedReadRevision,
+  peekCachedRead,
   readThroughCache,
+  seedCachedRead,
   type CachedReadOptions,
 } from "@/services/cache/read-through";
+import { keepDeviceCardSet, readDeviceCardSet } from "@/services/study/card-device-copy";
 import {
   mapCardData,
   normalizeCardContentInput,
@@ -146,16 +150,30 @@ export function getCardWrite(card: Card): CardWrite {
  * Anything that grades, edits or schedules a card must pass `{ force: true }`:
  * a card's next state is computed from its current one, and a stale copy would
  * write back the wrong answer.
+ *
+ * A page that only shows cards is drawn from this device's copy when it has one
+ * (see `card-device-copy`), and redrawn when the server's set arrives, so a
+ * student with thousands of cards is not kept waiting on all of them.
  */
 export async function loadUserCards(
   userId: string,
   options: CachedReadOptions = {}
 ): Promise<Card[]> {
-  return readThroughCache(
-    { collection: "cards", userId },
-    () => loadUserCardsFromServer(userId),
-    options
-  );
+  const key = { collection: "cards", userId };
+  const load = () => loadAndKeepUserCards(userId);
+  if (!options.force && !peekCachedRead(key)) {
+    const kept = await readDeviceCardSet(userId);
+    if (kept) seedCachedRead(key, kept, load);
+  }
+  return readThroughCache(key, load, options);
+}
+
+/** The server's set, kept on the device unless a write landed while it was read. */
+async function loadAndKeepUserCards(userId: string) {
+  const revisionAtStart = getCachedReadRevision(userId);
+  const cards = await loadUserCardsFromServer(userId);
+  if (getCachedReadRevision(userId) === revisionAtStart) void keepDeviceCardSet(userId, cards);
+  return cards;
 }
 
 /**

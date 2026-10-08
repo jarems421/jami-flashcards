@@ -83,6 +83,8 @@ export async function readDeviceCopy(key: string): Promise<unknown> {
 
 /** Keeps `value` under `key`. A copy that cannot be kept is simply not kept. */
 export async function writeDeviceCopy(key: string, value: unknown): Promise<void> {
+  // No IndexedDB here at all: nothing is ever kept, and that is not news.
+  if (typeof indexedDB === "undefined") return;
   try {
     const database = await openDatabase();
     const transaction = database.transaction(STORE_NAME, "readwrite");
@@ -101,6 +103,8 @@ export async function writeDeviceCopy(key: string, value: unknown): Promise<void
  * the last one's.
  */
 export async function clearDeviceCopies(prefix = ""): Promise<void> {
+  // No IndexedDB here at all means there is nothing to forget.
+  if (typeof indexedDB === "undefined") return;
   try {
     const database = await openDatabase();
     // The keys are read first and deleted in a transaction of their own:
