@@ -47,7 +47,7 @@ describe("the line from a label to its part", () => {
 describe("how a label with a line is studied", () => {
   it("makes a named part with a line a label slot: asked blank, then the name written inside", () => {
     expect(draw("name", slot)).toEqual([
-      { box: "cover-asked", inside: "question", beside: null, pointer: "asked" },
+      { box: "cover-asked", inside: null, beside: null, pointer: "asked" },
       { box: "slot-asked", inside: "answer", beside: null, pointer: "asked" },
       // Hide all: the others are blank labels, each still pointing at its part.
       { box: "slot", inside: null, beside: null, pointer: "other" },
@@ -57,7 +57,7 @@ describe("how a label with a line is studied", () => {
 
   it("keeps a named part without a line as a ring with its name beside it", () => {
     expect(draw("name", ring).map((drawing) => [drawing.box, drawing.beside, drawing.pointer])).toEqual([
-      ["outline-asked", "question", null],
+      ["outline-asked", null, null],
       ["outline-asked", "answer", null],
       [null, null, null],
       ["outline", "answer", null],

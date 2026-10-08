@@ -5,7 +5,12 @@ import TopicPicker from "@/components/topics/TopicPicker";
 import { JamiTutorIcon, OptionSwitch } from "@/components/ui";
 import type { DiagramEditorController } from "@/hooks/useDiagramEditor";
 import type { Topic } from "@/lib/material/topics";
-import { MAX_LABEL_ANSWER_LENGTH } from "@/lib/study/image-occlusion";
+import {
+  MAX_LABEL_ANSWER_LENGTH,
+  OCCLUSION_COVER_COLOR_LABELS,
+  OCCLUSION_COVER_COLORS,
+  type OcclusionCoverColor,
+} from "@/lib/study/image-occlusion";
 
 type DiagramLabelPanelProps = {
   editor: DiagramEditorController;
@@ -35,6 +40,52 @@ function LineIcon() {
       <path d="M9.5 7.5 15 14" />
       <circle cx="15.5" cy="14.5" r="1.6" fill="currentColor" />
     </svg>
+  );
+}
+
+type CoverColorPickerProps = {
+  value: OcclusionCoverColor | null;
+  onChange: (color: OcclusionCoverColor | null) => void;
+  disabled: boolean;
+};
+
+/** The covers' colour: the theme's accent, or one of a few named colours. */
+function CoverColorPicker({ value, onChange, disabled }: CoverColorPickerProps) {
+  const options: { color: OcclusionCoverColor | null; label: string }[] = [
+    { color: null, label: "Theme" },
+    ...OCCLUSION_COVER_COLORS.map((color) => ({ color, label: OCCLUSION_COVER_COLOR_LABELS[color] })),
+  ];
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <p id="diagram-cover-colour" className="text-sm font-medium text-text-secondary">
+        Cover colour
+      </p>
+      <div role="radiogroup" aria-labelledby="diagram-cover-colour" className="flex items-center gap-1.5">
+        {options.map((option) => {
+          const active = value === option.color;
+          return (
+            <button
+              key={option.label}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={option.label}
+              title={option.label}
+              disabled={disabled}
+              onClick={() => onChange(option.color)}
+              className={`grid h-8 w-8 place-items-center rounded-full border-2 transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-selected-border)] disabled:opacity-50 ${
+                active ? "border-text-primary" : "border-transparent hover:border-[var(--color-border-strong)]"
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`occlusion-cover-swatch h-5 w-5 rounded-full ${option.color ? `occlusion-cover--${option.color}` : ""}`}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -262,6 +313,8 @@ export default function DiagramLabelPanel({ editor, userId, topics, onTopicsChan
           This diagram was saved as a card per label. Saving makes it one card, so its review history starts again.
         </p>
       ) : null}
+
+      <CoverColorPicker value={editor.coverColor} onChange={editor.setCoverColor} disabled={busy} />
 
       <details className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
         <summary className="cursor-pointer text-sm font-medium text-text-secondary">

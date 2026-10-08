@@ -83,12 +83,21 @@ and on a large screen beside it.
 
 **Lines.** In *name the parts*, a label with a line becomes a *label slot*.
 The student puts the box in the margin, the way a textbook does, and the line
-points at the structure. When studying, the slot shows "?" and the line shows
+points at the structure. When studying, the slot is blank and the line shows
 exactly what is being asked; revealing the card writes the name inside the
 slot. With "hide all", the other slots stay blank but keep their lines, so the
 card reads like a fill-in-the-labels worksheet. A label without a line keeps
 the ring-around-the-part style. In *cover*, a line points from the covered
 label to its part. The asked label's line is always drawn on top.
+
+**Blank covers, in a colour.** Every cover, slot and ring is drawn blank: no
+"?" or other mark on the part being asked. Under the labels, *Cover colour*
+gives a diagram's covers the theme's accent (the default) or one of
+`OCCLUSION_COVER_COLORS` (coral, gold, mint, sky, slate). It is saved as
+`diagram.coverColor`, a name rather than a colour value, and the colours
+themselves live only in `app/globals.css` (`.occlusion-cover--*`, read through
+`--occlusion-cover`). An unknown name on read is dropped, so the cover falls
+back to the accent.
 
 `describeOcclusionMask` in `lib/study/image-occlusion.ts` is the single table of
 what each label draws in each state (box style, words inside or beside, line,

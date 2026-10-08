@@ -810,6 +810,7 @@ function DiagramPreview({
         }),
         cardStyle: editor.cardStyle,
         ...(editor.pointerEnd === "arrow" ? { pointerEnd: "arrow" as const } : {}),
+        ...(editor.coverColor ? { coverColor: editor.coverColor } : {}),
       }
     : null;
   // Every card the diagram will make: the one whole-diagram card, or each label then each group.

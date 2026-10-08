@@ -183,7 +183,8 @@ function MaskView({
   const [first] = label.shapes;
   const name = label.answer.trim();
   const words = (kind: OcclusionMaskDrawing["inside"]) =>
-    kind === "question" ? "?" : kind === "answer" ? name : "";
+    // An asked label is a blank slate: the question is the hidden part itself, not a mark on it.
+    kind ? name : "";
   const inside = compact ? "" : words(drawing.inside);
   const beside = compact ? "" : words(drawing.beside);
   const chipClass =
@@ -197,7 +198,7 @@ function MaskView({
     <>
       <OcclusionPolygon shape={shape} />
       {shapeIndex === 0 && inside ? (
-        <span className={`relative ${inside === "?" ? "occlusion-question-mark" : "occlusion-slot-text"}`}>{inside}</span>
+        <span className="occlusion-slot-text relative">{inside}</span>
       ) : null}
     </>
   );
@@ -320,7 +321,9 @@ export function OcclusionPicture({
     <div
       // An empty label means something around it already names the picture.
       {...(label ? { role: onMaskActivate ? "group" : "img", "aria-label": label } : { "aria-hidden": true })}
-      className={`occlusion-figure relative mx-auto shrink-0 select-none overflow-hidden rounded-lg bg-white ${className}`}
+      className={`occlusion-figure relative mx-auto shrink-0 select-none overflow-hidden rounded-lg bg-white ${
+        diagram.coverColor ? `occlusion-cover--${diagram.coverColor}` : ""
+      } ${className}`}
       style={{ aspectRatio: `${image.width} / ${image.height}`, width }}
     >
       {resolved.url ? (

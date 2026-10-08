@@ -123,6 +123,24 @@ describe("saving a diagram", () => {
     expect(written[0].occlusion).toMatchObject({ labelId: "a", diagram: { id: "new-id", labels: [{ answer: "Aorta" }, { answer: "" }] } });
     expect(written[0].createdAt).toBeGreaterThan(written[1].createdAt);
     expect(result.cards.map((card) => card.occlusion?.labelId)).toEqual(["a", "b"]);
+    expect(written[0].occlusion.diagram).not.toHaveProperty("coverColor");
+  });
+
+  it("saves the covers' colour with the diagram", async () => {
+    firestoreMock.getDocs.mockResolvedValue({ docs: [] });
+    const result = await saveDiagram({
+      userId: USER,
+      deckId: "deck-1",
+      header: "The heart",
+      picture: { kind: "saved", image: OLD_IMAGE },
+      labelMode: "cover",
+      hideOthers: true,
+      coverColor: "sky",
+      labels: [label("a", "Aorta")],
+    });
+
+    expect(batches[0].set.mock.calls[0][1].occlusion.diagram.coverColor).toBe("sky");
+    expect(result.cards[0].occlusion?.diagram.coverColor).toBe("sky");
   });
 
   it("keeps each label's card and its schedule, deletes a removed label's card, and adds new ones", async () => {

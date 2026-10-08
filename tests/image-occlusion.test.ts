@@ -109,6 +109,11 @@ describe("reading a stored diagram", () => {
     ]);
   });
 
+  it("keeps a known cover colour and drops one it does not know", () => {
+    expect(normalizeCardOcclusion({ diagram: { ...HEART, coverColor: "mint" }, labelId: "a" }, USER)?.diagram.coverColor).toBe("mint");
+    expect(normalizeCardOcclusion({ diagram: { ...HEART, coverColor: "#ff0000" }, labelId: "a" }, USER)?.diagram).not.toHaveProperty("coverColor");
+  });
+
   it("reaches cards through mapCardData, and a malformed diagram leaves a plain card", () => {
     const card = mapCardData("card-1", { userId: USER, deckId: "deck-1", front: "", back: "Aorta", occlusion: { diagram: HEART, labelId: "a" } });
     expect(card.occlusion?.labelId).toBe("a");

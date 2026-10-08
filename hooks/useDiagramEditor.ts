@@ -11,6 +11,7 @@ import {
   getDiagramDraftError,
   isWholeDiagramGroupId,
   type OcclusionCardStyle,
+  type OcclusionCoverColor,
   type OcclusionLabel,
   type OcclusionLabelMode,
   type OcclusionPointer,
@@ -105,6 +106,7 @@ export function useDiagramEditor({
   const [labelMode, setLabelModeState] = useState<OcclusionLabelMode>(initialDiagram?.labelMode ?? "cover");
   const [hideOthers, setHideOthers] = useState(initialDiagram?.hideOthers ?? true);
   const [pointerEnd, setPointerEnd] = useState<"dot" | "arrow">(initialDiagram?.pointerEnd ?? "dot");
+  const [coverColor, setCoverColor] = useState<OcclusionCoverColor | null>(initialDiagram?.coverColor ?? null);
   /*
    * A diagram is always one card. One saved as a card per label, before that
    * was settled, becomes one card when it is next saved. Several diagrams of
@@ -345,6 +347,7 @@ export function useDiagramEditor({
     labelMode !== (initialDiagram?.labelMode ?? "cover") ||
     hideOthers !== (initialDiagram?.hideOthers ?? true) ||
     pointerEnd !== (initialDiagram?.pointerEnd ?? "dot") ||
+    coverColor !== (initialDiagram?.coverColor ?? null) ||
     cardStyle !== initialCardStyle ||
     topicsChanged;
   const dirty = history.past.length > 0 || settingsChanged || pictureChanged || (!initialDiagram && Boolean(picture));
@@ -371,6 +374,7 @@ export function useDiagramEditor({
         hideOthers,
         pointerEnd,
         cardStyle,
+        ...(coverColor ? { coverColor } : {}),
         labels,
         groups,
       });
@@ -389,6 +393,7 @@ export function useDiagramEditor({
   }, [
     deckId,
     cardStyle,
+    coverColor,
     draftError,
     editing?.deckId,
     groups,
@@ -437,6 +442,9 @@ export function useDiagramEditor({
     setHideOthers,
     pointerEnd,
     setPointerEnd,
+    /** The covers' colour, or null for the theme's accent. */
+    coverColor,
+    setCoverColor,
     cardStyle,
     /** Whether saving will replace this diagram's cards, and with them their review history. */
     cardStyleChanged: Boolean(initialDiagram) && cardStyle !== initialCardStyle,

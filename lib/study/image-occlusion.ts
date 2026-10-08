@@ -113,6 +113,28 @@ export function isWholeDiagramGroupId(groupId: string | undefined) {
   return groupId === WHOLE_DIAGRAM_GROUP_ID;
 }
 
+/**
+ * Colours a student can give their diagram's covers, by name; the colours
+ * themselves are `.occlusion-cover--<name>` in globals.css. Absent, the covers
+ * take the theme's accent. A fixed set rather than any colour, because a cover
+ * has to stand out on a white picture in every theme.
+ */
+export const OCCLUSION_COVER_COLORS = ["coral", "gold", "mint", "sky", "slate"] as const;
+
+export type OcclusionCoverColor = (typeof OCCLUSION_COVER_COLORS)[number];
+
+export const OCCLUSION_COVER_COLOR_LABELS: Record<OcclusionCoverColor, string> = {
+  coral: "Coral",
+  gold: "Gold",
+  mint: "Mint",
+  sky: "Sky",
+  slate: "Slate",
+};
+
+export function isOcclusionCoverColor(value: unknown): value is OcclusionCoverColor {
+  return OCCLUSION_COVER_COLORS.some((color) => color === value);
+}
+
 export type OcclusionDiagram = {
   id: string;
   image: CardImage;
@@ -129,6 +151,8 @@ export type OcclusionDiagram = {
   pointerEnd?: "dot" | "arrow";
   /** Absent on diagrams saved before there was a choice, which are `each`. */
   cardStyle?: OcclusionCardStyle;
+  /** The covers' colour; absent is the theme's accent. */
+  coverColor?: OcclusionCoverColor;
 };
 
 /**
@@ -338,6 +362,7 @@ export function normalizeOcclusionDiagram(
     ...(groups.length > 0 ? { groups } : {}),
     ...(input.pointerEnd === "arrow" ? { pointerEnd: "arrow" as const } : {}),
     ...(input.cardStyle === "whole" ? { cardStyle: "whole" as const } : {}),
+    ...(isOcclusionCoverColor(input.coverColor) ? { coverColor: input.coverColor } : {}),
   };
 }
 
@@ -558,7 +583,7 @@ export function getWalkthroughMasks(
  *   a named part with a pointer; its name is written inside.
  *
  * `inside` and `beside` say which words go in or next to the first box:
- * the question mark, the answer, or none. `pointer` is the line's tone, or
+ * the question (drawn blank: a cover asks nothing in words), the answer, or none. `pointer` is the line's tone, or
  * null when there is no line to draw.
  */
 export type OcclusionMaskDrawing = {
@@ -572,8 +597,9 @@ export type OcclusionMaskDrawing = {
     | "slot-asked"
     | "slot-confused"
     | null;
-  inside: "question" | "answer" | null;
-  beside: "question" | "answer" | null;
+  /** Where the label's name is written, once it is shown; an asked label is drawn blank. */
+  inside: "answer" | null;
+  beside: "answer" | null;
   pointer: "asked" | "other" | "confused" | null;
 };
 
@@ -600,7 +626,7 @@ export function describeOcclusionMask(
   if (labelMode === "cover") {
     switch (mask.look) {
       case "target-hidden":
-        return draw("cover-asked", "question");
+        return draw("cover-asked");
       case "target-revealed":
         return draw("outline-asked");
       case "other-hidden":
@@ -617,7 +643,7 @@ export function describeOcclusionMask(
   if (hasPointer) {
     switch (mask.look) {
       case "target-hidden":
-        return draw("cover-asked", "question");
+        return draw("cover-asked");
       case "target-revealed":
         return draw("slot-asked", "answer");
       case "other-hidden":
@@ -631,7 +657,7 @@ export function describeOcclusionMask(
 
   switch (mask.look) {
     case "target-hidden":
-      return draw("outline-asked", null, "question");
+      return draw("outline-asked");
     case "target-revealed":
       return draw("outline-asked", null, "answer");
     case "other-hidden":

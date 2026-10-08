@@ -97,6 +97,22 @@ describe("a diagram label in study", () => {
     expect(host.querySelectorAll(".occlusion-outline--target")).toHaveLength(1);
   });
 
+  it("draws its covers blank, in the colour the diagram was given", async () => {
+    const coloured: Card = { ...card, occlusion: { diagram: { ...HEART, coverColor: "coral" }, labelId: "b" } };
+    const exercise = buildDeterministicExercise(coloured, "type-answer", "hash")!;
+    await act(async () =>
+      root.render(
+        <StudyExerciseStage card={coloured} exercise={exercise} savingRating={null} onCommit={vi.fn()} onModeAnswered={vi.fn()} />
+      )
+    );
+    await act(async () => {});
+
+    const masks = [...host.querySelectorAll(".occlusion-mask")];
+    expect(masks).toHaveLength(5);
+    expect(masks.every((mask) => mask.textContent === "")).toBe(true);
+    expect(host.querySelector(".occlusion-figure")?.classList.contains("occlusion-cover--coral")).toBe(true);
+  });
+
   it("marks naming a neighbour wrong without asking, shows it, and sends the mix-up with the rating", async () => {
     const exercise = buildDeterministicExercise(card, "type-answer", "hash")!;
     const onCommit = vi.fn();

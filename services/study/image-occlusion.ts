@@ -30,6 +30,7 @@ import {
   planDiagramSave,
   type CardOcclusion,
   type OcclusionCardStyle,
+  type OcclusionCoverColor,
   type OcclusionDiagram,
   type OcclusionGroup,
   type OcclusionLabel,
@@ -129,6 +130,8 @@ export type DiagramSaveInput = {
   pointerEnd?: "dot" | "arrow";
   /** One card for the whole diagram, or one per label. Absent keeps a card per label. */
   cardStyle?: OcclusionCardStyle;
+  /** The covers' colour; absent is the theme's accent. */
+  coverColor?: OcclusionCoverColor;
   labels: OcclusionLabel[];
   groups?: OcclusionGroup[];
 };
@@ -202,6 +205,7 @@ export async function saveDiagram(input: DiagramSaveInput): Promise<DiagramSaveR
     ...(styledGroups.length > 0 ? { groups: styledGroups } : {}),
     ...(input.pointerEnd === "arrow" ? { pointerEnd: "arrow" as const } : {}),
     ...(cardStyle === "whole" ? { cardStyle } : {}),
+    ...(input.coverColor ? { coverColor: input.coverColor } : {}),
   };
   const plan = planDiagramSave(siblings, getDiagramTargets(diagram));
   const siblingById = new Map(siblings.map((card) => [card.id, card]));
