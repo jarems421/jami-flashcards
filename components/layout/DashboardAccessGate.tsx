@@ -15,6 +15,7 @@ import {
 import { forgetLastRoute, rememberLastRoute } from "@/lib/app/last-route";
 import TutorialProvider from "@/components/onboarding/TutorialProvider";
 import FirstNightProvider from "@/components/onboarding/FirstNightProvider";
+import { syncNotificationTimeZone } from "@/services/notifications";
 
 function DashboardSpinner() {
   return (
@@ -32,6 +33,11 @@ function AuthenticatedDashboard({
   user: User;
 }) {
   const [sidebarHidden, setSidebarHidden] = useState(() => readSidebarHiddenPreference());
+
+  // Nudges go out at 4pm where the student is, so where they are is kept current.
+  useEffect(() => {
+    void syncNotificationTimeZone(user.uid);
+  }, [user.uid]);
 
   const handleSidebarHiddenChange = (hidden: boolean) => {
     setSidebarHidden(hidden);

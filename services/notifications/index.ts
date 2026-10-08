@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
@@ -190,6 +191,44 @@ export async function saveNotificationPreferences(
   );
 
   return nextSettings;
+}
+
+const TIME_ZONE_SYNC_KEY = "jami:notification-time-zone";
+
+/**
+ * Keeps the time zone a student's nudges follow in step with this device.
+ *
+ * Run as the dashboard opens, because most students never open notification
+ * settings, where the zone would otherwise be recorded. It writes only when
+ * this device's zone differs from the one it last reported, and only to
+ * preferences that already exist: a document holding nothing but a zone would
+ * read as switched on to the app and off to the server.
+ */
+export async function syncNotificationTimeZone(userId: string) {
+  const timeZone = getDeviceTimeZone();
+  if (!timeZone) return;
+  const syncedKey = `${TIME_ZONE_SYNC_KEY}:${userId}`;
+  try {
+    if (window.localStorage.getItem(syncedKey) === timeZone) return;
+  } catch {
+    // Storage unavailable: write anyway, it is one small update.
+  }
+  try {
+    await withTimeout(
+      updateDoc(doc(db, "users", userId, "notificationPreferences", "config"), { timeZone }),
+      SAVE_MS,
+      "Sync notification time zone"
+    );
+  } catch {
+    // No preferences yet (they start with the zone), offline, or a read-only
+    // account. Tried again next time the dashboard opens.
+    return;
+  }
+  try {
+    window.localStorage.setItem(syncedKey, timeZone);
+  } catch {
+    // Only means the next visit writes the same zone again.
+  }
 }
 
 export async function getCurrentDevicePushSubscription() {
