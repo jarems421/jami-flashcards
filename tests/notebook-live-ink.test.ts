@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Editor as JsDrawEditor } from "js-draw";
 import {
+  getNotebookLiveInkGrownRegion,
   getNotebookLiveInkPixelRatio,
   getNotebookLiveInkPixelSnap,
   getNotebookLiveInkRegion,
+  getNotebookLiveInkStartRegion,
+  notebookLiveInkNeedsRoom,
   installNotebookLiveInk,
   NotebookLiveInkDirtyRegion,
   sameNotebookLiveInkRegion,
@@ -409,7 +412,7 @@ describe("installNotebookLiveInk", () => {
     expect(fake.editor.rerender).not.toHaveBeenCalled();
   });
 
-  it("sizes the live canvas ahead of the stroke, so the pointerdown does not", () => {
+  it("sizes the live canvas ahead of the stroke, so the pointerdown only moves it", () => {
     const fake = fakeEditor();
     const liveInk = installNotebookLiveInk({
       editor: fake.editor,
@@ -417,14 +420,122 @@ describe("installNotebookLiveInk", () => {
       canvas: fake.liveCanvas,
     });
     liveInk?.prepare(strokeInput);
-    expect(fake.liveCanvas.width).toBe(1792);
+    // The square a stroke starts in: 256 either side of the pen and a grid step, at 2x.
+    expect(fake.liveCanvas.width).toBe(1152);
+    expect(fake.liveCanvas.height).toBe(1152);
     expect(liveInk?.active).toBe(false);
     expect(fake.wet.ctx).toBe(asContext(fake.originalCtx));
 
     fake.liveSpies.setTransform.mockClear();
-    liveInk?.begin(strokeInput);
+    liveInk?.begin(penDown);
+    // Resizing is what sets the scale: the prepared canvas was moved, not made again.
     expect(fake.liveSpies.setTransform).not.toHaveBeenCalled();
+    expect(fake.liveCanvas.style.left).toBe("192px");
     expect(liveInk?.active).toBe(true);
+  });
+});
+
+/** The pen landing at (400, 500) on screen: (500, 460) on the surface. */
+const penDown = { ...strokeInput, pointer: { clientX: 400, clientY: 500 } };
+
+describe("a live canvas that follows the stroke", () => {
+  function begin() {
+    const fake = fakeEditor();
+    const liveInk = installNotebookLiveInk({ editor: fake.editor, jsDraw: fake.jsDraw, canvas: fake.liveCanvas });
+    if (!liveInk) throw new Error("not installed");
+    liveInk.begin(penDown);
+    return { fake, liveInk };
+  }
+
+  it("starts as a square around the pen, not the whole screen", () => {
+    const { fake } = begin();
+    expect(fake.liveCanvas.style.left).toBe("192px");
+    expect(fake.liveCanvas.style.top).toBe("192px");
+    expect(fake.liveCanvas.style.width).toBe("576px");
+    expect(fake.liveCanvas.style.height).toBe("576px");
+    // A third of what covering the screen (896 x 1152) would hold.
+    expect(fake.liveCanvas.width * fake.liveCanvas.height).toBe(1152 * 1152);
+    // js-draw's region starts 160 into the surface; the canvas 192.
+    expect(fake.wet.setTransform).toHaveBeenLastCalledWith({
+      offset: { x: -32, y: -192 },
+      after: fake.viewport.canvasToScreenTransform,
+    });
+  });
+
+  it("only wipes between frames while the stroke has room", () => {
+    const { fake } = begin();
+    fake.wet.ctx.moveTo(200, 200);
+    fake.wet.ctx.lineTo(260, 240);
+    fake.wet.ctx.stroke();
+    fake.wet.clear();
+    expect(fake.liveCanvas.style.width).toBe("576px");
+    expect(fake.liveSpies.clearRect).toHaveBeenCalled();
+  });
+
+  it("grows before the next frame once the stroke nears an edge, and keeps inside the screen", () => {
+    const { fake } = begin();
+    fake.liveSpies.setTransform.mockClear();
+    fake.wet.ctx.moveTo(500, 100);
+    fake.wet.ctx.lineTo(540, 120);
+    fake.wet.ctx.stroke();
+    fake.wet.clear();
+
+    // Out to the screen's right edge (960) and up to its top, from the corner it had.
+    expect(fake.liveCanvas.style.left).toBe("192px");
+    expect(fake.liveCanvas.style.top).toBe("0px");
+    expect(fake.liveCanvas.style.width).toBe("768px");
+    expect(fake.liveCanvas.style.height).toBe("768px");
+    // Reallocated at the screen's density, and js-draw follows the canvas's new corner.
+    expect(fake.liveSpies.setTransform).toHaveBeenCalledWith(2, 0, 0, 2, 0, 0);
+    expect(fake.wet.setTransform).toHaveBeenLastCalledWith({
+      offset: { x: -32, y: 0 },
+      after: fake.viewport.canvasToScreenTransform,
+    });
+  });
+
+  it("starts the next stroke small again, wherever the last one grew to", () => {
+    const { fake, liveInk } = begin();
+    fake.wet.ctx.moveTo(500, 100);
+    fake.wet.ctx.lineTo(540, 120);
+    fake.wet.ctx.stroke();
+    fake.wet.clear();
+    liveInk.end();
+
+    liveInk.begin({ ...strokeInput, pointer: { clientX: 200, clientY: 1000 } });
+    expect(fake.liveCanvas.style.width).toBe("576px");
+    expect(fake.liveCanvas.style.height).toBe("576px");
+  });
+});
+
+describe("where the live canvas goes", () => {
+  const visible = { left: 64, top: 0, width: 896, height: 1152 };
+
+  it("keeps the starting square whole and on screen at the edges", () => {
+    expect(getNotebookLiveInkStartRegion({ visible, x: 900, y: 1100 })).toEqual({ left: 384, top: 576, width: 576, height: 576 });
+    expect(getNotebookLiveInkStartRegion({ visible, x: 0, y: 0 })).toEqual({ left: 64, top: 0, width: 576, height: 576 });
+    // A screen smaller than the square is covered whole.
+    expect(getNotebookLiveInkStartRegion({ visible: { left: 0, top: 0, width: 400, height: 300 }, x: 50, y: 50 })).toEqual({
+      left: 0,
+      top: 0,
+      width: 400,
+      height: 300,
+    });
+  });
+
+  it("asks for room only towards a side that can still grow", () => {
+    const region = { left: 64, top: 192, width: 576, height: 576 };
+    // Near the left, which is already the screen's edge.
+    expect(notebookLiveInkNeedsRoom({ drawn: { left: 70, top: 400, right: 100, bottom: 420 }, region, visible })).toBe(false);
+    // Near the bottom, which is not.
+    expect(notebookLiveInkNeedsRoom({ drawn: { left: 300, top: 700, right: 320, bottom: 720 }, region, visible })).toBe(true);
+  });
+
+  it("only ever grows, by whole grid steps, within the screen", () => {
+    const region = { left: 192, top: 192, width: 576, height: 576 };
+    const grown = getNotebookLiveInkGrownRegion({ region, visible, drawn: { left: 300, top: 700, right: 320, bottom: 720 } });
+    expect(grown).toEqual({ left: 0 + 64, top: 192, width: 768 - 64, height: 1024 - 192 });
+    expect(grown.left % 64).toBe(0);
+    expect(grown.left).toBeGreaterThanOrEqual(visible.left);
   });
 });
 

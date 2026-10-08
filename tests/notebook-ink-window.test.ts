@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   getNotebookInkRenderWindow,
+  getNotebookInkWindowOverscan,
   getNotebookSheetRenderWindows,
   isWholeNotebookInkSheet,
+  NOTEBOOK_INK_WINDOW_MAX_PIXELS,
   sameNotebookInkRenderWindow,
   NOTEBOOK_INK_WINDOW_GRID,
 } from "@/lib/workspace/notebook-ink-window";
@@ -186,5 +188,47 @@ describe("the open sheet's render windows", () => {
     if (!detail) return;
     expect(detail.width).toBeLessThanOrEqual(windows.ink.width);
     expect(detail.height).toBeLessThanOrEqual(windows.ink.height);
+  });
+});
+
+describe("the zoomed page canvas's pixel budget", () => {
+  const zoomed = { sheetWidth: 960 * 4, sheetHeight: 1320 * 4, pageX: -1500, pageY: -2000 };
+
+  it("leaves the overscan alone while the window fits", () => {
+    expect(
+      getNotebookInkWindowOverscan({ overscan: 0.5, frameWidth: 600, frameHeight: 400, devicePixelRatio: 2, maxPixels: 8_000_000 })
+    ).toBe(0.5);
+  });
+
+  it("shrinks the overscan of a big frame until the window fits, never below the frame", () => {
+    // A 13-inch iPad: twice the frame each way would be 22 million device pixels.
+    const overscan = getNotebookInkWindowOverscan({
+      overscan: 0.5,
+      frameWidth: 1376,
+      frameHeight: 1000,
+      devicePixelRatio: 2,
+      maxPixels: 8_000_000,
+    });
+    expect(overscan).toBeGreaterThan(0);
+    expect(overscan).toBeLessThan(0.5);
+    expect((1376 * (1 + 2 * overscan)) * (1000 * (1 + 2 * overscan)) * 4).toBeCloseTo(8_000_000, -3);
+    expect(
+      getNotebookInkWindowOverscan({ overscan: 0.5, frameWidth: 2560, frameHeight: 1440, devicePixelRatio: 2, maxPixels: 8_000_000 })
+    ).toBe(0);
+  });
+
+  it("keeps the open sheet's ink canvas inside Safari's canvas limit on a 13-inch iPad", () => {
+    const frame = { frameWidth: 1376, frameHeight: 1000 };
+    const windows = getNotebookSheetRenderWindows({ ...zoomed, ...frame, devicePixelRatio: 2 });
+    const devicePixels = windows.ink.width * windows.ink.height * 4;
+    // Within the budget, give or take snapping out to the grid on each side.
+    expect(devicePixels).toBeLessThan(NOTEBOOK_INK_WINDOW_MAX_PIXELS * 1.3);
+    expect(devicePixels).toBeLessThan(16_777_216);
+    // Still everything on screen.
+    expect(windows.ink.width).toBeGreaterThanOrEqual(frame.frameWidth);
+    expect(windows.ink.height).toBeGreaterThanOrEqual(frame.frameHeight);
+    // Without the density there is no budget, as for the PDF's own slice.
+    const unbudgeted = getNotebookSheetRenderWindows({ ...zoomed, ...frame });
+    expect(unbudgeted.pdfDetail).toEqual(windows.pdfDetail);
   });
 });

@@ -57,6 +57,45 @@ export const NOTEBOOK_INK_WINDOW_OVERSCAN = 0.5;
  */
 export const NOTEBOOK_INK_WINDOW_GRID = 128;
 
+/**
+ * The most device pixels the zoomed page canvas may hold, before the overscan
+ * gives way.
+ *
+ * Twice the frame each way is four times the screen: about 12 megapixels on an
+ * 11-inch iPad and 24 on a 13-inch one. Every pinch that settles repaints all of
+ * it, on the CPU on an iPad, so the page stayed soft from the pinch until that
+ * finished; and 24 is past the 16.7 million pixels Safari allows a canvas at
+ * all. Over the budget, the overscan shrinks until the window fits -- a
+ * fast pan reaches blank edge a little sooner, filled as soon as it settles --
+ * but never below the frame itself, which always has to be painted.
+ *
+ * Six million leaves an 11-inch iPad about the headroom the PDF beneath already
+ * has (`PDF_DETAIL_OVERSCAN`), so ink and page reveal their edges together, and
+ * measured in Chromium at that size it took the writing frames zoomed in from
+ * 33ms back towards the fitted page's 17.
+ */
+export const NOTEBOOK_INK_WINDOW_MAX_PIXELS = 6_000_000;
+
+/**
+ * The overscan that keeps a window of the frame plus overscan on every side
+ * within `maxPixels` device pixels. Never more than asked for, never below 0.
+ */
+export function getNotebookInkWindowOverscan(input: {
+  overscan: number;
+  frameWidth: number;
+  frameHeight: number;
+  devicePixelRatio: number;
+  maxPixels: number;
+}) {
+  const { overscan } = input;
+  const ratio = Number.isFinite(input.devicePixelRatio) && input.devicePixelRatio > 0 ? input.devicePixelRatio : 1;
+  const frame = Math.max(0, input.frameWidth) * Math.max(0, input.frameHeight) * ratio * ratio;
+  if (!(frame > 0) || !Number.isFinite(overscan)) return overscan;
+  const grown = (1 + 2 * overscan) ** 2;
+  if (frame * grown <= input.maxPixels) return overscan;
+  return Math.max(0, Math.min(overscan, (Math.sqrt(input.maxPixels / frame) - 1) / 2));
+}
+
 export type NotebookInkRenderWindow = {
   /** The whole sheet at the current zoom, in CSS pixels. */
   sheetWidth: number;
@@ -93,6 +132,12 @@ export function getNotebookInkRenderWindow(input: {
   frameHeight: number;
   overscan?: number;
   grid?: number;
+  /**
+   * The screen's density. Given, the window is held within `maxPixels`
+   * device pixels (`NOTEBOOK_INK_WINDOW_MAX_PIXELS` unless said otherwise).
+   */
+  devicePixelRatio?: number;
+  maxPixels?: number;
 }): NotebookInkRenderWindow {
   const sheetWidth = Math.max(0, finite(input.sheetWidth));
   const sheetHeight = Math.max(0, finite(input.sheetHeight));
@@ -105,8 +150,18 @@ export function getNotebookInkRenderWindow(input: {
     height: sheetHeight,
   };
 
-  const overscan = input.overscan ?? NOTEBOOK_INK_WINDOW_OVERSCAN;
-  if (!Number.isFinite(overscan) || overscan < 0) return whole;
+  const asked = input.overscan ?? NOTEBOOK_INK_WINDOW_OVERSCAN;
+  if (!Number.isFinite(asked) || asked < 0) return whole;
+  const overscan =
+    input.devicePixelRatio !== undefined
+      ? getNotebookInkWindowOverscan({
+          overscan: asked,
+          frameWidth: input.frameWidth,
+          frameHeight: input.frameHeight,
+          devicePixelRatio: input.devicePixelRatio,
+          maxPixels: input.maxPixels ?? NOTEBOOK_INK_WINDOW_MAX_PIXELS,
+        })
+      : asked;
   if (sheetWidth <= 0 || sheetHeight <= 0) return whole;
 
   const grid = Math.max(1, input.grid ?? NOTEBOOK_INK_WINDOW_GRID);
@@ -180,14 +235,17 @@ export function getNotebookSheetRenderWindows(input: {
   pageY: number;
   frameWidth: number;
   frameHeight: number;
+  /** The screen's density, which the ink window's pixel budget is counted at. */
+  devicePixelRatio?: number;
 }) {
+  const { devicePixelRatio, ...sheet } = input;
   const pdfSlice = getNotebookInkRenderWindow({
-    ...input,
+    ...sheet,
     overscan: PDF_DETAIL_OVERSCAN,
     grid: PDF_DETAIL_GRID,
   });
   return {
-    ink: getNotebookInkRenderWindow(input),
+    ink: getNotebookInkRenderWindow({ ...sheet, devicePixelRatio: devicePixelRatio ?? 1 }),
     pdfDetail: isWholeNotebookInkSheet(pdfSlice) ? null : pdfSlice,
   };
 }

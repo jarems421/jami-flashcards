@@ -210,6 +210,7 @@ function ExamScratchpad({
             pageY: layout.pageOrigin.y,
             frameWidth: layout.frameSize.width,
             frameHeight: layout.frameSize.height,
+            devicePixelRatio: window.devicePixelRatio || 1,
           })
         : null,
     [layout, zoomed]

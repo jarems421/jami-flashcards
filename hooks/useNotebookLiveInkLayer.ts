@@ -114,6 +114,8 @@ export function useNotebookLiveInkLayer({
   const originY = viewport.layout.pageOrigin.y;
   const frameWidth = viewport.layout.frameSize.width;
   const frameHeight = viewport.layout.frameSize.height;
+  // The ink window's pixel budget is counted in device pixels.
+  const devicePixelRatio = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
   const windows = useMemo(
     () =>
       getNotebookSheetRenderWindows({
@@ -123,8 +125,9 @@ export function useNotebookLiveInkLayer({
         pageY: originY,
         frameWidth,
         frameHeight,
+        devicePixelRatio,
       }),
-    [frameHeight, frameWidth, originX, originY, pageHeightPx, pageWidthPx]
+    [devicePixelRatio, frameHeight, frameWidth, originX, originY, pageHeightPx, pageWidthPx]
   );
 
   const handlePdfCanvasReady = useCallback(

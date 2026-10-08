@@ -566,6 +566,7 @@ export function useNotebookInkPointerInput({
             viewportWidth: window.innerWidth,
             viewportHeight: window.innerHeight,
             devicePixelRatio: window.devicePixelRatio || 1,
+            pointer: { clientX: event.clientX, clientY: event.clientY },
           });
         }
       }

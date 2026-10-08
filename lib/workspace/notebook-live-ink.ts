@@ -2,8 +2,8 @@ import type { Editor as JsDrawEditor } from "js-draw";
 import type { JsDrawModule } from "@/lib/workspace/notebook-js-draw";
 
 /**
- * Fast live ink: the stroke being written, drawn on a canvas the size of the
- * screen instead of the size of the page.
+ * Fast live ink: the stroke being written, drawn on a canvas around the stroke
+ * instead of one the size of the page.
  *
  * js-draw draws a stroke in progress on its "wet ink" canvas, which is exactly
  * as big as its page canvas -- the whole sheet at fit, and a window twice the
@@ -18,7 +18,8 @@ import type { JsDrawModule } from "@/lib/workspace/notebook-js-draw";
  * only where the pixels of the unfinished stroke go:
  *
  *  - While a stroke is live, js-draw's wet-ink renderer is pointed at our own
- *    canvas, which covers only the part of the page that is on screen. The
+ *    canvas, which starts as a square around the pen and grows with the
+ *    stroke, never past what is on screen (`NOTEBOOK_LIVE_INK_REACH`). The
  *    same renderer draws the same path, so what is seen while writing is what
  *    js-draw would have drawn, pixel for pixel in shape.
  *  - Only the area the stroke has painted is wiped between frames, not the
@@ -44,6 +45,28 @@ import type { JsDrawModule } from "@/lib/workspace/notebook-js-draw";
  * costs no reallocation.
  */
 export const NOTEBOOK_LIVE_INK_GRID = 64;
+
+/**
+ * How far around the pen the live canvas first reaches, in CSS pixels.
+ *
+ * It covered everything on screen, and that is what made writing choppy zoomed
+ * in. A canvas drawn on every frame is handed to the compositor whole on every
+ * frame, however little of it changed: measured in Chromium at iPad size, the
+ * same stroke spent 1.1s of main thread doing that at fit, where the canvas is
+ * only as big as the page, and 4.6s zoomed in, where it is the whole screen --
+ * a steady 60 frames a second against 30. Safari copies a canvas being drawn on
+ * every frame in the same way. Only the writing is ever on it, so it starts as
+ * a square around the pen and grows with the stroke.
+ */
+export const NOTEBOOK_LIVE_INK_REACH = 256;
+
+/**
+ * When what was drawn comes this close to an edge the canvas can still grow
+ * past, in CSS pixels, it grows before the next frame is drawn. More than a
+ * frame of fast writing and the predicted tip ahead of it, so a stroke reaches
+ * new room before it reaches the edge.
+ */
+export const NOTEBOOK_LIVE_INK_EDGE = 96;
 
 /**
  * The most pixels the live canvas may hold.
@@ -136,6 +159,94 @@ export function getNotebookLiveInkPixelSnap(screenOrigin: number, pixelRatio: nu
   if (!Number.isFinite(screenOrigin) || !Number.isFinite(pixelRatio) || pixelRatio <= 0) return 0;
   const device = screenOrigin * pixelRatio;
   return (Math.round(device) - device) / pixelRatio;
+}
+
+/** A box in the ink surface's coordinates, by its edges. */
+export type NotebookLiveInkBox = { left: number; top: number; right: number; bottom: number };
+
+/** One axis of a window of `size` reaching `reach` behind `at`, slid to stay inside `[min, min + room]`. */
+function windowAround(at: number, reach: number, size: number, min: number, room: number, grid: number) {
+  if (room <= size) return { start: min, size: room };
+  const start = Math.floor((at - reach) / grid) * grid;
+  return { start: clamp(start, min, min + room - size), size };
+}
+
+/**
+ * Where the live canvas goes when a stroke begins: a square around the pen,
+ * inside what is on screen. Always the same size away from the edges -- the
+ * reach on either side, plus a grid step for the snapping -- so a stroke
+ * starting somewhere new moves the canvas that is already there rather than
+ * making another.
+ */
+export function getNotebookLiveInkStartRegion(input: {
+  visible: NotebookLiveInkRegion;
+  x: number;
+  y: number;
+  reach?: number;
+  grid?: number;
+}): NotebookLiveInkRegion {
+  const reach = input.reach ?? NOTEBOOK_LIVE_INK_REACH;
+  const grid = Math.max(1, input.grid ?? NOTEBOOK_LIVE_INK_GRID);
+  const size = 2 * reach + grid;
+  const { visible } = input;
+  const horizontal = windowAround(input.x, reach, size, visible.left, visible.width, grid);
+  const vertical = windowAround(input.y, reach, size, visible.top, visible.height, grid);
+  return { left: horizontal.start, top: vertical.start, width: horizontal.size, height: vertical.size };
+}
+
+/**
+ * Whether what was drawn has come within `edge` of a side of the canvas that
+ * could still move outwards. A side already at the edge of the screen cannot,
+ * and nothing drawn past it would be seen anyway.
+ */
+export function notebookLiveInkNeedsRoom(input: {
+  drawn: NotebookLiveInkBox;
+  region: NotebookLiveInkRegion;
+  visible: NotebookLiveInkRegion;
+  edge?: number;
+}) {
+  const edge = input.edge ?? NOTEBOOK_LIVE_INK_EDGE;
+  const { drawn, region, visible } = input;
+  const right = region.left + region.width;
+  const bottom = region.top + region.height;
+  return (
+    (drawn.left - edge < region.left && region.left > visible.left) ||
+    (drawn.top - edge < region.top && region.top > visible.top) ||
+    (drawn.right + edge > right && right < visible.left + visible.width) ||
+    (drawn.bottom + edge > bottom && bottom < visible.top + visible.height)
+  );
+}
+
+/**
+ * The canvas grown to give what was drawn `reach` of room on every side,
+ * snapped out to the grid, and kept inside what is on screen. Only ever grown
+ * during a stroke, never shrunk, so a stroke cannot shuffle it back and forth.
+ */
+export function getNotebookLiveInkGrownRegion(input: {
+  region: NotebookLiveInkRegion;
+  visible: NotebookLiveInkRegion;
+  drawn: NotebookLiveInkBox;
+  reach?: number;
+  grid?: number;
+}): NotebookLiveInkRegion {
+  const reach = input.reach ?? NOTEBOOK_LIVE_INK_REACH;
+  const grid = Math.max(1, input.grid ?? NOTEBOOK_LIVE_INK_GRID);
+  const { region, visible, drawn } = input;
+  const visibleRight = visible.left + visible.width;
+  const visibleBottom = visible.top + visible.height;
+  const left = clamp(Math.min(region.left, Math.floor((drawn.left - reach) / grid) * grid), visible.left, visibleRight);
+  const top = clamp(Math.min(region.top, Math.floor((drawn.top - reach) / grid) * grid), visible.top, visibleBottom);
+  const right = clamp(
+    Math.max(region.left + region.width, Math.ceil((drawn.right + reach) / grid) * grid),
+    visible.left,
+    visibleRight
+  );
+  const bottom = clamp(
+    Math.max(region.top + region.height, Math.ceil((drawn.bottom + reach) / grid) * grid),
+    visible.top,
+    visibleBottom
+  );
+  return { left, top, width: right - left, height: bottom - top };
 }
 
 export function sameNotebookLiveInkRegion(
@@ -294,6 +405,18 @@ export class NotebookLiveInkDirtyRegion {
   }
 
   /**
+   * The box around everything drawn since the last wipe, line width and
+   * antialiasing included, in the context's own CSS pixels. "everything" after
+   * a call it could not bound; null when nothing has been drawn.
+   */
+  drawnBox(): NotebookLiveInkBox | "everything" | null {
+    if (this.everything) return "everything";
+    if (this.maxX < this.minX) return null;
+    const pad = this.reach + DIRTY_MARGIN_CSS_PX;
+    return { left: this.minX - pad, top: this.minY - pad, right: this.maxX + pad, bottom: this.maxY + pad };
+  }
+
+  /**
    * The box to wipe, in device pixels, clamped to the canvas. Null when
    * nothing has been drawn.
    */
@@ -400,15 +523,20 @@ export type NotebookLiveInk = {
     input: NotebookLiveInkPlacement & {
       /** js-draw's render region's rect, which its screen coordinates are from. */
       regionRect: DOMRectReadOnly;
+      /**
+       * Where the pen came down, in viewport coordinates. The canvas starts
+       * around it; without it, it covers everything on screen.
+       */
+      pointer?: { clientX: number; clientY: number };
     }
   ): boolean;
   /**
-   * Sizes the live canvas for where the page now sits, without drawing.
+   * Gets the live canvas ready for where the page now sits, without drawing.
    *
-   * Allocating a canvas the size of the screen is not free, and doing it in
-   * `begin` put that cost on the pointerdown -- the first stroke on a page,
-   * and the first after every pan. Called whenever the page settles instead,
-   * so a stroke normally finds its canvas already there.
+   * Allocating a canvas is not free, and doing it in `begin` put that cost on
+   * the pointerdown -- the first stroke on a page, and the first after every
+   * pan. Called whenever the page settles instead, so a stroke normally finds a
+   * canvas of the size it starts at already there, and only has to move it.
    */
   prepare(input: NotebookLiveInkPlacement): void;
   /**
@@ -455,19 +583,124 @@ export function installNotebookLiveInk(input: {
   const originalFlatten = display.flatten;
   let live = false;
   let parked = false;
+  /** The part of the surface on screen when the page last settled or a stroke began. */
+  let visible: NotebookLiveInkRegion | null = null;
+  /** Where the live canvas covers, in surface coordinates. */
   let region: NotebookLiveInkRegion | null = null;
   let pixelRatio = 1;
+  /** The surface's corner on screen, for snapping the canvas onto device pixels. */
+  let surfaceLeft = 0;
+  let surfaceTop = 0;
   /** Where the canvas actually sits in the surface: the region, snapped to device pixels. */
   let placedLeft = Number.NaN;
   let placedTop = Number.NaN;
+  /** js-draw's screen origin (its render region) in surface coordinates, for the live stroke. */
+  let screenOriginX = 0;
+  let screenOriginY = 0;
   let committed: RenderableComponent | null = null;
 
-  wet.clear = function clearLiveOrWet(this: unknown) {
-    if (live) {
+  /**
+   * Puts the canvas over `next`. A change of size reallocates it, which clears
+   * it too; a move alone keeps the allocation and wipes what was drawn.
+   */
+  const place = (next: NotebookLiveInkRegion, nextRatio: number) => {
+    const resized =
+      !region || region.width !== next.width || region.height !== next.height || nextRatio !== pixelRatio;
+    if (resized) {
+      pixelRatio = nextRatio;
+      // Resizing clears the canvas and resets its transform.
+      canvas.width = Math.max(1, Math.round(next.width * nextRatio));
+      canvas.height = Math.max(1, Math.round(next.height * nextRatio));
+      // Exactly the backing size over the ratio, so one canvas pixel is one
+      // device pixel and nothing is stretched by a rounding remainder.
+      canvas.style.width = `${canvas.width / nextRatio}px`;
+      canvas.style.height = `${canvas.height / nextRatio}px`;
+      dirtyRegion.forget();
+      dirtyRegion.setScale(nextRatio);
+    } else {
       dirtyRegion.wipe(pixelRatio);
+    }
+    region = next;
+    // Moved onto the device-pixel grid wherever the page now sits. Only a
+    // style change, so a stroke starting somewhere new costs no reallocation.
+    const left = next.left + getNotebookLiveInkPixelSnap(surfaceLeft + next.left, nextRatio);
+    const top = next.top + getNotebookLiveInkPixelSnap(surfaceTop + next.top, nextRatio);
+    if (left !== placedLeft) {
+      placedLeft = left;
+      canvas.style.left = `${left}px`;
+    }
+    if (top !== placedTop) {
+      placedTop = top;
+      canvas.style.top = `${top}px`;
+    }
+  };
+
+  /**
+   * What is on screen of the surface, and the density to draw it at. The
+   * density is taken from the whole of it, so a canvas that grows during a
+   * stroke never changes density part way through.
+   */
+  const measure = (placement: NotebookLiveInkPlacement) => {
+    surfaceLeft = placement.surfaceRect.left;
+    surfaceTop = placement.surfaceRect.top;
+    visible = getNotebookLiveInkRegion({
+      surfaceLeft: placement.surfaceRect.left,
+      surfaceTop: placement.surfaceRect.top,
+      surfaceWidth: placement.surfaceRect.width,
+      surfaceHeight: placement.surfaceRect.height,
+      viewportWidth: placement.viewportWidth,
+      viewportHeight: placement.viewportHeight,
+    });
+    if (!visible) return null;
+    const ratio = getNotebookLiveInkPixelRatio({
+      width: visible.width,
+      height: visible.height,
+      devicePixelRatio: placement.devicePixelRatio,
+    });
+    return { visible, ratio };
+  };
+
+  /** js-draw's wet renderer drawing here: from its render region's origin to the canvas's. */
+  const pointRendererHere = () => {
+    wet.setTransform(
+      jsDraw.Mat33.translation(jsDraw.Vec2.of(screenOriginX - placedLeft, screenOriginY - placedTop)).rightMul(
+        editor.viewport.canvasToScreenTransform
+      )
+    );
+  };
+
+  wet.clear = function clearLiveOrWet(this: unknown) {
+    if (!live) {
+      originalClear.call(wet);
       return;
     }
-    originalClear.call(wet);
+    /*
+     * The start of a frame: js-draw is about to draw the whole stroke again
+     * from nothing. If the last frame's drawing came near an edge with room
+     * to spare, the canvas grows now -- before anything is drawn, so a resize
+     * loses nothing.
+     */
+    const drawn = dirtyRegion.drawnBox();
+    if (drawn && region && visible) {
+      const box =
+        drawn === "everything"
+          ? { left: visible.left, top: visible.top, right: visible.left + visible.width, bottom: visible.top + visible.height }
+          : {
+              left: drawn.left + placedLeft,
+              top: drawn.top + placedTop,
+              right: drawn.right + placedLeft,
+              bottom: drawn.bottom + placedTop,
+            };
+      if (notebookLiveInkNeedsRoom({ drawn: box, region, visible })) {
+        const grown = getNotebookLiveInkGrownRegion({ region, visible, drawn: box });
+        if (!sameNotebookLiveInkRegion(grown, region)) {
+          place(grown, pixelRatio);
+          pointRendererHere();
+          return;
+        }
+      }
+    }
+    dirtyRegion.wipe(pixelRatio);
   };
 
   image.addComponentDirectly = function recordCommitted(
@@ -502,54 +735,6 @@ export function installNotebookLiveInk(input: {
     }
   };
 
-  /** Sizes and places the live canvas; the region, or null if off screen. */
-  const place = (placement: NotebookLiveInkPlacement) => {
-    const next = getNotebookLiveInkRegion({
-      surfaceLeft: placement.surfaceRect.left,
-      surfaceTop: placement.surfaceRect.top,
-      surfaceWidth: placement.surfaceRect.width,
-      surfaceHeight: placement.surfaceRect.height,
-      viewportWidth: placement.viewportWidth,
-      viewportHeight: placement.viewportHeight,
-    });
-    if (!next) return null;
-    const nextRatio = getNotebookLiveInkPixelRatio({
-      width: next.width,
-      height: next.height,
-      devicePixelRatio: placement.devicePixelRatio,
-    });
-    if (!sameNotebookLiveInkRegion(region, next) || nextRatio !== pixelRatio) {
-      region = next;
-      pixelRatio = nextRatio;
-      // Resizing clears the canvas and resets its transform.
-      canvas.width = Math.max(1, Math.round(next.width * nextRatio));
-      canvas.height = Math.max(1, Math.round(next.height * nextRatio));
-      // Exactly the backing size over the ratio, so one canvas pixel is one
-      // device pixel and nothing is stretched by a rounding remainder.
-      canvas.style.width = `${canvas.width / nextRatio}px`;
-      canvas.style.height = `${canvas.height / nextRatio}px`;
-      dirtyRegion.forget();
-      dirtyRegion.setScale(nextRatio);
-    } else {
-      dirtyRegion.wipe(pixelRatio);
-    }
-    // Moved onto the device-pixel grid wherever the page now sits. Only a
-    // style change, so a pan between strokes still costs no reallocation.
-    const left =
-      next.left + getNotebookLiveInkPixelSnap(placement.surfaceRect.left + next.left, nextRatio);
-    const top =
-      next.top + getNotebookLiveInkPixelSnap(placement.surfaceRect.top + next.top, nextRatio);
-    if (left !== placedLeft) {
-      placedLeft = left;
-      canvas.style.left = `${left}px`;
-    }
-    if (top !== placedTop) {
-      placedTop = top;
-      canvas.style.top = `${top}px`;
-    }
-    return next;
-  };
-
   const end = () => {
     if (!live) return;
     dirtyRegion.wipe(pixelRatio);
@@ -573,28 +758,36 @@ export function installNotebookLiveInk(input: {
     },
     begin(stroke) {
       end();
-      const next = place(stroke);
-      if (!next) return false;
+      const measured = measure(stroke);
+      if (!measured) return false;
+      const start = stroke.pointer
+        ? getNotebookLiveInkStartRegion({
+            visible: measured.visible,
+            x: stroke.pointer.clientX - stroke.surfaceRect.left,
+            y: stroke.pointer.clientY - stroke.surfaceRect.top,
+          })
+        : measured.visible;
+      place(start, measured.ratio);
 
       // js-draw's screen coordinates are measured from its render region;
       // ours from the live canvas. The difference is a plain offset.
-      const offsetX =
-        stroke.regionRect.left - (stroke.surfaceRect.left + placedLeft);
-      const offsetY =
-        stroke.regionRect.top - (stroke.surfaceRect.top + placedTop);
+      screenOriginX = stroke.regionRect.left - stroke.surfaceRect.left;
+      screenOriginY = stroke.regionRect.top - stroke.surfaceRect.top;
       wet.ctx = liveCtx;
-      wet.setTransform(
-        jsDraw.Mat33.translation(jsDraw.Vec2.of(offsetX, offsetY)).rightMul(
-          editor.viewport.canvasToScreenTransform
-        )
-      );
+      pointRendererHere();
       live = true;
       committed = null;
       return true;
     },
     prepare(placement) {
       if (live) return;
-      place(placement);
+      const measured = measure(placement);
+      if (!measured) return;
+      // The size a stroke starts at, so the pointerdown only has to move it.
+      place(
+        getNotebookLiveInkStartRegion({ visible: measured.visible, x: measured.visible.left, y: measured.visible.top }),
+        measured.ratio
+      );
     },
     setParked(next) {
       if (next === parked) return;
