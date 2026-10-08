@@ -144,7 +144,7 @@ describe("a diagram label in study", () => {
     expect(onSemanticCheck).not.toHaveBeenCalled();
     expect(host.textContent).toContain("That is another label on this diagram.");
     expect(host.querySelectorAll(".occlusion-outline--confused")).toHaveLength(1);
-    expect(host.textContent).toContain("Right atrium is the label outlined in amber");
+    expect(host.textContent).toContain("Right atrium is the label with the dashed amber outline");
     const next = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Next card");
     if (next) {
       await act(async () => next.click());
@@ -155,12 +155,12 @@ describe("a diagram label in study", () => {
     expect(onCommit).toHaveBeenCalledWith(expect.any(String), { requeueOnMiss: true, confusedWithLabelId: "c" });
   });
 
-  it("uncovers every label of a group card and names them all", async () => {
+  it("uncovers every label of a group card and names them all, when the picture has no labels", async () => {
     const group: Card = {
       ...card,
       id: "card-group",
       back: "Left atrium; Right atrium",
-      occlusion: { diagram: { ...HEART, groups: [{ id: "g", name: "Atria", labelIds: ["b", "c"] }] }, groupId: "g" },
+      occlusion: { diagram: { ...HEART, labelMode: "name", groups: [{ id: "g", name: "Atria", labelIds: ["b", "c"] }] }, groupId: "g" },
     };
     await act(async () =>
       root.render(<StudyFlashcard card={group} flipped onReveal={vi.fn()} deckName="Anatomy" deckColor="#8f7de8" topicNames={[]} />)
@@ -169,7 +169,7 @@ describe("a diagram label in study", () => {
     expect(back.textContent).toContain("Left atrium · Right atrium");
     expect(back.querySelectorAll(".occlusion-outline--target")).toHaveLength(2);
     const front = host.querySelector(".study-flashcard-face-front")!;
-    expect(front.textContent).toContain("Atria: name the 2 highlighted labels.");
+    expect(front.textContent).toContain("Atria: name the 2 marked parts.");
   });
 
   const whole: Card = {
@@ -258,7 +258,9 @@ describe("a diagram label in study", () => {
       )
     );
     const back = host.querySelector(".study-flashcard-face-back")!;
-    expect(back.textContent).toContain("Left atrium");
+    // The picture prints the covered word, so uncovering it is the answer: no list of names under it.
+    expect(back.textContent).not.toContain("Left atrium");
+    expect(back.querySelectorAll(".occlusion-outline--target")).toHaveLength(1);
     const toggle = Array.from(back.querySelectorAll("button")).find((button) => button.textContent === "Show every label")!;
     await act(async () => toggle.click());
     // Unmasked: nothing covers the picture's own labels any more.

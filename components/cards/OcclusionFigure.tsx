@@ -15,6 +15,7 @@ import {
   type OcclusionPhase,
   type OcclusionPointer,
   type OcclusionShape,
+  occlusionCoverClass,
 } from "@/lib/study/image-occlusion";
 import { getPointerLine } from "@/lib/study/image-occlusion-geometry";
 
@@ -322,7 +323,7 @@ export function OcclusionPicture({
       // An empty label means something around it already names the picture.
       {...(label ? { role: onMaskActivate ? "group" : "img", "aria-label": label } : { "aria-hidden": true })}
       className={`occlusion-figure relative mx-auto shrink-0 select-none overflow-hidden rounded-lg bg-white ${
-        diagram.coverColor ? `occlusion-cover--${diagram.coverColor}` : ""
+        occlusionCoverClass(diagram.coverColor)
       } ${className}`}
       style={{ aspectRatio: `${image.width} / ${image.height}`, width }}
     >

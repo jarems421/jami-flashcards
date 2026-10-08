@@ -109,3 +109,22 @@ describe("starting a diagram", () => {
     expect(toolbarButton("Line to the part (L)")).toBeNull();
   });
 });
+
+describe("the covers' colour", () => {
+  it("is chosen from the toolbar and colours the editor's boxes", async () => {
+    await openNewDiagram();
+    await act(async () => buttonWithText("It has labels")!.click());
+    await act(async () => buttonWithText("I'll cover them myself")!.click());
+
+    const trigger = toolbarButton("Cover colour: Theme") as HTMLButtonElement;
+    expect(trigger.closest('[role="toolbar"]')).not.toBeNull();
+    await act(async () => trigger.click());
+    const coral = document.querySelector<HTMLButtonElement>('[role="radiogroup"] button[aria-label="Coral"]')!;
+    expect(document.querySelector('[role="radio"][aria-checked="true"]')?.getAttribute("aria-label")).toBe("Theme");
+    await act(async () => coral.click());
+
+    expect(document.querySelector('[role="radiogroup"][aria-label="Cover colour"]')).toBeNull();
+    expect(toolbarButton("Cover colour: Coral")).not.toBeNull();
+    expect(document.querySelector(".occlusion-cover--coral")).not.toBeNull();
+  });
+});

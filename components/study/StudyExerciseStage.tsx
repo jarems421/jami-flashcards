@@ -132,7 +132,7 @@ function PromptImage({
         />
         {revealed && confused ? (
           <p role="status" className="text-center text-sm text-text-secondary">
-            <span className="occlusion-confused-text font-semibold">{confused.answer}</span> is the label outlined in amber. The one asked is outlined in purple.
+            <span className="occlusion-confused-text font-semibold">{confused.answer}</span> is the label with the dashed amber outline. The one asked has the solid outline.
           </p>
         ) : null}
         <DiagramZoomDialog open={zoomed} title={card.front.trim() || "Diagram"} onClose={() => setZoomed(false)}>

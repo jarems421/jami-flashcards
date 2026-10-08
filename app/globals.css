@@ -2189,34 +2189,37 @@
    */
   .occlusion-figure {
     container-type: inline-size;
-    --occlusion-cover: var(--color-accent);
   }
 
-  /* A swatch of a cover colour, for choosing one; the theme's accent unless named. */
+  /*
+   * A diagram's colour: its covers, the asked label's ring, slot and line, and
+   * the editor's boxes. Every rule below reads --occlusion-cover with the
+   * theme's accent as its fallback, so a diagram with no colour of its own,
+   * or anything drawn outside one, keeps the accent. The classes are written
+   * out whole in OCCLUSION_COVER_COLOR_CLASSES, or the build drops them.
+   */
   .occlusion-cover-swatch {
-    --occlusion-cover: var(--color-accent);
-    background: var(--occlusion-cover);
+    background: var(--occlusion-cover, var(--color-accent));
   }
 
-  /* The colours a student can give a diagram's covers (OCCLUSION_COVER_COLORS). */
-  .occlusion-cover--coral { --occlusion-cover: #ef6b63; }
-  .occlusion-cover--gold { --occlusion-cover: #e2a93b; }
-  .occlusion-cover--mint { --occlusion-cover: #34b388; }
-  .occlusion-cover--sky { --occlusion-cover: #3f97e0; }
-  .occlusion-cover--slate { --occlusion-cover: #5a6378; }
+  .occlusion-cover--coral { --occlusion-cover: #ef6b63; --occlusion-cover-on: #ffffff; }
+  .occlusion-cover--gold { --occlusion-cover: #e2a93b; --occlusion-cover-on: #1d1733; }
+  .occlusion-cover--mint { --occlusion-cover: #34b388; --occlusion-cover-on: #ffffff; }
+  .occlusion-cover--sky { --occlusion-cover: #3f97e0; --occlusion-cover-on: #ffffff; }
+  .occlusion-cover--slate { --occlusion-cover: #5a6378; --occlusion-cover-on: #ffffff; }
 
   .occlusion-mask {
-    background: color-mix(in srgb, var(--occlusion-cover) 16%, #fbf9ff);
-    border: 1.5px solid color-mix(in srgb, var(--occlusion-cover) 40%, #3b3355);
+    background: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 16%, #fbf9ff);
+    border: 1.5px solid color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 40%, #3b3355);
     box-shadow: 0 1px 2px rgba(20, 12, 40, 0.25);
   }
 
   .occlusion-mask--target {
-    background: var(--occlusion-cover);
-    border-color: color-mix(in srgb, var(--occlusion-cover) 65%, #1a1230);
-    color: var(--color-on-accent);
+    background: var(--occlusion-cover, var(--color-accent));
+    border-color: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 65%, #1a1230);
+    color: var(--occlusion-cover-on, var(--color-on-accent));
     box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--occlusion-cover) 32%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 32%, transparent),
       0 2px 6px rgba(20, 12, 40, 0.35);
   }
 
@@ -2226,11 +2229,11 @@
   }
 
   .occlusion-outline--target {
-    border: 2.5px solid var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    border: 2.5px solid var(--occlusion-cover, var(--color-accent));
+    background: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 10%, transparent);
     box-shadow:
       0 0 0 2px rgba(255, 255, 255, 0.75),
-      0 0 0 5px color-mix(in srgb, var(--color-accent) 28%, transparent);
+      0 0 0 5px color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 28%, transparent);
   }
 
   .occlusion-chip {
@@ -2251,8 +2254,8 @@
 
   .occlusion-chip--target {
     border-color: rgba(255, 255, 255, 0.6);
-    background: var(--color-accent);
-    color: var(--color-on-accent);
+    background: var(--occlusion-cover, var(--color-accent));
+    color: var(--occlusion-cover-on, var(--color-on-accent));
   }
 
   /* A label slot in the margin: a blank label with a line to its part. */
@@ -2264,9 +2267,9 @@
   }
 
   .occlusion-slot--target {
-    border: 2.5px solid var(--color-accent);
+    border: 2.5px solid var(--occlusion-cover, var(--color-accent));
     box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--color-accent) 28%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 28%, transparent),
       0 1px 3px rgba(20, 12, 40, 0.3);
   }
 
@@ -2298,7 +2301,7 @@
   }
 
   .occlusion-pointer--asked {
-    stroke: var(--color-accent);
+    stroke: var(--occlusion-cover, var(--color-accent));
     stroke-width: 2.5px;
   }
 
@@ -2307,7 +2310,7 @@
   }
 
   .occlusion-pointer-dot.occlusion-pointer--asked {
-    fill: var(--color-accent);
+    fill: var(--occlusion-cover, var(--color-accent));
     stroke: none;
   }
 
@@ -2365,14 +2368,14 @@
   }
 
   .is-polygon.occlusion-mask polygon {
-    fill: color-mix(in srgb, var(--occlusion-cover) 16%, #fbf9ff);
-    stroke: color-mix(in srgb, var(--occlusion-cover) 40%, #3b3355);
+    fill: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 16%, #fbf9ff);
+    stroke: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 40%, #3b3355);
     stroke-width: 1.5px;
   }
 
   .is-polygon.occlusion-mask--target polygon {
-    fill: var(--occlusion-cover);
-    stroke: color-mix(in srgb, var(--occlusion-cover) 65%, #1a1230);
+    fill: var(--occlusion-cover, var(--color-accent));
+    stroke: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 65%, #1a1230);
   }
 
   .is-polygon.occlusion-outline polygon {
@@ -2382,8 +2385,8 @@
   }
 
   .is-polygon.occlusion-outline--target polygon {
-    fill: color-mix(in srgb, var(--color-accent) 10%, transparent);
-    stroke: var(--color-accent);
+    fill: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 10%, transparent);
+    stroke: var(--occlusion-cover, var(--color-accent));
     stroke-width: 2.5px;
   }
 
@@ -2401,13 +2404,13 @@
   }
 
   .is-polygon.occlusion-edit-shape polygon {
-    fill: color-mix(in srgb, var(--color-accent) 26%, transparent);
-    stroke: var(--color-accent);
+    fill: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 26%, transparent);
+    stroke: var(--occlusion-cover, var(--color-accent));
     stroke-width: 2px;
   }
 
   .is-polygon.occlusion-edit-shape--selected polygon {
-    fill: color-mix(in srgb, var(--color-accent) 38%, transparent);
+    fill: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 38%, transparent);
     stroke-width: 2.5px;
   }
 
@@ -2429,8 +2432,8 @@
   }
 
   .occlusion-key--target {
-    border: 2.5px solid var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    border: 2.5px solid var(--occlusion-cover, var(--color-accent));
+    background: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 10%, transparent);
   }
 
   .occlusion-key--confused {
@@ -2439,8 +2442,8 @@
   }
 
   .occlusion-trace {
-    fill: color-mix(in srgb, var(--color-accent) 18%, transparent);
-    stroke: var(--color-accent);
+    fill: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 18%, transparent);
+    stroke: var(--occlusion-cover, var(--color-accent));
     stroke-width: 2.5px;
     stroke-dasharray: 5 4;
     stroke-linejoin: round;
@@ -2485,17 +2488,17 @@
 
   /* The editor's boxes: see-through, so the word under them stays readable while it is typed. */
   .occlusion-edit-shape {
-    border: 2px solid var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 26%, transparent);
+    border: 2px solid var(--occlusion-cover, var(--color-accent));
+    background: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 26%, transparent);
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
   }
 
   .occlusion-edit-shape--selected {
     border-width: 2.5px;
-    background: color-mix(in srgb, var(--color-accent) 38%, transparent);
+    background: color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 38%, transparent);
     box-shadow:
       0 0 0 2px rgba(255, 255, 255, 0.85),
-      0 0 0 5px color-mix(in srgb, var(--color-accent) 35%, transparent);
+      0 0 0 5px color-mix(in srgb, var(--occlusion-cover, var(--color-accent)) 35%, transparent);
   }
 
   .occlusion-edit-shape .occlusion-slot-text {
@@ -2504,13 +2507,13 @@
 
   .occlusion-edit-badge {
     border: 1.5px solid rgba(255, 255, 255, 0.85);
-    background: var(--color-accent);
-    color: var(--color-on-accent);
+    background: var(--occlusion-cover, var(--color-accent));
+    color: var(--occlusion-cover-on, var(--color-on-accent));
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   }
 
   .occlusion-handle {
-    border: 2px solid var(--color-accent);
+    border: 2px solid var(--occlusion-cover, var(--color-accent));
     background: #ffffff;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   }

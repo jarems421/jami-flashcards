@@ -91,13 +91,22 @@ the ring-around-the-part style. In *cover*, a line points from the covered
 label to its part. The asked label's line is always drawn on top.
 
 **Blank covers, in a colour.** Every cover, slot and ring is drawn blank: no
-"?" or other mark on the part being asked. Under the labels, *Cover colour*
-gives a diagram's covers the theme's accent (the default) or one of
-`OCCLUSION_COVER_COLORS` (coral, gold, mint, sky, slate). It is saved as
-`diagram.coverColor`, a name rather than a colour value, and the colours
-themselves live only in `app/globals.css` (`.occlusion-cover--*`, read through
-`--occlusion-cover`). An unknown name on read is dropped, so the cover falls
-back to the accent.
+"?" or other mark on the part being asked. The colour button in the editor's
+toolbar gives a diagram the theme's accent (the default) or one of
+`OCCLUSION_COVER_COLORS` (coral, gold, mint, sky, slate): its covers, the
+asked label's ring, slot and line, and the editor's own boxes. It is saved as
+`diagram.coverColor`, a name rather than a colour value, and an unknown name
+on read is dropped, so the diagram falls back to the accent. The colours live
+only in `app/globals.css` (`.occlusion-cover--*`, read through
+`--occlusion-cover`). Their class names are written out whole in
+`OCCLUSION_COVER_COLOR_CLASSES`: Tailwind drops a class it cannot find in the
+source, and a name assembled from parts is one it cannot find.
+
+**No list of names for printed labels.** When a card is turned, the names are
+written under the picture only in *name the parts*
+(`getRevealedAnswerWords`). A covered label is printed on the picture, so
+uncovering it is the answer. Its name, typed or found by Jami, is still kept
+and still marks typed answers and multiple choice.
 
 `describeOcclusionMask` in `lib/study/image-occlusion.ts` is the single table of
 what each label draws in each state (box style, words inside or beside, line,

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { OcclusionPicture } from "@/components/cards/OcclusionFigure";
 import DiagramCanvas from "@/components/decks/diagram/DiagramCanvas";
+import DiagramCoverColorMenu from "@/components/decks/diagram/DiagramCoverColorMenu";
 import DiagramCropStage from "@/components/decks/diagram/DiagramCropStage";
 import DiagramLabelPanel, { diagramLabelFieldId } from "@/components/decks/diagram/DiagramLabelPanel";
 import DiagramPictureSource from "@/components/decks/diagram/DiagramPictureSource";
@@ -27,11 +28,12 @@ import type { Card } from "@/lib/study/cards";
 import { cropDiagramPicture, type DiagramPicture } from "@/lib/study/diagram-image";
 import {
   getDiagramTargets,
-  getGroupAnswerText,
   groupsForCardStyle,
   getOcclusionMasks,
   getOcclusionPrompt,
   getOcclusionTargets,
+  getRevealedAnswerWords,
+  occlusionCoverClass,
   type CardOcclusion,
   type OcclusionDiagram,
 } from "@/lib/study/image-occlusion";
@@ -380,7 +382,8 @@ function DiagramEditorSession({
                 setStep("crop");
               }}
             />
-            <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+            {/* The diagram's colour reaches the editor's boxes and the label list's numbers. */}
+            <div className={`flex min-h-0 flex-1 flex-col lg:flex-row ${occlusionCoverClass(editor.coverColor)}`}>
               <div className="relative h-[46dvh] shrink-0 bg-[var(--color-glass-subtle)] sm:h-[54dvh] lg:h-auto lg:min-w-0 lg:flex-1">
                 {previewing ? (
                   <DiagramPreview editor={editor} imageUrl={pictureUrl.url} header={editor.header} />
@@ -750,6 +753,8 @@ function DiagramToolbar({
       />
       </div>
       <div className="flex items-center gap-1.5">
+      <DiagramCoverColorMenu value={editor.coverColor} onChange={editor.setCoverColor} disabled={disabled} />
+      <ToolbarDivider />
       <ToolbarIconButton
         label="Zoom out"
         icon="zoom-out"
@@ -827,10 +832,9 @@ function DiagramPreview({
   const occlusion = cards[index];
   if (!diagram || !occlusion) return null;
 
-  const { labels, group } = getOcclusionTargets(occlusion);
-  const answer = group
-    ? getGroupAnswerText(diagram, group) || "The labels on the picture"
-    : labels[0]?.answer.trim() || "The label on the picture";
+  const { group } = getOcclusionTargets(occlusion);
+  const words = getRevealedAnswerWords(occlusion);
+  const answer = words.length > 0 ? words.join("; ") : group ? "The labels on the picture" : "The label on the picture";
   const go = (step: number) => {
     setPosition((index + step + cards.length) % cards.length);
     setRevealed(false);

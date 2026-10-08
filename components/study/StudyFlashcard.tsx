@@ -10,6 +10,7 @@ import type { Card } from "@/lib/study/cards";
 import {
   getOcclusionPrompt,
   getOcclusionTargets,
+  getRevealedAnswerWords,
   getWalkthroughMasks,
   isWholeDiagramGroupId,
   type CardOcclusion,
@@ -77,8 +78,9 @@ function FlashcardFaceContent({
  *
  * The front asks -- the header, or what to do when there is none. A
  * whole-diagram front turns on its own once every label has been uncovered.
- * The back answers with the label's words and note (every label's, for a
- * group), and offers the whole picture uncovered, which is how a student
+ * The back writes the label's name and note (every label's, for a group),
+ * unless the picture prints the name itself: uncovering a covered label is its
+ * answer. It also offers the whole picture uncovered, which is how a student
  * checks the neighbours they were unsure of. Either face can be opened full
  * screen for a closer look.
  */
@@ -123,7 +125,7 @@ function DiagramFaceContent({
     const timer = window.setTimeout(() => onRevealRef.current?.(), AUTO_TURN_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [allChecked]);
-  const answers = labels.map((label) => label.answer.trim()).filter(Boolean);
+  const answers = getRevealedAnswerWords(occlusion);
   const notes = labels.map((label) => label.note?.trim()).filter((note): note is string => Boolean(note));
   const canUnmask = side === "back" && total > labels.length;
   const phase = side === "front" ? "question" : unmasked ? "unmasked" : "answer";

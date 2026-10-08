@@ -123,6 +123,23 @@ export const OCCLUSION_COVER_COLORS = ["coral", "gold", "mint", "sky", "slate"] 
 
 export type OcclusionCoverColor = (typeof OCCLUSION_COVER_COLORS)[number];
 
+/**
+ * The class for each colour, written out whole so the stylesheet build can
+ * see them: a class assembled from parts is one it cannot find, and drops.
+ */
+export const OCCLUSION_COVER_COLOR_CLASSES: Record<OcclusionCoverColor, string> = {
+  coral: "occlusion-cover--coral",
+  gold: "occlusion-cover--gold",
+  mint: "occlusion-cover--mint",
+  sky: "occlusion-cover--sky",
+  slate: "occlusion-cover--slate",
+};
+
+/** The class that colours a diagram, or none for the theme's accent. */
+export function occlusionCoverClass(color: OcclusionCoverColor | null | undefined): string {
+  return color ? OCCLUSION_COVER_COLOR_CLASSES[color] : "";
+}
+
 export const OCCLUSION_COVER_COLOR_LABELS: Record<OcclusionCoverColor, string> = {
   coral: "Coral",
   gold: "Gold",
@@ -418,6 +435,19 @@ export function getOcclusionTargets(occlusion: CardOcclusion) {
     indexes.push(index);
   });
   return { labels, indexes, group };
+}
+
+/**
+ * The names written under a card's picture once it is turned. A covered label
+ * is printed on the picture, so uncovering it is the answer and nothing is
+ * written: a list of words the student can already read is only noise. Its
+ * name, typed or found by Jami, still marks a typed answer.
+ */
+export function getRevealedAnswerWords(occlusion: CardOcclusion): string[] {
+  if (occlusion.diagram.labelMode === "cover") return [];
+  return getOcclusionTargets(occlusion)
+    .labels.map((label) => label.answer.trim())
+    .filter(Boolean);
 }
 
 /** A label's name as a list shows it: its answer, or its number when it has none. */

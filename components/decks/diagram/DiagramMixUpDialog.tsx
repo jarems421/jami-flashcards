@@ -17,7 +17,7 @@ import {
   getMixUpMasks,
   type DiagramMixUp,
 } from "@/lib/study/diagram-confusion";
-import { getLabelDisplayName } from "@/lib/study/image-occlusion";
+import { getLabelDisplayName, occlusionCoverClass } from "@/lib/study/image-occlusion";
 
 type DiagramMixUpDialogProps = {
   /** The pair to compare, or null for closed. */
@@ -28,8 +28,8 @@ type DiagramMixUpDialogProps = {
 
 /**
  * Two labels a student keeps giving for each other, side by side on their
- * diagram: the first outlined in purple, the other in amber, as a study card
- * outlines a mix-up. Covering both and tapping each turns the comparison into
+ * diagram: the first with a solid outline in the diagram's colour, the other
+ * dashed in amber, as a study card outlines a mix-up. Covering both and tapping each turns the comparison into
  * a check of which is which.
  *
  * Practice, not review: nothing here reaches a schedule or the Learning
@@ -119,7 +119,7 @@ function MixUpCompare({
       </div>
 
       {pair ? (
-        <ul className="grid gap-2 border-t border-[var(--color-border)] px-4 py-3 sm:grid-cols-2 sm:px-6">
+        <ul className={`grid gap-2 border-t border-[var(--color-border)] px-4 py-3 sm:grid-cols-2 sm:px-6 ${occlusionCoverClass(diagram.coverColor)}`}>
           {pair.map(({ label, index }, position) => (
             <li
               key={label.id}
@@ -132,7 +132,7 @@ function MixUpCompare({
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-text-primary">
                   {getLabelDisplayName(label, index)}
-                  <span className="sr-only">{position === 0 ? ", outlined in purple" : ", outlined in amber"}</span>
+                  <span className="sr-only">{position === 0 ? ", the solid outline" : ", the dashed amber outline"}</span>
                 </p>
                 <p className="text-xs text-text-muted">
                   Label {index + 1}

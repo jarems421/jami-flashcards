@@ -11,10 +11,13 @@ import {
   WHOLE_DIAGRAM_GROUP_ID,
   getOcclusionMasks,
   getOcclusionPrompt,
+  getRevealedAnswerWords,
   getWalkthroughMasks,
   groupDiagramCards,
   mergeSavedDiagramCards,
   normalizeCardOcclusion,
+  OCCLUSION_COVER_COLORS,
+  occlusionCoverClass,
   planDiagramCleanup,
   planDiagramSave,
   type CardOcclusion,
@@ -112,6 +115,21 @@ describe("reading a stored diagram", () => {
   it("keeps a known cover colour and drops one it does not know", () => {
     expect(normalizeCardOcclusion({ diagram: { ...HEART, coverColor: "mint" }, labelId: "a" }, USER)?.diagram.coverColor).toBe("mint");
     expect(normalizeCardOcclusion({ diagram: { ...HEART, coverColor: "#ff0000" }, labelId: "a" }, USER)?.diagram).not.toHaveProperty("coverColor");
+  });
+
+  it("names every cover colour's class in full, so the stylesheet build keeps it", () => {
+    for (const color of OCCLUSION_COVER_COLORS) expect(occlusionCoverClass(color)).toBe(`occlusion-cover--${color}`);
+    expect(occlusionCoverClass(undefined)).toBe("");
+    expect(occlusionCoverClass(null)).toBe("");
+  });
+
+  it("writes names under a turned card only when the picture does not print them", () => {
+    const atria = { id: "g", name: "Atria", labelIds: ["b", "c"] };
+    expect(getRevealedAnswerWords({ diagram: HEART, labelId: "b" })).toEqual([]);
+    expect(getRevealedAnswerWords({ diagram: { ...HEART, groups: [atria] }, groupId: "g" })).toEqual([]);
+    const named = { ...HEART, labelMode: "name" as const, groups: [atria] };
+    expect(getRevealedAnswerWords({ diagram: named, labelId: "b" })).toEqual(["Left atrium"]);
+    expect(getRevealedAnswerWords({ diagram: named, groupId: "g" })).toEqual(["Left atrium", "Right atrium"]);
   });
 
   it("reaches cards through mapCardData, and a malformed diagram leaves a plain card", () => {
