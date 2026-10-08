@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useState } from "react";
+import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import CardStudyOptions from "@/components/decks/CardStudyOptions";
@@ -19,7 +19,9 @@ let latest: StudySettingsDraft;
 
 function Harness({ back, hasBackImage = false }: { back: string; hasBackImage?: boolean }) {
   const [value, setValue] = useState<StudySettingsDraft>(EMPTY_STUDY_SETTINGS_DRAFT);
-  latest = value;
+  useEffect(() => {
+    latest = value;
+  });
   return (
     <CardStudyOptions
       front="What carries oxygen in the blood?"
