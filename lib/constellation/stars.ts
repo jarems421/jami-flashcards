@@ -34,6 +34,9 @@ export function clampPercentage(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
+/** The Stars page's sky, which star positions are percentages of. */
+export const SKY_CONTAINER_ID = "constellation-container";
+
 function areTooClose(a: StarPosition, b: StarPosition) {
   return Math.abs(a.x - b.x) < 8 && Math.abs(a.y - b.y) < 8;
 }

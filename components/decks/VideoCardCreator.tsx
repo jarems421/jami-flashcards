@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AllowanceHint from "@/components/billing/AllowanceHint";
 import { notifyAllowanceSpent } from "@/services/billing/plan-summary-store";
 import TopicPicker from "@/components/topics/TopicPicker";
-import { Button, Card as Panel, ElapsedTime, FileField, Input, OptionSwitch, ProgressBar, Select, Textarea } from "@/components/ui";
+import CardImportProgress from "@/components/decks/CardImportProgress";
+import { useCardImportJob } from "@/hooks/useCardImportJob";
+import { Button, Card as Panel, FileField, Input, OptionSwitch, Select, Textarea } from "@/components/ui";
 import {
   VIDEO_CARD_REVIEW_CEILING,
   VIDEO_MAX_BYTES,
@@ -12,7 +14,6 @@ import {
   formatVideoTimestamp,
   type VideoCardDraft,
   type VideoCardEvidence,
-  type VideoCardJob,
   type VideoCoverage,
 } from "@/lib/ai/video-card-jobs";
 import type { Topic } from "@/lib/material/topics";
@@ -29,8 +30,6 @@ import {
   approveVideoCardJob,
   cancelVideoCardJob,
   createVideoCardJob,
-  getRecentVideoCardJobs,
-  getVideoCardJob,
   saveVideoCardDrafts,
 } from "@/services/ai/video-card-jobs";
 
@@ -149,43 +148,15 @@ export default function VideoCardCreator({
   // Blank means "as many as the video supports", which is the normal case.
   const [maxCards, setMaxCards] = useState("");
   const [focus, setFocus] = useState("");
-  const [job, setJob] = useState<VideoCardJob | null>(null);
+  const [job, setJob] = useCardImportJob(["youtube", "upload"]);
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [playbackUrl, setPlaybackUrl] = useState("");
-  const polling = useRef<ReturnType<typeof setInterval> | null>(null);
   const player = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     setDeckId((current) => current || defaultDeckId || decks[0]?.id || "");
   }, [decks, defaultDeckId]);
-
-  useEffect(() => {
-    void getRecentVideoCardJobs()
-      .then((jobs) => {
-        const resumable = jobs.find((item) =>
-          ["youtube", "upload"].includes(item.sourceKind) &&
-          ["queued", "running", "ready"].includes(item.status)
-        );
-        if (resumable) setJob(resumable);
-      })
-      .catch(() => undefined);
-  }, []);
-
-  const activeJobId = job?.id;
-  const activeJobStatus = job?.status;
-
-  useEffect(() => {
-    if (polling.current) clearInterval(polling.current);
-    if (!activeJobId || !activeJobStatus || !["queued", "running"].includes(activeJobStatus)) return;
-    polling.current = setInterval(
-      () => void getVideoCardJob(activeJobId).then(setJob).catch(() => undefined),
-      2500
-    );
-    return () => {
-      if (polling.current) clearInterval(polling.current);
-    };
-  }, [activeJobId, activeJobStatus]);
 
   /*
    * The uploaded video is kept until the import is approved or discarded, so a
@@ -382,30 +353,12 @@ export default function VideoCardCreator({
 
     return (
       <div className="mt-5 space-y-4 animate-fade-in">
-        {job.status === "failed" ? (
-          <Panel tone="subtle" padding="md">
-            <p className="text-sm text-text-secondary">{job.failureMessage}</p>
-            <Button className="mt-3" variant="secondary" onClick={() => setJob(null)}>
-              Try another
-            </Button>
-          </Panel>
-        ) : null}
-
-        {["queued", "running"].includes(job.status) ? (
-          <Panel tone="subtle" padding="md">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-text-primary">{STAGE[job.stage]}</span>
-              <span className="flex gap-2 tabular-nums text-text-muted">
-                <ElapsedTime startedAt={job.createdAt} label="Making cards for" />
-                <span>{job.progress}%</span>
-              </span>
-            </div>
-            <ProgressBar className="mt-3" progress={job.progress} size="sm" variant="warm" />
-            <Button className="mt-4" variant="ghost" onClick={() => void cancel()}>
-              Cancel
-            </Button>
-          </Panel>
-        ) : null}
+        <CardImportProgress
+          job={job}
+          stageLabels={STAGE}
+          onTryAnother={() => setJob(null)}
+          onCancel={() => void cancel()}
+        />
 
         {job.status === "ready" ? (
           <>

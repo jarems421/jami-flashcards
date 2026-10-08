@@ -36,6 +36,7 @@ import {
 } from "@/lib/app/tutor-views";
 import {
   describeDraftCounts,
+  describeDraftGroupOrigin,
   draftGroupKey,
   groupTutorDrafts,
 } from "@/lib/app/tutor-drafts";
@@ -370,7 +371,7 @@ export default function TutorPage() {
                 <>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-text-primary">
-                      {group.total} from {group.title}
+                      {describeDraftGroupOrigin(group)}
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-text-muted">
                       {counts || group.preview}

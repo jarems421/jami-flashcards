@@ -1,6 +1,7 @@
 "use client";
 
 import type { AnchorHTMLAttributes, ComponentPropsWithoutRef, ReactNode } from "react";
+import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -11,6 +12,7 @@ import {
   prepareAiMarkdown,
 } from "@/lib/study/math-text";
 import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
+import { isJamiAppHref } from "@/lib/ai/jami-app-guide";
 import AssistantGraphFigure from "@/components/ai/AssistantGraphFigure";
 import { useAssistantGraphActions } from "@/components/ai/AssistantGraphActions";
 
@@ -44,11 +46,24 @@ function isSafeUrl(href: string): boolean {
   }
 }
 
+const LINK_CLASS =
+  "rounded-sm text-accent underline underline-offset-2 outline-color-transparent transition-colors hover:text-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45";
+
 function SafeLink({
   href,
   children,
   ...props
 }: AnchorHTMLAttributes<HTMLAnchorElement>): ReactNode {
+  // A place in Jami still streaming in, before the server resolves its key: plain words until then.
+  if (href?.startsWith("jami:")) return <>{children}</>;
+  // One of Jami's own pages opens here, in the app, not in a new tab.
+  if (href && isJamiAppHref(href)) {
+    return (
+      <Link href={href} className={LINK_CLASS}>
+        {children}
+      </Link>
+    );
+  }
   if (!href || !isSafeUrl(href)) {
     return (
       <span
@@ -66,7 +81,7 @@ function SafeLink({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="rounded-sm text-accent underline underline-offset-2 outline-color-transparent transition-colors hover:text-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+      className={LINK_CLASS}
       {...props}
     >
       {children}

@@ -9,6 +9,7 @@ import {
 } from "@/lib/app/tutor-views";
 import {
   describeDraftCounts,
+  describeDraftGroupOrigin,
   getDraftPreview,
   groupTutorDrafts,
 } from "@/lib/app/tutor-drafts";
@@ -227,6 +228,18 @@ describe("the queue says what is in it", () => {
       "Two",
       "One",
       "From your Tutor chats",
+    ]);
+  });
+
+  it("says where each group came from in a sentence that reads", () => {
+    const groups = groupTutorDrafts(
+      [draft({ id: "a", sourceId: "s1" }), draft({ id: "b" }), draft({ id: "c" })],
+      [source("s1", "Chapter 2 notes")]
+    );
+
+    expect(groups.map(describeDraftGroupOrigin)).toEqual([
+      "2 from your Tutor chats",
+      "1 from Chapter 2 notes",
     ]);
   });
 

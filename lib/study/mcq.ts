@@ -111,21 +111,23 @@ function shapeDistance(answer: string, option: string) {
 /**
  * Build a multiple-choice question, or refuse.
  *
- * Two sources, and only two. Wrong options written *for this card* -- by Jami
- * during preparation, or by the student in the card editor -- and, for a
- * numeric answer, the number moved to somewhere a student might plausibly land.
+ * One source: wrong options written *for this card* -- by Jami during
+ * preparation, or by its author in the card's own settings (no screen writes
+ * those yet). (A diagram's labels are the exception, below.) A numeric answer is prepared like any other: moving
+ * its number about made generic wrong answers rather than ones written for
+ * the question, so that is no longer done.
  *
- * There used to be a third: the answers off other cards in the same deck,
+ * There used to be another: the answers off other cards in the same deck,
  * ranked by how similar they looked. It produced questions that could be
  * answered without knowing anything, because the one option that actually
  * addressed the question was the right one. Distractors have to be wrong
  * answers *to this question*, and no amount of ranking turns an answer to a
  * different question into one.
  *
- * So a card with nothing prepared and a non-numeric answer gets no question at
- * all, and is asked another way instead. Nor does having three wrong options
- * settle it: they have to be three the answer can hide among, or the question
- * is refused here and the card is asked a way that cannot be guessed.
+ * So a card with nothing prepared gets no question at all, and is asked
+ * another way instead. Nor does having three wrong options settle it: they
+ * have to be three the answer can hide among, or the question is refused here
+ * and the card is asked a way that cannot be guessed.
  */
 export function buildMultipleChoiceQuestion(input: {
   card: Card;

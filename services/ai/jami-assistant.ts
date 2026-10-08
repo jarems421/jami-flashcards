@@ -12,6 +12,11 @@ import { auth } from "@/services/firebase/client";
 import { notifyAllowanceSpent } from "@/services/billing/plan-summary-store";
 import { mapJamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import {
+  jamiDestinations,
+  normalizeJamiAppScope,
+  normalizeTutorAppActions,
+} from "@/lib/ai/jami-app-guide";
+import {
   normalizeTutorStudyMaterialOffers,
   normalizeTutorStudyMaterialRequest,
   normalizeTutorStudyMaterialSetup,
@@ -202,6 +207,7 @@ export async function sendJamiAssistantMessage(
   const citations = normalizeAssistantCitations(data?.citations);
   const suggestedCards = normalizeSuggestedCards(data?.suggestedCards);
   const practiceOffer = normalizeTutorPracticeOffer(data?.practiceOffer);
+  const nextStepOffer = normalizeTutorPracticeOffer(data?.nextStepOffer);
   const savedThreadData =
     data?.savedThread &&
     typeof data.savedThread === "object" &&
@@ -215,6 +221,8 @@ export async function sendJamiAssistantMessage(
   const studyMaterialOffers = normalizeTutorStudyMaterialOffers(data?.studyMaterialOffers);
   const studyMaterialSetup = normalizeTutorStudyMaterialSetup(data?.studyMaterialSetup);
   const sourceSaveOffer = normalizeTutorSourceSaveOffer(data?.sourceSaveOffer);
+  const appScope = normalizeJamiAppScope(data?.appScope);
+  const appActions = normalizeTutorAppActions(data?.appActions, jamiDestinations(appScope));
   return {
     reply,
     used,
@@ -223,11 +231,13 @@ export async function sendJamiAssistantMessage(
     ...(citations.length > 0 ? { citations } : {}),
     ...(suggestedCards.length > 0 ? { suggestedCards } : {}),
     ...(practiceOffer ? { practiceOffer } : {}),
+    ...(nextStepOffer ? { nextStepOffer } : {}),
     ...(data?.canIllustrate === true ? { canIllustrate: true } : {}),
     ...(studyMaterialRequest ? { studyMaterialRequest } : {}),
     ...(studyMaterialOffers.length > 0 ? { studyMaterialOffers } : {}),
     ...(studyMaterialSetup ? { studyMaterialSetup } : {}),
     ...(sourceSaveOffer ? { sourceSaveOffer } : {}),
+    ...(appActions.length > 0 ? { appActions, appScope } : {}),
     ...(savedThread ? { savedThread } : {}),
   };
 }

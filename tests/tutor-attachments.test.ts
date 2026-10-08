@@ -133,9 +133,11 @@ describe("Tutor answers stay short and on the part asked", () => {
 
   it("gives the answer time to think, and drops a stalled one", () => {
     const route = readFileSync(join(process.cwd(), "app/api/ai/assistant/route.ts"), "utf8");
-    expect(route).toMatch(/const REQUEST_TIMEOUT_MS = 90_000;/);
+    // The answer's calls, streamed and buffered, live beside their time budget.
+    const answerCall = readFileSync(join(process.cwd(), "services/ai/tutor-turn-model.server.ts"), "utf8");
+    expect(answerCall).toMatch(/const REQUEST_TIMEOUT_MS = 90_000;/);
     expect(route).toMatch(/export const maxDuration = 150;/);
-    expect(route.match(/stallTimeoutMs: ANSWER_STALL_TIMEOUT_MS/g)).toHaveLength(2);
+    expect(answerCall.match(/stallTimeoutMs: ANSWER_STALL_TIMEOUT_MS/g)).toHaveLength(2);
   });
 });
 

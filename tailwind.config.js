@@ -231,7 +231,11 @@ module.exports = {
       },
       animation: {
         "fade-in": "fade-in var(--duration-normal) var(--ease-standard) both",
-        "slide-up": "slide-up var(--duration-slow) var(--ease-standard) both",
+        // `backwards`, not `both`: holding the last frame kept a transform on
+        // the element for good, which made it a stacking context, so a menu
+        // inside it (a card's actions, opened upward) went behind the sticky
+        // search bar above it. The last frame is the element's own style anyway.
+        "slide-up": "slide-up var(--duration-slow) var(--ease-standard) backwards",
         "reward-pulse": "reward-pulse 1.5s ease infinite",
         "warm-glow-pulse": "warm-glow-pulse 2s ease infinite",
       },

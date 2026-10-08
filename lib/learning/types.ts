@@ -20,7 +20,7 @@
  * That is "seen", not "known", and the engine keeps the two apart.
  */
 
-export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v9-2026-09-30";
+export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v10-2026-10-01";
 
 /**
  * Where a piece of evidence came from.
@@ -37,13 +37,18 @@ export const LEARNER_PROFILE_ALGORITHM_VERSION = "learner-profile-v9-2026-09-30"
  * given during a Revision Session, marked by a model against the question the
  * session set. Trusted exactly as far as notebook marking, and kept apart from
  * it only so the two can be told apart. See `revision-signals.ts`.
+ *
+ * `tutor-check` is the weakest: one short question Tutor asked in chat and
+ * marked on the reply, often just after explaining the idea. See
+ * `tutor-check-signals.ts`.
  */
 export type LearningEvidenceKind =
   | "flashcards"
   | "practice"
   | "past-paper"
   | "notebook"
-  | "revision";
+  | "revision"
+  | "tutor-check";
 
 export type LearningTrend = "improving" | "stable" | "declining";
 

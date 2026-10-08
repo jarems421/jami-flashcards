@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import TopicPicker from "@/components/topics/TopicPicker";
+import CardImportProgress from "@/components/decks/CardImportProgress";
+import { useCardImportJob } from "@/hooks/useCardImportJob";
 import {
   Button,
   Card as Panel,
   FileField,
   Input,
   OptionSwitch,
-  ElapsedTime,
-  ProgressBar,
   Select,
   Textarea,
 } from "@/components/ui";
@@ -17,7 +17,6 @@ import {
   CARD_SOURCE_TEXT_MAX_LENGTH,
   type VideoCardDraft,
   type VideoCardEvidence,
-  type VideoCardJob,
   type VideoCoverage,
 } from "@/lib/ai/video-card-jobs";
 import type { Topic } from "@/lib/material/topics";
@@ -35,8 +34,6 @@ import {
   approveVideoCardJob,
   cancelVideoCardJob,
   createVideoCardJob,
-  getRecentVideoCardJobs,
-  getVideoCardJob,
   saveVideoCardDrafts,
 } from "@/services/ai/video-card-jobs";
 
@@ -105,40 +102,13 @@ export default function SourceCardCreator({
   const [topicIds, setTopicIds] = useState<string[]>([]);
   const [coverage, setCoverage] = useState<VideoCoverage>("standard");
   const [focus, setFocus] = useState("");
-  const [job, setJob] = useState<VideoCardJob | null>(null);
+  const [job, setJob] = useCardImportJob(["file", "text"]);
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const polling = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setDeckId((current) => current || defaultDeckId || decks[0]?.id || "");
   }, [decks, defaultDeckId]);
-
-  useEffect(() => {
-    void getRecentVideoCardJobs()
-      .then((jobs) => {
-        const resumable = jobs.find((item) =>
-          ["file", "text"].includes(item.sourceKind) &&
-          ["queued", "running", "ready"].includes(item.status)
-        );
-        if (resumable) setJob(resumable);
-      })
-      .catch(() => undefined);
-  }, []);
-
-  const activeJobId = job?.id;
-  const activeJobStatus = job?.status;
-  useEffect(() => {
-    if (polling.current) clearInterval(polling.current);
-    if (!activeJobId || !activeJobStatus || !["queued", "running"].includes(activeJobStatus)) return;
-    polling.current = setInterval(
-      () => void getVideoCardJob(activeJobId).then(setJob).catch(() => undefined),
-      2500
-    );
-    return () => {
-      if (polling.current) clearInterval(polling.current);
-    };
-  }, [activeJobId, activeJobStatus]);
 
   const evidenceById = useMemo(
     () => new Map((job?.evidence ?? []).map((entry) => [entry.id, entry])),
@@ -272,26 +242,12 @@ export default function SourceCardCreator({
     const selectedCount = job.drafts.filter((draft) => draft.selected).length;
     return (
       <div className="mt-5 space-y-4 animate-fade-in">
-        {job.status === "failed" ? (
-          <Panel tone="subtle" padding="md">
-            <p className="text-sm text-text-secondary">{job.failureMessage}</p>
-            <Button className="mt-3" variant="secondary" onClick={() => setJob(null)}>Try another</Button>
-          </Panel>
-        ) : null}
-
-        {["queued", "running"].includes(job.status) ? (
-          <Panel tone="subtle" padding="md">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="font-medium text-text-primary">{STAGE_LABELS[job.stage]}</span>
-              <span className="flex gap-2 tabular-nums text-text-muted">
-                <ElapsedTime startedAt={job.createdAt} label="Making cards for" />
-                <span>{job.progress}%</span>
-              </span>
-            </div>
-            <ProgressBar className="mt-3" progress={job.progress} size="sm" variant="warm" />
-            <Button className="mt-4" variant="ghost" onClick={() => void discard()}>Cancel</Button>
-          </Panel>
-        ) : null}
+        <CardImportProgress
+          job={job}
+          stageLabels={STAGE_LABELS}
+          onTryAnother={() => setJob(null)}
+          onCancel={() => void discard()}
+        />
 
         {job.status === "ready" ? (
           <>

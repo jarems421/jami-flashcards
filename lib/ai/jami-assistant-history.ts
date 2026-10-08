@@ -29,6 +29,13 @@ import {
   type TutorStudyMaterialSetup,
 } from "@/lib/ai/tutor-study-material";
 import {
+  jamiDestinations,
+  normalizeJamiAppScope,
+  normalizeTutorAppActions,
+  type JamiAppScope,
+  type TutorAppActionProposal,
+} from "@/lib/ai/jami-app-guide";
+import {
   normalizeSuggestedCards,
   type JamiAssistantSuggestedCard,
 } from "@/lib/ai/tutor-card-suggestions";
@@ -89,6 +96,8 @@ export type JamiAssistantStoredMessage = {
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
   /** Files the student sent with this message. */
   attachments?: TutorAttachment[];
+  appActions?: TutorAppActionProposal[];
+  appScope?: JamiAppScope;
   createdAt: number;
 };
 
@@ -270,6 +279,8 @@ export function mapJamiAssistantStoredMessage(
     role === "user"
       ? normalizeTutorAttachments(data.attachments, { limit: MAX_TUTOR_ATTACHMENTS_PER_MESSAGE })
       : [];
+  const appScope = normalizeJamiAppScope(data.appScope);
+  const appActions = normalizeTutorAppActions(data.appActions, jamiDestinations(appScope));
   return {
     id,
     threadId,
@@ -286,6 +297,7 @@ export function mapJamiAssistantStoredMessage(
     ...(Object.keys(studyMaterialResults).length > 0 ? { studyMaterialResults } : {}),
     ...(studyMaterialSetup ? { studyMaterialSetup } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
+    ...(appActions.length > 0 ? { appActions, appScope } : {}),
     createdAt:
       typeof data.createdAt === "number" && Number.isFinite(data.createdAt)
         ? data.createdAt

@@ -18,6 +18,9 @@ import { withNotebookPage } from "@/lib/workspace/notebook-navigation";
 import type { Notebook, NotebookFile, NotebookPage } from "@/lib/workspace/notebooks";
 import { createNotebookPage } from "@/services/study/notebooks";
 
+/** The most blank pages one request adds. */
+const MAX_APPENDED_PAGES = 20;
+
 /** A pointer that may yet become a page swipe, sampled as it moves. */
 export type NotebookPageSwipeState = {
   pointerId: number;
@@ -577,6 +580,50 @@ export function useNotebookPageTurn({
   );
 
   /**
+   * Blank pages at the end, without leaving the page being written on: what
+   * Tutor adds when a student asks it for pages.
+   *
+   * It takes the same in-flight guard as a swipe past the last page, so the
+   * two cannot both number "the next page" at once. Pages are made one at a
+   * time, in order, on the notebook's own paper. Returns how many were made.
+   */
+  const appendBlankPages = useCallback(
+    async (count: number) => {
+      if (!userId || !notebook || lockedRef.current || creationInFlightRef.current) return 0;
+      const wanted = Math.max(1, Math.min(MAX_APPENDED_PAGES, Math.round(count)));
+      const lastPage = pages[pages.length - 1];
+      const firstNumber = (lastPage?.pageNumber ?? pages.length) + 1;
+      creationInFlightRef.current = true;
+      const created: NotebookPage[] = [];
+      try {
+        for (let index = 0; index < wanted; index += 1) {
+          created.push(
+            await createNotebookPage(userId, {
+              notebookId: notebook.id,
+              folderId: notebook.folderId,
+              pageNumber: firstNumber + index,
+              pageType: "blank",
+              pageColor: notebook.pageColor ?? "white",
+              pageStyle: notebook.pageStyle ?? "plain",
+              status: "blank",
+            })
+          );
+        }
+      } catch (error) {
+        console.error("Could not add notebook pages.", error);
+        onError(error, created.length > 0 ? "Not every page could be added." : "Could not add pages.");
+      } finally {
+        creationInFlightRef.current = false;
+      }
+      if (created.length > 0) {
+        setPages((current) => created.reduce((next, page) => withNotebookPage(next, page), current));
+      }
+      return created.length;
+    },
+    [lockedRef, notebook, onError, pages, setPages, userId]
+  );
+
+  /**
    * A second finger landed mid-swipe. Unwind the page track so the pinch
    * starts from a settled sheet instead of a half-committed swipe.
    */
@@ -608,6 +655,7 @@ export function useNotebookPageTurn({
     turnByOffset,
     settleBack,
     createPageAtEnd,
+    appendBlankPages,
     cancelSwipeForPinch,
     interrupt,
     requestHandoffCheck,

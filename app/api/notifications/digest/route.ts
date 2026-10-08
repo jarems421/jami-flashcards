@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import {
   getStudyDayKey,
-  isWithinStudyDayBoundaryWindow,
+  isWithinDailyDigestWindow,
 } from "@/lib/study/day";
 import { getCronAuthorizationStatus } from "@/services/auth/cron-authorization";
 import { runNotificationDigest } from "@/services/notifications/digest";
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   const now = Date.now();
   const studyDayKey = getStudyDayKey(now);
-  if (!isWithinStudyDayBoundaryWindow(now, 20 * 60 * 1000)) {
+  if (!isWithinDailyDigestWindow(now, 20 * 60 * 1000)) {
     return Response.json({
       ok: true,
       skipped: true,

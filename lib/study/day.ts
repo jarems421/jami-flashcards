@@ -1,5 +1,16 @@
 const STUDY_TIME_ZONE = "Europe/London";
-const STUDY_DAY_BOUNDARY_HOUR = 16;
+/**
+ * When one study day ends and the next begins: 4am.
+ *
+ * It was 4pm, so until four in the afternoon every part of the app keyed on the
+ * study day -- the plan, Daily Review, streaks -- was still on yesterday, and on
+ * a Friday morning the plan showed Thursday's work. Early morning keeps the day
+ * the student sees, while a session that runs past midnight still counts for
+ * the evening it started in.
+ */
+const STUDY_DAY_BOUNDARY_HOUR = 4;
+/** When the daily nudge goes out: after school, whatever time the day turns over. */
+const DAILY_DIGEST_HOUR = 16;
 
 type ZonedDateParts = {
   year: number;
@@ -131,11 +142,13 @@ export function getMsUntilNextStudyBoundary(timestamp = Date.now()) {
   return Math.max(0, getStudyDayWindow(timestamp).end - timestamp);
 }
 
-export function isWithinStudyDayBoundaryWindow(
+/** Whether `timestamp` is within `windowMs` after 4pm study time, when the daily nudge goes out. */
+export function isWithinDailyDigestWindow(
   timestamp = Date.now(),
   windowMs = 60 * 60 * 1000
 ) {
-  const { start } = getStudyDayWindow(timestamp);
+  const parts = getZonedDateParts(timestamp);
+  const start = localDateTimeToUtcTimestamp(parts.year, parts.month, parts.day, DAILY_DIGEST_HOUR);
   return timestamp >= start && timestamp < start + windowMs;
 }
 

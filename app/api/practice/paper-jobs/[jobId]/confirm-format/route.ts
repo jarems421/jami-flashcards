@@ -1,6 +1,6 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
-import { authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { start } from "workflow/api";
 import { appendToPracticePaperRequest, parsePracticePaperGenerationRequest } from "@/lib/ai/practice-paper-generation";
 import { normalizePracticePaperBrief } from "@/lib/practice/exam-formats";
@@ -12,34 +12,30 @@ export const runtime = "nodejs";
 
 const RETENTION_MS = 30 * 24 * 60 * 60_000;
 
-function failure(error: string, status: number, code: string) {
-  return Response.json({ error, code }, { status });
-}
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   const uid = await authenticateRequest(request);
-  if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const { jobId } = await params;
   if (!/^[A-Za-z0-9_-]{16,160}$/.test(jobId)) {
-    return failure("Job not found", 404, "job_not_found");
+    return apiFailure("Job not found", 404, "job_not_found");
   }
   let action: "confirm" | "correct" | "use_custom";
   let correction = "";
   try {
     const body = await request.json() as Record<string, unknown>;
     if (body.action !== "confirm" && body.action !== "correct" && body.action !== "use_custom") {
-      return failure("Choose how Jami should continue.", 400, "invalid_action");
+      return apiFailure("Choose how Jami should continue.", 400, "invalid_action");
     }
     action = body.action;
     correction = typeof body.correction === "string" ? body.correction.trim().slice(0, 800) : "";
   } catch {
-    return failure("Invalid request body", 400, "invalid_request");
+    return apiFailure("Invalid request body", 400, "invalid_request");
   }
   if (action === "correct" && correction.length < 2) {
-    return failure("Tell Jami what to correct.", 400, "correction_required");
+    return apiFailure("Tell Jami what to correct.", 400, "correction_required");
   }
 
   const db = getAdminDb();
@@ -108,8 +104,8 @@ export async function POST(
     }
     return { conflict: false as const, previousBrief: currentBrief };
   });
-  if (!reset) return failure("Job not found", 404, "job_not_found");
-  if (reset.conflict) return failure("This paper no longer needs confirmation.", 409, "job_not_waiting");
+  if (!reset) return apiFailure("Job not found", 404, "job_not_found");
+  if (reset.conflict) return apiFailure("This paper no longer needs confirmation.", 409, "job_not_waiting");
 
   try {
     const run = await start(generatePracticePaperWorkflow, [uid, jobId]);
@@ -125,6 +121,6 @@ export async function POST(
       completedAt: now,
       updatedAt: now,
     });
-    return failure("Jami could not resume that paper just now.", 503, "workflow_start_failed");
+    return apiFailure("Jami could not resume that paper just now.", 503, "workflow_start_failed");
   }
 }

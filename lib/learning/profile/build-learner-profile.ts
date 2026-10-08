@@ -28,6 +28,8 @@ import {
   revisionObservations,
   type RevisionSessionEvidence,
 } from "@/lib/learning/profile/revision-signals";
+import { tutorCheckObservations } from "@/lib/learning/profile/tutor-check-signals";
+import type { TutorCheck } from "@/lib/learning/events/tutor-check";
 import {
   applyTopicRelations,
   resolveTopicRelations,
@@ -116,6 +118,11 @@ export type LearnerEvidence = {
    */
   revisionSessions?: readonly RevisionSessionEvidence[];
   /**
+   * Tutor's marked quick checks in scope. The weakest evidence read here; see
+   * `tutor-check-signals.ts`.
+   */
+  tutorChecks?: readonly TutorCheck[];
+  /**
    * Plain display names by key, for concepts with no hierarchy. A key with no
    * label or concept -- deleted, merged away, or from a catalogue that is not
    * servable -- is left out of the profile rather than shown as "Unknown".
@@ -160,6 +167,7 @@ const EVIDENCE_ORDER: readonly LearningEvidenceKind[] = [
   "past-paper",
   "notebook",
   "revision",
+  "tutor-check",
 ];
 
 const PROVENANCE_FOR_SOURCE: Readonly<Record<LearningTopicSource, ConceptProvenance>> = {
@@ -250,6 +258,7 @@ export function collectLearnerObservations(
       ...practicePaperObservations(evidence.practicePaperAttempts),
       ...notebookObservations(evidence.notebookMarkings ?? []),
       ...revisionObservations(evidence.revisionSessions ?? []),
+      ...tutorCheckObservations(evidence.tutorChecks ?? []),
     ],
     now
   );

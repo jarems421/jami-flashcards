@@ -91,3 +91,20 @@ export function practiceActionForMaterial(
     )
     .sort((left, right) => right.priority - left.priority)[0];
 }
+
+/**
+ * The engine's next step for the whole scope, for Tutor to offer when the
+ * student asks what to do next.
+ *
+ * Today's first action, held to the same rules as the practice offer: a real
+ * destination, a topic, and nothing resting. Picked here rather than by the
+ * model, so Tutor can only ever hand over advice the engine actually gave.
+ */
+export function nextStudyAction(actions: readonly StudyAction[]): StudyAction | undefined {
+  return actions
+    .filter(
+      (action) =>
+        Boolean(action.destination) && !action.cooldown && action.target.kind === "topic"
+    )
+    .sort((left, right) => right.priority - left.priority)[0];
+}

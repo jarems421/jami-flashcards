@@ -234,13 +234,8 @@ test("flashcards from a chat with no source are reviewed on the Tutor page", asy
 
   await signIn(page);
   await page.goto("/dashboard/tutor");
-  await expect(page.getByText("From your Tutor chats")).toBeVisible({ timeout: 45_000 });
-  await page
-    .locator("div")
-    .filter({ has: page.getByText("From your Tutor chats", { exact: true }) })
-    .getByRole("button", { name: "Review drafts" })
-    .last()
-    .click();
+  // The queue lists drafts by where they came from; Tutor's own open here.
+  await page.getByRole("button", { name: /from your Tutor chats.*Check them/ }).click({ timeout: 45_000 });
 
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText(E2E_TUTOR_DRAFTS[0].front)).toBeVisible({ timeout: 20_000 });

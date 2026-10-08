@@ -92,6 +92,15 @@ export function draftGroupKey(group: Pick<TutorDraftGroup, "sourceId">) {
   return group.sourceId ?? "__unsourced__";
 }
 
+/**
+ * Where a group's drafts came from, as its row in the queue says it: "3 from
+ * Chapter 2 notes", or "2 from your Tutor chats" -- not "2 from From your
+ * Tutor chats", which is what joining the count to the title used to say.
+ */
+export function describeDraftGroupOrigin(group: Pick<TutorDraftGroup, "sourceId" | "title" | "total">) {
+  return `${group.total} from ${group.sourceId ? group.title : "your Tutor chats"}`;
+}
+
 /** "4 cards" / "2 questions", or nothing when there are none of that kind. */
 export function describeDraftCounts(group: TutorDraftGroup) {
   const parts: string[] = [];

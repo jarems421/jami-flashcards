@@ -15,6 +15,7 @@ import {
   type TutorStudyMaterialResult,
   type TutorStudyMaterialSetup,
 } from "@/lib/ai/tutor-study-material";
+import type { JamiAppScope, TutorAppActionProposal } from "@/lib/ai/jami-app-guide";
 import { extractTutorDiagrams, MAX_TUTOR_DIAGRAMS, readTutorDiagramSpecs } from "@/lib/ai/tutor-diagram";
 import { readTutorSuggestions, type TutorSuggestion } from "@/lib/ai/tutor-suggestion";
 import { sanitizeSvgDiagram } from "@/lib/practice/svg-diagram";
@@ -171,6 +172,11 @@ export type JamiAssistantResponse = {
    * the conversation: reopened next week, it may no longer be true.
    */
   practiceOffer?: TutorPracticeOffer;
+  /**
+   * The engine's next step for the folder, attached when the student asked
+   * what to do next. Live advice like `practiceOffer`, and never saved.
+   */
+  nextStepOffer?: TutorPracticeOffer;
   canIllustrate?: boolean;
   /** Tutor agreed to make these; the drawer starts making them at once. */
   studyMaterialRequest?: TutorStudyMaterialRequest;
@@ -182,6 +188,10 @@ export type JamiAssistantResponse = {
   studyMaterialResults?: Partial<Record<TutorStudyMaterialKind, TutorStudyMaterialResult>>;
   /** Tutor's suggestion to save an attached file as a source; saved only once the student confirms. */
   sourceSaveOffer?: TutorSourceSaveOffer;
+  /** Things Tutor offered to do, or was asked to do, in the app. */
+  appActions?: TutorAppActionProposal[];
+  /** The folder and deck the conversation sits in, for actions that need one. */
+  appScope?: JamiAppScope;
   savedThread?: JamiAssistantThread;
 };
 
@@ -236,6 +246,17 @@ export type ParsedJamiAssistantModelAnswer = {
   memory?: unknown;
   /** A suggestion to save an attached file as a source, read by `readTutorSourceSaveOffer`. */
   saveSource?: unknown;
+  /** A quick check's points, passed through unread for `readTutorCheckProposal`. */
+  quickCheck?: unknown;
+  /** The verdict on last turn's check, passed through unread for `readTutorCheckMarking`. */
+  checkMarking?: unknown;
+  /** The model's reading that the student asked what to do next. */
+  offerNextStep?: true;
+  /**
+   * Things Tutor proposed doing in the app, passed through unread for
+   * `readTutorAppActions`, the one gate, on a turn that offered the field.
+   */
+  appActions?: unknown;
 };
 
 export type TutorRoutingPreflight = {
@@ -261,6 +282,10 @@ type ModelAnswerPayload = {
   questions?: unknown;
   memory?: unknown;
   saveSource?: unknown;
+  quickCheck?: unknown;
+  checkMarking?: unknown;
+  offerNextStep?: unknown;
+  appActions?: unknown;
 };
 
 const ILLUSTRATION_REQUEST_PATTERN =
@@ -1067,6 +1092,14 @@ export function parseJamiAssistantModelAnswer(
     ...(payload.saveSource !== undefined && payload.saveSource !== null
       ? { saveSource: payload.saveSource }
       : {}),
+    ...(payload.quickCheck !== undefined && payload.quickCheck !== null
+      ? { quickCheck: payload.quickCheck }
+      : {}),
+    ...(payload.checkMarking !== undefined && payload.checkMarking !== null
+      ? { checkMarking: payload.checkMarking }
+      : {}),
+    ...(payload.offerNextStep === true ? { offerNextStep: true } : {}),
+    ...(Array.isArray(payload.appActions) ? { appActions: payload.appActions } : {}),
     usedCurrentContext: payload.usedCurrentContext,
     usedGeneralKnowledge: payload.usedGeneralKnowledge,
     usedWebResearch:

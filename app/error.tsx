@@ -4,10 +4,11 @@ import { useEffect } from "react";
 
 type AppErrorProps = {
   error: Error & { digest?: string };
-  unstable_retry: () => void;
+  /** Renders the failed segment again. This is the name Next passes it under. */
+  retry: () => void;
 };
 
-export default function AppError({ error, unstable_retry }: AppErrorProps) {
+export default function AppError({ error, retry }: AppErrorProps) {
   useEffect(() => {
     console.error("Application error boundary caught an error", error);
   }, [error]);
@@ -24,7 +25,7 @@ export default function AppError({ error, unstable_retry }: AppErrorProps) {
         </p>
         <button
           type="button"
-          onClick={unstable_retry}
+          onClick={() => retry()}
           className="mt-4 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-[var(--color-text-inverse)] transition duration-fast hover:bg-accent-hover"
         >
           Try again

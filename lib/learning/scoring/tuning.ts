@@ -60,6 +60,13 @@ export type LearningTuning = {
 const MODEL_MARKED_EVIDENCE_WEIGHT = 0.35;
 
 /**
+ * Tutor's quick checks: model-marked like the above, but one short question,
+ * often asked straight after an explanation. Below them, so several checks are
+ * needed to move a topic as far as one marked notebook page.
+ */
+const TUTOR_CHECK_EVIDENCE_WEIGHT = 0.2;
+
+/**
  * Today's hand-set values, and why each was chosen.
  *
  * `masteryRecencyHalfLifeDays`: forty-five days keeps last term's work relevant
@@ -150,5 +157,6 @@ export const DEFAULT_LEARNING_TUNING: LearningTuning = {
     flashcards: 1,
     notebook: MODEL_MARKED_EVIDENCE_WEIGHT,
     revision: MODEL_MARKED_EVIDENCE_WEIGHT,
+    "tutor-check": TUTOR_CHECK_EVIDENCE_WEIGHT,
   },
 };

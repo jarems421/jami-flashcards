@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
-import { authenticateRequest } from "@/services/auth/authenticate-request.server";
+import { apiFailure, authenticateRequest } from "@/services/auth/authenticate-request.server";
 import { start } from "workflow/api";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
@@ -19,7 +19,6 @@ import { generateVideoCardWorkflow } from "@/workflows/video-card-generation";
 
 export const runtime = "nodejs";
 
-function failure(error: string, status: number, code: string) { return Response.json({ error, code }, { status }); }
 function jobId(value: string | null) { const safe = value?.trim() ?? ""; return /^[A-Za-z0-9_-]{16,120}$/.test(safe) ? safe : randomUUID(); }
 function youtubeId(value: string) {
   try {
@@ -74,22 +73,22 @@ async function sweepExpiredImports(db: ReturnType<typeof getAdminDb>, uid: strin
 }
 
 export async function GET(request: NextRequest) {
-  const uid = await authenticateRequest(request); if (!uid) return failure("Unauthorized", 401, "unauthorized");
+  const uid = await authenticateRequest(request); if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
   const snapshot = await getAdminDb().collection("users").doc(uid).collection("videoCardJobs").orderBy("updatedAt", "desc").limit(10).get();
   return Response.json({ jobs: snapshot.docs.map((doc) => mapVideoCardJobData(doc.id, doc.data())) });
 }
 
 export async function POST(request: NextRequest) {
-  const uid = await authenticateRequest(request); if (!uid) return failure("Unauthorized", 401, "unauthorized");
-  let body: Record<string, unknown>; try { body = await request.json(); } catch { return failure("Invalid request", 400, "invalid_request"); }
+  const uid = await authenticateRequest(request); if (!uid) return apiFailure("Unauthorized", 401, "unauthorized");
+  let body: Record<string, unknown>; try { body = await request.json(); } catch { return apiFailure("Invalid request", 400, "invalid_request"); }
   const coverage = parseVideoCoverage(body.coverage); const maxCards = parseVideoCardLimit(body.maxCards); const deckId = typeof body.deckId === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(body.deckId) ? body.deckId : "";
   const topics = Array.isArray(body.topicIds) ? body.topicIds.filter((v): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(v)).slice(0, 20) : [];
   const focus = typeof body.focus === "string" ? body.focus.replace(/\s+/g, " ").trim().slice(0, 500) : "";
-  if (!coverage || !deckId) return failure("Choose a deck and coverage.", 400, "invalid_request");
+  if (!coverage || !deckId) return apiFailure("Choose a deck and coverage.", 400, "invalid_request");
   const db = getAdminDb();
   await sweepExpiredImports(db, uid).catch(() => undefined);
   const deck = await db.collection("decks").doc(deckId).get();
-  if (!deck.exists || ![deck.data()?.userId, deck.data()?.uid].includes(uid)) return failure("Deck not found", 404, "deck_not_found");
+  if (!deck.exists || ![deck.data()?.userId, deck.data()?.uid].includes(uid)) return apiFailure("Deck not found", 404, "deck_not_found");
   const id = jobId(request.headers.get("x-idempotency-key"));
   const ref = db.collection("users").doc(uid).collection("videoCardJobs").doc(id);
   const existing = await ref.get(); if (existing.exists) return Response.json(mapVideoCardJobData(id, existing.data() ?? {}));
@@ -126,7 +125,7 @@ export async function POST(request: NextRequest) {
     } else throw new Error("invalid_source");
   } catch (error) {
     const code = error instanceof Error ? error.message : "invalid_source";
-    return failure(
+    return apiFailure(
       code === "youtube_not_public"
         ? "That YouTube video is not public."
         : code === "youtube_not_configured"
@@ -138,8 +137,8 @@ export async function POST(request: NextRequest) {
       code
     );
   }
-  if (Number(source.durationSeconds) > VIDEO_MAX_SECONDS) return failure("Videos must be 90 minutes or shorter.", 413, "video_too_long");
-  let budget; try { budget = await checkAiBudget({ uid, action: "videoCardImport", skipBurstLimit: true }); } catch { return failure("AI usage limits are temporarily unavailable.", 503, "budget_unavailable"); }
+  if (Number(source.durationSeconds) > VIDEO_MAX_SECONDS) return apiFailure("Videos must be 90 minutes or shorter.", 413, "video_too_long");
+  let budget; try { budget = await checkAiBudget({ uid, action: "videoCardImport", skipBurstLimit: true }); } catch { return apiFailure("AI usage limits are temporarily unavailable.", 503, "budget_unavailable"); }
   if (!budget.allowed) return createAiBudgetLimitResponse("videoCardImport", budget);
   const now = Date.now();
   await ref.create({ ...source, deckId, topicIds: topics, coverage, ...(maxCards !== null ? { maxCards } : {}), focus, status: "queued", stage: "preparing", progress: 5, drafts: [], warnings: [], budgetGrant: budget.grant, cancellationRequested: false, createdAt: now, updatedAt: now });
@@ -154,6 +153,6 @@ export async function POST(request: NextRequest) {
     }
     const failedAt = Date.now();
     await ref.update({ status: "failed", failureMessage: "Jami could not start that import.", budgetRefunded: true, completedAt: failedAt, expiresAt: Timestamp.fromMillis(failedAt + 24 * 60 * 60_000), updatedAt: failedAt });
-    return failure("Jami could not start that import.", 503, "workflow_start_failed");
+    return apiFailure("Jami could not start that import.", 503, "workflow_start_failed");
   }
 }

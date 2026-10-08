@@ -3,6 +3,12 @@ import { doc, setDoc } from "firebase/firestore";
 import { buildNotebookPayload } from "@/lib/workspace/notebooks";
 import { buildNotebookPagePayload } from "@/lib/workspace/notebook-page-writes";
 import { buildStudyFolderPayload } from "@/lib/workspace/study-folders";
+import {
+  STUDY_ASSET_PROMPT_VERSION,
+  STUDY_ASSET_SCHEMA_VERSION,
+  STUDY_ASSET_VALIDATOR_VERSION,
+} from "@/lib/study/study-asset-versions";
+import { getCardContentHash } from "@/lib/study/study-modes";
 import { seedExamPractice } from "./exam-fixtures";
 import {
   E2E_CARDS,
@@ -276,12 +282,48 @@ export default async function globalSetup() {
               reps: 0,
               lapses: 0,
               dueDate: now,
-              ...("studySettings" in card
-                ? { studySettings: card.studySettings }
-                : {}),
             })
           ),
         ]),
+        // What a finished preparation leaves for the modes deck: one
+        // multiple-choice question per card. The emulator has no AI provider,
+        // so the walkthrough's wrong answers are stored the way Jami stores
+        // them, and reach Learn the way Jami's do.
+        ...E2E_MODES_CARDS.map((card) =>
+          setDoc(doc(db, "cardStudyAssets", card.id), {
+            userId,
+            deckId: E2E_MODES_DECK_ID,
+            cardId: card.id,
+            cacheKey: `e2e:${card.id}`,
+            schemaVersion: STUDY_ASSET_SCHEMA_VERSION,
+            promptVersion: STUDY_ASSET_PROMPT_VERSION,
+            validatorVersion: STUDY_ASSET_VALIDATOR_VERSION,
+            sourceFingerprint: getCardContentHash({ front: card.front, back: card.back }),
+            bundleRevision: "e2e",
+            generationFailed: false,
+            repairRequested: false,
+            asset: {
+              cardId: card.id,
+              answerShape: card.answerShape,
+              acceptedAliases: [],
+              requiredConcepts: [],
+              clozeCandidates: [],
+              distractors: [...card.preparedDistractors],
+              misconceptions: {},
+              confidence: 0.9,
+              ambiguous: false,
+              mcqVariants: [
+                {
+                  id: `e2e:${card.id}:mcq`,
+                  correctAnswer: card.back,
+                  distractors: [...card.preparedDistractors],
+                  explanations: {},
+                },
+              ],
+              gapVariants: [],
+            },
+          })
+        ),
       ]);
       // Past Paper Practice needs a licensed course, a current catalogue entry
       // and published questions before any of its screens will render.

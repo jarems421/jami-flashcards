@@ -8,7 +8,7 @@ import {
 import type { SkyDrawing } from "@/lib/constellation/sky-drawing";
 import type { SkyPatternTurn } from "@/lib/constellation/sky-pattern";
 import type { Constellation, ConstellationLine } from "@/lib/constellation/constellations";
-import type { NormalizedStar } from "@/lib/constellation/stars";
+import { SKY_CONTAINER_ID, type NormalizedStar } from "@/lib/constellation/stars";
 
 type StarPositions = Record<string, NormalizedStar["position"]>;
 
@@ -88,7 +88,7 @@ export function useSkyPattern({
       const constellation = selectedConstellation;
       if (!constellation) throw new Error("Choose a sky first.");
 
-      const rect = document.getElementById("constellation-container")?.getBoundingClientRect();
+      const rect = document.getElementById(SKY_CONTAINER_ID)?.getBoundingClientRect();
       const pattern = await requestSkyPattern({
         constellationId: constellation.id,
         request,

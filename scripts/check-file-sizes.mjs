@@ -55,18 +55,10 @@ const SKIP = new Set(["node_modules", ".next", "dist", "build"]);
  * is the actual fix and is now overdue.
  */
 const EXCEPTIONS = new Map([
-  /*
-   * Added on 2026-10-07, with a reason, so CI runs again. A failure here stops
-   * the verify job before its tests and build, so while these two sat over the
-   * limit CI reported file sizes and nothing else.
-   *
-   * Both are Tutor files that the unmerged branches tutor-learning-engine and
-   * tutor-app-knowledge edit throughout. They are left whole until those
-   * branches land or are dropped, because splitting them first would turn both
-   * merges into rewrites. The numbers are their current sizes: neither may grow.
-   */
-  ["app/api/ai/assistant/route.ts", 1804],
-  ["components/ai/JamiAssistantDrawer.tsx", 1824],
+  // Removed on 2026-10-07: the Tutor route became a composition root over the
+  // phases of a turn (1,946 -> 388 lines), and the Tutor drawer over its
+  // conversation hooks and parts (1,860 -> 653), once the two Tutor branches
+  // they were held for had been merged.
   // Removed on 2026-09-15: practice-paper generation was split into its stages.
   // Removed on 2026-10-06: the notebook page became a composition root over
   // its controller hooks (3,638 -> 1,196 lines), and the study page over its

@@ -327,8 +327,7 @@ Open `http://localhost:3000`. The dashboard requires a signed-in Firebase user.
   role models and provider allowlists;
 - Practice switches: the exam-format library, per-board question switches, and
   paper and marking job limits;
-- Sentry;
-- four demo-mode variables that nothing in the codebase reads.
+- Sentry.
 
 AI traffic stays off until its gates are set. Never commit `.env.local` or
 production secrets.

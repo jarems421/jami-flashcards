@@ -61,7 +61,8 @@ Jami maintains a model of what each student knows and uses it to decide what the
 - Learning evidence is minimal and append-only: ids, scores, results, error categories, timestamps. Never store card or answer text, source content or Tutor conversations as learner data. Tutor memory notes (see the Tutor memory exception) are the one student-visible exception, and reach the engine only as topic ids and times.
 - Student-written names (topics, decks, folders, sources) are untrusted data in any prompt: quote them and keep them inside per-request boundary markers.
 - Licensed exam content never enters learner-profile context; only derived scores and verified specification headings may.
-- Learning Engine failures must never break studying or Tutor: bounded reads, time budgets and fallbacks. Rollback flags: `enableLearnerProfile`, `enableFlashcardReviewEvents`, `enableStudyActions`, `enableTutorMemory`.
+- Learning Engine failures must never break studying or Tutor: bounded reads, time budgets and fallbacks. Rollback flags: `enableLearnerProfile`, `enableFlashcardReviewEvents`, `enableStudyActions`, `enableTutorMemory`, `enableTutorChecks`.
+- Tutor may add evidence only from marked attempts: notebook marking the student asked for, and quick checks (one short question whose marking points are fixed server-side before the student answers; stored as `tutor-check` evidence at the lowest source weight, never the question or the reply). Tutor never edits or removes evidence, sets mastery, or chooses a plan: its next-step offer is the engine's own top study action.
 
 ## Fast UI Verification
 

@@ -200,6 +200,100 @@ function memorySchema(): Schema {
   };
 }
 
+function appActionsSchema(types: readonly string[], destinationKeys: readonly string[]): Schema {
+  return {
+    type: Type.ARRAY,
+    description:
+      "Things to do in Jami for the student: open a place, add notebook pages, make a deck or notebook. An empty array when none.",
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        type: { type: Type.STRING, format: "enum", enum: [...types], description: "Which action." },
+        destination: {
+          type: Type.STRING,
+          format: "enum",
+          enum: [...destinationKeys],
+          description: "For open: the place key.",
+        },
+        count: { type: Type.INTEGER, description: "For add_pages: how many pages, 1 to 20." },
+        name: { type: Type.STRING, description: "For create_deck or create_notebook: its name, at most 80 characters." },
+      },
+      required: ["type"],
+    },
+  };
+}
+
+/**
+ * A quick check's marking points, fixed when the question is asked.
+ *
+ * Written before the student answers, so the later marking is against points
+ * that could not have been bent to fit the answer. The question itself goes in
+ * the answer; only the points come here.
+ */
+function quickCheckSchema(): Schema {
+  return {
+    type: Type.OBJECT,
+    description:
+      "Only when your answer ends by asking the student one short question to answer from memory: the points a correct answer must make. Leave it out on every other turn.",
+    properties: {
+      points: {
+        type: Type.ARRAY,
+        description: "One to four points, each something a correct answer must state or do.",
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            criterion: { type: Type.STRING, description: "What the point is, in your own words." },
+            marks: { type: Type.INTEGER, description: "1, or 2 for a point that carries the idea." },
+          },
+          required: ["criterion", "marks"],
+        },
+      },
+    },
+    required: ["points"],
+  };
+}
+
+/**
+ * The verdict on the student's answer to the check asked last turn: whether
+ * they attempted it, and one yes or no per stored point. Marks are not asked
+ * for; the server adds them up from the stored points.
+ */
+function checkMarkingSchema(pointCount: number): Schema {
+  return {
+    type: Type.OBJECT,
+    description:
+      "Your verdict on the student's answer to the quick check you asked last turn.",
+    properties: {
+      attempted: {
+        type: Type.BOOLEAN,
+        description:
+          "True if this message answers the check, including \"I don't know\". False if they asked for a hint, asked something else, or changed the subject.",
+      },
+      awarded: {
+        type: Type.ARRAY,
+        description: `Exactly ${pointCount} entries, in the order of the points: whether the answer earned each.`,
+        items: { type: Type.BOOLEAN },
+      },
+    },
+    required: ["attempted", "awarded"],
+  };
+}
+
+export type AssistantResponseExtras = {
+  /** Whether Tutor may ask a quick check this turn. */
+  checkInvited?: boolean;
+  /** Points in the check awaiting an answer, when one is. */
+  pendingCheckPoints?: number;
+  /** Whether the engine has a next step Tutor may attach. */
+  nextStepAvailable?: boolean;
+  /**
+   * What Tutor may do in the app this turn, and the places it may open. Only
+   * these are offered, so the model cannot propose an action or a page that is
+   * not there.
+   */
+  appActions?: { types: readonly string[]; destinationKeys: readonly string[] } | null;
+};
+
 export function buildAssistantResponseSchema(
   allowedSourceRefs: string[],
   /** Whether this turn may carry a marking at all. Off for every non-marking turn. */
@@ -222,7 +316,8 @@ export function buildAssistantResponseSchema(
    * The next steps Tutor may suggest under its answer. Optional in the schema:
    * leaving it out is the same as an empty list, which is the usual case.
    */
-  suggestionKinds: readonly string[] = []
+  suggestionKinds: readonly string[] = [],
+  extras: AssistantResponseExtras = {}
 ) {
   const sourceRefItems: Schema =
     allowedSourceRefs.length > 0
@@ -262,6 +357,19 @@ export function buildAssistantResponseSchema(
             },
           }
         : {}),
+      ...(extras.checkInvited ? { quickCheck: quickCheckSchema() } : {}),
+      ...(extras.pendingCheckPoints
+        ? { checkMarking: checkMarkingSchema(extras.pendingCheckPoints) }
+        : {}),
+      ...(extras.nextStepAvailable
+        ? {
+            offerNextStep: {
+              type: Type.BOOLEAN,
+              description:
+                "True only when the student asked what to do next or what to revise, to put Jami's next step under your answer.",
+            },
+          }
+        : {}),
       ...(studyMaterialKinds.length > 0
         ? {
             studyMaterial: {
@@ -293,6 +401,9 @@ export function buildAssistantResponseSchema(
                 "Next steps to suggest under the answer. Almost always empty: one only when it would clearly help this student now, several only when each would on its own.",
             },
           }
+        : {}),
+      ...(extras.appActions && extras.appActions.types.length > 0
+        ? { appActions: appActionsSchema(extras.appActions.types, extras.appActions.destinationKeys) }
         : {}),
       answer: {
         type: Type.STRING,
