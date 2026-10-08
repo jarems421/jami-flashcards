@@ -112,6 +112,16 @@ Preserve functionality, but feel free to substantially restructure JSX, layout, 
 
 The result should look like a designed product, not a quick prototype.
 
+## Keeping the codebase healthy
+
+Files once grew past 3,000 lines, copies of the same check spread across dozens of routes, and old code stayed beside its replacement, until a two-day cleanup in October 2026 undid it. These rules stop it growing back; `docs/architecture.md` (Keeping modules small) has the detail.
+
+- **Size.** No source file over 1,200 lines (1,500 for tests): `npm run check:sizes` fails CI, and names every file past 1,000 (1,200 for tests) on each run. Before a change adds to a file in that band, move one concern out of it -- into a hook, a `lib/` module or a service -- in its own commit. Never add an exception to `scripts/check-file-sizes.mjs` or raise a limit.
+- **One implementation per behaviour.** Search before writing a helper, hook, component or route check. When you find two copies of the same thing, fold them into one in the same change.
+- **Nothing left behind.** Delete what a change replaces in the same change: the old code path, unused exports, flags nothing reads, and their tests.
+- **Tests travel with code.** New logic gets tests; a screen with no tests gets characterization tests, committed first, before it is split.
+- **Nothing scratch or generated is committed.** Probe scripts go in the ignored `.codex/tmp/` or outside the repo; reports and evaluation output in `artifacts/`.
+
 ## Documentation
 
 - When a change makes something in `README.md`, `docs/` or `public/llms.txt` wrong, fix it in the same change.

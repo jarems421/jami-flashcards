@@ -10,15 +10,29 @@
  * Existing files over the limit are listed as exceptions rather than being
  * grandfathered silently, so the list is a visible backlog. Do not add to it
  * without a reason; shrink an entry and tighten its number instead.
+ *
+ * A gate alone only speaks once a file is already too big, and by then a
+ * change is waiting behind the split. So it also names every file in the band
+ * just under its limit on every run, without failing: that is the moment to
+ * move a concern out, while it is still one small commit.
  */
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
 const LIMIT = 1200;
+/** Past this a file is named on every run, so it is split before it blocks CI. */
+const WARN_AT = 1000;
+/**
+ * Tests carry fixtures and are allowed more room, but not unlimited room: a
+ * test file nobody can read stops being a specification.
+ */
+const TEST_LIMIT = 1500;
+const TEST_WARN_AT = 1200;
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SEARCH = ["app", "components", "hooks", "lib", "services", "e2e"];
+const SEARCH = ["app", "components", "hooks", "lib", "services", "workflows", "scripts", "e2e", "tests"];
 const SKIP = new Set(["node_modules", ".next", "dist", "build"]);
 
 /**
@@ -67,37 +81,57 @@ const EXCEPTIONS = new Map([
   // its editor, pointer-input and snapshot hooks (1,733 -> 315 lines).
 ]);
 
-function* sourceFiles(dir) {
+const SOURCE = /\.(ts|tsx|mjs|cjs|js)$/;
+
+function* walk(dir) {
   for (const entry of readdirSync(dir)) {
     if (SKIP.has(entry)) continue;
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
-      yield* sourceFiles(full);
-    } else if (/\.(ts|tsx)$/.test(entry)) {
-      yield full;
+      yield* walk(full);
+    } else if (SOURCE.test(entry)) {
+      yield relative(ROOT, full).split(sep).join("/");
     }
+  }
+}
+
+/**
+ * What git tracks, so build output and ignored scratch are never counted:
+ * the workflow runtime writes a 2,600-line route under `app/` at build time.
+ * Falls back to walking the folders where git is not available.
+ */
+function sourceFiles() {
+  try {
+    return execFileSync("git", ["ls-files", "-z", "--", ...SEARCH], { cwd: ROOT, encoding: "utf8" })
+      .split("\0")
+      .filter((key) => SOURCE.test(key));
+  } catch {
+    return SEARCH.flatMap((dir) => {
+      try {
+        return [...walk(join(ROOT, dir))];
+      } catch {
+        return [];
+      }
+    });
   }
 }
 
 const failures = [];
 const shrunk = [];
+const nearing = [];
 
-for (const dir of SEARCH) {
-  const base = join(ROOT, dir);
-  try {
-    statSync(base);
-  } catch {
-    continue;
-  }
-  for (const file of sourceFiles(base)) {
-    const key = relative(ROOT, file).split(sep).join("/");
-    const lines = readFileSync(file, "utf8").split("\n").length;
-    const allowed = EXCEPTIONS.get(key) ?? LIMIT;
-    if (lines > allowed) {
-      failures.push({ key, lines, allowed });
-    } else if (EXCEPTIONS.has(key) && lines <= LIMIT) {
-      shrunk.push({ key, lines });
-    }
+for (const key of sourceFiles()) {
+  const isTests = key.startsWith("tests/");
+  const limit = isTests ? TEST_LIMIT : LIMIT;
+  const warnAt = isTests ? TEST_WARN_AT : WARN_AT;
+  const lines = readFileSync(join(ROOT, key), "utf8").split("\n").length;
+  const allowed = EXCEPTIONS.get(key) ?? limit;
+  if (lines > allowed) {
+    failures.push({ key, lines, allowed });
+  } else if (EXCEPTIONS.has(key) && lines <= limit) {
+    shrunk.push({ key, lines });
+  } else if (lines > warnAt) {
+    nearing.push({ key, lines, allowed });
   }
 }
 
@@ -105,6 +139,14 @@ for (const { key, lines } of shrunk) {
   console.log(
     `${key} is down to ${lines} lines and no longer needs an exception.`
   );
+}
+
+if (nearing.length > 0) {
+  console.warn("\nClose to the size limit -- move a concern out before adding to these:\n");
+  for (const { key, lines, allowed } of nearing.sort((left, right) => right.lines - left.lines)) {
+    console.warn(`  ${key}: ${lines} lines (limit ${allowed})`);
+  }
+  console.warn("");
 }
 
 if (failures.length > 0) {
@@ -119,4 +161,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`No source file over ${LIMIT} lines outside the known exceptions.`);
+console.log(`No file past its size limit (${LIMIT} lines, ${TEST_LIMIT} for tests).`);

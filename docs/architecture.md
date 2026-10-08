@@ -53,8 +53,64 @@ Dependencies should flow downward through this list. A service may use `lib`, bu
   code describes model input with `@/lib/ai/content-parts`.
 - `console` is refused in Route Handlers, workflows and `*.server.ts` files; use
   `createLogger` from `lib/observability/logger`.
-- `npm run check:sizes` fails CI for any source file over 1,200 lines. Split a
-  file before it reaches the gate rather than after.
+- `npm run check:sizes` fails CI for any tracked source file over 1,200 lines
+  (1,500 for tests), and names every file past 1,000 (1,200 for tests) on each
+  run. It checks `app`, `components`, `hooks`, `lib`, `services`, `workflows`,
+  `scripts`, `e2e` and `tests`, and has no exceptions.
+
+## Keeping modules small
+
+The notebook page once reached 4,525 lines before anything stopped it, and
+fifteen files were over the gate when the October 2026 cleanup began. The gate
+now stops a file at 1,200 lines; these habits keep one from getting there.
+
+- **Split before adding.** When a change would add to a file the size check
+  names, move one concern out of it first, in its own commit.
+- **Split by concern, not by line count.** A large screen becomes a
+  composition root: it creates its controllers in dependency order, routes
+  input between them and lays out what they render.
+  - State and effects move into hooks named for one concern
+    (`useNotebookPageTurn`, `useNotebookTutorBridge`, `useStudyQuestionWait`).
+  - Pure rules move to `lib/`, with tests of their own.
+  - Multi-step I/O moves to `services/`, each step undone if a later one fails
+    (`services/study/practice-paper-builder.ts`).
+  - Drawing and engine code takes what it needs from its frame as a plain
+    object rather than reaching into a class
+    (`components/ai/memory-map/aurora-draw.ts`).
+- **Tests first.** A screen with no tests gets characterization tests of what
+  it does now, committed before it is split, so the history shows them passing
+  on the old code.
+- **Hooks never import from component files.** A helper two of them need moves
+  to `lib/`.
+- **One implementation per behaviour.** Search before writing a helper, hook
+  or check. Twenty-two copies of "the caller's uid, or null" once spread across
+  28 routes; they are now `authenticateRequest`. The deck page kept its own copy
+  of the card editor's logic until it moved onto `useCardEditing`. Fold a second
+  copy into the first in the change that finds it.
+- **Nothing left behind.** A change deletes what it replaces: the old path,
+  unused exports, flags nothing reads, and their tests.
+
+The React Compiler is not enabled in the build, but its lint rules run, and the
+compiler silently skips a component it cannot analyse. Splitting a large one
+lets it read the whole component, and it then reports faults that were there
+all along (refs read during render, effects that set state); fix those rather
+than suppress them. The notebook editor page is still skipped: its
+frame-measuring effects stop the analysis, and moving them out surfaces
+thirteen hand-memoised callbacks the compiler cannot prove stable through the
+controllers' return objects. Make those stable before moving the effects.
+
+## Server routes
+
+- Every route that acts for a student calls `authenticateRequest`
+  (`services/auth/authenticate-request.server.ts`), the one token check, and
+  reads or writes only under `users/{uid}` for the uid it returns. Routes use
+  the Admin SDK, which goes past the Firestore rules, so this check is the
+  gate.
+- What a student sees in an error is worded for them. Storage paths, bucket
+  names and provider messages are logged, never returned.
+- Cron routes check `CRON_SECRET` in constant time and fail closed
+  (`services/auth/cron-authorization.ts`); owner routes check an environment
+  allowlist.
 
 ## Learning Engine
 

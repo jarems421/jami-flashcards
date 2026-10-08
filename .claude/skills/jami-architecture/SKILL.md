@@ -39,7 +39,9 @@ app (pages, Route Handlers) -> components -> hooks -> services -> lib
 8. Remove obsolete code introduced or replaced by the change.
 9. Preserve desktop, mobile, touch, and iPad behaviour.
 10. Never expose Firebase secrets or weaken security rules for convenience.
-11. Keep every source file under the 1,200-line gate (`npm run check:sizes`); split before adding to a file near it.
-12. If the change makes a doc in `README.md`, `docs/` or `public/llms.txt` wrong, fix it in the same change.
+11. Keep every source file under the 1,200-line gate (`npm run check:sizes`, 1,500 for tests). The check names every file past 1,000 lines: move a concern out of one (into a hook, a `lib/` module or a service) before a change adds to it. Never add an exception or raise a limit.
+12. One implementation per behaviour. Search before writing a helper, hook or component, and fold a second copy you find into the first in the same change.
+13. If the change makes a doc in `README.md`, `docs/` or `public/llms.txt` wrong, fix it in the same change.
+14. Commit nothing scratch or generated: probe scripts go in the ignored `.codex/tmp/`, reports in `artifacts/`.
 
 Before completing work, check that the change respects these boundaries.

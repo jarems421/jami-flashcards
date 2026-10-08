@@ -45,6 +45,10 @@ npm run verify:all
 
 Record all failures.
 
+Also record the files `npm run check:sizes` names as close to the size limit,
+and any second copy of the same behaviour you notice while reading. Neither
+fails the build yet; both are how the codebase grew unreadable before.
+
 Do not modify code to make failures pass.
 
 If the complete suite cannot run, explain exactly why and continue with

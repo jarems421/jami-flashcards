@@ -259,7 +259,7 @@ those fixes, a rerun of the six affected cases produced 3. See
 
 ### Tests
 
-About 570 Vitest files (about 5,800 tests), plus Firestore and Storage rules
+About 580 Vitest files (over 6,000 tests), plus Firestore and Storage rules
 tests and a signed-in Playwright suite against the Firebase emulators.
 
 ## Technology
@@ -328,7 +328,6 @@ it). Everything else is in `docs/`:
 | [`image-occlusion.md`](docs/image-occlusion.md) | Diagram cards |
 | [`notifications.md`](docs/notifications.md) | Push nudges by each student's own clock |
 | [`plans-and-stardust.md`](docs/plans-and-stardust.md) | Plans, allowances, payments and stardust |
-| [`codebase-cleanup-2026-10.md`](docs/codebase-cleanup-2026-10.md) | The October 2026 cleanup, and what it left for the owner |
 
 ## Local development
 

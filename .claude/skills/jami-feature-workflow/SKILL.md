@@ -17,7 +17,8 @@ Before editing:
 
 - Locate the relevant files.
 - Trace the feature from UI through state, domain logic, services, and storage.
-- Search for existing implementations that can be reused.
+- Search for existing implementations that can be reused, and note any second copy of the same behaviour to fold together.
+- Check the size of the files you will touch (`npm run check:sizes` names those past 1,000 lines); plan to move a concern out of one first rather than add to it.
 - Identify the root cause or current limitation.
 - State the smallest safe implementation plan.
 
@@ -44,7 +45,9 @@ build or browser check was skipped, say so.
 Review the final git diff for:
 
 - Regressions
-- Duplicated logic
+- Duplicated logic, and code the change replaced but left behind
+- Files pushed into the size warning band
+- Docs the change made wrong
 - Unsafe typing
 - Architecture violations
 - Race conditions

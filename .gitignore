@@ -90,5 +90,8 @@ scratch/
 # Emitted by the workflow runtime during `next build`.
 /app/.well-known/workflow/
 
-# Throwaway diagnostic scripts.
+# Throwaway diagnostic scripts, and model responses captured during a local
+# generation run (JAMI_CAPTURE_GENERATION_DIR). Neither belongs in the repo.
 /.codex/tmp/
+/.codex/captures/
+/probe-report.json
