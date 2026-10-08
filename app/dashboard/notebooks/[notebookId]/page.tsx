@@ -4,8 +4,6 @@ import { useParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -44,6 +42,8 @@ import { useNotebookAssistantContext } from "@/hooks/useNotebookAssistantContext
 import { useNotebookEditorShell, useNotebookPageUrl } from "@/hooks/useNotebookEditorShell";
 import { useNotebookExitGuard } from "@/hooks/useNotebookExitGuard";
 import { useNotebookInkController } from "@/hooks/useNotebookInkController";
+import { useNotebookInkEditorEvents } from "@/hooks/useNotebookInkEditorEvents";
+import { useNotebookInteractionGuards } from "@/hooks/useNotebookInteractionGuards";
 import { useNotebookKeyboardShortcuts } from "@/hooks/useNotebookKeyboardShortcuts";
 import { useNotebookLiveInkLayer } from "@/hooks/useNotebookLiveInkLayer";
 import { useNotebookLoader } from "@/hooks/useNotebookLoader";
@@ -60,6 +60,7 @@ import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockCont
 import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
 import { useNotebookToolSettings } from "@/hooks/useNotebookToolSettings";
 import { useNotebookTouchInkHint } from "@/hooks/useNotebookTouchInkHint";
+import { useNotebookTutorBridge } from "@/hooks/useNotebookTutorBridge";
 import { useNotebookViewportController } from "@/hooks/useNotebookViewportController";
 import {
   useNotebookDrawingToolState,
@@ -70,20 +71,11 @@ import {
 import { usePracticePaperRetake } from "@/hooks/usePracticePaperRetake";
 import { usePracticePaperStatus } from "@/hooks/usePracticePaperStatus";
 import { prefersReducedMotion } from "@/lib/ui/reduced-motion";
-import { createNotebookAnswerBlock } from "@/lib/workspace/notebook-answer-block";
-import {
-  getNotebookAssistantQuickActions,
-  notebookPageHasWork,
-} from "@/lib/workspace/notebook-assistant";
+import { notebookPageHasWork } from "@/lib/workspace/notebook-assistant";
 import {
   clampNotebookPagePan,
   shouldSuppressTouchAfterStylus,
 } from "@/lib/workspace/notebook-inking";
-import {
-  clearNotebookNativeSelection,
-  installNotebookStylusTouchListeners,
-} from "@/lib/workspace/notebook-interaction-lock";
-import { makeNotebookTextBlockId } from "@/lib/workspace/notebook-page-content";
 import { notebookToolMovesPlacedItems } from "@/lib/workspace/notebook-page-state";
 import {
   type NotebookPdfCanvasTracking,
@@ -97,7 +89,6 @@ import {
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
 } from "@/lib/workspace/notebooks";
-import { recordPracticePaperTutorUse } from "@/services/study/practice-papers";
 
 const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
@@ -266,9 +257,16 @@ export default function NotebookEditorPage() {
   const pageEditingEnabled = fullNotebookEditingEnabled && !practicePaperEditingLocked;
 
   const pageHasWork = notebookPageHasWork({ page: selectedPage, textBlocks, inkHasContent });
-  const notebookAssistantQuickActions = useMemo(
-    () => getNotebookAssistantQuickActions({ hasWork: pageHasWork }),
-    [pageHasWork]
+
+  // Asked from pointer handlers only, never while rendering.
+  const isStylusSuppressingTouch = useCallback(
+    () =>
+      shouldSuppressTouchAfterStylus({
+        stylusActive: stylusInteractionRef.current,
+        cooldownUntil: stylusCooldownUntilRef.current,
+        now: Date.now(),
+      }),
+    [stylusCooldownUntilRef, stylusInteractionRef]
   );
 
   const viewport = useNotebookViewportController({
@@ -282,12 +280,7 @@ export default function NotebookEditorPage() {
     pageSurfaceRef,
     pageFrameRef,
     isNavigationLocked: isPageNavigationLocked,
-    isStylusSuppressingTouch: () =>
-      shouldSuppressTouchAfterStylus({
-        stylusActive: stylusInteractionRef.current,
-        cooldownUntil: stylusCooldownUntilRef.current,
-        now: Date.now(),
-      }),
+    isStylusSuppressingTouch,
     onPinchTakeover: () => turn.cancelSwipeForPinch(),
     onClearSwipeCandidate: () => {
       pageSwipeRef.current = null;
@@ -322,26 +315,6 @@ export default function NotebookEditorPage() {
     onSwipeMotionChange: setPageSwipeMotion,
     onInkSnapshotChange: setPageSwipeInkSnapshot,
   });
-
-  const handleAssistantOpenChange = useCallback((open: boolean) => {
-    if (open) {
-      // Here rather than on the toolbar button: the floating Tutor reopens from its own pill too.
-      if (!assistantOpen && practicePaperStatus === "in_progress" && userId && notebook) {
-        void recordPracticePaperTutorUse(userId, notebook.id).catch(() => undefined);
-      }
-      setPagesDrawerOpen(false);
-      closeDrawingToolMenus();
-    }
-    setAssistantOpen(open);
-  }, [
-    assistantOpen,
-    closeDrawingToolMenus,
-    notebook,
-    practicePaperStatus,
-    userId,
-    setAssistantOpen,
-    setPagesDrawerOpen,
-  ]);
 
   const getNotebookAssistantContext = useNotebookAssistantContext({
     pageState,
@@ -510,6 +483,28 @@ export default function NotebookEditorPage() {
     onTouchPointerEnd: handleTouchPointerEnd,
   });
 
+  const {
+    quickActions: notebookAssistantQuickActions,
+    handleAssistantOpenChange,
+    handleTutorAnswerInsert,
+  } = useNotebookTutorBridge({
+    userId,
+    notebook,
+    pageState,
+    assistantOpen,
+    setAssistantOpen,
+    setPagesDrawerOpen,
+    closeDrawingToolMenus,
+    practicePaperStatus,
+    pageHasWork,
+    pageEditingEnabled,
+    currentImageRefsFor,
+    currentGraphBlocksFor,
+    insertTextBlock,
+    showError,
+    success,
+  });
+
   /**
    * Nothing on the page is selected any more.
    *
@@ -636,72 +631,19 @@ export default function NotebookEditorPage() {
 
   useNotebookEditorShell();
 
-  // The app lost focus or the page was hidden mid-gesture: nothing may be left
-  // half-done, because the pointer that would have finished it is gone.
-  useEffect(() => {
-    const clearActiveInteractions = () => {
-      finishActiveTextBlockGesture();
-      stylusInteractionRef.current = false;
-      stylusCooldownUntilRef.current = Date.now() + 180;
-      // A pinch was interrupted (blur/app switch): drop its live transform
-      // back to the last committed pan.
-      cancelActivePinch({ clearPointers: true });
-      // Teardown always resyncs pan, pinch or not, so an interrupted drag
-      // cannot leave the committed pan behind the live one.
-      setPagePan(pagePanLiveRef.current);
-      interruptPageTurn();
-      if (typeof document !== "undefined") {
-        clearNotebookNativeSelection(document);
-      }
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        clearActiveInteractions();
-      }
-    };
-
-    window.addEventListener("blur", clearActiveInteractions);
-    window.addEventListener("pagehide", clearActiveInteractions);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("blur", clearActiveInteractions);
-      window.removeEventListener("pagehide", clearActiveInteractions);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      cancelPinchZoomAnimationFrame();
-    };
-  }, [
+  useNotebookInteractionGuards({
+    finishActiveTextBlockGesture,
+    stylusInteractionRef,
+    stylusCooldownUntilRef,
     cancelActivePinch,
     cancelPinchZoomAnimationFrame,
-    finishActiveTextBlockGesture,
-    interruptPageTurn,
-    pagePanLiveRef,
     setPagePan,
-    stylusCooldownUntilRef,
-    stylusInteractionRef,
-  ]);
-
-  const pageSurfaceReady = Boolean(selectedPage?.id && pageFit.width > 0);
-
-  useLayoutEffect(() => {
-    const surface = pageSurfaceRef.current;
-    if (!surface || !selectedPage?.id || !pageSurfaceReady || typeof window === "undefined") {
-      return;
-    }
-
-    // iPadOS Safari hijacks horizontal Apple Pencil movement for a native
-    // scroll/back gesture even when `touch-action: none` is set — it fires a
-    // pointercancel mid-stroke and then needs a frame to settle before the next
-    // pointerdown is delivered, which is why a stroke right after a horizontal
-    // one fails to register. touch-action is not honored for the Pencil here,
-    // but suppressing the underlying touch-event default is. We only cancel for
-    // stylus input (or while ink is being drawn) and never over a text editor
-    // or an interactive control, so Pencil taps and finger navigation remain
-    // native while bare-page ink still blocks Safari navigation gestures.
-    return installNotebookStylusTouchListeners({
-      surface,
-      getInkInteractionActive: () => inkInteractionActiveRef.current,
-    });
-  }, [inkInteractionActiveRef, pageSurfaceReady, selectedPage?.id]);
+    pagePanLiveRef,
+    interruptPageTurn,
+    pageSurfaceRef,
+    readySurfacePageId: selectedPage?.id && pageFit.width > 0 ? selectedPage.id : null,
+    inkInteractionActiveRef,
+  });
 
   const { handleExitNotebook, handleRetryPageSave } = useNotebookExitGuard({
     pageState,
@@ -781,43 +723,6 @@ export default function NotebookEditorPage() {
     },
   });
 
-  /** A Tutor answer, added to this page exactly as the Tutor showed it. */
-  const handleTutorAnswerInsert = useCallback(
-    (text: string) => {
-      const { selectedPage: page, textBlocks: currentTextBlocks } = pageState.read();
-      if (!page) return false;
-      if (!pageEditingEnabled) {
-        showError("This page can't be edited here, so the answer can't be added to it.");
-        return false;
-      }
-      const result = createNotebookAnswerBlock({
-        id: makeNotebookTextBlockId(),
-        text,
-        page: {
-          textBlocks: currentTextBlocks,
-          imageRefs: currentImageRefsFor(page.id),
-          graphBlocks: currentGraphBlocksFor(page.id),
-        },
-      });
-      if (!result.ok) {
-        showError(result.message);
-        return false;
-      }
-      const added = insertTextBlock(result.block);
-      if (added) success("Answer added to this page.");
-      return added;
-    },
-    [
-      currentGraphBlocksFor,
-      currentImageRefsFor,
-      insertTextBlock,
-      pageEditingEnabled,
-      pageState,
-      showError,
-      success,
-    ]
-  );
-
   const handleToolbarUndo = useCallback(() => {
     closeDrawingToolMenus();
     handleUndo();
@@ -851,49 +756,22 @@ export default function NotebookEditorPage() {
     prefersReducedMotion,
   });
 
-  const handleInkEditorReady = useCallback(() => {
-    inkReadyRef.current = true;
-    setInkReady(true);
-    requestHandoffCheck();
-  }, [inkReadyRef, requestHandoffCheck, setInkReady]);
-
-  const handleInkEditorReadyError = useCallback(() => {
-    inkReadyRef.current = true;
-    showError("This page opened, but the ink editor could not start. Your saved writing is still visible.");
-    requestHandoffCheck();
-  }, [inkReadyRef, requestHandoffCheck, showError]);
-
-  /** A stroke began or ended on the page. */
-  const handleInkEditorInteraction = useCallback(
-    (active: boolean) => {
-      handleInkInteractionChange(active);
-      if (active) {
-        // Only what is open: see clearPlacedSelection.
-        closeDrawingToolMenus();
-        if (pagesDrawerOpen) setPagesDrawerOpen(false);
-        clearPlacedSelection();
-        cancelInkUiSync();
-        cancelScheduledPersistence();
-      } else {
-        scheduleInkUiSync();
-        if (pageState.read().saveStatus === "unsaved") {
-          schedulePendingWork();
-        }
-      }
-    },
-    [
-      cancelInkUiSync,
-      cancelScheduledPersistence,
-      clearPlacedSelection,
-      closeDrawingToolMenus,
-      handleInkInteractionChange,
-      pageState,
-      pagesDrawerOpen,
-      scheduleInkUiSync,
-      schedulePendingWork,
-      setPagesDrawerOpen,
-    ]
-  );
+  const inkEditorEvents = useNotebookInkEditorEvents({
+    pageState,
+    inkReadyRef,
+    setInkReady,
+    requestHandoffCheck,
+    showError,
+    handleInkInteractionChange,
+    closeDrawingToolMenus,
+    pagesDrawerOpen,
+    setPagesDrawerOpen,
+    clearPlacedSelection,
+    cancelInkUiSync,
+    scheduleInkUiSync,
+    cancelScheduledPersistence,
+    schedulePendingWork,
+  });
 
   const { backgroundProps: liveBackgroundProps, inkEditorProps: liveInkEditorProps } =
     useNotebookLiveInkLayer({
@@ -912,11 +790,9 @@ export default function NotebookEditorPage() {
       tool,
       tools: drawingTools,
       ink: {
-        onReady: handleInkEditorReady,
-        onReadyError: handleInkEditorReadyError,
+        ...inkEditorEvents,
         onChange: handleInkChange,
         onHistoryChange: handleInkHistoryChange,
-        onInteractionChange: handleInkEditorInteraction,
       },
       pointer: {
         onPointerDown: handlePagePointerDown,
