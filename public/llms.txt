@@ -1,38 +1,48 @@
 # Jami route map
 
-Jami is an authenticated study workspace. Start at / and sign in with Google or
-email. Dashboard pages load the signed-in user's Firebase data; do not assume a
-signed-out visitor can access seeded or public dashboard data.
+Jami is an authenticated study workspace for GCSE, A-level and university
+students. Start at / and sign in with Google or email. Dashboard pages load the
+signed-in user's own Firebase data; a signed-out visitor cannot reach seeded or
+public dashboard data.
 
 Primary destinations:
-- /dashboard - Home and recommended next action
-- /dashboard/study - Learn and flashcard review
-- /dashboard/practice - Practice, folders, and notebook-first study spaces
-- /dashboard/progress - Progress and weak areas
+- /dashboard - Today: the next step, or the week of a revision plan
+- /dashboard/study - Learn: flashcard review
+- /dashboard/practice - Practice: folders, notebooks, past-paper questions and generated papers
+- /dashboard/tutor - Jami, the tutor
 - /dashboard/decks - Flashcard decks
 - /dashboard/cards - All flashcards
-- /dashboard/topics - Connected study topics
-- /dashboard/library - Saved sources and existing source tools
+- /dashboard/topics - Concepts and subtopics linking material across folders
 - /dashboard/goals - Scoped study goals
 - /dashboard/constellation - Stars and constellation rewards
-- /dashboard/profile - Account and profile settings
+- /dashboard/progress - Progress and weak areas
+- /dashboard/profile - Account and settings
 
 Additional routes:
-- /dashboard/folders/[folderId] - A folder's notebooks, decks, topics, and sources
+- /dashboard/library - Sources the tutor can read
+- /dashboard/folders/[folderId] - A folder's notebooks, practice, decks and sources
 - /dashboard/notebooks/[notebookId] - Page-based notebook editor
+- /dashboard/practice/questions/new - Start a past-paper question session
+- /dashboard/practice/new - Generate a practice paper
+- /dashboard/practice/history - Practice history
+- /dashboard/revision/start - Start a Revision Session
+- /dashboard/tutor/plan - Revision plan
+- /dashboard/tutor/personalise - Personalise the tutor, including its memory
 - /dashboard/decks/[id] - Deck detail and card management
 - /dashboard/decks/[id]/study - Deck study session
 - /dashboard/topics/[topicId] - Topic detail
 
 Compatibility:
 - /dashboard/practise permanently redirects to /dashboard/practice
-- User-facing copy uses Practice; `practise` survives only as a legacy URL
-  retained for route compatibility.
+- /dashboard/learn redirects to /dashboard/study
+- /dashboard/stats redirects to /dashboard/progress
 
 Data and privacy:
 - Persistent dashboard actions require Firebase authentication.
-- Notebook PDF rendering and page counting happen client-side where supported.
-- Saved sources are only sent to the existing source Tutor after the user selects
-  them and asks a question.
-- Do not infer OCR, background source indexing, browser monitoring, or a public
-  demo workspace.
+- Notebook PDF rendering and page counting happen client-side; uploaded files
+  are never modified.
+- When a student adds or changes a source, Jami builds a private search index
+  of it. The tutor reads matching passages only after the student asks.
+- AI marking and help run only when the student asks.
+- Do not infer always-on screen watching, browser monitoring, or a public demo
+  workspace.

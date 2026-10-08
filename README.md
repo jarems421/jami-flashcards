@@ -54,13 +54,16 @@ Other surfaces sit under those entries rather than having their own:
 
 | Surface | Route |
 | --- | --- |
-| Notebook | `/dashboard/notebooks/[notebookId]` |
+| Folder | `/dashboard/folders/[folderId]` |
+| Notebook (generated papers open here too) | `/dashboard/notebooks/[notebookId]` |
 | Sources (the library the tutor reads) | `/dashboard/library` |
-| Past-paper question session | `/dashboard/practice/questions/[sessionId]` |
-| Generated paper | `/dashboard/practice/papers/[notebookId]` |
+| Past-paper question session | `/dashboard/practice/questions/new`, `/dashboard/practice/questions/[sessionId]` |
+| Generate a paper, and its print view | `/dashboard/practice/new`, `/dashboard/practice/papers/[notebookId]/print` |
 | Practice history | `/dashboard/practice/history` |
-| Revision Session | `/dashboard/revision/[sessionId]` |
-| Revision plan and tutor personalisation | `/dashboard/tutor/plan`, `/dashboard/tutor/personalise` |
+| Revision Session | `/dashboard/revision/start`, `/dashboard/revision/[sessionId]` |
+| Revision plan and tutor personalisation (including memory) | `/dashboard/tutor/plan`, `/dashboard/tutor/personalise` |
+| Appearance and AI usage | `/dashboard/profile/personalise`, `/dashboard/profile/usage` |
+| Plans (behind `enableBilling`, off) | `/dashboard/plans` |
 | Owner workspace: paper quality and exam corpus | `/dashboard/internal/paper-quality`, `/dashboard/internal/exam-corpus` |
 
 These old routes redirect indefinitely, so existing links keep working:
@@ -158,8 +161,9 @@ These constraints are enforced in code:
   inside per-request random boundary markers, so they cannot be read as
   instructions.
 - **Context is relevant and bounded.** With source context on, the assistant
-  ranks passages from up to fifteen sources in the current folder. The current
-  page remains authoritative, and sources are read on demand.
+  searches the indexed passages of every source attached to the current folder
+  by content and reads only what fits a fixed text budget. The current page
+  remains authoritative, and sources are read only when the student asks.
 - **Per-user budgets.** Request limits are counted in Firestore transactions, and
   refunded when a request fails before producing anything.
 - **Deadlines everywhere.** Requests carry deadlines and are cancelled when the
@@ -255,8 +259,8 @@ those fixes, a rerun of the six affected cases produced 3. See
 
 ### Tests
 
-451 Vitest files (about 4,750 tests), plus Firestore and Storage rules tests and
-a signed-in Playwright suite against the Firebase emulators.
+About 570 Vitest files (about 5,800 tests), plus Firestore and Storage rules
+tests and a signed-in Playwright suite against the Firebase emulators.
 
 ## Technology
 
@@ -271,7 +275,9 @@ a signed-in Playwright suite against the Firebase emulators.
 | Documents | `pdfjs-dist` to read, `pdfkit` and `svg-to-pdfkit` to write paper PDFs, `mammoth`, `officeparser` and `cheerio` for imports, `sql.js` for Anki packages |
 | Images | `sharp`, `@napi-rs/canvas` |
 | Rich text and maths | `react-markdown`, `remark-math`, `rehype-katex`, KaTeX, MathJax |
-| Notifications | Web Push (`web-push`), sent by Vercel Cron |
+| Notifications | Web Push (`web-push`), sent hourly by Vercel Cron in each student's time zone |
+| Email | `nodemailer`, for sign-in codes |
+| Payments | Stripe Checkout, webhook and Portal, behind `enableBilling` (off) |
 | AI | OpenRouter role routing, Google GenAI specialists |
 | Monitoring | Sentry |
 | Testing | Vitest, Playwright, Firebase Rules Unit Testing |
@@ -288,7 +294,8 @@ workflows/            Durable jobs: paper generation and marking, question marki
 tests/                Unit, service and Route Handler tests (Vitest)
 e2e/                  Signed-in browser tests against the Firebase emulators
 scripts/              Tooling; scripts/eval/ holds the benchmarks and research runs
-artifacts/            Evaluation corpora and reports
+benchmarks/           Approved marking and paper-generation baselines
+artifacts/            Evaluation corpora and reports, created locally by eval scripts (not committed)
 docs/                 Design guidance, release gates and measured reports
 public/               PWA manifest, service worker, icons and static assets
 ```
@@ -298,6 +305,30 @@ logic in `lib`, and reusable visual primitives in `components/ui`. See
 [`docs/architecture.md`](docs/architecture.md) for dependency and compatibility
 boundaries, and [`docs/ui-design-system.md`](docs/ui-design-system.md), which all
 UI work must follow.
+
+## Documentation
+
+Contributor and agent rules are in [`AGENTS.md`](AGENTS.md) (`CLAUDE.md` imports
+it). Everything else is in `docs/`:
+
+| Document | Covers |
+| --- | --- |
+| [`architecture.md`](docs/architecture.md) | Layer boundaries and what the tooling enforces |
+| [`data-access-audit.md`](docs/data-access-audit.md) | Reads that load a whole collection, why, and how heavy accounts stay fast |
+| [`ui-design-system.md`](docs/ui-design-system.md) | The design rules every UI change follows |
+| [`manual-qa.md`](docs/manual-qa.md) | The release checklist for what automated tests cannot judge |
+| [`learning-engine-verification.md`](docs/learning-engine-verification.md) | Production checks for the Learning Engine, and specification catalogue sign-off |
+| [`revision-sessions.md`](docs/revision-sessions.md) | How Revision Sessions teach, and what they record |
+| [`ai-operations.md`](docs/ai-operations.md) | Runbook: release sequence, kill switches, telemetry, job recovery, spend |
+| [`ai-provider-release-gates.md`](docs/ai-provider-release-gates.md) | Privacy, quality and operational gates before AI traffic is enabled |
+| [`ai-quality-benchmark.md`](docs/ai-quality-benchmark.md) | The offline AI benchmark and its report format |
+| [`past-paper-practice-rights.md`](docs/past-paper-practice-rights.md) | Permission records and correctness gates for real exam questions |
+| [`past-paper-marking-release.md`](docs/past-paper-marking-release.md) | Marking release checks and measured accuracy |
+| [`exam-format-library.md`](docs/exam-format-library.md) | Board exam formats, generated papers and the paper benchmark |
+| [`image-occlusion.md`](docs/image-occlusion.md) | Diagram cards |
+| [`notifications.md`](docs/notifications.md) | Push nudges by each student's own clock |
+| [`plans-and-stardust.md`](docs/plans-and-stardust.md) | Plans, allowances, payments and stardust |
+| [`codebase-cleanup-2026-10.md`](docs/codebase-cleanup-2026-10.md) | The October 2026 cleanup, and what it left for the owner |
 
 ## Local development
 

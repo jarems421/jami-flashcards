@@ -1,8 +1,9 @@
 # Data access audit
 
-Audited 2026-08-01 as part of the production-clean campaign. UI modules are
-prevented by ESLint from importing Firestore or Storage directly; the reads
-below are owned by domain services.
+Audited 2026-08-01 and updated in October 2026 for heavy accounts (see
+[Heavy accounts](#heavy-accounts-october-2026)). UI modules are prevented by
+ESLint from importing Firestore or Storage directly; the reads below are owned
+by domain services.
 
 ## Bounded and filtered paths
 
@@ -52,9 +53,9 @@ The required composite indexes are declared in `firestore.indexes.json`.
 
 | Read | Why the complete input remains required |
 | --- | --- |
-| User cards in Today, Learn, Progress and notification digest | Daily Review queues, overdue risk, FSRS state and carry-over are functions of the complete owned card set. Today deduplicates and caches its copy. |
+| User cards in Today, Learn, Progress and notification digest | Daily Review queues, overdue risk, FSRS state and carry-over are functions of the complete owned card set. The set is read once and shared through the service cache, through `/api/study/cards` where possible (see Heavy accounts). |
 | Cards management and deck detail | Duplicate-content warnings, bulk selection and global front-text search must see every matching card. The same read is reused rather than adding a second list query. |
-| Mastery events | Current mastery totals are reconstructed from the all-time event stream; adding a stored summary model is explicitly outside this campaign. |
+| Legacy mastery events | Today still lists topics whose all-time event sum is negative. Nothing has written these events since May 2026; the sum per topic is now computed on the server (`/api/study/mastery-sums`) so the browser receives one number per topic. Retiring the read is an open data decision, recorded in `codebase-cleanup-2026-10.md`. |
 | Progress study activity | All-time charts and longest-streak calculations intentionally differ from Today's bounded current-streak loader. |
 | Sources Library and its drafts | Search supports arbitrary substrings, including saved source content, and draft review is global. Firestore cannot cursor-page that search without an additive indexed-search representation or external search service, both excluded here. |
 | Topics and relationship pickers | Topic hierarchy, legacy name compatibility, multi-object membership counts and pickers require a complete active topic vocabulary. Exact normalized-name checks are bounded; only the documented legacy-name fallback scans it. |
@@ -85,18 +86,34 @@ still read in its old shape and the benefit accrues as pages are edited.
 `scripts/seed-large-notebook.mjs` builds a notebook in either shape to measure
 the difference on a real device.
 
-### Measured volume, 2026-08-01
+### Heavy accounts, October 2026
 
-`node scripts/measure-data-shape.mjs` counted the live account: 7 cards, 1
-deck, 1 source, 1 topic, 17 notebooks, 52 notebook pages, 15 drafts, 0 mastery
-events. The largest deck holds 7 cards.
+The August measurement (`node scripts/measure-data-shape.mjs` on the owner's
+account: 7 cards, 17 notebooks) no longer describes real use. Students now hold
+thousands of cards, and five thousand cards took 15 to 25 seconds to load on a
+phone over 4G. Rather than paginate reads that need the complete set, the set
+is now delivered faster:
 
-Every complete-collection read above is therefore reading tens of documents,
-not thousands. The thresholds set before measuring were: under 1,000 no
-action, 1,000-5,000 paginate the list views, over 5,000 build a search index
-or stored summaries. Nothing here is close to the first threshold, so the
-retained reads stay as they are and no search index is justified. Re-measure
-before adding one.
+- **Through Jami's own route.** `/api/study/cards` reads the signed-in
+  student's cards next to the database and sends them gzipped, up to 2,500
+  per response (`services/study/own-cards.server.ts`). The browser's direct
+  Firestore read remains the fallback whenever the route cannot answer.
+- **From a copy kept on the device.** `services/study/card-device-copy.ts`
+  keeps the set in IndexedDB, so pages that only display cards (Cards,
+  Progress, Topics, Today) draw at once and redraw when the server's set
+  arrives. The copy is never the truth: any write by the student drops it, a
+  set read while a write landed is not kept, anything that grades, edits or
+  schedules a card reads with `{ force: true }`, and sign-out clears it.
+- **Learn's offline copy** lives in IndexedDB too
+  (`services/study/offline-study-snapshot.ts`), written at most every 1.5
+  seconds, off the critical path.
+
+Measured on a 5,000-card account over 4G with a 4x slower CPU: Today 25.7s to
+5.9s and Learn 19.3s to 5.9s on a first visit; Cards 12.9s to 1.7s, Progress
+14.1s to 2.1s and Topics 14.3s to 1.1s with a device copy.
+
+Re-measure with `scripts/measure-data-shape.mjs` before adding pagination, a
+search index or stored summaries.
 
 These are explicit architecture exceptions, not accidental list implementations.
 Ordinary folder browsing uses membership-scoped compatibility queries. Today

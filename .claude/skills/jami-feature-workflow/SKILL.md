@@ -31,14 +31,13 @@ Before editing:
 
 ## 3. Verify
 
-Inspect `package.json` and run the relevant available commands, including:
+Classify the change by risk and run what the Fast UI Verification section of
+`AGENTS.md` calls for. Type checking, linting and related tests always run; the
+full suite, a production build and a browser walkthrough run only where that
+risk split requires them.
 
-- Type checking
-- Linting
-- Relevant tests
-- Production build
-
-Do not claim a command passed unless it was actually run successfully.
+Do not claim a command passed unless it was actually run successfully. If a
+build or browser check was skipped, say so.
 
 ## 4. Review
 

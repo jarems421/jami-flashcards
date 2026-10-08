@@ -1,12 +1,17 @@
-# Revision Sessions — design (Stage 1)
+# Revision Sessions
 
 A Revision Session is Jami actually teaching the thing the Learning Engine says a
-student needs taught. Today the engine can decide `teach`, and the button ends at
-a Topic page. A session is the missing half: Jami explains the idea, makes the
-student do the thinking, checks each answer, and hands structured evidence back
-to the engine.
+student needs taught. When the engine decides `teach`, a session is how Jami
+acts on it: Jami explains the idea, makes the student do the thinking, checks
+each answer, and hands structured evidence back to the engine.
 
-The test for Stage 1:
+Stage 1 and Stage 1.5 (below) are built and on, behind the rollback flag
+`enableRevisionSessions`. The
+state machine is in `lib/revision/`, the server side in
+`services/learning/revision-sessions.ts` and `app/api/learning/revision-sessions/`,
+and the screens at `/dashboard/revision/`.
+
+The test for Stage 1 was:
 
 > Can a student go from "Jami thinks I need teaching on X" to being taught X,
 > actively practising X, being checked on X, and returning to Today with useful

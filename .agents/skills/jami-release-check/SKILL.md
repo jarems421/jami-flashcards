@@ -19,9 +19,10 @@ has completed.
    - Determine risk level using `AGENTS.md`.
 
 3. **Run risk-appropriate checks from `AGENTS.md`:**
-   - Low risk / CSS: `npm run typecheck && npm run lint`
-   - Page-local JSX: typecheck, lint, build, related tests
-   - Shared primitives / state / routing: `npm run verify:all` or full test suite.
+   - Tiny CSS, copy or local responsive changes: `npm run typecheck`, then `npm run lint`.
+   - Page-local JSX with unchanged behaviour: typecheck, lint and related tests.
+   - Logic, state, forms, routing, auth, data loading or notebook persistence: related tests, then the full `npm test` suite.
+   - Shared `components/ui` primitives, theme tokens, navigation or the layout shell: typecheck, lint, build, related tests and the full suite; `npm run verify:all` before a release.
 
 4. **Browser-test the changed user flow:**
    - Launch dev server if not already running.

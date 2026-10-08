@@ -1,9 +1,12 @@
 # Plans, payments and stardust — design
 
 Status: pricing agreed 28 Sep 2026, **revised 1 Oct 2026** (allowances, Exam
-Pass discounts, two new allowances, costs re-measured). Not built. Re-read the
-prices in §9 before launch, because model prices drift (the worker's output
-price doubled in the fortnight before the first draft).
+Pass discounts, two new allowances, costs re-measured). Phases 0–2 (§11) are
+built and sit behind `enableBilling`, which is off: plans, monthly allowances,
+the Plans page, Stripe Checkout, the webhook and the Portal. Stardust (phase 3)
+is not built. Re-read the prices in §9 before launch, because model prices
+drift (the worker's output price doubled in the fortnight before the first
+draft).
 
 Jami becomes paid for new accounts. There is a free tier, two paid tiers, a
 one-off Exam Pass, and **stardust**: a currency bought with money or earned by

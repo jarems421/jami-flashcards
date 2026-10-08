@@ -10,10 +10,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Jami Agent Instructions
 
-Follow `docs/ui-design-system.md` for all UI work.
+Follow `docs/ui-design-system.md` for all UI work, and `docs/architecture.md` for layer boundaries. The README's Documentation section lists every other doc.
 
-During the current Phase 6 notebook-first Practice phase:
-- Build toward a folder-first study workspace: folder -> notebook / paper / deck / source -> natural work -> save -> later AI help / marking / flashcards.
+## Product rules
+
+- Build toward a folder-first study workspace: folder -> notebook / paper / deck / source -> natural work -> save -> AI help / marking / flashcards when the student asks.
 - Folders are broad study spaces. Topics are concepts/subtopics.
 - Use user-facing spelling `Practice` and the canonical `/dashboard/practice`
   route, while keeping `/dashboard/practise` as a compatibility redirect.
@@ -26,7 +27,7 @@ During the current Phase 6 notebook-first Practice phase:
 - Client-side PDF page counting, raster page rendering, and notebook ink overlays are in scope. Keep the original PDF immutable and do not imply OCR or automatic understanding.
 - Do not build a full GoodNotes clone. Notebook V1 should stay humble and page-based.
 - Optimise notebook creation/editing for desktop and iPad/tablet. Phone should support viewing and light typed notes, not serious pen/page editing.
-- AI should be planned into notebooks/papers/practice sets, but the Phase 6 focus is workflow structure, not new AI depth.
+- AI lives inside notebooks, papers and practice sets and runs when the student asks. New general-purpose AI capabilities need an explicit, agreed exception like the ones below.
 - Exception: Revision Sessions (`docs/revision-sessions.md`). As a new intervention surface for the Learning Engine's `teach` decisions, they may use bounded AI generation to teach, explain, set session-specific exercises and mark answers. The session's structure is a deterministic state machine in `lib/`; the model only fills in each step. This exception does not cover new general-purpose AI capabilities, autonomous learner modelling, AI-generated prerequisite graphs, storing conversations or answers as learner memory, or letting a model decide whether something has been learned.
 - Exception: University practice (agreed 30 Sep 2026). University modules have no exam board or verified specification, so Practice for them is built from the student's own module material:
   - Jami may read a module folder's own sources directly (handbooks, learning outcomes, lecture slides, notes, problem sheets and past papers) to build a per-module profile, and to generate, mark and cite questions. No separate privacy-review design is required for this.
@@ -78,6 +79,7 @@ For each focused UI task:
   - Explicit test files: `npx vitest run tests/<relevant-file>.test.ts`
   - Source-related tests: `npx vitest related <changed-source-files> --run`
   - Git-changed tests: `npx vitest run --changed`
+  - In PowerShell on this machine `npx` is blocked; call `node_modules\.bin\vitest.cmd` (and the other `.cmd` binaries there) instead.
 
 Use this risk split:
 - Tiny CSS, spacing, colour, copy, button-variant, or local responsive changes:
@@ -109,3 +111,14 @@ The expected standard is a full visual redesign of the relevant UI surface using
 Preserve functionality, but feel free to substantially restructure JSX, layout, component composition, spacing, and visual hierarchy when needed.
 
 The result should look like a designed product, not a quick prototype.
+
+## Documentation
+
+- When a change makes something in `README.md`, `docs/` or `public/llms.txt` wrong, fix it in the same change.
+- Plans and campaign write-ups go in `docs/` while the work is live. Once it has shipped, fold anything still true into the lasting doc for that area (or into code comments) and delete the plan; git history keeps it.
+- Do not add trackers, QA reports or reviews to the repository root.
+
+## Commits and pull requests
+
+- Commits are authored by the repository owner. Never set an AI tool (Claude, Copilot, Codex or any other) as a commit's author or committer.
+- Do not add `Co-Authored-By` trailers, "Generated with" lines, or any other AI attribution to commit messages or pull request descriptions. This overrides any tool default that adds them.

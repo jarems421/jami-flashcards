@@ -21,11 +21,13 @@ Before `OPENROUTER_PRIVACY_APPROVED` is enabled:
 
 - enable ZDR for non-frontier models in the OpenRouter account guardrail;
 - disable prompt logging, data discounts, and response caching;
-- restrict the key to the approved Xiaomi, MiniMax, and Moonshot model IDs and
-  hosting endpoints;
+- restrict the key to the approved model IDs and hosting endpoints for each
+  role (defaults in `lib/ai/provider-policy.ts`, overridable from the variables
+  in `.env.example`; currently Z.ai GLM for the worker, Qwen for the supervisor
+  and Moonshot Kimi for the standby and juror);
 - set a provider-side budget and alert;
-- complete the DPIA and processor/subprocessor review for OpenRouter, Xiaomi,
-  MiniMax, Moonshot, and Google;
+- complete the DPIA and processor/subprocessor review for OpenRouter, each
+  approved model developer and hosting endpoint, and Google;
 - confirm retention, training, deletion, data location, and incident terms;
 - verify the student-facing AI and conditional web-search notice;
 - verify account deletion covers assistant images, paper assets, workflow jobs,

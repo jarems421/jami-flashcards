@@ -17,9 +17,11 @@ Read:
 - current app routes
 - current Playwright tests
 - current relevant Vitest tests
-- `AI-MANUAL-TEST.md`
+- `README.md` (product overview and the index of `docs/`)
+- `docs/manual-qa.md`
 
-Do NOT use `README.md` as a representation of the current application.
+Treat documents as a starting point: where one disagrees with the code, the
+code wins, and the mismatch is itself a finding.
 
 Inspect the CURRENT code and build a feature inventory.
 
@@ -59,8 +61,10 @@ Prioritise complete USER FLOWS rather than isolated pages.
 Examples include flows across:
 
 - `folder` → `notebook/source/paper/deck` → `work/study` → `saved state` → `revisit`
-- `deck/card creation` → `study` → `rating/review` → `progress/statistics/constellation`
-- current Practice flows.
+- `deck/card creation` → `study` → `rating/review` → `progress/constellation`
+- Practice: past-paper questions → answer → marking → history; generated papers
+- Today's next step → Revision Session → back to Today
+- Tutor: sources, memory, revision plan
 
 Determine the actual available flows from CURRENT CODE.
 
@@ -118,9 +122,10 @@ Test relationships between relevant current systems such as:
 - study
 - goals
 - progress
-- stats
 - constellation
 - Practice
+- Today and the Learning Engine
+- Tutor
 
 Only test features confirmed to exist in current code.
 

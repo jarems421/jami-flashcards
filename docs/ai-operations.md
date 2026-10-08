@@ -29,17 +29,6 @@ text, student work, image bytes, or cost metadata.
 | All OpenRouter text inference | Set `OPENROUTER_KILL_SWITCH=true` |
 | Independent juror only | Set `OPENROUTER_JUROR_KILL_SWITCH=true` |
 | All Gemini specialist inference | Set `GEMINI_KILL_SWITCH=true` |
-
-Formal paper marking is separately released with
-`PRACTICE_PAPER_MARKING_WORKFLOW_ENABLED=true`. Keep it false until Preview has
-completed a synthetic submitted paper, overtime dual scoring, cancellation,
-retry, question recheck, and deletion. The service-wide marking lease defaults
-to four jobs (`PRACTICE_PAPER_MARKING_JOB_CONCURRENCY=4`) and the automatic
-provider ceiling defaults to `$0.50`
-(`PRACTICE_PAPER_MARKING_MAX_COST_USD=0.50`). A job that reaches the ceiling
-pauses with its evidence and completed provider checkpoints intact; raising the
-ceiling or retrying after an operational review does not consume another daily
-allowance.
 | Grounded web/URL research | Set `AI_WEB_RESEARCH_ENABLED=false` |
 | Tutor illustrations | Set `AI_TUTOR_IMAGES_ENABLED=false` |
 | Paper raster illustrations | Set `AI_PAPER_IMAGES_ENABLED=false` |
@@ -47,10 +36,23 @@ allowance.
 | Exam-format library | Set `EXAM_FORMAT_LIBRARY_ENABLED=false` |
 | Low-confidence format confirmation | Set `PAPER_FORMAT_CONFIRMATION_ENABLED=false` |
 | Owner paper-generation benchmark | Set `PAPER_GENERATION_BENCHMARK_ENABLED=false` |
+| Full-paper marking | Set `PRACTICE_PAPER_MARKING_WORKFLOW_ENABLED=false` |
+| One exam board's questions | Set its `EXAM_QUESTION_<BOARD>_ENABLED=false` |
+| One specification's questions | Add it to `EXAM_QUESTION_DISABLED_SPECIFICATIONS` |
 
 After changing a kill switch, redeploy or refresh the runtime environment,
 verify that the affected endpoint fails safely, and record the incident. A
 disabled specialist must not silently fall back to a general text model.
+
+Before turning full-paper marking on for a new environment, have Preview
+complete a synthetic submitted paper, overtime dual scoring, cancellation,
+retry, question recheck, and deletion. The service-wide marking lease defaults
+to four jobs (`PRACTICE_PAPER_MARKING_JOB_CONCURRENCY=4`) and the automatic
+provider ceiling defaults to `$0.50`
+(`PRACTICE_PAPER_MARKING_MAX_COST_USD=0.50`). A job that reaches the ceiling
+pauses with its evidence and completed provider checkpoints intact; raising the
+ceiling or retrying after an operational review does not consume another daily
+allowance.
 
 ## Content-free telemetry
 
@@ -153,11 +155,16 @@ route gave both of them 55 between them.
 
 ## Spend controls
 
-Application quotas are the primary control: 40 Tutor replies per day, six
-generated papers per day, eight full-paper markings per day, ten Tutor
-illustrations per day, and eight raster visuals per generated paper. Also set
-OpenRouter/Google hard or soft budgets and Vercel spend alerts. Keep paper-job
-concurrency configurable and start at four globally active jobs.
+Application quotas are the primary control. Every metered action has a daily
+limit and a short burst window in `lib/ai/budgets.ts`: for example 40 Tutor
+replies, six generated papers, eight full-paper markings and ten Tutor
+illustrations per day, and eight raster visuals per generated paper. When
+billing is on (`enableBilling`), monthly plan allowances in
+`lib/billing/plans.ts` apply on top of the daily limits; see
+[`plans-and-stardust.md`](plans-and-stardust.md). Also set OpenRouter/Google
+hard or soft budgets and Vercel spend alerts, and use `npm run report:ai-spend`
+to see spend by user and action. Keep paper-job concurrency configurable and
+start at four globally active jobs.
 
 Re-run privacy approval, the live provider check, and the quality benchmark
 after any model, provider allowlist, prompt, routing threshold, privacy term,

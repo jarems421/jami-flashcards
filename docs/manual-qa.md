@@ -1,48 +1,90 @@
-# Jami Manual QA Checklist
+# Jami manual QA checklist
 
-> **Maintenance note (22 July 2026).** This checklist describes the current
-> authenticated product. Historical signed-out demo assumptions have been removed.
+What a person has to check by hand before a release, because automated tests
+cannot judge it: anything needing an Apple Pencil, anything where the failure is
+"looks wrong" rather than "throws", and anything only visible in production.
 
-Use this checklist after changes to the learning loop. The legacy question-bank Practice architecture is retired. The active Practice model is:
+**Already covered automatically, so do not redo by hand:** `npm run test:e2e`
+drives signed-in Chromium against the Firebase emulators through notebook
+autosave, drawing and reload; the study review loop and offline replay; browse
+and navigation; the Learning Engine's evidence and Today's recommendation; Past
+Paper Practice; the First night walkthrough; revision plans; Tutor sources; and
+the security headers, at desktop, tablet and phone widths (specs in `e2e/`).
+`npm run test:rules` covers the Firestore and Storage rules.
 
-**Folder -> Notebook -> Pages -> Working**
+Check layouts at three widths: **desktop ~1440px**, **tablet ~820px**,
+**phone ~390px**. Keep the browser console open throughout and note any errors
+with the page you were on.
 
-Practice sets, papers, AI-created drills, uploaded papers, and blank working books should appear as notebook templates rather than separate main product areas.
+One failure to watch for everywhere: **an equation that makes the whole page
+scroll sideways.** Long equations must scroll inside their own box.
 
-## Core Loop Regression
+## 1. Sign-in and loading
 
-1. Create or open a deck.
-2. Add at least one flashcard to the deck.
-3. Review or study the card in Learn.
-4. Open Practice and confirm the main surface is Continue working plus Folders.
-5. Open a notebook and save typed or drawn working.
-6. Add or open a saved source.
-7. Generate a flashcard draft from the source and approve it into a deck.
-8. Generate a practice-question draft from the source and approve it into a notebook page.
-9. Check Today for notebook, folder, review, and draft actions.
-10. Check Progress for weak cards/topics plus linked folder/notebook/source context.
+1. Sign in with Google, and with email. A signed-out visit to `/dashboard`
+   redirects to sign-in.
+2. Hard-reload Today, Learn, Practice, a notebook and Progress. Each loads
+   without a console error or a Firebase permission error.
+3. Install the app (PWA), open it from the home screen while signed in, and
+   confirm it reaches Today.
+4. On an account with thousands of cards, open Cards, Progress and Topics
+   twice. The second visit draws at once from the device copy and redraws when
+   the server's set arrives. Edit a card, then reload: the edit is never shown
+   undone.
 
-## Notebook-First Practice
+## 2. Notebooks — highest data-loss risk
 
-1. Open `/dashboard/practice`.
-2. Confirm user-facing copy says `Practice`, not `Practise`.
-3. Confirm the visible default sections are `Continue working` and `Folders`.
-4. Confirm there is no old question bank, topic drill, standalone Add question form, answer field, working field, confidence block, old Tutor attempt panel, or tiny scratchpad side feature.
-5. Confirm no user is forced into an unclosable create-question screen.
-6. Open a Continue working notebook.
-7. Use the icon toolbar to add a text box on the page and save.
-8. Draw on the page where the full editor is available.
-9. Open the pen dropdown and switch ink colours: black, white, red, green.
-10. Switch between Pen and Eraser.
-11. Test Undo and Clear; Clear should affect only the current page drawing.
-12. Confirm notebook creation offers only white or black default page colour.
-13. Add a new page and confirm it inherits the notebook default page colour.
-14. Navigate between pages and confirm the bottom-left counter updates.
-15. Delete a non-final page and confirm the remaining pages renumber cleanly.
-16. Save, reload, and confirm typed/stroke/page state survives where persistence is supported.
-17. Confirm the notebook page is the main working surface.
+1. Open an existing notebook with ink on several pages. Every page shows its
+   ink, including pages last saved months ago.
+2. Draw, type in a text box, and leave the page immediately. Come back: the
+   work is there.
+3. Flip quickly through ten pages while drawing on some. Nothing lands on the
+   wrong page and no page comes back blank.
+4. Open a notebook made from a PDF. Pages render and ink sits on top; the
+   uploaded PDF itself is never modified.
+5. Use the toolbar: Pen (P), Highlighter (H), Eraser (E), Text box (T), Undo and
+   Redo, pen and highlighter colour and thickness, and pen smoothing. Undo steps
+   back whichever of ink or text happened last.
+6. Turn on Scribble to erase in the tool settings and scribble over a word. Only
+   what was scribbled over disappears.
+7. On a phone, a notebook shows "Notebook editing works best on iPad or
+   desktop." with "Continue anyway"; typed notes still work.
 
-## Past Paper Practice
+### On an iPad, with a Pencil
+
+8. Write a full page by hand at natural speed. No lag, no dropped strokes, no
+   palm marks while your hand rests on the page.
+9. Swipe pages with a finger while the Pen is active: fingers turn pages and
+   never draw; the Pencil draws and never turns pages.
+10. Highlight across a line, then erase part of the highlight. The rest keeps
+    its shape, with no bridges or holes.
+11. Rotate the device mid-page. The page and the work survive.
+
+## 3. Learn and flashcards
+
+1. Daily Review, Focused Review and Simple Study each start, grade, and finish
+   with the right counts.
+2. Turn the network off, review three cards, turn it back on. The reviews sync
+   once each, and the offline banner comes and goes.
+3. Diagram cards: add a picture, cover its labels, and study it both as one
+   card and as a card per label (see [`image-occlusion.md`](image-occlusion.md)).
+4. Import an Anki package with images, and make cards from a video. Nothing the
+   AI drafts joins a deck until it is accepted.
+
+## 4. Practice and generated papers
+
+1. `/dashboard/practice` shows recent notebooks under Continue working and
+   folders under Study spaces.
+2. A folder's tabs are Notebooks, Practice (when Past Paper Practice is on),
+   Decks and Sources. Adding an existing deck or source to a folder, and
+   removing it, never deletes the deck or source.
+3. Generate a paper from `/dashboard/practice/new`. It is typeset in the
+   board's house style, its graphs are drawn rather than pictured, and its
+   print view (`/dashboard/practice/papers/<id>/print`) prints cleanly.
+4. Answer the paper by hand and have it marked. Leave the page while it marks
+   and come back: the mark arrives anyway.
+
+## 5. Past Paper Practice
 
 Behind `enablePastPaperPractice`, and behind a board switch on top of that. Skip
 this section entirely when both are off — a not-found page is the correct
@@ -72,7 +114,7 @@ it can be judged from a screenshot taken at the right moment.
 ### Marking, which does not happen in the request
 
 12. Confirm the page says the answer is being marked and that it carries on if you leave.
-13. **Leave the page entirely, come back, and confirm the mark arrives anyway.** This is the whole point of the change and cannot be seen any other way.
+13. **Leave the page entirely, come back, and confirm the mark arrives anyway.** This cannot be seen any other way.
 14. Confirm the mark report leads with the mark, then what earned it, then what to add next time.
 15. Force a failure (kill the provider key) and confirm the failure card explains *which* failure, and only offers a retry for one that retrying could fix.
 16. Confirm an over-long answer reopens for editing rather than freezing with a dead retry button.
@@ -92,156 +134,76 @@ it can be judged from a screenshot taken at the right moment.
 24. Open `/dashboard/practice/history` and confirm the session reads correctly.
 25. Export a marked question to a notebook and confirm the working image is not squashed — it is portrait, and should stay portrait.
 
-### On an iPad, with a Pencil — the part automation cannot judge
-
-26. Write a full multi-line working-out by hand at natural speed. Confirm no lag, no dropped strokes, no palm marks.
-27. Confirm the nib width feels right at the saved thickness, and that changing it takes effect on the next stroke rather than the next page.
-28. Erase part of a stroke and confirm what disappears is what you meant.
-29. Rest your hand on the page while writing and confirm nothing is drawn.
-30. Rotate the device mid-answer and confirm the sheet and the answer both survive.
-
 ### Owner surfaces
 
-31. In `/dashboard/internal/exam-corpus`, ingest a paper as a dry run and confirm it reports what it extracted without storing anything.
-32. Work the review queue and confirm question and paired scheme sit side by side.
-33. Draw a spot-check sample and confirm it differs between draws.
-34. Record a spot-check with nothing rejected and confirm the paper's questions become servable.
-35. Record one rejecting everything drawn and confirm nothing becomes servable and the attempt is still recorded.
+26. In `/dashboard/internal/exam-corpus`, ingest a paper as a dry run and confirm it reports what it extracted without storing anything.
+27. Work the review queue and confirm question and paired scheme sit side by side.
+28. Draw a spot-check sample and confirm it differs between draws.
+29. Record a spot-check with nothing rejected and confirm the paper's questions become servable.
+30. Record one rejecting everything drawn and confirm nothing becomes servable and the attempt is still recorded.
 
-## Phase 7 Notebook Editor V2
+## 6. Tutor and sources
 
-1. Open any notebook while signed in.
-2. Confirm the editor opens as an immersive notebook workspace rather than a dashboard card stack.
-3. Confirm the toolbar is icon-first with accessible labels/tooltips for Pages, Text, Pen, Eraser, Undo, Clear, Settings, AI, Add Page, and Save.
-4. Confirm the page is long and paper-like, not a short landscape card.
-5. Create and move a text box directly on the page.
-6. Draw with mouse/stylus and confirm strokes save/reload.
-7. On iPad/tablet, draw with stylus and swipe pages with a finger while Pen is active.
-8. Confirm finger swipes do not create ink and stylus strokes do not navigate pages.
-9. Open the AI icon and confirm it is only a placeholder drawer with no AI call.
-10. Confirm the page has no extra glassy frame outside the paper surface.
-11. In portrait, confirm the page sits with balanced vertical spacing and does not leave a large dead gap underneath.
+1. Add a source in `/dashboard/library` (a PDF, a pasted note, a link). Saving
+   it creates no drafts, cards or questions on its own.
+2. Ask Tutor (`/dashboard/tutor`, or the drawer in a notebook) about something
+   in a folder with many sources. The answer draws on the right source by
+   content, not by file name.
+3. Ask Tutor to make flashcards from the conversation. They arrive as drafts to
+   accept or discard.
+4. In Personalise Jami (`/dashboard/tutor/personalise`), open the memory map.
+   Correct a note, delete one, then turn memory off and confirm Tutor stops
+   using it.
+5. Make a revision plan from Tutor, and confirm Today then leads with the week
+   and the next task.
 
-## Device Strategy
+## 7. Today, the Learning Engine and Revision Sessions
 
-1. Desktop width: notebook editor should expose full page, pen, eraser, colour, page, and save controls.
-2. Tablet/iPad width: notebook editor should remain usable as a full workspace.
-3. Phone width: notebook route should show `Notebook editing works best on iPad or desktop.`
-4. Phone width: users can view pages and add light typed notes.
-5. Phone width: full controls should be deliberately unlocked with `Continue anyway` where implemented.
-6. Mobile Learn/flashcards should remain clean and not crowded by notebook controls.
-7. Mobile Today and Progress should remain readable and action-first.
+1. Without a revision plan, Today shows one next step, with "Why this?" folded
+   away. The step's link opens the right page.
+2. A topic with little evidence is never called weak, and untested topics are
+   never shown as weak.
+3. Start a Revision Session from a folder's Notebooks tab or from
+   `/dashboard/revision/start?folder=...`. It opens full screen with no chat UI,
+   teaches, asks a guided question, gives one retry when wrong, and then asks
+   questions on your own.
+4. Leave mid-session and come back within four hours: it resumes at the same
+   step.
+5. At the end, choose **Do later** on a next step and find it on the Tutor
+   shelf.
 
-## Folders
+See [`learning-engine-verification.md`](learning-engine-verification.md) for the
+owner's production checks against real infrastructure.
 
-1. Open `/dashboard/folders`.
-2. Confirm folders are broad study spaces, not topics.
-3. Create a folder such as Biology, History, Spanish, Computer Science, or Art History.
-4. Optionally link existing topics such as Enzyme activity or Cold War causes.
-5. Open the folder detail page.
-6. Confirm the folder feels like a study space and uses tabs for Notebooks, Decks, and Sources.
-7. Confirm there is no separate main `Practice sets` or `Past papers` section.
-8. Confirm the notebook template picker offers:
-   - Blank notebook
-   - Uploaded file / paper notebook
-   - AI-created questions notebook
-9. Confirm AI-created questions are clearly a placeholder.
-10. Open the Decks tab and confirm it shows only decks already in this folder.
-11. Use `Add existing deck` to choose a global deck and confirm it appears in the folder.
-12. Confirm there is no deck creation form inside the folder Decks tab; new decks are created from global Decks.
-13. Use `Remove` on a folder deck and confirm it leaves the folder without deleting the global deck.
-14. Open the Sources tab and confirm it shows only sources already in this folder.
-15. Use `Add existing source` to choose a saved source and confirm it appears in the folder.
-16. Use `Create source` inside the folder and confirm the source also appears globally in Sources.
-17. Use `Remove` on a folder source and confirm it leaves the folder without deleting the saved source.
-18. Open `Edit folder`, rename it, change colour/icon, and archive it only after confirming the warning says decks and sources are not deleted.
-19. Open a notebook and use `Edit notebook` to rename it, change cover colour/icon, and archive it safely.
-20. Confirm Cards do not expose folder linking directly; cards inherit folder context through decks.
+## 8. Notifications
 
-## Object Browser Polish
+1. Turn notifications on in Account and allow them in the browser.
+2. The daily nudge arrives after 4pm local time, and the evening reminder after
+   7pm while Daily Review still has cards waiting. Nothing arrives after 10pm.
+3. Turn the evening reminder off and confirm it stops the next day.
+4. Change the device's time zone, open the dashboard, and confirm the next nudge
+   follows the new zone. See [`notifications.md`](notifications.md).
 
-1. Confirm folder cards show only a folder object and folder name.
-2. Confirm folder cards do not show notebook/deck/source counts, topic counts, descriptions, or stats.
-3. Confirm notebook cards show a notebook object, title, and at most one tiny metadata line.
-4. Confirm the weird white circular icon backing does not appear on folders or notebooks.
-5. Confirm folder/notebook icons sit visually balanced on the object, not low on the cover.
-6. Confirm folder and notebook grids feel compact on desktop/tablet and do not become giant dashboard blocks.
+## 9. Themes and long content
 
-## Uploaded-File Notebook
+1. Switch themes and app backgrounds in `/dashboard/profile/personalise`. Text stays readable on
+   every surface, including dialogs and the notebook toolbar.
+2. On a phone, open a card, a Tutor reply and a mark report each containing a
+   long equation. Only the equation scrolls.
 
-1. From a folder detail page, choose `Uploaded file / paper notebook`.
-2. Upload a PDF, JPEG, PNG, or WebP under 20 MB.
-3. Confirm the notebook is created with type `uploaded_file`.
-4. Confirm file metadata is saved with a user-scoped storage path.
-5. Confirm the notebook editor shows a file chip/card.
-6. Confirm copy says: `File saved. Full paper annotation comes later.`
-7. Confirm the UI does not claim PDF rendering, OCR, handwriting recognition, image AI, automatic reading, or annotation.
-8. Reload the notebook and confirm the uploaded-file metadata still resolves for the owning account.
+## 10. Boundaries
 
-## Authenticated Route Index
+These must never appear:
 
-1. Open `/agent` while signed out.
-2. Confirm it clearly says dashboard routes require authentication and provides no demo-data bypass.
-3. Open `/llms.txt` and confirm it lists the same stable authenticated route map in plain text.
-4. Open `/dashboard` while signed out and confirm it redirects to authentication.
-5. Sign in, return to `/agent`, and open the Today, Learn, Folders, Sources, Progress, and Account links.
-6. Confirm the routes use the signed-in account's real Firebase-backed data.
-7. Confirm the old question bank, attempt form, confidence block, and old Practice Tutor flow do not appear.
-8. Confirm there are no Firebase permission errors in the browser console.
+- the retired per-student question bank, its standalone Add question form, or
+  mandatory per-question confidence blocks;
+- any suggestion that Jami watches the screen, reads handwriting on its own, or
+  processes uploads in the background;
+- licensed exam questions whose permission record is missing, revoked or for a
+  superseded specification.
 
-## Sources Loop
+## Reporting back
 
-1. Open `/dashboard/library`.
-2. Add a pasted source or manual note.
-3. Link it to an existing topic and folder where available.
-4. Ask Tutor about the selected source.
-5. Confirm the reply starts from source context and separates outside context if needed.
-6. Generate flashcard drafts from the source and confirm the batch stays small.
-7. Confirm each draft is labelled as based on the selected source.
-8. Edit one draft and approve/add it to a deck.
-9. Confirm the card appears in Learn/Cards with source link preserved.
-10. Generate practice question drafts from the source and confirm each has an expected answer.
-11. Edit and approve one practice draft.
-12. Confirm the approved draft creates a notebook page, not a `users/{uid}/questions` document.
-13. Check Today for source-linked draft actions.
-14. Check Progress for linked source recommendations on weak topics.
-15. On mobile/tablet widths, confirm Sources uses Sources/Source/Actions navigation without horizontal scroll.
-
-## Today And Progress
-
-1. Open Today and confirm one dominant recommended action.
-2. Confirm Today can recommend continuing a recent notebook when notebook activity exists.
-3. Confirm Today still prioritises due cards, drafts, weak topics, goals, folders, decks, and sources appropriately.
-4. Confirm Today does not depend on legacy questions or attempts.
-5. Open Progress and confirm weak topics can point to linked folders, notebooks, cards, and sources.
-6. Confirm Progress stays narrow and constructive rather than becoming folder analytics.
-7. Confirm Progress does not show old recent mistakes, practice accuracy, support level, retry question, or question-bank Tutor copy.
-
-## Flashcard AI De-Scope
-
-1. Open Cards or a Deck detail page.
-2. Confirm normal card creation does not show AI answer autocomplete when `enableFlashcardAi` is false.
-3. Confirm `/api/ai/autocomplete-card` returns disabled when the flag is false.
-4. Confirm source-generated flashcard drafts still work.
-5. Confirm flashcard review remains fast and not AI-centred.
-
-## Authenticated Checks
-
-1. Sign in with a normal account.
-2. Confirm the dashboard uses real Firebase-backed data.
-3. Confirm existing decks, cards, reviews, goals, folders, notebooks, Sources, and study modes still work.
-4. Confirm old cards without topics still display and review normally.
-5. Confirm a generated flashcard draft can be saved.
-6. Confirm adding a saved draft to a deck creates a real card and marks the draft approved.
-7. Confirm adding a practice-question draft creates a notebook page and marks the draft approved.
-8. Confirm private write actions obey auth and Firestore rules.
-9. Confirm uploaded notebook files obey Storage rules.
-
-## Regression Boundaries
-
-1. `/dashboard` must redirect signed-out visitors to authentication.
-2. `/agent` and `/llms.txt` may remain public route documentation but must not bypass authentication or expose private data.
-3. Dashboard pages and feature components must use domain services instead of direct Firestore or Storage clients where a service boundary exists.
-4. Route aliases and installed-PWA compatibility paths must continue to resolve safely.
-5. Sources, folders, notebooks, source Tutor, and generated drafts are allowed.
-6. Do not expose OCR, PDF parsing, PDF annotation, file AI, full-paper mode, browser extension, always-on screen watching, advanced voice tutor, or advanced analytics.
+For each failure, give the section and step, the width or device, what you
+expected, what happened, and any console error. A screenshot or recording helps
+for anything visual.

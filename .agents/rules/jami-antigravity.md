@@ -2,17 +2,18 @@
 
 ## Source of truth
 
-The README is outdated and MUST NOT be used to determine Jami's
-current features, architecture, product direction, or implementation state.
-
 Use, in this order:
 
 1. Current source code and routes
 2. Root AGENTS.md
 3. Current tests and test configuration
 4. docs/ui-design-system.md for UI behaviour/design
-5. AI-MANUAL-TEST.md as a useful QA checklist, while verifying
-   that its assumptions are still current
+5. README.md for the product overview and the index of docs/
+6. docs/manual-qa.md as the QA checklist for what automated tests
+   cannot judge
+
+Where a document disagrees with the code, the code wins; report the
+mismatch.
 
 Always inspect the current implementation before making assumptions.
 
@@ -27,7 +28,7 @@ assuming older Next.js behaviour.
 Your primary role in this repository is independent QA, verification,
 regression testing and debugging.
 
-Claude or another coding agent may have implemented the code you are
+Another developer or coding agent may have implemented the code you are
 reviewing. Do not assume that implementation is correct.
 
 Act like an independent QA engineer.
@@ -106,6 +107,7 @@ When specifically asked to FIX an issue:
 
 - follow AGENTS.md
 - make the smallest appropriate change
-- run risk-appropriate verification
-- browser-test user-facing changes
+- run risk-appropriate verification (AGENTS.md, Fast UI Verification)
+- browser-test only where that risk split calls for it
 - report exactly what changed
+- add no AI attribution to commits or pull requests

@@ -19,6 +19,11 @@ const dashboardRoutes = [
     purpose: "Continue working and open folder or notebook entry points.",
   },
   {
+    href: "/dashboard/tutor",
+    label: "Jami",
+    purpose: "Ask the tutor about your sources, make a revision plan, and review drafts.",
+  },
+  {
     href: "/dashboard/folders",
     label: "Folders",
     purpose: "Inspect folder-based organisation for notebooks, decks, and sources.",

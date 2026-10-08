@@ -38,6 +38,33 @@ domain services ------------> Firebase and server Route Handlers
 Dependencies should flow downward through this list. A service may use `lib`, but
 `lib` must not import a service or a React component.
 
+- `hooks` holds stateful React controllers shared by pages and components, such
+  as the notebook editor's. Hooks call services; they do not query Firebase.
+- `workflows` holds durable Vercel Workflow jobs (paper generation and marking,
+  question marking and review, imports). Each step is idempotent and
+  checkpointed; see [`ai-operations.md`](ai-operations.md).
+
+### Enforced by tooling
+
+- ESLint refuses `firebase/firestore`, `firebase/storage` and the Firebase
+  client adapters in `app/dashboard`, `components` and `hooks`.
+- ESLint refuses `@/components` and `@/services` imports inside `lib`.
+- Only `lib/ai/gemini.ts` may import the provider SDK (`@google/genai`); other
+  code describes model input with `@/lib/ai/content-parts`.
+- `console` is refused in Route Handlers, workflows and `*.server.ts` files; use
+  `createLogger` from `lib/observability/logger`.
+- `npm run check:sizes` fails CI for any source file over 1,200 lines. Split a
+  file before it reaches the gate rather than after.
+
+## Learning Engine
+
+Pure learning logic (scoring, profiles, topic states, recommendations, study
+actions) lives in `lib/learning/`; Firestore loading lives in
+`services/learning/`. Today, Tutor and Revision Sessions consume the engine;
+none of them computes mastery or chooses a plan. The product rules are in
+`AGENTS.md`, and production checks in
+[`learning-engine-verification.md`](learning-engine-verification.md).
+
 ## Sources
 
 Sources is a reference workspace. Its page should orchestrate selection, loading,
@@ -45,9 +72,14 @@ and mutations while focused components render the browser, selected-source view,
 drawers, folder picker, tutor, and draft editors.
 
 New AI work must enter through a typed service or server Route Handler. It must not
-embed provider calls, Firebase queries, or prompt construction in the page. Source
-content is processed only after an explicit user action; no background indexing or
-persistent extracted-content store should be introduced.
+embed provider calls, Firebase queries, or prompt construction in the page.
+
+When a student adds or changes a source, `services/study/sources.ts` asks
+`/api/ai/source-index` to rebuild that source's private search index
+(`users/{uid}/sourceChunks` and `sourceOutlines`). Tutor and paper generation
+read matching passages from it only after the student asks. No other
+background processing of uploads should be introduced without a deliberate,
+privacy-reviewed design.
 
 ## Notebook editor
 
@@ -80,11 +112,10 @@ silently migrate user data.
 
 A structural change is ready when:
 
-1. TypeScript and ESLint pass.
+1. TypeScript and ESLint pass, and no file crosses the size gate.
 2. Pure extracted logic has focused tests.
-3. Related workflows pass before the complete suite is run.
-4. A production build succeeds.
-5. A signed-in desktop and tablet browser smoke check shows no new console errors
-   or interaction regression.
-6. Any skipped migration, compatibility path, or manual check is recorded in the
+3. Related tests pass before the complete suite is run.
+4. A production build and a signed-in browser check have run where the risk
+   split in `AGENTS.md` (Fast UI Verification) calls for them.
+5. Any skipped migration, compatibility path, or manual check is recorded in the
    handoff.

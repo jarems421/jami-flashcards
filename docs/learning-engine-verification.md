@@ -74,7 +74,7 @@ Use your own account, or a test account in the production project.
 - [ ] The script's `studyActions.actions[].href` values each open the right page:
       a study session, Past Paper Practice narrowed to a topic, a folder's practice
       papers, or a Topic or deck page.
-- [ ] On Today, the "Recommended for you" card shows the same actions, and each
+- [ ] On Today, the next step and the suggestions under it show the same actions, and each
       link opens its page at desktop, tablet and phone widths.
 
 ## 4. Specification catalogues
@@ -84,14 +84,20 @@ concept tagging and concept evidence need a checked concept list beneath it.
 Nothing unchecked is served to students, offered to extraction or tagging, or
 reasoned over by the Learning Engine.
 
+All files are in `lib/practice/`. Outlines are registered in
+`exam-specification-outlines.ts` and written under `specifications/`.
+
 | Course | Topic list | Concept list | Where |
 | --- | --- | --- | --- |
 | AQA GCSE Mathematics (8300) | checked | checked by the owner, 2026-09-15 | `exam-specification-topics.ts`, `exam-specification-concepts.ts` |
 | Pearson Edexcel GCSE Mathematics (1MA1) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | the `1MA1` entries in the same two files |
-| AQA GCSE Biology (8461) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_BIOLOGY` in `exam-specification-outlines.ts` |
-| AQA GCSE Chemistry (8462) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_CHEMISTRY` |
-| AQA GCSE Physics (8463) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_PHYSICS` |
-| AQA GCSE Combined Science: Trilogy (8464) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_COMBINED_SCIENCE_TRILOGY` |
+| AQA GCSE Biology (8461) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_BIOLOGY` in `specifications/aqa-gcse-science.ts` |
+| AQA GCSE Chemistry (8462) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_CHEMISTRY`, same file |
+| AQA GCSE Physics (8463) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_PHYSICS`, same file |
+| AQA GCSE Combined Science: Trilogy (8464) | checked by the owner, 2026-09-16 | checked by the owner, 2026-09-16 | `AQA_GCSE_COMBINED_SCIENCE_TRILOGY`, same file |
+| AQA GCSE Geography (8035) | **draft, not yet checked** | **draft, not yet checked** | `AQA_GCSE_GEOGRAPHY` in `specifications/gcse-humanities-and-languages.ts` |
+| Pearson Edexcel GCSE Business (1BS0) | **draft, not yet checked** | **draft, not yet checked** | `PEARSON_EDEXCEL_GCSE_BUSINESS`, same file |
+| Pearson Edexcel GCSE French (1FR0) | **draft, not yet checked** | **draft, not yet checked** | `PEARSON_EDEXCEL_GCSE_FRENCH`, same file |
 
 How the drafts were made, so you know what you are checking:
 
@@ -105,6 +111,13 @@ How the drafts were made, so you know what you are checking:
   live site and the 2016 PDF and the site's wording was kept: 8461 4.5.3.7
   "Feedback systems" (PDF: "Negative feedback"), and 8462 4.3.4, which only the
   site marks higher tier.
+- **Geography, Business and French** were read on 2026-09-16: Geography from
+  the subject content pages on aqa.org.uk, Business and French from the
+  published Pearson PDFs. These specifications publish shallower structures than
+  the sciences (named units rather than numbered headings), so their outlines
+  are shorter. AQA Geography 3.2.1 and 3.2.2 publish key ideas rather than
+  numbered headings and carry no concepts. Pearson numbers neither French themes
+  nor topics, so no references are recorded.
 
 To sign one off:
 

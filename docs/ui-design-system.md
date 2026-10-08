@@ -8,17 +8,17 @@ Jami should feel calm, modern, study-focused, and slightly cosmic. It should loo
 
 The UI should make studying feel steady and focused, not like managing a cluttered productivity suite.
 
-Phase 6 shifts the product metaphor toward a folder-first notebook workspace:
+The product metaphor is a folder-first notebook workspace:
 
-**Folder -> notebook / paper / deck / source -> work naturally -> save -> later AI help / marking / flashcards**
+**Folder -> notebook / paper / deck / source -> work naturally -> save -> AI help, marking and flashcards when the student asks**
 
 Folders are broad study spaces such as Biology, History, Spanish, or Computer Science. Topics are smaller concepts such as enzymes, essay evidence, verb endings, or algorithms. Decks and sources should still be globally accessible, but they should also feel at home inside relevant folders.
 
 ## UI Redesign Standard
 
-This UI phase is not for tiny cosmetic tweaks.
+UI work is not for tiny cosmetic tweaks.
 
-The goal is a full visual redesign of the current MVP surfaces so Jami feels like a polished, refreshing, Figma-quality learning product rather than a functional prototype.
+The goal is a full visual redesign of each surface touched, so Jami feels like a polished, refreshing, Figma-quality learning product rather than a functional prototype.
 
 The redesign should:
 - rethink layout, spacing, hierarchy, cards, page structure, and visual rhythm;
@@ -101,9 +101,9 @@ Notebooks are the main working surface for serious problem solving.
 - On phone-sized screens, show honest copy: "Notebook editing works best on iPad or desktop."
 - Do not hard-block phone users unless necessary; let them view pages and optionally continue anyway.
 - Keep mobile excellence focused on Today, Learn/flashcards, Progress, decks, and light folder viewing.
-- Full pen drawing, page creation, paper-style working, and later AI marking should feel designed for larger screens.
+- Full pen drawing, page creation, paper-style working, and AI marking should feel designed for larger screens.
 
-Notebooks are the future main answer surface.
+Notebooks are the main answer surface.
 
 - Use Notebook or Working Page, not Scratchpad, for persistent work.
 - The editor should feel immersive: one active page, a compact icon-first toolbar, optional page/AI drawers, and minimal explanatory copy.
@@ -111,8 +111,8 @@ Notebooks are the future main answer surface.
 - Text, pen, eraser, undo, clear, pages, settings, save, and AI controls should be icon buttons with accessible labels/tooltips, not word-heavy toolbar buttons.
 - The page should be long and paper-like. Finger swipes navigate pages on touch devices while stylus/mouse input writes.
 - Notebook object cards should show the notebook object, title, and at most one tiny metadata line. Keep custom cover colours/icons, but avoid bulky dashboard metadata.
-- Do not imply OCR, handwriting recognition, PDF annotation, or AI screen watching.
-- AI will later live as an on-demand drawer/dropdown inside notebooks, papers, and notebook-based question sets.
+- Do not imply OCR, automatic understanding, or AI screen watching. Jami reads a page only when the student asks for help or marking.
+- AI lives in an on-demand Tutor drawer inside notebooks and papers. Ink on PDF pages is an overlay; the original file is never changed.
 
 ### Tutor
 
@@ -124,6 +124,7 @@ Tutor is contextual, not a generic chatbot.
 - Tutor messages should be easy to scan.
 - "Make flashcard draft" should feel like a study action, not content spam.
 - Tutor UI should reinforce support without shame.
+- What Tutor remembers is always visible and editable: students see it as a memory map in Personalise Jami (`components/ai/memory-map/`), and can correct, delete or turn it off there.
 
 ### Progress
 
@@ -146,8 +147,8 @@ Sources is a focused reference workspace, not a file manager.
 - Save useful study sources, pasted notes, manual notes, links, and file references.
 - Make the selected source feel central: source list, source preview, source actions.
 - Source actions should feed the Jami loop through explicit Tutor help, topics, Today, and Progress.
-- Saving or uploading a source must never trigger AI work or draft creation automatically.
-- Tutor may automatically rank relevant passages from up to fifteen sources in the current folder after the student submits a request. Keep the unobtrusive source opt-out on by default, and do not make students select pages for ordinary Tutor use. This may include bounded on-demand document extraction, image understanding, and public-link reading.
+- Saving or uploading a source builds its private search index and nothing else. It must never create drafts, cards or questions automatically.
+- After the student asks, Tutor searches the indexed passages of every source in the current folder by content and reads only what fits. Students never see a per-request source limit. Keep the unobtrusive source opt-out on by default, and do not make students select pages for ordinary Tutor use. This may include bounded on-demand document extraction, image understanding, and public-link reading.
 - On-demand source processing must not become always-on scanning, persistent OCR,
   automatic draft creation, ambient document understanding, or PDF mutation. Keep
   originals immutable; reuse the existing explicit source indexes, and render only
@@ -234,54 +235,41 @@ exists rather than inferring it from something adjacent.
 
 Prefer reusable shared components over page-specific styling.
 
-Useful component patterns:
-- `AppShell`
-- `PageHeader`
-- `SectionCard`
-- `MetricCard`
-- `NotebookCard`
-- `TutorPanel`
-- `TutorMessage`
-- `EmptyState`
-- `TopicChip`
-- `FormSection`
-- `ActionButton`
+Start from what already exists:
+- Page frame and navigation: `AppPage` and `TabBar` in `components/layout`.
+- Headings and page tops: `PageHero`, `SectionHeader`.
+- Surfaces and actions: `Card`, `Button`, `IconBubble`, `ViewTabs`, `OptionMenu`.
+- Dialogs: `Dialog`, `ConfirmDialog`.
+- Forms: `Input`, `Textarea`, `Select`, `DateField`, `FileField`, `OptionSwitch`, `SettingSwitch`, `FormDisclosure`.
+- States and feedback: `EmptyState`, `Skeleton`, `FeedbackBanner`, `ProgressBar`, `StatTile`.
+- Study content: `MathText`, `StudyText`, `SymbolKeyboard`.
+- Brand: `BrandMark`, `NorthernStar`, `ConstellationTrail`, `JamiTutorIcon`.
 
-Use the existing `components/ui` layer as the base. Extend it when a pattern is reused across surfaces.
+All of these are in `components/ui` unless noted. Extend that layer when a pattern is reused across surfaces.
 
 Do not create one-off Tailwind styling unless the design need is genuinely local.
-
-## UI Polish Order
-
-1. App shell / nav
-2. Shared UI components
-3. Practice
-4. Tutor panel
-5. Progress
-6. Learn
 
 Do not polish randomly. Work screen by screen and verify each pass visually.
 
 ## Browser QA
 
-Use Browser Use on localhost for UI work when available.
+Browser walkthroughs are for big UI refactors only: a surface redesign, a shared `components/ui` primitive, theme tokens, navigation or the layout shell. `AGENTS.md` (Fast UI Verification) sets the risk split for everything smaller.
 
-Check:
+When one is due, check the affected pages, for example:
+- `/dashboard`
 - `/dashboard/study`
 - `/dashboard/practice`
 - `/dashboard/progress`
 - `/dashboard/library`
 
 Verify:
-- desktop
-- tablet
-- mobile
+- desktop (~1440px), tablet (~820px) and phone (~390px)
 - empty states
 - loading states
-- long text
+- long text and long equations
 - narrow screens
 
-## Not In This Phase
+## Out of scope
 
 Do not use or build:
 - Figma
@@ -289,8 +277,7 @@ Do not use or build:
 - Figma design-to-code
 - Anywhere
 - Background or persistent OCR
-- Automatic or background PDF text extraction and semantic parsing
-- Source file storage upload
+- Background PDF text extraction and semantic parsing beyond the source index built when a student adds a source
 - PDF editing or mutation (notebook ink overlays on immutable raster pages are allowed)
 - topic-paper or short-paper experiences that duplicate ordinary Practice and Mark my work
 - browser extension
@@ -298,14 +285,13 @@ Do not use or build:
 - iPad or desktop companion
 - advanced analytics
 
-## Phase 4 Tutor Context
+## Tutor context wording
 
-Tutor should feel present because Jami sends the current practice context only when the student asks.
+Tutor should feel present because Jami sends the current context only when the student asks.
 
 Use wording like:
 - Tutor uses your current question and working when you ask.
 - Voice is push-to-talk only.
-- Legacy Practice drawings stay local unless you ask Tutor and add a typed note.
 
 Avoid wording like:
 - AI is watching you work.
