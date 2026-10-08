@@ -121,6 +121,8 @@ export type AiRouterOptions = {
    * is a batch whose cost nobody predicted.
    */
   allowRoleEscalation?: boolean;
+  /** Try the supervisor's standby before its primary: a live Tutor answer, where speed is the point. */
+  preferStandby?: boolean;
   onRetry?: (info: {
     error: unknown;
     provider: AiProvider;
@@ -157,6 +159,7 @@ function planFor(options: AiRouterOptions) {
     hasVisualInput: hasVisualAiInput(options.request.contents),
     policy: resolveAiProviderPolicy(process.env),
     allowRoleEscalation: options.allowRoleEscalation,
+    preferStandby: options.preferStandby,
   });
 }
 

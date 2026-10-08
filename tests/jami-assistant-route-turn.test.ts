@@ -869,21 +869,26 @@ describe("what a turn reads", () => {
     });
   });
 
-  it("escalates to the supervisor when the routing check is unsure", async () => {
-    mocks.generateText.mockImplementation(async (input: { routeReason?: string }) =>
-      input.routeReason === "routing_preflight"
-        ? '{"role":"worker","confidence":"low","insufficientReasoning":false}'
-        : answer()
-    );
-
+  it("thinks on the fast model about a question it can read as working, with no routing call", async () => {
     await events(
       await postAssistant(request(body({ message: "Why do the tides happen on both sides of the earth at once?" })))
     );
 
-    expect(mocks.generateText).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "worker", routeReason: "routing_preflight", timeoutMs: 7_000 })
+    expect(mocks.generateText).not.toHaveBeenCalledWith(expect.objectContaining({ routeReason: "routing_preflight" }));
+    expect(streamCall()).toMatchObject({ role: "worker", reasoningEffort: "high", preferStandby: false });
+  });
+
+  it("asks the routing check about an open question, and answers deeply when it says so", async () => {
+    mocks.generateText.mockImplementation(async (input: { routeReason?: string }) =>
+      input.routeReason === "routing_preflight" ? '{"tier":"deep","confidence":"high"}' : answer()
     );
-    expect(streamCall()).toMatchObject({ role: "supervisor", routeReason: "low_confidence" });
+
+    await events(await postAssistant(request(body({ message: "Can you help me with my revision plan for chemistry?" }))));
+
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "worker", routeReason: "routing_preflight", timeoutMs: 7_000, allowRoleEscalation: false })
+    );
+    expect(streamCall()).toMatchObject({ role: "supervisor", routeReason: "routing_preflight", preferStandby: true });
   });
 
   it("brings back what the student referred to from an earlier chat", async () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  DEFAULT_REASONING_EFFORT,
   getReasoningEffortLabel,
   REASONING_EFFORT_OPTIONS,
   type ReasoningEffortPreference,
@@ -24,6 +25,7 @@ type TutorReasoningMenuProps = {
  * word they would use to ask what it is on.
  */
 const REASONING_LEVEL_WORD: Record<ReasoningEffortPreference, string> = {
+  auto: "Auto",
   low: "Low",
   medium: "Medium",
   high: "High",
@@ -35,20 +37,20 @@ export default function TutorReasoningMenu({
   onSaveStarted,
   onError,
 }: TutorReasoningMenuProps) {
-  const [effort, setEffort] = useState<ReasoningEffortPreference>("medium");
+  const [effort, setEffort] = useState<ReasoningEffortPreference>(DEFAULT_REASONING_EFFORT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestChoiceRef = useRef(0);
-  const lastSavedRef = useRef<ReasoningEffortPreference>("medium");
+  const lastSavedRef = useRef<ReasoningEffortPreference>(DEFAULT_REASONING_EFFORT);
 
   useEffect(() => {
     let cancelled = false;
     void loadReasoningEffort(userId)
       .then((saved) => {
         if (cancelled) return;
-        const next = saved ?? "medium";
+        const next = saved ?? DEFAULT_REASONING_EFFORT;
         lastSavedRef.current = next;
         setEffort(next);
       })
@@ -74,7 +76,7 @@ export default function TutorReasoningMenu({
     const save = saveQueueRef.current
       .catch(() => undefined)
       .then(async () => {
-        const saved = (await saveReasoningEffort(userId, next)) ?? "medium";
+        const saved = (await saveReasoningEffort(userId, next)) ?? DEFAULT_REASONING_EFFORT;
         lastSavedRef.current = saved;
         if (latestChoiceRef.current === choiceId) setEffort(saved);
       })

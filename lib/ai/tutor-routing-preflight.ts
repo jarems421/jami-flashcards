@@ -1,40 +1,45 @@
+import type { TutorThinkingChoice, TutorThinkingTier } from "@/lib/ai/tutor-thinking";
+
 /**
- * The routing preflight: a one-line worker call that asks whether a Tutor
- * request the rules could not place needs the supervisor. Deterministic rules
- * own every clear case (`decideTutorRoute`); this is only for the rest.
+ * The routing preflight: a one-line call to the fast model that places a Tutor
+ * question the rules could not (`chooseTutorThinking`). It runs on Auto only,
+ * for the questions left unsettled, and never escalates itself: a model that
+ * thinks for thousands of tokens cannot answer a one-line classification in its
+ * cap or its seven seconds.
  */
+
+/** What the preflight is asked to return, word for word. */
+export const TUTOR_ROUTING_PREFLIGHT_INSTRUCTION =
+  'Classify how much thought a tutor needs for this request. "quick": recall, a definition, a short fact, a hint, or chat. "think": working something out, an explanation of why or how, a calculation, a proof, feedback on work. "deep": only for a request that needs long, careful multi-step reasoning across many claims or sources, where a fast answer is likely to be wrong. Return exactly JSON: {"tier":"quick|think|deep","confidence":"high|low"}. Never answer the student.';
 
 export type TutorRoutingPreflight = {
-  role: "worker" | "supervisor";
+  tier: TutorThinkingTier;
   confidence: "high" | "low";
-  insufficientReasoning: boolean;
 };
 
-/**
- * Deterministic rules own clear cases; only genuinely ambiguous routine
- * requests spend a tiny hidden worker call on routing.
- */
-export function shouldRunTutorRoutingPreflight(input: {
-  message: string;
-  routeRole: "worker" | "supervisor" | "juror";
-  routineNotebookMarking: boolean;
-  /** The student's thinking level. Low and High have already chosen the model, so nothing is left to ask. */
-  reasoningEffort?: "low" | "medium" | "high";
-}) {
-  if (input.routeRole !== "worker" || input.routineNotebookMarking) return false;
-  if (input.reasoningEffort === "low" || input.reasoningEffort === "high") return false;
-  const message = input.message.trim();
-  const obviousSimple =
-    message.length <= 220 &&
-    /^(?:what (?:is|are)|define|name|list|give me (?:one|a) (?:hint|example)|translate|spell|when (?:is|was)|who (?:is|was)|yes or no)\b/i.test(
-      message
-    );
-  return !obviousSimple;
+/** Only what the rules left open; Low, Medium and High have already chosen. */
+export function shouldRunTutorRoutingPreflight(choice: TutorThinkingChoice) {
+  return !choice.settled;
 }
 
-export function parseTutorRoutingPreflight(
-  value: string
-): TutorRoutingPreflight | null {
+/**
+ * The preflight's tier, applied to an unsettled question. Only a confident
+ * "quick" makes it quicker, so an unsure classifier never thins out an answer,
+ * and "deep" is taken as given: the classifier is asked for it sparingly.
+ */
+export function applyTutorRoutingPreflight(
+  choice: TutorThinkingChoice,
+  preflight: TutorRoutingPreflight | null
+): TutorThinkingChoice {
+  if (!preflight || choice.settled) return choice;
+  if (preflight.tier === "deep") return { tier: "deep", reason: "routing_preflight", settled: true };
+  if (preflight.tier === "quick" && preflight.confidence === "high") {
+    return { tier: "quick", reason: "routing_preflight", settled: true };
+  }
+  return { ...choice, settled: true };
+}
+
+export function parseTutorRoutingPreflight(value: string): TutorRoutingPreflight | null {
   try {
     const normalized = value
       .trim()
@@ -42,17 +47,12 @@ export function parseTutorRoutingPreflight(
       .replace(/\s*```$/, "");
     const payload = JSON.parse(normalized) as Record<string, unknown>;
     if (
-      (payload.role !== "worker" && payload.role !== "supervisor") ||
-      (payload.confidence !== "high" && payload.confidence !== "low") ||
-      typeof payload.insufficientReasoning !== "boolean"
+      (payload.tier !== "quick" && payload.tier !== "think" && payload.tier !== "deep") ||
+      (payload.confidence !== "high" && payload.confidence !== "low")
     ) {
       return null;
     }
-    return {
-      role: payload.role,
-      confidence: payload.confidence,
-      insufficientReasoning: payload.insufficientReasoning,
-    };
+    return { tier: payload.tier, confidence: payload.confidence };
   } catch {
     return null;
   }

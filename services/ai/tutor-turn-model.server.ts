@@ -1,8 +1,7 @@
 import "server-only";
 
-import type { ResolvedJamiAssistantContext } from "@/lib/ai/assistant-context.server";
 import { getAiInputTokenCap } from "@/lib/ai/budgets";
-import type { AiGenerationRole, AiRouteReason } from "@/lib/ai/provider-policy";
+import type { AiGenerationRole, AiReasoningEffort, AiRouteReason } from "@/lib/ai/provider-policy";
 import {
   countAiInputTokens,
   generateAiText,
@@ -60,7 +59,10 @@ export function tutorTurnDeadlines(startedAt: number) {
 
 /** Everything the answer is asked with, shared by the streamed and buffered attempts. */
 export type TutorAnswerCall = {
-  reasoningEffort: ResolvedJamiAssistantContext["reasoningEffort"];
+  /** From the question's thinking tier (`tutorThinkingRoute`), not the student's raw setting. */
+  reasoningEffort: AiReasoningEffort;
+  /** Whether the thinking role's fastest model goes first. */
+  preferStandby: boolean;
   role: AiGenerationRole;
   routeReason: AiRouteReason;
   deadlineAt: number;
@@ -76,9 +78,8 @@ export type TutorAnswerCall = {
 export function streamTutorAnswer(call: TutorAnswerCall, maxOutputTokens: number) {
   const { providerDiagnostics, log } = call;
   return streamAiText({
-    // The level the student chose is for the answer they read, which is this
-    // one; the buffered retries below already carried it.
     reasoningEffort: call.reasoningEffort,
+    preferStandby: call.preferStandby,
     role: call.role,
     routeReason: call.routeReason,
     timeoutMs: REQUEST_TIMEOUT_MS,
@@ -122,6 +123,7 @@ export function generateTutorAnswer(
   const { providerDiagnostics, log } = call;
   return generateAiText({
     reasoningEffort: call.reasoningEffort,
+    preferStandby: call.preferStandby,
     role: call.role,
     routeReason: call.routeReason,
     timeoutMs: REQUEST_TIMEOUT_MS,

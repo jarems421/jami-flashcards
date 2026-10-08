@@ -2,10 +2,10 @@ import "server-only";
 
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
-import type { AiReasoningEffort } from "@/lib/ai/provider-policy";
 import type { TutorPracticeOffer } from "@/lib/ai/tutor-practice-offer";
 import type { TutorCheckScope } from "@/lib/learning/events/tutor-check";
 import type { Source } from "@/lib/material/sources";
+import type { ReasoningEffortPreference } from "@/lib/profile/reasoning-effort";
 
 /**
  * How many of the student's files a question can draw on. It was fifteen,
@@ -98,7 +98,7 @@ export type ResolvedJamiAssistantContext = {
    * Read from the same user document the study level comes from, so wanting it
    * costs no extra round trip.
    */
-  reasoningEffort?: AiReasoningEffort;
+  reasoningEffort?: ReasoningEffortPreference;
   /** The deck being studied, on the flashcard surface. */
   deckId?: string;
 };

@@ -20,6 +20,7 @@ import {
   isTutorGraphRequest,
 } from "@/lib/ai/jami-assistant";
 import {
+  applyTutorRoutingPreflight,
   parseTutorRoutingPreflight,
   shouldRunTutorRoutingPreflight,
 } from "@/lib/ai/tutor-routing-preflight";
@@ -254,41 +255,23 @@ describe("Jami assistant model and receipt contract", () => {
 });
 
 describe("Jami automatic routing and privacy helpers", () => {
-  it("uses a hidden preflight only for ambiguous worker requests", () => {
+  it("asks the preflight only about a question the rules left open", () => {
+    expect(shouldRunTutorRoutingPreflight({ tier: "think", reason: "routine", settled: false })).toBe(true);
+    expect(shouldRunTutorRoutingPreflight({ tier: "quick", reason: "routine", settled: true })).toBe(false);
     expect(
-      shouldRunTutorRoutingPreflight({
-        message: "What is mitosis?",
-        routeRole: "worker",
-        routineNotebookMarking: false,
-      })
-    ).toBe(false);
-    expect(
-      shouldRunTutorRoutingPreflight({
-        message: "Can you help me decide the best way to approach this?",
-        routeRole: "worker",
-        routineNotebookMarking: false,
-      })
-    ).toBe(true);
-    // Low and High have already chosen the model: nothing is left to ask, and Low is not kept waiting.
-    for (const reasoningEffort of ["low", "high"] as const) {
-      expect(
-        shouldRunTutorRoutingPreflight({
-          message: "Can you help me decide the best way to approach this?",
-          routeRole: "worker",
-          routineNotebookMarking: false,
-          reasoningEffort,
-        })
-      ).toBe(false);
-    }
-    expect(
-      parseTutorRoutingPreflight(
-        '{"role":"supervisor","confidence":"low","insufficientReasoning":true}'
-      )
-    ).toEqual({
-      role: "supervisor",
-      confidence: "low",
-      insufficientReasoning: true,
-    });
+      parseTutorRoutingPreflight('```json\n{"tier":"deep","confidence":"high"}\n```')
+    ).toEqual({ tier: "deep", confidence: "high" });
+    expect(parseTutorRoutingPreflight('{"role":"supervisor","confidence":"low"}')).toBeNull();
+  });
+
+  it("lets only a confident preflight make a question quicker, and takes deep as given", () => {
+    const open = { tier: "think", reason: "routine", settled: false } as const;
+    expect(applyTutorRoutingPreflight(open, { tier: "quick", confidence: "high" })).toMatchObject({ tier: "quick" });
+    expect(applyTutorRoutingPreflight(open, { tier: "quick", confidence: "low" })).toMatchObject({ tier: "think" });
+    expect(applyTutorRoutingPreflight(open, { tier: "deep", confidence: "low" })).toMatchObject({ tier: "deep", reason: "routing_preflight" });
+    expect(applyTutorRoutingPreflight(open, null)).toBe(open);
+    const settled = { tier: "quick", reason: "routine", settled: true } as const;
+    expect(applyTutorRoutingPreflight(settled, { tier: "deep", confidence: "high" })).toBe(settled);
   });
 
   it("only activates the juror for a consecutive re-challenge", () => {

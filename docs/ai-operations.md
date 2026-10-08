@@ -56,26 +56,35 @@ allowance.
 
 ## Tutor thinking levels
 
-The student's Low / Medium / High setting chooses which model writes a Tutor
-answer, because effort alone does not separate them. The supervisor's endpoints
-think for about 2,600 tokens at every effort, about eighteen seconds before the
-first word, while the worker starts in under two
-(`applyTutorReasoningPreference` in `lib/ai/provider-policy.ts`):
+Every Tutor question is answered in one of three tiers
+(`lib/ai/tutor-thinking.ts`), because effort alone does not separate the
+models. Measured in October 2026: the worker (GLM 5.3 Flash) gave its first
+words in one to five seconds at any effort and was right on nine in ten hard
+competition problems at low and high effort alike; the supervisor's Qwen took
+fifteen to a hundred seconds, and three runs in ten broke before finishing.
 
-- **Low**: the worker, with no routing preflight.
-- **Medium**: the request decides. Routine questions go to the worker; long,
-  many-source or proof-style ones go to the supervisor, and an ambiguous one gets
-  a short preflight (which never escalates).
-- **High**: the supervisor.
+- **quick**: the worker at low effort. Recall, definitions, hints, chat.
+- **think**: the worker at high effort. Calculations, "solve / show that /
+  prove / why", questions in parts, a picture of a question, marking.
+- **deep**: the supervisor role with its standby, Kimi K3, tried first (correct
+  with its working shown, first words in about a second), then Qwen. A student
+  challenging an answer, a concept that keeps coming back, a request of 1,200+
+  characters or 8+ sources. About ten times the cost of the worker per answer.
 
-A challenged answer keeps its stronger route at every level, and no attempt is
-sent less effort than its role needs. A model that thinks gets 4,000 tokens of
-headroom on top of the answer's cap, so its thinking cannot cut a reply off
-mid-sentence and force the whole answer to be asked for again.
+The student's setting picks the tier. **Auto**, the default, reads each
+question: the rules settle the clear cases, and only an open one gets the
+one-line preflight on the worker, which can move it to deep, or to quick when it
+is sure. **Low**, **Medium** and **High** are quick, think and deep for
+everything. A challenged answer is deep at every level. A repeated challenge gets
+the juror (Kimi K2.6), and the answer that reconciles its review stays on Qwen,
+so the juror never checks its own family. No attempt is sent less effort than its
+role needs, and a model that thinks gets 4,000 tokens of headroom over the
+answer's cap, so its thinking cannot cut a reply off mid-sentence.
 
-A Tutor answer that is slow on Low almost always means the worker's endpoints
-are refusing it: look for `provider.model_fallback` warnings and a supervisor
-`modelName` on routine turns, then run `npm run check:ai-release`.
+Each turn logs `routing.decided` with its tier, role, reason and the student's
+setting. A slow quick or think answer almost always means the worker's
+endpoints are refusing it: look for `provider.model_fallback` and a supervisor
+`modelName` on those turns, then run `npm run check:ai-release`.
 
 ## Content-free telemetry
 

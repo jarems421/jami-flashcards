@@ -516,35 +516,6 @@ export function decideTutorRoute(input: {
   return { role: "worker", reason: "routine", taskClass: "standard" };
 }
 
-/**
- * The student's thinking level, applied to the model a Tutor answer goes to.
- *
- * Effort alone does not separate the levels. Measured on a Tutor-sized answer,
- * the supervisor thought for 2,600 to 3,100 tokens at low, medium and high
- * alike, and took eighteen seconds to its first word each time; the worker at
- * every effort answered in under two. What the level changes is which of them
- * answers: Low keeps the answer on the worker, High gives it to the supervisor,
- * and Medium leaves it to the request itself.
- *
- * A student challenging an answer keeps the route that gives at every level, the
- * juror included: a preference cannot make their own dispute cheaper to settle.
- */
-export function applyTutorReasoningPreference(
-  decision: AiRouteDecision,
-  preference: AiReasoningEffort | undefined
-): AiRouteDecision {
-  if (!preference || preference === "medium") return decision;
-  if (decision.role === "juror" || decision.reason === "student_correction") return decision;
-  if (preference === "low") {
-    return decision.role === "worker"
-      ? decision
-      : { role: "worker", reason: "student_preference", taskClass: "standard" };
-  }
-  return decision.role === "supervisor"
-    ? decision
-    : { role: "supervisor", reason: "student_preference", taskClass: "important" };
-}
-
 /** Compatibility wrapper for existing callers while they adopt route roles. */
 export function classifyTutorTaskClass(input: {
   message: string;
@@ -665,6 +636,12 @@ export function buildAiProviderPlan(input: {
    * rather than quietly buy a better one.
    */
   allowRoleEscalation?: boolean;
+  /**
+   * Try the supervisor's standby before its primary. For a live Tutor answer,
+   * where the standby (Kimi K3) gave its first words in about a second and the
+   * primary (Qwen) took fifteen to a hundred; papers and marking keep the order.
+   */
+  preferStandby?: boolean;
 }): AiProviderAttempt[] {
   let role: AiGenerationRole;
   let reason: AiRouteReason;
@@ -694,8 +671,12 @@ export function buildAiProviderPlan(input: {
     return attempts;
   }
   const failover = failoverAttemptFor(role, input.policy);
-  if (failover) attempts.push(failover);
   const standby = standbyAttemptFor(role, input.policy);
+  if (input.preferStandby && standby) {
+    // The primary stays as the fallback, once: a second try at the slow model would outlast the answer's deadline.
+    return [standby, primary, ...(failover ? [failover] : [])];
+  }
+  if (failover) attempts.push(failover);
   if (standby) attempts.push(standby);
   return attempts;
 }

@@ -292,6 +292,7 @@ export async function POST(request: NextRequest) {
       newBoundaryToken: randomUUID,
     }),
     reasoningEffort: resolved.reasoningEffort,
+    hasAttachments: readableAttachments.length > 0,
     preAnswerDeadlineAt,
     signal: cancellation.signal,
     providerDiagnostics,
@@ -325,7 +326,8 @@ export async function POST(request: NextRequest) {
   return tutorTurnResponse(
     createTutorTurnStream({
       call: {
-        reasoningEffort: resolved.reasoningEffort,
+        reasoningEffort: route.reasoningEffort,
+        preferStandby: route.preferStandby,
         role: route.role,
         routeReason: route.routeReason,
         deadlineAt,

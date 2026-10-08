@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildAiCapabilityRegistry,
-  applyTutorReasoningPreference,
   buildAiProviderPlan,
   classifyTutorTaskClass,
   decideTutorRoute,
@@ -424,22 +423,18 @@ describe("reasoning effort scales with the work", () => {
     expect(getReasoningEffort("supervisor", "low")).toBe("medium");
   });
 
-  it("chooses the model a Tutor answer goes to, because effort alone does not separate the levels", () => {
-    const routine = decideTutorRoute({ message: "What is osmosis?", sourceCount: 0 });
-    const hard = decideTutorRoute({ message: "Prove that root 2 is irrational.", sourceCount: 0 });
-    expect(applyTutorReasoningPreference(hard, "low")).toMatchObject({ role: "worker", reason: "student_preference" });
-    expect(applyTutorReasoningPreference(routine, "high")).toMatchObject({ role: "supervisor", reason: "student_preference" });
-    expect(applyTutorReasoningPreference(hard, "medium")).toBe(hard);
-    expect(applyTutorReasoningPreference(routine, "medium")).toBe(routine);
-    expect(applyTutorReasoningPreference(routine, undefined)).toBe(routine);
-  });
-
-  it("keeps a challenged answer on its stronger route at every level", () => {
-    const challenged = decideTutorRoute({ message: "That's wrong, check again.", sourceCount: 0 });
-    const disputed = decideTutorRoute({ message: "Still wrong.", sourceCount: 0, repeatedSupervisorChallenge: true });
-    expect(applyTutorReasoningPreference(challenged, "low")).toBe(challenged);
-    expect(applyTutorReasoningPreference(disputed, "low")).toBe(disputed);
-    expect(applyTutorReasoningPreference(disputed, "high")).toBe(disputed);
+  it("tries the supervisor's standby first for a live Tutor answer, and keeps the primary behind it", () => {
+    const policy = resolveAiProviderPolicy(approved);
+    const plan = buildAiProviderPlan({ role: "supervisor", hasVisualInput: false, policy, preferStandby: true });
+    expect(plan.map((attempt) => attempt.model)).toEqual([
+      "moonshotai/kimi-k3",
+      "qwen/qwen3.6-35b-a3b",
+      "qwen/qwen3.6-35b-a3b",
+    ]);
+    expect(plan.map((attempt) => attempt.routeReason)).toEqual(["provider_standby", "explicit_role", "provider_failover"]);
+    const usual = buildAiProviderPlan({ role: "supervisor", hasVisualInput: false, policy });
+    expect(usual[0].model).toBe("qwen/qwen3.6-35b-a3b");
+    expect(usual.at(-1)?.model).toBe("moonshotai/kimi-k3");
   });
 
   it("carries the role's level on every attempt in a plan", () => {

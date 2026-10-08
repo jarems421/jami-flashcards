@@ -14,12 +14,15 @@ import {
 } from "@/lib/ai/jami-assistant";
 import type { JamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 import {
+  applyTutorRoutingPreflight,
   parseTutorRoutingPreflight,
   shouldRunTutorRoutingPreflight,
+  TUTOR_ROUTING_PREFLIGHT_INSTRUCTION,
 } from "@/lib/ai/tutor-routing-preflight";
+import { chooseTutorThinking, tutorThinkingRoute, type TutorThinkingTier } from "@/lib/ai/tutor-thinking";
 import {
-  applyTutorReasoningPreference,
   decideTutorRoute,
+  type AiReasoningEffort,
   type AiGenerationRole,
   type AiRouteReason,
 } from "@/lib/ai/provider-policy";
@@ -38,6 +41,12 @@ import type { Logger } from "@/lib/observability/logger";
 export type TutorTurnRoute = {
   role: AiGenerationRole;
   routeReason: AiRouteReason;
+  /** How the question is thought about, for the completion log. */
+  tier: TutorThinkingTier;
+  /** How hard the answer's model is asked to think. */
+  reasoningEffort: AiReasoningEffort;
+  /** Whether the thinking role's fastest model goes first. */
+  preferStandby: boolean;
   /** The conversation to answer, with the second opinion added when there is one. */
   contents: TutorTurnContents;
   /** Whether the student challenged the previous answer, saved for the next turn's routing. */
@@ -56,6 +65,8 @@ export async function routeTutorTurn(input: {
   research: GeminiResearchResult;
   contents: TutorTurnContents;
   reasoningEffort: ResolvedJamiAssistantContext["reasoningEffort"];
+  /** Whether the student sent files with the question. */
+  hasAttachments: boolean;
   preAnswerDeadlineAt: number;
   signal: AbortSignal;
   providerDiagnostics: AiResponseDiagnostics[];
@@ -86,83 +97,69 @@ export async function routeTutorTurn(input: {
     message: input.message,
     context: input.context,
   });
-  // What the request needs, then the level the student chose applied to it.
-  const routeDecision = applyTutorReasoningPreference(
-    routineNotebookMarking
-      ? { role: "worker", reason: "routine", taskClass: "standard" }
-      : decideTutorRoute({
-          message: input.message,
-          sourceCount: input.sources.length,
-          repeatedConcept: routingSignals.repeatedConcept,
-          priorAnswerChallenged: routingSignals.priorAnswerChallenged,
-          repeatedSupervisorChallenge: trustedRepeatedSupervisorChallenge,
-        }),
-    input.reasoningEffort
-  );
-  let responseRole: AiGenerationRole = routeDecision.role;
-  let responseRouteReason: AiRouteReason = routeDecision.reason;
+  const decision = decideTutorRoute({
+    message: input.message,
+    sourceCount: input.sources.length,
+    repeatedConcept: routingSignals.repeatedConcept,
+    priorAnswerChallenged: routingSignals.priorAnswerChallenged,
+    repeatedSupervisorChallenge: trustedRepeatedSupervisorChallenge,
+  });
+  // What the request needs, read through the level the student chose.
+  let choice = chooseTutorThinking({
+    preference: input.reasoningEffort,
+    decision,
+    message: input.message,
+    routineNotebookMarking,
+    hasAttachments: input.hasAttachments,
+  });
 
-  if (
-    shouldRunTutorRoutingPreflight({
-      message: input.message,
-      routeRole: routeDecision.role,
-      routineNotebookMarking,
-      reasoningEffort: input.reasoningEffort,
-    })
-  ) {
+  if (shouldRunTutorRoutingPreflight(choice)) {
     try {
-      const preflight = parseTutorRoutingPreflight(
-        await generateAiText({
-          reasoningEffort: input.reasoningEffort,
-          role: "worker",
-          routeReason: "routing_preflight",
-          // A one-line classification. Escalated to a model that thinks for
-          // thousands of tokens it cannot finish in its cap or its seven seconds.
-          allowRoleEscalation: false,
-          timeoutMs: 7_000,
-          deadlineAt: preAnswerDeadlineAt,
-          signal: input.signal,
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 128,
-            responseMimeType: "application/json",
-          },
-          request: {
-            systemInstruction:
-              "Classify routing only. Choose supervisor for a request needing difficult multi-step reasoning, formal assessment, careful many-claim synthesis, or where a routine model may not reason reliably. Choose worker for ordinary teaching or formatting. Return exactly JSON: {\"role\":\"worker|supervisor\",\"confidence\":\"high|low\",\"insufficientReasoning\":boolean}. Never answer the student.",
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  {
-                    text: `Request: ${input.message}\nAvailable local source count: ${input.sources.length}\nHas current visual context: ${input.currentParts.some((part) => "inlineData" in part)}`,
-                  },
-                ],
-              },
-            ],
-          },
-          onResponse: (diagnostics) => providerDiagnostics.push(diagnostics),
-        })
+      choice = applyTutorRoutingPreflight(
+        choice,
+        parseTutorRoutingPreflight(
+          await generateAiText({
+            role: "worker",
+            routeReason: "routing_preflight",
+            reasoningEffort: "low",
+            // A one-line classification. Escalated to a model that thinks for
+            // thousands of tokens it cannot finish in its cap or its seven seconds.
+            allowRoleEscalation: false,
+            timeoutMs: 7_000,
+            deadlineAt: preAnswerDeadlineAt,
+            signal: input.signal,
+            generationConfig: {
+              temperature: 0,
+              maxOutputTokens: 128,
+              responseMimeType: "application/json",
+            },
+            request: {
+              systemInstruction: TUTOR_ROUTING_PREFLIGHT_INSTRUCTION,
+              contents: [
+                {
+                  role: "user",
+                  parts: [
+                    {
+                      text: `Request: ${input.message}
+Available local source count: ${input.sources.length}
+Has current visual context: ${input.currentParts.some((part) => "inlineData" in part)}`,
+                    },
+                  ],
+                },
+              ],
+            },
+            onResponse: (diagnostics) => providerDiagnostics.push(diagnostics),
+          })
+        )
       );
-      if (
-        preflight?.role === "supervisor" ||
-        preflight?.confidence === "low" ||
-        preflight?.insufficientReasoning === true
-      ) {
-        responseRole = "supervisor";
-        responseRouteReason = preflight.insufficientReasoning
-          ? "insufficient_reasoning"
-          : preflight.confidence === "low"
-            ? "low_confidence"
-            : "routing_preflight";
-      }
     } catch (error) {
-      // A routing preflight is advisory. Deterministic rules remain the safe,
-      // bounded default and the provider router can still escalate failures
-      // before any answer content is streamed.
+      // A routing preflight is advisory: the rules' own tier stands without it.
       log.warn("routing.preflight_unavailable", { error });
     }
   }
+  // A dispute the juror reviews keeps its role; every other tier says how it is answered.
+  let responseRole: AiGenerationRole = decision.role === "juror" ? "juror" : tutorThinkingRoute(choice.tier, choice.reason).role;
+  let responseRouteReason: AiRouteReason = choice.reason;
 
   // A repeatedly challenged supervisor answer gets a compact, blind third
   // opinion. The supervisor then reconciles it into one student-facing reply;
@@ -201,7 +198,7 @@ export async function routeTutorTurn(input: {
         },
       ];
       const jurorOpinion = await generateAiText({
-        reasoningEffort: input.reasoningEffort,
+        reasoningEffort: "high",
         role: "juror",
         routeReason: "second_correction",
         timeoutMs: 18_000,
@@ -242,9 +239,19 @@ export async function routeTutorTurn(input: {
     responseRole = "supervisor";
     responseRouteReason = "second_correction";
   }
+  const answer = tutorThinkingRoute(choice.tier, responseRouteReason);
+  log.info("routing.decided", {
+    tier: choice.tier,
+    role: responseRole,
+    routeReason: responseRouteReason,
+    preference: input.reasoningEffort ?? "auto",
+  });
   return {
     role: responseRole,
     routeReason: responseRouteReason,
+    tier: choice.tier,
+    reasoningEffort: answer.reasoningEffort,
+    preferStandby: responseRole === "supervisor" && answer.preferStandby,
     contents,
     priorAnswerChallenged: routingSignals.priorAnswerChallenged,
   };

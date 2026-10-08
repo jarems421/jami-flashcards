@@ -50,9 +50,17 @@ describe("TutorReasoningMenu", () => {
     expect(
       container.querySelector("summary")?.getAttribute("aria-label")
     ).toBe("Reasoning: Medium");
-    expect(container.textContent).toContain("Fastest for straightforward questions");
-    expect(container.textContent).toContain("More thought when useful");
-    expect(container.textContent).toContain("Deepest reasoning for difficult work");
+    expect(container.textContent).toContain("Thinks as much as each question needs");
+    expect(container.textContent).toContain("Fastest, for quick questions");
+    expect(container.textContent).toContain("Thinks more on every question");
+    expect(container.textContent).toContain("Deepest thinking on everything, and slower");
+  });
+
+  it("is on Auto for a student who has not chosen", async () => {
+    mocks.load.mockResolvedValue(null);
+    await renderMenu();
+
+    expect(container.querySelector("summary")?.getAttribute("aria-label")).toBe("Reasoning: Auto");
   });
 
   it("saves a choice immediately and updates the composer pill", async () => {

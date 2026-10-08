@@ -83,7 +83,7 @@ type TutorTurnMaterialInput = {
   history: readonly JamiAssistantHistoryMessage[];
   resolved: Pick<
     ResolvedJamiAssistantContext,
-    "sources" | "pinnedSourceIds" | "currentParts" | "reasoningEffort"
+    "sources" | "pinnedSourceIds" | "currentParts"
   >;
   attachments: readonly TutorAttachment[];
   preAnswerDeadlineAt: number;
@@ -235,7 +235,7 @@ async function findTutorTurnEvidence(input: TutorTurnMaterialInput) {
 
 /** Reads this turn's material: the passages and sources planned, and the chat's attached files. */
 export async function readTutorTurnMaterial(input: TutorTurnMaterialInput): Promise<TutorTurnMaterial> {
-  const { uid, resolved, preAnswerDeadlineAt, log } = input;
+  const { uid, preAnswerDeadlineAt, log } = input;
   const {
     retrievalQuery,
     evidence,
@@ -254,7 +254,6 @@ export async function readTutorTurnMaterial(input: TutorTurnMaterialInput): Prom
   /** A text brief of a PDF or picture, for text models that never see the file itself. */
   const briefVisualParts = (label: string) => async (visualParts: readonly AiContentPart[]) =>
     cleanAiResponseText(await generateAiText({
-      reasoningEffort: resolved.reasoningEffort,
       role: "documentVision",
       timeoutMs: 24_000,
       deadlineAt: preAnswerDeadlineAt,

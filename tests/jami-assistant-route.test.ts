@@ -683,9 +683,11 @@ describe("universal Jami assistant route", () => {
       )
     );
 
+    // Worked through on the fast model thinking hard, with the detailed answer's budget.
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        role: "supervisor",
+        role: "worker",
+        reasoningEffort: "high",
         generationConfig: expect.objectContaining({ maxOutputTokens: 6_000 }),
         request: expect.objectContaining({
           systemInstruction: expect.stringContaining("DETAILED mode"),
