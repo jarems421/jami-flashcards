@@ -326,6 +326,7 @@ it). Everything else is in `docs/`:
 | [`past-paper-marking-release.md`](docs/past-paper-marking-release.md) | Marking release checks and measured accuracy |
 | [`exam-format-library.md`](docs/exam-format-library.md) | Board exam formats, generated papers and the paper benchmark |
 | [`image-occlusion.md`](docs/image-occlusion.md) | Diagram cards |
+| [`notebook-ink.md`](docs/notebook-ink.md) | Jami Ink, the notebook ink engine replacing js-draw: plan, format, migration and performance gates |
 | [`notifications.md`](docs/notifications.md) | Push nudges by each student's own clock |
 | [`plans-and-stardust.md`](docs/plans-and-stardust.md) | Plans, allowances, payments and stardust |
 
