@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://jami-jarems421s-projects.vercel.app"><strong>Open Jami</strong></a>
+  <a href="https://jami.study"><strong>Open Jami</strong></a>
   &middot;
   <a href="https://github.com/jarems421/jami-flashcards"><strong>Source</strong></a>
 </p>

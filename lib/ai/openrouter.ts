@@ -366,7 +366,7 @@ async function sendResponse(options: OpenRouterCallOptions, stream: boolean) {
         "Content-Type": "application/json",
         "Cache-Control": "no-store",
         "X-OpenRouter-Cache": "false",
-        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://jami.app",
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://jami.study",
         "X-Title": "Jami",
       },
       body: JSON.stringify(buildOpenRouterRequestBody(options, stream)),
