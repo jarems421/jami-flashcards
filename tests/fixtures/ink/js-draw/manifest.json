@@ -1,0 +1,60 @@
+{
+  "cleared": {
+    "description": "One pen handwriting row, saved, then \"Clear ink from this page\" from the eraser settings and confirmed. This is the page as saved after the clear.",
+    "strokes": {
+      "pen": 1
+    },
+    "colours": [
+      "black (default)"
+    ],
+    "thicknessPercent": {
+      "pen": "default"
+    },
+    "pressureVaried": false,
+    "clearedAfterSave": true,
+    "file": "cleared.svg",
+    "savedFrom": "ink record",
+    "svgBytes": 239,
+    "svgPathElements": 0
+  },
+  "highlighter": {
+    "description": "One black pen line, then the highlighter (default yellow and thickness): a long stroke below the line and a short upright stroke crossing the pen line.",
+    "strokes": {
+      "pen": 1,
+      "highlighter": 2
+    },
+    "colours": [
+      "black (default pen)",
+      "yellow (default highlighter)"
+    ],
+    "thicknessPercent": {
+      "pen": "default",
+      "highlighter": "default"
+    },
+    "pressureVaried": false,
+    "file": "highlighter.svg",
+    "savedFrom": "ink record",
+    "svgBytes": 2643,
+    "svgPathElements": 3
+  },
+  "precision-erased": {
+    "description": "One long pen stroke (default thickness), then the eraser in precision mode at medium size, dragged straight down through its middle so the stroke splits in two.",
+    "strokes": {
+      "pen": 1,
+      "eraser": 1
+    },
+    "colours": [
+      "black (default)"
+    ],
+    "thicknessPercent": {
+      "pen": "default"
+    },
+    "pressureVaried": false,
+    "eraserMode": "precision",
+    "eraserSize": "medium",
+    "file": "precision-erased.svg",
+    "savedFrom": "ink record",
+    "svgBytes": 2374,
+    "svgPathElements": 1
+  }
+}
