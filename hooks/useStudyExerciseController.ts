@@ -265,8 +265,10 @@ export function useStudyExerciseController(
       persistChainRef.current = persistChainRef.current.then(async () => {
         try {
           const saved = await persistStudyReview(userId, queued);
-          removeOfflineQueuedReviews(userId, [queued.id]);
           onSaved?.(saved);
+          // Off the device only once its learning history is written too; see persistStudyReview.
+          await saved.learningHistory;
+          removeOfflineQueuedReviews(userId, [queued.id]);
           // Anything an earlier failure left behind goes up with it.
           if (getOfflineQueuedReviews(userId).length > 0) {
             await syncOfflineStudyReviews(userId);

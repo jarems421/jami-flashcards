@@ -22,7 +22,9 @@ export async function syncOfflineStudyReviews(userId: string) {
   for (const review of reviews) {
     if (isStudyReviewPersisting(review.id)) continue;
     try {
-      await persistStudyReview(userId, review, currentStudyDayKey);
+      const saved = await persistStudyReview(userId, review, currentStudyDayKey);
+      // Held until its learning history has been written too; see persistStudyReview.
+      await saved.learningHistory;
       syncedIds.push(review.id);
     } catch (error) {
       console.warn("Offline review sync failed; keeping review queued.", error);

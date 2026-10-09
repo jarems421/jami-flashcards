@@ -19,11 +19,13 @@ export type FlashcardReviewEventOutcome = "recorded" | "already-recorded" | "ski
  * Records one flashcard answer in the student's learning history.
  *
  * The event is keyed by the answer's commit id and written as a plain create.
- * A write queues with Firestore's own offline persistence, so a connection
- * that drops mid-sync delays the event rather than losing it -- which a
- * transaction, needing the server at that moment, did not. The rules allow an
- * event to be created and never changed, so a sync that retries an answer
- * already recorded is refused instead of writing it twice.
+ * Firestore holds the write in memory while a connection drops mid-sync, so
+ * the drop delays the event rather than losing it -- which a transaction,
+ * needing the server at that moment, did not. Memory does not survive a
+ * reload, so the answer stays queued on the device until this has finished
+ * (see `persistStudyReview`). The rules allow an event to be created and never
+ * changed, so a sync that retries an answer already recorded is refused
+ * instead of writing it twice.
  *
  * Callers treat this as best-effort: it must never decide whether an answer
  * saved.

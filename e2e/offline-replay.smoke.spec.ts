@@ -60,6 +60,8 @@ test("a review graded offline syncs once the browser reconnects", async ({
   const cardId = await card.getAttribute("data-study-current-card-id");
   expect(E2E_OFFLINE_CARDS.map((entry) => entry.id)).toContain(cardId);
   expect(await queuedReviews(page)).toHaveLength(0);
+  // Counted from here, so a run against a database an earlier run used still checks exactly this answer.
+  const eventsBefore = (await readReviewEvents(cardId as string)).length;
 
   // Drop the network only once the session is loaded, so what is under test is
   // the queued review rather than a failed page load.
@@ -104,10 +106,12 @@ test("a review graded offline syncs once the browser reconnects", async ({
   expect(await queuedReviews(page)).toHaveLength(0);
 
   // One answer in the learning history, however many times the sync tried to
-  // save it: the event is keyed by the answer's own commit.
+  // save it: the event is keyed by the answer's own commit. And there by the
+  // time the queue is empty: the answer is held on the device until its event
+  // is written, so the reload above cannot have lost it.
   await expect
     .poll(async () => (await readReviewEvents(cardId as string)).length, { timeout: 30_000 })
-    .toBe(1);
+    .toBe(eventsBefore + 1);
 
   expect(pageErrors).toEqual([]);
 });

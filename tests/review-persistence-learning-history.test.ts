@@ -39,7 +39,7 @@ vi.mock("@/services/learning/flashcard-review-events", () => ({
   recordFlashcardReviewEvent: mocks.recordFlashcardReviewEvent,
 }));
 
-const { persistStudyReview } = await import("@/services/study/review-persistence");
+const { isStudyReviewPersisting, persistStudyReview } = await import("@/services/study/review-persistence");
 
 const NOW = Date.UTC(2026, 8, 15, 12);
 const DAY_KEY = getStudyDayKey(NOW);
@@ -97,6 +97,23 @@ describe("persisting a review into the learning history", () => {
 
     await expect(persistStudyReview("user-1", review(), DAY_KEY)).rejects.toThrow("unavailable");
     expect(mocks.recordFlashcardReviewEvent).not.toHaveBeenCalled();
+  });
+
+  it("hands back the history write, which never rejects, and counts the answer as saving until it lands", async () => {
+    let land: (outcome: string) => void = () => {};
+    mocks.recordFlashcardReviewEvent.mockReturnValue(new Promise((resolve) => (land = resolve)));
+
+    const saved = await persistStudyReview("user-1", review(), DAY_KEY);
+    // Saved, but its event still on its way: a sync must not start a second copy.
+    expect(isStudyReviewPersisting("review-1")).toBe(true);
+    land("recorded");
+    await saved.learningHistory;
+    await Promise.resolve();
+    expect(isStudyReviewPersisting("review-1")).toBe(false);
+
+    mocks.recordFlashcardReviewEvent.mockRejectedValue(new Error("unavailable"));
+    const failed = await persistStudyReview("user-1", review({ id: "review-2" }), DAY_KEY);
+    await expect(failed.learningHistory).resolves.toBeUndefined();
   });
 
   it("records simple-study answers too", async () => {

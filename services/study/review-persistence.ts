@@ -16,6 +16,12 @@ import { recordFlashcardReviewEvent } from "@/services/learning/flashcard-review
 export type PersistedStudyReview = {
   goalProgress: Awaited<ReturnType<typeof applyGoalProgressForAnswer>> | null;
   retryResult: ReviewRetryResult | null;
+  /**
+   * The answer's place in the learning history, still being written. Never
+   * rejects. A caller holding the answer on the device waits for it before
+   * letting the answer go: see `recordLearningHistory`.
+   */
+  learningHistory: Promise<void>;
 };
 
 /** Reviews being written right now, so a sync never starts a second copy of one. */
@@ -26,14 +32,25 @@ export function isStudyReviewPersisting(reviewId: string) {
 }
 
 /**
- * Adds a saved answer to the student's learning history, without waiting.
+ * Adds a saved answer to the student's learning history.
  *
  * Only after the answer itself has saved. The history improves what the
  * Learning Engine can see; it never decides whether an answer saved, so a
  * failure here is dropped rather than holding the answer in the review queue.
+ *
+ * But the write is waited for, success or failure, before the answer leaves
+ * the device. Firestore keeps a pending write in memory only, so an answer
+ * dropped from the queue while its event was still on its way lost the event
+ * to the next reload or closed tab: the card's schedule saved, and the
+ * Learning Engine never heard the answer was given. Kept queued until then,
+ * the answer is sent again on the next load, and the event -- keyed by the
+ * answer's commit and create-only -- lands exactly once.
  */
-function recordLearningHistory(userId: string, review: OfflineQueuedReview) {
-  void recordFlashcardReviewEvent(userId, review).catch(() => undefined);
+function recordLearningHistory(userId: string, review: OfflineQueuedReview): Promise<void> {
+  return recordFlashcardReviewEvent(userId, review).then(
+    () => undefined,
+    () => undefined
+  );
 }
 
 /**
@@ -53,6 +70,16 @@ export async function persistStudyReview(
   currentStudyDayKey = getStudyDayKey(Date.now())
 ): Promise<PersistedStudyReview> {
   persisting.add(queued.id);
+  /*
+   * Still saving until its learning history has been written, so a sync that
+   * finds it queued meanwhile does not start a second copy of it.
+   */
+  let releasedLater = false;
+  const holdUntilWritten = (learningHistory: Promise<void>) => {
+    releasedLater = true;
+    void learningHistory.then(() => persisting.delete(queued.id));
+    return learningHistory;
+  };
   try {
     const review = { ...queued };
     if (review.intent) {
@@ -73,9 +100,9 @@ export async function persistStudyReview(
 
     if (review.sessionKind === "simple") {
       await recordSimpleStudyResult(review.cardId, review.isCorrect ? "correct" : "wrong", review.reviewedAt, identity);
-      recordLearningHistory(userId, review);
+      const learningHistory = holdUntilWritten(recordLearningHistory(userId, review));
       clearStudyCommitDraft(userId, commitId);
-      return { goalProgress: null, retryResult: null };
+      return { goalProgress: null, retryResult: null, learningHistory };
     }
 
     const isStruggle = isStruggleRating(review.rating);
@@ -152,10 +179,10 @@ export async function persistStudyReview(
       );
     }
 
-    recordLearningHistory(userId, review);
+    const learningHistory = holdUntilWritten(recordLearningHistory(userId, review));
     clearStudyCommitDraft(userId, commitId);
-    return { goalProgress: await goalProgressPromise, retryResult };
+    return { goalProgress: await goalProgressPromise, retryResult, learningHistory };
   } finally {
-    persisting.delete(queued.id);
+    if (!releasedLater) persisting.delete(queued.id);
   }
 }

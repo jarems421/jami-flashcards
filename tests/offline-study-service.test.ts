@@ -17,6 +17,7 @@ const firestoreMock = vi.hoisted(() => ({
   getDocs: vi.fn(),
   increment: vi.fn((value: number) => ({ increment: value })),
   query: vi.fn(),
+  setDoc: vi.fn(),
   updateDoc: vi.fn(),
   where: vi.fn(),
   writeBatch: vi.fn(),
@@ -233,6 +234,26 @@ describe("offline study synchronization", () => {
         memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(NOW), 1),
       })
     );
+  });
+
+  it("keeps an answer on the device until its learning history is written, not just the answer", async () => {
+    queueReview();
+    let land: () => void = () => {};
+    firestoreMock.setDoc.mockReturnValue(new Promise<void>((resolve) => (land = resolve)));
+
+    let settled = false;
+    const sync = syncOfflineStudyReviews(USER_ID).finally(() => {
+      settled = true;
+    });
+    // The answer has saved, but its event is still on its way: a reload now must find it queued.
+    await vi.waitFor(() => expect(firestoreMock.setDoc).toHaveBeenCalled());
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(getOfflineQueuedReviews(USER_ID)).toHaveLength(1);
+
+    land();
+    await expect(sync).resolves.toEqual({ attempted: 1, synced: 1, remaining: 0 });
+    expect(getOfflineQueuedReviews(USER_ID)).toHaveLength(0);
   });
 
   it("keeps a failed review queued while removing later successful reviews", async () => {
