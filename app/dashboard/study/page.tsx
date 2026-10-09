@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import StarRewardOverlay from "@/components/constellation/StarRewardOverlay";
 import AppPage from "@/components/layout/AppPage";
 import { useUser } from "@/components/providers/UserProvider";
@@ -57,6 +57,8 @@ import { loadPresentationHistory } from "@/services/study/presentation-history";
 import { saveRemoteActiveStudySession } from "@/services/study/session";
 import { cardWithStudyAsset as askedCard } from "@/services/study/study-assets";
 
+type AskedStart = { kind: StudySessionKind; scope: DailyRequiredSessionScope };
+
 export default function StudyPage() {
   const { user } = useUser();
   const userId = user.uid;
@@ -77,7 +79,9 @@ export default function StudyPage() {
   const { identity, adopt: adoptSession, forget: forgetSession, noteCurrent, currentRevision, hasOpenSession } = record;
   const { policy: modePolicy, choose: setModePolicy, adopt: adoptModePolicy } = useStudyModePolicy(userId);
 
-  const { decks, cards, setCards, topics, dailyReviewState, setDailyReviewState, loaded, loadAll } = useStudyQueue({
+  const {
+    decks, cards, setCards, topics, dailyReviewState, setDailyReviewState, loaded, previewing, loadAll,
+  } = useStudyQueue({
     userId,
     hasOpenSession,
     setOfflineMode,
@@ -393,22 +397,6 @@ export default function StudyPage() {
     ]
   );
 
-  const handleCustomReviewClick = useCallback(() => {
-    if (!hasCards) {
-      showError("Create at least one card first, then Focused Review will be ready.");
-      return;
-    }
-
-    if (focusedCards.length === 0) {
-      showError(focused.hasFilters
-        ? "No cards match those filters. Clear them or choose a different deck or Topic."
-        : "Add cards first, then Focused Review will be ready.");
-      return;
-    }
-
-    startSession("custom");
-  }, [focused.hasFilters, focusedCards.length, hasCards, showError, startSession]);
-
   const { resetToRequest: resetFocusedToRequest, selectFilters } = focused;
   const resetExercises = exercises.reset;
   const adoptExercises = exercises.adopt;
@@ -451,7 +439,7 @@ export default function StudyPage() {
     ]
   );
 
-  useStudySessionRestore({
+  const { settled: restoreSettled } = useStudySessionRestore({
     userId,
     loaded,
     request,
@@ -470,6 +458,46 @@ export default function StudyPage() {
     },
     startSession,
   });
+
+  /*
+   * A session asked for before Learn can start one.
+   *
+   * Learn is drawn from this device's cards before the server's arrive, and a
+   * saved session may yet be resumed. A start asked for in the meantime waits
+   * for both, then runs on the server's queue -- unless a session was resumed.
+   */
+  const [askedStart, setAskedStart] = useState<AskedStart | null>(null);
+  const ranStartRef = useRef<AskedStart | null>(null);
+  const readyToStart = loaded && restoreSettled;
+  const requestStart = useCallback(
+    (kind: StudySessionKind, scope: DailyRequiredSessionScope = "all") => {
+      if (readyToStart) startSession(kind, scope);
+      else setAskedStart({ kind, scope });
+    },
+    [readyToStart, startSession]
+  );
+  useEffect(() => {
+    if (!askedStart || !readyToStart || ranStartRef.current === askedStart) return;
+    ranStartRef.current = askedStart;
+    if (sessionKind === null) startSession(askedStart.kind, askedStart.scope);
+  }, [askedStart, readyToStart, sessionKind, startSession]);
+  const waitingToStart = askedStart !== null && !readyToStart;
+
+  const handleCustomReviewClick = useCallback(() => {
+    if (!hasCards) {
+      showError("Create at least one card first, then Focused Review will be ready.");
+      return;
+    }
+
+    if (focusedCards.length === 0) {
+      showError(focused.hasFilters
+        ? "No cards match those filters. Clear them or choose a different deck or Topic."
+        : "Add cards first, then Focused Review will be ready.");
+      return;
+    }
+
+    requestStart("custom");
+  }, [focused.hasFilters, focusedCards.length, hasCards, requestStart, showError]);
 
   useStudyKeyboardShortcuts({
     enabled: current !== null && !currentExercise,
@@ -518,7 +546,7 @@ export default function StudyPage() {
         snapshotSavedAt={offlineSnapshotAt}
         onSync={() => void syncPendingOfflineReviews()}
       />
-      {!loaded ? (
+      {(!loaded && !previewing) || waitingToStart ? (
         <div className="space-y-4"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-72" /></div>
       ) : sessionKind === null ? (
         hasCards ? (
@@ -531,8 +559,8 @@ export default function StudyPage() {
               modePicker={
                 studyModesEnabled ? <StudyModePicker policy={modePolicy} onChange={setModePolicy} /> : undefined
               }
-              onStartRequired={(scope) => startSession("daily-required", scope)}
-              onStartOptional={() => startSession("daily-optional")}
+              onStartRequired={(scope) => requestStart("daily-required", scope)}
+              onStartOptional={() => requestStart("daily-optional")}
             />
             <StudyOtherWays
               focused={{
@@ -573,7 +601,7 @@ export default function StudyPage() {
                 modePicker: studyModesEnabled ? (
                   <StudyModePicker policy={modePolicy} surface="simple" onChange={setModePolicy} />
                 ) : undefined,
-                onStart: () => startSession("simple"),
+                onStart: () => requestStart("simple"),
               }}
             />
           </>

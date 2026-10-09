@@ -164,4 +164,7 @@ export function useStudySessionRestore({
       startSession("custom");
     }
   }, [carryover, focused, loaded, mode, optional, required, restoreReady, startSession]);
+
+  /** Whether the restore for the current request has finished, resumed or not. */
+  return { settled: restoreReady };
 }

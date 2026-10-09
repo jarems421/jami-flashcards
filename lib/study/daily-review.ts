@@ -4,7 +4,11 @@ import type {
   DailyReviewStateData,
 } from "@/lib/study/daily-review-types";
 import { getStudyDayKey } from "@/lib/study/day";
-import { getMemoryRiskInfo, hasActiveMemoryRiskOverride } from "@/lib/study/memory-risk";
+import {
+  getMemoryRiskInfo,
+  hasActiveMemoryRiskOverride,
+  type MemoryRiskInfo,
+} from "@/lib/study/memory-risk";
 import type { PersistedStudySession } from "@/lib/study/session";
 
 export type DailyReviewBucket = "weak" | "medium" | "easy";
@@ -73,9 +77,7 @@ export function isCardEligibleForDailyReview(card: Card, now: number) {
   return isCardDue(card, now) || hasActiveMemoryRiskOverride(card, now);
 }
 
-export function getDailyReviewBucket(card: Card, now = Date.now()): DailyReviewBucket {
-  const memoryRisk = getMemoryRiskInfo(card, now);
-
+function bucketOfRisk(memoryRisk: MemoryRiskInfo): DailyReviewBucket {
   if (memoryRisk.tier === "high") {
     return "weak";
   }
@@ -85,6 +87,10 @@ export function getDailyReviewBucket(card: Card, now = Date.now()): DailyReviewB
   }
 
   return "easy";
+}
+
+export function getDailyReviewBucket(card: Card, now = Date.now()): DailyReviewBucket {
+  return bucketOfRisk(getMemoryRiskInfo(card, now));
 }
 
 function getStudyPriorityTime(card: Card) {
@@ -140,41 +146,49 @@ function compareNewCardAge(a: Card, b: Card) {
   return a.id.localeCompare(b.id);
 }
 
-function compareStudyPriority(a: Card, b: Card, now: number) {
-  const riskScoreDelta =
-    getMemoryRiskInfo(b, now).score - getMemoryRiskInfo(a, now).score;
+/** A reviewed card with what decides its place, worked out once rather than at every comparison. */
+type RankedCard = { card: Card; riskScore: number; priorityTime: number };
+
+function compareStudyPriority(a: RankedCard, b: RankedCard) {
+  const riskScoreDelta = b.riskScore - a.riskScore;
   if (riskScoreDelta !== 0) {
     return riskScoreDelta;
   }
 
-  const priorityTimeDelta = getStudyPriorityTime(a) - getStudyPriorityTime(b);
+  const priorityTimeDelta = a.priorityTime - b.priorityTime;
   if (priorityTimeDelta !== 0) {
     return priorityTimeDelta;
   }
 
-  return a.createdAt - b.createdAt;
+  return a.card.createdAt - b.card.createdAt;
+}
+
+function sortByStudyPriority(ranked: RankedCard[]) {
+  return ranked.sort(compareStudyPriority).map(({ card }) => card);
 }
 
 export function sortCardsForDailyReview(cards: Card[], now = Date.now()) {
   const neverReviewedCards = cards
     .filter((card) => !hasCardReviewHistory(card))
     .sort(compareNewCardAge);
-  const reviewedCards = cards.filter((card) => hasCardReviewHistory(card));
-  const weakCards = reviewedCards
-    .filter((card) => getDailyReviewBucket(card, now) === "weak")
-    .sort((left, right) => compareStudyPriority(left, right, now));
-  const mediumCards = reviewedCards
-    .filter((card) => getDailyReviewBucket(card, now) === "medium")
-    .sort((left, right) => compareStudyPriority(left, right, now));
-  const easyCards = reviewedCards
-    .filter((card) => getDailyReviewBucket(card, now) === "easy")
-    .sort((left, right) => compareStudyPriority(left, right, now));
+  /*
+   * Each card's risk is worked out once, and its bucket read from it. Every
+   * comparison used to work out both cards' risks again, so sorting five
+   * thousand cards worked them out well over a hundred thousand times -- and
+   * Learn sorts its cards several times before it can draw.
+   */
+  const buckets: Record<DailyReviewBucket, RankedCard[]> = { weak: [], medium: [], easy: [] };
+  for (const card of cards) {
+    if (!hasCardReviewHistory(card)) continue;
+    const risk = getMemoryRiskInfo(card, now);
+    buckets[bucketOfRisk(risk)].push({ card, riskScore: risk.score, priorityTime: getStudyPriorityTime(card) });
+  }
 
   return {
     neverReviewedCards,
-    weakCards,
-    mediumCards,
-    easyCards,
+    weakCards: sortByStudyPriority(buckets.weak),
+    mediumCards: sortByStudyPriority(buckets.medium),
+    easyCards: sortByStudyPriority(buckets.easy),
   };
 }
 
@@ -323,4 +337,100 @@ export function shouldPauseDailyReviewStateRefresh(
       activeSession.kind !== "custom" &&
       state.studyDayKey === activeSession.studyDayKey
   );
+}
+
+function areSameIds(left: string[], right: string[]) {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function keepKnownIds(ids: string[], allowedIds: Set<string>) {
+  return ids.filter((id) => allowedIds.has(id));
+}
+
+function keepKnownRetryCounts(retryCounts: Record<string, number>, allowedIds: Set<string>) {
+  return Object.fromEntries(Object.entries(retryCounts).filter(([cardId]) => allowedIds.has(cardId)));
+}
+
+/** Today's state with its queues brought up to date with `cards`, or null when nothing changed. */
+function refreshCurrentDailyReviewState(
+  state: DailyReviewState,
+  cards: Card[],
+  now: number
+): DailyReviewStateData | null {
+  const { requiredCards, optionalCards, carryoverRequiredCards } = buildDailyReviewQueues(
+    cards,
+    now,
+    state.carryoverRequiredCardIds
+  );
+  const requiredCardIds = requiredCards.map((card) => card.id);
+  const optionalCardIds = optionalCards.map((card) => card.id);
+  const carryoverRequiredCardIds = carryoverRequiredCards.map((card) => card.id);
+  const requiredIdSet = new Set(requiredCardIds);
+  const optionalIdSet = new Set(optionalCardIds);
+  const completedRequiredCardIds = keepKnownIds(state.completedRequiredCardIds, requiredIdSet);
+  const completedOptionalCardIds = keepKnownIds(state.completedOptionalCardIds, optionalIdSet);
+  const parkedRequiredCardIds = keepKnownIds(state.parkedRequiredCardIds, requiredIdSet);
+  const requiredRetryCounts = keepKnownRetryCounts(state.requiredRetryCounts, requiredIdSet);
+
+  const changed =
+    !areSameIds(state.requiredCardIds, requiredCardIds) ||
+    !areSameIds(state.optionalCardIds, optionalCardIds) ||
+    !areSameIds(state.carryoverRequiredCardIds, carryoverRequiredCardIds) ||
+    !areSameIds(state.completedRequiredCardIds, completedRequiredCardIds) ||
+    !areSameIds(state.completedOptionalCardIds, completedOptionalCardIds) ||
+    !areSameIds(state.parkedRequiredCardIds, parkedRequiredCardIds) ||
+    Object.keys(state.requiredRetryCounts).length !== Object.keys(requiredRetryCounts).length;
+
+  if (!changed) {
+    return null;
+  }
+
+  return {
+    studyDayKey: state.studyDayKey,
+    generatedAt: state.generatedAt,
+    requiredCardIds,
+    optionalCardIds,
+    carryoverRequiredCardIds,
+    completedRequiredCardIds,
+    completedOptionalCardIds,
+    parkedRequiredCardIds,
+    requiredRetryCounts,
+    updatedAt: now,
+  };
+}
+
+export type DailyReviewStatePlan = {
+  state: DailyReviewState;
+  /** What to store in its place, or null when the stored state is already right. */
+  save: DailyReviewStateData | null;
+};
+
+/**
+ * Today's Daily Review for `cards`, worked out from what is stored.
+ *
+ * Left as it is while a session is under way on it, brought up to date with
+ * the cards when it is already today's, and built afresh on a new study day,
+ * carrying over what the last one left unfinished. Nothing is written here:
+ * Learn draws its first look from this before the server's cards arrive, and
+ * saves only what it works out from those.
+ */
+export function planDailyReviewState(
+  existing: DailyReviewState | null,
+  cards: Card[],
+  now: number,
+  activeSession: PersistedStudySession | null
+): DailyReviewStatePlan {
+  if (existing && shouldPauseDailyReviewStateRefresh(existing, activeSession)) {
+    return { state: existing, save: null };
+  }
+
+  if (existing?.studyDayKey === getStudyDayKey(now)) {
+    const refreshed = refreshCurrentDailyReviewState(existing, cards, now);
+    return refreshed
+      ? { state: { id: existing.id, ...refreshed }, save: refreshed }
+      : { state: existing, save: null };
+  }
+
+  const save = buildDailyReviewStateData(cards, now, existing);
+  return { state: { id: DAILY_REVIEW_STATE_DOC_ID, ...save }, save };
 }

@@ -174,6 +174,20 @@ export async function loadUserCards(
   return readThroughCache(key, load, options);
 }
 
+/**
+ * The cards this device already holds -- this visit's last read of them, or
+ * else the copy kept on the device -- without asking the server, or null.
+ *
+ * For drawing a page while the server's set is on its way. Never for grading:
+ * a set known to be out of date since a write is not returned, but anything
+ * else may still be behind the server.
+ */
+export async function peekUserCards(userId: string): Promise<Card[] | null> {
+  const held = peekCachedRead<Card[]>({ collection: "cards", userId });
+  if (held) return held.freshness === "superseded" ? null : held.value;
+  return readDeviceCardSet(userId);
+}
+
 /** The server's set, kept on the device unless a write landed while it was read. */
 async function loadAndKeepUserCards(userId: string) {
   const revisionAtStart = getCachedReadRevision(userId);

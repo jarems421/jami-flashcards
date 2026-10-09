@@ -27,10 +27,11 @@ scroll sideways.** Long equations must scroll inside their own box.
    without a console error or a Firebase permission error.
 3. Install the app (PWA), open it from the home screen while signed in, and
    confirm it reaches Today.
-4. On an account with thousands of cards, open Cards, Progress and Topics
-   twice. The second visit draws at once from the device copy and redraws when
-   the server's set arrives. Edit a card, then reload: the edit is never shown
-   undone.
+4. On an account with thousands of cards, open Cards, Progress, Topics and
+   Learn twice. The second visit draws at once from the device copy and
+   redraws when the server's set arrives. Edit a card, then reload: the edit
+   is never shown undone. On Learn's second visit, tap Start Daily Review at
+   once: the session opens on the server's cards as soon as they land.
 
 ## 2. Notebooks — highest data-loss risk
 

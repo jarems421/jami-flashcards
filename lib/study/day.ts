@@ -46,7 +46,8 @@ function zonedDateFormatter(timeZone: string) {
   return formatter;
 }
 
-function getZonedDateParts(timestamp: number, timeZone = STUDY_TIME_ZONE): ZonedDateParts {
+/** What the zone's clock reads at `timestamp`, asked of Intl directly. */
+function readZonedDateParts(timestamp: number, timeZone: string): ZonedDateParts {
   const parts = zonedDateFormatter(timeZone).formatToParts(new Date(timestamp));
   const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]));
 
@@ -57,6 +58,59 @@ function getZonedDateParts(timestamp: number, timeZone = STUDY_TIME_ZONE): Zoned
     hour: Number(lookup.hour),
     minute: Number(lookup.minute),
     second: Number(lookup.second),
+  };
+}
+
+/** How far the zone's clock is ahead of UTC at `timestamp`, in milliseconds. */
+function readZoneOffset(timestamp: number, timeZone: string) {
+  const parts = readZonedDateParts(timestamp, timeZone);
+  const wall = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return wall - Math.floor(timestamp / 1000) * 1000;
+}
+
+/**
+ * The window a zone's offset is learned for, and how many are remembered.
+ *
+ * `formatToParts` is slow -- tens of microseconds a call -- and Learn asked it
+ * for the study day of every card's due date, several times a card, so a
+ * 5,000-card account spent over two seconds of a slowed phone's main thread in
+ * it before Learn could show anything. A zone's offset only changes at its
+ * clock changes, so it is learned once per window and the clock is worked out
+ * from it.
+ */
+const OFFSET_WINDOW_MS = 6 * 60 * 60 * 1000;
+const MAX_REMEMBERED_WINDOWS = 4_096;
+/** Per zone, each window's offset -- or null where the clock changes inside it. */
+const zoneOffsets = new Map<string, Map<number, number | null>>();
+
+function getZonedDateParts(timestamp: number, timeZone = STUDY_TIME_ZONE): ZonedDateParts {
+  if (!Number.isFinite(timestamp)) return readZonedDateParts(timestamp, timeZone);
+  let windows = zoneOffsets.get(timeZone);
+  if (!windows) {
+    windows = new Map();
+    zoneOffsets.set(timeZone, windows);
+  }
+  const window = Math.floor(timestamp / OFFSET_WINDOW_MS);
+  let offset = windows.get(window);
+  if (offset === undefined) {
+    // Trusted for the window only if it reads the same at both ends: a clock
+    // change inside it is read directly, timestamp by timestamp.
+    const start = window * OFFSET_WINDOW_MS;
+    const atStart = readZoneOffset(start, timeZone);
+    offset = atStart === readZoneOffset(start + OFFSET_WINDOW_MS - 1_000, timeZone) ? atStart : null;
+    if (windows.size >= MAX_REMEMBERED_WINDOWS) windows.clear();
+    windows.set(window, offset);
+  }
+  if (offset === null) return readZonedDateParts(timestamp, timeZone);
+
+  const wall = new Date(timestamp + offset);
+  return {
+    year: wall.getUTCFullYear(),
+    month: wall.getUTCMonth() + 1,
+    day: wall.getUTCDate(),
+    hour: wall.getUTCHours(),
+    minute: wall.getUTCMinutes(),
+    second: wall.getUTCSeconds(),
   };
 }
 
@@ -109,6 +163,12 @@ function localDateTimeToUtcTimestamp(
 }
 
 /**
+ * The last study day asked for. Sorting a queue asks it of the same moment once
+ * per card -- is today's struggle mark still on it? -- thousands of times over.
+ */
+let lastStudyDay: { timestamp: number; timeZone: string; key: string } | null = null;
+
+/**
  * The study day `timestamp` falls in, as "YYYY-MM-DD".
  *
  * The app keeps every student's days in study time (London). A time zone is
@@ -116,13 +176,16 @@ function localDateTimeToUtcTimestamp(
  * at 4pm where they are, once per day of theirs.
  */
 export function getStudyDayKey(timestamp = Date.now(), timeZone = STUDY_TIME_ZONE) {
+  if (lastStudyDay?.timestamp === timestamp && lastStudyDay.timeZone === timeZone) return lastStudyDay.key;
   const parts = getZonedDateParts(timestamp, timeZone);
   const boundaryDate =
     parts.hour >= STUDY_DAY_BOUNDARY_HOUR
       ? { year: parts.year, month: parts.month, day: parts.day }
       : shiftCalendarDate(parts.year, parts.month, parts.day, -1);
 
-  return formatDayKey(boundaryDate.year, boundaryDate.month, boundaryDate.day);
+  const key = formatDayKey(boundaryDate.year, boundaryDate.month, boundaryDate.day);
+  lastStudyDay = { timestamp, timeZone, key };
+  return key;
 }
 
 export function shiftStudyDayKey(dayKey: string, deltaDays: number) {

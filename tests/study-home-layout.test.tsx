@@ -51,12 +51,14 @@ vi.mock("@/services/constellation/constellations", () => ({
 vi.mock("@/services/study/daily-review", () => ({
   ensureDailyReviewState: vi.fn().mockResolvedValue(fixtures.dailyReviewState),
   ensureStudyStateSetup: vi.fn().mockResolvedValue(undefined),
+  loadDailyReviewState: vi.fn().mockResolvedValue(fixtures.dailyReviewState),
   markDailyReviewCardComplete: vi.fn(),
   recordDailyReviewWeakAttempt: vi.fn(),
 }));
 
 vi.mock("@/services/study/cards", () => ({
   loadUserCards: vi.fn().mockResolvedValue([fixtures.card]),
+  peekUserCards: vi.fn().mockResolvedValue(null),
   recordSimpleStudyResult: vi.fn(),
   updateCardAfterReview: vi.fn(),
 }));

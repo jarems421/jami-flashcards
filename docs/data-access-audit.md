@@ -103,6 +103,14 @@ is now delivered faster:
   arrives. The copy is never the truth: any write by the student drops it, a
   set read while a write landed is not kept, anything that grades, edits or
   schedules a card reads with `{ force: true }`, and sign-out clears it.
+  Learn grades cards, so it still reads them with `{ force: true }`, but it
+  draws a first look from the device's cards (`peekUserCards`) while they
+  load. Nothing is graded, saved or resumed from that look, and a session
+  asked for during it starts on the server's cards once they land.
+- **Today's Daily Review is saved behind the page.** `ensureDailyReviewState`
+  returns the worked-out state without waiting for the save. The device sends
+  its writes in order, and a retry transaction waits for the save to land
+  first.
 - **Learn's offline copy** lives in IndexedDB too
   (`services/study/offline-study-snapshot.ts`), written at most every 1.5
   seconds, off the critical path.
@@ -110,6 +118,14 @@ is now delivered faster:
 Measured on a 5,000-card account over 4G with a 4x slower CPU: Today 25.7s to
 5.9s and Learn 19.3s to 5.9s on a first visit; Cards 12.9s to 1.7s, Progress
 14.1s to 2.1s and Topics 14.3s to 1.1s with a device copy.
+
+Learn, re-measured on the emulators in the same conditions (9 October 2026):
+6.6s to 1.5s on a return visit and 6.5s to 3.4s on a first. Besides the first
+look and the Daily Review save, the gains came from reading the stored Daily
+Review beside the cards, leaving constellation setup out of the way, working
+out each card's memory risk once per sort rather than at every comparison, and
+reading a zone's clock offset once per six hours rather than asking Intl for
+every card (`lib/study/day.ts`).
 
 Re-measure with `scripts/measure-data-shape.mjs` before adding pagination, a
 search index or stored summaries.

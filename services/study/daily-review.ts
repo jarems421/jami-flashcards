@@ -17,18 +17,15 @@ import {
   rememberMigrationSettled,
 } from "@/lib/app/settled-migrations";
 import {
-  buildDailyReviewQueues,
-  buildDailyReviewStateData,
   DAILY_REVIEW_STATE_DOC_ID,
   DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
   normalizeDailyReviewState,
-  shouldPauseDailyReviewStateRefresh,
+  planDailyReviewState,
   STUDY_ACTIVITY_SCHEMA_VERSION,
   STUDY_STATE_META_DOC_ID,
   type DailyReviewState,
 } from "@/lib/study/daily-review";
 import type { Card } from "@/lib/study/cards";
-import { getStudyDayKey } from "@/lib/study/day";
 import type { PersistedStudySession } from "@/lib/study/session";
 
 const LOAD_MS = 30_000;
@@ -36,85 +33,6 @@ const SAVE_MS = 30_000;
 
 function getStudyStateDoc(userId: string, docId: string) {
   return doc(db, "users", userId, "studyState", docId);
-}
-
-function areSameIds(left: string[], right: string[]) {
-  return (
-    left.length === right.length &&
-    left.every((id, index) => id === right[index])
-  );
-}
-
-function keepKnownIds(ids: string[], allowedIds: Set<string>) {
-  return ids.filter((id) => allowedIds.has(id));
-}
-
-function keepKnownRetryCounts(
-  retryCounts: Record<string, number>,
-  allowedIds: Set<string>
-) {
-  return Object.fromEntries(
-    Object.entries(retryCounts).filter(([cardId]) => allowedIds.has(cardId))
-  );
-}
-
-function refreshCurrentDailyReviewState(
-  state: DailyReviewState,
-  cards: Card[],
-  now: number
-) {
-  const { requiredCards, optionalCards, carryoverRequiredCards } = buildDailyReviewQueues(
-    cards,
-    now,
-    state.carryoverRequiredCardIds
-  );
-  const requiredCardIds = requiredCards.map((card) => card.id);
-  const optionalCardIds = optionalCards.map((card) => card.id);
-  const carryoverRequiredCardIds = carryoverRequiredCards.map((card) => card.id);
-  const requiredIdSet = new Set(requiredCardIds);
-  const optionalIdSet = new Set(optionalCardIds);
-  const completedRequiredCardIds = keepKnownIds(
-    state.completedRequiredCardIds,
-    requiredIdSet
-  );
-  const completedOptionalCardIds = keepKnownIds(
-    state.completedOptionalCardIds,
-    optionalIdSet
-  );
-  const parkedRequiredCardIds = keepKnownIds(
-    state.parkedRequiredCardIds,
-    requiredIdSet
-  );
-  const requiredRetryCounts = keepKnownRetryCounts(
-    state.requiredRetryCounts,
-    requiredIdSet
-  );
-
-  const changed =
-    !areSameIds(state.requiredCardIds, requiredCardIds) ||
-    !areSameIds(state.optionalCardIds, optionalCardIds) ||
-    !areSameIds(state.carryoverRequiredCardIds, carryoverRequiredCardIds) ||
-    !areSameIds(state.completedRequiredCardIds, completedRequiredCardIds) ||
-    !areSameIds(state.completedOptionalCardIds, completedOptionalCardIds) ||
-    !areSameIds(state.parkedRequiredCardIds, parkedRequiredCardIds) ||
-    Object.keys(state.requiredRetryCounts).length !==
-      Object.keys(requiredRetryCounts).length;
-
-  if (!changed) {
-    return null;
-  }
-
-  return {
-    ...state,
-    requiredCardIds,
-    optionalCardIds,
-    carryoverRequiredCardIds,
-    completedRequiredCardIds,
-    completedOptionalCardIds,
-    parkedRequiredCardIds,
-    requiredRetryCounts,
-    updatedAt: now,
-  };
 }
 
 export async function resetStudyActivityHistory(userId: string) {
@@ -198,46 +116,58 @@ export async function ensureDailyReviewState(
   userId: string,
   cards: Card[],
   now = Date.now(),
-  options: { activeSession?: PersistedStudySession | null } = {}
+  options: {
+    activeSession?: PersistedStudySession | null;
+    /**
+     * The stored state, already read. Learn reads it beside the cards rather
+     * than after them, since it does not depend on them.
+     */
+    existingState?: DailyReviewState | null;
+  } = {}
 ): Promise<DailyReviewState> {
-  const currentStudyDayKey = getStudyDayKey(now);
-  const existingState = await loadDailyReviewState(userId);
+  const existingState =
+    options.existingState !== undefined ? options.existingState : await loadDailyReviewState(userId);
+  const { state, save } = planDailyReviewState(existingState, cards, now, options.activeSession ?? null);
 
-  if (
-    existingState &&
-    shouldPauseDailyReviewStateRefresh(existingState, options.activeSession ?? null)
-  ) {
-    return existingState;
-  }
-
-  if (existingState?.studyDayKey === currentStudyDayKey) {
-    const refreshedState = refreshCurrentDailyReviewState(existingState, cards, now);
-    if (!refreshedState) {
-      return existingState;
-    }
-
-    const { id, ...stateToSave } = refreshedState;
-    await withTimeout(
-      setDoc(getStudyStateDoc(userId, id), stateToSave),
+  if (save) {
+    /*
+     * Saved behind the page rather than before it: waiting for the server's
+     * acknowledgement held Learn and Today back a full round trip on most
+     * visits. Nothing is lost by not waiting. This device sends its writes in
+     * the order they were made, so a card finished straight afterwards still
+     * lands on top of this state; a retry, which is a transaction and so goes
+     * to the server by its own way, waits for it (see `settledDailyReviewSave`);
+     * and a save that never lands is worked out again on the next visit.
+     */
+    const saved = withTimeout(
+      setDoc(getStudyStateDoc(userId, DAILY_REVIEW_STATE_DOC_ID), save),
       SAVE_MS,
-      "Refresh daily review state"
-    );
-
-    return refreshedState;
+      "Save daily review state"
+    ).catch((error) => {
+      console.warn("Saving today's Daily Review failed; it is worked out again next visit.", error);
+    });
+    savingDailyReview.set(userId, saved);
+    void saved.then(() => {
+      if (savingDailyReview.get(userId) === saved) savingDailyReview.delete(userId);
+    });
   }
 
-  const nextState = buildDailyReviewStateData(cards, now, existingState);
+  return state;
+}
 
-  await withTimeout(
-    setDoc(getStudyStateDoc(userId, DAILY_REVIEW_STATE_DOC_ID), nextState),
-    SAVE_MS,
-    "Save daily review state"
-  );
+/** Per student, the Daily Review save still on its way from this device. Never rejects. */
+const savingDailyReview = new Map<string, Promise<void>>();
 
-  return {
-    id: DAILY_REVIEW_STATE_DOC_ID,
-    ...nextState,
-  };
+/**
+ * Once this device's last Daily Review save has landed or failed.
+ *
+ * A transaction reads from the server and commits by its own way, not behind
+ * the writes this device has queued. One run before a save landed would read
+ * the old state and then be overwritten by it, so a retry counted in that
+ * moment would be lost.
+ */
+function settledDailyReviewSave(userId: string) {
+  return savingDailyReview.get(userId) ?? Promise.resolve();
 }
 
 export async function recordDailyReviewWeakAttempt(
@@ -247,6 +177,7 @@ export async function recordDailyReviewWeakAttempt(
   commitId?: string
 ) {
   const stateRef = getStudyStateDoc(userId, DAILY_REVIEW_STATE_DOC_ID);
+  await settledDailyReviewSave(userId);
 
   return withTimeout(
     (commitId

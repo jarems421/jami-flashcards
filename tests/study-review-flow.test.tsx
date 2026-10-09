@@ -75,6 +75,7 @@ vi.mock("@/services/constellation/constellations", () => ({
 vi.mock("@/services/study/daily-review", () => ({
   ensureDailyReviewState: vi.fn().mockResolvedValue(fixtures.dailyReviewState),
   ensureStudyStateSetup: vi.fn().mockResolvedValue(undefined),
+  loadDailyReviewState: vi.fn().mockResolvedValue(fixtures.dailyReviewState),
   markDailyReviewCardComplete: vi.fn().mockResolvedValue(undefined),
   recordDailyReviewWeakAttempt: vi
     .fn()
@@ -83,6 +84,8 @@ vi.mock("@/services/study/daily-review", () => ({
 
 vi.mock("@/services/study/cards", () => ({
   loadUserCards: vi.fn().mockResolvedValue(fixtures.cards),
+  // No cards on the device unless a test says so: Learn waits for the server's.
+  peekUserCards: vi.fn().mockResolvedValue(null),
   recordSimpleStudyResult: vi.fn().mockResolvedValue(undefined),
   updateCardAfterReview: vi.fn().mockResolvedValue(undefined),
 }));
@@ -158,7 +161,7 @@ vi.mock("@/services/study/activity", () => ({
 
 const { markDailyReviewCardComplete, recordDailyReviewWeakAttempt } =
   await import("@/services/study/daily-review");
-const { recordSimpleStudyResult, updateCardAfterReview } = await import(
+const { loadUserCards, peekUserCards, recordSimpleStudyResult, updateCardAfterReview } = await import(
   "@/services/study/cards"
 );
 const { applyGoalProgressForAnswer } = await import("@/services/study/goals");
@@ -326,6 +329,32 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   document.body.innerHTML = "";
+});
+
+describe("the first look, drawn from this device's cards", () => {
+  it("shows Learn before the server's cards land, and starts on the server's once they do", async () => {
+    act(() => root.unmount());
+    let deliver!: (cards: typeof fixtures.cards) => void;
+    vi.mocked(loadUserCards).mockReturnValueOnce(new Promise((resolve) => { deliver = resolve; }));
+    // The device last saw only the first card.
+    vi.mocked(peekUserCards).mockResolvedValueOnce([fixtures.cards[0]]);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<StudyPage />);
+    });
+    await settle();
+
+    expect(button("Start Daily Review")).toBeDefined();
+    await click("Start Daily Review");
+    // Asked for, but not started on the device's cards.
+    expect(currentCardId()).toBeUndefined();
+
+    await act(async () => deliver(fixtures.cards));
+    await settle();
+    await settle();
+    expect(currentCardId()).toBe("card-1");
+    expect(document.body.textContent).toMatch(/2\s*\/\s*2\s*cards remaining/);
+  });
 });
 
 describe("revealing a card", () => {
