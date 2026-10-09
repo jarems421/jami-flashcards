@@ -118,6 +118,43 @@ describe("compacting notebook ink", () => {
       expect(simplifyPolylinePath("Z", 0.25, 1)).toBeNull();
     });
 
+    /*
+     * js-draw writes a stroke away from the page corner with relative
+     * commands. Reading their offsets as positions saved a straight line from
+     * (300, 700) as a line to (200, 0), and every highlighter as a wedge back
+     * towards the corner.
+     */
+    it("reads relative commands as relative, as js-draw writes them", () => {
+      expect(simplifyPolylinePath("M300,700l200,0", 0.25, 1)?.d).toBe("M 300 700 L 500 700");
+      // Pairs after a command repeat it, and a sign starts a new number.
+      expect(simplifyPolylinePath("M10,10l5-5 5,5 0,10z", 0.25, 1)?.d).toBe(
+        "M 10 10 L 15 5 L 20 10 L 20 20 Z"
+      );
+      // Pairs after M are absolute linetos; after a leading m, relative ones.
+      expect(simplifyPolylinePath("M10,10 20,10 20,30", 0.25, 1)?.d).toBe("M 10 10 L 20 10 L 20 30");
+      expect(simplifyPolylinePath("m10,10 10,0 0,20", 0.25, 1)?.d).toBe("M 10 10 L 20 10 L 20 30");
+    });
+
+    it("keeps a real highlighter outline where it was drawn", () => {
+      // A chisel highlighter outline exactly as js-draw saved it: closed, relative.
+      const d = "M129,512.6l3.6-1.7 36.9,3 38.2-1.5 51-4.5 38.5,1.4 8.5,18.1-3.6,1.7-12.9,1.3-38.5,1.4-51-4.5-38.2,1.5-36.9-3";
+      const result = simplifyPolylinePath(d, 0.25, 1);
+      const numbers = (result?.d.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+      const xs = numbers.filter((_, index) => index % 2 === 0);
+      const ys = numbers.filter((_, index) => index % 2 === 1);
+      // Its points summed from (129, 512.6) run x 124.6-305.7, y 507.9-531.8.
+      expect(Math.min(...xs)).toBeCloseTo(124.6, 1);
+      expect(Math.max(...xs)).toBeCloseTo(305.7, 1);
+      expect(Math.min(...ys)).toBeCloseTo(507.9, 1);
+      expect(Math.max(...ys)).toBeCloseTo(531.8, 1);
+    });
+
+    it("refuses a path of several pieces rather than joining them", () => {
+      expect(simplifyPolylinePath("M 0 0 L 10 0 M 20 0 L 30 0", 0.25, 1)).toBeNull();
+      expect(simplifyPolylinePath("M0,0l10,0m10,0l10,0", 0.25, 1)).toBeNull();
+      expect(simplifyPolylinePath("M 0 0 L 10 0 Z L 5 5", 0.25, 1)).toBeNull();
+    });
+
     it("will not thin a closed outline below a drawable triangle", () => {
       // Three points within tolerance of one line still enclose the only area
       // this shape has; flattening it to two would erase the mark entirely.

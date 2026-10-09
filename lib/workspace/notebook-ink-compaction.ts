@@ -122,6 +122,66 @@ function formatNumber(value: number, precision: number) {
   return String(roundTo(value, precision));
 }
 
+/** A command letter, or one number in any form path data allows (`3.6-1.7`, `.5.5`, `1e-3`). */
+const PATH_TOKEN = /([MLZmlz])|([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)|[\s,]+/y;
+
+/**
+ * The points of a single `M ... L ... [Z]` path, in absolute page units, or
+ * null if it is anything else.
+ *
+ * Relative commands are read as relative. js-draw writes a stroke away from
+ * the page corner as `M129,512.6l3.6-1.7 36.9,3 ...`, and reading those
+ * offsets as positions -- which this once did -- saved every such stroke as
+ * a shape reaching back towards the corner. Pairs after a command repeat it,
+ * as SVG says (after `m`, as `l`). A path with a second sub-path is refused:
+ * thinning it as one line would join the pieces.
+ */
+function readPolylinePoints(d: string): { points: Point[]; closed: boolean } | null {
+  const points: Point[] = [];
+  const numbers: number[] = [];
+  let command: string | null = null;
+  let closed = false;
+  let moves = 0;
+  let current: Point = { x: 0, y: 0 };
+
+  PATH_TOKEN.lastIndex = 0;
+  while (PATH_TOKEN.lastIndex < d.length) {
+    const match = PATH_TOKEN.exec(d);
+    if (!match) return null;
+    const [, letter, number] = match;
+    if (closed && (letter || number)) return null;
+    if (letter) {
+      if (numbers.length > 0) return null;
+      if (letter === "Z" || letter === "z") {
+        if (points.length === 0) return null;
+        closed = true;
+        continue;
+      }
+      command = letter;
+      continue;
+    }
+    if (number === undefined) continue;
+    if (command === null) return null;
+    numbers.push(Number(number));
+    if (numbers.length < 2) continue;
+    const [x, y] = numbers.splice(0, 2);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const relative = command === "m" || command === "l";
+    if (command === "M" || command === "m") {
+      moves += 1;
+      if (moves > 1) return null;
+    }
+    // A leading `m` is measured from the origin, so it is absolute in effect.
+    current = relative && points.length > 0 ? { x: current.x + x, y: current.y + y } : { x, y };
+    points.push(current);
+    // Coordinates after a moveto are implicit linetos of the same kind.
+    if (command === "M") command = "L";
+    if (command === "m") command = "l";
+  }
+  if (numbers.length > 0 || moves !== 1) return null;
+  return { points, closed };
+}
+
 /**
  * Simplifies one `M ... L ... Z` path, or returns null if it is not one.
  *
@@ -133,21 +193,9 @@ export function simplifyPolylinePath(
   epsilon: number,
   precision: number
 ): { d: string; pointsBefore: number; pointsAfter: number } | null {
-  const commands = d.match(/[A-Za-z]/g) ?? [];
-  if (!commands.length) return null;
-  if (commands.some((command) => !"MLZmlz".includes(command))) return null;
-
-  const closed = /[Zz]\s*$/.test(d.trim());
-  const numbers = d.match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
-  if (numbers.length < 4 || numbers.length % 2 !== 0) return null;
-
-  const points: Point[] = [];
-  for (let index = 0; index < numbers.length; index += 2) {
-    const x = Number(numbers[index]);
-    const y = Number(numbers[index + 1]);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    points.push({ x, y });
-  }
+  const read = readPolylinePoints(d);
+  if (!read || read.points.length < 2) return null;
+  const { points, closed } = read;
 
   const simplified = simplifyPoints(points, epsilon);
   // A closed outline that thins below a triangle has no area left to draw, so
