@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { decodeInkDocument, encodeInkDocument, quantizeInkDocument } from "@/lib/ink/codec";
 import { base64UrlToBytes, bytesToBase64Url } from "@/lib/ink/bytes";
-import { emptyInkDocument, type InkDocument, type InkPathCommand } from "@/lib/ink/model";
+import {
+  emptyInkDocument,
+  inkItemLayer,
+  type InkDocument,
+  type InkPathCommand,
+  type InkUnknownItem,
+} from "@/lib/ink/model";
 import { formatSvgPathData } from "@/lib/ink/path";
 import { docOf, lineShape, outline, randomInkDocument, seededRandom } from "./support/ink-fixtures";
 
@@ -98,7 +104,9 @@ describe("ink codec", () => {
     const random = seededRandom(7);
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     for (let i = 0; i < 2000; i += 1) {
-      const at = 3 + Math.floor(random() * (text.length - 3));
+      // Past the version, minReader and count bytes: a higher version byte is
+      // allowed to decode (and re-encodes as 3), so it is checked separately.
+      const at = 7 + Math.floor(random() * (text.length - 7));
       const mutated = text.slice(0, at) + alphabet[Math.floor(random() * 64)] + text.slice(at + 1);
       const decoded = decodeInkDocument(mutated);
       if (decoded) expect(encodeInkDocument(decoded)).toBe(mutated);
@@ -111,7 +119,7 @@ describe("ink codec", () => {
     }
   });
 
-  it("rejects the wrong prefix, version, padding and characters", () => {
+  it("rejects the wrong prefix, padding and characters", () => {
     const text = encodeInkDocument(sampleDocument());
     expect(decodeInkDocument(text.slice(3))).toBeNull();
     expect(decodeInkDocument("j2:" + text.slice(3))).toBeNull();
@@ -119,38 +127,123 @@ describe("ink codec", () => {
     expect(decodeInkDocument(text + "+")).toBeNull();
     expect(decodeInkDocument(text + "A")).toBeNull();
     expect(decodeInkDocument("")).toBeNull();
-    expect(decodeInkDocument(wrap([2, 0]))).toBeNull();
   });
 
-  it("rejects unknown kinds, absurd counts and trailing bytes", () => {
-    // version 3, one item of kind 9
-    expect(decodeInkDocument(wrap([3, 1, 9, 1, 97, 1]))).toBeNull();
+  it("checks the version and minReader header", () => {
+    // [version, minReader, itemCount]
+    expect(decodeInkDocument(wrap([3, 3, 0]))).toEqual(emptyInkDocument());
+    // A reader below minReader gives up: the escape hatch for incompatible changes.
+    expect(decodeInkDocument(wrap([4, 4, 0]))).toBeNull();
+    expect(decodeInkDocument(wrap([3, 4, 0]))).toBeNull();
+    // A newer writer that still allows this reader is read as version 3.
+    expect(decodeInkDocument(wrap([4, 3, 0]))).toEqual(emptyInkDocument());
+    // Nothing older than 3 exists, and a writer cannot need a newer reader than itself.
+    expect(decodeInkDocument(wrap([2, 2, 0]))).toBeNull();
+    expect(decodeInkDocument(wrap([3, 2, 0]))).toBeNull();
+    expect(decodeInkDocument(wrap([3, 0x83, 0x00, 0]))).toBeNull();
+  });
+
+  it("rejects absurd counts and trailing bytes", () => {
     // claims 100,000 items in a handful of bytes
-    expect(decodeInkDocument(wrap([3, 0xa0, 0x8d, 0x06]))).toBeNull();
+    expect(decodeInkDocument(wrap([3, 3, 0xa0, 0x8d, 0x06]))).toBeNull();
     // claims a million path commands in a few bytes
-    expect(decodeInkDocument(wrap([3, 1, 1, 1, 97, 1, 0xc0, 0x84, 0x3d, 1]))).toBeNull();
+    expect(decodeInkDocument(wrap([3, 3, 1, 1, 1, 97, 1, 3, 0xc0, 0x84, 0x3d]))).toBeNull();
     // a trailing byte after a valid empty document
-    expect(decodeInkDocument(wrap([3, 0, 0]))).toBeNull();
-    // a shape on the highlighter layer
-    const shape = base64UrlToBytes(encodeInkDocument(docOf(lineShape("a", 0, 0, 1, 1))).slice(3));
-    const patched = Uint8Array.from(shape);
-    patched[5] = 0; // the layer byte follows the one-byte id
-    expect(decodeInkDocument("j3:" + bytesToBase64Url(patched))).toBeNull();
+    expect(decodeInkDocument(wrap([3, 3, 0, 0]))).toBeNull();
+    // kind 0 is reserved
+    expect(decodeInkDocument(wrap([3, 3, 1, 0, 1, 97, 1, 0]))).toBeNull();
   });
 
-  it("rejects duplicate ids", () => {
-    const doc = docOf(lineShape("a", 0, 0, 1, 1), lineShape("b", 0, 0, 1, 1));
-    const bytes = Uint8Array.from(base64UrlToBytes(encodeInkDocument(doc).slice(3)));
-    // The second id is the only byte equal to 'b' directly after an id length of 1.
-    const at = Array.from(bytes).findIndex((byte, i) => byte === 98 && bytes[i - 1] === 1);
-    expect(at).toBeGreaterThan(0);
-    bytes[at] = 97;
+  it("rejects a shape on the highlighter layer", () => {
+    const bytes = Uint8Array.from(
+      base64UrlToBytes(encodeInkDocument(docOf(lineShape("a", 0, 0, 1, 1))).slice(3))
+    );
+    // [version, minReader, count, kind, idLength, 'a', layer, ...]
+    expect(bytes[6]).toBe(1);
+    bytes[6] = 0;
     expect(decodeInkDocument("j3:" + bytesToBase64Url(bytes))).toBeNull();
+  });
+
+  it("bounds a known payload by its declared length", () => {
+    const bytes = Array.from(
+      base64UrlToBytes(encodeInkDocument(docOf(lineShape("a", 0, 0, 1, 1))).slice(3))
+    );
+    const lengthAt = 7;
+    expect(bytes[lengthAt]).toBe(bytes.length - 8);
+    // Longer than its contents (extra byte inside the payload).
+    const longer = [...bytes.slice(0, lengthAt), bytes[lengthAt] + 1, ...bytes.slice(lengthAt + 1), 0];
+    expect(decodeInkDocument(wrap(longer))).toBeNull();
+    // Shorter than its contents.
+    const shorter = [...bytes.slice(0, lengthAt), bytes[lengthAt] - 1, ...bytes.slice(lengthAt + 1)];
+    expect(decodeInkDocument(wrap(shorter))).toBeNull();
+    // Claiming more bytes than exist.
+    const missing = [...bytes.slice(0, lengthAt), bytes[lengthAt] + 5, ...bytes.slice(lengthAt + 1)];
+    expect(decodeInkDocument(wrap(missing))).toBeNull();
+  });
+
+  it("keeps items of an unknown kind, byte for byte", () => {
+    // version 3, minReader 3, three items: a known shape, kind 9 with a payload, then kind 7.
+    const doc = docOf(lineShape("a", 0, 0, 1, 1));
+    const known = Array.from(base64UrlToBytes(encodeInkDocument(doc).slice(3))).slice(3);
+    const future = [9, 1, 98, 0, 3, 7, 8, 9];
+    const later = [7, 1, 99, 1, 0];
+    const text = wrap([3, 3, 3, ...known, ...future, ...later]);
+    const decoded = decodeInkDocument(text);
+    expect(decoded?.items.map((item) => item.kind)).toEqual(["shape", "unknown", "unknown"]);
+    expect(decoded?.items[1]).toEqual({
+      kind: "unknown",
+      id: "b",
+      layerCode: 0,
+      code: 9,
+      payload: Uint8Array.from([7, 8, 9]),
+    });
+    expect(decoded && encodeInkDocument(decoded)).toBe(text);
+    expect(decoded && decodeInkDocument(encodeInkDocument(decoded))).toEqual(decoded);
+  });
+
+  it("keeps any layer byte on an unknown kind, but rejects one on a known kind", () => {
+    const known = Array.from(base64UrlToBytes(encodeInkDocument(docOf(lineShape("a", 0, 0, 1, 1))).slice(3))).slice(3);
+    const future = [9, 1, 98, 200, 3, 7, 8, 9];
+    const text = wrap([3, 3, 2, ...known, ...future]);
+    const decoded = decodeInkDocument(text);
+    expect(decoded?.items[1]).toMatchObject({ kind: "unknown", layerCode: 200 });
+    expect(decoded && encodeInkDocument(decoded)).toBe(text);
+    expect(inkItemLayer(decoded?.items[1] ?? lineShape("x", 0, 0, 1, 1))).toBe("pen");
+    expect(inkItemLayer({ kind: "unknown", id: "u", layerCode: 0, code: 9, payload: new Uint8Array() })).toBe(
+      "highlighter"
+    );
+    // The shape's layer byte follows kind, id length and the one-byte id.
+    const badKnown = [...known];
+    badKnown[3] = 7;
+    expect(decodeInkDocument(wrap([3, 3, 1, ...badKnown]))).toBeNull();
+    const unknown = (layerCode: number): InkUnknownItem => ({
+      kind: "unknown",
+      id: "u",
+      layerCode,
+      code: 9,
+      payload: new Uint8Array(),
+    });
+    expect(() => encodeInkDocument(docOf(unknown(256)))).toThrow(/layer code/);
+    expect(() => encodeInkDocument(docOf(unknown(-1)))).toThrow(/layer code/);
+    expect(() => encodeInkDocument(docOf(unknown(255)))).not.toThrow();
+  });
+
+  it("refuses to store an unknown item with a taken kind code", () => {
+    const unknown = (code: number): InkUnknownItem => ({
+      kind: "unknown",
+      id: "u",
+      layerCode: 1,
+      code,
+      payload: new Uint8Array(),
+    });
+    expect(() => encodeInkDocument(docOf(unknown(1)))).toThrow(/kind code/);
+    expect(() => encodeInkDocument(docOf(unknown(2.5)))).toThrow(/kind code/);
+    expect(() => encodeInkDocument(docOf(unknown(3)))).not.toThrow();
   });
 
   it("rejects non-canonical varints", () => {
     // item count 1 written as 0x81 0x00
-    expect(decodeInkDocument(wrap([3, 0x81, 0x00]))).toBeNull();
+    expect(decodeInkDocument(wrap([3, 3, 0x81, 0x00]))).toBeNull();
   });
 
   it("throws clear errors for documents it cannot store", () => {
@@ -161,6 +254,10 @@ describe("ink codec", () => {
     expect(() => encodeInkDocument(tooMany)).toThrow(/50000 items/);
     expect(() => encodeInkDocument(docOf(lineShape("x".repeat(65), 0, 0, 1, 1)))).toThrow(/id/);
     expect(() => encodeInkDocument(docOf(lineShape("", 0, 0, 1, 1)))).toThrow(/id/);
+    // A lone surrogate would be stored as U+FFFD and read back as a different id.
+    expect(() => encodeInkDocument(docOf(lineShape("a\ud800", 0, 0, 1, 1)))).toThrow(/well-formed/);
+    expect(() => encodeInkDocument(docOf(lineShape("\udc00a", 0, 0, 1, 1)))).toThrow(/well-formed/);
+    expect(() => encodeInkDocument(docOf(lineShape("a\ud83d\ude00", 0, 0, 1, 1)))).not.toThrow();
     expect(() => encodeInkDocument(docOf(lineShape("a", Number.NaN, 0, 1, 1)))).toThrow(
       /cannot be stored/
     );
@@ -168,6 +265,18 @@ describe("ink codec", () => {
     expect(() =>
       encodeInkDocument(docOf(lineShape("a", 0, 0, 1, 1), lineShape("a", 0, 0, 1, 1)))
     ).toThrow(/twice/);
+  });
+
+  it("refuses to write more text than it will read", () => {
+    const big = (id: string): InkUnknownItem => ({
+      kind: "unknown",
+      id,
+      layerCode: 1,
+      code: 3,
+      payload: new Uint8Array(20_000_000),
+    });
+    // 60 MB of payload is about 80 million characters, past the 48 million decode accepts.
+    expect(() => encodeInkDocument(docOf(big("a"), big("b"), big("c")))).toThrow(/too large/);
   });
 
   it("stores a 2,000-segment path in well under 40% of its SVG length", () => {

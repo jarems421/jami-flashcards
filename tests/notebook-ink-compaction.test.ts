@@ -149,6 +149,17 @@ describe("compacting notebook ink", () => {
       expect(Math.max(...ys)).toBeCloseTo(531.8, 1);
     });
 
+    it("refuses arcs, even ones the path reader would turn into lines", () => {
+      expect(simplifyPolylinePath("M 0 0 A 0 5 0 0 1 10 10", 0.25, 1)).toBeNull();
+      expect(simplifyPolylinePath("M 0 0 L 5 5 a 5 5 0 0 1 10 0", 0.25, 1)).toBeNull();
+    });
+
+    it("reads horizontal and vertical lines as the lines they are", () => {
+      expect(simplifyPolylinePath("M 10 10 H 20 V 30 h -10 Z", 0.25, 1)?.d).toBe(
+        "M 10 10 L 20 10 L 20 30 L 10 30 Z"
+      );
+    });
+
     it("refuses a path of several pieces rather than joining them", () => {
       expect(simplifyPolylinePath("M 0 0 L 10 0 M 20 0 L 30 0", 0.25, 1)).toBeNull();
       expect(simplifyPolylinePath("M0,0l10,0m10,0l10,0", 0.25, 1)).toBeNull();

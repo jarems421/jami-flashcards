@@ -50,6 +50,35 @@ describe("ink model", () => {
     expect(inkItemBounds(stroked("miter", 10))).toEqual({ minX: -10, minY: -10, maxX: 70, maxY: 50 });
   });
 
+  it("reaches the corner of a square cap on a diagonal", () => {
+    const diagonal: InkOutlineItem = {
+      ...outline("d", [
+        { op: "M", x: 0, y: 0 },
+        { op: "L", x: 10, y: 10 },
+      ]),
+      paint: {
+        fill: null,
+        stroke: { color: BLACK, width: 10, cap: "square", join: "round" },
+        opacity: 1,
+      },
+    };
+    const bounds = inkItemBounds(diagonal);
+    // The cap's far corner is 5 * sqrt(2) along the diagonal, so 10 / sqrt(2) = 7.07 past each axis.
+    expect(bounds.maxX).toBeGreaterThanOrEqual(10 + 7.07);
+    expect(bounds.minY).toBeLessThanOrEqual(-7.07);
+  });
+
+  it("counts a box with a NaN edge as intersecting rather than missing it", () => {
+    const damaged = { minX: Number.NaN, minY: 0, maxX: Number.NaN, maxY: 5 };
+    expect(inkBoxesIntersect(damaged, { minX: 100, minY: 0, maxX: 110, maxY: 4 })).toBe(true);
+  });
+
+  it("gives an unknown item no bounds", () => {
+    expect(
+      inkItemBounds({ kind: "unknown", id: "u", layerCode: 1, code: 9, payload: new Uint8Array(2) })
+    ).toEqual({ minX: 0, minY: 0, maxX: 0, maxY: 0 });
+  });
+
   it("bounds shapes with half their width", () => {
     expect(inkItemBounds(lineShape("l", 0, 0, 100, 50))).toEqual({
       minX: -2,

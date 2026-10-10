@@ -3,11 +3,28 @@
  *
  * Byte layout (all varints are little-endian base-128, zigzag where signed):
  *
- *   document  := version(3) itemCount:varint item*
- *   item      := kind id layer data
- *   kind      := 1 (outline) | 2 (shape)          unknown kinds are rejected
+ *   document  := version:byte minReader:varint itemCount:varint item*
+ *   version   := the writer's format version (3 today); never below minReader
+ *   minReader := the oldest reader version that may read this document. A
+ *                reader whose own version is lower returns null: the escape
+ *                hatch for a genuinely incompatible change. 3 today.
+ *
+ *   item      := kind:varint id layer payloadLength:varint payload
+ *   kind      := 1 (outline) | 2 (shape) | 3 or more (unknown to this reader)
  *   id        := byteLength:varint utf8Bytes       1-64 bytes, unique
- *   layer     := 0 (highlighter) | 1 (pen)         shapes are always pen
+ *   layer     := 0 (highlighter) | 1 (pen)         shapes are always pen; an
+ *                unknown kind may carry any byte 0-255 (a newer build's new
+ *                layer), kept raw so the page still opens
+ *   payload   := exactly payloadLength bytes, laid out per kind below
+ *
+ * Every item is framed with its layer and payload length so a reader can step
+ * over a kind it does not know. A newer build can add item kinds (pen and
+ * highlighter centrelines are next) and an older tab or rollback build still
+ * reads the page: the unknown item decodes to an `InkUnknownItem`, keeps its
+ * id, layer byte and payload bytes, and is written back byte for byte. A known
+ * kind's payload must be consumed exactly, so a change to an existing kind
+ * takes a new kind code (or a new minReader), never a longer payload.
+ *
  *   colour    := r g b alpha                       4 bytes, alpha = round(a * 255)
  *   point     := dx:zigzag dy:zigzag               in 1/16 unit, from the previous
  *                                                  point written in the same item
@@ -31,10 +48,12 @@
  * points are delta-coded too, because on a smooth curve each point is close to
  * the one before it, which is what makes a stroke a fraction of its SVG size.
  *
- * Decoding is strict and never throws: truncated data, trailing bytes, an
- * unknown kind, an overlong varint, a non-canonical base64url tail, duplicate
- * ids or absurd counts all return null. That also means each document has one
- * stored spelling, so `encode(decode(text)) === text` for any accepted text.
+ * Decoding is strict and never throws: truncated data, trailing bytes, a
+ * payload shorter or longer than its declared length, an overlong varint, a
+ * non-canonical base64url tail, duplicate ids, a minReader above this reader's
+ * version, or absurd counts all return null. Text this build wrote therefore
+ * has one spelling, so `encode(decode(text)) === text`. (A document written by
+ * a newer build with a higher version byte decodes, and re-encodes as 3.)
  */
 
 import { base64UrlToBytes, ByteReader, ByteWriter, bytesToBase64Url } from "@/lib/ink/bytes";
@@ -68,10 +87,13 @@ import type {
 export { quantizeInkDocument } from "@/lib/ink/codec-quantize";
 
 const PREFIX = "j3:";
+/** The version this build writes, and the newest format it can read. */
 const VERSION = 3;
 
 const KIND_OUTLINE = 1;
 const KIND_SHAPE = 2;
+/** Kind codes below this are taken; a code at or above it is an unknown item. */
+const FIRST_UNKNOWN_KIND = 3;
 const LAYERS: readonly InkLayer[] = ["highlighter", "pen"];
 const CAPS: readonly InkCap[] = ["round", "butt", "square"];
 const JOINS: readonly InkJoin[] = ["round", "miter", "bevel"];
@@ -165,8 +187,8 @@ function writePaint(out: ByteWriter, paint: InkPaint): void {
   if (paint.stroke) {
     writeColor(out, paint.stroke.color);
     writeUnsignedUnits(out, paint.stroke.width, "stroke width");
-    out.writeByte(CAPS.indexOf(paint.stroke.cap));
-    out.writeByte(JOINS.indexOf(paint.stroke.join));
+    out.writeByte(enumCode(CAPS, paint.stroke.cap, "cap"));
+    out.writeByte(enumCode(JOINS, paint.stroke.join, "join"));
   }
   if (!Number.isFinite(paint.opacity)) throw new Error("Ink opacity is not a number.");
   out.writeByte(toAlphaByte(paint.opacity));
@@ -201,7 +223,58 @@ function writeGeometry(out: ByteWriter, geometry: InkShapeGeometry): void {
   }
 }
 
+/** Strings with a lone surrogate would be stored as U+FFFD and read back changed. */
+function isWellFormedString(text: string): boolean {
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = text.charCodeAt(i + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      i += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** The byte for an option, or a clear Error rather than a wrapped -1. */
+function enumCode<T>(choices: readonly T[], value: T, what: string): number {
+  const code = choices.indexOf(value);
+  if (code < 0) throw new Error(`Ink ${what} "${String(value)}" cannot be stored.`);
+  return code;
+}
+
+function checkedLayerCode(code: number): number {
+  if (!Number.isInteger(code) || code < 0 || code > 255) {
+    throw new Error(`Ink layer code ${code} cannot be stored.`);
+  }
+  return code;
+}
+
+/** The kind code and the payload bytes of an item. */
+function itemPayload(item: InkItem): { kind: number; payload: Uint8Array } {
+  const body = new ByteWriter();
+  switch (item.kind) {
+    case "outline":
+      writeCommands(body, item.path);
+      writePaint(body, item.paint);
+      return { kind: KIND_OUTLINE, payload: body.toBytes() };
+    case "shape":
+      writeColor(body, item.color);
+      writeUnsignedUnits(body, item.width, "shape width");
+      writeGeometry(body, item.shape);
+      return { kind: KIND_SHAPE, payload: body.toBytes() };
+    case "unknown":
+      if (!Number.isSafeInteger(item.code) || item.code < FIRST_UNKNOWN_KIND) {
+        throw new Error(`Ink item kind code ${item.code} cannot be stored.`);
+      }
+      return { kind: item.code, payload: item.payload };
+  }
+}
+
 function writeItem(out: ByteWriter, item: InkItem, seenIds: Set<string>): void {
+  if (!isWellFormedString(item.id)) throw new Error("Ink item id is not well-formed text.");
   const id = textEncoder.encode(item.id);
   if (id.length === 0 || id.length > MAX_ID_BYTES) {
     throw new Error(`Ink item id must be 1 to ${MAX_ID_BYTES} bytes.`);
@@ -209,18 +282,13 @@ function writeItem(out: ByteWriter, item: InkItem, seenIds: Set<string>): void {
   if (seenIds.has(item.id)) throw new Error(`Ink item id "${item.id}" is used twice.`);
   seenIds.add(item.id);
 
-  out.writeByte(item.kind === "outline" ? KIND_OUTLINE : KIND_SHAPE);
+  const { kind, payload } = itemPayload(item);
+  out.writeVarint(kind);
   out.writeVarint(id.length);
   out.writeBytes(id);
-  out.writeByte(LAYERS.indexOf(item.layer));
-  if (item.kind === "outline") {
-    writeCommands(out, item.path);
-    writePaint(out, item.paint);
-  } else {
-    writeColor(out, item.color);
-    writeUnsignedUnits(out, item.width, "shape width");
-    writeGeometry(out, item.shape);
-  }
+  out.writeByte(item.kind === "unknown" ? checkedLayerCode(item.layerCode) : enumCode(LAYERS, item.layer, "layer"));
+  out.writeVarint(payload.length);
+  out.writeBytes(payload);
 }
 
 /** Throws a clear Error if the document cannot be stored within the limits. */
@@ -230,6 +298,7 @@ export function encodeInkDocument(doc: InkDocument): string {
   }
   const out = new ByteWriter();
   out.writeByte(VERSION);
+  out.writeVarint(VERSION); // minReader
   out.writeVarint(doc.items.length);
   const seenIds = new Set<string>();
   let commandTotal = 0;
@@ -240,7 +309,12 @@ export function encodeInkDocument(doc: InkDocument): string {
     }
     writeItem(out, item, seenIds);
   }
-  return PREFIX + bytesToBase64Url(out.toBytes());
+  const bytes = out.toBytes();
+  // Refuse to write what decode would refuse to read, so a save never stores a lost page.
+  if (PREFIX.length + Math.ceil((bytes.length * 4) / 3) > MAX_ENCODED_CHARACTERS) {
+    throw new Error("Ink document is too large to store.");
+  }
+  return PREFIX + bytesToBase64Url(bytes);
 }
 
 /* ------------------------------------------------------------------ decode */
@@ -378,21 +452,47 @@ function readGeometry(input: ByteReader): InkShapeGeometry {
   }
 }
 
+/** Reads a known kind's payload, which must be used up exactly. */
+function readKnownPayload(
+  kind: number,
+  id: string,
+  layer: InkLayer,
+  payload: Uint8Array,
+  budget: { left: number }
+): InkItem {
+  const input = new ByteReader(payload);
+  let item: InkItem;
+  if (kind === KIND_OUTLINE) {
+    const path = readCommands(input, budget);
+    item = { kind: "outline", id, layer, path, paint: readPaint(input) };
+  } else {
+    if (layer !== "pen") reject("Shapes live on the pen layer.");
+    const color = readColor(input);
+    const width = readUnsignedUnits(input);
+    item = { kind: "shape", id, layer: "pen", color, width, shape: readGeometry(input) };
+  }
+  if (input.remaining !== 0) reject("Payload is longer than its contents.");
+  return item;
+}
+
 function readItem(input: ByteReader, budget: { left: number }): InkItem {
-  const kind = input.readByte();
-  if (kind !== KIND_OUTLINE && kind !== KIND_SHAPE) reject("Unknown item kind.");
+  const kind = input.readVarint();
+  if (kind < 1) reject("Bad item kind.");
   const idLength = input.readVarint();
   if (idLength < 1 || idLength > MAX_ID_BYTES) reject("Bad id length.");
   const id = textDecoder.decode(input.readBytes(idLength));
-  const layer = readChoice(input, LAYERS);
-  if (kind === KIND_OUTLINE) {
-    const path = readCommands(input, budget);
-    return { kind: "outline", id, layer, path, paint: readPaint(input) };
+  const layerByte = input.readByte();
+  const payloadLength = input.readVarint();
+  if (payloadLength > input.remaining) reject("Payload is cut short.");
+  const payload = input.readBytes(payloadLength);
+  if (kind === KIND_OUTLINE || kind === KIND_SHAPE) {
+    // Known kinds keep the strict check; only unknown ones may carry a new layer.
+    const layer = LAYERS[layerByte];
+    if (layer === undefined) reject("Unknown option code.");
+    return readKnownPayload(kind, id, layer, payload, budget);
   }
-  if (layer !== "pen") reject("Shapes live on the pen layer.");
-  const color = readColor(input);
-  const width = readUnsignedUnits(input);
-  return { kind: "shape", id, layer: "pen", color, width, shape: readGeometry(input) };
+  // A kind from a newer build: keep it whole (copied, so it does not pin the input buffer).
+  return { kind: "unknown", id, layerCode: layerByte, code: kind, payload: payload.slice() };
 }
 
 /** Reads stored ink, or null if it is anything other than valid v3 data. */
@@ -400,7 +500,12 @@ export function decodeInkDocument(text: string): InkDocument | null {
   try {
     if (!text.startsWith(PREFIX) || text.length > MAX_ENCODED_CHARACTERS) return null;
     const input = new ByteReader(base64UrlToBytes(text.slice(PREFIX.length)));
-    if (input.readByte() !== VERSION) return null;
+    const version = input.readByte();
+    const minReader = input.readVarint();
+    // A writer cannot need a newer reader than itself, and every format starts at 3.
+    if (minReader < VERSION || version < minReader) return null;
+    // A newer build marked this page unreadable by older ones.
+    if (minReader > VERSION) return null;
     const count = input.readVarint();
     // An item takes several bytes, so a bigger count than bytes is a lie.
     if (count > MAX_INK_ITEMS || count > input.remaining) return null;

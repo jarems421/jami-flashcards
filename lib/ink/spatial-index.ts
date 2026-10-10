@@ -16,8 +16,14 @@ const OVERFLOW_CELL = -1;
 type CellRange = { c0: number; c1: number; r0: number; r1: number; overflow: boolean };
 
 function cellRange(box: InkBox): CellRange {
-  const overflow =
-    box.minX < GRID_MIN_X || box.maxX > GRID_MAX_X || box.minY < GRID_MIN_Y || box.maxY > GRID_MAX_Y;
+  // A NaN edge fails every comparison, so test for the in-grid case and treat
+  // everything else (off the grid, or not a number) as overflow.
+  const overflow = !(
+    box.minX >= GRID_MIN_X &&
+    box.maxX <= GRID_MAX_X &&
+    box.minY >= GRID_MIN_Y &&
+    box.maxY <= GRID_MAX_Y
+  );
   const column = (x: number) =>
     Math.min(COLUMNS - 1, Math.max(0, Math.floor((x - GRID_MIN_X) / CELL_SIZE)));
   const row = (y: number) =>
@@ -83,6 +89,15 @@ export class InkSpatialIndex {
         if (candidate && inkBoxesIntersect(candidate, box)) found.add(id);
       }
     });
+    // Off-grid and non-finite boxes live only in the overflow bucket, and any
+    // query might meet them, so it is always checked (it is usually empty).
+    const overflow = this.cells.get(OVERFLOW_CELL);
+    if (overflow) {
+      for (const id of overflow) {
+        const candidate = this.boxes.get(id);
+        if (candidate && inkBoxesIntersect(candidate, box)) found.add(id);
+      }
+    }
     return Array.from(found);
   }
 

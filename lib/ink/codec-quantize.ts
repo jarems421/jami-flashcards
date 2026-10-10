@@ -34,7 +34,11 @@ export const MAX_QUANTIZED = 2 ** 28;
 /** Radians; far beyond any real rotation, but small enough to quantise exactly. */
 export const MAX_ROTATION = 1_000_000;
 
-/** `+ 0` turns -0 into 0, so quantised documents compare equal under `toEqual`. */
+/**
+ * `+ 0` turns -0 into 0, so quantised documents compare equal under `toEqual`.
+ * Math.round rounds halves up (toward +Infinity), the same everywhere, so the
+ * stored value never depends on the engine.
+ */
 function round(value: number): number {
   return Math.round(value) + 0;
 }
@@ -134,6 +138,8 @@ function quantizeGeometry(geometry: InkShapeGeometry): InkShapeGeometry {
 }
 
 function quantizeItem(item: InkItem): InkItem {
+  // Unknown items are opaque bytes; there is nothing to round.
+  if (item.kind === "unknown") return item;
   if (item.kind === "outline") {
     return {
       kind: "outline",

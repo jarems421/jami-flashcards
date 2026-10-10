@@ -6,6 +6,7 @@ import { expect, test, type CDPSession, type Page } from "@playwright/test";
 import { E2E_NOTEBOOK_ID, E2E_PAGE_IDS, E2E_PROJECT_ID } from "./fixtures";
 import {
   letter,
+  closeToolSettings,
   openToolSettings,
   penDown,
   penMoves,
@@ -204,7 +205,7 @@ async function chooseInSettings(page: Page, tool: "Pen (P)" | "Highlighter (H)" 
   const target = page.getByRole("button", { name: button, exact: true });
   await openToolSettings(page, tool, target);
   await target.click();
-  await page.keyboard.press("Escape");
+  await closeToolSettings(page, tool, target);
 }
 
 async function finish(notebook: Notebook, name: string, notes: ScenarioNotes, expected?: Parameters<typeof waitForSavedInk>[2]) {
@@ -377,7 +378,7 @@ test("precision-erased", async ({ page }) => {
   await openToolSettings(page, "Eraser (E)", precision);
   await precision.click();
   await page.getByRole("button", { name: "medium eraser", exact: true }).click();
-  await page.keyboard.press("Escape");
+  await closeToolSettings(page, "Eraser (E)", precision);
   // Straight down through the middle of the stroke.
   await penStroke(cdp, line(await at(0.5, 0.35), await at(0.5, 0.45), 20, 0));
 

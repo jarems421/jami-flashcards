@@ -1,21 +1,21 @@
 import type { InkColor } from "@/lib/ink/model";
 
 /** The few CSS names js-draw or Jami's own SVG could plausibly write. */
-const NAMED_COLORS: Record<string, readonly [number, number, number]> = {
-  black: [0, 0, 0],
-  white: [255, 255, 255],
-  red: [255, 0, 0],
-  green: [0, 128, 0],
-  blue: [0, 0, 255],
-  yellow: [255, 255, 0],
-  orange: [255, 165, 0],
-  purple: [128, 0, 128],
-  pink: [255, 192, 203],
-  cyan: [0, 255, 255],
-  magenta: [255, 0, 255],
-  gray: [128, 128, 128],
-  grey: [128, 128, 128],
-};
+const NAMED_COLORS: ReadonlyMap<string, readonly [number, number, number]> = new Map([
+  ["black", [0, 0, 0]],
+  ["white", [255, 255, 255]],
+  ["red", [255, 0, 0]],
+  ["green", [0, 128, 0]],
+  ["blue", [0, 0, 255]],
+  ["yellow", [255, 255, 0]],
+  ["orange", [255, 165, 0]],
+  ["purple", [128, 0, 128]],
+  ["pink", [255, 192, 203]],
+  ["cyan", [0, 255, 255]],
+  ["magenta", [255, 0, 255]],
+  ["gray", [128, 128, 128]],
+  ["grey", [128, 128, 128]],
+]);
 
 function clampChannel(value: number): number {
   return Math.min(255, Math.max(0, Math.round(value)));
@@ -25,6 +25,12 @@ function clampAlpha(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+/**
+ * Reads hex digits. 3 and 4 digit forms follow CSS (`#abc` is `#aabbcc`), but
+ * js-draw's `Color4.fromHex` differs and reads `#abc` as `#a0b0c0`. Pages it
+ * wrote never use the short form, and Jami writes only 6 or 8 digits (see
+ * `formatInkColor`), so both readers agree on everything saved.
+ */
 function parseHex(digits: string): InkColor | null {
   if (!/^[0-9a-f]+$/.test(digits)) return null;
   const length = digits.length;
@@ -69,7 +75,7 @@ export function parseInkColor(css: string): InkColor | null {
   if (text.startsWith("#")) return parseHex(text.slice(1));
   const functional = /^rgba?\(([^()]*)\)$/.exec(text);
   if (functional) return parseRgbFunction(functional[1]);
-  const named = NAMED_COLORS[text];
+  const named = NAMED_COLORS.get(text);
   return named ? { r: named[0], g: named[1], b: named[2], a: 1 } : null;
 }
 

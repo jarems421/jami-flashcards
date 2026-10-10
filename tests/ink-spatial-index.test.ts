@@ -53,6 +53,16 @@ describe("InkSpatialIndex", () => {
     expect(index.query({ minX: 0, minY: 0, maxX: 10, maxY: 10 })).toEqual(["huge"]);
   });
 
+  it("still finds a box with a non-finite edge", () => {
+    const index = new InkSpatialIndex();
+    index.set("nan", { minX: Number.NaN, minY: 0, maxX: Number.NaN, maxY: 10 });
+    index.set("inf", { minX: 0, minY: 0, maxX: Number.POSITIVE_INFINITY, maxY: 10 });
+    expect(index.query({ minX: 100, minY: 2, maxX: 110, maxY: 4 }).sort()).toEqual(["inf", "nan"]);
+    expect(index.query({ minX: 5000, minY: 5, maxX: 5100, maxY: 6 }).sort()).toEqual(["inf", "nan"]);
+    index.delete("nan");
+    expect(index.query({ minX: 100, minY: 100, maxX: 110, maxY: 110 })).toEqual([]);
+  });
+
   it("replaces, deletes and clears", () => {
     const index = new InkSpatialIndex();
     index.set("a", { minX: 0, minY: 0, maxX: 10, maxY: 10 });

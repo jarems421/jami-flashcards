@@ -154,6 +154,18 @@ export async function openToolSettings(page: Page, tool: "Pen (P)" | "Highlighte
   await expect(visible).toBeVisible({ timeout: 5_000 });
 }
 
+/**
+ * Closes a tool's settings by pressing the tool again, as a student would.
+ * Never Escape: in the notebook Escape puts the pen down and picks the select
+ * tool, so every stroke after it is a selection drag and draws nothing.
+ */
+export async function closeToolSettings(page: Page, tool: "Pen (P)" | "Highlighter (H)" | "Eraser (E)", visible: Locator) {
+  if (!(await visible.isVisible().catch(() => false))) return;
+  await page.waitForTimeout(450);
+  await page.getByRole("button", { name: tool }).click();
+  await expect(visible).toBeHidden({ timeout: 5_000 });
+}
+
 export async function setPenThickness(page: Page, percent: number) {
   const slider = page.getByRole("slider", { name: "Pen thickness" });
   await openToolSettings(page, "Pen (P)", slider);
@@ -163,5 +175,5 @@ export async function setPenThickness(page: Page, percent: number) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }, percent);
-  await page.keyboard.press("Escape");
+  await closeToolSettings(page, "Pen (P)", slider);
 }

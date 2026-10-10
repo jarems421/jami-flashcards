@@ -26,6 +26,12 @@ describe("ink colour", () => {
     expect(parseInkColor("none")).toBeNull();
   });
 
+  it("does not mistake Object.prototype names for colours", () => {
+    for (const name of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) {
+      expect(parseInkColor(name)).toBeNull();
+    }
+  });
+
   it("returns null for anything unreadable", () => {
     for (const bad of ["", "#12", "#12345", "#ggg", "rgb(1,2)", "rgb(a,b,c)", "rgb(1 2 3 4 5)", "notacolour"]) {
       expect(parseInkColor(bad)).toBeNull();

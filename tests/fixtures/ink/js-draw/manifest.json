@@ -34,8 +34,107 @@
     "pressureVaried": false,
     "file": "highlighter.svg",
     "savedFrom": "ink record",
-    "svgBytes": 2643,
+    "svgBytes": 2687,
     "svgPathElements": 3
+  },
+  "pen-colours": {
+    "description": "Pen at its default thickness: one handwriting row in red, then one in green, picked from the pen settings colour presets.",
+    "strokes": {
+      "pen": 2
+    },
+    "colours": [
+      "red",
+      "green"
+    ],
+    "thicknessPercent": {
+      "pen": "default"
+    },
+    "pressureVaried": false,
+    "file": "pen-colours.svg",
+    "savedFrom": "ink record",
+    "svgBytes": 12269,
+    "svgPathElements": 2
+  },
+  "pen-pressure": {
+    "description": "Pen at 50% thickness with an iPad user agent (which turns pressure on): one handwriting row with pressure rising 0.2 to 0.9, one with pressure rising and falling.",
+    "strokes": {
+      "pen": 2
+    },
+    "colours": [
+      "black (default)"
+    ],
+    "thicknessPercent": {
+      "pen": 50
+    },
+    "pressureVaried": true,
+    "userAgent": "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+    "pressureSent": "0.2 to 0.9, as a ramp up and as a rise and fall",
+    "pressureObserved": {
+      "pointerMoves": 200,
+      "distinctValues": 72,
+      "min": 0,
+      "max": 0.8999999761581421
+    },
+    "pressureNote": "Pressure reached the page. Whether the editor applied it shows in the saved shapes, as outlines that widen and narrow.",
+    "file": "pen-pressure.svg",
+    "savedFrom": "ink record",
+    "svgBytes": 28615,
+    "svgPathElements": 2
+  },
+  "pen-straight-line": {
+    "description": "Pen at 40% thickness: one nearly straight stroke, then the pen held still for 1.5s before lifting, with the default Straighten and level setting, so it should snap to a line.",
+    "strokes": {
+      "pen": 1
+    },
+    "colours": [
+      "black (default)"
+    ],
+    "thicknessPercent": {
+      "pen": 40
+    },
+    "pressureVaried": false,
+    "holdMs": 1500,
+    "straightenAttempted": true,
+    "straightenNote": "Inspect the saved path: a snapped line has far fewer points than the 40 sent.",
+    "file": "pen-straight-line.svg",
+    "savedFrom": "ink record",
+    "svgBytes": 328,
+    "svgPathElements": 1
+  },
+  "pen-thick": {
+    "description": "Pen at 85% thickness: one handwriting row and one long, nearly straight stroke.",
+    "strokes": {
+      "pen": 2
+    },
+    "colours": [
+      "black (default)"
+    ],
+    "thicknessPercent": {
+      "pen": 85
+    },
+    "pressureVaried": false,
+    "file": "pen-thick.svg",
+    "savedFrom": "ink record",
+    "svgBytes": 9013,
+    "svgPathElements": 2
+  },
+  "pen-thin": {
+    "description": "Pen at 20% thickness: two handwriting rows, one letter loop, and a single dot (pen down and up at one point, no moves).",
+    "strokes": {
+      "pen": 3
+    },
+    "dots": 1,
+    "colours": [
+      "black (default)"
+    ],
+    "thicknessPercent": {
+      "pen": 20
+    },
+    "pressureVaried": false,
+    "file": "pen-thin.svg",
+    "savedFrom": "ink record",
+    "svgBytes": 12687,
+    "svgPathElements": 4
   },
   "precision-erased": {
     "description": "One long pen stroke (default thickness), then the eraser in precision mode at medium size, dragged straight down through its middle so the stroke splits in two.",
@@ -54,7 +153,7 @@
     "eraserSize": "medium",
     "file": "precision-erased.svg",
     "savedFrom": "ink record",
-    "svgBytes": 2374,
-    "svgPathElements": 1
+    "svgBytes": 2134,
+    "svgPathElements": 2
   }
 }

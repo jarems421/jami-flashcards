@@ -77,7 +77,36 @@ export type InkShapeItem = {
   shape: InkShapeGeometry;
 };
 
-export type InkItem = InkOutlineItem | InkShapeItem;
+/**
+ * An item of a kind this build does not know, from a newer writer. It is kept
+ * whole (id, layer byte and payload bytes) and stored back unchanged, so an
+ * older tab or a rollback build never loses ink it cannot draw. It paints
+ * nothing here and has empty bounds.
+ */
+export type InkUnknownItem = {
+  kind: "unknown";
+  id: string;
+  /**
+   * The stored layer byte, 0 to 255. A newer build may add layers, so it is
+   * kept raw rather than rejected; {@link inkItemLayer} maps it for drawing.
+   */
+  layerCode: number;
+  /** The stored kind code (3 or more). */
+  code: number;
+  payload: Uint8Array;
+};
+
+export type InkItem = InkOutlineItem | InkShapeItem | InkUnknownItem;
+
+/**
+ * The layer an item is drawn on. An unknown item's code 0 is the highlighter
+ * layer and every other code reads as pen; unknown items are not drawn, so
+ * this only keeps ordering decisions total.
+ */
+export function inkItemLayer(item: InkItem): InkLayer {
+  if (item.kind === "unknown") return item.layerCode === 0 ? "highlighter" : "pen";
+  return item.layer;
+}
 
 export type InkDocument = { version: 3; items: InkItem[] };
 
@@ -96,9 +125,13 @@ export function inkBoxUnion(a: InkBox, b: InkBox): InkBox {
   };
 }
 
-/** Boxes that merely touch count as intersecting, so no edge pixel is missed. */
+/**
+ * Boxes that merely touch count as intersecting, so no edge pixel is missed.
+ * Written as "not apart" so a NaN edge counts as intersecting: a damaged box
+ * is redrawn and found rather than silently skipped.
+ */
 export function inkBoxesIntersect(a: InkBox, b: InkBox): boolean {
-  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+  return !(a.minX > b.maxX || a.maxX < b.minX || a.minY > b.maxY || a.maxY < b.minY);
 }
 
 export function inkBoxGrow(box: InkBox, amount: number): InkBox {
@@ -114,10 +147,17 @@ const EMPTY_BOX: InkBox = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
 
 /** How far a miter join can poke past the path, as a multiple of the width. */
 const MITER_REACH_IN_WIDTHS = 2;
+/**
+ * A square cap on a diagonal stroke reaches half a width along each axis, so
+ * its corner is width / 2 * sqrt(2) away along the diagonal, which is a full
+ * width * sqrt(1/2) along x or y.
+ */
+const SQUARE_CAP_REACH_IN_WIDTHS = Math.SQRT1_2;
 
 const boundsCache = new WeakMap<InkItem, InkBox>();
 
 function computeInkItemBounds(item: InkItem): InkBox {
+  if (item.kind === "unknown") return EMPTY_BOX;
   if (item.kind === "shape") {
     const pathBounds = inkPathBounds(inkShapePath(item.shape, item.width));
     return pathBounds ? inkBoxGrow(pathBounds, item.width / 2) : EMPTY_BOX;
@@ -126,7 +166,9 @@ function computeInkItemBounds(item: InkItem): InkBox {
   if (!pathBounds) return EMPTY_BOX;
   const stroke = item.paint.stroke;
   if (!stroke) return pathBounds;
-  const reach = stroke.join === "miter" ? stroke.width * MITER_REACH_IN_WIDTHS : stroke.width / 2;
+  let reach = stroke.width / 2;
+  if (stroke.cap === "square") reach = Math.max(reach, stroke.width * SQUARE_CAP_REACH_IN_WIDTHS);
+  if (stroke.join === "miter") reach = Math.max(reach, stroke.width * MITER_REACH_IN_WIDTHS);
   return inkBoxGrow(pathBounds, reach);
 }
 

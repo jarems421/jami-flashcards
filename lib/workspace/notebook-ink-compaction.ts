@@ -20,10 +20,13 @@
  *  - Coordinates round to one decimal place. A tenth of a unit on a 900-unit
  *    page is well under a device pixel at any zoom the notebook allows.
  *
- * Paths using anything other than M, L and Z are returned untouched. The smooth
- * pen emits curves, and a curve's control points are not on the outline, so
+ * Only polylines are simplified: M, L and Z, plus H and V, which are rewritten
+ * as L. A path with a curve or an arc is returned untouched. The smooth pen
+ * emits curves, and a curve's control points are not on the outline, so
  * running a polyline simplifier over them would pull the shape about.
  */
+
+import { parseSvgPathData } from "@/lib/ink/path";
 
 /** How far a point may sit from the line between its neighbours and be dropped. */
 export const NOTEBOOK_INK_COMPACTION_EPSILON = 0.25;
@@ -122,63 +125,41 @@ function formatNumber(value: number, precision: number) {
   return String(roundTo(value, precision));
 }
 
-/** A command letter, or one number in any form path data allows (`3.6-1.7`, `.5.5`, `1e-3`). */
-const PATH_TOKEN = /([MLZmlz])|([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)|[\s,]+/y;
+/** Anything that curves, which this polyline simplifier must not touch. */
+const CURVE_COMMANDS = /[CcSsQqTtAa]/;
 
 /**
  * The points of a single `M ... L ... [Z]` path, in absolute page units, or
  * null if it is anything else.
  *
- * Relative commands are read as relative. js-draw writes a stroke away from
- * the page corner as `M129,512.6l3.6-1.7 36.9,3 ...`, and reading those
- * offsets as positions -- which this once did -- saved every such stroke as
- * a shape reaching back towards the corner. Pairs after a command repeat it,
- * as SVG says (after `m`, as `l`). A path with a second sub-path is refused:
- * thinning it as one line would join the pieces.
+ * Reading is `parseSvgPathData`, the one SVG path reader, which gets relative
+ * commands right: js-draw writes a stroke away from the page corner as
+ * `M129,512.6l3.6-1.7 36.9,3 ...`, and reading those offsets as positions --
+ * which this once did -- saved every such stroke as a shape reaching back
+ * towards the corner. A path with a second sub-path, or anything after its
+ * Z, is refused: thinning it as one line would join the pieces. Curves and
+ * arcs are refused before parsing, because the parser would turn a
+ * zero-radius arc into a line.
  */
 function readPolylinePoints(d: string): { points: Point[]; closed: boolean } | null {
-  const points: Point[] = [];
-  const numbers: number[] = [];
-  let command: string | null = null;
-  let closed = false;
-  let moves = 0;
-  let current: Point = { x: 0, y: 0 };
+  if (CURVE_COMMANDS.test(d)) return null;
+  const commands = parseSvgPathData(d);
+  if (!commands) return null;
 
-  PATH_TOKEN.lastIndex = 0;
-  while (PATH_TOKEN.lastIndex < d.length) {
-    const match = PATH_TOKEN.exec(d);
-    if (!match) return null;
-    const [, letter, number] = match;
-    if (closed && (letter || number)) return null;
-    if (letter) {
-      if (numbers.length > 0) return null;
-      if (letter === "Z" || letter === "z") {
-        if (points.length === 0) return null;
-        closed = true;
-        continue;
-      }
-      command = letter;
-      continue;
+  const points: Point[] = [];
+  let closed = false;
+  for (let index = 0; index < commands.length; index += 1) {
+    const command = commands[index];
+    if (command.op === "M" && index === 0) {
+      points.push({ x: command.x, y: command.y });
+    } else if (command.op === "L" && !closed) {
+      points.push({ x: command.x, y: command.y });
+    } else if (command.op === "Z" && index === commands.length - 1) {
+      closed = true;
+    } else {
+      return null;
     }
-    if (number === undefined) continue;
-    if (command === null) return null;
-    numbers.push(Number(number));
-    if (numbers.length < 2) continue;
-    const [x, y] = numbers.splice(0, 2);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    const relative = command === "m" || command === "l";
-    if (command === "M" || command === "m") {
-      moves += 1;
-      if (moves > 1) return null;
-    }
-    // A leading `m` is measured from the origin, so it is absolute in effect.
-    current = relative && points.length > 0 ? { x: current.x + x, y: current.y + y } : { x, y };
-    points.push(current);
-    // Coordinates after a moveto are implicit linetos of the same kind.
-    if (command === "M") command = "L";
-    if (command === "m") command = "l";
   }
-  if (numbers.length > 0 || moves !== 1) return null;
   return { points, closed };
 }
 

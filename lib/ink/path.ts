@@ -208,7 +208,7 @@ export function parseSvgPathData(d: string): InkPathCommand[] | null {
 }
 
 /** Fixed decimals with trailing zeros trimmed, and no "-0". */
-function formatNumber(value: number, decimals: number): string {
+export function formatNumber(value: number, decimals: number): string {
   const text = value.toFixed(decimals);
   const trimmed = text.includes(".") ? text.replace(/0+$/, "").replace(/\.$/, "") : text;
   return trimmed === "-0" ? "0" : trimmed;
