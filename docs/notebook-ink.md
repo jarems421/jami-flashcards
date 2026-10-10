@@ -517,8 +517,9 @@ Still to come:
 
 - **Editor.** `NotebookInkEditor` is rebuilt on `InkSurface` with the same
   props and handle, so the notebook page and `ExamScratchpad` change together.
-  - It is a switch on `enableJamiInk` (`NEXT_PUBLIC_ENABLE_JAMI_INK`, off until
-    the release stage): `JamiInkEditor`, or `JsDrawInkEditor`, which is the old
+  - It is a switch on `enableJamiInk` (`NEXT_PUBLIC_ENABLE_JAMI_INK`, on from
+    stage 4 so the owner can test on the live iPad; off is the fallback):
+    `JamiInkEditor`, or `JsDrawInkEditor`, which is the old
     editor unchanged and stays the fallback. The handle and props type live in
     `components/workspace/notebook-ink-editor-types.ts`.
   - `hooks/useJamiInkSurface.ts` builds and destroys the surface and is the one
@@ -585,8 +586,10 @@ Explicit, as `docs/architecture.md` requires:
 
 ## Stages
 
-Each stage lands with `enableJamiInk` off, complete in itself, inside the size
-gate.
+Each stage lands complete in itself, inside the size gate. Stages 0 to 3 landed
+with `enableJamiInk` off; from stage 4 it is on, so the owner tests each stage
+on the live app (the few students using notebooks agreed), with off as the
+fallback to js-draw.
 
 0. **Housekeeping (done).** This document, the `AGENTS.md` exception, and the
    perf harness with the js-draw baseline.
@@ -614,7 +617,7 @@ gate.
    - The memory budget.
    - The owner's third iPad round.
 8. **Release and cleanup.**
-   - `enableJamiInk` on for everyone.
+   - `enableJamiInk` stays on, with the env override back to js-draw.
    - After two weeks without a rollback: stop the SVG copy, and delete
      js-draw, `@js-draw/math`, its CSS, the glue modules and their tests.
    - Update the README, `architecture.md`, `manual-qa.md` and `llms.txt`.

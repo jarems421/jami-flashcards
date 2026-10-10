@@ -111,10 +111,11 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   /*
    * Jami Ink, the notebook's own ink engine (docs/notebook-ink.md), hosted by
    * the notebook editor and the exam working sheet. Off, both keep js-draw,
-   * unchanged: this is the emergency fallback to it. Off while the engine is
-   * built and tried on the owner's devices; the release stage turns it on.
+   * unchanged: this is the emergency fallback to it. On from stage 4 so the
+   * owner can try each stage on the live iPad; pages still save as SVG, so
+   * turning it off loses nothing.
    */
-  enableJamiInk: false,
+  enableJamiInk: true,
 };
 
 /**
