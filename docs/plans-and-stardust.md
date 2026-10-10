@@ -527,8 +527,8 @@ item 2:
   payment.
 - **HMRC:** register as self-employed once trading income passes £1,000 a year.
   VAT registration applies at £90,000 turnover.
-- **Email:** Jami's own mail goes through Gmail, which caps at roughly 500 a
-  day. Move to a transactional provider before growth. Stripe sends receipts
+- **Email:** Jami's own mail goes through Resend from `jami.study`. Check the
+  plan's daily and monthly sending limits before growth. Stripe sends receipts
   itself.
 - **UK subscription rules (DMCC Act) from Spring 2027:** renewal reminders,
   and leaving as easy as joining. The Portal covers cancelling; reminder emails

@@ -13,9 +13,9 @@ import { EMAIL_CODE_TTL_MS } from "@/lib/auth/email-code";
  * No links and no images at all. It once loaded Jami's icon from the app's
  * `*.vercel.app` address, and that hosting domain is so often used for
  * phishing that mail filters (Microsoft's especially, which most university
- * mail runs on) treat a link to it as a sign of one: a code email from a
- * personal Gmail address pointing there was quarantined before the student
- * saw it. The star is the mark instead.
+ * mail runs on) treat a link to it as a sign of one: a code email (then sent
+ * from a personal Gmail address) pointing there was quarantined before the
+ * student saw it. The star is the mark instead.
  */
 
 type CodeEmail = { subject: string; html: string; text: string };

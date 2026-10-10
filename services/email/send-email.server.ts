@@ -4,13 +4,14 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { createLogger } from "@/lib/observability/logger";
 
 /**
- * Jami's outgoing mail, through a Gmail account and an app password.
+ * Jami's outgoing mail, through Resend's SMTP relay from Jami's own domain.
  *
- * Gmail because it needs no domain of Jami's own and sends reliably at the
- * volume a sign-up form produces (a consumer account allows about 500 a day).
- * `GMAIL_USER` is the address mail comes from and `GMAIL_APP_PASSWORD` the
- * sixteen-character app password Google issues for it -- never the account's
- * real password, and only available once that account has 2-Step Verification.
+ * Mail comes from `EMAIL_FROM` (an address on jami.study, which Resend has
+ * verified with DKIM and SPF records), so receiving servers see a domain that
+ * vouches for itself rather than a personal Gmail address, and there is no
+ * consumer-account cap of about 500 a day. `RESEND_API_KEY` is a sending-only
+ * key from the Resend dashboard; over SMTP it is the password, with the fixed
+ * user name `resend`.
  */
 
 const log = createLogger({ area: "email" });
@@ -30,12 +31,10 @@ export class EmailUnavailableError extends Error {
   }
 }
 
-function getGmailCredentials() {
-  const user = process.env.GMAIL_USER?.trim();
-  // Google shows app passwords in four groups of four; pasted as shown, the
-  // spaces would be sent as part of it.
-  const pass = process.env.GMAIL_APP_PASSWORD?.replace(/\s+/g, "");
-  return user && pass ? { user, pass } : null;
+function getResendSettings() {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.EMAIL_FROM?.trim();
+  return apiKey && from ? { apiKey, from } : null;
 }
 
 /**
@@ -55,9 +54,9 @@ function mayLogInsteadOfSending() {
 let transporter: Transporter | null = null;
 
 export async function sendEmail(email: OutgoingEmail): Promise<"sent" | "logged"> {
-  const credentials = getGmailCredentials();
+  const settings = getResendSettings();
 
-  if (!credentials) {
+  if (!settings) {
     if (mayLogInsteadOfSending()) {
       // The subject carries the code, which is the point off production. The
       // address is left out: whoever is testing typed it themselves.
@@ -68,10 +67,10 @@ export async function sendEmail(email: OutgoingEmail): Promise<"sent" | "logged"
   }
 
   transporter ??= nodemailer.createTransport({
-    host: "smtp.gmail.com",
+    host: "smtp.resend.com",
     port: 465,
     secure: true,
-    auth: credentials,
+    auth: { user: "resend", pass: settings.apiKey },
     // A sign-up form is waiting on this; fail rather than hang the request.
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
@@ -81,7 +80,7 @@ export async function sendEmail(email: OutgoingEmail): Promise<"sent" | "logged"
   const info = await transporter.sendMail({
     from: {
       name: process.env.EMAIL_FROM_NAME?.trim() || "Jami",
-      address: credentials.user,
+      address: settings.from,
     },
     to: email.to,
     subject: email.subject,
@@ -94,8 +93,8 @@ export async function sendEmail(email: OutgoingEmail): Promise<"sent" | "logged"
       "X-Auto-Response-Suppress": "All",
     },
   });
-  // What Gmail made of it, without the address: a refusal shows up here, where
-  // before a code that never arrived left no trace but the Sent folder.
+  // What the relay made of it, without the address: a refusal shows up here,
+  // rather than as a code that never arrived and left no trace.
   log.info("email.sent", {
     accepted: info.accepted?.length ?? 0,
     rejected: info.rejected?.length ?? 0,
