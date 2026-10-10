@@ -5,13 +5,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import ToolbarIconButton from "@/components/workspace/NotebookToolbarIconButton";
 import {
-  dispatchBatchedNotebookPointerSamples,
-  installNotebookInkViewportSynchronizer,
   installNotebookNativeInkGuards,
   positionNotebookEraserCursor,
   shouldContinueNotebookPrecisionGesture,
   shouldExpectNotebookCaptureLoss,
   shouldUseNotebookPrecisionGesture,
+} from "@/lib/workspace/notebook-ink-contact";
+import {
+  dispatchBatchedNotebookPointerSamples,
+  installNotebookInkViewportSynchronizer,
   keepNotebookStraightenedLineAimable,
   suppressNotebookEraserPreview,
 } from "@/lib/workspace/notebook-ink-runtime";

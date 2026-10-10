@@ -129,6 +129,13 @@ export function useNotebookLiveInkLayer({
       }),
     [devicePixelRatio, frameHeight, frameWidth, originX, originY, pageHeightPx, pageWidthPx]
   );
+  // Where the sheet sits in its frame, for Jami Ink to know the part of it on
+  // screen after every pan settles; the snapped window above does not change
+  // for a small pan.
+  const inkFrame = useMemo(
+    () => ({ pageX: originX, pageY: originY, frameWidth, frameHeight }),
+    [frameHeight, frameWidth, originX, originY]
+  );
 
   const handlePdfCanvasReady = useCallback(
     (canvas: HTMLCanvasElement | null) => {
@@ -186,6 +193,7 @@ export function useNotebookLiveInkLayer({
       onReadyError,
       activeTool: tool,
       inkWindow: windows.ink,
+      inkFrame,
       eraserMode,
       scribbleToErase,
       penColor,
@@ -205,6 +213,7 @@ export function useNotebookLiveInkLayer({
       eraserMode,
       highlighterColor,
       highlighterThicknessPercent,
+      inkFrame,
       onChange,
       onHistoryChange,
       onInteractionChange,

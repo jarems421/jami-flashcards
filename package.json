@@ -73,6 +73,7 @@
     "pdfjs-dist": "^6.3.289",
     "pdfkit": "^0.20.2",
     "perfect-freehand": "^1.2.3",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^9.0.1",

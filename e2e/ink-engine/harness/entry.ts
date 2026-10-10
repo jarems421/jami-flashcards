@@ -3,18 +3,21 @@
  * blank page. Everything the specs call is on `window.inkHarness`.
  */
 
-import { legacyStrokes, liftCommit, liftRedraw, liftSetup, liftWrite, showEngine, showJsDraw } from "./fidelity";
-import { measureChanges, measurePageOpen, measureWriting, measureZoomedPan, measureZoomSettle } from "./perf";
+import { legacyStrokes, liftCommit, liftOverlay, liftRedraw, liftSetup, liftWarmUpFinish, liftWrite, showEngine, showJsDraw } from "./fidelity";
+import { measureChanges, measureFirstStroke, measurePageOpen, measureWriting, measureZoomedPan, measureZoomSettle } from "./perf";
 
 const inkHarness = {
   showJsDraw,
   showEngine,
   legacyStrokes,
   liftSetup,
+  liftOverlay,
+  liftWarmUpFinish,
   liftWrite,
   liftCommit,
   liftRedraw,
   measureWriting,
+  measureFirstStroke,
   measurePageOpen,
   measureZoomedPan,
   measureChanges,

@@ -15,8 +15,9 @@ import {
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
   type NotebookStroke,
 } from "@/lib/workspace/notebooks";
+import { holdFrames, type HeldFrames } from "./held-frames";
 import { renderWithEngine, renderWithJsDraw, sheetAt, whenIdle, type Sheet, type View } from "./stage";
-import { handwritingPage, outlineItem, seededPageSvg, strokeFor, strokeSamples, writeStroke, type LiveStroke } from "./strokes";
+import { handwritingPage, outlineItem, seededPageSvg, strokeFor, strokeSamples, tipAfter, writeStroke, type LiveStroke } from "./strokes";
 
 /**
  * CSS pixels per page unit. Fitted is about how the notebook fits the sheet on
@@ -134,6 +135,18 @@ export type LiftOptions = {
    * union rather than the footprints drawn until then.
    */
   commit: "same" | "copy";
+  /**
+   * Draw the predicted tip with every packet, the last one included, so the
+   * pen is down with a tip showing when the stroke is lifted (a pen stroke
+   * only). The lift must leave the pixels of the same stroke drawn with none.
+   */
+  tip?: boolean;
+  /**
+   * Ask for the GPU warm-up when the page is drawn and hold its frames back,
+   * so its canvas is on screen (drawn on at an alpha of 1/255) when the
+   * scene is set up. `liftWarmUpFinish` lets it end.
+   */
+  warmUpOnScreen?: boolean;
 };
 
 type LiftState = {
@@ -143,6 +156,7 @@ type LiftState = {
   options: LiftOptions;
   /** The geometry of the last live packet, exactly as drawn. */
   last: ReturnType<LiveStroke["live"]> | null;
+  held: HeldFrames | null;
 };
 
 let lift: LiftState | null = null;
@@ -161,10 +175,31 @@ const LIFT_STROKE = { x: 320, y: 320, length: 240, samples: 200, loops: 8 };
 export async function liftSetup(options: LiftOptions): Promise<View> {
   const doc = liftBackground();
   const { sheet, view } = viewFor(options.mode, doc);
-  const { renderer } = await renderWithEngine(doc, sheet, view);
+  const held = options.warmUpOnScreen ? holdFrames() : null;
+  const { renderer } = await renderWithEngine(doc, sheet, view, {
+    renderer: held ? { requestFrame: held.requestFrame, cancelFrame: held.cancelFrame } : undefined,
+    wait: held ? "visible" : "idle",
+  });
+  if (held) {
+    renderer.warmUp();
+    // The warm-up is background work: wait until it has drawn everything and is waiting out its frames.
+    for (let waited = 0; waited < 400 && held.pending === 0; waited += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+  }
   const [first] = strokeSamples({ ...LIFT_STROKE, width: options.width, pressure: options.pressure });
-  lift = { renderer, doc, stroke: strokeFor(options.layer, first, 1 / SCALE[options.mode]), options, last: null };
+  lift = { renderer, doc, stroke: strokeFor(options.layer, first, 1 / SCALE[options.mode]), options, last: null, held };
   return view;
+}
+
+/** Canvases in the live layer now: the warm-up's, between strokes. */
+export function liftOverlay(): number {
+  return document.querySelectorAll("[data-ink-renderer] > div:nth-child(3) canvas").length;
+}
+
+/** Lets the warm-up's frames happen, so it ends, and waits for the renderer to settle. */
+export async function liftWarmUpFinish(): Promise<void> {
+  if (!lift?.held) throw new Error("liftSetup with warmUpOnScreen first");
+  lift.held.release();
+  await whenIdle(lift.renderer);
 }
 
 /** Writes the stroke as live ink (two samples a packet) and leaves the pen down. */
@@ -172,19 +207,21 @@ export function liftWrite(): void {
   if (!lift) throw new Error("liftSetup first");
   const state = lift;
   const { renderer, stroke, options } = state;
-  const [, ...rest] = strokeSamples({ ...LIFT_STROKE, width: options.width, pressure: options.pressure });
+  const samples = strokeSamples({ ...LIFT_STROKE, width: options.width, pressure: options.pressure });
+  const rest = samples.slice(1);
+  const tipAt = (index: number) => (options.tip ? tipAfter(samples, index, options.layer) : null);
   renderer.beginLive(options.layer);
   state.last = stroke.live();
-  renderer.drawLive(state.last.path, state.last.paint);
+  renderer.drawLive(state.last.path, state.last.paint, tipAt(0));
   for (let i = 0; i < rest.length; i += 2) {
     stroke.add(rest[i]);
     if (rest[i + 1]) stroke.add(rest[i + 1]);
     state.last = stroke.live();
-    renderer.drawLive(state.last.path, state.last.paint);
+    renderer.drawLive(state.last.path, state.last.paint, tipAt(Math.min(i + 2, samples.length - 1)));
   }
   // The last packet draws what the lift keeps (the highlighter's traced union).
   state.last = stroke.committed();
-  renderer.drawLive(state.last.path, state.last.paint);
+  renderer.drawLive(state.last.path, state.last.paint, tipAt(samples.length - 1));
 }
 
 /** Lifts the pen. Returns how long the commit took, in milliseconds. */

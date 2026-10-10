@@ -1,0 +1,439 @@
+import { createInkChiselBuilder, type InkChiselBuilder } from "@/lib/ink/geometry/chisel";
+import { createInkPenBuilder, type InkPenBuilder } from "@/lib/ink/geometry/pen";
+import type { InkColor, InkLayer, InkPaint, InkPathCommand } from "@/lib/ink/model";
+import { browserInkTimers, InkHoldDetector, type InkTimers } from "@/lib/ink-dom/hold-detector";
+import type { InkLiveTip, InkRenderer } from "@/lib/ink-dom/renderer";
+import { inkColorForTool } from "@/lib/ink-dom/stroke-color";
+import { penInkPaint } from "@/lib/ink-dom/stroke-paint";
+import { NotebookInkSmoother, type NotebookInkSample } from "@/lib/workspace/notebook-ink-smoothing";
+import { NOTEBOOK_LIFT_OFF, NotebookLiftOffGate } from "@/lib/workspace/notebook-lift-off";
+import {
+  clampNotebookPenSettings,
+  getNotebookInkSmoothingOptions,
+  getNotebookPenFeelFromSettings,
+  type NotebookPenSettings,
+} from "@/lib/workspace/notebook-pen-feel";
+import {
+  NotebookPredictedTip,
+  type NotebookPredictedTipPoint,
+  type NotebookPredictedTipSample,
+} from "@/lib/workspace/notebook-predicted-tip";
+
+/**
+ * One pen or highlighter stroke, from the pen landing to it lifting: the input
+ * pipeline of Jami Ink, outside React and outside js-draw.
+ *
+ * It reproduces what the js-draw pen does with the same pointer samples, so a
+ * stroke written here has the geometry js-draw would have given it:
+ *
+ * 1. the lift-off gate holds back the samples a pen sends as it leaves the
+ *    glass (`notebook-lift-off.ts`);
+ * 2. the One Euro smoother filters what the gate lets through, in screen
+ *    pixels (`notebook-ink-smoothing.ts`);
+ * 3. the filtered point becomes a page position, and a width in page units:
+ *    `pressure * thickness` with the pressure floored at 0.3 when pressure is
+ *    on, otherwise `0.5 * thickness` (js-draw's `Pen.toStrokePoint`);
+ * 4. the pen or chisel builder (`lib/ink/geometry/`) shapes the path;
+ * 5. the path is drawn on the live layer, synchronously, once per packet.
+ *
+ * The lift adds no point (js-draw adds one at the lift position, which is why
+ * its stroke can change as the pen leaves), and holds the smoother where it is:
+ * the stroke ends exactly on the ink live ink last drew, and `lift()` returns
+ * that very path and paint. Committing it is the surface's job.
+ *
+ * The highlighter shows its footprints while it moves, but what is saved is
+ * their traced outline (`build()`), whose edge pixels differ from the
+ * footprints'. So its last live movement draws the outline: as soon as the pen
+ * has stopped (no packet for `HIGHLIGHTER_SETTLE_MS`) or is leaving the glass
+ * (the lift-off gate is holding samples). The lift then commits what is already
+ * on screen and draws nothing. Movement after that goes back to footprints.
+ *
+ * Nothing here reads layout or allocates a canvas; the only allocations per
+ * sample are the small objects the smoother and the builders take.
+ */
+
+/** Client px of the page's corner, and client px per page unit. Fixed for a stroke. */
+export type InkScreenMapping = { left: number; top: number; scale: number };
+
+export type InkPointerSample = {
+  clientX: number;
+  clientY: number;
+  pressure: number;
+  /** `PointerEvent.timeStamp`, in milliseconds. */
+  timeStamp: number;
+};
+
+export type InkStrokeTool =
+  | {
+      kind: "pen";
+      color: InkColor;
+      /** The nib width in page units. */
+      thickness: number;
+      /** Whether pressure varies the width: only a pencil on an iPad does. */
+      pressure: boolean;
+      settings: NotebookPenSettings;
+      /** Whether to draw a tip ahead of the pen: only a stylus does. */
+      predictTip: boolean;
+    }
+  | {
+      kind: "highlighter";
+      color: InkColor;
+      thickness: number;
+      settings: NotebookPenSettings;
+      /** Which way the flat edge faces, asked once per accepted sample. */
+      nibAngle: () => number;
+    };
+
+export type InkLiveSink = Pick<InkRenderer, "beginLive" | "drawLive" | "cancelLive">;
+
+export type InkStrokeResult = { layer: InkLayer; path: InkPathCommand[]; paint: InkPaint };
+
+export type InkStrokeSessionInput = {
+  tool: InkStrokeTool;
+  mapping: InkScreenMapping;
+  sink: InkLiveSink;
+  /** The pen landing. */
+  first: InkPointerSample;
+  /** For the hold that straightens a line; the window's by default. */
+  timers?: InkTimers;
+};
+
+export { inkColorForTool, penInkPaint };
+
+/**
+ * How long a highlighter goes without a packet before it counts as stopped and
+ * draws its traced outline. An Apple Pencil reports every 4 ms and Safari
+ * delivers a packet each frame (17 ms at 60 Hz) while the pen moves, so 50 ms
+ * is three frames of stillness: a dropped frame or two does not trip it, and
+ * a pause to look at the page does.
+ */
+export const HIGHLIGHTER_SETTLE_MS = 50;
+
+/** js-draw's `Pen.toStrokePoint`: the least pressure a width is made from, and the width without pressure. */
+const PRESSURE_FLOOR = 0.3;
+const DEFAULT_PRESSURE = 0.5;
+
+const NO_SAMPLES: readonly InkPointerSample[] = [];
+
+/** Whether a path draws anything: it starts at a finite point and goes somewhere. */
+function hasGeometry(path: readonly InkPathCommand[]): boolean {
+  const start = path[0];
+  return path.length > 1 && start.op === "M" && Number.isFinite(start.x) && Number.isFinite(start.y);
+}
+
+export class InkStrokeSession {
+  private readonly layer: InkLayer;
+  private readonly color: InkColor;
+  private readonly sink: InkLiveSink;
+  private readonly left: number;
+  private readonly top: number;
+  private readonly scale: number;
+  private readonly thickness: number;
+  private readonly usePressure: boolean;
+  private readonly pen: InkPenBuilder | null = null;
+  private readonly chisel: InkChiselBuilder | null = null;
+  private readonly smoother: NotebookInkSmoother;
+  private readonly gate: NotebookLiftOffGate<InkPointerSample>;
+  /** Handed to the smoother for every sample; it reads it at once and keeps nothing. */
+  private readonly seed: NotebookInkSample = { x: 0, y: 0, time: 0 };
+  /** The predicted tip's record of what the pen really did, for a stylus. */
+  private readonly tracker: NotebookPredictedTip | null;
+  private readonly trackerSample: NotebookPredictedTipSample = { x: 0, y: 0, time: 0 };
+  private readonly trackerSamples: readonly NotebookPredictedTipSample[] = [this.trackerSample];
+  private hold: InkHoldDetector | null = null;
+  private readonly timers: InkTimers;
+  /** The highlighter's wait for the pen to stop, if one is pending. */
+  private settleTimer: number | null = null;
+  /** The traced outline of the highlighter as it stands: made once, until a sample is added. */
+  private outline: InkPathCommand[] | null = null;
+  /** The highlighter's outline is what live ink last drew. */
+  private outlineShown = false;
+  /** What live ink last drew, which is what the lift keeps. */
+  private lastPath: InkPathCommand[];
+  private lastPaint: InkPaint;
+  private tipShown = false;
+  private finished = false;
+  private cancelled = false;
+
+  constructor({ tool, mapping, sink, first, timers }: InkStrokeSessionInput) {
+    this.layer = tool.kind;
+    this.color = tool.color;
+    this.sink = sink;
+    this.timers = timers ?? browserInkTimers();
+    this.left = mapping.left;
+    this.top = mapping.top;
+    this.scale = Number.isFinite(mapping.scale) && mapping.scale > 0 ? mapping.scale : 1;
+    this.thickness = tool.thickness;
+    const settings = clampNotebookPenSettings(tool.settings);
+    this.smoother = new NotebookInkSmoother(
+      { x: first.clientX, y: first.clientY, time: first.timeStamp },
+      getNotebookInkSmoothingOptions(settings)
+    );
+    this.gate = new NotebookLiftOffGate<InkPointerSample>(
+      (sample) => sample.pressure,
+      (sample) => sample.timeStamp
+    );
+
+    this.usePressure = tool.kind === "pen" && tool.pressure;
+    // One screen pixel in page units, as js-draw's `getSizeOfPixelOnCanvas`.
+    const pixelSize = 1 / this.scale;
+    const start = {
+      x: (first.clientX - this.left) / this.scale,
+      y: (first.clientY - this.top) / this.scale,
+      width: this.widthOf(first.pressure),
+    };
+
+    if (tool.kind === "pen") {
+      this.pen = createInkPenBuilder(
+        { ...start, time: first.timeStamp },
+        { feel: getNotebookPenFeelFromSettings(settings), pixelSize }
+      );
+      // A see-through colour would darken where the tip and the line overlap.
+      this.tracker = tool.predictTip && tool.color.a >= 1 ? new NotebookPredictedTip() : null;
+      this.tracker?.observe([{ x: first.clientX, y: first.clientY, time: first.timeStamp }]);
+      const geometry = this.pen.geometry();
+      this.lastPath = geometry.path;
+      this.lastPaint = penInkPaint(geometry.paint, tool.color);
+      if (settings.straightenOnHold !== "off") {
+        this.hold = new InkHoldDetector(
+          first.clientX,
+          first.clientY,
+          first.timeStamp,
+          () => this.holdStill(),
+          this.timers
+        );
+      }
+    } else {
+      this.chisel = createInkChiselBuilder(start, { pixelSize, nibAngle: tool.nibAngle });
+      this.tracker = null;
+      this.lastPath = this.chisel.preview().path;
+      this.lastPaint = { fill: tool.color, stroke: null, opacity: 1 };
+    }
+
+    // The contact itself shows at once: a tap leaves its dot.
+    this.sink.beginLive(this.layer);
+    this.sink.drawLive(this.lastPath, this.lastPaint);
+    if (this.chisel) this.armSettle();
+  }
+
+  /**
+   * One packet of pointer samples (a pointermove's coalesced events, oldest
+   * first), and the browser's predictions of where the pen goes next. The stroke
+   * is drawn before this returns.
+   */
+  move(samples: readonly InkPointerSample[], predicted: readonly InkPointerSample[] = NO_SAMPLES): void {
+    if (this.finished || samples.length === 0) return;
+
+    const tipPoints = this.tracker ? this.predictTipPoints(this.tracker, samples, predicted) : null;
+
+    let added = false;
+    for (let index = 0; index < samples.length; index += 1) {
+      const ready = this.gate.next(samples[index]);
+      for (let at = 0; at < ready.length; at += 1) {
+        if (this.addSample(ready[at])) added = true;
+      }
+    }
+
+    if (added) {
+      if (this.pen) {
+        const geometry = this.pen.geometry();
+        this.lastPath = geometry.path;
+        this.lastPaint = penInkPaint(geometry.paint, this.color);
+      } else if (this.chisel) {
+        // A pen the gate is holding is leaving the glass: this is the last live
+        // movement, so it draws the outline. Otherwise, footprints, and the
+        // wait for the pen to stop starts again.
+        this.outline = null;
+        this.outlineShown = this.gate.holding;
+        this.lastPath = this.outlineShown ? this.tracedOutline() : this.chisel.preview().path;
+        this.armSettle();
+      }
+    } else if (!this.tipShown) {
+      // Nothing was added (the gate held the packet, or the pen is resting) and
+      // no tip is standing: there is nothing to move or to take away, unless the
+      // gate has just begun to hold a highlighter's samples.
+      if (this.chisel && this.gate.holding) this.showOutline();
+      return;
+    }
+    const tip = tipPoints ? this.tipThrough(tipPoints) : null;
+    this.sink.drawLive(this.lastPath, this.lastPaint, tip);
+    this.tipShown = tip !== null;
+  }
+
+  /**
+   * The pen has left the glass. Returns what live ink last drew, to be kept as
+   * the stroke, or null if there is nothing worth keeping (the live stroke is
+   * then cancelled). The sink is not committed: the surface does that.
+   */
+  lift(): InkStrokeResult | null {
+    if (this.finished) return null;
+    this.finished = true;
+    this.hold?.destroy();
+    // Whatever the gate holds was the lift itself, and is dropped. The smoother
+    // is not stepped: the stroke ends on the point already drawn.
+    this.gate.lift();
+
+    if (this.chisel) {
+      this.clearSettle();
+      // The outline is already on screen when the pen stopped or was leaving
+      // the glass: nothing is drawn, so no pixel changes. Only a flick that
+      // lifts mid-motion, with the footprints still showing, draws it here, and
+      // only then can edge pixels change, by no more than the few levels of
+      // antialiasing between the footprints and their outline (docs/notebook-ink.md).
+      if (!this.outlineShown) {
+        this.lastPath = this.tracedOutline();
+        if (!hasGeometry(this.lastPath)) return this.discard();
+        this.sink.drawLive(this.lastPath, this.lastPaint);
+        this.outlineShown = true;
+      }
+    } else {
+      if (!hasGeometry(this.lastPath)) return this.discard();
+      // The predicted tip is never part of the stroke: take it off the live
+      // layer, so the commit finds the stroke alone.
+      if (this.tipShown) {
+        this.sink.drawLive(this.lastPath, this.lastPaint);
+        this.tipShown = false;
+      }
+    }
+    return { layer: this.layer, path: this.lastPath, paint: this.lastPaint };
+  }
+
+  cancel(): void {
+    if (this.cancelled) return;
+    this.cancelled = true;
+    this.finished = true;
+    this.hold?.destroy();
+    this.clearSettle();
+    this.sink.cancelLive();
+  }
+
+  /** The highlighter's traced outline, made once until a sample is added; kept off the per-packet path. */
+  private tracedOutline(): InkPathCommand[] {
+    return (this.outline ??= this.chisel!.build().path);
+  }
+
+  /** Draws the highlighter's traced outline in place of its footprints, once. */
+  private showOutline(): void {
+    if (this.finished || !this.chisel || this.outlineShown) return;
+    const path = this.tracedOutline();
+    // A stroke with nothing to trace keeps its footprints; the lift discards it.
+    if (!hasGeometry(path)) return;
+    this.lastPath = path;
+    this.outlineShown = true;
+    this.sink.drawLive(this.lastPath, this.lastPaint);
+  }
+
+  /** Starts the highlighter's wait for the pen to stop again from now. */
+  private armSettle(): void {
+    this.clearSettle();
+    this.settleTimer = this.timers.setTimeout(() => {
+      this.settleTimer = null;
+      this.showOutline();
+    }, HIGHLIGHTER_SETTLE_MS);
+  }
+
+  private clearSettle(): void {
+    if (this.settleTimer === null) return;
+    this.timers.clearTimeout(this.settleTimer);
+    this.settleTimer = null;
+  }
+
+  private discard(): null {
+    this.sink.cancelLive();
+    return null;
+  }
+
+  /** js-draw's `Pen.toStrokePoint`, in page units. */
+  private widthOf(pressure: number): number {
+    if (!this.usePressure) return DEFAULT_PRESSURE * this.thickness;
+    const floored = Math.max(pressure, PRESSURE_FLOOR);
+    return (Number.isFinite(floored) ? floored : PRESSURE_FLOOR) * this.thickness;
+  }
+
+  /**
+   * Takes a sample the gate released. True when it reached the stroke: the
+   * smoother steps for every sample, but a pen judged to be resting adds none.
+   */
+  private addSample(sample: InkPointerSample): boolean {
+    const { clientX, clientY, timeStamp } = sample;
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY) || !Number.isFinite(timeStamp)) {
+      return false;
+    }
+    const seed = this.seed;
+    seed.x = clientX;
+    seed.y = clientY;
+    seed.time = timeStamp;
+    const settled = this.smoother.next(seed);
+    if (this.hold !== null && this.hold.move(settled.x, settled.y, timeStamp)) return false;
+
+    const x = (settled.x - this.left) / this.scale;
+    const y = (settled.y - this.top) / this.scale;
+    const width = this.widthOf(sample.pressure);
+    if (this.pen) this.pen.addPoint({ x, y, width, time: timeStamp });
+    else if (this.chisel) this.chisel.addPoint({ x, y, width });
+    return true;
+  }
+
+  /** The pen has been held still: snap the stroke to a line, if it is one, and show it at once. */
+  private holdStill(): void {
+    if (this.finished || !this.pen) return;
+    const line = this.pen.straighten();
+    if (!line) return;
+    this.lastPath = line.path;
+    this.lastPaint = penInkPaint(line.paint, this.color);
+    this.sink.drawLive(this.lastPath, this.lastPaint);
+    this.tipShown = false;
+  }
+
+  /**
+   * Where this packet's predicted tip runs to, in client px, or null for none.
+   * The tracker sees every real sample, drawn or not; the tip is withheld as
+   * the pressure falls away at the lift.
+   */
+  private predictTipPoints(
+    tracker: NotebookPredictedTip,
+    samples: readonly InkPointerSample[],
+    predicted: readonly InkPointerSample[]
+  ): NotebookPredictedTipPoint[] | null {
+    const record = this.trackerSample;
+    for (let index = 0; index < samples.length; index += 1) {
+      const sample = samples[index];
+      record.x = sample.clientX;
+      record.y = sample.clientY;
+      record.time = sample.timeStamp;
+      tracker.observe(this.trackerSamples);
+    }
+    if (predicted.length === 0) return null;
+    if (!(samples[samples.length - 1].pressure >= NOTEBOOK_LIFT_OFF.ceiling)) return null;
+    const ahead = tracker.ahead(
+      predicted.map((point) => ({ x: point.clientX, y: point.clientY, time: point.timeStamp }))
+    );
+    return ahead.length === 0 ? null : ahead;
+  }
+
+  /**
+   * The tip: a round-capped line from the end of the stroke as last drawn,
+   * through the predicted points, in the pen's colour. None once the stroke
+   * has snapped straight, as its far end is then being aimed, not drawn.
+   */
+  private tipThrough(points: readonly NotebookPredictedTipPoint[]): InkLiveTip | null {
+    const end = this.pen?.liveTip();
+    if (!end || !(end.width > 0)) return null;
+    const path: InkPathCommand[] = [{ op: "M", x: end.x, y: end.y }];
+    for (let index = 0; index < points.length; index += 1) {
+      path.push({
+        op: "L",
+        x: (points[index].x - this.left) / this.scale,
+        y: (points[index].y - this.top) / this.scale,
+      });
+    }
+    return {
+      path,
+      paint: {
+        fill: null,
+        stroke: { color: this.color, width: end.width, cap: "round", join: "round" },
+        opacity: 1,
+      },
+    };
+  }
+}

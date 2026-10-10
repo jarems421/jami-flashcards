@@ -3,6 +3,7 @@ import {
   applyInkChange,
   inkAddChange,
   inkClearChange,
+  inkDiffChange,
   InkHistory,
   inkRemoveChange,
   inkReplaceChange,
@@ -86,6 +87,78 @@ describe("ink changes", () => {
     expect(() => applyInkChange(doc, { removed: [], added: [{ index: 9, item: item("z") }] })).toThrow(
       /cannot insert/
     );
+  });
+});
+
+describe("inkDiffChange", () => {
+  function expectRoundTrip(before: InkDocument, after: InkDocument) {
+    const diff = inkDiffChange(before, after);
+    expect(applyInkChange(before, diff)).toEqual(after);
+    expect(applyInkChange(after, invertInkChange(diff))).toEqual(before);
+    return diff;
+  }
+
+  it("is empty when nothing changed", () => {
+    const doc = docOf(item("a"), item("b"));
+    expect(inkDiffChange(doc, docOf(...doc.items))).toEqual({ removed: [], added: [] });
+    expect(inkDiffChange(docOf(), docOf())).toEqual({ removed: [], added: [] });
+  });
+
+  it("records removals only", () => {
+    const before = docOf(item("a"), item("b"), item("c"), item("d"));
+    const after = docOf(before.items[0], before.items[2]);
+    const diff = expectRoundTrip(before, after);
+    expect(diff.removed.map((r) => [r.index, r.item.id])).toEqual([
+      [1, "b"],
+      [3, "d"],
+    ]);
+    expect(diff.added).toEqual([]);
+  });
+
+  it("records a split as one removal and its pieces in place", () => {
+    const before = docOf(item("a"), item("b"), item("c"));
+    const after = docOf(before.items[0], item("b1"), item("b2"), before.items[2]);
+    const diff = expectRoundTrip(before, after);
+    expect(diff.removed.map((r) => [r.index, r.item.id])).toEqual([[1, "b"]]);
+    expect(diff.added.map((a) => [a.index, a.item.id])).toEqual([
+      [1, "b1"],
+      [2, "b2"],
+    ]);
+  });
+
+  it("handles splits and removals together", () => {
+    const before = docOf(item("a"), item("b"), item("c"), item("d"), item("e"));
+    const after = docOf(item("a1"), item("a2"), before.items[2], item("e1"));
+    const diff = expectRoundTrip(before, after);
+    expect(diff.removed.map((r) => r.item.id)).toEqual(["a", "b", "d", "e"]);
+    expect(diff.added.map((a) => a.item.id)).toEqual(["a1", "a2", "e1"]);
+  });
+
+  it("treats the same id on a different object as removed and added", () => {
+    const before = docOf(item("a"), item("b"));
+    const after = docOf(before.items[0], item("b"));
+    const diff = expectRoundTrip(before, after);
+    expect(diff.removed.map((r) => r.item.id)).toEqual(["b"]);
+    expect(diff.added.map((a) => a.item.id)).toEqual(["b"]);
+    expect(diff.added[0].item).toBe(after.items[1]);
+  });
+
+  it("records an erase gesture as one undo step", () => {
+    const history = new InkHistory();
+    const original = docOf(item("a"), item("b"), item("c"), item("d"));
+    // Many per-packet edits...
+    const step1 = applyInkChange(original, inkReplaceChange(original, new Map([["b", [item("b1"), item("b2")]]])));
+    const step2 = applyInkChange(step1, inkRemoveChange(step1, ["c"]));
+    const step3 = applyInkChange(step2, inkReplaceChange(step2, new Map([["b2", [item("b2x")]]])));
+    // ...one change.
+    history.push(inkDiffChange(original, step3));
+    expect(history.undoDepth).toBe(1);
+
+    const undone = history.undo(step3)!;
+    expect(undone.doc).toEqual(original);
+    undone.doc.items.forEach((restored, index) => expect(restored).toBe(original.items[index]));
+    const redone = history.redo(undone.doc)!;
+    expect(redone.doc).toEqual(step3);
   });
 });
 

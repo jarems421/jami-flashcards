@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   INK_CANVAS_BUDGET_BYTES,
   INK_CANVAS_MAX_PIXELS,
+  INK_DEFAULT_PAGE,
   inkBoxDeviceRect,
   inkDevicePixelSnap,
   inkDeviceRectIntersection,
@@ -55,6 +56,47 @@ describe("inkRenderLevel", () => {
   it("never makes a tile over the 4 MP canvas cap", () => {
     const huge = level(1, 40);
     expect(huge.tilePx * huge.tilePx).toBeLessThanOrEqual(INK_CANVAS_MAX_PIXELS);
+  });
+
+  describe("page size", () => {
+    it("is the 900 x 1240 notebook page by default, whether passed or not", () => {
+      expect(INK_DEFAULT_PAGE).toEqual({ width: 900, height: 1240 });
+      for (const [scale, ratio] of [[0.6, 2], [2.5, 2], [1, 1], [1.37, 1.5]]) {
+        expect(inkRenderLevel(scale, ratio, INK_DEFAULT_PAGE)).toEqual(inkRenderLevel(scale, ratio));
+      }
+    });
+
+    it("sets the rows and columns from the page it is given, and nothing about a tile", () => {
+      const exam = inkRenderLevel(0.6, 2, { width: 900, height: 2000 })!;
+      const notebook = level(0.6, 2);
+      // 2000 units at 1.2 device pixels a unit is 2400 pixels: five tiles of 512 down.
+      expect(exam).toMatchObject({ tilePx: 512, unitPx: 1.2, columns: 3, rows: 5 });
+      expect(exam.key).toBe(notebook.key);
+      expect(exam.tilePx).toBe(notebook.tilePx);
+      expect(inkRenderLevel(2.5, 2, { width: 450, height: 120 })).toMatchObject({ columns: 5, rows: 2 });
+      // A short page still has a tile.
+      expect(inkRenderLevel(0.1, 1, { width: 10, height: 10 })).toMatchObject({ columns: 1, rows: 1 });
+    });
+
+    it("keeps tiles of a taller page inside the sheet", () => {
+      const tall = inkRenderLevel(1, 2, { width: 900, height: 3000 })!;
+      const rows = inkVisibleTiles(tall, { left: 0, top: 0, width: 900, height: 6000 }).map((tile) => tile.row);
+      expect(Math.max(...rows)).toBe(tall.rows - 1);
+      expect(inkTilesForBox(tall, { minX: 0, minY: 2900, maxX: 10, maxY: 3200 }).map((tile) => tile.row)).toEqual([
+        tall.rows - 1,
+      ]);
+    });
+
+    it("refuses a page that makes no sense", () => {
+      for (const page of [
+        { width: 0, height: 100 },
+        { width: 100, height: -1 },
+        { width: Number.NaN, height: 100 },
+        { width: 100, height: Number.POSITIVE_INFINITY },
+      ]) {
+        expect(inkRenderLevel(1, 1, page)).toBeNull();
+      }
+    });
   });
 });
 

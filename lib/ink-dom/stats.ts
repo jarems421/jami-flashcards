@@ -42,6 +42,8 @@ export type InkRendererStats = {
   changeMsMax: number;
   /** Tiles a document change redrew (or appended to) on the spot. */
   changeTiles: number;
+  /** The longest one step of the warm-up's drawing took (each is a background slice of its own). */
+  warmUpMsMax: number;
   /** Times a new zoom level replaced the one on screen. */
   levelSwaps: number;
   /** Tiles let go of to stay inside the memory budget. */
@@ -72,6 +74,7 @@ export function emptyInkRendererStats(): InkRendererStats {
     changes: 0,
     changeMsMax: 0,
     changeTiles: 0,
+    warmUpMsMax: 0,
     levelSwaps: 0,
     evictions: 0,
     budgetMisses: 0,

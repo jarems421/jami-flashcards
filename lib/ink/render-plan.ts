@@ -76,16 +76,43 @@ function tile(col: number, row: number): InkTile {
   return { col, row, key: inkTileKey(col, row) };
 }
 
+/**
+ * The order tiles are listed in everywhere (`inkTilesForBox`,
+ * `inkTilesForDeviceRect`): a row at a time, left to right. It is also the
+ * order tile canvases stack in on screen where live ink and the lift meet:
+ * canvases that abut are composited with a faint overlap at their seam, so the
+ * order they sit in changes a seam pixel by a level in 255 (see
+ * `lib/ink-dom/live-layer.ts`).
+ */
+export function compareInkTiles(a: InkTile, b: InkTile): number {
+  return a.row - b.row || a.col - b.col;
+}
+
 function positive(value: number): boolean {
   return Number.isFinite(value) && value > 0;
 }
 
+/** The size of the page being drawn, in page units. */
+export type InkPageSize = { width: number; height: number };
+
+/** The notebook page: 900 x 1240. Exam working pages are 900 wide with other heights. */
+export const INK_DEFAULT_PAGE: InkPageSize = {
+  width: NOTEBOOK_PAGE_COORDINATE_WIDTH,
+  height: NOTEBOOK_PAGE_COORDINATE_HEIGHT,
+};
+
 /**
- * The level for a settled zoom on a screen, or null when either number makes
- * no sense (zero, negative or not finite), in which case nothing is drawn.
+ * The level for a settled zoom on a screen, or null when a number makes no
+ * sense (zero, negative or not finite), in which case nothing is drawn. The
+ * page only sets how many tiles there are, never what a tile holds, so the
+ * same zoom on pages of different sizes is the same pixels (the same `key`).
  */
-export function inkRenderLevel(scale: number, devicePixelRatio: number): InkRenderLevel | null {
-  if (!positive(scale) || !positive(devicePixelRatio)) return null;
+export function inkRenderLevel(
+  scale: number,
+  devicePixelRatio: number,
+  page: InkPageSize = INK_DEFAULT_PAGE
+): InkRenderLevel | null {
+  if (!positive(scale) || !positive(devicePixelRatio) || !positive(page.width) || !positive(page.height)) return null;
   const unitPx = scale * devicePixelRatio;
   const tilePx = Math.min(
     MAX_TILE_DEVICE_PX,
@@ -97,8 +124,8 @@ export function inkRenderLevel(scale: number, devicePixelRatio: number): InkRend
     devicePixelRatio,
     unitPx,
     tilePx,
-    columns: Math.max(1, Math.ceil((NOTEBOOK_PAGE_COORDINATE_WIDTH * unitPx) / tilePx)),
-    rows: Math.max(1, Math.ceil((NOTEBOOK_PAGE_COORDINATE_HEIGHT * unitPx) / tilePx)),
+    columns: Math.max(1, Math.ceil((page.width * unitPx) / tilePx)),
+    rows: Math.max(1, Math.ceil((page.height * unitPx) / tilePx)),
   };
 }
 

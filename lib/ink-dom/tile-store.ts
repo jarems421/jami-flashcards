@@ -387,6 +387,11 @@ export class InkTileStore {
     return this.free.pop() ?? this.evict(null, 1, true);
   }
 
+  /** A spare canvas, if one is waiting: no tile gives one up and none is made. */
+  lendSpare(): InkCanvas | null {
+    return this.free.pop() ?? null;
+  }
+
   /** A lent canvas back to the spares. */
   takeBack(canvas: InkCanvas): void {
     this.giveBack(canvas);

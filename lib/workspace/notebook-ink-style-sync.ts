@@ -1,9 +1,9 @@
 import type { Editor as JsDrawEditor } from "js-draw";
+import type { NotebookInkStyle } from "@/lib/workspace/notebook-ink-types";
 import {
   applyNotebookInkStyle,
   areNotebookInkStylesEqual,
   type JsDrawModule,
-  type NotebookInkStyle,
 } from "@/lib/workspace/notebook-js-draw";
 
 /**

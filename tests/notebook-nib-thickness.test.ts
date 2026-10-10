@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyNotebookNibThickness,
   getNotebookNibThicknessForViewport,
-  type NotebookInkStyle,
 } from "@/lib/workspace/notebook-js-draw";
+import type { NotebookInkStyle } from "@/lib/workspace/notebook-ink-types";
 import { NOTEBOOK_PEN_SETTINGS_DEFAULT } from "@/lib/workspace/notebook-pen-feel";
 
 /**

@@ -11,7 +11,7 @@ import { createInkRenderer } from "@/lib/ink-dom/renderer";
 import { inkToSvg } from "@/lib/ink/export-svg";
 import { frames, nextFrame, renderWithEngine, resetStage, whenIdle, type View } from "./stage";
 import { SCALE, viewFor, type Mode } from "./fidelity";
-import { handwritingPage, outlineItem, seededPageSvg, segmentCount, strokeFor, strokeSamples, writeStroke } from "./strokes";
+import { handwritingPage, outlineItem, seededPageSvg, segmentCount, strokeFor, strokeSamples, tipAfter, writeStroke } from "./strokes";
 
 /* ------------------------------------------------- instrumentation -- */
 
@@ -141,7 +141,8 @@ export async function measureWriting(options: WriteOptions): Promise<WriteResult
   watchLayoutReads();
   let doc: InkDocument = options.background === "empty" ? { version: 3, items: [] } : denseHandwriting();
   const { sheet, view } = viewFor(options.mode, doc);
-  const { renderer } = await renderWithEngine(doc, sheet, view);
+  // The page opens as the editor opens it: the GPU warm-up is asked for once its ink is on screen.
+  const { renderer } = await renderWithEngine(doc, sheet, view, { onVisibleDrawn: (ready) => ready.warmUp() });
   const packetMs: number[] = [];
   const drawMs: number[] = [];
   const commits: number[] = [];
@@ -217,6 +218,97 @@ export async function measureWriting(options: WriteOptions): Promise<WriteResult
     commitMs: round(Math.max(...commits.slice(1))),
     peakCanvasBytes: renderer.stats.peakCanvasBytes,
     largestCanvasPixels: renderer.stats.largestCanvasPixels,
+  };
+}
+
+/* ---------------------------------------------------- first stroke, cold -- */
+
+export type FirstStrokeOptions = {
+  mode: Mode;
+  /** Ask for the GPU warm-up once the page's ink is on screen, as the editor does. */
+  warmUp: boolean;
+  layer: InkLayer;
+  width: number;
+  pressure: boolean;
+  /** Draw the predicted tip with every packet, as the editor does. */
+  tip: boolean;
+};
+
+export type FirstStrokeResult = {
+  warmUp: boolean;
+  /** Every frame of the stroke, in order, in milliseconds. */
+  frameTimes: number[];
+  framesOver25: number;
+  longestFrameMs: number;
+  /** Where each frame over 25 ms fell: its number in the stroke and its length. */
+  longFrames: string[];
+  packetMsP95: number;
+  packetMsMax: number;
+  allocationsDuringStroke: number;
+  /** The page opening: first ink, and the longest background slice until the renderer settled (warm-up included). */
+  firstInkMs: number;
+  sliceMsMax: number;
+  /** The warm-up's own drawing, the longest it held a slice. */
+  warmUpMsMax: number;
+};
+
+/**
+ * The first stroke on a page in a browser that has drawn nothing yet: the page
+ * is opened as the editor opens it (document and viewport set, then the
+ * warm-up asked for when every visible tile is drawn), the renderer is left
+ * to settle, and a 200-sample stroke is written. Run in a freshly launched
+ * browser: the GPU process compiles each shader once and keeps it, so any
+ * earlier drawing would have warmed it.
+ */
+export async function measureFirstStroke(options: FirstStrokeOptions): Promise<FirstStrokeResult> {
+  const doc = denseHandwriting();
+  const { sheet, view } = viewFor(options.mode, doc);
+  const { renderer } = await renderWithEngine(doc, sheet, view, {
+    onVisibleDrawn: (ready) => {
+      if (options.warmUp) ready.warmUp();
+    },
+  });
+  const opened = {
+    firstInkMs: round(renderer.stats.firstInkMs ?? 0),
+    sliceMsMax: round(renderer.stats.sliceMsMax),
+    warmUpMsMax: round(renderer.stats.warmUpMsMax),
+  };
+  await frames(3);
+  renderer.resetStats();
+
+  const samples = strokeSamples({ x: 200, y: 280, length: 360, samples: 200, width: options.width, loops: 10, pressure: options.pressure });
+  const stroke = strokeFor(options.layer, samples[0], 1 / SCALE[options.mode]);
+  const tipAt = (index: number) => (options.tip ? tipAfter(samples, index, options.layer) : null);
+  const packetMs: number[] = [];
+  const stopFrames = recordFrames();
+  renderer.beginLive(options.layer);
+  let last = stroke.live();
+  renderer.drawLive(last.path, last.paint, tipAt(0));
+  for (let i = 1; i < samples.length; i += 2) {
+    await sleep(8);
+    const start = performance.now();
+    stroke.add(samples[i]);
+    if (samples[i + 1]) stroke.add(samples[i + 1]);
+    last = stroke.live();
+    renderer.drawLive(last.path, last.paint, tipAt(Math.min(i + 1, samples.length - 1)));
+    packetMs.push(performance.now() - start);
+  }
+  const allocations = renderer.stats.canvasAllocations;
+  await nextFrame();
+  const frameTimes = stopFrames().map(round);
+  const item = outlineItem(options.layer, stroke.committed());
+  renderer.commitLive({ version: 3, items: [...doc.items, item] }, inkAddChange(doc, [item]));
+  await whenIdle(renderer);
+  return {
+    warmUp: options.warmUp,
+    frameTimes,
+    framesOver25: frameTimes.filter((time) => time > 25).length,
+    longestFrameMs: Math.max(0, ...frameTimes),
+    longFrames: frameTimes.flatMap((time, index) => (time > 25 ? [`frame ${index + 1} (${time} ms)`] : [])),
+    packetMsP95: round(percentile(packetMs, 95)),
+    packetMsMax: round(Math.max(...packetMs)),
+    allocationsDuringStroke: allocations,
+    ...opened,
   };
 }
 

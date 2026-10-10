@@ -377,7 +377,7 @@ describe("notebook eraser helpers", () => {
  */
 describe("the eraser cursor stays visible on any page", () => {
   const source = readFileSync(
-    join(process.cwd(), "components/workspace/NotebookInkEditor.tsx"),
+    join(process.cwd(), "components/workspace/NotebookEraserCursor.tsx"),
     "utf8"
   );
   const cursorClasses =

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyInkChange, inkAddChange, inkRemoveChange } from "@/lib/ink/history";
 import type { InkDocument, InkItem, InkLayer, InkPaint, InkPathCommand } from "@/lib/ink/model";
-import { createInkRenderer, type InkRenderer, type InkViewport } from "@/lib/ink-dom/renderer";
+import { createInkRenderer, type InkLiveTip, type InkRenderer, type InkViewport } from "@/lib/ink-dom/renderer";
 import { callsOf, FakePath2D, installFakeCanvas, type FakeCanvasEnvironment } from "./support/fake-canvas";
 
 const black = { r: 17, g: 24, b: 39, a: 1 };
@@ -39,17 +39,35 @@ const ZOOMED: InkViewport = { scale: 2.5, devicePixelRatio: 2, visible: { left: 
 
 let canvas: FakeCanvasEnvironment;
 let posted: Array<() => void>;
+/** Animation frames asked for and not yet run (the warm-up waits on two). */
+let frameCallbacks: Map<number, () => void>;
+let frameCount: number;
 let host: HTMLDivElement;
 let renderer: InkRenderer;
+
+/** Lets the frames asked for so far happen; those they ask for wait for the next. */
+function runFrame() {
+  const due = Array.from(frameCallbacks.values());
+  frameCallbacks.clear();
+  for (const callback of due) callback();
+}
 
 function pump() {
   for (let guard = 0; guard < 10_000 && posted.length > 0; guard += 1) posted.shift()!();
 }
 
-function make(options: { budgetBytes?: number } = {}) {
+function make(options: { budgetBytes?: number; page?: { width: number; height: number } } = {}) {
   renderer = createInkRenderer(host, {
     now: canvas.now,
     post: (callback) => posted.push(callback),
+    requestFrame: (callback) => {
+      frameCount += 1;
+      frameCallbacks.set(frameCount, callback);
+      return frameCount;
+    },
+    cancelFrame: (id) => {
+      frameCallbacks.delete(id);
+    },
     pathFactory: () => new FakePath2D(),
     ...options,
   });
@@ -63,9 +81,31 @@ function dryCanvases(layer: InkLayer): HTMLCanvasElement[] {
   return Array.from(layerRoot.querySelectorAll("canvas"));
 }
 
+/** The live canvases (the layer root after the two dry ones). */
+function liveCanvases(): HTMLCanvasElement[] {
+  const root = host.querySelector("[data-ink-renderer]")!;
+  return Array.from(root.children[2].querySelectorAll("canvas"));
+}
+
+/** A canvas by its tile, on the 512 pixel tiles of a 2x screen: left and top in CSS pixels. */
+function atTile(list: HTMLCanvasElement[], col: number, row: number) {
+  return list.find((element) => element.style.left === `${col * 256}px` && element.style.top === `${row * 256}px`);
+}
+
+const strokesOf = (element: HTMLCanvasElement) =>
+  callsOf(canvas, element, "stroke").map((call) => (call.args[0] as FakePath2D).commands);
+
+/** Microtasks queued so far have run. */
+const microtasks = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
+
 beforeEach(() => {
   canvas = installFakeCanvas();
   posted = [];
+  frameCallbacks = new Map();
+  frameCount = 0;
   host = document.createElement("div");
   document.body.appendChild(host);
 });
@@ -148,6 +188,41 @@ describe("createInkRenderer", () => {
     expect(callsOf(canvas, after[0], "stroke").length).toBeGreaterThan(0);
     expect(strokesBefore.every((count) => count === 1)).toBe(true);
     expect(after[0].style.visibility).toBe("");
+  });
+
+  it("stacks live tiles in tile order, whatever order the stroke reached them in, and the lift keeps that order", () => {
+    make();
+    renderer.setViewport(FITTED);
+    const doc: InkDocument = { version: 3, items: [line("p", "pen", 30, 30)] };
+    renderer.setDocument(doc);
+    pump();
+
+    // Canvases that abut meet in a seam row where each covers a hair of the other, so
+    // the order they stack in is part of what is on screen: the lift must not change it.
+    renderer.beginLive("pen");
+    const start: InkPathCommand[] = [
+      { op: "M", x: 500, y: 600 },
+      { op: "L", x: 520, y: 600 },
+    ];
+    renderer.drawLive(start, penPaint);
+    const path: InkPathCommand[] = [
+      ...start,
+      { op: "L", x: 520, y: 300 },
+      { op: "L", x: 100, y: 300 },
+      { op: "L", x: 100, y: 600 },
+    ];
+    renderer.drawLive(path, penPaint);
+
+    const live = liveCanvases();
+    const placeOf = (element: HTMLCanvasElement) => [parseFloat(element.style.top), parseFloat(element.style.left)];
+    expect(live).toHaveLength(4);
+    expect(live.map(placeOf)).toEqual([[0, 0], [0, 256], [256, 0], [256, 256]]);
+
+    const item: InkItem = { kind: "outline", id: "new", layer: "pen", path, paint: penPaint };
+    renderer.commitLive(applyInkChange(doc, inkAddChange(doc, [item])), inkAddChange(doc, [item]));
+    const adopted = dryCanvases("pen").filter((element) => live.includes(element));
+    expect(adopted).toHaveLength(live.length);
+    adopted.forEach((element, index) => expect(element).toBe(live[index]));
   });
 
   it("paints the committed item afresh when it is not what live ink drew", () => {
@@ -423,5 +498,491 @@ describe("createInkRenderer", () => {
     expect(renderer.stats.canvasBytes).toBeGreaterThan(0);
     renderer.destroy();
     expect(renderer.stats.canvasBytes).toBe(0);
+  });
+
+  describe("with a page of its own size", () => {
+    const tall = { left: 0, top: 0, width: 540, height: 1200 };
+
+    it("draws the tiles of a taller page than the notebook's, ink at its foot included", () => {
+      make({ page: { width: 900, height: 2000 } });
+      renderer.setViewport({ ...FITTED, visible: tall });
+      // 2000 units at 1.2 device pixels a unit is five tiles of 512 down; the notebook's page is three.
+      renderer.setDocument({ version: 3, items: [line("foot", "pen", 100, 1900)] });
+      pump();
+      expect(renderer.coverage()).toEqual({ visible: 15, drawn: 15 });
+      expect(atTile(dryCanvases("pen"), 0, 4)).toBeDefined();
+    });
+
+    it("keeps the notebook's 900 x 1240 page when none is given", () => {
+      make();
+      renderer.setViewport({ ...FITTED, visible: tall });
+      renderer.setDocument({ version: 3, items: [] });
+      pump();
+      expect(renderer.coverage()).toEqual({ visible: 9, drawn: 9 });
+    });
+  });
+
+  describe("the predicted tip", () => {
+    // 1.2 device pixels a unit: tile (0,0) ends at page x 426.7.
+    const stroke: InkPathCommand[] = [
+      { op: "M", x: 380, y: 100 },
+      { op: "L", x: 400, y: 100 },
+    ];
+    const strokeCommands = [
+      ["M", 380, 100],
+      ["L", 400, 100],
+    ];
+    const tipFrom = (x: number, to: number): InkLiveTip => ({
+      path: [
+        { op: "M", x, y: 100 },
+        { op: "L", x: to, y: 100 },
+      ],
+      paint: penPaint,
+    });
+    const tipCommands = (x: number, to: number) => [
+      ["M", x, 100],
+      ["L", to, 100],
+    ];
+
+    function start() {
+      make();
+      renderer.setViewport(FITTED);
+      const doc: InkDocument = { version: 3, items: [line("p", "pen", 30, 300)] };
+      renderer.setDocument(doc);
+      pump();
+      renderer.resetStats();
+      renderer.beginLive("pen");
+      return doc;
+    }
+
+    it("draws the tip after the stroke, in every tile either reaches and no other", () => {
+      start();
+      renderer.drawLive(stroke, penPaint, tipFrom(400, 440));
+      expect(liveCanvases()).toHaveLength(2);
+      expect(strokesOf(atTile(liveCanvases(), 0, 0)!)).toEqual([strokeCommands, tipCommands(400, 440)]);
+      // The stroke does not reach the next tile; its tip does.
+      expect(strokesOf(atTile(liveCanvases(), 1, 0)!)).toEqual([tipCommands(400, 440)]);
+      expect(renderer.stats.canvasAllocations).toBe(0);
+    });
+
+    it("repaints where the tip was and where it is, and nothing when neither moved", () => {
+      start();
+      renderer.drawLive(stroke, penPaint, tipFrom(400, 415));
+      expect(liveCanvases()).toHaveLength(1);
+      const first = atTile(liveCanvases(), 0, 0)!;
+      // The tip grows into the next tile; the stroke is as it was.
+      renderer.drawLive(stroke, penPaint, tipFrom(400, 440));
+      const second = atTile(liveCanvases(), 1, 0)!;
+      expect(strokesOf(second)).toEqual([tipCommands(400, 440)]);
+      // The same packet again changes nothing, in either tile.
+      const calls = () => [canvas.contexts.get(first)!.calls.length, canvas.contexts.get(second)!.calls.length];
+      const before = calls();
+      renderer.drawLive(stroke, penPaint, tipFrom(400, 440));
+      expect(calls()).toEqual(before);
+      // The tip leaves that tile: it is repainted without it.
+      renderer.drawLive(stroke, penPaint, tipFrom(400, 415));
+      const after = canvas.contexts.get(second)!.calls;
+      const lastClear = after.map((call) => call.op).lastIndexOf("clearRect");
+      expect(lastClear).toBeGreaterThanOrEqual(0);
+      expect(after.slice(lastClear).filter((call) => call.op === "stroke")).toHaveLength(0);
+      expect(strokesOf(first).at(-1)).toEqual(tipCommands(400, 415));
+    });
+
+    it("takes the tip away at the lift, from every tile it touched, and lifts the stroke as it would have", () => {
+      const doc = start();
+      renderer.drawLive(stroke, penPaint, tipFrom(400, 440));
+      const item: InkItem = { kind: "outline", id: "new", layer: "pen", path: stroke, paint: penPaint };
+      const add = inkAddChange(doc, [item]);
+      renderer.commitLive(applyInkChange(doc, add), add);
+      expect(renderer.stats.canvasAllocations).toBe(0);
+      // The tip's tile has no ink of its own: nothing of the tip is left in the dry layer.
+      expect(atTile(dryCanvases("pen"), 1, 0)).toBeUndefined();
+      const lifted = atTile(dryCanvases("pen"), 0, 0)!;
+      const calls = canvas.contexts.get(lifted)!.calls;
+      const lastClear = calls.map((call) => call.op).lastIndexOf("clearRect");
+      const painted = calls
+        .slice(lastClear)
+        .filter((call) => call.op === "stroke")
+        .map((call) => (call.args[0] as FakePath2D).commands);
+      expect(painted).toEqual([strokeCommands]);
+      expect(liveCanvases()).toHaveLength(0);
+    });
+
+    it("paints the committed item afresh when it is not what live ink drew, and the tip stays with the live tiles", () => {
+      const doc = start();
+      renderer.drawLive(stroke, penPaint, tipFrom(400, 440));
+      const traced: InkItem = {
+        kind: "outline",
+        id: "traced",
+        layer: "pen",
+        path: [
+          { op: "M", x: 380, y: 100 },
+          { op: "L", x: 401, y: 100 },
+        ],
+        paint: penPaint,
+      };
+      const add = inkAddChange(doc, [traced]);
+      renderer.commitLive(applyInkChange(doc, add), add);
+      expect(atTile(dryCanvases("pen"), 1, 0)).toBeUndefined();
+      const calls = canvas.contexts.get(atTile(dryCanvases("pen"), 0, 0)!)!.calls;
+      const painted = calls
+        .slice(calls.map((call) => call.op).lastIndexOf("clearRect"))
+        .filter((call) => call.op === "stroke")
+        .map((call) => (call.args[0] as FakePath2D).commands);
+      // The page's own line, then the committed item painted onto the dry tile: nothing of the tip.
+      expect(painted).toEqual([
+        [
+          ["M", 30, 300],
+          ["L", 70, 300],
+        ],
+        [
+          ["M", 380, 100],
+          ["L", 401, 100],
+        ],
+      ]);
+      expect(liveCanvases()).toHaveLength(0);
+    });
+
+    it("lifts a stroke with no tip as before: the live tile is handed over and nothing is painted", () => {
+      const doc = start();
+      renderer.drawLive(stroke, penPaint);
+      const live = atTile(liveCanvases(), 0, 0)!;
+      const before = canvas.contexts.get(live)!.calls.length;
+      const item: InkItem = { kind: "outline", id: "new", layer: "pen", path: stroke, paint: penPaint };
+      const add = inkAddChange(doc, [item]);
+      renderer.commitLive(applyInkChange(doc, add), add);
+      expect(atTile(dryCanvases("pen"), 0, 0)).toBe(live);
+      expect(canvas.contexts.get(live)!.calls).toHaveLength(before);
+    });
+
+    it("lifts a stroke whose tip was taken away just as one that never had a tip", () => {
+      const doc = start();
+      renderer.drawLive(stroke, penPaint, tipFrom(400, 440));
+      renderer.drawLive(stroke, penPaint, null);
+      const live = atTile(liveCanvases(), 0, 0)!;
+      const before = canvas.contexts.get(live)!.calls.length;
+      const item: InkItem = { kind: "outline", id: "new", layer: "pen", path: stroke, paint: penPaint };
+      const add = inkAddChange(doc, [item]);
+      renderer.commitLive(applyInkChange(doc, add), add);
+      expect(atTile(dryCanvases("pen"), 0, 0)).toBe(live);
+      expect(canvas.contexts.get(live)!.calls).toHaveLength(before);
+    });
+
+    it("is gone when the stroke is cancelled, and the dry tiles show again", () => {
+      start();
+      renderer.drawLive(stroke, penPaint, tipFrom(400, 440));
+      expect(dryCanvases("pen").some((element) => element.style.visibility === "hidden")).toBe(true);
+      renderer.cancelLive();
+      expect(liveCanvases()).toHaveLength(0);
+      expect(dryCanvases("pen").every((element) => element.style.visibility === "")).toBe(true);
+      expect(renderer.stats.canvasAllocations).toBe(0);
+    });
+
+    it("draws no tip that paints nothing", () => {
+      start();
+      renderer.drawLive(stroke, penPaint, { path: [], paint: penPaint });
+      expect(strokesOf(atTile(liveCanvases(), 0, 0)!)).toEqual([strokeCommands]);
+    });
+  });
+
+  describe("whenVisibleDrawn", () => {
+    const doc: InkDocument = { version: 3, items: [line("p", "pen", 30, 30)] };
+
+    it("calls back once, after every visible tile is drawn, and not before", async () => {
+      make();
+      renderer.setViewport(FITTED);
+      renderer.setDocument(doc);
+      const done = vi.fn();
+      renderer.whenVisibleDrawn(done);
+      await microtasks();
+      expect(done).not.toHaveBeenCalled();
+      pump();
+      expect(done).not.toHaveBeenCalled();
+      await microtasks();
+      expect(renderer.coverage()).toEqual({ visible: 9, drawn: 9 });
+      expect(done).toHaveBeenCalledTimes(1);
+      // Later draws do not call it again.
+      renderer.setViewport({ ...FITTED, visible: { ...FITTED.visible, left: 100 } });
+      pump();
+      await microtasks();
+      expect(done).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls back on the next microtask when the page is already drawn", async () => {
+      make();
+      renderer.setViewport(FITTED);
+      renderer.setDocument(doc);
+      pump();
+      const done = vi.fn();
+      renderer.whenVisibleDrawn(done);
+      expect(done).not.toHaveBeenCalled();
+      await microtasks();
+      expect(done).toHaveBeenCalledTimes(1);
+    });
+
+    it("can be cancelled, before and after it is due", async () => {
+      make();
+      renderer.setViewport(FITTED);
+      renderer.setDocument(doc);
+      const early = vi.fn();
+      renderer.whenVisibleDrawn(early)();
+      pump();
+      const queued = vi.fn();
+      const cancel = renderer.whenVisibleDrawn(queued);
+      cancel();
+      await microtasks();
+      expect(early).not.toHaveBeenCalled();
+      expect(queued).not.toHaveBeenCalled();
+    });
+
+    it("waits while a new zoom is drawn behind the old one, then calls back", async () => {
+      make();
+      renderer.setViewport(FITTED);
+      renderer.setDocument(doc);
+      pump();
+      renderer.setViewport(ZOOMED);
+      const done = vi.fn();
+      renderer.whenVisibleDrawn(done);
+      await microtasks();
+      expect(done).not.toHaveBeenCalled();
+      pump();
+      await microtasks();
+      expect(renderer.stats.levelSwaps).toBe(1);
+      expect(done).toHaveBeenCalledTimes(1);
+    });
+
+    it("waits for a new page set just after it was asked", async () => {
+      make();
+      renderer.setViewport(FITTED);
+      renderer.setDocument(doc);
+      pump();
+      const done = vi.fn();
+      renderer.whenVisibleDrawn(done);
+      renderer.setDocument({ version: 3, items: [line("next", "pen", 600, 900)] });
+      await microtasks();
+      expect(done).not.toHaveBeenCalled();
+      pump();
+      await microtasks();
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(renderer.coverage()).toEqual({ visible: 9, drawn: 9 });
+    });
+
+    it("calls back for a page with no ink, once its empty tiles are drawn", async () => {
+      make();
+      renderer.setViewport(FITTED);
+      renderer.setDocument({ version: 3, items: [] });
+      const done = vi.fn();
+      renderer.whenVisibleDrawn(done);
+      pump();
+      await microtasks();
+      expect(done).toHaveBeenCalledTimes(1);
+    });
+
+    it("never calls back once destroyed", async () => {
+      make();
+      renderer.setViewport(FITTED);
+      renderer.setDocument(doc);
+      const done = vi.fn();
+      renderer.whenVisibleDrawn(done);
+      renderer.destroy();
+      pump();
+      await microtasks();
+      expect(done).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the GPU warm-up", () => {
+    const doc: InkDocument = { version: 3, items: [line("p", "pen", 30, 30)] };
+
+    function open() {
+      make();
+      renderer.setViewport(FITTED);
+      renderer.setDocument(doc);
+      pump();
+      renderer.resetStats();
+    }
+
+    it("does nothing until asked", () => {
+      open();
+      expect(liveCanvases()).toHaveLength(0);
+      expect(frameCallbacks.size).toBe(0);
+      expect(renderer.idle).toBe(true);
+    });
+
+    it("puts a spare canvas on screen over a visible tile, draws every live-ink path on it, and ends after two frames", () => {
+      open();
+      const bytes = renderer.stats.canvasBytes;
+      renderer.warmUp();
+      renderer.warmUp();
+      expect(renderer.idle).toBe(false);
+      pump();
+      // One canvas, over the tile nearest the middle (tile 1:1 of the fitted sheet).
+      const [overlay, ...others] = liveCanvases();
+      expect(others).toHaveLength(0);
+      expect([overlay.style.left, overlay.style.top]).toEqual(["256px", "256px"]);
+      const ops = canvas.contexts.get(overlay)!.calls.map((call) => call.op);
+      expect(ops.filter((op) => op === "drawImage")).toHaveLength(2);
+      expect(ops.filter((op) => op === "fill")).toHaveLength(2);
+      expect(ops.filter((op) => op === "stroke")).toHaveLength(1);
+      expect(frameCallbacks.size).toBe(1);
+      // It is drawn on and left: wiped in the task it was drawn in, the drawing would be thrown away unseen.
+      const clearsWhileUp = ops.filter((op) => op === "clearRect").length;
+      expect(canvas.contexts.get(overlay)!.calls.at(-1)).toMatchObject({ op: "clearRect", args: [40, 40, 200, 160] });
+      runFrame();
+      expect(overlay.isConnected).toBe(true);
+      expect(renderer.idle).toBe(false);
+      runFrame();
+      expect(overlay.isConnected).toBe(false);
+      expect(renderer.idle).toBe(true);
+      // Wiped after the frames that showed it, and nothing was made or kept for it.
+      const after = canvas.contexts.get(overlay)!.calls;
+      expect(after.filter((call) => call.op === "clearRect").length).toBeGreaterThan(clearsWhileUp);
+      expect(after.at(-1)).toMatchObject({ op: "clearRect", args: [0, 0, 512, 512] });
+      expect(renderer.stats.canvasAllocations).toBe(0);
+      expect(renderer.stats.canvasBytes).toBe(bytes);
+      // Once is enough.
+      renderer.warmUp();
+      pump();
+      expect(liveCanvases()).toHaveLength(0);
+    });
+
+    it("draws in three steps, each in a slice of its own, and waits for frames only when all is drawn", () => {
+      open();
+      renderer.warmUp();
+      // On a canvas drawn in software, drawing costs its time at once: the canvas goes up, then the whole copy, then the rest.
+      posted.shift()!();
+      const [overlay] = liveCanvases();
+      const ops = () => canvas.contexts.get(overlay)!.calls.map((call) => call.op);
+      expect(ops()).toEqual([]);
+      expect(renderer.idle).toBe(false);
+      posted.shift()!();
+      expect(ops().filter((op) => op === "drawImage")).toHaveLength(1);
+      expect(ops()).not.toContain("fill");
+      expect(frameCallbacks.size).toBe(0);
+      posted.shift()!();
+      expect(ops().filter((op) => op === "drawImage")).toHaveLength(2);
+      expect(ops().filter((op) => op === "fill")).toHaveLength(2);
+      expect(frameCallbacks.size).toBe(1);
+    });
+
+    it("runs in the background, after the page's tiles are drawn", () => {
+      make();
+      renderer.setViewport(FITTED);
+      // Ink in every tile, each costing a slice's worth, so the tiles take several slices.
+      const items: InkItem[] = [];
+      for (let row = 0; row < 3; row += 1) {
+        for (let col = 0; col < 3; col += 1) items.push(line(`t${col}${row}`, "pen", col * 427 + 150, row * 427 + 150));
+      }
+      canvas.paintCost = 2;
+      renderer.setDocument({ version: 3, items });
+      renderer.warmUp();
+      expect(liveCanvases()).toHaveLength(0);
+      let slices = 0;
+      while (posted.length > 0 && renderer.coverage().drawn < renderer.coverage().visible) {
+        posted.shift()!();
+        slices += 1;
+        // Not until every visible tile is drawn.
+        if (renderer.coverage().drawn < renderer.coverage().visible) expect(liveCanvases()).toHaveLength(0);
+      }
+      expect(slices).toBeGreaterThan(2);
+      pump();
+      expect(liveCanvases()).toHaveLength(1);
+    });
+
+    it("makes no canvas and takes none from a tile: with none spare it does nothing", () => {
+      const tileBytes = 512 * 512 * 4;
+      make({ budgetBytes: tileBytes * 9 });
+      renderer.setViewport(FITTED);
+      const items: InkItem[] = [];
+      for (let row = 0; row < 3; row += 1) {
+        for (let col = 0; col < 3; col += 1) items.push(line(`t${col}${row}`, "pen", col * 427 + 150, row * 427 + 150));
+      }
+      renderer.setDocument({ version: 3, items });
+      pump();
+      renderer.resetStats();
+      renderer.warmUp();
+      pump();
+      expect(liveCanvases()).toHaveLength(0);
+      expect(renderer.stats.canvasAllocations).toBe(0);
+      expect(renderer.stats.evictions).toBe(0);
+      expect(dryCanvases("pen")).toHaveLength(9);
+    });
+
+    it("gives the canvas back at once when a stroke begins, and does not start again", () => {
+      open();
+      renderer.warmUp();
+      pump();
+      const [overlay] = liveCanvases();
+      expect(overlay).toBeDefined();
+      renderer.beginLive("pen");
+      expect(overlay.isConnected).toBe(false);
+      expect(frameCallbacks.size).toBe(0);
+      renderer.drawLive(pathOf(line("live", "pen", 20, 40, 100)), penPaint);
+      expect(renderer.stats.canvasAllocations).toBe(0);
+      expect(liveCanvases().every((element) => element !== overlay)).toBe(true);
+      renderer.cancelLive();
+      pump();
+      expect(liveCanvases()).toHaveLength(0);
+      expect(frameCallbacks.size).toBe(0);
+      expect(renderer.idle).toBe(true);
+    });
+
+    it("never starts during a stroke", () => {
+      open();
+      renderer.beginLive("pen");
+      renderer.drawLive(pathOf(line("live", "pen", 20, 40, 100)), penPaint);
+      const during = liveCanvases().length;
+      renderer.warmUp();
+      pump();
+      expect(liveCanvases()).toHaveLength(during);
+      expect(frameCallbacks.size).toBe(0);
+      renderer.cancelLive();
+      pump();
+      expect(liveCanvases()).toHaveLength(0);
+    });
+
+    it("gives the canvas back when a gesture begins, and tries again after it", () => {
+      open();
+      renderer.warmUp();
+      pump();
+      const [overlay] = liveCanvases();
+      renderer.beginGesture();
+      expect(overlay.isConnected).toBe(false);
+      expect(frameCallbacks.size).toBe(0);
+      pump();
+      expect(liveCanvases()).toHaveLength(0);
+      renderer.endGesture();
+      pump();
+      expect(liveCanvases()).toHaveLength(1);
+      runFrame();
+      runFrame();
+      expect(liveCanvases()).toHaveLength(0);
+      expect(renderer.idle).toBe(true);
+    });
+
+    it("gives the canvas back before the sheet changes under it, a new density included", () => {
+      open();
+      renderer.warmUp();
+      pump();
+      const [overlay] = liveCanvases();
+      // A different density makes every pooled canvas the wrong size: the overlay must not rejoin the pool.
+      renderer.setViewport({ ...FITTED, devicePixelRatio: 1 });
+      expect(overlay.isConnected).toBe(false);
+      pump();
+      runFrame();
+      runFrame();
+      expect(renderer.idle).toBe(true);
+      for (const element of liveCanvases()) expect(element.width).toBe(256);
+    });
+
+    it("frees every canvas when destroyed with the warm-up up", () => {
+      open();
+      renderer.warmUp();
+      pump();
+      expect(liveCanvases()).toHaveLength(1);
+      renderer.destroy();
+      expect(renderer.stats.canvasBytes).toBe(0);
+      expect(frameCallbacks.size).toBe(0);
+    });
   });
 });

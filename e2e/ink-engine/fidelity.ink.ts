@@ -201,3 +201,108 @@ test.describe("Jami Ink lift", () => {
     );
   });
 });
+
+/*
+ * The predicted tip rides on the live stroke and is wiped at the lift: a stroke
+ * whose last packet showed a tip must lift to the very pixels of the same
+ * stroke drawn with none. (Pen strokes only: a highlighter has no tip.)
+ */
+const tipRows: string[] = [];
+
+test.describe("Jami Ink lift with a predicted tip", () => {
+  test.beforeEach(async ({ page }) => {
+    await openHarness(page);
+  });
+
+  for (const lift of LIFTS.filter((candidate) => candidate.options.layer === "pen")) {
+    for (const mode of MODES) {
+      test(`${lift.name}, ${mode}`, async ({ page }) => {
+        const options: LiftOptions = { ...lift.options, mode };
+        // The same stroke with no tip, lifted.
+        const view = await page.evaluate((o) => window.inkHarness.liftSetup(o), options);
+        await page.evaluate(() => window.inkHarness.liftWrite());
+        await page.evaluate(() => window.inkHarness.liftCommit());
+        const plain = await capture(page, view);
+        // With a tip in every packet, the last included.
+        await page.evaluate((o) => window.inkHarness.liftSetup(o), { ...options, tip: true });
+        await page.evaluate(() => window.inkHarness.liftWrite());
+        const withTip = await capture(page, view);
+        const commitMs = await page.evaluate(() => window.inkHarness.liftCommit());
+        const lifted = await capture(page, view);
+        await page.evaluate(() => window.inkHarness.liftRedraw());
+        const redrawn = await capture(page, view);
+        const tipShown = diffPixels(withTip, lifted, 0);
+        const diff = diffPixels(plain, lifted, 0);
+        const redraw = diffPixels(lifted, redrawn, REDRAW_TOLERANCE);
+        tipRows.push(
+          `| ${lift.name} | ${mode} | ${tipShown.changed} | ${diff.changed} | ${redraw.changed} (max ${redraw.maxDifference}) | ${commitMs.toFixed(2)} |`
+        );
+        if (diff.changed > 0) await saveDiff(`tip lift ${lift.name} ${mode}`, plain, lifted);
+        expect(tipShown.changed, "the tip should show while the pen is down").toBeGreaterThan(0);
+        expect(diff.changed, `pixels differ from the same stroke lifted with no tip (${describe(diff, 0)})`).toBe(0);
+        expect(redraw.overTolerance, `pixels changed when redrawn from scratch (${describe(redraw, REDRAW_TOLERANCE)})`).toBe(0);
+      });
+    }
+  }
+
+  test.afterAll(() => {
+    console.log(
+      [
+        "",
+        "| Lift with a tip | Scale | Tip pixels wiped at the lift | Differ from the tip-less stroke | Changed when redrawn | Commit ms (unthrottled) |",
+        "| --- | --- | --- | --- | --- | --- |",
+        ...tipRows,
+      ].join("\n")
+    );
+  });
+});
+
+/*
+ * The GPU warm-up draws on a spare canvas on screen at an alpha of 1/255, then
+ * clears it and gives it back. It must leave nothing changed, and a stroke
+ * that begins while it is up must simply take the canvas back.
+ */
+test.describe("Jami Ink GPU warm-up", () => {
+  test.beforeEach(async ({ page }) => {
+    await openHarness(page);
+  });
+
+  const base: Omit<LiftOptions, "warmUpOnScreen"> = { layer: "pen", mode: "fitted", width: 14, pressure: true, commit: "same" };
+
+  test("cannot be seen while it is up, and leaves no pixel changed", async ({ page }) => {
+    const view = await page.evaluate((o) => window.inkHarness.liftSetup(o), base);
+    const before = await capture(page, view);
+    await page.evaluate((o) => window.inkHarness.liftSetup(o), { ...base, warmUpOnScreen: true });
+    const overlay = await page.evaluate(() => window.inkHarness.liftOverlay());
+    const during = await capture(page, view);
+    await page.evaluate(() => window.inkHarness.liftWarmUpFinish());
+    const after = await capture(page, view);
+    const faint = diffPixels(before, during, 0);
+    const left = diffPixels(before, after, 0);
+    test.info().annotations.push({ type: "warm-up", description: `on screen: ${faint.changed} pixels off by at most ${faint.maxDifference} of 255; afterwards ${left.changed} changed` });
+    expect(overlay, "the warm-up's canvas should be on screen").toBeGreaterThan(0);
+    expect(faint.maxDifference, "the warm-up must not be visible").toBeLessThanOrEqual(1);
+    expect(left.changed, "pixels changed once the warm-up has ended").toBe(0);
+    expect(await page.evaluate(() => window.inkHarness.liftOverlay())).toBe(0);
+  });
+
+  test("gives its canvas back to a stroke that begins during it, which lifts unchanged", async ({ page }) => {
+    const view = await page.evaluate((o) => window.inkHarness.liftSetup(o), base);
+    await page.evaluate(() => window.inkHarness.liftWrite());
+    const downPlain = await capture(page, view);
+    await page.evaluate(() => window.inkHarness.liftCommit());
+    const liftedPlain = await capture(page, view);
+
+    await page.evaluate((o) => window.inkHarness.liftSetup(o), { ...base, warmUpOnScreen: true });
+    expect(await page.evaluate(() => window.inkHarness.liftOverlay()), "the warm-up's canvas should be on screen").toBeGreaterThan(0);
+    await page.evaluate(() => window.inkHarness.liftWrite());
+    const down = await capture(page, view);
+    await page.evaluate(() => window.inkHarness.liftCommit());
+    const lifted = await capture(page, view);
+    // The stroke ended the warm-up for good: nothing of it stays in the live layer, and it does not start again.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await page.evaluate(() => window.inkHarness.liftOverlay())).toBe(0);
+    expect(diffPixels(downPlain, down, 0).changed, "the stroke with the pen down").toBe(0);
+    expect(diffPixels(liftedPlain, lifted, 0).changed, "the stroke once lifted").toBe(0);
+  });
+});

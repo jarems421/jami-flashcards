@@ -6,7 +6,7 @@
 
 import * as jsDraw from "js-draw";
 import type { InkDocument } from "@/lib/ink/model";
-import { createInkRenderer, type InkRenderer } from "@/lib/ink-dom/renderer";
+import { createInkRenderer, type InkRenderer, type InkRendererOptions } from "@/lib/ink-dom/renderer";
 import { createNotebookJsDrawEditor } from "@/lib/workspace/notebook-js-draw-setup";
 import { installNotebookInkViewportSynchronizer } from "@/lib/workspace/notebook-ink-runtime";
 import {
@@ -94,8 +94,26 @@ export async function renderWithJsDraw(svg: string, sheet: Sheet, view: View): P
 
 export type EngineStage = { renderer: InkRenderer; host: HTMLDivElement };
 
+export type EngineStageOptions = {
+  /** Called once every tile on screen is drawn (what the editor does to drop its static underlay). */
+  onVisibleDrawn?: (renderer: InkRenderer) => void;
+  /** Options for the renderer itself. */
+  renderer?: InkRendererOptions;
+  /**
+   * What to wait for: the renderer to be idle (the default), or only for every
+   * tile on screen to be drawn, leaving background work, a warm-up that holds
+   * its frames included, to the caller.
+   */
+  wait?: "idle" | "visible";
+};
+
 /** Draws a document with Jami Ink's renderer and waits until every tile it wants is drawn. */
-export async function renderWithEngine(doc: InkDocument, sheet: Sheet, view: View): Promise<EngineStage> {
+export async function renderWithEngine(
+  doc: InkDocument,
+  sheet: Sheet,
+  view: View,
+  options: EngineStageOptions = {}
+): Promise<EngineStage> {
   const stage = resetStage(view);
   const host = document.createElement("div");
   Object.assign(host.style, {
@@ -106,15 +124,27 @@ export async function renderWithEngine(doc: InkDocument, sheet: Sheet, view: Vie
     height: `${sheet.height}px`,
   });
   stage.appendChild(host);
-  const renderer = createInkRenderer(host);
+  const renderer = createInkRenderer(host, options.renderer);
   renderer.setViewport({
     scale: sheet.width / NOTEBOOK_PAGE_COORDINATE_WIDTH,
     devicePixelRatio: window.devicePixelRatio,
     visible: view,
   });
   renderer.setDocument(doc);
-  await whenIdle(renderer);
+  const { onVisibleDrawn } = options;
+  const visible = new Promise<void>((resolve) =>
+    renderer.whenVisibleDrawn(() => {
+      onVisibleDrawn?.(renderer);
+      resolve();
+    })
+  );
   teardown = () => renderer.destroy();
+  if (options.wait === "visible") {
+    await visible;
+    await frames(2);
+  } else {
+    await whenIdle(renderer);
+  }
   return { renderer, host };
 }
 

@@ -6,7 +6,7 @@ import type {
 } from "js-draw";
 import { createNotebookChiselStrokeFactory } from "@/lib/workspace/notebook-chisel-stroke";
 import { createNotebookSmoothPenStrokeFactory } from "@/lib/workspace/notebook-smooth-pen";
-import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
+import type { NotebookInkStyle } from "@/lib/workspace/notebook-ink-types";
 import {
   getNotebookEraserModeValue,
   getNotebookEraserToolThickness,
@@ -27,32 +27,6 @@ import {
 } from "@/lib/workspace/notebook-pen-feel";
 
 export type JsDrawModule = typeof import("js-draw");
-
-export type NotebookInkTool =
-  | "pen"
-  | "highlighter"
-  | "eraser"
-  | "select"
-  | "text";
-
-/** Everything about the ink editor that a style application depends on. */
-export type NotebookInkStyle = {
-  activeTool: NotebookInkTool;
-  eraserMode: NotebookEraserMode;
-  eraserThickness: number;
-  highlighterColor: NotebookStrokeColor;
-  highlighterThickness: number;
-  penColor: NotebookStrokeColor;
-  penThickness: number;
-  /**
-   * How the pen shapes and filters the line. See `notebook-pen-feel.ts`.
-   *
-   * The whole settings object rather than the one Smoothing number, because
-   * every field in it changes what the next stroke looks like, and so has to
-   * reach the stroke factory the way Smoothing always did.
-   */
-  penSettings: NotebookPenSettings;
-};
 
 let jsDrawModulePromise: Promise<JsDrawModule> | null = null;
 

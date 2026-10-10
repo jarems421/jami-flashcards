@@ -1,6 +1,7 @@
-import { expect, test, type Page } from "@playwright/test";
+import { chromium, expect, test, type Page } from "@playwright/test";
 import { openHarness } from "./bundle";
 import { INK_CANVAS_BUDGET_BYTES, INK_CANVAS_MAX_PIXELS } from "@/lib/ink/render-plan";
+import type { FirstStrokeOptions } from "./harness/perf";
 
 /*
  * The render gates of docs/notebook-ink.md, measured on Jami Ink's renderer
@@ -20,7 +21,8 @@ test.skip(!process.env.INK_PERF, "Opt-in: set INK_PERF=1 to measure the renderer
 test.setTimeout(600_000);
 
 const THROTTLE = Number(process.env.CPU_THROTTLE ?? 4);
-const MODE = process.env.INK_MODE === "gpu" ? "headed GPU" : "headless";
+const GPU = process.env.INK_MODE === "gpu";
+const MODE = GPU ? "headed GPU" : "headless";
 
 const rows: string[] = [];
 const report = (gate: string, measured: string, target: string, pass: boolean) => {
@@ -132,5 +134,74 @@ test.describe(`Jami Ink render gates (${MODE}, CPU ${THROTTLE}x)`, () => {
 
   test.afterAll(() => {
     console.log(["", `Jami Ink render gates, ${MODE}, CPU ${THROTTLE}x`, "| Gate | Measured | Target | |", "| --- | --- | --- | --- |", ...rows].join("\n"));
+  });
+});
+
+/*
+ * The first stroke on a page in a browser that has drawn nothing yet. The GPU
+ * process compiles each shader the first time it is used and keeps it, so any
+ * earlier test in the same browser would have warmed it: each run here launches
+ * its own browser, with the same arguments as playwright.ink.config.ts. Without
+ * the warm-up the second frame of the first stroke takes 28 to 33 ms on the GPU
+ * (the shaders for copying a tile canvas into another and painting it).
+ *
+ * Gates: no frame of the first four over 25 ms, in any mode; none over the
+ * whole stroke either, except zoomed in headless Chromium, where software
+ * compositing misses frames whatever the warm-up does (see the renderer
+ * results in docs/notebook-ink.md). The run without the warm-up is only
+ * reported, to show what it changes.
+ */
+const FIRST_STROKES: Array<{ name: string; options: Omit<FirstStrokeOptions, "warmUp" | "tip"> }> = [
+  { name: "pen thin, fitted", options: { mode: "fitted", layer: "pen", width: 3, pressure: false } },
+  { name: "pen thick, zoomed", options: { mode: "zoomed", layer: "pen", width: 14, pressure: true } },
+  { name: "highlighter thick, fitted", options: { mode: "fitted", layer: "highlighter", width: 48, pressure: false } },
+];
+
+const firstStrokeRows: string[] = [];
+
+test.describe(`Jami Ink first stroke in a fresh browser (${MODE}, CPU ${THROTTLE}x)`, () => {
+  for (const { name, options } of FIRST_STROKES) {
+    for (const warmUp of [true, false]) {
+      test(`first stroke: ${name}, ${warmUp ? "with" : "without"} the warm-up`, async () => {
+        const browser = await chromium.launch(GPU ? { headless: false, args: ["--ignore-gpu-blocklist"] } : {});
+        try {
+          const context = await browser.newContext({ viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2 });
+          const page = await context.newPage();
+          await openHarness(page);
+          await throttle(page);
+          const result = await page.evaluate((o) => window.inkHarness.measureFirstStroke(o), {
+            ...options,
+            warmUp,
+            tip: options.layer === "pen",
+          });
+          const firstFour = result.frameTimes.slice(0, 4);
+          const firstFourOver = firstFour.filter((time) => time > 25).length;
+          const measured =
+            `${result.framesOver25} of ${result.frameTimes.length} frames over 25 ms` +
+            (result.longFrames.length ? ` (${result.longFrames.slice(0, 4).join(", ")})` : "") +
+            `; first four [${firstFour.join(", ")}]; packets p95 ${result.packetMsP95} ms, max ${result.packetMsMax} ms; page open: first ink ${result.firstInkMs} ms, longest slice ${result.sliceMsMax} ms (the warm-up's ${result.warmUpMsMax} ms)`;
+          const software = !GPU && options.mode === "zoomed";
+          const pass = firstFourOver === 0 && (software || result.framesOver25 === 0);
+          firstStrokeRows.push(
+            warmUp
+              ? `| First stroke, ${name}, with warm-up | ${measured} | first four under 25 ms${software ? "" : ", none over 25 ms"} | ${pass ? "pass" : "MISS"} |`
+              : `| First stroke, ${name}, without warm-up | ${measured} | (for comparison) | |`
+          );
+          if (!warmUp) return;
+          expect.soft(firstFourOver, `frames over 25 ms among the first four: ${measured}`).toBe(0);
+          if (!software) expect.soft(result.framesOver25, measured).toBe(0);
+          expect.soft(result.allocationsDuringStroke).toBe(0);
+          expect.soft(result.packetMsP95).toBeLessThanOrEqual(4);
+          expect.soft(result.warmUpMsMax, "the warm-up's drawing, in a background slice").toBeLessThanOrEqual(4);
+          expect.soft(result.firstInkMs).toBeLessThanOrEqual(150);
+        } finally {
+          await browser.close();
+        }
+      });
+    }
+  }
+
+  test.afterAll(() => {
+    console.log(["", `Jami Ink first stroke in a fresh browser, ${MODE}, CPU ${THROTTLE}x`, "| Gate | Measured | Target | |", "| --- | --- | --- | --- |", ...firstStrokeRows].join("\n"));
   });
 });

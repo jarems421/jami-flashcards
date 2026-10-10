@@ -217,6 +217,20 @@ function ExamScratchpad({
   );
 
   /**
+   * Where the sheet sits in the frame showing it, zoomed or not. Jami Ink
+   * needs the part of the sheet on screen after every pan settles, and the
+   * snapped window above does not change for a small pan.
+   */
+  const frameWidth = layout.frameSize.width;
+  const frameHeight = layout.frameSize.height;
+  const originX = layout.pageOrigin.x;
+  const originY = layout.pageOrigin.y;
+  const inkFrame = useMemo(
+    () => ({ pageX: originX, pageY: originY, frameWidth, frameHeight }),
+    [frameHeight, frameWidth, originX, originY]
+  );
+
+  /**
    * Inline and fitted, a finger dragged up or down the sheet scrolls the
    * practice page natively; see the claim listener in `useExamSheetFrame`.
    * Zoomed, or full screen, every finger is the sheet's.
@@ -391,6 +405,7 @@ function ExamScratchpad({
                     {...tools.ink}
                     initialSvg={pageSvgs[pageIndex] ?? ""}
                     inkWindow={inkWindow}
+                    inkFrame={inkFrame}
                     pageHeight={currentPage.height}
                     pageId={`${attemptId}:${pageIndex}`}
                     pageWidth={currentPage.width}

@@ -26,7 +26,6 @@ import {
   shouldUseNotebookPenPressure,
 } from "@/lib/workspace/notebook-inking";
 import {
-  dispatchBatchedNotebookPointerSamples,
   getNotebookContactTool,
   getNotebookInkPointerOrigins,
   installNotebookNativeInkGuards,
@@ -36,15 +35,18 @@ import {
   shouldUseNotebookPrecisionGesture,
   type NotebookInkPointerEventType,
   type NotebookInkPointerOrigins,
-} from "@/lib/workspace/notebook-ink-runtime";
+} from "@/lib/workspace/notebook-ink-contact";
+import { dispatchBatchedNotebookPointerSamples } from "@/lib/workspace/notebook-ink-runtime";
+import type {
+  NotebookInkStyle,
+  NotebookInkTool,
+} from "@/lib/workspace/notebook-ink-types";
 import type { NotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 import { shouldSuppressNotebookNativeInkPointer } from "@/lib/workspace/notebook-interaction-lock";
 import {
   applyNotebookEraserMode,
   applyNotebookNibThickness,
   type JsDrawModule,
-  type NotebookInkStyle,
-  type NotebookInkTool,
 } from "@/lib/workspace/notebook-js-draw";
 import { NotebookPrecisionEraserGesture } from "@/lib/workspace/notebook-precision-eraser";
 import { NotebookPredictedTip } from "@/lib/workspace/notebook-predicted-tip";

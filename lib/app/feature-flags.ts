@@ -14,7 +14,8 @@ export type FeatureFlagKey =
   | "enableTutorMemory"
   | "enableTutorChatRecall"
   | "enableBilling"
-  | "enableTutorChecks";
+  | "enableTutorChecks"
+  | "enableJamiInk";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
@@ -107,6 +108,13 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
    * Tutor asking them and the engine reading them, without deleting any.
    */
   enableTutorChecks: true,
+  /*
+   * Jami Ink, the notebook's own ink engine (docs/notebook-ink.md), hosted by
+   * the notebook editor and the exam working sheet. Off, both keep js-draw,
+   * unchanged: this is the emergency fallback to it. Off while the engine is
+   * built and tried on the owner's devices; the release stage turns it on.
+   */
+  enableJamiInk: false,
 };
 
 /**
@@ -133,6 +141,7 @@ const ENV_VALUES: Record<FeatureFlagKey, string | undefined> = {
   enableTutorChatRecall: process.env.NEXT_PUBLIC_ENABLE_TUTOR_CHAT_RECALL,
   enableBilling: process.env.NEXT_PUBLIC_ENABLE_BILLING,
   enableTutorChecks: process.env.NEXT_PUBLIC_ENABLE_TUTOR_CHECKS,
+  enableJamiInk: process.env.NEXT_PUBLIC_ENABLE_JAMI_INK,
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -164,4 +173,5 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableTutorChatRecall: isFeatureEnabled("enableTutorChatRecall"),
   enableBilling: isFeatureEnabled("enableBilling"),
   enableTutorChecks: isFeatureEnabled("enableTutorChecks"),
+  enableJamiInk: isFeatureEnabled("enableJamiInk"),
 };

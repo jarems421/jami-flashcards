@@ -17,6 +17,9 @@
  *   tile on screen is ready, then replaces it in one go. Never blank.
  * - A document change redraws only the tiles it touches: those on screen at
  *   once, the rest when they are next needed.
+ * - The predicted tip is drawn after the stroke in the same live tiles. The
+ *   lift repaints the tiles it touched with the stroke alone, then lifts as
+ *   usual, so the tip never reaches a dry tile.
  *
  * The plan of which tiles, at what size and in what order is pure, in
  * `lib/ink/render-plan.ts`.
@@ -35,9 +38,10 @@ import {
   type InkPaint,
   type InkPathCommand,
 } from "@/lib/ink/model";
-import { inkPathChange } from "@/lib/ink/path-change";
+import { inkPathChange, sameInkPath } from "@/lib/ink/path-change";
 import {
   INK_CANVAS_BUDGET_BYTES,
+  INK_DEFAULT_PAGE,
   INK_PREFETCH_RING_TILES,
   inkBoxDeviceRect,
   inkDevicePixelSnap,
@@ -47,10 +51,12 @@ import {
   inkPrefetchTiles,
   inkRenderLevel,
   inkTileCapacity,
+  inkTileDeviceRect,
   inkTilesForBox,
   inkVisibleAtLevel,
   inkVisibleTiles,
   type InkDeviceRect,
+  type InkPageSize,
   type InkRenderLevel,
   type InkSheetRect,
   type InkTile,
@@ -58,7 +64,7 @@ import {
 import { InkCanvasLedger } from "@/lib/ink-dom/canvas";
 import { InkDocumentIndex } from "@/lib/ink-dom/document-index";
 import { isInkLiveStroke, sameInkPaint } from "@/lib/ink-dom/lift";
-import { INK_LAYER_Z, InkLiveLayer, type InkLiveTileRegion } from "@/lib/ink-dom/live-layer";
+import { INK_LAYER_Z, InkLiveLayer, type InkLiveTileRegion, type InkLiveTipPath } from "@/lib/ink-dom/live-layer";
 import {
   browserPathFactory,
   buildInkPath,
@@ -75,6 +81,9 @@ import {
 } from "@/lib/ink-dom/scheduler";
 import { emptyInkRendererStats, resetInkRendererStats, type InkRendererStats } from "@/lib/ink-dom/stats";
 import { InkLevelTiles, InkTileStore } from "@/lib/ink-dom/tile-store";
+import { InkWarmUp } from "@/lib/ink-dom/warm-up";
+
+export type { InkPageSize };
 
 export type InkViewport = {
   /** CSS pixels per page unit at the settled zoom. */
@@ -91,6 +100,8 @@ export type InkViewport = {
 };
 
 export type InkRendererOptions = {
+  /** The size of the page in page units. Default 900 x 1240, the notebook page. */
+  page?: InkPageSize;
   budgetBytes?: number;
   prefetchRing?: number;
   /**
@@ -101,8 +112,16 @@ export type InkRendererOptions = {
   /** For tests: the clock, how slices are posted, and how paths are built. */
   now?: () => number;
   post?: (callback: () => void) => void;
+  requestFrame?: (callback: () => void) => number;
+  cancelFrame?: (id: number) => void;
   pathFactory?: InkPathFactory;
 };
+
+/**
+ * The predicted tip: a short round-capped stroked path, drawn after the
+ * stroke in the same live tiles. It is never part of what the lift keeps.
+ */
+export type InkLiveTip = { path: InkPathCommand[]; paint: InkPaint };
 
 export type InkRenderer = {
   /** Shows a new document (opening a page). Everything drawn before is let go. */
@@ -116,11 +135,16 @@ export type InkRenderer = {
   endGesture(): void;
   /** A stroke starts on `layer`. Background drawing waits until it ends. */
   beginLive(layer: InkLayer): void;
-  /** The whole stroke as it now stands, drawn before this returns. */
-  drawLive(path: InkPathCommand[], paint: InkPaint): void;
+  /**
+   * The whole stroke as it now stands, drawn before this returns, and the
+   * predicted `tip` (if any) after it. Pass no tip, or null, to take it away.
+   */
+  drawLive(path: InkPathCommand[], paint: InkPaint, tip?: InkLiveTip | null): void;
   /**
    * The lift: `doc` is `change` applied to the current document, adding the
-   * stroke. On its tiles, and the live layer cleared, before this returns.
+   * stroke. On its tiles, and the live layer cleared, before this returns. A
+   * tip showing from the last packet is wiped first, from the tiles it
+   * touched; with no tip showing the lift is exactly as it always was.
    */
   commitLive(doc: InkDocument, change: InkChange): void;
   cancelLive(): void;
@@ -131,19 +155,60 @@ export type InkRenderer = {
    * them are drawn: equal means nothing on screen is waiting to be drawn.
    */
   coverage(): { visible: number; drawn: number };
-  /** Nothing queued and no zoom level waiting to replace the one on screen. */
+  /**
+   * Calls `callback` once, when every visible tile of the level on screen is
+   * drawn and no new zoom waits to replace it: after `setDocument` and
+   * `setViewport`, the page is showing all its ink. If that is already so,
+   * on the next microtask. Returns a function that cancels it.
+   */
+  whenVisibleDrawn(callback: () => void): () => void;
+  /**
+   * Compiles the GPU's shaders for every drawing path live ink uses, so the
+   * first stroke does not stall on them. Runs once, in the background after
+   * the page's ink is drawn, and never during a stroke or gesture.
+   */
+  warmUp(): void;
+  /** Nothing queued (a warm-up in progress included) and no zoom level waiting to replace the one on screen. */
   readonly idle: boolean;
   destroy(): void;
 };
 
+/** The tip a packet showed: as given, built, and where it can paint. */
+type LiveTip = InkLiveTipPath & { commands: InkPathCommand[] };
+
 type Live = {
   layer: InkLayer;
-  /** The last packet: its commands and paint as given, and the path built from them. */
-  last: { commands: InkPathCommand[]; paint: InkPaint; path: InkPath2D; area: InkDeviceRect | null } | null;
+  /**
+   * The last packet: its commands and paint as given, the path built from
+   * them, where the stroke alone can paint, and the tip shown with it.
+   */
+  last: {
+    commands: InkPathCommand[];
+    paint: InkPaint;
+    path: InkPath2D;
+    area: InkDeviceRect | null;
+    tip: LiveTip | null;
+  } | null;
 };
+
+function sameLiveTip(a: LiveTip | null, b: LiveTip | null): boolean {
+  if (!a || !b) return a === b;
+  return sameInkPaint(a.paint, b.paint) && sameInkPath(a.commands, b.commands);
+}
 
 /** The stroke being lifted, and the live tiles holding its pixels, by tile key. */
 type Lift = { item: InkItem; layer: InkLayer; tiles: Map<string, InkLiveTileRegion> };
+
+/** The tip as a packet shows it: built, with the device area it can paint; null when it paints nothing. */
+function liveTipOf(
+  tip: InkLiveTip,
+  reach: (box: InkBox, stroke: InkPaint["stroke"]) => InkDeviceRect | null,
+  factory: InkPathFactory
+): LiveTip | null {
+  const built = buildInkPath(tip.path, factory);
+  const area = built.hull ? reach(built.hull, tip.paint.stroke) : null;
+  return area ? { commands: tip.path, paint: tip.paint, path: built.path, area } : null;
+}
 
 export function createInkRenderer(host: HTMLElement, options: InkRendererOptions = {}): InkRenderer {
   const doc = host.ownerDocument;
@@ -153,6 +218,7 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
   const spares = options.spareCanvases;
   const poster = options.post ? null : createInkMessagePoster();
   const pathFactory = options.pathFactory ?? browserPathFactory;
+  const page = options.page ?? INK_DEFAULT_PAGE;
 
   const stats = emptyInkRendererStats();
   const ledger = new InkCanvasLedger(doc, stats);
@@ -164,6 +230,7 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
     onSlice(durationMs) {
       stats.slices += 1;
       stats.sliceMsMax = Math.max(stats.sliceMsMax, durationMs);
+      notifyVisible();
     },
   });
 
@@ -196,6 +263,7 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
   /** Visible tiles of the displayed level, as last planned. */
   let displayedVisible = new Set<string>();
   let live: Live | null = null;
+  let warmWanted = false;
   let deferredViewport: InkViewport | null = null;
   /** Document changes that arrived during a stroke, applied when it ends. */
   const deferredDocument: Array<
@@ -205,6 +273,22 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
   let destroyed = false;
 
   const query = (layer: InkLayer, box: InkBox) => index.query(layer, box);
+
+  /** Waiting for every visible tile to be drawn (`whenVisibleDrawn`). */
+  const visibleWaiters = new Set<() => void>();
+
+  /** The level on screen shows every tile the screen needs, for the page and viewport as last given. */
+  const visibleDrawn = () => {
+    if (destroyed || !displayed || !viewport || pending) return false;
+    if (deferredDocument.length > 0 || deferredViewport) return false;
+    const level = displayed;
+    return inkVisibleTiles(level.level, viewport.visible).every((tile) => level.isDrawn(tile));
+  };
+
+  const notifyVisible = () => {
+    if (visibleWaiters.size === 0 || !visibleDrawn()) return;
+    for (const waiter of Array.from(visibleWaiters)) waiter();
+  };
 
   /** Tiles on screen whose draw found no canvas to spare, waiting for one. */
   const starved = new Map<string, { level: InkLevelTiles; tile: InkTile }>();
@@ -249,6 +333,40 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
     // on screen (a 1180 x 820 screen at 2x meets at most 30, an iPad Pro 35).
     // Past that, tiles draw their pen layer first and wait for a canvas.
     store!.setCapacity(inkTileCapacity({ tilePx: displayed.level.tilePx, reservedBytes: 0, budgetBytes }));
+  };
+
+  const warm = new InkWarmUp({
+    lend: () => store?.lendSpare() ?? null,
+    takeBack: (canvas) => store?.takeBack(canvas),
+    pathFactory,
+    requestFrame: options.requestFrame,
+    cancelFrame: options.cancelFrame,
+    site: () => {
+      if (!displayed || !viewport || !store || pending || live) return null;
+      const tile = inkVisibleTiles(displayed.level, viewport.visible)[0];
+      if (!tile) return null;
+      return {
+        container: liveLayer.container,
+        rect: inkTileDeviceRect(displayed.level, tile.col, tile.row),
+        devicePixelRatio: displayed.level.devicePixelRatio,
+        unitPx: displayed.level.unitPx,
+      };
+    },
+  });
+
+  /** One step of the warm-up in a slice; a second, if wanted, is queued first in the next. */
+  const runWarmUp = (): void | "yield" => {
+    const start = now();
+    const more = warm.step();
+    stats.warmUpMsMax = Math.max(stats.warmUpMsMax, now() - start);
+    if (!more) return;
+    scheduler.enqueue("warm-up", INK_PRIORITY_IDLE, runWarmUp, true);
+    return "yield";
+  };
+
+  /** Queues the warm-up behind everything else (idle priority), if it is wanted and not yet done. */
+  const queueWarmUp = () => {
+    if (warmWanted && !warm.completed) scheduler.enqueue("warm-up", INK_PRIORITY_IDLE, runWarmUp);
   };
 
   const noteDrawn = (level: InkLevelTiles) => {
@@ -330,6 +448,7 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
 
   /** Queues what is missing: the visible tiles of the level being drawn, then the ring, then spares. */
   const plan = () => {
+    warm.abort();
     scheduler.clear();
     if (!viewport || !displayed || !store) return;
     const target = pending ?? displayed;
@@ -350,11 +469,15 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
     }
     const screenful = inkLiveTileCount(target.level, viewport.visible);
     scheduler.enqueue("spares", INK_PRIORITY_IDLE, () => store?.warmSpares(spares ?? screenful));
+    queueWarmUp();
     if (pending && visible.every((tile) => pending!.isDrawn(tile))) swapLevels();
+    notifyVisible();
   };
 
   const applyViewport = (next: InkViewport) => {
-    const level = inkRenderLevel(next.scale, next.devicePixelRatio);
+    // Before the pool changes size: the warm-up's canvas goes back as it is.
+    warm.abort();
+    const level = inkRenderLevel(next.scale, next.devicePixelRatio, page);
     if (!level) return;
     if (!store) {
       store = new InkTileStore(ledger, drawables, stats, now, level.tilePx, onCanvasFreed);
@@ -465,13 +588,22 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
     stats.changes += 1;
     stats.changeTiles += redrawn;
     stats.changeMsMax = Math.max(stats.changeMsMax, elapsed);
+    notifyVisible();
     return elapsed;
+  };
+
+  /** Repaints the tiles the tip touched with the stroke alone. */
+  const wipeTip = (last: NonNullable<Live["last"]>) => {
+    const tip = last.tip;
+    last.tip = null;
+    if (tip) liveLayer.draw(last.path, last.paint, last.area, tip.area);
   };
 
   const endLive = () => {
     liveLayer.end();
     live = null;
     scheduler.resume("live");
+    queueWarmUp();
     // Document changes that arrived mid-stroke, in order, then the viewport.
     for (const work of deferredDocument.splice(0)) {
       if (work.kind === "document") showDocument(work.doc);
@@ -519,12 +651,15 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
       applyViewport(next);
     },
     beginGesture() {
+      warm.abort();
       scheduler.pause("gesture");
     },
     endGesture() {
       scheduler.resume("gesture");
+      queueWarmUp();
     },
     beginLive(layer) {
+      warm.retire();
       if (live) endLive();
       scheduler.pause("live");
       liveLayer.begin(layer, {
@@ -534,24 +669,38 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
       });
       live = { layer, last: null };
     },
-    drawLive(path, paint) {
+    drawLive(path, paint, tip = null) {
       if (!live || !displayed) return;
       const start = now();
       const built = buildInkPath(path, pathFactory);
       const level = displayed.level;
-      const reach = (box: InkBox) => inkBoxDeviceRect(level, inkBoxGrow(box, inkStrokeReach(paint.stroke)));
-      const area = built.hull ? reach(built.hull) : null;
+      const reach = (box: InkBox, stroke: InkPaint["stroke"]) =>
+        inkBoxDeviceRect(level, inkBoxGrow(box, inkStrokeReach(stroke)));
+      const area = built.hull ? reach(built.hull, paint.stroke) : null;
+      const shown = tip ? liveTipOf(tip, reach, pathFactory) : null;
       const last = live.last;
+      // Everywhere this packet can paint, and the last one could.
+      const painted = inkDeviceRectUnion(area, shown?.area ?? null);
+      const paintedBefore = last ? inkDeviceRectUnion(last.area, last.tip?.area ?? null) : null;
       let dirty: InkDeviceRect | null;
       if (!last || !sameInkPaint(last.paint, paint)) {
-        dirty = inkDeviceRectUnion(last?.area ?? null, area);
+        dirty = inkDeviceRectUnion(paintedBefore, painted);
       } else {
         const changed = inkPathChange(last.commands, path, paint.fill !== null);
         dirty =
-          changed.kind === "none" ? null : changed.kind === "box" ? reach(changed.box) : inkDeviceRectUnion(last.area, area);
+          changed.kind === "none"
+            ? null
+            : changed.kind === "box"
+              ? reach(changed.box, paint.stroke)
+              : inkDeviceRectUnion(paintedBefore, painted);
+        // The tip moved: where it was and where it is are repainted too. (A
+        // tile the stroke's change reaches repaints its tip with it.)
+        if (!sameLiveTip(last.tip, shown)) {
+          dirty = inkDeviceRectUnion(dirty, inkDeviceRectUnion(last.tip?.area ?? null, shown?.area ?? null));
+        }
       }
-      if (dirty) liveLayer.draw(built.path, paint, area, dirty);
-      live.last = { commands: path, paint, path: built.path, area };
+      if (dirty) liveLayer.draw(built.path, paint, area, dirty, shown);
+      live.last = { commands: path, paint, path: built.path, area, tip: shown };
       const elapsed = now() - start;
       stats.liveDraws += 1;
       stats.liveDrawMsTotal += elapsed;
@@ -569,6 +718,10 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
       } else {
         let lift: Lift | null = null;
         if (live && last && added && isInkLiveStroke(added, live.layer, last)) {
+          // A tip showing is wiped first, from the tiles it touched, so the
+          // live tiles that become the dry tiles hold the stroke alone. (When
+          // the stroke is painted afresh instead, the tip goes with the live tiles.)
+          if (last.tip) wipeTip(last);
           drawables.seed(added, last.path);
           const tiles = new Map(liveLayer.painted().map((region) => [region.tile.key, region]));
           lift = { item: added, layer: live.layer, tiles };
@@ -594,12 +747,46 @@ export function createInkRenderer(host: HTMLElement, options: InkRendererOptions
       const tiles = inkVisibleTiles(level.level, visible);
       return { visible: tiles.length, drawn: tiles.filter((tile) => level.isDrawn(tile)).length };
     },
+    whenVisibleDrawn(callback) {
+      let state: "waiting" | "queued" | "done" = "waiting";
+      const waiter = () => {
+        if (state !== "waiting") return;
+        state = "queued";
+        visibleWaiters.delete(waiter);
+        // Never inside a slice or a call of the renderer's: a callback that
+        // throws or calls back in must not stop the queue.
+        queueMicrotask(() => {
+          if (state !== "queued") return;
+          if (!visibleDrawn()) {
+            // The page changed in between: wait for it again.
+            state = "waiting";
+            visibleWaiters.add(waiter);
+            return;
+          }
+          state = "done";
+          callback();
+        });
+      };
+      visibleWaiters.add(waiter);
+      if (visibleDrawn()) waiter();
+      return () => {
+        state = "done";
+        visibleWaiters.delete(waiter);
+      };
+    },
+    warmUp() {
+      if (destroyed || warmWanted) return;
+      warmWanted = true;
+      queueWarmUp();
+    },
     get idle() {
-      return scheduler.pending === 0 && pending === null;
+      return scheduler.pending === 0 && pending === null && !warm.active;
     },
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      warm.abort();
+      visibleWaiters.clear();
       scheduler.dispose();
       poster?.close();
       // Live ink first: it gives its lent canvases back to the store, which

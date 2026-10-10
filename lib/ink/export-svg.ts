@@ -42,7 +42,17 @@ function itemElement(item: InkItem): string | null {
   return pathElement(formatSvgPathData(item.path, PATH_DECIMALS), attributes);
 }
 
-export function inkToSvg(doc: InkDocument): string {
+/**
+ * `page` is the sheet's size in page units. It defaults to the notebook page;
+ * exam working sheets are as wide but have their own heights.
+ */
+export function inkToSvg(
+  doc: InkDocument,
+  page: { width: number; height: number } = {
+    width: NOTEBOOK_PAGE_COORDINATE_WIDTH,
+    height: NOTEBOOK_PAGE_COORDINATE_HEIGHT,
+  }
+): string {
   const highlighter: string[] = [];
   const pen: string[] = [];
   for (const item of doc.items) {
@@ -50,8 +60,8 @@ export function inkToSvg(doc: InkDocument): string {
     if (element !== null) (inkItemLayer(item) === "highlighter" ? highlighter : pen).push(element);
   }
   return (
-    `<svg viewBox="0 0 ${NOTEBOOK_PAGE_COORDINATE_WIDTH} ${NOTEBOOK_PAGE_COORDINATE_HEIGHT}"` +
-    ` width="${NOTEBOOK_PAGE_COORDINATE_WIDTH}" height="${NOTEBOOK_PAGE_COORDINATE_HEIGHT}"` +
+    `<svg viewBox="0 0 ${page.width} ${page.height}"` +
+    ` width="${page.width}" height="${page.height}"` +
     ` version="1.1" baseProfile="full" xmlns="http://www.w3.org/2000/svg">` +
     [...highlighter, ...pen].join("") +
     `</svg>`

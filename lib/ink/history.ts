@@ -98,6 +98,30 @@ export function inkReplaceChange(
   return { removed, added };
 }
 
+/**
+ * The one change that turns `before` into `after`, for a gesture that edited
+ * the page in many small steps (an eraser sweep) but is a single undo.
+ *
+ * Items kept by both must be in the same relative order, which erasing
+ * guarantees. An item is kept when the very same object is in both documents;
+ * an object that changed, even under the same id, counts as removed and added.
+ * `removed` indices are positions in `before` and `added` positions in
+ * `after`, so applying the result to `before` gives `after`.
+ */
+export function inkDiffChange(before: InkDocument, after: InkDocument): InkChange {
+  const inAfter = new Set<InkItem>(after.items);
+  const inBefore = new Set<InkItem>(before.items);
+  const removed: IndexedItem[] = [];
+  const added: IndexedItem[] = [];
+  before.items.forEach((item, index) => {
+    if (!inAfter.has(item)) removed.push({ index, item });
+  });
+  after.items.forEach((item, index) => {
+    if (!inBefore.has(item)) added.push({ index, item });
+  });
+  return { removed, added };
+}
+
 /** Takes everything off the page. */
 export function inkClearChange(doc: InkDocument): InkChange {
   return { removed: doc.items.map((item, index) => ({ index, item })), added: [] };

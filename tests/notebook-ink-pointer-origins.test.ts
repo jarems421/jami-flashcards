@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { getNotebookInkPointerOrigins } from "@/lib/workspace/notebook-ink-runtime";
+import { getNotebookInkPointerOrigins } from "@/lib/workspace/notebook-ink-contact";
 import { getJsDrawPointerReferenceElement } from "@/lib/workspace/notebook-direct-ink-input";
 
 function elementAt(left: number, top: number, className?: string) {

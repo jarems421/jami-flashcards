@@ -66,6 +66,11 @@ export class NotebookLiftOffGate<Sample> {
     private readonly options: NotebookLiftOffOptions = NOTEBOOK_LIFT_OFF
   ) {}
 
+  /** Whether samples are being held back: the pen looks to be leaving the glass. */
+  get holding(): boolean {
+    return this.held.length > 0;
+  }
+
   /** The samples to draw now, in order: none while holding. */
   next(sample: Sample): Sample[] {
     const pressure = this.pressureOf(sample);

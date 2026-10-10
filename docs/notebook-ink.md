@@ -167,13 +167,22 @@ node_modules\.bin\playwright.cmd test -c playwright.ink.config.ts perf
 - **Lift.** A stroke is written as live ink over existing pen and highlighter
   ink, screenshotted with the pen down and again after the lift: 0 pixels may
   change. A highlighter's last packet draws its traced outline, as the editor
-  will (see "The lift" below), so its lift is held to 0 too. The page is then drawn again from nothing and compared with what the
+  does (see "The lift" below), so its lift is held to 0 too. The page is then drawn again from nothing and compared with what the
   lift left, within 24 of 255 ("The lift", under `lib/ink-dom/` below, says
-  why it is not 0).
+  why it is not 0). The same lifts are run again with the predicted tip
+  showing on every packet, the last included: they must leave the very pixels
+  of the same stroke lifted with no tip (0 differ), and the tip must show while
+  the pen is down. The warm-up is checked for leaving no pixel changed, for
+  being invisible while it is up (at most 1 of 255 off), and for giving its
+  canvas back to a stroke that begins during it, which then lifts unchanged.
 - **The gates** are measured at 1180 x 820 and 2x, the CPU slowed 4x: work
   per packet and frames for three 200-sample strokes through the real pen and
   highlighter geometry, thin and thick, fitted and zoomed, over a page of
-  3,000 segments; canvas allocations, tile draws and layout reads during the
+  3,000 segments (the page is opened as the editor opens it, asking for the
+  GPU warm-up once its ink is on screen); the first stroke on a page in a
+  freshly launched browser, with the warm-up and without it, drawing the
+  predicted tip too (every other test shares one browser, whose GPU would
+  already be warm); canvas allocations, tile draws and layout reads during the
   strokes (layout reads are counted by watching the browser's own layout
   APIs); the lift; page open; six zoomed pans; erase, undo and add; a zoom
   settling; memory. Gates that need the real editor (ink inside the pointer
@@ -200,8 +209,9 @@ a millisecond between runs.
 | Gate | Target | Headless | Headed GPU | js-draw baseline (headless) |
 | --- | --- | --- | --- | --- |
 | Work per packet (p95) | ≤ 4 ms | 0.7 to 1.6 ms (longest 3.4) | 0.8 to 2.1 ms (longest 4.5: a highlighter's last packet, which traces its outline) | Pen-down handler 2.9 ms |
-| Frames over 25 ms, fitted | 0 | 0 of about 290 per case | 1 of about 590 (frame 1 or 2 of the first stroke) | 6 |
-| Frames over 25 ms, zoomed | 0 | 1 to 15 of about 400, each 33 ms | 1 of about 590 (the same) | 69 (short strokes), 81 (long stroke) |
+| Frames over 25 ms, fitted | 0 | 0 of about 290 per case | 0 of about 590 (with the warm-up) | 6 |
+| Frames over 25 ms, zoomed | 0 | 1 to 15 of about 400, each 33 ms | 0 of about 590 (with the warm-up) | 69 (short strokes), 81 (long stroke) |
+| First stroke, fresh browser | first four frames, and all of them, under 25 ms | 0 of about 95 fitted; zoomed pen 0 to 2 of about 130, the headless miss below | 0 of about 200 frames in each of three strokes (5.4 to 5.7 ms at the start); without the warm-up 1 of about 195, 28 to 39 ms, on frame 1 or 2 | not measured |
 | During a stroke | 0 allocations, tile draws, layout reads | 0, 0, 0 (besides one copy of each dry tile a stroke reaches) | 0, 0, 0 (the same) | Live canvas reallocated 6 times |
 | Lift | 0 px, ≤ 2 ms | 0 px; 0.8 to 1.4 ms (a page's first lift, cold: 2.6 to 3.4 ms) | 0 px; 0.6 to 1.2 ms (cold: 2.4 to 3.5 ms) | 438 px fitted, about 2,700 zoomed |
 | Page open, 3,000 segments | first ink ≤ 150 ms | 22 to 29 ms (all on screen by 44 to 70 ms) | 23 to 38 ms (all by 30 to 44 ms) | not measured |
@@ -210,6 +220,8 @@ a millisecond between runs.
 | Erase, undo, add | affected tiles only, ≤ 8 ms | 2 to 6 of 9 or 24 tiles; 0.6 to 2.9 ms | 0.4 to 1.8 ms | whole window repainted |
 | Zoom settle | never blank | old level stood in; new one in 153 ms | in 24 ms | 3 repaints, 109 ms task |
 | Memory | ≤ 96 MB, no canvas over 4 MP | 76.5 MB at most; 0.26 MP | 76.5 MB at most; 0.26 MP | |
+
+Stage 4 added the predicted tip, the page size and `whenVisibleDrawn`, and the GPU warm-up that closes the first-frame stall (below); the figures above were re-run with them in on 10 October 2026, headless and on the GPU, and none regressed.
 
 Not yet met:
 
@@ -221,11 +233,11 @@ Not yet met:
   frame, and a zoomed stroke changes one or more tiles a packet (all it
   covers, when pressure reshapes the whole stroke). On the GPU the same
   writing has none.
-- **The first or second frame of the first stroke in a fresh browser**
-  takes 28 to 33 ms on the GPU: 17 ms of it is ANGLE compiling shaders the
-  first time a canvas is copied into another and painted. Warming the same operations on
-  hidden canvases did not move it (Chromium does not flush a hidden canvas),
-  so it was left out.
+
+The first frame of the first stroke in a fresh browser took 28 to 33 ms on
+the GPU (shaders compiled the first time a canvas is copied into another and
+painted). Stage 4's `warmUp()` fixes it (see "Live ink" below); the first
+stroke is now measured in a browser of its own, with and without it.
 
 Lift timings are taken on the second and third strokes; the first lift on a
 page runs before the JIT has seen it.
@@ -310,7 +322,10 @@ Built (stage 3), flat files in `lib/ink/`:
   device pixels, on a grid from the sheet's corner), the visible tiles nearest
   the middle first, the prefetch ring, the tiles a change touches, the memory
   budget and the LRU, when a new level may replace the old one, and the
-  device-pixel snap. Page coordinates stay 900 x 1240.
+  device-pixel snap. Page coordinates stay 900 x 1240 unless the renderer is
+  given another page size (`createInkRenderer(host, { page })`, for the exam
+  working sheets, which are 900 wide and any height): the size sets only the
+  number of rows and columns, never what a tile holds.
 - **`path-change.ts`.** Where a path changed between two packets of a stroke
   being written, for live ink to repaint only there.
 
@@ -387,6 +402,35 @@ with an `InkChange` from `history.ts`), when a gesture holds the sheet
     but Chrome antialiases edges differently under one.
   - Stacking order: dry highlighter, live highlighter, dry pen, live pen. A
     highlighter is under pen ink while it is drawn, too.
+  - **The predicted tip** (`drawLive(path, paint, tip)`): a short round-capped
+    stroked path drawn after the stroke in the same live tiles. Where the tip
+    was and where it now is count as changed, like the stroke's own change, so
+    a tile it left or reached is repainted (not clipped: see above). At the
+    lift the tiles it touched are first repainted with the stroke alone, then
+    the lift is as it always was, so the tip never reaches a dry tile; with no
+    tip showing the lift does nothing extra.
+  - **The GPU warm-up** (`warmUp()`, `warm-up.ts`). On a fresh browser the first
+    stroke on a page stalled a frame for 28 to 33 ms while the GPU compiled the
+    shaders for copying a tile canvas into another (the live tile copying the
+    dry tile at a stroke's first touch, then the regions put back on every
+    packet: a whole-tile copy and a partial one are different shaders) and for
+    the paints. Measured by trying variants in fresh browsers: drawing on
+    hidden canvases warms nothing (Chromium never flushes them), a canvas that
+    is cleared whole in the task it was drawn in has its drawing thrown away
+    unseen, and a presented canvas drawn on at full or at 1/255 alpha both
+    work. So the warm-up takes two spare canvases from the pool (never making
+    one), puts one over a visible tile in the live layer, runs every live-ink
+    drawing path on it (whole and partial copies from the other, a pen outline
+    fill, a round-capped stroke, the highlighter's translucent fill, a partial
+    clear) at an alpha of 1/255, leaves it for two frames, then clears it and
+    gives both back. It is three steps, each a background slice of its own
+    (1 to 2 ms with the CPU slowed 4x, a software canvas included), at idle
+    priority, so it starts only when the visible tiles and the ring are drawn:
+    page-open first ink is unaffected. The editor asks for it when
+    `whenVisibleDrawn` fires. A gesture, a new viewport or a destroy gives the
+    canvas back at once (and it runs again later); a stroke gives it back and
+    ends it for good, since the stroke is itself the first use of those paths.
+    It leaves no pixel changed.
 - **The lift.** If the committed item is exactly what live ink last drew, the
   live tiles become the dry tiles and the dry canvases they stood in for go
   back to the pool: nothing is drawn or copied, so no pixel changes. A tile
@@ -396,15 +440,37 @@ with an `InkChange` from `history.ts`), when a gesture holds the sheet
     footprints are drawn while it is written, but what is saved and reopens
     is their traced outline (`build()`). So the last live packet draws the
     traced outline, and the lift commits exactly that: what shows after the
-    lift is what is saved. Stage 4's `InkSurface` does the same at pen-up.
-    The renderer needs nothing for it: the last packet changes every
-    subpath, `inkPathChange` covers both versions, and every tile either
-    touches is repainted. Tiles
-  off screen are redrawn in the background. One consequence: Skia picks its
-  antialiasing per path (analytic or supersampled, by how many points the path
-  has for its size), so a tile kept from earlier in a long stroke can differ
-  from a later full redraw of it by a few levels at edge pixels (15 of 255 at
-  most, measured on highlighter footprints).
+    lift is what is saved. The renderer needs nothing for it: the last
+    packet changes every subpath, `inkPathChange` covers both versions, and
+    every tile either touches is repainted. Tiles off screen are redrawn in
+    the background. One consequence: Skia picks its antialiasing per path
+    (analytic or supersampled, by how many points the path has for its size),
+    so a tile kept from earlier in a long stroke can differ from a later full
+    redraw of it by a few levels at edge pixels (15 of 255 at most, measured on
+    highlighter footprints).
+  - **In the editor** (`InkStrokeSession`), the last live movement is not the
+    pen-up: a pen that has stopped is still on the glass. The highlighter
+    draws the traced outline (`build()`, made once and kept until a sample is
+    added) as soon as the pen has stopped, that is no packet for
+    `HIGHLIGHTER_SETTLE_MS` (50 ms: three frames at 60 Hz, where a pencil
+    reports every 4 ms and a moving pen delivers a packet each frame), or as
+    soon as the lift-off gate begins holding samples (the pressure is
+    falling away as the pen leaves). Movement after that draws footprints
+    again. The lift then commits the outline already on screen and draws
+    nothing, so no pixel changes. Only a flick that lifts while the footprints
+    are still showing draws the outline at the lift, and only then can edge
+    pixels change, by the few levels above. The outline is never built on the
+    per-packet path.
+  - **Tile stacking order.** Canvases that abut meet in a seam row where each
+    covers a hair of the other (the layers sit a rounding error off a device
+    pixel), so the order they stack in decides that row's edge pixels by a
+    level in 255. A zoomed pen stroke across a tile seam showed it: its live
+    tiles stacked in the order the stroke reached them, the lift adopts them in
+    tile order (`compareInkTiles`: a row at a time, left to right), and 8 to 18
+    seam pixels changed. Live tiles are now inserted into the live layer in tile
+    order, so adopting them changes nothing. Nothing else changes at the lift:
+    no canvas is drawn on, none is made, the layer tree is identical, and the
+    canvas pixels read back equal; only the stacking order differed.
 - **Scheduler** (`scheduler.ts`). Priorities:
   1. live ink, synchronous;
   2. the commit at the lift, synchronous;
@@ -421,6 +487,11 @@ with an `InkChange` from `history.ts`), when a gesture holds the sheet
   screen scaled until every tile on screen is ready, then is replaced in one
   step. A stroke written meanwhile is drawn on the old level, so its lift is
   still exact.
+- **`whenVisibleDrawn(callback)`.** Calls back once when every visible tile of
+  the level on screen is drawn and no new zoom waits to replace it, after
+  `setDocument` and `setViewport` (on the next microtask if that is already
+  so), and returns a cancel. The editor uses it to drop its static underlay
+  when a page opens.
 - **Changes.** A change redraws only the tiles it touches: those on screen at
   once, the rest when next needed. Items added on top of the page are painted
   onto the tiles rather than redrawing them.
@@ -433,7 +504,8 @@ Still to come:
 - **`InkSurface`** (stage 4). Owns the model, input, renderer and history,
   behind the handle `NotebookInkEditor` has today: undo, redo, clear,
   hasInk, serialize and snapshot.
-- **The predicted tip**, drawn by stage 4 with the live stroke.
+- **The predicted tip's geometry**, drawn by stage 4's stroke session; the
+  renderer side is built.
 - **PDF detail and snapshots** under the scheduler (stage 7).
 - **Input.** Kept as is:
   - `NotebookInkSmoother`, `NotebookLiftOffGate`, the coalesced-sample bounds,
@@ -445,6 +517,27 @@ Still to come:
 
 - **Editor.** `NotebookInkEditor` is rebuilt on `InkSurface` with the same
   props and handle, so the notebook page and `ExamScratchpad` change together.
+  - It is a switch on `enableJamiInk` (`NEXT_PUBLIC_ENABLE_JAMI_INK`, off until
+    the release stage): `JamiInkEditor`, or `JsDrawInkEditor`, which is the old
+    editor unchanged and stays the fallback. The handle and props type live in
+    `components/workspace/notebook-ink-editor-types.ts`.
+  - `hooks/useJamiInkSurface.ts` builds and destroys the surface and is the one
+    place the sheet is measured: a single `getBoundingClientRect()` of the host
+    when the page, `inkFrame` or `inkWindow` change, when the window resizes and
+    120 ms after a scroll ends (the engine's background drawing is held while it
+    lasts). It never measures during a stroke or an erase; a scroll or resize
+    marks the measurement stale, and the next contact measures once before it
+    begins. The viewport and the stroke mapping come from the pure
+    `inkSurfaceViewport` in `lib/ink-dom/surface-viewport.ts`.
+  - `hooks/useJamiInkPointerInput.ts` is the pointer routing of
+    `useNotebookInkPointerInput` without js-draw: the same contact tool per
+    pointer (the pen's eraser end), palm and touch left to the page, capture and
+    cancel safeguards, and the eraser ring. The tool is fixed when the pen lands,
+    so a style change mid-stroke needs no deferral.
+  - `inkFrame` is where the sheet sits in the frame that shows it (the numbers
+    `getNotebookInkRenderWindow` takes). The snapped `inkWindow` does not change
+    for a small pan, so the engine needs it to know the visible part of the
+    sheet once a pan settles. js-draw ignores it.
 - **Saving.**
   - `NotebookInkData` becomes `js-draw-svg` (v2) or `jami-ink` (v3, with an
     SVG copy during the rollout window).
@@ -504,9 +597,9 @@ gate.
    command for command.
 3. **Renderer (done).** Rasteriser, dry and live layers, scheduler, zoom
    placeholders, the fidelity and lift diffs, and the render gates. One gate is
-   not yet met in headless Chromium (zoomed writing frames), and the GPU run
-   has one slow first frame; see "Jami Ink renderer results".
-4. **Input and core tools.**
+   not yet met in headless Chromium (zoomed writing frames); see "Jami Ink
+   renderer results".
+4. **Input and core tools (done).**
    - Pen, highlighter, both erasers, scribble-erase, straightening, the eraser
      end, undo, redo and clear.
    - `NotebookInkEditor` on `InkSurface`, in notebooks and the exam sheet.

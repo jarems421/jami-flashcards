@@ -22,12 +22,26 @@
  * shows exactly this stroke, since a pixel depends only on the geometry
  * crossing it, so it is left alone.
  *
+ * The predicted tip rides on the same repaint: a short round-capped path drawn
+ * after the stroke in each tile that is repainted. Where the tip was and where
+ * it now is count as changed, like the stroke's own change, so a tile it left
+ * or reached is repainted; the lift first repaints those tiles with the stroke
+ * alone, so the tip never reaches the dry tiles.
+ *
  * Canvases are lent by the tile store when a stroke first reaches a tile on
  * screen and given back when it ends. The store keeps a screenful of spares
  * warm; with none spare it takes one from a tile out of sight, and it never
  * makes one during a stroke. With nothing to lend, the tile is noted as
  * missed: the stroke does not show there while it is written, and the lift
  * paints it in. Nothing is reserved for live ink.
+ *
+ * Live tiles stack in tile order (`compareInkTiles`), the order the lift
+ * adopts them in, so the lift does not change their stacking. Canvases that
+ * abut meet in a seam row where each covers a hair of the other, and which one
+ * sits on top shifts the stroke's edge pixels there by a level in 255. A
+ * stroke that crossed a tile seam showed it: its live tiles stacked in the
+ * order the stroke reached them, and adopting them in tile order changed those
+ * pixels at the lift.
  *
  * One layer serves both kinds of stroke. Its stacking puts it between the dry
  * highlighter and dry pen layers for a highlighter stroke, so the highlighter
@@ -37,6 +51,7 @@
 
 import type { InkLayer, InkPaint } from "@/lib/ink/model";
 import {
+  compareInkTiles,
   inkDeviceRectIntersection,
   inkDeviceRectUnion,
   inkTileDeviceRect,
@@ -75,6 +90,9 @@ type LiveTile = {
   /** The dry canvas copied in and hidden, if there was one. */
   base: InkCanvas | null;
 };
+
+/** A short path drawn after the stroke, and everywhere it can paint. */
+export type InkLiveTipPath = { path: InkPath2D; paint: InkPaint; area: InkDeviceRect };
 
 /** A live tile the stroke painted, for the lift. */
 export type InkLiveTileRegion = { tile: InkTile; canvas: InkCanvas };
@@ -120,23 +138,34 @@ export class InkLiveLayer {
    * Repaints `path` in every tile on screen that `dirty` (sheet device
    * pixels, where the stroke changed) meets: the dry pixels are put back
    * wherever the stroke was or now is, and the whole path is painted over
-   * them. `area` is everywhere the path can paint. Tiles `dirty` misses
-   * already show exactly this path. The canvas's edge is the only clip, as in
-   * a dry tile: a clip set on the context antialiases edges differently.
+   * them. `area` is everywhere the path can paint, and the `tip` (drawn
+   * after the path) says the same of itself; each is drawn only in tiles its
+   * own area meets. Tiles `dirty` misses already show exactly this path. The
+   * canvas's edge is the only clip, as in a dry tile: a clip set on the
+   * context antialiases edges differently.
    */
-  draw(path: InkPath2D, paint: InkPaint, area: InkDeviceRect | null, dirty: InkDeviceRect): void {
+  draw(
+    path: InkPath2D,
+    paint: InkPaint,
+    area: InkDeviceRect | null,
+    dirty: InkDeviceRect,
+    tip: InkLiveTipPath | null = null
+  ): void {
     const level = this.level;
     if (!level) return;
     for (const tile of inkTilesForDeviceRect(level, dirty)) {
       const live = this.live.get(tile.key) ?? this.standIn(level, tile);
       if (!live) continue;
       const tileRect = inkTileDeviceRect(level, tile.col, tile.row);
-      const painting = area ? inkDeviceRectIntersection(tileRect, area) : null;
+      const strokeRect = area ? inkDeviceRectIntersection(tileRect, area) : null;
+      const tipRect = tip ? inkDeviceRectIntersection(tileRect, tip.area) : null;
+      const painting = inkDeviceRectUnion(strokeRect, tipRect);
       const stale = inkDeviceRectUnion(live.painted, painting);
       if (stale) this.putBack(live, { ...stale, x: stale.x - tileRect.x, y: stale.y - tileRect.y });
       if (painting) {
         setInkDeviceTransform(live.canvas.ctx, level.unitPx, tileRect.x, tileRect.y);
-        paintInkPath(live.canvas.ctx, path, paint);
+        if (strokeRect) paintInkPath(live.canvas.ctx, path, paint);
+        if (tip && tipRect) paintInkPath(live.canvas.ctx, tip.path, tip.paint);
       }
       live.painted = painting;
     }
@@ -205,10 +234,20 @@ export class InkLiveLayer {
     } else {
       clearInkCanvas(canvas);
     }
-    this.container.appendChild(canvas.element);
+    // In tile order, not in the order the stroke reached them (see the top of this file).
+    this.container.insertBefore(canvas.element, this.canvasAfter(tile));
     const live: LiveTile = { tile, canvas, painted: null, base };
     this.live.set(tile.key, live);
     return live;
+  }
+
+  /** The canvas of the first live tile that sorts after `tile`, or null: where a new live tile goes. */
+  private canvasAfter(tile: InkTile): HTMLCanvasElement | null {
+    let next: LiveTile | null = null;
+    for (const live of this.live.values()) {
+      if (compareInkTiles(live.tile, tile) > 0 && (!next || compareInkTiles(live.tile, next.tile) < 0)) next = live;
+    }
+    return next ? next.canvas.element : null;
   }
 
   /** Puts the dry pixels back in a region (tile pixels), or clears it where there are none. */

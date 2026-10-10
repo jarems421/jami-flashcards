@@ -8,9 +8,9 @@ import { createInkChiselBuilder, type InkChiselBuilder } from "@/lib/ink/geometr
 import {
   createInkPenBuilder,
   type InkPenBuilder,
-  type InkPenPaint,
   type InkPenSample,
 } from "@/lib/ink/geometry/pen";
+import type { InkLiveTip } from "@/lib/ink-dom/renderer";
 import {
   createInkItemId,
   type InkColor,
@@ -20,6 +20,7 @@ import {
   type InkPaint,
   type InkPathCommand,
 } from "@/lib/ink/model";
+import { penInkPaint } from "@/lib/ink-dom/stroke-paint";
 import { NIB_ANGLE_DEFAULT } from "@/lib/workspace/notebook-nib-angle";
 import {
   getNotebookPenFeelFromSettings,
@@ -63,12 +64,6 @@ export function strokeSamples(spec: StrokeSpec): InkPenSample[] {
   return samples;
 }
 
-export function penInkPaint(paint: InkPenPaint, color: InkColor): InkPaint {
-  return paint.kind === "fill"
-    ? { fill: color, stroke: null, opacity: 1 }
-    : { fill: null, stroke: { color, width: paint.width, cap: "round", join: "round" }, opacity: 1 };
-}
-
 /** A stroke being written: its geometry after each sample, as live ink draws it. */
 export type LiveStroke = {
   layer: InkLayer;
@@ -110,6 +105,27 @@ export function highlighterStroke(first: InkPenSample, pixelSize: number, color 
     add: (sample) => chisel.addPoint(sample),
     live: () => ({ path: chisel.preview().path, paint }),
     committed: () => ({ path: chisel.build().path, paint }),
+  };
+}
+
+/**
+ * The predicted tip after sample `upTo`: a short round-capped line carrying
+ * on in the direction the pen is going, as the editor draws it. `null` for a
+ * highlighter or a stroke of one sample.
+ */
+export function tipAfter(samples: readonly InkPenSample[], upTo: number, layer: InkLayer, color = BLACK): InkLiveTip | null {
+  const to = samples[upTo];
+  const from = samples[upTo - 1];
+  if (layer !== "pen" || !to || !from) return null;
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  if (length === 0) return null;
+  const reach = 6 / length;
+  return {
+    path: [
+      { op: "M", x: to.x, y: to.y },
+      { op: "L", x: to.x + (to.x - from.x) * reach, y: to.y + (to.y - from.y) * reach },
+    ],
+    paint: { fill: null, stroke: { color, width: Math.max(2, to.width), cap: "round", join: "round" }, opacity: 1 },
   };
 }
 

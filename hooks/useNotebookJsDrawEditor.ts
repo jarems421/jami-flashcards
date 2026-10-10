@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { Editor as JsDrawEditor } from "js-draw";
+import type { NotebookInkEditorCallbacks } from "@/components/workspace/notebook-ink-editor-types";
 import type { NotebookInkEditorRefs } from "@/hooks/useNotebookInkEditorRefs";
 import { installNotebookInkViewportSynchronizer } from "@/lib/workspace/notebook-ink-runtime";
 import type { NotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
@@ -11,19 +12,12 @@ import {
   observeNotebookInkHostSize,
   suppressNotebookJsDrawEraserPreviews,
 } from "@/lib/workspace/notebook-js-draw-setup";
-import { loadJsDraw, type NotebookInkStyle } from "@/lib/workspace/notebook-js-draw";
+import type { NotebookInkStyle } from "@/lib/workspace/notebook-ink-types";
+import { loadJsDraw } from "@/lib/workspace/notebook-js-draw";
 import { installNotebookLiveInk, type NotebookLiveInk } from "@/lib/workspace/notebook-live-ink";
 import { NIB_ANGLE_DEFAULT } from "@/lib/workspace/notebook-nib-angle";
 import { getNotebookInkSmoothingOptions } from "@/lib/workspace/notebook-pen-feel";
 import type { NotebookPenPreviewBatch } from "@/lib/workspace/notebook-pen-preview";
-
-export type NotebookInkEditorCallbacks = {
-  onChange(): void;
-  onHistoryChange(undoDepth: number, redoDepth: number): void;
-  onInteractionChange(active: boolean): void;
-  onReady?(): void;
-  onReadyError?(error: unknown): void;
-};
 
 /**
  * The js-draw editor behind one notebook page, from building it to taking it

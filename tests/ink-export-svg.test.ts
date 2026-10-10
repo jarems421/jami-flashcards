@@ -98,6 +98,15 @@ describe("inkToSvg", () => {
     expect(inkToSvg({ version: 3, items: [] })).toBe(`${ROOT}</svg>`);
   });
 
+  it("sizes the root to a custom page", () => {
+    const empty = { version: 3 as const, items: [] };
+    expect(inkToSvg(empty, { width: 900, height: 600 })).toBe(
+      '<svg viewBox="0 0 900 600" width="900" height="600" version="1.1" baseProfile="full" xmlns="http://www.w3.org/2000/svg"></svg>'
+    );
+    const doc = mixedDocument();
+    expect(inkToSvg(doc, { width: 900, height: 1240 })).toBe(inkToSvg(doc));
+  });
+
   it("puts highlighter items before pen items, each in document order", () => {
     const imported = importJsDrawSvg(inkToSvg(mixedDocument()));
     expect(imported?.document.items.map(inkItemLayer)).toEqual([
