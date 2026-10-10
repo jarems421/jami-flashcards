@@ -3,7 +3,7 @@ import {
   getNotebookPolygonArea,
   unionOfConvexPolygons,
   type NotebookUnionPoint,
-} from "@/lib/workspace/notebook-convex-union";
+} from "@/lib/ink/geometry/convex-union";
 
 const square = (
   left: number,

@@ -94,51 +94,107 @@ rows of handwriting.
 
 | Phase | Frames over 25 ms | Longest task | Page repaints | Notes |
 | --- | --- | --- | --- | --- |
-| Fitted, 12 short strokes | 14 | 620 ms | 0 | Pen-down handler 2.5 ms on average |
-| Fitted, long stroke | 0 | none | 0 | |
-| Fitted lift (thickness 50) | n/a | n/a | n/a | 0 pixels changed |
-| Pinch in and settle | 7 | 315 ms | 3 | The page canvas was reallocated once |
-| Zoomed, 12 short strokes | 4 | 61 ms | 0 | |
-| Zoomed, long stroke | 0 | none | 0 | |
-| Zoomed, 6 one-finger pans | 24 | 68 ms | 18 | Every pan repaints the whole window about three times, 57–68 ms each |
-| Pinch out and settle | 14 | 89 ms | 3 | |
+| Fitted, 12 short strokes | 6 | none | 0 | Pen-down handler 2.9 ms on average |
+| Fitted, long stroke | 6 | none | 0 | |
+| Fitted lift (thickness 50) | n/a | n/a | n/a | 438 pixels change when the pen lifts |
+| Pinch in and settle | 7 | 109 ms | 3 | The page canvas was reallocated once |
+| Zoomed, 12 short strokes | 69 | 66 ms | 0 | |
+| Zoomed, long stroke | 81 | 53 ms | 0 | The live canvas was reallocated 6 times mid-stroke |
+| Zoomed lift (thickness 20 / 85) | n/a | n/a | n/a | About 2,700 pixels change when the pen lifts, half darker, half lighter |
+| Zoomed, 6 one-finger pans | 39 | 129 ms | 18 | Every pan repaints the whole window about three times |
+| Pinch out and settle | 20 | 78 ms | 3 | |
 
-Zoomed panning is the worst of it: whole-window repaints on every pan, because
-the display cache is off. The zoomed lift diff found no ink in its clip; that
-is a harness fault, fixed in stage 3, where the lift gate is first needed.
+What students feel, in numbers:
+
+- **The stroke changes at the lift.** It is redrawn by a different route the
+  moment it is committed, so its edges move. That is the "resize".
+- **Writing zoomed in is choppy.** A third of the frames of a long stroke run
+  long.
+- **Zoomed panning stalls.** Every pan repaints the whole window, because the
+  display cache is off.
+
+A first baseline recorded on the same day was wrong. Its helpers closed the
+pen settings with Escape, which in the notebook picks the select tool, so
+every stroke after it was a selection drag that drew nothing. The helpers now
+close the settings by pressing the tool again, as a student would.
 
 ## Architecture
 
 ### `lib/ink/`: pure, DOM-free, and also used on the server
 
-- **`model.ts`.** An `InkDocument` holds ordered items, each with a stable id
-  and a bounding box. Item kinds:
-  - `pen` and `highlighter`: centreline samples (x, y, width, time, plus nib
-    angle for the highlighter), the style, and the geometry version and pen
-    feel in force when drawn;
-  - `shape`: a parametric line, ellipse, rectangle, triangle or arrow;
-  - `outline`: a filled or stroked path, for imported legacy ink.
+Built (stage 1), all flat files in `lib/ink/`:
 
-  Page coordinates stay 900 × 1240.
-- **`geometry/`.** The pen (`notebook-smooth-pen.ts`,
-  `notebook-smooth-pen-widths.ts`), highlighter (`notebook-chisel-stroke.ts`,
-  `notebook-convex-union.ts`) and straightening, ported to Jami's own path
-  type.
-  - An incremental builder returns newly frozen segments and the unstable
-    tail. Corners and easing look only a bounded window behind the tip.
-  - Every geometry version is frozen by golden tests, so a saved stroke never
-    changes shape.
-- **`format/`.** The `jami-ink` v3 codec: coordinates quantised to 1/16 page
-  unit, delta- and varint-encoded.
-  - `importJsDrawSvg` turns js-draw's SVG paths into `outline` items.
-  - `importLegacyStrokes` handles v1 strokes through today's conversion, so old
-    pages look as they do now.
-- **`export/svg.ts`.** `inkToSvg` produces the static SVG for previews,
-  thumbnails, the server, exam marking and the rollback copy. It must read
-  back into js-draw, and a test guards that.
+- **`model.ts`.** An `InkDocument` holds ordered items, each with a stable id
+  and cached bounds (`inkItemBounds`). Item kinds today:
+  - `outline`: a filled or stroked path, for imported ink;
+  - `shape`: a parametric line, arrow, polygon or ellipse;
+  - `unknown`: an item from a newer writer, kept whole (id, layer byte,
+    payload) and written back unchanged.
+
+  Highlighter items are always drawn under pen items. Page coordinates stay
+  900 × 1240. Pen and highlighter centreline items arrive as new kinds.
+- **`codec.ts`, `codec-quantize.ts`, `bytes.ts`.** The `jami-ink` v3 codec,
+  `"j3:" + base64url`: coordinates quantised to 1/16 page unit, delta- and
+  varint-encoded, strict decoding that never throws, and golden strings that
+  freeze the stored format.
+- **`path.ts`, `arc.ts`, `matrix.ts`, `svg-scan.ts`.** The one SVG path
+  reader and writer (the whole grammar reduced to absolute M, L, C, Q, Z,
+  with arcs turned into curves), exact bounds, transforms and the shared
+  number scanner.
+- **`color.ts`.** Reading and writing CSS colours. Jami writes only 6 or 8
+  digit hex, because js-draw reads short hex differently.
+- **`shapes.ts`.** The path a parametric shape is stroked along.
+- **`import-js-draw-svg.ts`, `svg-xml.ts`, `svg-style.ts`.**
+  `importJsDrawSvg` turns a page saved by js-draw into `outline` items.
+  It reproduces what js-draw drew, so it follows js-draw's own SVG loader,
+  quirks included:
+  - only `<path>` elements become ink, and other drawing elements are
+    listed as unsupported;
+  - paint is the path's own attributes, then its `style`, with no
+    inheritance from groups and no stylesheets;
+  - transforms and `viewBox` are not applied;
+  - old translucency written as `opacity` is honoured, on purpose.
+
+  `svg-xml.ts` is a tolerant, linear-time, DOM-free XML reader for
+  student-controlled text; `svg-style.ts` resolves the paint.
+- **`import-legacy-strokes.ts`.** `importLegacyStrokes` handles v1 strokes
+  through today's conversion, so old pages look as they do now.
+- **`export-svg.ts`.** `inkToSvg` produces the static SVG for previews,
+  thumbnails, the server, exam marking and the rollback copy, with explicit
+  paint on every path and no stylesheet. A test loads it with js-draw's own
+  loader and checks the strokes, colours and bounds.
 - **`spatial-index.ts`.** A 64-unit grid for hit tests and tile queries.
 - **`history.ts`.** Invertible commands (add, erase, transform, restyle,
   clear), feeding the merged text-and-ink history in `notebook-history.ts`.
+
+Built (stage 2), in `lib/ink/geometry/`, with no js-draw import and runnable in
+Node:
+
+- **`pen.ts`, `pen-widths.ts`, `pen-tuning.ts`.** The pen: the Catmull-Rom
+  spline through the samples, corners, easing, the pressure taper, and
+  straightening with aiming. `createInkPenBuilder` takes samples and returns
+  path commands plus whether to fill or stroke them. Colour stays with the
+  caller.
+- **`chisel.ts`, `convex-union.ts`.** The highlighter: the nib swept along the
+  path, one footprint per step, and their union as one loop at the lift. The
+  precision eraser uses the union too.
+- **`vector.ts`.** The small immutable vector these use in place of js-draw's
+  `Vec2`, with the same arithmetic.
+
+`notebook-smooth-pen.ts` and `notebook-chisel-stroke.ts` are now only the
+js-draw builders around this geometry (`notebook-stroke-builder-adapter.ts` has
+what they share), so today's editor and the new engine draw from one
+implementation. `tests/ink-geometry-golden.test.ts` freezes the paths they
+draw, wet and committed, across about thirty strokes, so a saved stroke never
+changes shape.
+
+Still to come:
+
+- **Incremental geometry.** The builders recompute the whole curve on every
+  preview. The incremental form returns newly frozen segments and the unstable
+  tail, with corners and easing looking only a bounded window behind the tip.
+  Some of the pen's geometry depends on the whole stroke, so that is a
+  deliberate change to be made against the golden fixtures, not assumed.
 - **`tools/`.** All pure:
   - the stroke and precision erasers (outline items clipped with
     `polygon-clipping`);
@@ -247,7 +303,7 @@ gate.
 1. **Model, format and history.** The model, codec, importers, SVG export,
    spatial index and history, with golden fixtures, round-trips and js-draw
    readback tests.
-2. **Geometry port.** Golden tests prove the ported outlines equal today's,
+2. **Geometry port (done).** Golden tests prove the ported outlines equal today's,
    command for command.
 3. **Renderer.**
    - Rasteriser, dry and live layers, scheduler, zoom placeholders.

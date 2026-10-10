@@ -12,7 +12,7 @@ import {
   getNotebookPrecisionEraserContactRadiusOnCanvas,
   type NotebookEraserPoint,
 } from "@/lib/workspace/notebook-eraser";
-import { unionOfConvexPolygons } from "@/lib/workspace/notebook-convex-union";
+import { unionOfConvexPolygons } from "@/lib/ink/geometry/convex-union";
 
 type JsDrawModule = typeof import("js-draw");
 

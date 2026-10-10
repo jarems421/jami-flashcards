@@ -1,4 +1,4 @@
-import { WIDTH_SMOOTHING_RADIUS, WIDTH_VARIATION_FLOOR } from "@/lib/workspace/notebook-smooth-pen-tuning";
+import { WIDTH_SMOOTHING_RADIUS, WIDTH_VARIATION_FLOOR } from "@/lib/ink/geometry/pen-tuning";
 
 /**
  * Each sample's width, pulled towards the stroke's own average.
