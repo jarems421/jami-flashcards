@@ -51,8 +51,10 @@ and writing, and painting. Painting is where the problems are.
 
 ## Performance gates
 
-Each stage must hold these targets, measured by `e2e/ink-performance.perf.spec.ts`
-in Chromium (headless and headed-GPU, CPU slowed 4x) and by the owner on iPad.
+Each stage must hold these targets, measured in Chromium (headless and
+headed-GPU, CPU slowed 4x) by `e2e/ink-performance.perf.spec.ts` (the notebook
+editor) and `e2e/ink-engine/perf.ink.ts` (Jami Ink's renderer alone), and by
+the owner on iPad.
 
 | Gate | Target |
 | --- | --- |
@@ -118,6 +120,116 @@ pen settings with Escape, which in the notebook picks the select tool, so
 every stroke after it was a selection drag that drew nothing. The helpers now
 close the settings by pressing the tool again, as a student would.
 
+### Measuring the renderer alone (stage 3)
+
+The renderer has its own specs in `e2e/ink-engine/`, run by
+`playwright.ink.config.ts`. They bundle a small harness (the renderer, js-draw
+and the test scenes) with esbuild into a blank page, so there is no app
+server, no build and no emulator. The files end in `.ink.ts`, which the app's
+Playwright config and Vitest never pick up.
+
+```
+npx playwright test -c playwright.ink.config.ts                       fidelity and lift
+INK_PERF=1 npx playwright test -c playwright.ink.config.ts perf       the render gates
+INK_PERF=1 INK_MODE=gpu npx playwright test -c playwright.ink.config.ts perf
+```
+
+In PowerShell `npx` is blocked; set the variables first and call the binary:
+
+```
+$env:INK_PERF = "1"; $env:INK_MODE = "gpu"
+node_modules\.bin\playwright.cmd test -c playwright.ink.config.ts perf
+```
+
+- **Fidelity.** Each page is drawn by js-draw, set up as the notebook sets it
+  up, and by the engine (importer, `InkDocument`, renderer), and the
+  screenshots are compared. Pages: the captured fixtures in
+  `tests/fixtures/ink/js-draw/`, old v1 strokes, a page in the shape
+  `scripts/seed-large-notebook.mjs` writes (3,060 segments), the same page
+  with half its rows in the script's old implicit form (which js-draw and the
+  importer both drop), and a page of synthetic handwriting (about 3,000),
+  each fitted and zoomed in.
+- **The tolerance, and why.** Chrome antialiases the same path differently on
+  canvases of different sizes: drawn by js-draw's calls and by the engine's
+  on one canvas the pixels are identical, but the edge of the same line moves
+  by 0.02 to 0.11 of a device pixel between a 2360 x 1640 canvas (js-draw's)
+  and smaller ones (the engine's 512-pixel tiles). js-draw also flattens
+  curves shorter than about 0.7 CSS pixels into lines, which moves the round
+  end of a thin stroke. So a pixel counts as different when a channel moves
+  by more than 64 of 255, and a page fails when the pixels over that touch
+  one another in a group of more than 16. Antialiasing leaves isolated pixels
+  and runs of at most 11; every real difference found makes groups of 75 to
+  over 200,000. Two pages are expected to differ, and the spec checks that it
+  sees them: the highlighter fixture (its highlighter crosses a pen line
+  drawn before it, and Jami Ink puts highlighter under pen ink) and v1
+  highlighters (js-draw ignores their `opacity="0.42"`, the importer honours
+  it, by design).
+- **Lift.** A stroke is written as live ink over existing pen and highlighter
+  ink, screenshotted with the pen down and again after the lift: 0 pixels may
+  change. A highlighter's last packet draws its traced outline, as the editor
+  will (see "The lift" below), so its lift is held to 0 too. The page is then drawn again from nothing and compared with what the
+  lift left, within 24 of 255 ("The lift", under `lib/ink-dom/` below, says
+  why it is not 0).
+- **The gates** are measured at 1180 x 820 and 2x, the CPU slowed 4x: work
+  per packet and frames for three 200-sample strokes through the real pen and
+  highlighter geometry, thin and thick, fitted and zoomed, over a page of
+  3,000 segments; canvas allocations, tile draws and layout reads during the
+  strokes (layout reads are counted by watching the browser's own layout
+  APIs); the lift; page open; six zoomed pans; erase, undo and add; a zoom
+  settling; memory. Gates that need the real editor (ink inside the pointer
+  event, the pinch, React renders and Firestore work during a stroke) are
+  stage 4's, in `ink-performance.perf.spec.ts`.
+
+One thing the fidelity work found about js-draw itself: `SVGLoader` drops a
+subpath whose points after `M` are implicit line-tos with no minus sign (it
+takes such a piece for a lone move), so the pages
+`scripts/seed-large-notebook.mjs` wrote drew nothing in js-draw. The script
+now writes an explicit `L`, and `importJsDrawSvg` drops what js-draw drops
+(owner decision, 10 October 2026), so an old page opens exactly as it showed.
+
+### Jami Ink renderer results
+
+Recorded on 10 October 2026 with `e2e/ink-engine/perf.ink.ts`, CPU 4x,
+1180 x 820 at 2x, over a page of about 3,000 segments. Writing is three
+200-sample strokes, two samples a packet every 8 ms. The GPU column is the
+last run before the stage was committed, with every change in; the headless
+column is from just before the highlighter's last packet began drawing its
+traced outline. The machine was shared, so timings vary by a few tenths of
+a millisecond between runs.
+
+| Gate | Target | Headless | Headed GPU | js-draw baseline (headless) |
+| --- | --- | --- | --- | --- |
+| Work per packet (p95) | ≤ 4 ms | 0.7 to 1.6 ms (longest 3.4) | 0.8 to 2.1 ms (longest 4.5: a highlighter's last packet, which traces its outline) | Pen-down handler 2.9 ms |
+| Frames over 25 ms, fitted | 0 | 0 of about 290 per case | 1 of about 590 (frame 1 or 2 of the first stroke) | 6 |
+| Frames over 25 ms, zoomed | 0 | 1 to 15 of about 400, each 33 ms | 1 of about 590 (the same) | 69 (short strokes), 81 (long stroke) |
+| During a stroke | 0 allocations, tile draws, layout reads | 0, 0, 0 (besides one copy of each dry tile a stroke reaches) | 0, 0, 0 (the same) | Live canvas reallocated 6 times |
+| Lift | 0 px, ≤ 2 ms | 0 px; 0.8 to 1.4 ms (a page's first lift, cold: 2.6 to 3.4 ms) | 0 px; 0.6 to 1.2 ms (cold: 2.4 to 3.5 ms) | 438 px fitted, about 2,700 zoomed |
+| Page open, 3,000 segments | first ink ≤ 150 ms | 22 to 29 ms (all on screen by 44 to 70 ms) | 23 to 38 ms (all by 30 to 44 ms) | not measured |
+| Background slices | ≤ 4 ms | 3.8 ms at most | 3.7 ms at most | not sliced |
+| Zoomed pan | no blank tiles; ≤ 4 ms slices | 0 blank; 3.3 ms; no frame over 25 ms | 0 blank; 1 ms | 39 frames over 25 ms, 18 repaints |
+| Erase, undo, add | affected tiles only, ≤ 8 ms | 2 to 6 of 9 or 24 tiles; 0.6 to 2.9 ms | 0.4 to 1.8 ms | whole window repainted |
+| Zoom settle | never blank | old level stood in; new one in 153 ms | in 24 ms | 3 repaints, 109 ms task |
+| Memory | ≤ 96 MB, no canvas over 4 MP | 76.5 MB at most; 0.26 MP | 76.5 MB at most; 0.26 MP | |
+
+Not yet met:
+
+- **Zoomed writing frames in headless Chromium**, accepted as they are by the
+  owner on 10 October 2026: ink is not drawn differently to chase them. One
+  to fifteen frames in about 400 take 33 ms (one missed frame each). They are
+  spent in `Canvas2DResourceProviderSharedImage::ProduceCanvasResource`: headless
+  composites in software and copies every changed tile canvas whole each
+  frame, and a zoomed stroke changes one or more tiles a packet (all it
+  covers, when pressure reshapes the whole stroke). On the GPU the same
+  writing has none.
+- **The first or second frame of the first stroke in a fresh browser**
+  takes 28 to 33 ms on the GPU: 17 ms of it is ANGLE compiling shaders the
+  first time a canvas is copied into another and painted. Warming the same operations on
+  hidden canvases did not move it (Chromium does not flush a hidden canvas),
+  so it was left out.
+
+Lift timings are taken on the second and third strokes; the first lift on a
+page runs before the JIT has seen it.
+
 ## Architecture
 
 ### `lib/ink/`: pure, DOM-free, and also used on the server
@@ -153,6 +265,9 @@ Built (stage 1), all flat files in `lib/ink/`:
   - paint is the path's own attributes, then its `style`, with no
     inheritance from groups and no stylesheets;
   - transforms and `viewBox` are not applied;
+  - a subpath whose points after a capital `M` are implicit line-tos with
+    no minus sign is dropped, as js-draw's loader drops it
+    (`jsDrawPathData`); other readers of path data follow the SVG grammar;
   - old translucency written as `opacity` is honoured, on purpose.
 
   `svg-xml.ts` is a tolerant, linear-time, DOM-free XML reader for
@@ -188,13 +303,26 @@ implementation. `tests/ink-geometry-golden.test.ts` freezes the paths they
 draw, wet and committed, across about thirty strokes, so a saved stroke never
 changes shape.
 
+Built (stage 3), flat files in `lib/ink/`:
+
+- **`render-plan.ts`.** The pure plan behind the renderer: a level per settled
+  zoom and screen density, its tiles (256 CSS pixels, a whole number of
+  device pixels, on a grid from the sheet's corner), the visible tiles nearest
+  the middle first, the prefetch ring, the tiles a change touches, the memory
+  budget and the LRU, when a new level may replace the old one, and the
+  device-pixel snap. Page coordinates stay 900 x 1240.
+- **`path-change.ts`.** Where a path changed between two packets of a stroke
+  being written, for live ink to repaint only there.
+
 Still to come:
 
 - **Incremental geometry.** The builders recompute the whole curve on every
   preview. The incremental form returns newly frozen segments and the unstable
   tail, with corners and easing looking only a bounded window behind the tip.
-  Some of the pen's geometry depends on the whole stroke, so that is a
-  deliberate change to be made against the golden fixtures, not assumed.
+  Some of the pen's geometry depends on the whole stroke, so this would change
+  how ink looks, which is the owner's decision. Stage 3 does not do it: live
+  ink redraws the whole stroke on every packet, which keeps today's look and
+  measured well inside the per-packet gate.
 - **`tools/`.** All pure:
   - the stroke and precision erasers (outline items clipped with
     `polygon-clipping`);
@@ -202,42 +330,111 @@ Still to come:
   - lasso selection;
   - shape recognition;
   - ruler geometry.
-- **`render-plan.ts`.** A pure plan of tiles, levels and the centre-out order.
 
 ### `lib/ink-dom/`: the browser engine, imperative and outside React
 
-- **`InkSurface`.** Owns the model, input, renderers, scheduler and history,
-  behind the handle `NotebookInkEditor` has today: undo, redo, clear, hasInk,
-  serialize and snapshot.
-- **One rasteriser.** Live and dry ink are drawn by the same routine on the
-  same device-pixel grid. That is what makes the lift pixel-identical.
-- **Dry tiles.**
-  - 256 CSS px tiles at the settled zoom, drawn from a per-item `Path2D` cache
-    through `setTransform`, so they are vector-sharp at any zoom.
-  - Highlighter tiles, made only where there is highlighter ink, sit under pen
-    tiles.
-  - Tile canvases are pooled at a fixed size and re-targeted, never resized,
-    with an LRU inside the memory budget.
-- **Live ink.**
-  - Live tiles on the same grid, allocated once per editor and only moved.
-  - Frozen segments are drawn once into them. The tail and the predicted tip
-    are drawn on a fixed overlay that follows the pen.
-  - Stacking order: dry highlighter, then live highlighter, then dry pen, then
-    live pen. A highlighter is under pen ink while it is drawn, too.
-- **The lift.** The committed item is drawn into its dry tiles and the live
-  tiles are cleared in the same task.
-- **Scheduler.** Priorities:
-  1. live ink, synchronous;
-  2. the commit at the lift;
-  3. visible tiles, centre-out;
-  4. the prefetch ring;
-  5. PDF detail, snapshots and serialisation.
+Built (stage 3), the renderer: `createInkRenderer(host)` in `renderer.ts`.
+It has no pointer input and reads no layout; whoever drives it says where the
+sheet is (`setViewport`), what the page holds (`setDocument`, `applyChange`
+with an `InkChange` from `history.ts`), when a gesture holds the sheet
+(`beginGesture`, `endGesture`) and what the pen did (`beginLive`,
+`drawLive`, `commitLive`, `cancelLive`). Always-on counters (`stats`,
+`coverage()`) are what the perf spec reads.
 
-  Levels 3 to 5 never run during a stroke or gesture, and only in ≤ 4 ms
-  slices.
-- **Zoom.** `useNotebookViewportController` keeps moving the page on the
-  compositor during a gesture. Old tiles stay on screen, scaled, until their
-  replacements land.
+- **One rasteriser** (`rasterizer.ts`). Every item, and the live stroke, is
+  a `Path2D` in page units, built once per item, drawn through
+  `setTransform` (device pixels per page unit, and a whole-pixel origin), so
+  tiles are vector-sharp at any zoom. It paints as js-draw's canvas renderer
+  did: fill then stroke, round caps and joins, one path per item.
+- **Dry tiles** (`tile-store.ts`).
+  - Tiles of a level are drawn in two layers, highlighter under pen, and a
+    layer's canvas exists only where that layer has ink.
+  - Every canvas is a tile: one pool at one fixed size, shared by dry and
+    live tiles, re-targeted, never resized, and none over 4 MP. An LRU keeps
+    the pool inside 96 MB; tiles on screen are pinned. Nothing is reserved
+    for live ink. At 2x, 96 MB is 91 tiles, enough for both layers on 45
+    tiles on screen: a 1180 x 820 screen meets at most 30 and a 12.9-inch
+    iPad 35, but a 1920 x 1080 screen meets up to 54. Past the bound, a tile
+    draws its pen layer first (writing never goes blank first) and its
+    highlighter waits until a canvas comes back to the pool, which retries
+    it in the background. If a new zoom cannot fit beside the old level, it
+    replaces the old level partly drawn and finishes with the canvases that
+    frees.
+  - A dense tile is drawn over several slices, stopping before an item that
+    would run past the slice and carrying on first in the next. A blank tile
+    fills in as it goes; a tile still showing older ink (changed while out of
+    sight, then panned to) is drawn into a spare canvas and swapped in whole,
+    so a tile on screen never shows half drawn.
+- **Live ink** (`live-layer.ts`).
+  - Live tiles are canvases exactly like dry tiles, on the same grid: Chrome
+    antialiases differently on canvases of different sizes, and one grid with
+    one canvas size is what lets live and dry pixels match.
+  - They are lent from the pool when a stroke first reaches a tile on screen
+    and given back when it ends. The pool keeps a screenful of spares warm;
+    past those it takes a canvas from a tile out of sight, and it never makes
+    one during a stroke, so "no allocations during a stroke" always holds.
+    With every canvas pinned, the tile is noted as missed: the stroke does
+    not show there while it is written, and the lift paints it in.
+  - When a stroke first reaches a tile, the live tile copies the dry tile of
+    the stroke's layer (one full-tile copy per tile per stroke, counted in the
+    packet's time, not as a tile draw) and stands in for it (the dry tile is
+    hidden). What is on screen is then a composite the canvas made, not one the compositor
+    blends from two layers; the two round a translucent blend differently by
+    a level in 255, where a stroke crosses ink of its own layer.
+  - Each packet paints the whole stroke again, in every tile where it changed
+    since the last packet (`path-change.ts`); a tile the change does not reach
+    already shows exactly this stroke. A context clip would have been finer,
+    but Chrome antialiases edges differently under one.
+  - Stacking order: dry highlighter, live highlighter, dry pen, live pen. A
+    highlighter is under pen ink while it is drawn, too.
+- **The lift.** If the committed item is exactly what live ink last drew, the
+  live tiles become the dry tiles and the dry canvases they stood in for go
+  back to the pool: nothing is drawn or copied, so no pixel changes. A tile
+  live ink missed has the stroke painted in. Anything else (a path rounded by
+  the codec, say) is painted afresh.
+  - **The highlighter at the lift** (owner decision, 10 October 2026). Its
+    footprints are drawn while it is written, but what is saved and reopens
+    is their traced outline (`build()`). So the last live packet draws the
+    traced outline, and the lift commits exactly that: what shows after the
+    lift is what is saved. Stage 4's `InkSurface` does the same at pen-up.
+    The renderer needs nothing for it: the last packet changes every
+    subpath, `inkPathChange` covers both versions, and every tile either
+    touches is repainted. Tiles
+  off screen are redrawn in the background. One consequence: Skia picks its
+  antialiasing per path (analytic or supersampled, by how many points the path
+  has for its size), so a tile kept from earlier in a long stroke can differ
+  from a later full redraw of it by a few levels at edge pixels (15 of 255 at
+  most, measured on highlighter footprints).
+- **Scheduler** (`scheduler.ts`). Priorities:
+  1. live ink, synchronous;
+  2. the commit at the lift, synchronous;
+  3. visible tiles, nearest the middle first;
+  4. the prefetch ring, one tile around the screen;
+  5. idle work (spare canvases kept ready).
+
+  Levels 3 to 5 run in slices aimed at 2.5 ms (so an item crossing the end
+  still lands inside the 4 ms gate), posted through a message channel, and never
+  during a stroke or gesture. A viewport, a document or a change set during a
+  stroke waits for it to end (live tiles hold copies of the dry tiles under
+  them); if the page changed, the lift paints the stroke afresh over it.
+- **Zoom.** A new zoom is a new level drawn behind the old one, which stays on
+  screen scaled until every tile on screen is ready, then is replaced in one
+  step. A stroke written meanwhile is drawn on the old level, so its lift is
+  still exact.
+- **Changes.** A change redraws only the tiles it touches: those on screen at
+  once, the rest when next needed. Items added on top of the page are painted
+  onto the tiles rather than redrawing them.
+- **Pixel snap.** Given the sheet's position on screen, the ink is nudged by
+  under a pixel so every canvas sits on whole device pixels
+  (`inkDevicePixelSnap`, which js-draw's live ink shares until it goes).
+
+Still to come:
+
+- **`InkSurface`** (stage 4). Owns the model, input, renderer and history,
+  behind the handle `NotebookInkEditor` has today: undo, redo, clear,
+  hasInk, serialize and snapshot.
+- **The predicted tip**, drawn by stage 4 with the live stroke.
+- **PDF detail and snapshots** under the scheduler (stage 7).
 - **Input.** Kept as is:
   - `NotebookInkSmoother`, `NotebookLiftOffGate`, the coalesced-sample bounds,
     the predicted tip;
@@ -305,10 +502,10 @@ gate.
    readback tests.
 2. **Geometry port (done).** Golden tests prove the ported outlines equal today's,
    command for command.
-3. **Renderer.**
-   - Rasteriser, dry and live layers, scheduler, zoom placeholders.
-   - A fidelity diff against js-draw.
-   - The render gates.
+3. **Renderer (done).** Rasteriser, dry and live layers, scheduler, zoom
+   placeholders, the fidelity and lift diffs, and the render gates. One gate is
+   not yet met in headless Chromium (zoomed writing frames), and the GPU run
+   has one slow first frame; see "Jami Ink renderer results".
 4. **Input and core tools.**
    - Pen, highlighter, both erasers, scribble-erase, straightening, the eraser
      end, undo, redo and clear.

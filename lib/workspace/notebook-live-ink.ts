@@ -1,5 +1,6 @@
 import type { Editor as JsDrawEditor } from "js-draw";
 import type { JsDrawModule } from "@/lib/workspace/notebook-js-draw";
+import { inkDevicePixelSnap } from "@/lib/ink/render-plan";
 
 /**
  * Fast live ink: the stroke being written, drawn on a canvas around the stroke
@@ -146,20 +147,12 @@ export function getNotebookLiveInkPixelRatio(input: {
 
 /**
  * How far to move a canvas, in CSS pixels, so its corner lands on a device
- * pixel.
- *
- * A canvas whose corner falls between device pixels is resampled by the
- * browser every frame, which smears thin ink across two pixels. The live
- * canvas's corner is the page's position plus a grid offset, and the page is
- * often centred on a half pixel; the page's own canvases are drawn once and
- * then look right, but a stroke redrawn every frame shows the smear the whole
- * time it is being written.
+ * pixel. The live canvas's corner is the page's position plus a grid offset,
+ * and the page is often centred on a half pixel; a stroke redrawn every frame
+ * shows the smear the whole time it is being written. Jami Ink's renderer
+ * snaps the same way, so there is one implementation, in the render plan.
  */
-export function getNotebookLiveInkPixelSnap(screenOrigin: number, pixelRatio: number) {
-  if (!Number.isFinite(screenOrigin) || !Number.isFinite(pixelRatio) || pixelRatio <= 0) return 0;
-  const device = screenOrigin * pixelRatio;
-  return (Math.round(device) - device) / pixelRatio;
-}
+export const getNotebookLiveInkPixelSnap = inkDevicePixelSnap;
 
 /** A box in the ink surface's coordinates, by its edges. */
 export type NotebookLiveInkBox = { left: number; top: number; right: number; bottom: number };

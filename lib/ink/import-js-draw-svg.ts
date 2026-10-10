@@ -21,6 +21,13 @@
  *   their children visited (the default case at line 494 returns without
  *   clearing `visitChildren`), so a path inside them is drawn.
  *   `text` and `image` are the only elements js-draw does not descend into.
+ * - A path's data is cut at every capital `M`, and a piece made only of
+ *   digits, dots, commas, spaces, tabs and line feeds is dropped as a lone
+ *   move (`strokeDataFromElem`, lines 91-112, js-draw 1.33). So a subpath
+ *   whose points after `M` are implicit line-tos with no minus sign, no
+ *   exponent and no other letter (`M60,40 75.5,41 91,44`) draws nothing, and
+ *   is dropped here too (`jsDrawPathData`). js-draw's own path reader takes
+ *   such pairs as line-tos; only its loader drops them.
  *
  * Paths are read as written, never repaired, even one a past bug damaged.
  * Nothing here touches the DOM, so it also runs on the server.
@@ -62,6 +69,20 @@ const UNSUPPORTED_DRAWING_TAGS: ReadonlySet<string> = new Set([
 ]);
 /** js-draw does not descend into these, so neither do we. */
 const LEAF_TAGS: ReadonlySet<string> = new Set(["text", "image"]);
+/**
+ * The path data js-draw's loader keeps: cut at each capital `M`, with the
+ * pieces it takes for lone moves dropped (see the list above). The other
+ * readers of SVG path data follow the SVG grammar and do not do this.
+ */
+export function jsDrawPathData(d: string): string {
+  let kept = "";
+  d.split("M").forEach((part, index) => {
+    if (part === "" || /^[0-9., \t\n]+$/.test(part)) return;
+    kept += index === 0 ? part : `M${part}`;
+  });
+  return kept;
+}
+
 /** A path this translucent or more reads as highlighter ink. */
 const HIGHLIGHTER_ALPHA_BELOW = 0.95;
 
@@ -89,7 +110,7 @@ export function importJsDrawSvg(
   if (parsed.tooDeep) unsupported.add("svg: nested too deep");
 
   function addPath(element: XmlElement): void {
-    const d = element.attrs.get("d") ?? "";
+    const d = jsDrawPathData(element.attrs.get("d") ?? "");
     if (d.trim() === "") return;
     const path = parseSvgPathData(d);
     if (!path) {

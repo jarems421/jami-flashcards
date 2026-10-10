@@ -156,6 +156,18 @@ const SQUARE_CAP_REACH_IN_WIDTHS = Math.SQRT1_2;
 
 const boundsCache = new WeakMap<InkItem, InkBox>();
 
+/**
+ * How far a stroke's paint can reach past its path, caps and joins included:
+ * how much to grow a path's box to cover what stroking it paints.
+ */
+export function inkStrokeReach(stroke: InkStrokeStyle | null): number {
+  if (!stroke) return 0;
+  let reach = stroke.width / 2;
+  if (stroke.cap === "square") reach = Math.max(reach, stroke.width * SQUARE_CAP_REACH_IN_WIDTHS);
+  if (stroke.join === "miter") reach = Math.max(reach, stroke.width * MITER_REACH_IN_WIDTHS);
+  return reach;
+}
+
 function computeInkItemBounds(item: InkItem): InkBox {
   if (item.kind === "unknown") return EMPTY_BOX;
   if (item.kind === "shape") {
@@ -165,11 +177,7 @@ function computeInkItemBounds(item: InkItem): InkBox {
   const pathBounds = inkPathBounds(item.path);
   if (!pathBounds) return EMPTY_BOX;
   const stroke = item.paint.stroke;
-  if (!stroke) return pathBounds;
-  let reach = stroke.width / 2;
-  if (stroke.cap === "square") reach = Math.max(reach, stroke.width * SQUARE_CAP_REACH_IN_WIDTHS);
-  if (stroke.join === "miter") reach = Math.max(reach, stroke.width * MITER_REACH_IN_WIDTHS);
-  return inkBoxGrow(pathBounds, reach);
+  return stroke ? inkBoxGrow(pathBounds, inkStrokeReach(stroke)) : pathBounds;
 }
 
 /**

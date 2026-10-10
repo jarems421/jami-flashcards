@@ -243,33 +243,39 @@ export function formatSvgPathData(commands: InkPathCommand[], decimals = 2): str
   return out;
 }
 
-/** Values of a quadratic Bézier's derivative root, if inside (0, 1). */
-function quadraticExtremum(p0: number, p1: number, p2: number): number[] {
+/**
+ * Calls `visit` with the quadratic's derivative root along one axis, if it is
+ * inside (0, 1). Callbacks rather than arrays: bounds are taken for every
+ * stroke at the lift, and a long one has hundreds of curves.
+ */
+function quadraticExtremum(p0: number, p1: number, p2: number, visit: (t: number) => void): void {
   const denominator = p0 - 2 * p1 + p2;
-  if (denominator === 0) return [];
+  if (denominator === 0) return;
   const t = (p0 - p1) / denominator;
-  return t > 0 && t < 1 ? [t] : [];
+  if (t > 0 && t < 1) visit(t);
 }
 
-/** Parameters in (0, 1) where a cubic's derivative along one axis is zero. */
-function cubicExtrema(p0: number, p1: number, p2: number, p3: number): number[] {
+/** Calls `visit` with each parameter in (0, 1) where a cubic's derivative along one axis is zero. */
+function cubicExtrema(p0: number, p1: number, p2: number, p3: number, visit: (t: number) => void): void {
   const d0 = p1 - p0;
   const d1 = p2 - p1;
   const d2 = p3 - p2;
   const a = d0 - 2 * d1 + d2;
   const b = 2 * (d1 - d0);
   const c = d0;
-  const roots: number[] = [];
+  const inside = (t: number) => {
+    if (t > 0 && t < 1) visit(t);
+  };
   if (Math.abs(a) < 1e-12) {
-    if (b !== 0) roots.push(-c / b);
+    if (b !== 0) inside(-c / b);
   } else {
     const discriminant = b * b - 4 * a * c;
     if (discriminant >= 0) {
       const root = Math.sqrt(discriminant);
-      roots.push((-b + root) / (2 * a), (-b - root) / (2 * a));
+      inside((-b + root) / (2 * a));
+      inside((-b - root) / (2 * a));
     }
   }
-  return roots.filter((t) => t > 0 && t < 1);
 }
 
 function cubicAt(p0: number, p1: number, p2: number, p3: number, t: number): number {
@@ -288,16 +294,17 @@ function quadraticAt(p0: number, p1: number, p2: number, t: number): number {
  * drawn at all.
  */
 export function inkPathBounds(commands: InkPathCommand[]): InkBox | null {
-  let box: InkBox | null = null;
-  const include = (x: number, y: number) => {
-    box = box
-      ? {
-          minX: Math.min(box.minX, x),
-          minY: Math.min(box.minY, y),
-          maxX: Math.max(box.maxX, x),
-          maxY: Math.max(box.maxY, y),
-        }
-      : { minX: x, minY: y, maxX: x, maxY: y };
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let any = false;
+  const include = (px: number, py: number) => {
+    any = true;
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
   };
   let x = 0;
   let y = 0;
@@ -326,16 +333,10 @@ export function inkPathBounds(commands: InkPathCommand[]): InkBox | null {
       case "Q": {
         flushStart();
         include(command.x, command.y);
-        const ts = [
-          ...quadraticExtremum(x, command.x1, command.x),
-          ...quadraticExtremum(y, command.y1, command.y),
-        ];
-        for (const t of ts) {
-          include(
-            quadraticAt(x, command.x1, command.x, t),
-            quadraticAt(y, command.y1, command.y, t)
-          );
-        }
+        const at = (t: number) =>
+          include(quadraticAt(x, command.x1, command.x, t), quadraticAt(y, command.y1, command.y, t));
+        quadraticExtremum(x, command.x1, command.x, at);
+        quadraticExtremum(y, command.y1, command.y, at);
         x = command.x;
         y = command.y;
         break;
@@ -343,16 +344,13 @@ export function inkPathBounds(commands: InkPathCommand[]): InkBox | null {
       case "C": {
         flushStart();
         include(command.x, command.y);
-        const ts = [
-          ...cubicExtrema(x, command.x1, command.x2, command.x),
-          ...cubicExtrema(y, command.y1, command.y2, command.y),
-        ];
-        for (const t of ts) {
+        const at = (t: number) =>
           include(
             cubicAt(x, command.x1, command.x2, command.x, t),
             cubicAt(y, command.y1, command.y2, command.y, t)
           );
-        }
+        cubicExtrema(x, command.x1, command.x2, command.x, at);
+        cubicExtrema(y, command.y1, command.y2, command.y, at);
         x = command.x;
         y = command.y;
         break;
@@ -364,7 +362,7 @@ export function inkPathBounds(commands: InkPathCommand[]): InkBox | null {
         break;
     }
   }
-  return box;
+  return any ? { minX, minY, maxX, maxY } : null;
 }
 
 /** Maps every point of the path through `m`. Curves stay curves under affine maps. */

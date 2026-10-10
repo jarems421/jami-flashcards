@@ -49,8 +49,10 @@ function buildInkSvg(pageNumber) {
     const points = Array.from(
       { length: 40 },
       (_p, step) => `${60 + step * 20},${y + Math.sin(step + pageNumber) * 6}`
-    ).join(" ");
-    return `<path d="M${points}" stroke="#111" stroke-width="2" fill="none"/>`;
+    );
+    // An explicit L: js-draw's loader drops a subpath whose points after M are
+    // implicit line-tos with no minus sign, so such a page drew nothing.
+    return `<path d="M${points[0]} L${points.slice(1).join(" ")}" stroke="#111" stroke-width="2" fill="none"/>`;
   }).join("");
   return `<svg viewBox="0 0 900 1240" xmlns="http://www.w3.org/2000/svg">${paths}</svg>`;
 }
