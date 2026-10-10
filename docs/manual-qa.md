@@ -47,7 +47,9 @@ scroll sideways.** Long equations must scroll inside their own box.
    Redo, pen and highlighter colour and thickness, and pen smoothing. Undo steps
    back whichever of ink or text happened last.
 6. Turn on Scribble to erase in the tool settings and scribble over a word. Only
-   what was scribbled over disappears.
+   what was scribbled over disappears. Then draw a quick circle round a word,
+   with the pen and with the highlighter: the circle stays, the word is not
+   erased, and the highlighter leaves the middle of the circle clear.
 7. On a phone, a notebook shows "Notebook editing works best on iPad or
    desktop." with "Continue anyway"; typed notes still work.
 

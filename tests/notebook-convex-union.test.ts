@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getNotebookPolygonArea,
   unionOfConvexPolygons,
+  unionOfConvexPolygonsWithHoles,
   type NotebookUnionPoint,
 } from "@/lib/ink/geometry/convex-union";
 
@@ -25,6 +26,79 @@ const hasPoint = (
       Math.abs(candidate.x - point.x) < 1e-6 &&
       Math.abs(candidate.y - point.y) < 1e-6
   );
+
+/** Four bars enclosing an empty 10 x 10 middle. */
+const ring: NotebookUnionPoint[][] = [
+  [
+    { x: 0, y: 0 },
+    { x: 30, y: 0 },
+    { x: 30, y: 10 },
+    { x: 0, y: 10 },
+  ],
+  [
+    { x: 0, y: 20 },
+    { x: 30, y: 20 },
+    { x: 30, y: 30 },
+    { x: 0, y: 30 },
+  ],
+  [
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 10, y: 30 },
+    { x: 0, y: 30 },
+  ],
+  [
+    { x: 20, y: 0 },
+    { x: 30, y: 0 },
+    { x: 30, y: 30 },
+    { x: 20, y: 30 },
+  ],
+];
+
+/** The nonzero winding number of `point` against every loop, as a canvas fills them. */
+function windingAt(loops: readonly NotebookUnionPoint[][], point: NotebookUnionPoint) {
+  let winding = 0;
+  for (const loop of loops) {
+    for (let index = 0; index < loop.length; index += 1) {
+      const from = loop[index];
+      const to = loop[(index + 1) % loop.length];
+      const side = (to.x - from.x) * (point.y - from.y) - (point.x - from.x) * (to.y - from.y);
+      if (from.y <= point.y && to.y > point.y && side > 0) winding += 1;
+      else if (from.y > point.y && to.y <= point.y && side < 0) winding -= 1;
+    }
+  }
+  return winding;
+}
+
+describe("unionOfConvexPolygonsWithHoles", () => {
+  it("keeps the middle of a ring empty, so a highlighter round a word does not cover it", () => {
+    const loops = unionOfConvexPolygonsWithHoles(ring);
+    expect(loops).not.toBeNull();
+    expect(loops).toHaveLength(2);
+    expect(getNotebookPolygonArea(loops![0])).toBeCloseTo(900, 6);
+    expect(getNotebookPolygonArea(loops![1])).toBeCloseTo(-100, 6);
+    expect(windingAt(loops!, { x: 15, y: 15 })).toBe(0);
+    expect(windingAt(loops!, { x: 5, y: 15 })).not.toBe(0);
+    expect(windingAt(loops!, { x: 15, y: 25 })).not.toBe(0);
+  });
+
+  it("is the outer boundary alone when there is no hole", () => {
+    const loops = unionOfConvexPolygonsWithHoles([square(0, 0, 10), square(5, 0, 10)]);
+    expect(loops).toHaveLength(1);
+    expect(getNotebookPolygonArea(loops![0])).toBeCloseTo(150, 6);
+  });
+
+  it("leaves no sliver behind where footprints share an edge", () => {
+    const loops = unionOfConvexPolygonsWithHoles([square(0, 0, 10), square(10, 0, 10), square(20, 0, 10)]);
+    expect(loops).toHaveLength(1);
+    expect(getNotebookPolygonArea(loops![0])).toBeCloseTo(300, 6);
+  });
+
+  it("is a lone polygon as it is, and null for nothing", () => {
+    expect(unionOfConvexPolygonsWithHoles([square(0, 0, 10)])).toHaveLength(1);
+    expect(unionOfConvexPolygonsWithHoles([])).toBeNull();
+  });
+});
 
 describe("unionOfConvexPolygons", () => {
   it("returns a single polygon unchanged", () => {
@@ -84,34 +158,7 @@ describe("unionOfConvexPolygons", () => {
     );
   });
 
-  it("fills a hole rather than punching one, because a highlighter is not a stencil", () => {
-    // Four bars enclosing an empty middle.
-    const ring = [
-      [
-        { x: 0, y: 0 },
-        { x: 30, y: 0 },
-        { x: 30, y: 10 },
-        { x: 0, y: 10 },
-      ],
-      [
-        { x: 0, y: 20 },
-        { x: 30, y: 20 },
-        { x: 30, y: 30 },
-        { x: 0, y: 30 },
-      ],
-      [
-        { x: 0, y: 0 },
-        { x: 10, y: 0 },
-        { x: 10, y: 30 },
-        { x: 0, y: 30 },
-      ],
-      [
-        { x: 20, y: 0 },
-        { x: 30, y: 0 },
-        { x: 30, y: 30 },
-        { x: 20, y: 30 },
-      ],
-    ];
+  it("traces only the outer boundary, so a ring comes back as the disc it surrounds", () => {
     const outline = unionOfConvexPolygons(ring);
     expect(outline).not.toBeNull();
     expect(Math.abs(getNotebookPolygonArea(outline!))).toBeCloseTo(900, 6);

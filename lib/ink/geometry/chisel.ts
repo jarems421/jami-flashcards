@@ -1,5 +1,5 @@
 import type { InkPathCommand } from "@/lib/ink/model";
-import { unionOfConvexPolygons } from "@/lib/ink/geometry/convex-union";
+import { unionOfConvexPolygonsWithHoles } from "@/lib/ink/geometry/convex-union";
 import { Vec, type InkExtent, type InkVector } from "@/lib/ink/geometry/vector";
 
 /**
@@ -336,8 +336,9 @@ export function createInkChiselBuilder(
     },
     build() {
       const polygons = footprints();
-      const outline = unionOfConvexPolygons(polygons);
-      return { path: outline ? loopPath(outline) : footprintPath(polygons) };
+      // The outer edge and the edge of every hole, so a ring stays a ring.
+      const loops = unionOfConvexPolygonsWithHoles(polygons);
+      return { path: loops ? loops.flatMap(loopPath) : footprintPath(polygons) };
     },
   };
 }

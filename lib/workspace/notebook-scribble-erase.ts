@@ -108,6 +108,26 @@ const MIN_MAJOR_EXTENT_ON_PAGE = 26;
  * striking something out.
  */
 const MIN_MEAN_SPEED_ON_SCREEN_PER_MS = 0.35;
+/**
+ * A loop drawn around something is not a scribble.
+ *
+ * A quick circle passes every test above: it reverses twice along its axis,
+ * its legs overlap, and its path is about 2.22 times its diagonal. What gives
+ * it away is how it turns. A circle keeps turning the same way, about 360
+ * degrees in all; a zigzag's turns alternate and cancel. So a stroke that has
+ * turned one way through a loop, but not through two, is left alone: circling
+ * a word, overshooting the join included. A coiled scribble that loops on at
+ * every pass turns past this and is still recognised.
+ */
+const LOOP_MIN_TURN_DEGREES = 300;
+const LOOP_MAX_TURN_DEGREES = 630;
+/**
+ * Turning is read between points this far apart, so hand tremor cannot add
+ * to it, and a turn sharper than this in one step is a reversal, whose sign
+ * says nothing: a straight back-and-forth turns 180 degrees either way.
+ */
+const TURN_SAMPLE_SPACING_ON_SCREEN = 6;
+const REVERSAL_TURN_DEGREES = 150;
 /** Below this a stroke has too little shape to judge. */
 const MIN_SAMPLES = 8;
 /** Samples closer together than this are the same place. */
@@ -189,6 +209,27 @@ function principalAxis(points: readonly NotebookScribblePoint[]) {
   const length = Math.hypot(axisX, axisY);
   if (length < 1e-9) return { x: 1, y: 0 };
   return { x: axisX / length, y: axisY / length };
+}
+
+/** How far the path turns in all, in degrees, signed (see `LOOP_MIN_TURN_DEGREES`). */
+function netTurningDegrees(samples: readonly NotebookScribblePoint[]) {
+  let net = 0;
+  let heading: number | null = null;
+  let from = samples[0];
+  for (let index = 1; index < samples.length; index += 1) {
+    const to = samples[index];
+    if (distance(from, to) < TURN_SAMPLE_SPACING_ON_SCREEN) continue;
+    const next = Math.atan2(to.y - from.y, to.x - from.x);
+    if (heading !== null) {
+      let turn = next - heading;
+      if (turn > Math.PI) turn -= 2 * Math.PI;
+      if (turn < -Math.PI) turn += 2 * Math.PI;
+      if (Math.abs(turn) < (REVERSAL_TURN_DEGREES * Math.PI) / 180) net += turn;
+    }
+    heading = next;
+    from = to;
+  }
+  return (net * 180) / Math.PI;
 }
 
 /** Runs of travel between direction changes, as index ranges. */
@@ -385,6 +426,9 @@ export function detectNotebookScribble(
   const meanOverlap =
     overlaps.reduce((total, value) => total + value, 0) / overlaps.length;
   if (meanOverlap < MIN_LEG_OVERLAP) return null;
+
+  const turned = Math.abs(netTurningDegrees(samples));
+  if (turned >= LOOP_MIN_TURN_DEGREES && turned < LOOP_MAX_TURN_DEGREES) return null;
 
   const hull = grownHull(
     convexHull(samples),

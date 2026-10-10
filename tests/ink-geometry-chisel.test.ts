@@ -59,6 +59,38 @@ describe("the highlighter geometry", () => {
     expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(WIDTH * 0.2, 6);
   });
 
+  it("leaves the middle of a circle bare, as its footprints do, rather than filling it", () => {
+    const circle = Array.from({ length: 121 }, (_, index) => {
+      const angle = (index / 120) * 2 * Math.PI;
+      return sample(200 + 60 * Math.cos(angle), 200 + 60 * Math.sin(angle));
+    });
+    const chisel = draw(circle, () => Math.PI / 4);
+    // Nonzero winding of a point against every subpath, as a canvas fills it.
+    const windingAt = ({ path }: InkChiselGeometry, x: number, y: number) => {
+      const loops: Array<Array<{ x: number; y: number }>> = [];
+      for (const command of path) {
+        if (command.op === "M") loops.push([{ x: command.x, y: command.y }]);
+        else if (command.op === "L") loops[loops.length - 1].push({ x: command.x, y: command.y });
+      }
+      let winding = 0;
+      for (const loop of loops) {
+        for (let index = 0; index < loop.length; index += 1) {
+          const from = loop[index];
+          const to = loop[(index + 1) % loop.length];
+          const side = (to.x - from.x) * (y - from.y) - (x - from.x) * (to.y - from.y);
+          if (from.y <= y && to.y > y && side > 0) winding += 1;
+          else if (from.y > y && to.y <= y && side < 0) winding -= 1;
+        }
+      }
+      return winding;
+    };
+
+    for (const geometry of [chisel.preview(), chisel.build()]) {
+      expect(windingAt(geometry, 200, 200)).toBe(0);
+      expect(windingAt(geometry, 260, 200)).not.toBe(0);
+    }
+  });
+
   it("commits the footprints as one loop, but draws them wet as separate pieces", () => {
     const chisel = draw(
       Array.from({ length: 60 }, (_, index) => sample(30 + index * 5, 100 + Math.sin(index / 5) * 30))

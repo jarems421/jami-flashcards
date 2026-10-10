@@ -305,6 +305,44 @@ describe("detectNotebookScribble", () => {
     expect(detectNotebookScribble(trace([[40, 90], [300, 90]], 3))).toBeNull();
   });
 
+  describe("a loop drawn around something", () => {
+    /** An ellipse traced quickly from `startDegrees`, `turns` times round, with a little wobble. */
+    function loop(input: { rx: number; ry: number; turns: number; startDegrees: number; clockwise?: boolean }) {
+      const corners: Array<[number, number]> = [];
+      const steps = Math.round(72 * input.turns);
+      const direction = input.clockwise === false ? -1 : 1;
+      for (let step = 0; step <= steps; step += 1) {
+        const angle = ((input.startDegrees + (direction * step * 360) / 72) * Math.PI) / 180;
+        const wobble = 1 + 0.03 * Math.sin(step * 1.7);
+        corners.push([300 + input.rx * wobble * Math.cos(angle), 300 + input.ry * wobble * Math.sin(angle)]);
+      }
+      return trace(corners, 2);
+    }
+
+    it.each([
+      ["a circle", { rx: 80, ry: 80, turns: 1 }],
+      ["a circle overshooting its join", { rx: 80, ry: 80, turns: 1.2 }],
+      ["an ellipse round a word", { rx: 120, ry: 35, turns: 1.1 }],
+      ["a small circle round a letter", { rx: 25, ry: 25, turns: 1.15 }],
+    ])("leaves %s alone, wherever it starts and whichever way it goes", (_label, shape) => {
+      for (const startDegrees of [-90, -60, -30, 0, 45, 135, 200]) {
+        for (const clockwise of [true, false]) {
+          expect(detectNotebookScribble(loop({ ...shape, startDegrees, clockwise }))).toBeNull();
+        }
+      }
+    });
+
+    it("still recognises a coiled scribble that loops on every pass", () => {
+      // Narrow loops advancing along a word, as some people scribble.
+      const corners: Array<[number, number]> = [];
+      for (let step = 0; step <= 72 * 4; step += 1) {
+        const angle = (step * 5 * Math.PI) / 180;
+        corners.push([200 + step * 0.25 + 70 * Math.cos(angle), 300 + 18 * Math.sin(angle)]);
+      }
+      expect(detectNotebookScribble(trace(corners, 2))).not.toBeNull();
+    });
+  });
+
   it("wants nothing to do with a stroke too short to judge", () => {
     expect(detectNotebookScribble([])).toBeNull();
     expect(

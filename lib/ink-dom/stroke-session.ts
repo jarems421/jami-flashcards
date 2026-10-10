@@ -32,7 +32,8 @@ import {
  *    pixels (`notebook-ink-smoothing.ts`);
  * 3. the filtered point becomes a page position, and a width in page units:
  *    `pressure * thickness` with the pressure floored at 0.3 when pressure is
- *    on, otherwise `0.5 * thickness` (js-draw's `Pen.toStrokePoint`);
+ *    on, otherwise `0.5 * thickness` (js-draw's `Pen.toStrokePoint`); the
+ *    highlighter is its whole thickness (`HIGHLIGHTER_PRESSURE`);
  * 4. the pen or chisel builder (`lib/ink/geometry/`) shapes the path;
  * 5. the path is drawn on the live layer, synchronously, once per packet.
  *
@@ -112,6 +113,13 @@ export const HIGHLIGHTER_SETTLE_MS = 50;
 /** js-draw's `Pen.toStrokePoint`: the least pressure a width is made from, and the width without pressure. */
 const PRESSURE_FLOOR = 0.3;
 const DEFAULT_PRESSURE = 0.5;
+/**
+ * The highlighter's nib is its whole setting, not half of it as js-draw drew
+ * it. Its range (`NOTEBOOK_HIGHLIGHTER_MIN_WIDTH` to `_MAX_WIDTH`) is meant in
+ * page units, from under a ruled line to more than one, and halved it never
+ * covered a line of writing.
+ */
+const HIGHLIGHTER_PRESSURE = 1;
 
 const NO_SAMPLES: readonly InkPointerSample[] = [];
 
@@ -345,6 +353,7 @@ export class InkStrokeSession {
 
   /** js-draw's `Pen.toStrokePoint`, in page units. */
   private widthOf(pressure: number): number {
+    if (this.layer === "highlighter") return HIGHLIGHTER_PRESSURE * this.thickness;
     if (!this.usePressure) return DEFAULT_PRESSURE * this.thickness;
     const floored = Math.max(pressure, PRESSURE_FLOOR);
     return (Number.isFinite(floored) ? floored : PRESSURE_FLOOR) * this.thickness;

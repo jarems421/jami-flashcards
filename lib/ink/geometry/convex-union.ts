@@ -32,6 +32,8 @@ export type NotebookUnionPoint = { x: number; y: number };
 const WELD_EPSILON = 1e-6;
 /** Below this a traced loop is a sliver rather than a shape. */
 const MIN_UNION_AREA = 1e-9;
+/** Below this a clockwise loop is the gap between two shared edges, not a hole. */
+const MIN_HOLE_AREA = 1e-6;
 
 type Edge = {
   from: NotebookUnionPoint;
@@ -195,32 +197,24 @@ function getVertexSplitParameters(edge: Edge, polygon: readonly NotebookUnionPoi
   return parameters;
 }
 
-/**
- * Traces the outer boundary of a union of convex polygons.
- *
- * Every edge is cut at its crossings with the other polygons, so each resulting
- * piece is either wholly inside another polygon or wholly outside it. The
- * inside ones are dropped, and the survivors are walked into a loop.
- *
- * Starting from the leftmost point guarantees the trace begins on the outer
- * boundary. At each junction it takes the most clockwise turn available, which
- * keeps it on that boundary rather than wandering into an interior hole -- so a
- * highlighter drawn as a closed ring comes back filled rather than hollow. That
- * is deliberate: a highlighter is not a stencil.
- *
- * Returns `null` rather than a wrong shape whenever the trace cannot be
- * trusted. Callers keep their existing geometry in that case.
- */
-export function unionOfConvexPolygons(
-  polygons: ReadonlyArray<readonly NotebookUnionPoint[]>
-): NotebookUnionPoint[] | null {
-  const shapes = polygons
+/** The usable polygons, each wound counter-clockwise. */
+function positiveShapes(polygons: ReadonlyArray<readonly NotebookUnionPoint[]>) {
+  return polygons
     .filter((polygon) => polygon.length >= 3)
     .map((polygon) => withPositiveWinding([...polygon]))
     .filter((polygon) => Math.abs(getNotebookPolygonArea(polygon)) > MIN_UNION_AREA);
-  if (shapes.length === 0) return null;
-  if (shapes.length === 1) return shapes[0];
+}
 
+/**
+ * The pieces of the polygons' edges that lie on the union's boundary.
+ *
+ * Every edge is cut at its crossings with the other polygons, so each resulting
+ * piece is either wholly inside another polygon or wholly outside it. The
+ * inside ones are dropped. Each survivor keeps its polygon's direction, so the
+ * union is on its left: the outer boundary runs counter-clockwise and the edge
+ * of a hole clockwise.
+ */
+function unionBoundaryEdges(shapes: readonly NotebookUnionPoint[][]): Edge[] {
   // Footprints overlap their neighbours and nothing else, so comparing every
   // pair would do quadratic work for a linear result. Bounds keep it to the
   // polygons that can actually interact.
@@ -274,8 +268,11 @@ export function unionOfConvexPolygons(
     }
   }
 
-  if (boundaryEdges.length < 3) return null;
+  return boundaryEdges;
+}
 
+/** The edge starting furthest left, which is on the outer boundary. */
+function leftmostEdge(boundaryEdges: readonly Edge[]) {
   let startEdgeIndex = 0;
   for (let index = 1; index < boundaryEdges.length; index += 1) {
     const candidate = boundaryEdges[index].from;
@@ -287,8 +284,22 @@ export function unionOfConvexPolygons(
       startEdgeIndex = index;
     }
   }
+  return startEdgeIndex;
+}
 
-  const used = new Uint8Array(boundaryEdges.length);
+/**
+ * Walks boundary edges from `startEdgeIndex` until they close into a loop,
+ * marking each edge it takes as used; null if they do not close.
+ *
+ * At each junction it takes the most clockwise turn available. From the
+ * leftmost edge that keeps it on the outer boundary rather than wandering into
+ * a hole; from the edge of a hole, it keeps to that hole.
+ */
+function traceLoop(
+  boundaryEdges: readonly Edge[],
+  used: Uint8Array,
+  startEdgeIndex: number
+): NotebookUnionPoint[] | null {
   const startEdge = boundaryEdges[startEdgeIndex];
   const outline: NotebookUnionPoint[] = [startEdge.from];
   let currentEdge = startEdge;
@@ -298,8 +309,7 @@ export function unionOfConvexPolygons(
   // the edges it is made of, and a trace that needs more has gone wrong.
   for (let step = 0; step < boundaryEdges.length; step += 1) {
     if (samePoint(currentEdge.to, startEdge.from) && outline.length >= 3) {
-      const area = Math.abs(getNotebookPolygonArea(outline));
-      return area > MIN_UNION_AREA ? outline : null;
+      return outline;
     }
 
     const incomingX = currentEdge.to.x - currentEdge.from.x;
@@ -333,4 +343,63 @@ export function unionOfConvexPolygons(
   }
 
   return null;
+}
+
+/**
+ * The outer boundary of a union of convex polygons, holes ignored: a ring of
+ * polygons comes back as the whole disc it surrounds.
+ *
+ * Returns `null` rather than a wrong shape whenever the trace cannot be
+ * trusted. Callers keep their existing geometry in that case.
+ */
+export function unionOfConvexPolygons(
+  polygons: ReadonlyArray<readonly NotebookUnionPoint[]>
+): NotebookUnionPoint[] | null {
+  const shapes = positiveShapes(polygons);
+  if (shapes.length === 0) return null;
+  if (shapes.length === 1) return shapes[0];
+  const boundaryEdges = unionBoundaryEdges(shapes);
+  if (boundaryEdges.length < 3) return null;
+  const outline = traceLoop(
+    boundaryEdges,
+    new Uint8Array(boundaryEdges.length),
+    leftmostEdge(boundaryEdges)
+  );
+  return outline && Math.abs(getNotebookPolygonArea(outline)) > MIN_UNION_AREA
+    ? outline
+    : null;
+}
+
+/**
+ * The union as loops: its outer boundary first (counter-clockwise), then the
+ * edge of each hole in it (clockwise), so under the nonzero fill rule a hole
+ * stays empty.
+ *
+ * What a highlighter saves. Its footprints, drawn as it moves, leave the
+ * middle of a circle bare, and the saved outline has to as well: a highlighter
+ * drawn round a word must not paint over it.
+ *
+ * Null when the outer boundary cannot be traced. A hole whose edges do not
+ * close, or that has no area (two footprints sharing an edge leave such a
+ * pair behind), is left out.
+ */
+export function unionOfConvexPolygonsWithHoles(
+  polygons: ReadonlyArray<readonly NotebookUnionPoint[]>
+): NotebookUnionPoint[][] | null {
+  const shapes = positiveShapes(polygons);
+  if (shapes.length === 0) return null;
+  if (shapes.length === 1) return [shapes[0]];
+  const boundaryEdges = unionBoundaryEdges(shapes);
+  if (boundaryEdges.length < 3) return null;
+  const used = new Uint8Array(boundaryEdges.length);
+  const outline = traceLoop(boundaryEdges, used, leftmostEdge(boundaryEdges));
+  if (!outline || Math.abs(getNotebookPolygonArea(outline)) <= MIN_UNION_AREA) return null;
+
+  const loops = [outline];
+  for (let index = 0; index < boundaryEdges.length; index += 1) {
+    if (used[index]) continue;
+    const loop = traceLoop(boundaryEdges, used, index);
+    if (loop && getNotebookPolygonArea(loop) < -MIN_HOLE_AREA) loops.push(loop);
+  }
+  return loops;
 }

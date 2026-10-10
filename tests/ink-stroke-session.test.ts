@@ -288,13 +288,13 @@ describe("lifting a pen stroke", () => {
 });
 
 describe("the highlighter", () => {
-  it("draws footprints at half the thickness while it is written", () => {
+  it("draws footprints at its whole thickness while it is written, not half of it as js-draw did", () => {
     const { sink, events, draws } = recordingSink();
     const tool = highlighterTool();
     const session = new InkStrokeSession({ tool, mapping: MAPPING, sink, first: FIRST, timers: new InkFakeClock().timers });
     expect(events.slice(0, 2)).toEqual(["begin:highlighter", "draw"]);
     const chisel = createInkChiselBuilder(
-      { x: 40, y: 80, width: 15 },
+      { x: 40, y: 80, width: 30 },
       { pixelSize: 0.5, nibAngle: () => 0.5 }
     );
     expect(draws[0].path).toEqual(chisel.preview().path);
@@ -310,7 +310,7 @@ describe("the highlighter", () => {
         chisel.addPoint({
           x: (settled.x - MAPPING.left) / MAPPING.scale,
           y: (settled.y - MAPPING.top) / MAPPING.scale,
-          width: 15,
+          width: 30,
         });
       }
       expect(draws[draws.length - 1].path).toEqual(chisel.preview().path);
