@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useJamiInkPointerInput } from "@/hooks/useJamiInkPointerInput";
 import type { JamiInkSurfaceEngine } from "@/hooks/useJamiInkSurface";
+import { InkInputTrace } from "@/lib/ink-dom/input-trace";
 import type { InkScreenMapping } from "@/lib/ink-dom/stroke-session";
 import type { InkSurface } from "@/lib/ink-dom/surface";
 import { getNotebookEraserCursorDiameter, type NotebookEraserMode } from "@/lib/workspace/notebook-eraser";
@@ -49,6 +50,7 @@ type HarnessProps = {
   style: NotebookInkStyle;
   readOnly: boolean;
   scribbleToErase: boolean;
+  trace?: { recorder: InkInputTrace; readoutRef: { current: HTMLDivElement | null } } | null;
 };
 
 let container: HTMLDivElement;
@@ -67,7 +69,7 @@ const page = {
   onPointerCancel: vi.fn(),
 };
 
-function Harness({ style, readOnly, scribbleToErase }: HarnessProps) {
+function Harness({ style, readOnly, scribbleToErase, trace = null }: HarnessProps) {
   const inkSurfaceRef = useRef<HTMLDivElement | null>(null);
   const eraserCursorRef = useRef<HTMLDivElement | null>(null);
   const lifecycleRef = useRef(lifecycle);
@@ -82,6 +84,7 @@ function Harness({ style, readOnly, scribbleToErase }: HarnessProps) {
     scribbleToErase,
     reportInteraction,
     page,
+    trace,
   });
   return (
     <div ref={inkSurfaceRef} data-testid="surface" {...input.surfaceHandlers}>
@@ -206,6 +209,31 @@ describe("a pen stroke", () => {
     expect(reportInteraction).toHaveBeenLastCalledWith(false);
     expect(lifecycle.isInteracting).toBe(false);
     expect(settle).toHaveBeenCalled();
+  });
+
+  it("with the timing readout on, writes the stroke's figures when the pen lifts, and nothing before", () => {
+    const readout = document.createElement("div");
+    const frames = { request: vi.fn(() => 1), cancel: vi.fn() };
+    const recorder = new InkInputTrace(16, {
+      now: () => performance.now(),
+      requestFrame: frames.request,
+      cancelFrame: frames.cancel,
+    });
+    render({ trace: { recorder, readoutRef: { current: readout } } });
+
+    const down = fire("pointerdown", { clientX: 120, clientY: 90 });
+    expect(frames.request).toHaveBeenCalledTimes(1);
+    fire(
+      "pointermove",
+      { clientX: 130, clientY: 95 },
+      { getCoalescedEvents: () => [{ clientX: 124, clientY: 92, pressure: 0.6, timeStamp: down.timeStamp + 1 }] }
+    );
+    expect(readout.textContent).toBe("");
+    fire("pointerup", { clientX: 130, clientY: 95, buttons: 0 });
+
+    expect(readout.textContent).toContain("Last stroke: pen, pen, 1 packets");
+    expect(readout.textContent).toContain("samples per packet  2.0");
+    expect(frames.cancel).toHaveBeenCalled();
   });
 
   it("does not ask a mouse for a predicted tip", () => {

@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { JamiInkSurfaceEngine } from "@/hooks/useJamiInkSurface";
 import type { InkPoint } from "@/lib/ink/model";
+import { formatInkTrace, type InkInputTrace, type InkTraceContext } from "@/lib/ink-dom/input-trace";
 import {
   createScribbleTrack,
   inkStrokeToolFor,
@@ -90,6 +91,7 @@ export function useJamiInkPointerInput({
   scribbleToErase,
   reportInteraction,
   page,
+  trace = null,
 }: {
   engine: JamiInkSurfaceEngine;
   inkSurfaceRef: RefObject<HTMLDivElement | null>;
@@ -104,6 +106,8 @@ export function useJamiInkPointerInput({
   reportInteraction: (active: boolean) => void;
   /** The page's handlers, for pointers ink does not take. */
   page: LiveInputs["page"];
+  /** Times each pen stroke and shows the figures at the lift, when `?inkstats=1` asked for it. */
+  trace?: { recorder: InkInputTrace; readoutRef: RefObject<HTMLDivElement | null> } | null;
 }) {
   const { surfaceRef, loadedRef, getMapping, measureNow, peekMapping, settle } = engine;
   const { activeTool, eraserThickness } = style;
@@ -130,6 +134,8 @@ export function useJamiInkPointerInput({
   const nibAngleRef = useRef<NotebookNibAngleTracker | null>(null);
   nibAngleRef.current ??= new NotebookNibAngleTracker();
   const nibAngle = useCallback(() => nibAngleRef.current?.current() ?? NIB_ANGLE_DEFAULT, []);
+  /** What the readout says about the stroke being timed, if one is. */
+  const traceContextRef = useRef<InkTraceContext | null>(null);
 
   useLayoutEffect(() => {
     const surface = inkSurfaceRef.current;
@@ -270,6 +276,10 @@ export function useJamiInkPointerInput({
           nibWidth: live.penThickness,
           scribble: watchScribble,
         };
+        if (trace) {
+          traceContextRef.current = { tool: `${tool}, ${event.pointerType}`, scale: mapping.scale, devicePixelRatio: window.devicePixelRatio || 1 };
+          trace.recorder.begin();
+        }
       }
       try {
         if (!event.currentTarget.hasPointerCapture(pointerId)) {
@@ -280,7 +290,7 @@ export function useJamiInkPointerInput({
       }
       reportInteraction(true);
     },
-    [cancelGesture, eraserModeRef, getMapping, lifecycleRef, loadedRef, placeRing, reportInteraction, nibAngle, surfaceRef]
+    [cancelGesture, eraserModeRef, getMapping, lifecycleRef, loadedRef, placeRing, reportInteraction, nibAngle, surfaceRef, trace]
   );
 
   /** The scribble this stroke made, brought onto the page, or null if it was not one. */
@@ -339,11 +349,19 @@ export function useJamiInkPointerInput({
           surface?.cancelStroke();
           surface?.cancelErase();
           hideRing();
+          trace?.recorder.cancel();
         } else if (active.kind === "stroke") {
           noteScribbleSample(scribbleRef.current, active, event.clientX, event.clientY, event.timeStamp);
+          const liftStart = trace ? performance.now() : 0;
           // A scribble over ink erases it and is never drawn; over blank paper
           // it commits as the ordinary stroke it is.
           surface?.endStroke(scribbleOf(active));
+          const context = traceContextRef.current;
+          if (trace && context) {
+            const summary = trace.recorder.end(performance.now() - liftStart);
+            const readout = trace.readoutRef.current;
+            if (readout) readout.textContent = formatInkTrace(summary, context);
+          }
         } else {
           moveErase(active, event.nativeEvent);
           surface?.endErase();
@@ -375,7 +393,7 @@ export function useJamiInkPointerInput({
       }
       settle();
     },
-    [finishPointerInteraction, hideRing, moveErase, restoreRingSize, scribbleOf, settle, surfaceRef]
+    [finishPointerInteraction, hideRing, moveErase, restoreRingSize, scribbleOf, settle, surfaceRef, trace]
   );
 
   /** Hands a pointer to ink. Answers false when ink does not take it, so the page should. */
@@ -466,6 +484,7 @@ export function useJamiInkPointerInput({
          */
         if (!own || !lifecycleRef.current?.isDown(pointerId) || event.buttons === 0) return true;
         if (own.kind === "stroke") {
+          const startedAt = trace ? performance.now() : 0;
           // Safari groups high-frequency Pencil input into coalesced packets;
           // the engine takes exactly those points, and draws before this
           // handler returns.
@@ -475,6 +494,10 @@ export function useJamiInkPointerInput({
               ? native.getPredictedEvents()
               : undefined;
           surface.moveStroke(samples, predicted);
+          if (trace) {
+            const oldest = samples.length > 0 ? samples[0].timeStamp : native.timeStamp;
+            trace.recorder.packet(native.timeStamp, oldest, startedAt, performance.now(), samples.length, predicted?.length ?? 0);
+          }
           own.last = native;
           noteScribbleSample(scribbleRef.current, own, event.clientX, event.clientY, event.timeStamp);
         } else {
@@ -499,6 +522,7 @@ export function useJamiInkPointerInput({
       placeRing,
       surfaceRef,
       eraserCursorRef,
+      trace,
     ]
   );
 

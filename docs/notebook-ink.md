@@ -535,6 +535,14 @@ Still to come:
     pointer (the pen's eraser end), palm and touch left to the page, capture and
     cancel safeguards, and the eraser ring. The tool is fixed when the pen lands,
     so a style change mid-stroke needs no deferral.
+  - **Timing on the device** (`lib/ink-dom/input-trace.ts`). Opening a notebook
+    with `?inkstats=1` (kept for the tab until `?inkstats=0`) shows, after each
+    pen stroke, how old the samples were when the handler ran, how long the ink
+    work took per packet, how long until the next frame, the frames while the
+    pen was down, how many coalesced and predicted samples Safari sent, and the
+    lift. It is how delay felt on an iPad gets measured, since desktop
+    Chromium cannot stand in for Safari there. Off, it costs nothing; on, it
+    allocates nothing during a stroke and writes the readout only at the lift.
   - `inkFrame` is where the sheet sits in the frame that shows it (the numbers
     `getNotebookInkRenderWindow` takes). The snapped `inkWindow` does not change
     for a small pan, so the engine needs it to know the visible part of the
